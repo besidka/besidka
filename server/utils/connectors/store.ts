@@ -5,6 +5,7 @@ import { createError } from 'evlog'
 import {
   allocateConnectorSlug,
 } from '#shared/utils/connectors-slug'
+import { isConnectorNeverConnected } from '#shared/utils/connectors-connected'
 import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import {
   CONNECTOR_NEW_TOOL_MODE,
@@ -16,12 +17,16 @@ import type {
   ConnectorAuditApproval,
   ConnectorAuditOutcome,
   ConnectorAuditPath,
+  ConnectorAuthType,
   ConnectorCreatedVia,
   ConnectorRegistrationKind,
   ConnectorToolApproval,
+  ConnectorToolMode,
   ConnectorTransport,
 } from '#shared/utils/connectors-policy'
 import * as schema from '~~/server/db/schema'
+import type { ConnectorLastError } from '~~/server/db/schemas/connectors'
+import { createConnectorError } from '~~/server/utils/connectors/errors'
 import {
   decodePublicId,
   encodePublicId,
@@ -84,6 +89,23 @@ export interface CreateConnectorInput {
   presetId?: string | null
   createdByClientId?: string | null
   transport?: ConnectorTransport
+  connected?: CreateConnectedConnectorState
+}
+
+/**
+ * The state of a connector that is created already connected (the app adds
+ * a connector only after a key was accepted or a sign-in finished): ready,
+ * with the consent given on the connect screen and the connect time.
+ */
+export interface CreateConnectedConnectorState {
+  authType: ConnectorAuthType
+  consent: {
+    issuerHost: string | null
+    version: string
+    givenAt: Date
+  }
+  toolMode?: ConnectorToolMode
+  lastError?: ConnectorLastError | null
 }
 
 export type ConnectorTokenEndpointAuthMethod
@@ -210,13 +232,7 @@ export interface DeleteConnectorResult {
 }
 
 function createConnectorLimitError() {
-  return createError({
-    message: 'Connector limit reached',
-    status: 409,
-    code: 'CONNECTOR_LIMIT_REACHED',
-    why: `An account can have at most ${CONNECTORS_PER_USER} connectors`,
-    fix: 'Delete a connector you no longer use',
-  })
+  return createConnectorError('CONNECTOR_LIMIT_REACHED')
 }
 
 function toConnectorRecord(row: ConnectorRow): ConnectorRecord {
@@ -345,8 +361,34 @@ export async function assertConnectorCapacity(
   }
 }
 
+function initialConnectorState(input: CreateConnectorInput, origin: string) {
+  if (!input.connected) {
+    return {
+      authType: null,
+      status: 'needs-auth' as const,
+      toolMode: CONNECTOR_NEW_TOOL_MODE,
+    }
+  }
+
+  const { authType, consent, toolMode, lastError } = input.connected
+
+  return {
+    authType,
+    status: 'ready' as const,
+    toolMode: toolMode ?? CONNECTOR_NEW_TOOL_MODE,
+    consentOrigin: origin,
+    consentIssuer: consent.issuerHost,
+    consentVersion: consent.version,
+    consentedAt: consent.givenAt,
+    lastConnectedAt: consent.givenAt,
+    lastError: lastError ?? null,
+  }
+}
+
 /**
- * Inserts a disabled connector in `needs-auth`: defaults live here, not in
+ * Inserts a disabled connector, in `needs-auth` unless `connected` says the
+ * connect already succeeded (then `ready` with the consent and the connect
+ * time, see `CreateConnectedConnectorState`): defaults live here, not in
  * SQL. The origin is derived from the URL here, never taken from the caller.
  * The slug is the base, or the base with `-2`, `-3`, and is retried when a
  * concurrent insert takes the same one. The URL is stored encrypted, the
@@ -362,6 +404,7 @@ export async function createConnector(
 ): Promise<ConnectorRecord> {
   const origin = new URL(input.url).origin
   const urlEncrypted = await useEncryptText(input.url)
+  const initialState = initialConnectorState(input, origin)
 
   for (let attempt = 0; attempt < SLUG_ALLOCATION_ATTEMPTS; attempt++) {
     const slug = allocateConnectorSlug(
@@ -378,13 +421,11 @@ export async function createConnector(
           origin,
           urlEncrypted,
           transport: input.transport ?? 'streamable-http',
-          authType: null,
-          status: 'needs-auth',
+          ...initialState,
           enabled: false,
           presetId: input.presetId ?? null,
           createdVia: input.createdVia,
           createdByClientId: input.createdByClientId ?? null,
-          toolMode: CONNECTOR_NEW_TOOL_MODE,
         }).returning(connectorPublicColumns),
         db.delete(schema.connectors)
           .where(and(
@@ -486,29 +527,41 @@ export async function readConnectorUrl(
   return await useDecryptText(row.urlEncrypted)
 }
 
+export interface ConnectorUrlEntry {
+  id: string
+  url: string
+  isConnected: boolean
+}
+
 /**
  * The full URLs of all of a user's connectors (at most 20), decrypted in
- * memory, for comparing them with directory addresses. Same rule as
- * `readConnectorUrl`: never log or return the URLs to a client.
+ * memory, for comparing them with directory addresses, with whether each
+ * one was ever connected (a leftover or MCP-added row that never was does
+ * not count as added). Same rule as `readConnectorUrl`: never log or return
+ * the URLs to a client.
  */
 export async function listConnectorUrls(
   db: DbClient,
   userId: number,
-): Promise<Array<{ id: string, url: string }>> {
+): Promise<ConnectorUrlEntry[]> {
   const rows = await db
     .select({
       id: schema.connectors.id,
       urlEncrypted: schema.connectors.urlEncrypted,
+      status: schema.connectors.status,
+      lastConnectedAt: schema.connectors.lastConnectedAt,
+      consentedAt: schema.connectors.consentedAt,
     })
     .from(schema.connectors)
     .where(eq(schema.connectors.userId, userId))
-  const urls: Array<{ id: string, url: string }> = []
+  const urls: ConnectorUrlEntry[] = []
 
   for (const row of rows) {
     try {
       urls.push({
         id: encodePublicId(row.id),
         url: await useDecryptText(row.urlEncrypted),
+        isConnected: !isConnectorNeverConnected(row),
       })
     } catch {
       continue

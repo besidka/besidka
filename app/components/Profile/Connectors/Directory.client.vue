@@ -130,7 +130,6 @@
           v-for="item in items"
           :key="item.id"
           :item="item"
-          :is-adding="actions.isAdding.value"
           @open="actions.openEntry"
           @add="addItem"
         />
@@ -217,8 +216,7 @@
             v-for="item in section.items"
             :key="item.id"
             :item="item"
-            :is-adding="actions.isAdding.value"
-            @open="actions.openEntry"
+              @open="actions.openEntry"
             @add="addItem"
           />
         </ul>
@@ -433,8 +431,8 @@ function closeList() {
   nextCursor.value = null
 }
 
-async function addItem(item: ConnectorDirectoryItem) {
-  await actions.add(item)
+function addItem(item: ConnectorDirectoryItem) {
+  actions.add(item)
 }
 
 async function reloadCurrent() {
@@ -505,7 +503,11 @@ watchDebounced(trimmedQuery, async () => {
   await loadList(0)
 }, { debounce: SEARCH_DEBOUNCE_MS })
 
-watch(() => connectors.value.length, async () => {
+const connectedCount = computed<number>(() => {
+  return connectors.value.filter(isConnectorConnected).length
+})
+
+watch([() => connectors.value.length, connectedCount], async () => {
   await reloadCurrent()
 })
 

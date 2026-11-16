@@ -1,15 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
-import { addConnector } from '~~/server/utils/connectors/add'
-import { assertConnectorCapacity } from '~~/server/utils/connectors/store'
+import { describe, expect, it } from 'vitest'
+import {
+  addConnector,
+  resolveConnectorTarget,
+} from '~~/server/utils/connectors/add'
 import { CONNECTOR_ERRORS } from '~~/server/utils/connectors/errors'
-
-vi.mock('~~/server/utils/connectors/store', async (importOriginal) => {
-  const original = await importOriginal<
-    typeof import('~~/server/utils/connectors/store')
-  >()
-
-  return { ...original, assertConnectorCapacity: vi.fn(async () => undefined) }
-})
 
 type DbClient = Parameters<typeof addConnector>[0]
 
@@ -78,84 +72,65 @@ describe('addConnector own-server rule', () => {
   })
 })
 
-describe('addConnector verifyServer', () => {
-  it('refuses an own server before any verification', async () => {
-    const verifyServer = vi.fn()
-
-    await expect(addConnector(db, {
-      userId: 1,
-      url: 'https://besidka.com/mcp',
-      source: { via: 'app' },
-      verifyServer,
-    })).rejects.toMatchObject({ code: 'CONNECTOR_OWN_SERVER' })
-    expect(verifyServer).not.toHaveBeenCalled()
-  })
-
-  it('does not insert when the verification throws', async () => {
-    const insertSpy = vi.fn()
-    const spyDb = { insert: insertSpy } as unknown as DbClient
-    const failure = Object.assign(new Error('not mcp'), {
-      code: 'CONNECTOR_DISCOVERY_FAILED',
+describe('resolveConnectorTarget', () => {
+  it('makes no request and keeps the typed address and the preset rules',
+    () => {
+      expect(resolveConnectorTarget({
+        url: 'https://mcp.example.com/mcp',
+        title: '  Example  ',
+        source: { via: 'app' },
+      })).toEqual({
+        url: 'https://mcp.example.com/mcp',
+        host: 'mcp.example.com',
+        title: 'Example',
+        presetId: null,
+        slugBase: 'example',
+        allowOAuth: true,
+        createdVia: 'app',
+        createdByClientId: null,
+      })
+      expect(resolveConnectorTarget({
+        presetId: 'github',
+        source: { via: 'app' },
+      })).toMatchObject({
+        url: 'https://api.githubcopilot.com/mcp/',
+        presetId: 'github',
+        title: 'GitHub',
+        allowOAuth: false,
+        createdVia: 'preset',
+      })
     })
 
-    await expect(addConnector(spyDb, {
-      userId: 1,
-      url: 'https://mcp.example.com/mcp',
-      source: { via: 'app' },
-      verifyServer: async () => {
-        throw failure
-      },
-    })).rejects.toBe(failure)
-    expect(insertSpy).not.toHaveBeenCalled()
-  })
-
-  it('hands the verification the normalized address and whether OAuth is '
-    + 'allowed', async () => {
-    const verifyServer = vi.fn(async () => {
-      throw new Error('stop')
+  it('records a directory entry as registry and an MCP add with its client',
+    () => {
+      expect(resolveConnectorTarget({
+        source: {
+          via: 'registry',
+          entry: {
+            remoteUrl: 'https://mcp.tracker.example.com/mcp',
+            title: 'Tracker',
+          },
+        },
+      })).toMatchObject({
+        title: 'Tracker',
+        createdVia: 'registry',
+        createdByClientId: null,
+      })
+      expect(resolveConnectorTarget({
+        presetId: 'github',
+        source: { via: 'mcp', clientId: 'client-1' },
+      })).toMatchObject({
+        createdVia: 'mcp',
+        createdByClientId: 'client-1',
+      })
     })
 
-    await expect(addConnector(db, {
-      userId: 1,
-      url: 'https://mcp.example.com/mcp',
+  it('refuses an unknown preset and a missing address', () => {
+    expect(() => resolveConnectorTarget({
+      presetId: 'nope',
       source: { via: 'app' },
-      verifyServer,
-    })).rejects.toThrow('stop')
-    expect(verifyServer).toHaveBeenCalledWith({
-      url: 'https://mcp.example.com/mcp',
-      allowOAuth: true,
-    })
-
-    verifyServer.mockClear()
-
-    await expect(addConnector(db, {
-      userId: 1,
-      presetId: 'github',
-      source: { via: 'app' },
-      verifyServer,
-    })).rejects.toThrow('stop')
-    expect(verifyServer).toHaveBeenCalledWith({
-      url: 'https://api.githubcopilot.com/mcp/',
-      allowOAuth: false,
-    })
-  })
-})
-
-describe('addConnector capacity check', () => {
-  it('stops at the cap before any verification request', async () => {
-    const verifyServer = vi.fn()
-    const limit = Object.assign(new Error('limit'), {
-      code: 'CONNECTOR_LIMIT_REACHED',
-    })
-
-    vi.mocked(assertConnectorCapacity).mockRejectedValueOnce(limit)
-
-    await expect(addConnector(db, {
-      userId: 1,
-      url: 'https://mcp.example.com/mcp',
-      source: { via: 'app' },
-      verifyServer,
-    })).rejects.toBe(limit)
-    expect(verifyServer).not.toHaveBeenCalled()
+    })).toThrow('Unknown preset')
+    expect(() => resolveConnectorTarget({ source: { via: 'app' } }))
+      .toThrow('This address is not allowed')
   })
 })

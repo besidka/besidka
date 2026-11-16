@@ -49,7 +49,6 @@ mockNuxtImport('useConnectorsPage', () => () => ({
   connectors: computed(() => connectors.value),
 }))
 mockNuxtImport('useConnectorDirectoryActions', () => () => ({
-  isAdding: ref(false),
   add: mocks.add,
   openAdded: mocks.openAdded,
   openEntry: vi.fn(),
@@ -148,9 +147,7 @@ describe('Profile/Connectors/DirectoryDetailPanel', () => {
     expect(mocks.loadProbe).not.toHaveBeenCalled()
   })
 
-  it('adds the entry and refreshes it', async () => {
-    mocks.add.mockResolvedValue('conn9')
-
+  it('starts adding the entry without storing anything', async () => {
     const wrapper = await mountPanel()
 
     await wrapper.get('[data-testid="connector-directory-detail-primary"]')
@@ -160,6 +157,27 @@ describe('Profile/Connectors/DirectoryDetailPanel', () => {
     expect(mocks.add).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'io.example/tracker@1.0.0' }),
     )
+    expect(mocks.refreshEntry).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the entry once a connector gets connected', async () => {
+    entryData.value!.item = createDirectoryItem({ addedConnectorId: 'conn1' })
+    connectors.value = [createConnectorItem({
+      status: 'needs-auth',
+      lastConnectedAt: null,
+      consent: { state: 'missing', issuerHost: null, givenAt: null },
+    })]
+
+    const wrapper = await mountPanel()
+
+    expect(wrapper
+      .get('[data-testid="connector-directory-detail-primary"]').text())
+      .toBe('Connect')
+    expect(mocks.refreshEntry).not.toHaveBeenCalled()
+
+    connectors.value = [createConnectorItem()]
+    await flushPromises()
+
     expect(mocks.refreshEntry).toHaveBeenCalled()
   })
 

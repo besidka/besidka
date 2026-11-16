@@ -11,17 +11,13 @@ import { deriveConnectorSlugBase } from '#shared/utils/connectors-slug'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 import * as schema from '~~/server/db/schema'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
-import {
-  assertConnectorCapacity,
-  createConnector,
-} from '~~/server/utils/connectors/store'
+import { createConnector } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 
 type DbClient = ReturnType<typeof useDb>
 
-export interface AddConnectorInput {
-  userId: number
+export interface ConnectorTargetInput {
   url?: string
   title?: string
   presetId?: string
@@ -29,12 +25,19 @@ export interface AddConnectorInput {
     | { via: 'app' }
     | { via: 'mcp', clientId: string }
     | { via: 'registry', entry: RegistryEntryAddress }
-  verifyServer?: (target: ConnectorVerifyTarget) => Promise<void>
 }
 
-export interface ConnectorVerifyTarget {
+export type AddConnectorInput = ConnectorTargetInput & { userId: number }
+
+export interface ResolvedConnectorTarget {
   url: string
+  host: string
+  title: string
+  presetId: string | null
+  slugBase: string
   allowOAuth: boolean
+  createdVia: ConnectorCreatedVia
+  createdByClientId: string | null
 }
 
 export interface RegistryEntryAddress {
@@ -69,7 +72,7 @@ function isOwnMcpPath(rawUrl: string): boolean {
 }
 
 function resolveCreatedVia(
-  input: AddConnectorInput,
+  input: ConnectorTargetInput,
   isPreset: boolean,
 ): ConnectorCreatedVia {
   if (input.source.via === 'mcp') {
@@ -113,21 +116,17 @@ export async function findActiveRegistryEntry(
 }
 
 /**
- * Adds a connector (docs/connectors.md section 5.1): the URL is checked
- * syntactically, a preset's own URL (or a directory entry's, from the local
- * MCP Registry copy) replaces the input, and the row starts disabled in
- * `needs-auth`. Without `verifyServer` (the MCP tool) no request is made.
- * With it (the app route) the per-user cap is checked first, so a user at
- * the cap never causes an outbound request, then the callback runs after the
- * URL check and before the insert, and a throw means nothing is stored: a
- * server that never answered as an MCP server never becomes a connector.
- * Anything added over MCP is recorded as `mcp` with the OAuth client that
- * added it, even from a preset; a directory entry as `registry`.
+ * Turns what the user picked (a preset, a directory entry or an address)
+ * into the connector to create: the URL is checked syntactically, a preset's
+ * own URL (or a directory entry's, from the local MCP Registry copy)
+ * replaces the input, and the title, slug base and `createdVia` follow.
+ * Pure: no request is made and nothing is stored. Anything added over MCP is
+ * recorded as `mcp` with the OAuth client that added it, even from a preset;
+ * a directory entry as `registry`.
  */
-export async function addConnector(
-  db: DbClient,
-  input: AddConnectorInput,
-): Promise<AddedConnector> {
+export function resolveConnectorTarget(
+  input: ConnectorTargetInput,
+): ResolvedConnectorTarget {
   const preset = input.presetId ? findConnectorPreset(input.presetId) : null
 
   if (input.presetId && !preset) {
@@ -166,25 +165,40 @@ export async function addConnector(
     CONNECTOR_TITLE_MAX_LENGTH,
   ) || parsed.url.hostname
 
-  if (input.verifyServer) {
-    await assertConnectorCapacity(db, input.userId)
-    await input.verifyServer({
-      url: parsed.url.toString(),
-      allowOAuth: !preset || preset.auth.includes('oauth'),
-    })
-  }
-
-  const connector = await createConnector(db, {
-    userId: input.userId,
-    title,
+  return {
     url: parsed.url.toString(),
-    slugBase: preset?.id ?? deriveConnectorSlugBase(parsed.url.hostname),
-    createdVia: resolveCreatedVia(input, preset !== null),
+    host: parsed.url.host,
+    title,
     presetId: preset?.id ?? null,
+    slugBase: preset?.id ?? deriveConnectorSlugBase(parsed.url.hostname),
+    allowOAuth: !preset || preset.auth.includes('oauth'),
+    createdVia: resolveCreatedVia(input, preset !== null),
     createdByClientId: input.source.via === 'mcp'
       ? input.source.clientId
       : null,
+  }
+}
+
+/**
+ * Adds a connector over MCP (docs/connectors.md section 5.1): no request is
+ * made to the address, and the row starts disabled in `needs-auth`. The app
+ * never uses this: it creates a connector only after a connect succeeded
+ * (`POST /api/v1/connectors`, the OAuth callback).
+ */
+export async function addConnector(
+  db: DbClient,
+  input: AddConnectorInput,
+): Promise<AddedConnector> {
+  const target = resolveConnectorTarget(input)
+  const connector = await createConnector(db, {
+    userId: input.userId,
+    title: target.title,
+    url: target.url,
+    slugBase: target.slugBase,
+    createdVia: target.createdVia,
+    presetId: target.presetId,
+    createdByClientId: target.createdByClientId,
   })
 
-  return { connector, host: parsed.url.host }
+  return { connector, host: target.host }
 }

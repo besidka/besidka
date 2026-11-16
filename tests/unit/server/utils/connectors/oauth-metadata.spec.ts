@@ -11,6 +11,7 @@ import {
   parseAuthorizationServerMetadata,
   parseBearerChallenge,
   resourceCoversUrl,
+  verifyConnectorCredentialHeader,
 } from '~~/server/utils/connectors/oauth-metadata'
 
 async function failureOf(promise: Promise<unknown>) {
@@ -236,6 +237,56 @@ describe('connector OAuth metadata', () => {
       expect(probe!.headers.has('authorization')).toBe(false)
       expect(probe!.headers.has('cookie')).toBe(false)
       expect(JSON.parse(probe!.body).method).toBe('initialize')
+    })
+  })
+
+  describe('verifyConnectorCredentialHeader', () => {
+    const header = { name: 'Authorization', value: 'Bearer ghp_secret' }
+
+    function answerWith(status: number) {
+      const fetchSpy = vi.fn(async () => new Response('{}', { status }))
+
+      vi.stubGlobal('fetch', fetchSpy)
+
+      return fetchSpy
+    }
+
+    it('sends the one initialize request with the header to the server',
+      async () => {
+        const fetchSpy = answerWith(200)
+
+        await verifyConnectorCredentialHeader(MCP_SERVER_URL, header)
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+        const [url, init] = fetchSpy.mock.calls[0] as unknown as [
+          string,
+          RequestInit,
+        ]
+        const sent = new Headers(init.headers)
+
+        expect(String(url)).toBe(MCP_SERVER_URL)
+        expect(sent.get('authorization')).toBe('Bearer ghp_secret')
+        expect(JSON.parse(String(init.body)).method).toBe('initialize')
+      })
+
+    it('names a rejected key for a 400, 401 or 403', async () => {
+      for (const status of [400, 401, 403]) {
+        answerWith(status)
+
+        expect((await failureOf(
+          verifyConnectorCredentialHeader(MCP_SERVER_URL, header),
+        )).code).toBe('CONNECTOR_CREDENTIALS_REJECTED')
+      }
+    })
+
+    it('says the server did not answer as an MCP server for any other '
+      + 'status', async () => {
+      answerWith(404)
+
+      expect((await failureOf(
+        verifyConnectorCredentialHeader(MCP_SERVER_URL, header),
+      )).code).toBe('CONNECTOR_DISCOVERY_FAILED')
     })
   })
 })

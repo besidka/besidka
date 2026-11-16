@@ -43,11 +43,13 @@
 <script setup lang="ts">
 import type { ConnectorPreset } from '~~/config/connectors-catalog'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   preset: ConnectorPreset
   isAdded: boolean
-  isBusy: boolean
-}>()
+  isBusy?: boolean
+}>(), {
+  isBusy: false,
+})
 
 const emit = defineEmits<{
   add: [presetId: string]

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -99,6 +100,41 @@ describe('connectors store', () => {
         consentedAt: null,
       }))
       expect(connector).not.toHaveProperty('urlEncrypted')
+    })
+
+    it('creates a connector that is already connected, with the consent '
+      + 'and the connect time', async () => {
+      const givenAt = new Date('2026-11-16T10:00:00.000Z')
+      const connector = await createConnector(testDb.db, {
+        userId,
+        title: 'Example',
+        url: SECRET_URL,
+        slugBase: 'example',
+        createdVia: 'preset',
+        presetId: 'github',
+        connected: {
+          authType: 'header',
+          consent: {
+            issuerHost: null,
+            version: CONNECTOR_CONSENT_VERSION,
+            givenAt,
+          },
+          toolMode: 'manual',
+        },
+      })
+
+      expect(connector).toEqual(expect.objectContaining({
+        authType: 'header',
+        status: 'ready',
+        enabled: false,
+        toolMode: 'manual',
+        consentOrigin: 'https://mcp.example.com',
+        consentIssuer: null,
+        consentVersion: CONNECTOR_CONSENT_VERSION,
+        consentedAt: givenAt,
+        lastConnectedAt: givenAt,
+        lastError: null,
+      }))
     })
 
     it('stores the full URL encrypted and the origin in the clear', async () => {

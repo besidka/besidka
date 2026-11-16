@@ -173,6 +173,26 @@ export const CONNECTOR_ERRORS = {
     why: 'Only a connected connector can be turned on',
     fix: 'Connect it first',
   },
+  CONNECTOR_CREDENTIALS_REJECTED: {
+    message: 'The server did not accept this key',
+    status: 400,
+    why: 'The server answered the request that carried this header with an '
+      + 'authorization error',
+    fix: 'Check the key and its permissions, then try again. Nothing was '
+      + 'saved',
+  },
+  CONNECTOR_AUTH_REQUIRED: {
+    message: 'This server needs a sign-in or a key',
+    status: 409,
+    why: 'The server refused a request without credentials',
+    fix: 'Start again and sign in or paste a key. Nothing was saved',
+  },
+  CONNECTOR_LIMIT_REACHED: {
+    message: 'Connector limit reached',
+    status: 409,
+    why: 'An account has a limited number of connectors',
+    fix: 'Delete a connector you no longer use',
+  },
   CONNECTOR_HEADER_INVALID: {
     message: 'This header cannot be used',
     status: 400,

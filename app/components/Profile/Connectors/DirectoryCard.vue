@@ -69,7 +69,6 @@
           v-else
           type="button"
           class="btn btn-primary btn-sm relative z-10 shrink-0 min-h-11 sm:min-h-8"
-          :disabled="isAdding"
           :aria-label="`Add ${item.title}`"
           data-testid="connector-directory-add"
           @click="emit('add', item)"
@@ -95,12 +94,9 @@
 <script setup lang="ts">
 import type { ConnectorDirectoryItem } from '#shared/types/connectors.d'
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   item: ConnectorDirectoryItem
-  isAdding?: boolean
-}>(), {
-  isAdding: false,
-})
+}>()
 
 const emit = defineEmits<{
   open: [item: ConnectorDirectoryItem]

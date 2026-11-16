@@ -291,28 +291,37 @@ describe('Connectors page routes', () => {
       })
     }
 
-    it('adds the entry\'s own address as a registry connector', async () => {
-      mocks.flags.add('connectors.registry')
-      await addEntry('io.example/tracker@1.0.0', 'active')
-      vi.stubGlobal('fetch', vi.fn(async () => {
-        return new Response('{}', { status: 200 })
-      }))
+    const consent = {
+      accepted: true,
+      version: CONNECTOR_CONSENT_VERSION,
+      issuerHost: null,
+    }
 
-      const result = await call(createPath, {
-        body: {
-          registryId: 'io.example/tracker@1.0.0',
-          url: 'https://evil.example/mcp',
-        },
-      })
+    it('adds the entry\'s own address as a registry connector, connected',
+      async () => {
+        mocks.flags.add('connectors.registry')
+        await addEntry('io.example/tracker@1.0.0', 'active')
+        vi.stubGlobal('fetch', vi.fn(async () => {
+          return new Response('{}', { status: 200 })
+        }))
 
-      expect(result.connector).toMatchObject({
-        title: 'Tracker',
-        origin: 'https://mcp.tracker.example',
-        createdVia: 'registry',
-        status: 'needs-auth',
-        enabled: false,
+        const result = await call(createPath, {
+          body: {
+            registryId: 'io.example/tracker@1.0.0',
+            url: 'https://evil.example/mcp',
+            consent,
+          },
+        })
+
+        expect(result.connector).toMatchObject({
+          title: 'Tracker',
+          origin: 'https://mcp.tracker.example',
+          createdVia: 'registry',
+          status: 'ready',
+          authType: 'none',
+          enabled: false,
+        })
       })
-    })
 
     it('stores nothing when the entry\'s server does not answer as an '
       + 'MCP server', async () => {
@@ -323,7 +332,7 @@ describe('Connectors page routes', () => {
       }))
 
       const failure = await failureOf(call(createPath, {
-        body: { registryId: 'io.example/tracker@1.0.0' },
+        body: { registryId: 'io.example/tracker@1.0.0', consent },
       })) as { status: number, code?: string }
 
       expect(failure.status).toBe(502)
@@ -335,7 +344,7 @@ describe('Connectors page routes', () => {
       await addEntry('io.example/tracker@1.0.0', 'active')
 
       expect((await failureOf(call(createPath, {
-        body: { registryId: 'io.example/tracker@1.0.0' },
+        body: { registryId: 'io.example/tracker@1.0.0', consent },
       }))).status).toBe(404)
     })
 
@@ -345,7 +354,7 @@ describe('Connectors page routes', () => {
 
       for (const registryId of ['io.example/old@1.0.0', 'missing@1']) {
         expect((await failureOf(call(createPath, {
-          body: { registryId },
+          body: { registryId, consent },
         }))).status).toBe(400)
       }
     })

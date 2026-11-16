@@ -93,15 +93,9 @@
           v-else
           type="button"
           class="btn btn-primary btn-sm min-h-11 sm:min-h-8"
-          :disabled="actions.isAdding.value"
           data-testid="connector-directory-detail-primary"
           @click="addEntry"
         >
-          <span
-            v-if="actions.isAdding.value"
-            class="loading loading-spinner loading-xs"
-            aria-hidden="true"
-          />
           Add and connect
         </button>
       </div>
@@ -287,7 +281,10 @@ const addedConnector = computed(() => {
 })
 
 const needsConnect = computed<boolean>(() => {
-  return addedConnector.value?.status === 'needs-auth'
+  const connector = addedConnector.value
+
+  return !!connector
+    && (connector.status === 'needs-auth' || !isConnectorConnected(connector))
 })
 
 function openAddedConnector() {
@@ -306,15 +303,19 @@ function openAddedConnector() {
   actions.openAdded(connector)
 }
 
-async function addEntry() {
-  if (!item.value) {
-    return
-  }
-
-  if (await actions.add(item.value)) {
-    await refreshEntry()
+function addEntry() {
+  if (item.value) {
+    actions.add(item.value)
   }
 }
+
+const connectedCount = computed<number>(() => {
+  return connectors.value.filter(isConnectorConnected).length
+})
+
+watch([() => connectors.value.length, connectedCount], async () => {
+  await refreshEntry()
+})
 
 watch(entryData, async (value) => {
   if (value && !value.probe) {

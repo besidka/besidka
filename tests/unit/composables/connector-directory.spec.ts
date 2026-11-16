@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   refreshConnectors: vi.fn(),
   connectOpen: vi.fn(),
+  connectOpenDraft: vi.fn(),
   sidePanelOpen: vi.fn(),
   error: vi.fn(),
 }))
@@ -26,7 +27,9 @@ mockNuxtImport('useErrorMessage', () => mocks.error)
 mockNuxtImport('useSidePanel', () => () => ({ open: mocks.sidePanelOpen }))
 mockNuxtImport('useConnectorConnect', () => () => ({
   targetId: ref(null),
+  draft: ref(null),
   open: mocks.connectOpen,
+  openDraft: mocks.connectOpenDraft,
   close: vi.fn(),
 }))
 
@@ -35,43 +38,40 @@ describe('connector directory composable', () => {
     for (const mock of Object.values(mocks)) {
       mock.mockReset()
     }
-    mocks.fetch.mockResolvedValue({ connector: { id: 'conn7' } })
     mocks.refreshConnectors.mockResolvedValue(undefined)
   })
 
-  it('adds a registry entry by its directory id and opens Connect', async () => {
-    const actions = useConnectorDirectoryActions()
+  it('starts a registry entry as a draft by its directory id and stores '
+    + 'nothing', () => {
+    useConnectorDirectoryActions().add(createDirectoryItem())
 
-    expect(await actions.add(createDirectoryItem())).toBe('conn7')
-    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors', {
-      method: 'POST',
-      body: { registryId: 'io.example/tracker@1.0.0' },
+    expect(mocks.connectOpenDraft).toHaveBeenCalledWith({
+      registryId: 'io.example/tracker@1.0.0',
     })
-    expect(mocks.connectOpen).toHaveBeenCalledWith('conn7')
+    expect(mocks.connectOpen).not.toHaveBeenCalled()
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(mocks.refreshConnectors).not.toHaveBeenCalled()
   })
 
-  it('adds a preset entry by its preset id', async () => {
-    const actions = useConnectorDirectoryActions()
-
-    await actions.add(createDirectoryItem({
+  it('starts a preset entry as a draft by its preset id', () => {
+    useConnectorDirectoryActions().add(createDirectoryItem({
       id: 'preset:github',
       presetId: 'github',
     }))
 
-    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors', {
-      method: 'POST',
-      body: { presetId: 'github' },
+    expect(mocks.connectOpenDraft).toHaveBeenCalledWith({
+      presetId: 'github',
     })
+    expect(mocks.fetch).not.toHaveBeenCalled()
   })
 
-  it('reports a failed add and opens nothing', async () => {
-    mocks.fetch.mockRejectedValue(new Error('Server did not answer'))
+  it('finishes the row that never connected instead of adding another', () => {
+    useConnectorDirectoryActions().add(createDirectoryItem({
+      addedConnectorId: 'conn3',
+    }))
 
-    const actions = useConnectorDirectoryActions()
-
-    expect(await actions.add(createDirectoryItem())).toBeNull()
-    expect(mocks.error).toHaveBeenCalled()
-    expect(mocks.connectOpen).not.toHaveBeenCalled()
+    expect(mocks.connectOpen).toHaveBeenCalledWith('conn3')
+    expect(mocks.connectOpenDraft).not.toHaveBeenCalled()
   })
 
   it('opens an entry in the side panel under its own view key', () => {

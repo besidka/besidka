@@ -15,22 +15,22 @@
     </p>
 
     <div
-      v-if="connector"
+      v-if="identity"
       class="mb-4 flex items-center gap-3"
       data-testid="connector-connect-identity"
     >
       <ProfileConnectorsAvatar
-        :title="connector.title"
-        :preset-id="connector.presetId"
+        :title="identity.title"
+        :preset-id="identity.presetId"
       />
       <div class="grid min-w-0 gap-0.5">
         <p class="break-all font-mono text-base font-semibold">
-          {{ connector.host }}
+          {{ identity.host }}
         </p>
         <p class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
-          <span class="break-words">{{ connector.title }}</span>
+          <span class="break-words">{{ identity.title }}</span>
           <span
-            v-if="connector.createdVia === 'mcp'"
+            v-if="identity.isAddedByApp"
             class="badge badge-soft badge-warning badge-sm"
             data-testid="connector-connect-mcp-badge"
           >
@@ -72,6 +72,14 @@
         >
           {{ errorDetail }}
         </p>
+        <NuxtLink
+          v-if="errorLink"
+          :to="errorLink"
+          class="link text-sm"
+          data-testid="connector-connect-error-link"
+        >
+          Open Labs
+        </NuxtLink>
         <button
           v-if="canOfferToken"
           type="button"
@@ -328,10 +336,13 @@ interface Discovery {
   host: string
   issuerHost: string | null
   notice: string | null
+  title: string | null
+  presetId: string | null
 }
 
 const props = defineProps<{
-  connectorId: string
+  connectorId?: string
+  draft?: ConnectorDraft
 }>()
 
 const emit = defineEmits<{
@@ -340,7 +351,7 @@ const emit = defineEmits<{
 }>()
 
 const oauthFeature = useFeature('connectors.oauth')
-const connector = useConnectorById(() => props.connectorId)
+const connector = useConnectorById(() => props.connectorId ?? '')
 const step = shallowRef<ConnectStep>('discovering')
 const discovery = shallowRef<Discovery | null>(null)
 const authKind = shallowRef<ConnectorAuthType>('none')
@@ -352,13 +363,40 @@ const isBusy = shallowRef<boolean>(false)
 const errorTitle = shallowRef<string>('')
 const errorDetail = shallowRef<string>('')
 const errorCode = shallowRef<string>('')
+const errorLink = shallowRef<string>('')
 const liveMessage = shallowRef<string>('')
 const headerName = shallowRef<string>('Authorization')
 const headerValue = shallowRef<string>('')
 const headerError = shallowRef<string>('')
 
+const identity = computed(() => {
+  const current = connector.value
+
+  if (current) {
+    return {
+      title: current.title,
+      host: current.host,
+      presetId: current.presetId,
+      isAddedByApp: current.createdVia === 'mcp',
+    }
+  }
+
+  const found = discovery.value
+
+  if (!props.draft || !found) {
+    return null
+  }
+
+  return {
+    title: found.title ?? found.host,
+    host: found.host,
+    presetId: found.presetId,
+    isAddedByApp: false,
+  }
+})
+
 const preset = computed(() => {
-  const presetId = connector.value?.presetId
+  const presetId = identity.value?.presetId
 
   return presetId ? findConnectorPreset(presetId) ?? null : null
 })
@@ -375,13 +413,13 @@ const canOfferToken = computed<boolean>(() => {
 })
 
 const dialogTitle = computed<string>(() => {
-  const current = connector.value
+  const current = identity.value
 
   if (!current) {
     return 'Connect'
   }
 
-  return current.createdVia === 'mcp'
+  return current.isAddedByApp
     ? `Connect ${current.host}`
     : `Connect ${current.title}`
 })
@@ -400,6 +438,10 @@ function fail(exception: unknown, fallback: string) {
 
   errorTitle.value = parsedException.message || fallback
   errorCode.value = parsedException.code ?? ''
+  errorLink.value = typeof parsedException.link === 'string'
+    && /^\/(?![/\\])/.test(parsedException.link)
+    ? parsedException.link
+    : ''
   errorDetail.value = [parsedException.why, parsedException.fix]
     .filter(Boolean)
     .join('. ')
@@ -409,6 +451,10 @@ function fail(exception: unknown, fallback: string) {
 
 function isConsentCurrentFor(found: Discovery): boolean {
   const current = connector.value
+
+  if (props.draft) {
+    return false
+  }
 
   if (!current || current.consent.state !== 'current') {
     return false
@@ -426,16 +472,47 @@ function useTokenInstead() {
   liveMessage.value = 'Enter the key to finish connecting'
 }
 
-async function finish() {
+async function finish(connectedId: string) {
   await refreshConnectors()
   liveMessage.value = 'Connector connected'
-  useSuccessMessage(`${connector.value?.title ?? 'Connector'} connected`)
-  emit('connected', props.connectorId)
+  useSuccessMessage(`${identity.value?.title ?? 'Connector'} connected`)
+  emit('connected', connectedId)
+}
+
+function consentBody(found: Discovery) {
+  return {
+    accepted: true,
+    version: CONNECTOR_CONSENT_VERSION,
+    issuerHost: found.issuerHost,
+  }
+}
+
+async function createConnector(
+  found: Discovery,
+  header?: { name: string, value: string },
+) {
+  const result = await $fetch('/api/v1/connectors', {
+    method: 'POST',
+    body: {
+      ...props.draft,
+      toolMode: selectedToolMode.value,
+      consent: consentBody(found),
+      ...(header ? { header } : {}),
+    },
+  })
+
+  await finish(result.connector.id)
 }
 
 async function enterAuthStep(found: Discovery) {
   if (found.authType === 'none') {
-    await finish()
+    if (props.draft) {
+      await createConnector(found)
+
+      return
+    }
+
+    await finish(props.connectorId!)
 
     return
   }
@@ -448,21 +525,46 @@ async function enterAuthStep(found: Discovery) {
     : 'Enter the key to finish connecting'
 }
 
+async function discoverDraft(draft: ConnectorDraft): Promise<Discovery> {
+  const result = await $fetch('/api/v1/connectors/connect/discover', {
+    method: 'POST',
+    body: draft,
+  })
+
+  return {
+    authType: result.authType,
+    host: result.host,
+    issuerHost: result.issuerHost,
+    notice: result.notice,
+    title: result.title,
+    presetId: result.presetId,
+  }
+}
+
+async function discoverExisting(connectorId: string): Promise<Discovery> {
+  const result = await $fetch(
+    `/api/v1/connectors/${connectorId}/connect/discover`,
+    { method: 'POST' },
+  )
+
+  return {
+    authType: result.authType,
+    host: result.host,
+    issuerHost: result.issuerHost,
+    notice: result.notice,
+    title: null,
+    presetId: null,
+  }
+}
+
 async function discover() {
   step.value = 'discovering'
   liveMessage.value = 'Checking the server'
 
   try {
-    const result = await $fetch(
-      `/api/v1/connectors/${props.connectorId}/connect/discover`,
-      { method: 'POST' },
-    )
-    const found: Discovery = {
-      authType: result.authType,
-      host: result.host,
-      issuerHost: result.issuerHost,
-      notice: result.notice,
-    }
+    const found = props.draft
+      ? await discoverDraft(props.draft)
+      : await discoverExisting(props.connectorId!)
 
     discovery.value = found
 
@@ -516,6 +618,12 @@ async function giveConsent() {
   isBusy.value = true
 
   try {
+    if (props.draft) {
+      await enterAuthStep(found)
+
+      return
+    }
+
     const isModeApplied = await applyToolMode()
 
     if (!isModeApplied) {
@@ -524,11 +632,7 @@ async function giveConsent() {
 
     await $fetch(`/api/v1/connectors/${props.connectorId}/consent`, {
       method: 'POST',
-      body: {
-        accepted: true,
-        version: CONNECTOR_CONSENT_VERSION,
-        issuerHost: found.issuerHost,
-      },
+      body: consentBody(found),
     })
     await refreshConnectors()
     await enterAuthStep(found)
@@ -540,13 +644,24 @@ async function giveConsent() {
 }
 
 async function startSignIn() {
+  const found = discovery.value
+
   isBusy.value = true
 
   try {
-    const result = await $fetch(
-      `/api/v1/connectors/${props.connectorId}/oauth/start`,
-      { method: 'POST' },
-    )
+    const result = props.draft && found
+      ? await $fetch('/api/v1/connectors/oauth/start', {
+        method: 'POST',
+        body: {
+          ...props.draft,
+          toolMode: selectedToolMode.value,
+          consent: consentBody(found),
+        },
+      })
+      : await $fetch(
+        `/api/v1/connectors/${props.connectorId}/oauth/start`,
+        { method: 'POST' },
+      )
     const target = new URL(result.authorizationUrl)
 
     if (target.protocol !== 'https:') {
@@ -566,6 +681,16 @@ async function saveHeader() {
   isBusy.value = true
 
   try {
+    if (props.draft && discovery.value) {
+      await createConnector(discovery.value, {
+        name: headerName.value.trim(),
+        value: headerValue.value,
+      })
+      headerValue.value = ''
+
+      return
+    }
+
     await $fetch(`/api/v1/connectors/${props.connectorId}/credentials`, {
       method: 'POST',
       body: {
@@ -574,11 +699,14 @@ async function saveHeader() {
       },
     })
     headerValue.value = ''
-    await finish()
+    await finish(props.connectorId!)
   } catch (exception) {
     const parsedException = parseError(exception)
 
-    headerError.value = parsedException.message || 'Could not save the key'
+    headerError.value = [
+      parsedException.message || 'Could not save the key',
+      parsedException.fix,
+    ].filter(Boolean).join('. ')
   } finally {
     isBusy.value = false
   }

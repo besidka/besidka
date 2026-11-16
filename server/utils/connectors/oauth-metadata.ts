@@ -11,6 +11,11 @@ const PROTECTED_RESOURCE_WELL_KNOWN = '/.well-known/oauth-protected-resource'
 const AUTHORIZATION_SERVER_WELL_KNOWN = '/.well-known/oauth-authorization-server'
 const OPENID_CONFIGURATION_WELL_KNOWN = '/.well-known/openid-configuration'
 const PKCE_METHOD = 'S256'
+const CREDENTIAL_REJECTION_STATUSES: ReadonlySet<number> = new Set([
+  400,
+  401,
+  403,
+])
 const PROBE_PROTOCOL_VERSION = '2025-06-18'
 const CHALLENGE_PARAMETER
   = /([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s,]+))/g
@@ -185,19 +190,24 @@ async function fetchMetadataDocument(
 }
 
 /**
- * Sends one unauthenticated MCP `initialize` to the server (purpose `mcp`,
- * same-origin redirects only) and returns the status and the Bearer
- * challenge. No token and no chat data are sent.
+ * Sends one MCP `initialize` to the server (purpose `mcp`, same-origin
+ * redirects only) and returns the status and the Bearer challenge. Without
+ * `credentialHeaders` it is unauthenticated: no token and no chat data are
+ * sent. With them (the key a user pasted when adding a connector) the same
+ * request carries that one header to the server's own address only: a
+ * redirect to another origin is refused, so the key never leaves it.
  */
 export async function probeConnectorServer(
   serverUrl: string,
   logger?: LoggerLike,
+  credentialHeaders: Record<string, string> = {},
 ): Promise<{ status: number, challenge: BearerChallenge | null }> {
   const response = await safeFetch(serverUrl, {
     purpose: 'mcp',
     method: 'POST',
     timeoutMs: CONNECTOR_CONNECT_TIMEOUT_MS,
     headers: {
+      ...credentialHeaders,
       'accept': 'application/json, text/event-stream',
       'content-type': 'application/json',
     },
@@ -449,4 +459,31 @@ export async function discoverConnectorAuth(
       logger,
     ),
   }
+}
+
+/**
+ * Whether the server accepts a key: the `initialize` request with the
+ * header answers 2xx. A 400, 401 or 403 is a rejected key (GitHub answers a
+ * malformed token with 400); any other answer is a server that does not
+ * answer as an MCP server. Used before a connector
+ * with a pasted key is stored, so nothing is saved for a key that failed.
+ */
+export async function verifyConnectorCredentialHeader(
+  serverUrl: string,
+  header: { name: string, value: string },
+  logger?: LoggerLike,
+): Promise<void> {
+  const probe = await probeConnectorServer(serverUrl, logger, {
+    [header.name]: header.value,
+  })
+
+  if (probe.status >= 200 && probe.status < 300) {
+    return
+  }
+
+  if (CREDENTIAL_REJECTION_STATUSES.has(probe.status)) {
+    throw createConnectorError('CONNECTOR_CREDENTIALS_REJECTED')
+  }
+
+  throw createConnectorError('CONNECTOR_DISCOVERY_FAILED')
 }

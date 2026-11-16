@@ -63,16 +63,30 @@
         Added by {{ connector.addedByApp }}, not by you in the app
       </p>
     </div>
-    <button
+    <div
       v-if="needsConnect"
-      type="button"
-      class="btn btn-sm btn-primary min-h-11 sm:min-h-8"
-      :disabled="isBusy"
-      data-testid="connector-row-connect"
-      @click="emit('connect', connector)"
+      class="flex flex-col items-stretch gap-1 sm:flex-row sm:items-center sm:gap-2"
     >
-      Connect
-    </button>
+      <button
+        v-if="isUnfinished"
+        type="button"
+        class="btn btn-sm btn-ghost min-h-11 sm:min-h-8"
+        :disabled="isBusy"
+        data-testid="connector-row-remove"
+        @click="emit('remove', connector)"
+      >
+        Remove
+      </button>
+      <button
+        type="button"
+        class="btn btn-sm btn-primary min-h-11 sm:min-h-8"
+        :disabled="isBusy"
+        data-testid="connector-row-connect"
+        @click="emit('connect', connector)"
+      >
+        {{ isUnfinished ? 'Finish connecting' : 'Connect' }}
+      </button>
+    </div>
     <button
       v-else-if="needsReview"
       type="button"
@@ -123,11 +137,16 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   open: [connector: ConnectorPageItem]
   connect: [connector: ConnectorPageItem]
+  remove: [connector: ConnectorPageItem]
   toggle: [connector: ConnectorPageItem, enabled: boolean]
 }>()
 
 const status = computed<ConnectorStatusLabel>(() => {
   return getConnectorStatusLabel(props.connector)
+})
+
+const isUnfinished = computed<boolean>(() => {
+  return !isConnectorConnected(props.connector)
 })
 
 const needsConnect = computed<boolean>(() => {

@@ -1,5 +1,6 @@
 import { parseError } from 'evlog'
 import type { ConnectorPageItem } from '#shared/types/connectors.d'
+import { isConnectorNeverConnected } from '#shared/utils/connectors-connected'
 import { connectorCodeMessage } from '#shared/utils/connectors-messages'
 import { CONNECTORS_LIBRARY_KEY } from '~/composables/composer-connectors'
 
@@ -13,12 +14,31 @@ export interface ConnectorStatusLabel {
 }
 
 /**
+ * Whether a connector was ever connected: a row that never was (a leftover
+ * of the old add-then-connect flow, or one an app added over MCP) is shown
+ * as not connected and never counts as added.
+ */
+export function isConnectorConnected(
+  connector: Pick<ConnectorPageItem, 'status' | 'consent' | 'lastConnectedAt'>,
+): boolean {
+  return !isConnectorNeverConnected({
+    status: connector.status,
+    lastConnectedAt: connector.lastConnectedAt,
+    consentedAt: connector.consent.givenAt,
+  })
+}
+
+/**
  * The status badge of a connector: whether it is connected, needs a review
  * or a sign-in, or failed. "Off" is the enable switch, not a status.
  */
 export function getConnectorStatusLabel(
-  connector: Pick<ConnectorPageItem, 'status' | 'consent'>,
+  connector: Pick<ConnectorPageItem, 'status' | 'consent' | 'lastConnectedAt'>,
 ): ConnectorStatusLabel {
+  if (!isConnectorConnected(connector)) {
+    return { label: 'Not connected', tone: 'warning' }
+  }
+
   if (connector.status === 'needs-auth') {
     return { label: 'Needs sign-in', tone: 'warning' }
   }
@@ -108,23 +128,47 @@ export async function refreshConnectors(): Promise<void> {
 }
 
 /**
- * Which connector the Connect dialog is open for. The detail panel and the
- * page both open it; the page renders it.
+ * What the user picked to add: a preset, a directory entry or an address.
+ * Nothing is stored for it until the connect succeeds.
+ */
+export interface ConnectorDraft {
+  url?: string
+  title?: string
+  presetId?: string
+  registryId?: string
+}
+
+/**
+ * Which connector the Connect dialog is open for: one that exists (`open`,
+ * to connect it again or finish one an app added) or a draft that does not
+ * exist yet (`openDraft`, from a preset, a directory entry or an address).
+ * Closing the dialog changes nothing in either case. The detail panel and
+ * the page both open it; the page renders it.
  */
 export function useConnectorConnect() {
   const targetId = useState<string | null>('connectors:connect-target', () => {
     return null
   })
+  const draft = useState<ConnectorDraft | null>('connectors:connect-draft', () => {
+    return null
+  })
 
   function open(connectorId: string) {
+    draft.value = null
     targetId.value = connectorId
+  }
+
+  function openDraft(next: ConnectorDraft) {
+    targetId.value = null
+    draft.value = next
   }
 
   function close() {
     targetId.value = null
+    draft.value = null
   }
 
-  return { targetId, open, close }
+  return { targetId, draft, open, openDraft, close }
 }
 
 export interface ConnectorCallbackResult {

@@ -7,8 +7,8 @@ import { createDirectoryItem } from '../../../../setup/helpers/connectors-ui'
 
 enableAutoUnmount(afterEach)
 
-function mountCard(item: ConnectorDirectoryItem, isAdding = false) {
-  return mountSuspended(DirectoryCard, { props: { item, isAdding } })
+function mountCard(item: ConnectorDirectoryItem) {
+  return mountSuspended(DirectoryCard, { props: { item } })
 }
 
 describe('Profile/Connectors/DirectoryCard', () => {
@@ -76,12 +76,5 @@ describe('Profile/Connectors/DirectoryCard', () => {
       .toBe(false)
     expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
       .toBe(true)
-  })
-
-  it('disables Add while another add runs', async () => {
-    const wrapper = await mountCard(createDirectoryItem(), true)
-
-    expect(wrapper.get('[data-testid="connector-directory-add"]')
-      .attributes('disabled')).toBeDefined()
   })
 })

@@ -180,6 +180,7 @@
         :is-selected="selectedId === connector.id"
         @open="openDetail"
         @connect="item => connect.open(item.id)"
+        @remove="removeConnector"
         @toggle="toggleConnector"
       />
     </ul>
@@ -190,12 +191,13 @@
     v-if="addTab"
     :added-preset-ids="addedPresetIds"
     :initial-tab="addTab"
-    @added="onAdded"
+    @picked="onPicked"
     @close="addTab = null"
   />
   <LazyProfileConnectorsConnectDialog
-    v-if="connect.targetId.value"
-    :connector-id="connect.targetId.value"
+    v-if="connect.targetId.value || connect.draft.value"
+    :connector-id="connect.targetId.value ?? undefined"
+    :draft="connect.draft.value ?? undefined"
     @connected="onConnected"
     @close="connect.close()"
   />
@@ -255,6 +257,7 @@ const pendingOpenId = shallowRef<string | null>(null)
 
 const addedPresetIds = computed<ReadonlySet<string>>(() => {
   return new Set(connectors.value
+    .filter(isConnectorConnected)
     .map(connector => connector.presetId)
     .filter((presetId): presetId is string => !!presetId))
 })
@@ -325,9 +328,41 @@ async function toggleConnector(connector: ConnectorPageItem, enabled: boolean) {
   }
 }
 
-function onAdded(connectorId: string) {
+function onPicked(draft: ConnectorDraft) {
   addTab.value = null
-  connect.open(connectorId)
+
+  const unfinished = draft.presetId
+    ? connectors.value.find((connector) => {
+      return connector.presetId === draft.presetId
+        && !isConnectorConnected(connector)
+    })
+    : undefined
+
+  if (unfinished) {
+    connect.open(unfinished.id)
+
+    return
+  }
+
+  connect.openDraft(draft)
+}
+
+async function removeConnector(connector: ConnectorPageItem) {
+  setBusy(connector.id, true)
+
+  try {
+    await $fetch('/api/v1/connectors/delete/bulk', {
+      method: 'POST',
+      body: { ids: [connector.id] },
+    })
+    await refreshConnectors()
+    liveMessage.value = `${connector.title} removed`
+    useSuccessMessage(`${connector.title} removed`)
+  } catch (exception) {
+    reportConnectorError(exception, 'Could not remove the connector')
+  } finally {
+    setBusy(connector.id, false)
+  }
 }
 
 function onConnected(connectorId: string) {

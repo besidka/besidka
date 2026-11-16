@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  CONNECTOR_CONSENT_VERSION,
   REGISTRY_SEARCH_MAX_CURSOR,
   REGISTRY_SEARCH_PAGE_SIZE,
   REGISTRY_SEARCHES_PER_MINUTE,
@@ -382,7 +383,11 @@ describe('GET /api/v1/connectors/registry', () => {
   })
 
   describe('isAdded', () => {
-    async function addUserConnector(url: string, owner: number = userId) {
+    async function addUserConnector(
+      url: string,
+      owner: number = userId,
+      isConnected = true,
+    ) {
       const { createConnector } = await import(
         '~~/server/utils/connectors/store'
       )
@@ -393,6 +398,18 @@ describe('GET /api/v1/connectors/registry', () => {
         url,
         slugBase: 'mine',
         createdVia: 'app',
+        ...(isConnected
+          ? {
+            connected: {
+              authType: 'none' as const,
+              consent: {
+                issuerHost: null,
+                version: CONNECTOR_CONSENT_VERSION,
+                givenAt: new Date(),
+              },
+            },
+          }
+          : {}),
       })
     }
 
@@ -417,6 +434,24 @@ describe('GET /api/v1/connectors/registry', () => {
         ['io.example/one', true, connector.id],
         ['io.example/two', false, null],
       ])
+    })
+
+    it('does not mark an entry whose connector never connected, but still '
+      + 'gives its id', async () => {
+      await addServer('io.example/one', {
+        remoteUrl: 'https://mcp.gateway.example.com/one',
+      })
+
+      const connector = await addUserConnector(
+        'https://mcp.gateway.example.com/one',
+        userId,
+        false,
+      )
+
+      expect((await search({ q: 'io.example' })).items[0]).toMatchObject({
+        isAdded: false,
+        addedConnectorId: connector.id,
+      })
     })
 
     it('ignores the connectors of another user', async () => {

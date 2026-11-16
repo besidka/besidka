@@ -218,6 +218,51 @@ describe('connector directory routes', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
+    it('says Added only for a connector that was connected, and still '
+      + 'names one that never connected so Connect finishes it', async () => {
+      await addServer('io.example/pay')
+      await addServer('io.example/never')
+      await addServer('io.example/connected')
+
+      const { addConnector } = await import('~~/server/utils/connectors/add')
+      const { updateConnector } = await import(
+        '~~/server/utils/connectors/store'
+      )
+      const never = await addConnector(testDb.db, {
+        userId,
+        url: 'https://mcp.io-example-never.example.com/mcp',
+        source: { via: 'app' },
+      })
+      const connected = await addConnector(testDb.db, {
+        userId,
+        url: 'https://mcp.io-example-connected.example.com/mcp',
+        source: { via: 'app' },
+      })
+
+      await updateConnector(testDb.db, userId, connected.connector.id, {
+        status: 'ready',
+        authType: 'oauth',
+        consentedAt: new Date(),
+        lastConnectedAt: new Date(),
+      })
+
+      const pay = await call('entry', { id: 'io.example/pay@1.0.0' })
+      const neverEntry = await call('entry', { id: 'io.example/never@1.0.0' })
+      const connectedEntry = await call('entry', {
+        id: 'io.example/connected@1.0.0',
+      })
+
+      expect(pay.item).toMatchObject({ isAdded: false, addedConnectorId: null })
+      expect(neverEntry.item).toMatchObject({
+        isAdded: false,
+        addedConnectorId: never.connector.id,
+      })
+      expect(connectedEntry.item).toMatchObject({
+        isAdded: true,
+        addedConnectorId: connected.connector.id,
+      })
+    })
+
     it('knows a key is needed from the declared header names', async () => {
       await addServer('io.example/keyed', { headerNames: ['Authorization'] })
 

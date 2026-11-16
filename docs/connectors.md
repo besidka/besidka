@@ -105,17 +105,22 @@ resolves a disagreement between tickets and is listed in section 13.
    Error code `CONNECTOR_CONSENT_REQUIRED`, handled like
    `TRANSFER_CONSENT_REQUIRED` (`shared/utils/legal-consent.ts`). The sign-up
    consent and `CURRENT_CONSENT_VERSION` are unchanged.
-6. **Adding over MCP makes no network request (pre-check, this doc); adding in
-   the app stores a connector only after the server answered.** MCP
-   `add_connector` only validates the URL syntactically (section 4) and stores
-   a disabled row with `status='needs-auth'`. `POST /api/v1/connectors` (the
-   user pressing Add) validates the same way, then sends the one
-   unauthenticated probe of the Connect step (discovery, including the OAuth
-   metadata); a server that does not answer as an MCP server, or whose OAuth
-   metadata is refused, stores nothing and the Add dialog shows the error. The
-   row that is stored is `needs-auth`, disabled, and may stay so when the
-   sign-in is canceled. Consent, sign-in and credentials still wait for
-   **Connect**.
+6. **A connector exists only after it is connected (BES-249, 2026-11-16,
+   replaces the earlier "add, then connect" rule).** In the app nothing is
+   stored while the user is still choosing: no row, no credentials, no consent
+   record. A connector that needs no sign-in or takes a key is created in one
+   request that carries the address, the consent the user ticked and the key,
+   and the row is inserted, already `ready`, only after the server answered
+   the probe (with the key, when there is one). An OAuth connector waits in
+   the encrypted KV state (600 s) and is created by the OAuth callback, after
+   the token exchange succeeded. Canceling or closing the dialog, a rejected
+   key, a refused or abandoned sign-in and an expired state leave nothing in
+   D1. Adding over MCP is the one exception and keeps its documented
+   behavior: `add_connector` only validates the URL syntactically (section 4),
+   makes no network request and stores a disabled `needs-auth` row with
+   `created_via='mcp'`; consent, sign-in and credentials wait for **Connect**
+   in the app. Such a row, and any row of the old flow that never connected,
+   is "not connected" (see section 5.1, "Rows that never connected").
 7. **Enabling happens only in the app.** MCP may add connectors (disabled),
    list them, reduce tool permissions and delete them. Reason: enabling opens a
    new data channel to a new recipient, which needs the consent screen; an
@@ -363,8 +368,9 @@ Other C-3 choices that differ from or add to the text above:
   `/mcp` (any case, trailing slash allowed) its own error,
   `CONNECTOR_OWN_SERVER`: "This is Besidka's own MCP server. To let the model
   use your Besidka data in chats, turn on Besidka tools in Labs.", carrying
-  `link: '/profile/labs'` that the add dialog renders as an "Open Labs" link
-  (internal paths only). Every other own-host address keeps the generic
+  `link: '/profile/labs'` that the Connect dialog's error renders as an "Open
+  Labs" link (internal paths only; BES-249 moved the check from the add dialog
+  to the connect step). Every other own-host address keeps the generic
   "This address is not allowed", and the validator itself is unchanged.
 - `safeFetch` itself strips every name in `CONNECTOR_REJECTED_HEADER_NAMES`
   (`Host`, `Cookie`, `Content-Length`, `Transfer-Encoding`, `Connection`,
@@ -386,25 +392,92 @@ Other C-3 choices that differ from or add to the text above:
 
 ### 5.1 Add
 
-`POST /api/v1/connectors` `{ url, title?, presetId?, registryId? }` (app) and
-MCP `add_connector` `{ url, title?, presetId? }` both:
+A connector is created in one of three places, and in the app only after it
+connected. Section 2, decision 6 has the rule; this is the flow.
 
-1. Run `parseSafeOutboundUrl`. A preset id must match a catalog entry, and its
-   URL replaces the input.
-2. App only: run the section 5.2 discovery against the address (same
-   `safeFetch` rules, purpose `mcp`, `allowOAuth` false for a token-only
-   preset). Any failure ends the request with that error and stores nothing
-   (no row, no credentials, no KV state).
-3. Derive the slug (section 8.1).
-4. Insert a row with `enabled=false`, `status='needs-auth'`, `auth_type=null`,
-   no consent, `created_via` (`app`, `preset`, `registry` or `mcp`; any row
-   added over MCP is `mcp`, even with a `presetId`) and, for MCP,
-   `created_by_client_id`.
-5. MCP makes no request to the URL.
+**In the app** (Add by URL, a preset, a directory entry): the three entry
+points open the Connect dialog with a *draft*, `{ presetId } | { registryId }
+| { url, title? }`. A draft is client state only. Nothing goes to the server
+until the dialog asks:
+
+1. `POST /api/v1/connectors/connect/discover` (the draft): runs
+   `parseSafeOutboundUrl` (a preset id must match a catalog entry and its URL
+   replaces the input; a directory id is read from the local registry copy and
+   needs `connectors.registry`), checks the per-user cap before any outbound
+   request, then sends the one unauthenticated probe and the OAuth discovery
+   of section 5.2 (`allowOAuth` false for a token-only preset). It answers
+   the host, the issuer host, the auth kind, the preset notice, the title and
+   the preset id. It stores nothing: no row, no KV entry.
+2. The consent screen (section 5.2, step 2) is client-side. The tick is sent
+   with the final request, so a user who closes the dialog never leaves a
+   consent record behind. The consent lives on the connector row
+   (`consent_*` columns), so no row means no consent record: there is no
+   separate table to clean.
+3. The final request depends on the auth kind:
+   - **No sign-in or a key in a header**: `POST /api/v1/connectors` with
+     `{ presetId | registryId | url, title?, toolMode?, consent: { accepted,
+     version, issuerHost }, header?: { name, value } }`. The order is: header
+     validation (section 4.3, and a preset must allow `header`), the consent
+     version (`CONNECTOR_CONSENT_OUTDATED`), the sign-up consent
+     (`requireLegalConsent`), the per-user cap, then the probe. The grant is
+     logged (`attributes.legalConsent`, action `connector-granted`, host, no
+     connector id) before the probe sends the key, so a rejected key still has
+     a consent trace; the connector id is added only when the row exists. With a key
+     the probe is the same MCP `initialize` request carrying that one header
+     to the server's address only (`verifyConnectorCredentialHeader`, through
+     `safeFetch`; a redirect to another origin is refused, so the key never
+     leaves it): 2xx is accepted, 400, 401 or 403 is `CONNECTOR_CREDENTIALS_REJECTED`
+     (400; GitHub answers a malformed token with 400), anything else `CONNECTOR_DISCOVERY_FAILED`. Without a key the
+     unauthenticated discovery must say `none`, else `CONNECTOR_AUTH_REQUIRED`.
+     Only then is the row inserted with `status='ready'`, `auth_type`
+     `header` or `none`, `enabled=false`, the consent columns and
+     `last_connected_at`, and the header value is saved encrypted
+     (`createConnector` with `connected`, then `replaceConnectorCredentials`;
+     if the credential write fails the row is deleted again, so nothing is
+     left half-created). The key is never logged, echoed or returned.
+   - **OAuth**: `POST /api/v1/connectors/oauth/start` with the draft, the
+     tool mode and the consent (the consent names the issuer host the screen
+     showed; a different issuer at start is `CONNECTOR_CONSENT_REQUIRED`).
+     The server checks the cap, rediscovers, registers a client (always fresh
+     for a draft), and stores the pending connector in the KV state
+     `connectors:oauth:<state>` (`draft: { url, title, presetId, slugBase,
+     createdVia, toolMode, consentIssuerHost, consentVersion }`, encrypted,
+     600 s) instead of a D1 row. The callback creates the row (`ready`,
+     `oauth`, consent, `last_connected_at`) and the credentials only when the
+     token exchange succeeded (section 5.2, step 4).
+4. `slug`, `created_via` (`app`, `preset` or `registry`; a preset wins over a
+   directory entry) and the per-user cap are applied in `createConnector`
+   exactly as before.
+
+**Over MCP** (`add_connector` `{ url, title?, presetId? }`): runs the same
+URL and preset rules (`resolveConnectorTarget`), makes **no request** to the
+URL and inserts a disabled row with `status='needs-auth'`, `auth_type=null`,
+no consent, `created_via='mcp'` and `created_by_client_id`. This is the only
+way a row exists before a connect. It is not an "added" connector until the
+user connects it in the app.
+
+**Rows that never connected.** A row is *never connected* when
+`last_connected_at` is null and it is either `needs-auth` or has no consent
+(`isConnectorNeverConnected`, `shared/utils/connectors-connected.ts`). They
+come from MCP `add_connector`, and from the old flow that stored a row at
+Add (a canceled sign-in used to stay as "Needs sign-in"). Decision
+(BES-249): they are kept, not deleted, because an MCP-added row is the user's
+agent's request and a lazy cleanup cannot tell the two apart. They show in
+Yours as **Not connected** with **Finish connecting** (the Connect dialog on
+that row, section 5.2 by id) and **Remove**; Discover and the preset list do
+not count them as **Added** (`isAdded` is false, `addedConnectorId` still
+names the row so Add opens Connect on it instead of making a second row), and
+the composer picker already lists only `ready` connectors. A disconnected
+connector (it had `last_connected_at`) is not "never connected": it stays
+Added with "Needs sign-in".
 
 ### 5.2 Connect (in the app only)
 
-The card's **Connect** button runs this flow. All requests go through
+The Connect dialog runs this flow, for a draft (a connector that does not
+exist yet, section 5.1) or for a row that exists (**Connect**, **Finish
+connecting**, **Reconnect**). The `[id]` routes below serve a row that
+exists; a draft uses the routes of section 5.1, which take the draft instead
+of an id and store nothing until the connect succeeds. All requests go through
 `safeFetch`.
 
 1. **Discover** (`POST /api/v1/connectors/[id]/connect/discover`). Send one
@@ -443,11 +516,12 @@ The card's **Connect** button runs this flow. All requests go through
    are listed and withdrawable per connector on the Connectors page and in
    Profile → Security → Privacy & consent, next to the existing consents.
 3. **Authenticate.**
-   - OAuth (`POST /api/v1/connectors/[id]/oauth/start`, needs
+   - OAuth (`POST /api/v1/connectors/[id]/oauth/start`, or
+     `POST /api/v1/connectors/oauth/start` for a draft; both need
      `connectors.oauth`): register (section 5.3), generate a 32-byte `state`
      and the PKCE verifier, store `connectors:oauth:<state>` in KV for 600 s
-     (`{ userId, connectorId, codeVerifier, issuer, resource, requestedScope,
-     createdAt }`), return `{ authorizationUrl }`. The browser goes there with
+     (`{ userId, connectorId | draft, codeVerifier, issuer, resource,
+     requestedScope, createdAt }`), return `{ authorizationUrl }`. The browser goes there with
      `window.location.assign` (full-page redirect, not a popup).
    - Header (`POST /api/v1/connectors/[id]/credentials`
      `{ headerName, headerValue }`): validated per section 4.3. GitHub preset:
@@ -461,7 +535,19 @@ The card's **Connect** button runs this flow. All requests go through
    `resource`; compare granted and requested `scope` and store the granted one
    (a narrower grant sets a `degraded` note shown on the card); save
    credentials; redirect to `/chats/connectors?connected=<id>` or
-   `?error=<code>`.
+   `?error=<code>`. For a state with a `draft` the callback also checks the
+   cap before the code exchange (`CONNECTOR_LIMIT_REACHED`, no token request),
+   then creates the connector row (`ready`, `oauth`, the ticked consent, the
+   tool mode, `last_connected_at`) and the credentials, logs
+   `legalConsent: connector-granted` there and nowhere earlier, and returns the
+   new id. If creating the row or saving the credentials fails after the
+   exchange, the row is deleted again and the fresh tokens are revoked best
+   effort. A canceled or failed sign-in (`error=access_denied`, a refused
+   code, a wrong issuer, an expired or replayed state) writes nothing to D1.
+   What a canceled flow leaves: a KV state for at most 600 s (single use,
+   expires on its own) and, for an issuer that needs DCR, a client registered
+   at the authorization server (no Besidka row refers to it, it holds no
+   access). Both are harmless.
 5. **First authenticated request.** The server gate checks consent, then lists
    tools (`tools/list`), stores a definition hash per tool, and opens the tool
    review. `status='ready'`.
@@ -585,7 +671,9 @@ Choices that differ from or add to sections 5.1 to 5.4 and 14:
   whose `tokens()` calls it and whose `invalidateCredentials` passes the
   rejected token), uses `createSafeFetch('mcp')` as the transport `fetch`, and
   settles the section 14 "Unverified" items.
-- **Routes:** `POST /api/v1/connectors`, `POST [id]/connect/discover`,
+- **Routes:** `POST /api/v1/connectors` (creates a connected connector,
+  section 5.1), `POST connect/discover` and `POST oauth/start` (a draft, BES-249),
+  `POST [id]/connect/discover`,
   `POST [id]/consent`, `POST [id]/consent/withdraw`, `POST [id]/oauth/start`,
   `GET oauth/callback`, `POST [id]/credentials`, `POST [id]/disconnect`,
   `PATCH [id]`, `POST delete/bulk`. No list route: C-7 adds the one its page
@@ -2474,7 +2562,7 @@ HTML (C-7 consumes them).
 
 | Key | TTL | Content |
 | --- | --- | --- |
-| `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read |
+| `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read. For a connector that does not exist yet it also holds the `draft` (address, title, preset, tool mode, ticked consent), encrypted; the connector row is created from it by the callback (section 5.1) |
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
 | `connectors:catalog:<connectorId>` | 30 days | C-15 Auto: the last live `tools/list` result, read at send start for the connector catalog (section 6.3); deleted with the connector, on disconnect and by the account purge |
@@ -2727,9 +2815,16 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   `Profile/Connectors/DetailPanel.vue`) with its status, Use in chats switch,
   consent and Withdraw, tools, the tool review, Reconnect, Disconnect and
   Delete. The add dialog (`AddDialog.client.vue`, `js-connector-add-modal`)
-  has the tabs Presets, Add by URL and Directory, and the Connect dialog
-  (`ConnectDialog.client.vue`, `js-connector-connect-modal`) runs discovery,
-  the consent and the sign-in or key step. Rename and the bulk "Allow
+  has the tabs Presets, Add by URL and Directory and, since BES-249, sends no
+  request: it only picks a draft (a preset id, or an address and a name) and
+  the page opens the Connect dialog with it. The Connect dialog
+  (`ConnectDialog.client.vue`, `js-connector-connect-modal`) takes either a
+  connector id or a draft and runs discovery, the consent and the sign-in or
+  key step; for a draft it calls `connect/discover`, then creates the
+  connector with the key in one request or starts the draft OAuth sign-in
+  (section 5.1), so closing it at any step stores nothing. A row that never
+  connected shows **Not connected**, **Finish connecting** and **Remove**
+  in Yours. Rename and the bulk "Allow
   read-only tools without asking" are not built: read-only tools already
   run without asking (section 7.9), so the bulk action would change nothing.
 - **Icons.** Rows and the panel use `GET /api/v1/connectors/[id]/icon`
@@ -2797,11 +2892,11 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   the last name segment, the remote host as text (never a link), the
   description as plain text and "Needs an API key or token" for `header`
   entries, under "From the Official MCP Registry. Not reviewed by Besidka."
-  Add sends `{ registryId }` to `POST /api/v1/connectors` (which then also
-  needs `connectors.registry`), which reads the
+  Add opens the Connect dialog with `{ registryId }`; the server reads the
   entry's own URL and title from the local copy (an unknown or inactive id
-  is 400) and stores `created_via='registry'`; an entry that matches a preset
-  adds the preset instead.
+  is 400; the route needs `connectors.registry`) and stores
+  `created_via='registry'` only when the connect succeeds (section 5.1); an
+  entry that matches a preset adds the preset instead.
 - **Consent screen.** `Profile/Connectors/ConsentText.vue` holds the wording
   of section 5.2 and pre-check questions 2 and 3 in
   `data-connector-consent-text` spans, with one checkbox for the transfer
@@ -2877,8 +2972,9 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   `linear.app`, `xyz.linear` is `linear.xyz`, `io.github.acme` is
   `github.com/acme`; a label, not a trust mark, `null` when absent) and
   `isAdded`: true when one of the user's own connectors has the exact same
-  URL (the encrypted URLs are decrypted in memory for the connectors whose
-  plain `origin` matches, and only the boolean leaves). The 30 requests a
+  URL and was ever connected (the encrypted URLs are decrypted in memory for
+  the connectors whose plain `origin` matches; only the boolean and the id
+  leave; BES-249). The 30 requests a
   minute and the `connectors.registry` gate are unchanged. Search is still
   `LIKE`: the table has no FTS index and 11,000 short rows answer in
   milliseconds.
@@ -2995,7 +3091,10 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   `?category=<id>`, 20 a page, "Show more", "Back" returns to the home). The
   search box searches everything (a 250 ms pause, 2 to 64 characters) and
   replaces the home with ranked, paged results; clearing it returns to where
-  the user was. Installed entries say **Added** with a check and still open.
+  the user was. Entries whose connector was connected say **Added** with a
+  check and still open (BES-249: a row that never connected is not "added",
+  see section 5.1); Add opens the Connect dialog with a draft and stores
+  nothing until the connect succeeds.
   The admin Sync now row moved here unchanged.
 - **Cards.** `DirectoryCard.vue`: icon (registry icon route, or the bundled
   mark for a preset), title as a button that opens the details (stretched
@@ -3009,8 +3108,9 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   **Featured** badge with its tooltip or the **Community** badge, publisher (full domain), one primary button, the
   description, the full server address as text, the sign-in kind, the
   category, the publisher and **Tools**. The button is **Add and connect**
-  (adds, then opens the Connect dialog), **Connect** for an added connector
-  that still needs a sign-in, **Open** for one that is connected (it opens
+  (opens the Connect dialog with a draft; nothing is stored until it
+  connects), **Connect** for a connector that still needs a sign-in or never
+  connected, **Open** for one that is connected (it opens
   that connector's panel). `GET /api/v1/connectors/registry/entry?id=` answers
   `{ item, categoryLabel, probe }` from the index only, never contacting the
   server; `probe` is set when the entry declares header names (a key is
@@ -3244,7 +3344,10 @@ Rules:
 
 - `add_connector` takes no credentials and no `enabled`, makes no network call,
   records `createdByClientId`, and counts against
-  `CONNECTORS_MCP_DISABLED_MAX`. Its description ends: "The connector is
+  `CONNECTORS_MCP_DISABLED_MAX`. It is the one way a connector row exists
+  before it connects (section 2, decision 6; BES-249): the row shows in Yours
+  as "Not connected" with "Added by a connected app", is not "Added" in
+  Discover, and becomes a normal connector when the user connects it. Its description ends: "The connector is
   created switched off; the user must connect and enable it in Besidka at
   <manageUrl>. Requires signing in (connectors:write)."
 - `update_connector_tools` only reduces: it can disable a tool or set it to

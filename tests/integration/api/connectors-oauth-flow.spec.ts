@@ -150,14 +150,47 @@ describe('connector OAuth flow', () => {
     return connector as { id: string, status: string }
   }
 
-  async function createConnectorThroughRoute(body: Record<string, unknown> = {
-    url: MCP_SERVER_URL,
-  }) {
+  const CONSENT = {
+    accepted: true,
+    version: CONNECTOR_CONSENT_VERSION,
+    issuerHost: null as string | null,
+  }
+
+  async function createConnectorThroughRoute(
+    body: Record<string, unknown> = {},
+  ) {
     const { result } = await call('~~/server/api/v1/connectors/index.post', {
-      body,
+      body: { url: MCP_SERVER_URL, consent: CONSENT, ...body },
     })
 
     return result.connector as { id: string, status: string }
+  }
+
+  function oauthStateKeys(): string[] {
+    return [...kv.values.keys()].filter((key) => {
+      return key.startsWith('connectors:oauth:')
+    })
+  }
+
+  async function discoverNew(body: Record<string, unknown> = {}) {
+    const { result } = await call(
+      '~~/server/api/v1/connectors/connect/discover.post',
+      { body: { url: MCP_SERVER_URL, ...body } },
+    )
+
+    return result
+  }
+
+  async function startNew(body: Record<string, unknown> = {}) {
+    const { result } = await call('~~/server/api/v1/connectors/oauth/start.post', {
+      body: {
+        url: MCP_SERVER_URL,
+        consent: { ...CONSENT, issuerHost: 'auth.example.com' },
+        ...body,
+      },
+    })
+
+    return result.authorizationUrl as string
   }
 
   async function connectorRows() {
@@ -1059,92 +1092,530 @@ describe('connector OAuth flow', () => {
     })
   })
 
-  describe('adding from the app', () => {
-    it('probes the server once and stores the connector when it answers '
-      + 'as an MCP server', async () => {
-      useServer()
-
-      const connector = await createConnectorThroughRoute()
-
-      expect(connector.status).toBe('needs-auth')
-      expect(server.requests.map(request => request.url)[0])
-        .toBe(MCP_SERVER_URL)
-      expect(await connectorRows()).toHaveLength(1)
-    })
-
-    it('stores nothing when the server does not answer as an MCP server',
-      async () => {
-        useServer({ probeStatus: 404, challenge: '' })
-
-        const failure = await failureOf(createConnectorThroughRoute())
-
-        expect(failure.code).toBe('CONNECTOR_DISCOVERY_FAILED')
-        expect(failure.status).toBe(502)
+  describe('adding from the app: a connector exists only after it connects',
+    () => {
+      async function expectNothingStored() {
         expect(await connectorRows()).toEqual([])
         expect(await credentialRows()).toEqual([])
+      }
+
+      function keyAcceptingServer(acceptedValue: string) {
+        const fetchSpy = vi.fn(async (
+          _input: string | URL,
+          init: RequestInit = {},
+        ) => {
+          const headers = new Headers(init.headers)
+
+          return new Response('{}', {
+            status: headers.get('authorization') === acceptedValue ? 200 : 401,
+          })
+        })
+
+        vi.stubGlobal('fetch', fetchSpy)
+
+        return fetchSpy
+      }
+
+      describe('connect/discover', () => {
+        it('probes the server and stores nothing: no row, no credentials, '
+          + 'no state', async () => {
+          useServer()
+
+          const result = await discoverNew()
+
+          expect(result).toMatchObject({
+            authType: 'oauth',
+            host: 'mcp.example.com',
+            issuerHost: 'auth.example.com',
+            title: 'mcp.example.com',
+            presetId: null,
+          })
+          expect(server.requests.map(request => request.url)[0])
+            .toBe(MCP_SERVER_URL)
+          await expectNothingStored()
+          expect(oauthStateKeys()).toEqual([])
+        })
+
+        it('answers a token preset with its notice and no OAuth requests',
+          async () => {
+            const requested: string[] = []
+
+            vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => {
+              requested.push(String(input))
+
+              return new Response('{}', { status: 401 })
+            }))
+
+            const result = await discoverNew({ presetId: 'github' })
+
+            expect(result).toMatchObject({
+              authType: 'header',
+              title: 'GitHub',
+              presetId: 'github',
+              headerName: 'Authorization',
+            })
+            expect(requested).toEqual(['https://api.githubcopilot.com/mcp/'])
+            await expectNothingStored()
+          })
+
+        it('stores nothing when the server does not answer as an MCP server',
+          async () => {
+            useServer({ probeStatus: 404, challenge: '' })
+
+            const failure = await failureOf(discoverNew())
+
+            expect(failure.code).toBe('CONNECTOR_DISCOVERY_FAILED')
+            expect(failure.status).toBe(502)
+            await expectNothingStored()
+          })
+
+        it('stores nothing when the server is unreachable', async () => {
+          vi.stubGlobal('fetch', vi.fn(async () => {
+            throw new TypeError('fetch failed')
+          }))
+
+          await failureOf(discoverNew())
+          await expectNothingStored()
+        })
+
+        it('stores nothing when OAuth discovery fails', async () => {
+          useServer({
+            metadata: {
+              ...defaultMetadata(),
+              code_challenge_methods_supported: ['plain'],
+            },
+          })
+
+          expect((await failureOf(discoverNew())).code)
+            .toBe('CONNECTOR_OAUTH_PKCE_UNSUPPORTED')
+          await expectNothingStored()
+        })
+
+        it('makes no request for a user who is at the connector cap',
+          async () => {
+            useServer()
+
+            for (let index = 0; index < 20; index++) {
+              await createConnector({
+                url: `https://mcp${index}.example.com/mcp`,
+              })
+            }
+
+            const requestsBefore = server.requests.length
+            const failure = await failureOf(discoverNew())
+
+            expect(failure.code).toBe('CONNECTOR_LIMIT_REACHED')
+            expect(server.requests).toHaveLength(requestsBefore)
+            expect(await connectorRows()).toHaveLength(20)
+          })
+
+        it('refuses an address that fails the URL rules without a request',
+          async () => {
+            useServer()
+
+            for (const url of [
+              'https://10.0.0.1/mcp',
+              'https://besidka.com/mcp',
+              'http://mcp.example.com/mcp',
+            ]) {
+              expect((await failureOf(discoverNew({ url }))).status).toBe(400)
+            }
+
+            expect(server.fetch).not.toHaveBeenCalled()
+          })
       })
 
-    it('stores nothing when the server is unreachable', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => {
-        throw new TypeError('fetch failed')
-      }))
+      describe('a server that needs no sign-in', () => {
+        it('creates the connector, ready, with the consent and no '
+          + 'credentials', async () => {
+          vi.stubGlobal('fetch', vi.fn(async () => {
+            return new Response('{}', { status: 200 })
+          }))
 
-      await failureOf(createConnectorThroughRoute())
+          const connector = await createConnectorThroughRoute({
+            title: 'Open',
+            toolMode: 'always-on',
+          })
+          const stored = await connectorRow(connector.id)
 
-      expect(await connectorRows()).toEqual([])
-    })
+          expect(stored).toMatchObject({
+            title: 'Open',
+            status: 'ready',
+            authType: 'none',
+            enabled: false,
+            toolMode: 'always-on',
+            createdVia: 'app',
+            consentOrigin: MCP_ORIGIN,
+            consentIssuer: null,
+            consentVersion: CONNECTOR_CONSENT_VERSION,
+          })
+          expect(stored.consentedAt).toBeInstanceOf(Date)
+          expect(stored.lastConnectedAt).toBeInstanceOf(Date)
+          expect(await credentialRows()).toEqual([])
+          expect(mocks.logged).toContainEqual({
+            attributes: {
+              legalConsent: expect.objectContaining({
+                action: 'connector-granted',
+                host: 'mcp.example.com',
+              }),
+            },
+          })
+          expect(mocks.logged).toContainEqual({
+            attributes: expect.objectContaining({
+              legalConsent: { connectorId: connector.id },
+            }),
+          })
+        })
 
-    it('stores nothing when OAuth discovery fails', async () => {
-      useServer({
-        metadata: {
-          ...defaultMetadata(),
-          code_challenge_methods_supported: ['plain'],
-        },
+        it('stores nothing and says a sign-in or key is needed when the '
+          + 'server refuses an unauthenticated request', async () => {
+          useServer()
+
+          const failure = await failureOf(createConnectorThroughRoute())
+
+          expect(failure.code).toBe('CONNECTOR_AUTH_REQUIRED')
+          await expectNothingStored()
+        })
+
+        it('stores nothing when the server does not answer', async () => {
+          useServer({ probeStatus: 404, challenge: '' })
+
+          expect((await failureOf(createConnectorThroughRoute())).code)
+            .toBe('CONNECTOR_DISCOVERY_FAILED')
+          await expectNothingStored()
+        })
       })
 
-      expect((await failureOf(createConnectorThroughRoute())).code)
-        .toBe('CONNECTOR_OAUTH_PKCE_UNSUPPORTED')
-      expect(await connectorRows()).toEqual([])
-    })
+      describe('a key in a header', () => {
+        it('probes with the key and only then stores the connector with the '
+          + 'encrypted key in one go', async () => {
+          const fetchSpy = keyAcceptingServer('Bearer ghp_secret')
 
-    it('makes no request for a user who is at the connector cap',
-      async () => {
-        useServer()
+          const connector = await createConnectorThroughRoute({
+            presetId: 'github',
+            url: undefined,
+            header: { name: 'Authorization', value: 'Bearer ghp_secret' },
+          })
+          const stored = await connectorRow(connector.id)
 
-        for (let index = 0; index < 20; index++) {
-          await createConnector({ url: `https://mcp${index}.example.com/mcp` })
-        }
+          expect(fetchSpy).toHaveBeenCalledTimes(1)
+          expect(String(fetchSpy.mock.calls[0]![0]))
+            .toBe('https://api.githubcopilot.com/mcp/')
+          expect(stored).toMatchObject({
+            status: 'ready',
+            authType: 'header',
+            createdVia: 'preset',
+            presetId: 'github',
+            enabled: false,
+          })
+          expect(await connectorRows()).toHaveLength(1)
 
-        const requestsBefore = server.requests.length
-        const failure = await failureOf(createConnectorThroughRoute())
+          const [credentials] = await credentialRows()
 
-        expect(failure.code).toBe('CONNECTOR_LIMIT_REACHED')
-        expect(server.requests).toHaveLength(requestsBefore)
-        expect(await connectorRows()).toHaveLength(20)
+          expect(credentials).toMatchObject({
+            connectorId: connector.id,
+            issuer: '',
+            headerName: 'Authorization',
+          })
+          expect(credentials!.headerValue).not.toContain('ghp_secret')
+          expect(fakeDecrypt(credentials!.headerValue!))
+            .toBe('Bearer ghp_secret')
+          expect(JSON.stringify(mocks.logged)).not.toContain('ghp_secret')
+        })
+
+        it('stores nothing when the server rejects the key', async () => {
+          keyAcceptingServer('Bearer ghp_right')
+
+          const failure = await failureOf(createConnectorThroughRoute({
+            presetId: 'github',
+            url: undefined,
+            header: { name: 'Authorization', value: 'Bearer ghp_wrong' },
+          }))
+
+          expect(failure.code).toBe('CONNECTOR_CREDENTIALS_REJECTED')
+          expect(failure.status).toBe(400)
+          await expectNothingStored()
+          expect(mocks.logged).toContainEqual({
+            attributes: {
+              legalConsent: expect.objectContaining({
+                action: 'connector-granted',
+                host: 'api.githubcopilot.com',
+              }),
+            },
+          })
+          expect(JSON.stringify({
+            failure,
+            logged: mocks.logged,
+          })).not.toContain('ghp_wrong')
+        })
+
+        it('refuses a header that cannot be used, without a request',
+          async () => {
+            const fetchSpy = keyAcceptingServer('Bearer x')
+
+            expect((await failureOf(createConnectorThroughRoute({
+              header: { name: 'Host', value: 'evil.example' },
+            }))).code).toBe('CONNECTOR_HEADER_INVALID')
+            expect((await failureOf(createConnectorThroughRoute({
+              presetId: 'notion',
+              url: undefined,
+              header: { name: 'Authorization', value: 'Bearer x' },
+            }))).code).toBe('CONNECTOR_HEADER_INVALID')
+            expect(fetchSpy).not.toHaveBeenCalled()
+            await expectNothingStored()
+          })
+
+        it('removes the connector again when the key cannot be saved',
+          async () => {
+            keyAcceptingServer('Bearer ghp_secret')
+            vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
+              if (plain.startsWith('Bearer')) {
+                throw new Error('encryption failed')
+              }
+
+              return fakeEncrypt(plain)
+            }))
+
+            await failureOf(createConnectorThroughRoute({
+              presetId: 'github',
+              url: undefined,
+              header: { name: 'Authorization', value: 'Bearer ghp_secret' },
+            }))
+            await expectNothingStored()
+          })
+
+        it('makes no request for a user at the cap, or with an outdated '
+          + 'consent text', async () => {
+          const fetchSpy = keyAcceptingServer('Bearer ghp_secret')
+
+          expect((await failureOf(createConnectorThroughRoute({
+            presetId: 'github',
+            url: undefined,
+            consent: { ...CONSENT, version: '2020-01-a' },
+            header: { name: 'Authorization', value: 'Bearer ghp_secret' },
+          }))).code).toBe('CONNECTOR_CONSENT_OUTDATED')
+          expect(fetchSpy).not.toHaveBeenCalled()
+
+          for (let index = 0; index < 20; index++) {
+            await createConnector({ url: `https://mcp${index}.example.com/mcp` })
+          }
+
+          expect((await failureOf(createConnectorThroughRoute({
+            presetId: 'github',
+            url: undefined,
+            header: { name: 'Authorization', value: 'Bearer ghp_secret' },
+          }))).code).toBe('CONNECTOR_LIMIT_REACHED')
+          expect(fetchSpy).not.toHaveBeenCalled()
+          expect(await connectorRows()).toHaveLength(20)
+        })
       })
 
-    it('keeps a connector whose sign-in was never finished', async () => {
-      useServer()
+      describe('OAuth', () => {
+        it('keeps the pending connector in KV and writes nothing to D1 '
+          + 'until the callback', async () => {
+          useServer()
 
-      const connector = await createConnectorThroughRoute()
-      const stored = await connectorRow(connector.id)
+          const authorizationUrl = await startNew({
+            title: 'Example',
+            toolMode: 'manual',
+          })
 
-      expect(stored.status).toBe('needs-auth')
-      expect(stored.enabled).toBe(false)
+          expect(new URL(authorizationUrl).origin).toBe(ISSUER)
+          await expectNothingStored()
+
+          const [stateKey] = oauthStateKeys()
+
+          expect(stateKey).toBeDefined()
+          expect(kv.ttls.get(stateKey!)).toBe(600)
+          expect(kv.values.get(stateKey!)).not.toContain('mcp.example.com')
+        })
+
+        it('creates exactly one connector, with the consent and the '
+          + 'credentials, when the sign-in finishes', async () => {
+          useServer()
+
+          const authorizationUrl = await startNew({
+            title: 'Example',
+            toolMode: 'manual',
+          })
+
+          await expectNothingStored()
+
+          const approval = server.authorize(authorizationUrl)
+          const location = await callback({
+            code: approval.code,
+            state: approval.state,
+            iss: approval.iss,
+          })
+          const [row] = await connectorRows()
+
+          expect(await connectorRows()).toHaveLength(1)
+          expect(location).toBe(
+            `/chats/connectors?connected=skl${row!.id}`,
+          )
+          expect(row).toMatchObject({
+            title: 'Example',
+            status: 'ready',
+            authType: 'oauth',
+            enabled: false,
+            toolMode: 'manual',
+            createdVia: 'app',
+            consentOrigin: MCP_ORIGIN,
+            consentIssuer: 'auth.example.com',
+            consentVersion: CONNECTOR_CONSENT_VERSION,
+          })
+          expect(row!.consentedAt).toBeInstanceOf(Date)
+          expect(await credentialRows()).toHaveLength(1)
+          expect(fakeDecrypt((await credentialRows())[0]!.accessToken!))
+            .toBe('access-token-1')
+          expect(mocks.logged).toContainEqual({
+            attributes: expect.objectContaining({
+              legalConsent: expect.objectContaining({
+                action: 'connector-granted',
+                issuerHost: 'auth.example.com',
+              }),
+            }),
+          })
+        })
+
+        it('leaves nothing when the user refuses at the sign-in page',
+          async () => {
+            useServer()
+
+            const authorizationUrl = await startNew()
+            const approval = server.authorize(authorizationUrl)
+            const location = await callback({
+              state: approval.state,
+              error: 'access_denied',
+            })
+
+            expect(location)
+              .toBe('/chats/connectors?error=CONNECTOR_OAUTH_DENIED')
+            await expectNothingStored()
+            expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
+          })
+
+        it('leaves nothing when the pending state expires or is replayed',
+          async () => {
+            useServer()
+
+            const approval = server.authorize(await startNew())
+
+            await callback({
+              code: approval.code,
+              state: approval.state,
+              iss: approval.iss,
+            })
+
+            expect(await connectorRows()).toHaveLength(1)
+            expect(await callback({
+              code: approval.code,
+              state: approval.state,
+              iss: approval.iss,
+            })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+            expect(await connectorRows()).toHaveLength(1)
+
+            kv.values.clear()
+
+            const expired = server.authorize(await startNew(), 'code-2')
+
+            kv.values.clear()
+
+            expect(await callback({
+              code: expired.code,
+              state: expired.state,
+              iss: expired.iss,
+            })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+            expect(await connectorRows()).toHaveLength(1)
+          })
+
+        it('leaves nothing when the token exchange fails', async () => {
+          useServer()
+
+          const approval = server.authorize(await startNew())
+          const location = await callback({
+            code: 'not-the-issued-code',
+            state: approval.state,
+            iss: approval.iss,
+          })
+
+          expect(location)
+            .toBe('/chats/connectors?error=CONNECTOR_OAUTH_TOKEN_FAILED')
+          await expectNothingStored()
+        })
+
+        it('leaves nothing when the issuer in the answer is wrong',
+          async () => {
+            useServer()
+
+            const approval = server.authorize(await startNew())
+
+            expect(await callback({
+              code: approval.code,
+              state: approval.state,
+              iss: 'https://evil.example.com',
+            })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_ISSUER_MISMATCH')
+            await expectNothingStored()
+          })
+
+        it('refuses a consent that named another sign-in host, and stores '
+          + 'no state', async () => {
+          useServer()
+
+          const failure = await failureOf(startNew({
+            consent: { ...CONSENT, issuerHost: 'other.example.com' },
+          }))
+
+          expect(failure.code).toBe('CONNECTOR_CONSENT_REQUIRED')
+          expect(oauthStateKeys()).toEqual([])
+          await expectNothingStored()
+        })
+
+        it('stops at the cap before sign-in, and at the callback when the '
+          + 'cap was reached meanwhile, before any token request', async () => {
+          useServer()
+
+          const approval = server.authorize(await startNew())
+
+          for (let index = 0; index < 20; index++) {
+            await createConnector({
+              url: `https://mcp${index}.example.com/mcp`,
+            })
+          }
+
+          expect(await callback({
+            code: approval.code,
+            state: approval.state,
+            iss: approval.iss,
+          })).toBe('/chats/connectors?error=CONNECTOR_LIMIT_REACHED')
+          expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
+          expect(await connectorRows()).toHaveLength(20)
+          expect((await failureOf(startNew())).code)
+            .toBe('CONNECTOR_LIMIT_REACHED')
+        })
+
+        it('refuses an outdated consent text and a server that needs no '
+          + 'sign-in', async () => {
+          useServer()
+
+          expect((await failureOf(startNew({
+            consent: {
+              ...CONSENT,
+              version: '2020-01-a',
+              issuerHost: 'auth.example.com',
+            },
+          }))).code).toBe('CONNECTOR_CONSENT_OUTDATED')
+
+          vi.stubGlobal('fetch', vi.fn(async () => {
+            return new Response('{}', { status: 200 })
+          }))
+
+          expect((await failureOf(startNew())).code)
+            .toBe('CONNECTOR_OAUTH_UNSUPPORTED')
+          await expectNothingStored()
+        })
+      })
     })
-
-    it('stores nothing for an address that fails the URL rules without '
-      + 'a request', async () => {
-      useServer()
-
-      await failureOf(createConnectorThroughRoute({
-        url: 'https://10.0.0.1/mcp',
-      }))
-
-      expect(server.fetch).not.toHaveBeenCalled()
-      expect(await connectorRows()).toEqual([])
-    })
-  })
 
   describe('outbound URL rules', () => {
     it.each([

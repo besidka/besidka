@@ -46,26 +46,36 @@ type RegistryDatabase = ReturnType<typeof useDb>
 /**
  * The user's own connectors by remote address (decrypted in memory; a user
  * has at most 20), so a directory card can say "Added" and open the
- * connector. Only the id of a match ever leaves this function.
+ * connector. A row that was never connected still matches (so Connect
+ * finishes that row instead of adding a second one) but is not "added".
+ * Only the id and the connected flag of a match ever leave this function.
  */
 export async function loadAddedConnectorIds(
   db: RegistryDatabase,
   userId: number,
-): Promise<Map<string, string>> {
-  const added = new Map<string, string>()
+): Promise<Map<string, AddedConnectorMatch>> {
+  const added = new Map<string, AddedConnectorMatch>()
 
   for (const connector of await listConnectorUrls(db, userId)) {
-    added.set(directoryUrlKey(connector.url), connector.id)
+    added.set(directoryUrlKey(connector.url), {
+      id: connector.id,
+      isConnected: connector.isConnected,
+    })
   }
 
   return added
 }
 
+export interface AddedConnectorMatch {
+  id: string
+  isConnected: boolean
+}
+
 export function toDirectoryItem(
   entry: DirectoryEntry,
-  added: ReadonlyMap<string, string>,
+  added: ReadonlyMap<string, AddedConnectorMatch>,
 ): ConnectorDirectoryItem {
-  const addedConnectorId = added.get(directoryUrlKey(entry.remoteUrl)) ?? null
+  const match = added.get(directoryUrlKey(entry.remoteUrl)) ?? null
 
   return {
     id: entry.id,
@@ -80,8 +90,8 @@ export function toDirectoryItem(
     isOfficial: entry.isOfficial,
     isCurated: entry.curatedRank !== null,
     category: entry.category,
-    isAdded: addedConnectorId !== null,
-    addedConnectorId,
+    isAdded: match?.isConnected ?? false,
+    addedConnectorId: match?.id ?? null,
   }
 }
 
@@ -135,7 +145,7 @@ export async function searchMcpRegistry(
   const nextCursor = input.cursor + REGISTRY_SEARCH_PAGE_SIZE
   const added = page.length > 0
     ? await loadAddedConnectorIds(db, input.userId)
-    : new Map<string, string>()
+    : new Map<string, AddedConnectorMatch>()
 
   return {
     items: page.map(entry => toDirectoryItem(entry, added)),

@@ -30,6 +30,7 @@ const registryActive = ref<boolean>(false)
 const data = ref<unknown>(null)
 const fetchError = ref<unknown>(null)
 const connectTarget = ref<string | null>(null)
+const connectDraft = ref<Record<string, string> | null>(null)
 const viewKey = ref<string | null>(null)
 
 mockNuxtImport('useFeature', () => {
@@ -55,11 +56,18 @@ mockNuxtImport('useConnectorsPage', () => {
 mockNuxtImport('useConnectorConnect', () => {
   return () => ({
     targetId: connectTarget,
+    draft: connectDraft,
     open: (id: string) => {
+      connectDraft.value = null
       connectTarget.value = id
+    },
+    openDraft: (draft: Record<string, string>) => {
+      connectTarget.value = null
+      connectDraft.value = draft
     },
     close: () => {
       connectTarget.value = null
+      connectDraft.value = null
     },
   })
 })
@@ -92,8 +100,15 @@ mockNuxtImport('useRouter', (original) => {
 
 mockComponent('ProfileConnectorsAddDialog', () => {
   return {
-    props: ['initialTab'],
-    template: '<div data-testid="add-dialog-stub">{{ initialTab }}</div>',
+    props: ['initialTab', 'addedPresetIds'],
+    emits: ['picked'],
+    template: `<div data-testid="add-dialog-stub">{{ initialTab }}
+      <span data-testid="add-dialog-added">{{ [...addedPresetIds].join() }}</span>
+      <button
+        data-testid="add-dialog-pick-linear"
+        @click="$emit('picked', { presetId: 'linear' })"
+      />
+    </div>`,
   }
 })
 
@@ -105,8 +120,10 @@ mockComponent('ProfileConnectorsDirectory', () => {
 
 mockComponent('ProfileConnectorsConnectDialog', () => {
   return {
-    props: ['connectorId'],
-    template: '<div data-testid="connect-dialog-stub">{{ connectorId }}</div>',
+    props: ['connectorId', 'draft'],
+    template: `<div data-testid="connect-dialog-stub">{{ connectorId }}
+      <span data-testid="connect-dialog-draft">{{ JSON.stringify(draft) }}</span>
+    </div>`,
   }
 })
 
@@ -127,6 +144,7 @@ describe('chats connectors page', () => {
     data.value = { connectors: [] }
     fetchError.value = null
     connectTarget.value = null
+    connectDraft.value = null
     viewKey.value = null
     mocks.query = {}
     for (const mock of Object.values(mocks)) {
@@ -338,6 +356,89 @@ describe('chats connectors page', () => {
     expect(wrapper.get('[data-testid="connect-dialog-stub"]').text())
       .toBe('conn1')
   })
+
+  it('opens the Connect dialog with a draft that stores nothing', async () => {
+    data.value = { connectors: [] }
+
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="connectors-empty-presets"]')
+      .trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="add-dialog-pick-linear"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(JSON.parse(
+      wrapper.get('[data-testid="connect-dialog-draft"]').text(),
+    )).toEqual({ presetId: 'linear' })
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+
+  it('reopens the connector that never connected instead of adding a '
+    + 'second one, and does not count it as added', async () => {
+    data.value = {
+      connectors: [createConnectorItem({
+        status: 'needs-auth',
+        lastConnectedAt: null,
+        consent: { state: 'missing', issuerHost: null, givenAt: null },
+      })],
+    }
+
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="connectors-add"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="add-dialog-added"]').text()).toBe('')
+
+    await wrapper.get('[data-testid="add-dialog-pick-linear"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="connect-dialog-stub"]').text())
+      .toContain('conn1')
+  })
+
+  it('counts a connected preset as added', async () => {
+    data.value = { connectors: [createConnectorItem()] }
+
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="connectors-add"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="add-dialog-added"]').text())
+      .toBe('linear')
+  })
+
+  it('offers Finish connecting and Remove for a row that never connected',
+    async () => {
+      data.value = {
+        connectors: [createConnectorItem({
+          status: 'needs-auth',
+          lastConnectedAt: null,
+          consent: { state: 'missing', issuerHost: null, givenAt: null },
+        })],
+      }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.get('[data-testid="connector-row-status"]').text())
+        .toBe('Not connected')
+      expect(wrapper.get('[data-testid="connector-row-connect"]').text())
+        .toBe('Finish connecting')
+
+      await wrapper.get('[data-testid="connector-row-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/connectors/delete/bulk',
+        { method: 'POST', body: { ids: ['conn1'] } },
+      )
+      expect(mocks.refreshConnectors).toHaveBeenCalled()
+    })
 
   it('leaves the page when the connectors flag is off', async () => {
     connectorsActive.value = false

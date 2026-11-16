@@ -38,18 +38,6 @@ function mountDialog(props: Record<string, unknown> = {}) {
   })
 }
 
-function serverError(
-  message: string,
-  why: string,
-  fix: string,
-  link?: string,
-) {
-  return Object.assign(new Error(message), {
-    data: { message, why, fix, ...(link ? { link } : {}) },
-    statusCode: 400,
-  })
-}
-
 describe('Profile/Connectors/AddDialog', () => {
   beforeEach(() => {
     stubDialogElement()
@@ -105,9 +93,8 @@ describe('Profile/Connectors/AddDialog', () => {
       .getAttribute('aria-selected')).toBe('true')
   })
 
-  it('adds a preset by id and marks presets that exist', async () => {
-    mocks.fetch.mockResolvedValue({ connector: { id: 'new1' } })
-
+  it('picks a preset by id without any request and marks presets that '
+    + 'exist', async () => {
     const wrapper = await mountDialog({
       addedPresetIds: new Set(['github']),
     })
@@ -117,12 +104,9 @@ describe('Profile/Connectors/AddDialog', () => {
 
     await clickTestId('connector-preset-add-notion')
 
-    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors', {
-      method: 'POST',
-      body: { presetId: 'notion' },
-    })
-    expect(mocks.refreshConnectors).toHaveBeenCalled()
-    expect(wrapper.emitted('added')?.[0]).toEqual(['new1'])
+    expect(wrapper.emitted('picked')?.[0]).toEqual([{ presetId: 'notion' }])
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(mocks.refreshConnectors).not.toHaveBeenCalled()
   })
 
   it('refuses a non-https address before asking the server', async () => {
@@ -137,72 +121,29 @@ describe('Profile/Connectors/AddDialog', () => {
       .toContain('https')
   })
 
-  it('shows the server\'s refusal inline, as for a private address',
-    async () => {
-      mocks.fetch.mockRejectedValue(serverError(
-        'This address is not allowed',
-        'The connector address is not a public https URL with a host name',
-        'Use the https address of the MCP server',
-      ))
+  it('picks the address and the name without any request', async () => {
+    const wrapper = await mountDialog({ initialTab: 'url' })
 
-      const wrapper = await mountDialog({ initialTab: 'url' })
+    await setTestIdValue('connector-add-url', ' https://mcp.example.com/mcp ')
+    await setTestIdValue('connector-add-title', 'Example')
+    await clickTestId('connector-add-url-submit')
 
-      await setTestIdValue('connector-add-url', 'https://10.0.0.1/mcp')
-      await setTestIdValue('connector-add-title', 'Internal')
-      await clickTestId('connector-add-url-submit')
+    expect(wrapper.emitted('picked')?.[0]).toEqual([{
+      url: 'https://mcp.example.com/mcp',
+      title: 'Example',
+    }])
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(findByTestId('connector-add-url-error')).toBeNull()
+  })
 
-      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors', {
-        method: 'POST',
-        body: { url: 'https://10.0.0.1/mcp', title: 'Internal' },
-      })
+  it('leaves out an empty name', async () => {
+    const wrapper = await mountDialog({ initialTab: 'url' })
 
-      const error = getByTestId('connector-add-url-error')
+    await setTestIdValue('connector-add-url', 'https://mcp.example.com/mcp')
+    await clickTestId('connector-add-url-submit')
 
-      expect(error.textContent).toContain('This address is not allowed')
-      expect(error.getAttribute('role')).toBe('alert')
-      expect(getByTestId('connector-add-url').getAttribute('aria-invalid'))
-        .toBe('true')
-      expect(wrapper.emitted('added')).toBeUndefined()
-    })
-
-  it('says Besidka\'s own MCP server cannot be added and links to Labs',
-    async () => {
-      mocks.fetch.mockRejectedValue(serverError(
-        'This is Besidka\'s own MCP server',
-        'Besidka does not call itself as a connector',
-        'To let the model use your Besidka data in chats, turn on Besidka '
-        + 'tools in Labs',
-        '/profile/labs',
-      ))
-
-      await mountDialog({ initialTab: 'url' })
-      await setTestIdValue('connector-add-url', 'https://besidka.com/mcp')
-      await clickTestId('connector-add-url-submit')
-
-      const error = getByTestId('connector-add-url-error')
-
-      expect(error.textContent).toContain(
-        'This is Besidka\'s own MCP server. To let the model use your '
-        + 'Besidka data in chats, turn on Besidka tools in Labs.',
-      )
-      expect(getByTestId('connector-add-url-error-link').outerHTML)
-        .toContain('/profile/labs')
-    })
-
-  it('shows no link for an ordinary refusal, or one that leaves the site',
-    async () => {
-      mocks.fetch.mockRejectedValue(serverError(
-        'This address is not allowed',
-        'Not public',
-        'Use the https address of the MCP server',
-        'https://evil.example/labs',
-      ))
-
-      await mountDialog({ initialTab: 'url' })
-      await setTestIdValue('connector-add-url', 'https://10.0.0.1/mcp')
-      await clickTestId('connector-add-url-submit')
-
-      expect(findByTestId('connector-add-url-error')).not.toBeNull()
-      expect(findByTestId('connector-add-url-error-link')).toBeNull()
-    })
+    expect(wrapper.emitted('picked')?.[0]).toEqual([{
+      url: 'https://mcp.example.com/mcp',
+    }])
+  })
 })

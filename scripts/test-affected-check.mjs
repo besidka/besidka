@@ -1596,6 +1596,7 @@ export function getAffectedTests(changedFiles) {
   const connectorsStorageTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
     'tests/unit/utils/connectors-slug.spec.ts',
+    'tests/unit/utils/connectors-connected.spec.ts',
     'tests/unit/utils/features/connectors-registry.spec.ts',
     'tests/unit/config/connectors-catalog.spec.ts',
     'tests/unit/scripts/check-connector-presets.spec.ts',
@@ -1692,6 +1693,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/connectors-messages.spec.ts',
     'tests/unit/utils/connectors-consent-text.spec.ts',
     'tests/unit/composables/connectors.spec.ts',
+    'tests/unit/utils/connectors-connected.spec.ts',
     'tests/unit/composables/composer-connectors.spec.ts',
     'tests/unit/pages/chats/connectors/index.spec.ts',
     'tests/unit/pages/profile/connectors.spec.ts',
@@ -3488,7 +3490,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-slug)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-slug|connectors-connected)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
       tests: connectorsStorageTests,
     },
     {
@@ -3548,7 +3550,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory)\.ts|app\/utils\/connector-brand-icons\.ts|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
+        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy|connectors-connected)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory)\.ts|app\/utils\/connector-brand-icons\.ts|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
       tests: connectorsPageTests,
     },
     {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getConnectorInitial,
   getConnectorStatusLabel,
+  isConnectorConnected,
   readConnectorCallback,
 } from '../../../app/composables/connectors'
 import { CONNECTOR_CALLBACK_FALLBACK_MESSAGE } from '#shared/utils/connectors-messages'
@@ -21,6 +22,36 @@ describe('connectors composable helpers', () => {
       .toEqual({ label: 'Tools changed', tone: 'warning' })
     expect(getConnectorStatusLabel(createConnectorItem({ status: 'error' })))
       .toEqual({ label: 'Error', tone: 'error' })
+  })
+
+  it('tells a connector that never connected from one that did', () => {
+    const neverConnected = createConnectorItem({
+      status: 'needs-auth',
+      lastConnectedAt: null,
+      consent: { state: 'missing', issuerHost: null, givenAt: null },
+    })
+
+    expect(isConnectorConnected(neverConnected)).toBe(false)
+    expect(getConnectorStatusLabel(neverConnected))
+      .toEqual({ label: 'Not connected', tone: 'warning' })
+    expect(isConnectorConnected(createConnectorItem({
+      status: 'needs-auth',
+      lastConnectedAt: null,
+      consent: { state: 'current', issuerHost: null, givenAt: '2026-11-15' },
+    }))).toBe(false)
+    expect(isConnectorConnected(createConnectorItem({
+      status: 'ready',
+      lastConnectedAt: null,
+      consent: { state: 'missing', issuerHost: null, givenAt: null },
+    }))).toBe(false)
+    expect(isConnectorConnected(createConnectorItem({
+      status: 'ready',
+      authType: 'none',
+      lastConnectedAt: null,
+    }))).toBe(true)
+    expect(isConnectorConnected(createConnectorItem({
+      status: 'needs-auth',
+    }))).toBe(true)
   })
 
   it('makes a letter avatar from the title', () => {

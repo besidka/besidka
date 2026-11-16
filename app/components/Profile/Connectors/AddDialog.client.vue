@@ -3,7 +3,6 @@
     :title="registryFeature.active ? 'Add by URL' : 'Add connector'"
     hook-class="js-connector-add-modal"
     test-id="connector-add-dialog"
-    :is-busy="isSubmitting"
     @close="emit('close')"
   >
     <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -24,7 +23,6 @@
           :aria-selected="tab === option.id"
           :aria-controls="`connector-add-panel-${option.id}`"
           :tabindex="tab === option.id ? 0 : -1"
-          :disabled="isSubmitting"
           :data-testid="`connector-add-tab-${option.id}`"
           @click="selectTab(option.id)"
           @keydown="onTabKeydown"
@@ -49,20 +47,11 @@
               :key="preset.id"
               :preset="preset"
               :is-added="addedPresetIds.has(preset.id)"
-              :is-busy="isSubmitting"
-              @add="addPreset"
+              @add="pickPreset"
             />
           </ul>
           <p class="text-xs text-base-content/70">
             {{ CONNECTOR_CATALOG_FOOTER }}
-          </p>
-          <p
-            v-if="presetError"
-            class="text-sm text-error"
-            role="alert"
-            data-testid="connector-preset-error"
-          >
-            {{ presetError }}
           </p>
         </template>
 
@@ -71,7 +60,7 @@
           class="grid gap-3"
           novalidate
           data-testid="connector-add-url-form"
-          @submit.prevent="addByUrl"
+          @submit.prevent="pickUrl"
         >
           <div class="grid gap-1">
             <label
@@ -95,7 +84,6 @@
               :aria-describedby="urlError
                 ? 'connector-add-url-error'
                 : 'connector-add-url-help'"
-              :disabled="isSubmitting"
               data-testid="connector-add-url"
             >
             <p
@@ -106,20 +94,14 @@
               data-testid="connector-add-url-error"
             >
               {{ urlError }}
-              <NuxtLink
-                v-if="urlErrorLink"
-                :to="urlErrorLink"
-                class="link"
-                data-testid="connector-add-url-error-link"
-              >Open Labs</NuxtLink>
             </p>
             <p
               v-else
               id="connector-add-url-help"
               class="text-xs text-base-content/70"
             >
-              The https address of a remote MCP server. Besidka checks that
-              it answers before it saves it; you sign in in the next step.
+              The https address of a remote MCP server. Besidka checks that it
+              answers in the next step and saves it only after you connect.
             </p>
           </div>
           <div class="grid gap-1">
@@ -136,22 +118,16 @@
               maxlength="80"
               autocomplete="off"
               class="input w-full"
-              :disabled="isSubmitting"
               data-testid="connector-add-title"
             >
           </div>
           <button
             type="submit"
             class="btn btn-primary min-h-11 sm:min-h-8"
-            :disabled="isSubmitting || !url.trim()"
+            :disabled="!url.trim()"
             data-testid="connector-add-url-submit"
           >
-            <span
-              v-if="isSubmitting"
-              class="loading loading-spinner loading-xs"
-              aria-hidden="true"
-            />
-            Add
+            Continue
           </button>
         </form>
       </div>
@@ -170,7 +146,6 @@
 </template>
 
 <script setup lang="ts">
-import { parseError } from 'evlog'
 import {
   CONNECTOR_CATALOG_FOOTER,
   CONNECTOR_PRESETS,
@@ -185,7 +160,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  added: [connectorId: string]
+  picked: [draft: ConnectorDraft]
   close: []
 }>()
 
@@ -194,9 +169,6 @@ const tab = shallowRef<DialogTab>(resolveInitialTab())
 const url = shallowRef<string>('')
 const title = shallowRef<string>('')
 const urlError = shallowRef<string>('')
-const urlErrorLink = shallowRef<string>('')
-const presetError = shallowRef<string>('')
-const isSubmitting = shallowRef<boolean>(false)
 
 const tabOptions = computed<Array<{ id: DialogTab, label: string }>>(() => {
   return registryFeature.value.active
@@ -222,8 +194,6 @@ function resolveInitialTab(): DialogTab {
 function selectTab(next: DialogTab) {
   tab.value = next
   urlError.value = ''
-  urlErrorLink.value = ''
-  presetError.value = ''
 }
 
 async function onTabKeydown(event: KeyboardEvent) {
@@ -242,47 +212,14 @@ async function onTabKeydown(event: KeyboardEvent) {
   document.getElementById(`connector-add-tab-${next.id}`)?.focus()
 }
 
-function describeError(exception: unknown, fallback: string): string {
-  const parsedException = parseError(exception)
-  const message = parsedException.message || fallback
-
-  return parsedException.fix ? `${message}. ${parsedException.fix}.` : message
+function pickPreset(presetId: string) {
+  emit('picked', { presetId })
 }
 
-function readInternalLink(exception: unknown): string {
-  const link = parseError(exception).link
-
-  return typeof link === 'string' && /^\/(?![/\\])/.test(link) ? link : ''
-}
-
-async function create(body: Record<string, string>) {
-  const result = await $fetch('/api/v1/connectors', {
-    method: 'POST',
-    body,
-  })
-
-  await refreshConnectors()
-  emit('added', result.connector.id)
-}
-
-async function addPreset(presetId: string) {
-  isSubmitting.value = true
-  presetError.value = ''
-
-  try {
-    await create({ presetId })
-  } catch (exception) {
-    presetError.value = describeError(exception, 'Could not add the connector')
-  } finally {
-    isSubmitting.value = false
-  }
-}
-
-async function addByUrl() {
+function pickUrl() {
   const address = url.value.trim()
 
   urlError.value = ''
-  urlErrorLink.value = ''
 
   if (!address.toLowerCase().startsWith('https://')) {
     urlError.value = 'Use the server\'s public https address.'
@@ -290,18 +227,9 @@ async function addByUrl() {
     return
   }
 
-  isSubmitting.value = true
-
-  try {
-    await create({
-      url: address,
-      ...(title.value.trim() ? { title: title.value.trim() } : {}),
-    })
-  } catch (exception) {
-    urlError.value = describeError(exception, 'Could not add the connector')
-    urlErrorLink.value = readInternalLink(exception)
-  } finally {
-    isSubmitting.value = false
-  }
+  emit('picked', {
+    url: address,
+    ...(title.value.trim() ? { title: title.value.trim() } : {}),
+  })
 }
 </script>

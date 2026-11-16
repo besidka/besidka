@@ -59,18 +59,17 @@ export function useConnectorDetailPanel() {
 
 /**
  * The directory actions shared by the Discover cards and the entry detail
- * panel: open an entry's details, add it (a preset by its id, a registry
- * entry by its directory id; the server reads the address itself) and go
- * straight to the Connect dialog, or open the connector that is already
- * added.
+ * panel: open an entry's details, start adding it and open the connector
+ * that is already added. Adding opens the Connect dialog with a draft (a
+ * preset by its id, a registry entry by its directory id; the server reads
+ * the address itself): nothing is stored until the connect succeeds, so
+ * closing the dialog leaves nothing behind. An entry whose address matches
+ * a row that never connected finishes that row instead.
  */
 export function useConnectorDirectoryActions() {
   const sidePanel = useSidePanel()
   const connect = useConnectorConnect()
   const detailPanel = useConnectorDetailPanel()
-  const isAdding = useState<boolean>('connectors:directory-adding', () => {
-    return false
-  })
 
   function openEntry(item: ConnectorDirectoryItem) {
     sidePanel.open({
@@ -82,37 +81,21 @@ export function useConnectorDirectoryActions() {
     })
   }
 
-  async function add(item: ConnectorDirectoryItem): Promise<string | null> {
-    if (isAdding.value) {
-      return null
+  function add(item: ConnectorDirectoryItem) {
+    if (item.addedConnectorId) {
+      connect.open(item.addedConnectorId)
+
+      return
     }
 
-    isAdding.value = true
-
-    try {
-      const result = await $fetch('/api/v1/connectors', {
-        method: 'POST',
-        body: item.presetId
-          ? { presetId: item.presetId }
-          : { registryId: item.id },
-      })
-
-      await refreshConnectors()
-      connect.open(result.connector.id)
-
-      return result.connector.id
-    } catch (exception) {
-      reportConnectorError(exception, 'Could not add the connector')
-
-      return null
-    } finally {
-      isAdding.value = false
-    }
+    connect.openDraft(
+      item.presetId ? { presetId: item.presetId } : { registryId: item.id },
+    )
   }
 
   function openAdded(connector: Pick<ConnectorPageItem, 'id' | 'title'>) {
     detailPanel.open(connector)
   }
 
-  return { isAdding, openEntry, add, openAdded }
+  return { openEntry, add, openAdded }
 }
