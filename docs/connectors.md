@@ -2608,9 +2608,10 @@ HTML (C-7 consumes them).
 | `todoist` | Todoist | `https://ai.todoist.net/mcp` | `['oauth']` | none |
 | `webflow` | Webflow | `https://mcp.webflow.com/mcp` | `['oauth']` | none |
 | `wix` | Wix | `https://mcp.wix.com/mcp` | `['oauth']` | none |
+| `cloudflare` | Cloudflare | `https://mcp.cloudflare.com/mcp` | `['oauth', 'header']` | `Authorization` |
 
 The eleven presets after Atlassian were added by C-14 v2 for services the
-registry mirror lacks; their sources and probe results are in section 10.3.
+registry mirror lacks (Cloudflare, `cloudflare`, joined them on 2026-11-16); their sources and probe results are in section 10.3.
 
 Text names, plus (BES-398) a bundled `simple-icons` mark per preset
 (`app/utils/connector-brand-icons.ts`; no request, no remote image). The catalog footer reads "Names belong to their
@@ -3170,11 +3171,11 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   list order; a curated preset missing from the mirror becomes a card with
   the id `preset:<id>`; when the mirror later lists a preset's exact URL,
   that row takes the preset's curated rank and title instead. The list has
-  **46 entries**: 34 registry names checked read-only against
-  `besidka-preview` on 2026-11-16 and 12 presets. In rank order: GitHub,
+  **47 entries**: 34 registry names checked read-only against
+  `besidka-preview` on 2026-11-16 and 13 presets. In rank order: GitHub,
   Notion, Linear, Atlassian, Figma, Canva, Stripe, Vercel, Supabase, Sentry,
   monday.com, Airtable, GitLab, PayPal, Square, Intercom, ClickUp, Miro,
-  Todoist, Webflow, Wix, Hugging Face, Exa, Apify, Cloudflare Docs, Neon,
+  Todoist, Webflow, Wix, Hugging Face, Exa, Apify, Cloudflare, Cloudflare Docs, Neon,
   Railway, Postman, New Relic, CircleCI, Amplitude, Make, Basecamp, Lucid,
   Fireflies.ai, Ahrefs, Close, Jotform, PandaDoc, Bitly, Mux, Cloudinary,
   Egnyte, Axiom, Microsoft Learn, ScrapingBee. The mirror lacked the big
@@ -3211,6 +3212,7 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   | `todoist` | `https://ai.todoist.net/mcp` | OAuth | [developer.todoist.com/api/v1](https://developer.todoist.com/api/v1/) | 401, issuer `todoist.com`, DCR and CIMD |
   | `webflow` | `https://mcp.webflow.com/mcp` | OAuth | [developers.webflow.com/mcp/reference/getting-started](https://developers.webflow.com/mcp/reference/getting-started) | 401, issuer `mcp.webflow.com`, DCR |
   | `wix` | `https://mcp.wix.com/mcp` | OAuth (its API key needs a second `wix-account-id` header, which presets cannot carry) | [dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp](https://dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp) | 401, issuer `mcp.wix.com`, DCR |
+  | `cloudflare` | `https://mcp.cloudflare.com/mcp` | OAuth or a Cloudflare API token as a bearer (`Authorization`) | [developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/) (fetched 2026-11-16): "The Cloudflare API MCP server at `https://mcp.cloudflare.com/mcp` is the only MCP server you need to work with Cloudflare"; the same page says a connecting client is redirected to Cloudflare to authorize via OAuth, and that an API token can be passed as a bearer token in the `Authorization` header | 401 with `resource_metadata`, issuer `mcp.cloudflare.com`, DCR and CIMD (`probeConnectorServer` and `discoverConnectorAuth`, 2026-11-16) |
 
   Skipped:
 
@@ -3228,8 +3230,29 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
 
   A preset that later fails is still caught by the scheduled
   `scripts/check-connector-presets.mjs` probe (warn only). Each new preset
-  has a bundled `simple-icons` mark (all eleven names confirmed in the
+  has a bundled `simple-icons` mark (all twelve names confirmed in the
   collection).
+
+  The registry mirror's `com.cloudflare.mcp/mcp` entry is the Cloudflare
+  **Docs** server (`https://docs.mcp.cloudflare.com/mcp`), curated as
+  "Cloudflare Docs"; the main Cloudflare API server was missing from the
+  directory until the `cloudflare` preset (BES-249, 2026-11-16, curation
+  version `2026-11-16.3`). A preset URL that a later mirror row lists exactly
+  still takes the preset's rank and title.
+- **Icons for connectors added by URL.** A connector added from a preset or
+  the directory knows its `presetId`; one added by URL does not, so it showed
+  the letter. `getConnectorBrandIcon(presetId, host)`
+  (`app/utils/connector-brand-icons.ts`) now also matches the server host with
+  `findConnectorPresetByHost` (`config/connectors-catalog.ts`): the preset's
+  exact host, or any subdomain of its registrable domain (the last two labels
+  of the preset host), on a dot boundary, so `mcp.cloudflare.com` and
+  `docs.mcp.cloudflare.com` get the Cloudflare mark while
+  `cloudflare.com.evil.com` and `evilcloudflare.com` get nothing. It picks
+  only the bundled mark: `presetId` is untouched, so the Connect dialog's
+  notice and sign-in options, and discovery, do not change. `Avatar.vue` reads
+  the host from the cached connector list (`useConnectorById`), so no caller
+  passes it; the Connect dialog got the same behavior without a change. The
+  fetched favicon still wins when it loads.
 - **New connectors**: entries with a registry title, newest
   `registry_updated_at` first. The registry has no "first published" field
   in the mirror, so an updated entry counts as new.

@@ -205,7 +205,72 @@
             </li>
           </ul>
           <div
-            v-else-if="!isLoaded"
+            v-if="disabledItems.length"
+            :class="{ 'mt-2': items.length }"
+            data-testid="connector-picker-disabled-group"
+          >
+            <p
+              class="px-3 pt-2 pb-1 text-xs font-semibold uppercase text-base-content/70"
+              aria-hidden="true"
+            >
+              Not turned on
+            </p>
+            <ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+              <li
+                v-for="item in disabledItems"
+                :key="item.id"
+              >
+                <component
+                  :is="item.block ? 'div' : 'label'"
+                  class="flex w-full items-center gap-3 rounded-box px-3 py-2 hover:bg-base-200 max-sm:min-h-11"
+                  :class="!item.block && isSaving
+                    ? 'cursor-not-allowed opacity-60'
+                    : !item.block && 'cursor-pointer'
+                  "
+                >
+                  <ProfileConnectorsAvatar
+                    :title="item.title"
+                    :connector-id="item.id"
+                    :preset-id="item.presetId"
+                    :is-icon-available="item.isIconAvailable"
+                  />
+                  <span class="flex min-w-0 grow flex-col">
+                    <span class="truncate text-sm font-medium">
+                      {{ item.title }}
+                    </span>
+                    <span
+                      class="truncate text-xs text-base-content/60"
+                      :data-testid="`connector-picker-mode-${item.slug}`"
+                    >
+                      {{ item.host }} · {{ getModeLabel(item) }}
+                    </span>
+                  </span>
+                  <NuxtLink
+                    v-if="item.block"
+                    :to="`/chats/connectors?connector=${item.id}`"
+                    class="btn btn-sm min-h-11 shrink-0 sm:min-h-8"
+                    :data-testid="`connector-picker-review-${item.slug}`"
+                    @click="close"
+                  >
+                    {{ item.block === 'review' ? 'Review tools' : 'Connect' }}
+                  </NuxtLink>
+                  <input
+                    v-else
+                    type="checkbox"
+                    class="toggle toggle-sm toggle-accent shrink-0"
+                    role="switch"
+                    :checked="false"
+                    :disabled="isSaving"
+                    :aria-label="`Turn on ${item.title}`"
+                    :data-testid="`connector-picker-toggle-${item.slug}`"
+                    @change="onEnable($event, item.id)"
+                  >
+                </component>
+              </li>
+            </ul>
+          </div>
+          <div
+            v-if="!items.length && !disabledItems.length && !isLoaded"
             class="grid gap-2 p-2"
             aria-hidden="true"
             data-testid="connector-picker-skeleton"
@@ -214,7 +279,7 @@
             <div class="skeleton skeleton--default h-10 w-full rounded-box" />
           </div>
           <div
-            v-else
+            v-else-if="!items.length && !disabledItems.length"
             class="px-6 py-10 text-center"
             data-testid="connector-picker-empty"
           >
@@ -273,10 +338,14 @@ import {
   CONNECTORS_PER_SEND,
 } from '#shared/utils/connectors-policy'
 import { planTurnAllOn } from '~/composables/composer-connectors'
-import type { ComposerConnectorItem } from '~/composables/composer-connectors'
+import type {
+  ComposerConnectorItem,
+  ComposerDisabledConnectorItem,
+} from '~/composables/composer-connectors'
 
 const props = withDefaults(defineProps<{
   items: ComposerConnectorItem[]
+  disabledItems?: ComposerDisabledConnectorItem[]
   selectedIds: string[]
   offIds?: string[]
   isAtLimit: boolean
@@ -285,6 +354,7 @@ const props = withDefaults(defineProps<{
   isLoaded?: boolean
   isRegistryAvailable?: boolean
 }>(), {
+  disabledItems: () => [],
   offIds: () => [],
   besidka: null,
   isLoaded: true,
@@ -293,6 +363,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'toggle': [connectorId: string]
+  'enable': [connectorId: string]
   'set-all': [connectorIds: string[]]
   'toggle-besidka': []
 }>()
@@ -374,6 +445,18 @@ function turnAllOff() {
 function onToggle(connectorId: string) {
   bulkNotice.value = ''
   emit('toggle', connectorId)
+}
+
+function getModeLabel(item: ComposerConnectorItem): string {
+  return CONNECTOR_TOOL_MODE_LABELS[item.toolMode]
+}
+
+function onEnable(event: Event, connectorId: string) {
+  const target = event.target as HTMLInputElement
+
+  target.checked = false
+  bulkNotice.value = ''
+  emit('enable', connectorId)
 }
 
 function isSelected(item: ComposerConnectorItem): boolean {

@@ -138,6 +138,15 @@ export const CONNECTOR_PRESETS = [
     headerName: null,
     notice: null,
   },
+  {
+    id: 'cloudflare',
+    title: 'Cloudflare',
+    url: 'https://mcp.cloudflare.com/mcp',
+    auth: ['oauth', 'header'],
+    headerName: 'Authorization',
+    notice: 'Sign-in asks you to pick the permissions to grant. For a token, '
+      + 'use a Cloudflare API token with the fewest permissions you need.',
+  },
 ] as const satisfies readonly ConnectorPreset[]
 
 export type ConnectorPresetId = typeof CONNECTOR_PRESETS[number]['id']
@@ -174,5 +183,54 @@ export function findConnectorPresetByUrl(
 
   return CONNECTOR_PRESETS.find((preset) => {
     return presetUrlKey(preset.url) === key
+  })
+}
+
+function normalizeHost(host: string): string {
+  return host.trim().toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
+}
+
+function registrableDomainOf(host: string): string {
+  return host.split('.').slice(-2).join('.')
+}
+
+function presetHost(preset: ConnectorPreset): string {
+  try {
+    return normalizeHost(new URL(preset.url).host)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The preset a server host belongs to: the preset's exact host, or any
+ * subdomain of its registrable domain (`mcp.cloudflare.com` and
+ * `docs.mcp.cloudflare.com` both belong to the Cloudflare preset). The match
+ * is on a dot boundary, so `cloudflare.com.evil.com` and `evilcloudflare.com`
+ * match nothing. Used only to pick a bundled brand mark for a connector that
+ * was added by URL; it never changes how the connector signs in.
+ */
+export function findConnectorPresetByHost(
+  host: string,
+): ConnectorPreset | undefined {
+  const normalized = normalizeHost(host)
+
+  if (!normalized.includes('.')) {
+    return undefined
+  }
+
+  const exact = CONNECTOR_PRESETS.find((preset) => {
+    return presetHost(preset) === normalized
+  })
+
+  if (exact) {
+    return exact
+  }
+
+  return CONNECTOR_PRESETS.find((preset) => {
+    const domain = registrableDomainOf(presetHost(preset))
+
+    return !!domain
+      && (normalized === domain || normalized.endsWith(`.${domain}`))
   })
 }

@@ -17,6 +17,12 @@ export interface ComposerConnectorItem {
   isIconAvailable: boolean
 }
 
+export type ConnectorEnableBlock = 'review' | 'connect'
+
+export interface ComposerDisabledConnectorItem extends ComposerConnectorItem {
+  block: ConnectorEnableBlock | null
+}
+
 export interface ChatConnectorSelectionState {
   chatKey: string
   ids: string[]
@@ -65,6 +71,33 @@ function isSelectableConnector(connector: {
 }): boolean {
   return connector.enabled
     && (connector.status === 'ready' || connector.status === 'drifted')
+}
+
+function isConnectedConnector(connector: { status: string }): boolean {
+  return connector.status === 'ready' || connector.status === 'drifted'
+}
+
+/**
+ * Why a connected connector that is off cannot be turned on from the chat
+ * picker, mirroring `assertCanEnable` in the connector `PATCH` route: a
+ * changed or never reviewed tool list needs the review on the Connectors
+ * page, and a consent that is not current needs the Connect dialog. Null
+ * means the picker may turn it on.
+ */
+export function getConnectorEnableBlock(connector: {
+  status: string
+  consent: { state: string }
+  tools: { isBaselined: boolean }
+}): ConnectorEnableBlock | null {
+  if (connector.status === 'drifted' || !connector.tools.isBaselined) {
+    return 'review'
+  }
+
+  if (connector.status !== 'ready' || connector.consent.state !== 'current') {
+    return 'connect'
+  }
+
+  return null
 }
 
 /**
@@ -164,6 +197,27 @@ export function useComposerConnectors(
           toolMode: connector.toolMode,
           presetId: connector.presetId,
           isIconAvailable: hasConnectorIcon(connector),
+        }
+      })
+      .sort((left, right) => left.title.localeCompare(right.title))
+  })
+
+  const disabledItems = computed<ComposerDisabledConnectorItem[]>(() => {
+    return library.connectors.value
+      .filter((connector) => {
+        return !connector.enabled && isConnectedConnector(connector)
+      })
+      .map((connector) => {
+        return {
+          id: connector.id,
+          slug: connector.slug,
+          title: connector.title,
+          host: connector.host,
+          status: connector.status as ComposerConnectorItem['status'],
+          toolMode: connector.toolMode,
+          presetId: connector.presetId,
+          isIconAvailable: hasConnectorIcon(connector),
+          block: getConnectorEnableBlock(connector),
         }
       })
       .sort((left, right) => left.title.localeCompare(right.title))
@@ -391,6 +445,54 @@ export function useComposerConnectors(
     )
   }
 
+  /**
+   * Turns on a connector that was off in the Connectors page ("Use in
+   * chats"), under the same rules as the detail panel (the route enforces
+   * them). It is awaited into the library before the chat choice changes,
+   * because a manual connector is then selected for this chat too (when
+   * there is room) and the selection of an id the list does not know yet
+   * would be pruned.
+   */
+  async function enable(connectorId: string) {
+    if (isSaving.value) {
+      return
+    }
+
+    const item = disabledItems.value.find((candidate) => {
+      return candidate.id === connectorId
+    })
+
+    if (!item || item.block) {
+      return
+    }
+
+    isSaving.value = true
+
+    try {
+      await $fetch(`/api/v1/connectors/${connectorId}`, {
+        method: 'PATCH',
+        body: { enabled: true },
+      })
+      await library.refresh()
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Could not turn on the connector',
+        parsedException.why,
+      )
+      await library.refresh()
+
+      return
+    } finally {
+      isSaving.value = false
+    }
+
+    if (isManualMode(item.toolMode) && !isAtLimit.value) {
+      await toggle(connectorId)
+    }
+  }
+
   async function setAll(nextIds: string[]) {
     if (isSaving.value) {
       return
@@ -419,6 +521,7 @@ export function useComposerConnectors(
 
   return {
     items,
+    disabledItems,
     isVisible,
     isLoaded: library.isLoaded,
     isSelectionKnown,
@@ -430,6 +533,7 @@ export function useComposerConnectors(
     isAtLimit,
     isSaving,
     toggle,
+    enable,
     setAll,
     clear,
     refresh: library.refresh,

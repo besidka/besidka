@@ -1,4 +1,4 @@
-export const CONNECTOR_CURATION_VERSION = '2026-11-16.2'
+export const CONNECTOR_CURATION_VERSION = '2026-11-16.3'
 
 export interface CuratedConnector {
   id: string
@@ -116,6 +116,12 @@ export const CURATED_CONNECTORS = [
     id: 'apify',
     title: 'Apify',
     registryName: 'com.apify/apify-mcp-server',
+  },
+  {
+    id: 'cloudflare',
+    title: 'Cloudflare',
+    description: 'Work with your Cloudflare account: the whole Cloudflare API, from DNS and Workers to R2 and Zero Trust.',
+    presetId: 'cloudflare',
   },
   {
     id: 'cloudflare-docs',

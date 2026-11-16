@@ -232,6 +232,7 @@
       v-if="isConnectorPickerMounted && isConnectorsEnabled"
       v-model:open="isConnectorPickerOpen"
       :items="composerConnectors.items.value"
+      :disabled-items="composerConnectors.disabledItems.value"
       :selected-ids="composerConnectors.selectedIds.value"
       :off-ids="composerConnectors.offIds.value"
       :is-at-limit="composerConnectors.isAtLimit.value"
@@ -240,6 +241,7 @@
       :is-loaded="composerConnectors.isLoaded.value"
       :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
+      @enable="composerConnectors.enable"
       @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
     />
@@ -1823,6 +1825,7 @@ function openConnectorPicker() {
 
   isConnectorPickerMounted.value = true
   isConnectorPickerOpen.value = true
+  composerConnectors.refresh()
 }
 
 watch(isConnectorsEnabled, (isEnabled) => {

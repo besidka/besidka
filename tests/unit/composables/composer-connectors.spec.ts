@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, ref } from 'vue'
 import {
   NEW_CHAT_CONNECTORS_KEY,
+  getConnectorEnableBlock,
   planTurnAllOn,
   useChatConnectorSelection,
   useComposerConnectors,
@@ -46,6 +47,8 @@ function createConnector(
     status: string
     enabled: boolean
     toolMode: string
+    consent: { state: string }
+    tools: { isBaselined: boolean }
   }> = {},
 ) {
   return {
@@ -60,6 +63,7 @@ function createConnector(
     createdVia: 'preset',
     presetId: 'notion',
     consent: { state: 'current' },
+    tools: { isBaselined: true },
     updatedAt: '2026-11-14T00:00:00.000Z',
     ...overrides,
   }
@@ -768,5 +772,178 @@ describe('planTurnAllOn', () => {
       ids: ['b', 'a'],
       skippedCount: 0,
     })
+  })
+})
+
+describe('connectors that are off in the Connectors page', () => {
+  beforeEach(() => {
+    connectorsActive.value = true
+    data.value = null
+    mocks.execute.mockReset()
+    mocks.fetch.mockReset()
+    mocks.errorMessage.mockReset()
+    resetSelection()
+  })
+
+  it('lists connected connectors with Use in chats off apart from items',
+    async () => {
+      data.value = {
+        connectors: [
+          createConnector({ id: 'on', slug: 'on', title: 'On' }),
+          createConnector({
+            id: 'gmail',
+            slug: 'gmail',
+            title: 'Gmail',
+            enabled: false,
+          }),
+          createConnector({
+            id: 'drift',
+            slug: 'drift',
+            title: 'Drift',
+            enabled: false,
+            status: 'drifted',
+          }),
+          createConnector({
+            id: 'auth',
+            slug: 'auth',
+            title: 'Auth',
+            enabled: false,
+            status: 'needs-auth',
+          }),
+          createConnector({
+            id: 'err',
+            slug: 'err',
+            title: 'Err',
+            enabled: false,
+            status: 'error',
+          }),
+        ],
+      }
+
+      const { composable } = await mountComposable()
+
+      expect(composable.items.value.map(item => item.id)).toEqual(['on'])
+      expect(composable.disabledItems.value.map(item => item.id))
+        .toEqual(['drift', 'gmail'])
+      expect(composable.disabledItems.value.map(item => item.block))
+        .toEqual(['review', null])
+    })
+
+  it('maps every reason a connector cannot be turned on here', () => {
+    const ready = {
+      status: 'ready',
+      consent: { state: 'current' },
+      tools: { isBaselined: true },
+    }
+
+    expect(getConnectorEnableBlock(ready)).toBeNull()
+    expect(getConnectorEnableBlock({ ...ready, status: 'drifted' }))
+      .toBe('review')
+    expect(getConnectorEnableBlock({
+      ...ready,
+      tools: { isBaselined: false },
+    })).toBe('review')
+    expect(getConnectorEnableBlock({
+      ...ready,
+      consent: { state: 'outdated' },
+    })).toBe('connect')
+    expect(getConnectorEnableBlock({ ...ready, status: 'needs-auth' }))
+      .toBe('connect')
+  })
+
+  it('turns the connector on, reloads the list, then selects a manual '
+    + 'connector for the chat', async () => {
+    data.value = {
+      connectors: [
+        createConnector({ id: 'gmail', slug: 'gmail', enabled: false }),
+      ],
+    }
+    mocks.execute.mockImplementation(async () => {
+      data.value = {
+        connectors: [createConnector({ id: 'gmail', slug: 'gmail' })],
+      }
+    })
+    mocks.fetch.mockResolvedValue({ connectorIds: ['gmail'] })
+
+    const { composable } = await mountComposable()
+
+    await composable.enable('gmail')
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/gmail', {
+      method: 'PATCH',
+      body: { enabled: true },
+    })
+    expect(mocks.execute).toHaveBeenCalled()
+    expect(composable.items.value.map(item => item.id)).toEqual(['gmail'])
+    expect(composable.selectedIds.value).toEqual(['gmail'])
+    expect(composable.isSaving.value).toBe(false)
+  })
+
+  it('does not select an auto connector, which is available once enabled',
+    async () => {
+      data.value = {
+        connectors: [
+          createConnector({
+            id: 'gmail',
+            slug: 'gmail',
+            enabled: false,
+            toolMode: 'auto',
+          }),
+        ],
+      }
+      mocks.execute.mockImplementation(async () => {
+        data.value = {
+          connectors: [
+            createConnector({ id: 'gmail', slug: 'gmail', toolMode: 'auto' }),
+          ],
+        }
+      })
+
+      const { composable } = await mountComposable()
+
+      await composable.enable('gmail')
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(composable.selectedIds.value).toEqual([])
+      expect(composable.availableIds.value).toEqual(['gmail'])
+    })
+
+  it('refuses a connector whose tools still need a review, without a '
+    + 'request', async () => {
+    data.value = {
+      connectors: [
+        createConnector({
+          id: 'gmail',
+          slug: 'gmail',
+          enabled: false,
+          tools: { isBaselined: false },
+        }),
+      ],
+    }
+
+    const { composable } = await mountComposable()
+
+    await composable.enable('gmail')
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(composable.selectedIds.value).toEqual([])
+  })
+
+  it('reports a refusal from the route and reloads the list', async () => {
+    data.value = {
+      connectors: [
+        createConnector({ id: 'gmail', slug: 'gmail', enabled: false }),
+      ],
+    }
+    mocks.fetch.mockRejectedValue(new Error('review required'))
+
+    const { composable } = await mountComposable()
+
+    await composable.enable('gmail')
+
+    expect(mocks.errorMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.execute).toHaveBeenCalled()
+    expect(composable.selectedIds.value).toEqual([])
+    expect(composable.isSaving.value).toBe(false)
   })
 })

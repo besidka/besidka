@@ -72,8 +72,13 @@ const initial = computed<string>(() => {
   return getConnectorInitial(props.title)
 })
 
+const cachedConnector = useConnectorById(() => props.connectorId ?? '')
+
 const brandIcon = computed<string | null>(() => {
-  return getConnectorBrandIcon(props.presetId)
+  return getConnectorBrandIcon(
+    props.presetId,
+    cachedConnector.value?.host,
+  )
 })
 
 const iconUrl = computed<string>(() => {

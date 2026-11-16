@@ -3,6 +3,7 @@ import {
   CONNECTOR_CATALOG_FOOTER,
   CONNECTOR_PRESETS,
   findConnectorPreset,
+  findConnectorPresetByHost,
   findConnectorPresetByUrl,
 } from '~~/config/connectors-catalog'
 import { CONNECTOR_SLUG_PATTERN } from '#shared/utils/connectors-policy'
@@ -25,6 +26,7 @@ describe('connector catalog', () => {
       'todoist',
       'webflow',
       'wix',
+      'cloudflare',
     ])
   })
 
@@ -113,5 +115,48 @@ describe('connector catalog', () => {
     expect(findConnectorPresetByUrl('https://mcp.notion.com/mcp?x=1'))
       .toBeUndefined()
     expect(findConnectorPresetByUrl('not a url')).toBeUndefined()
+  })
+
+  it('has the Cloudflare API server as OAuth or a bearer API token', () => {
+    const preset = findConnectorPreset('cloudflare')
+
+    expect(preset?.url).toBe('https://mcp.cloudflare.com/mcp')
+    expect(preset?.auth).toEqual(['oauth', 'header'])
+    expect(preset?.headerName).toBe('Authorization')
+  })
+
+  describe('findConnectorPresetByHost', () => {
+    it('matches the exact host of a preset', () => {
+      expect(findConnectorPresetByHost('mcp.cloudflare.com')?.id)
+        .toBe('cloudflare')
+      expect(findConnectorPresetByHost('MCP.Linear.app:443')?.id)
+        .toBe('linear')
+      expect(findConnectorPresetByHost('api.githubcopilot.com')?.id)
+        .toBe('github')
+    })
+
+    it('matches a subdomain of a preset registrable domain', () => {
+      expect(findConnectorPresetByHost('docs.mcp.cloudflare.com')?.id)
+        .toBe('cloudflare')
+      expect(findConnectorPresetByHost('bindings.mcp.cloudflare.com')?.id)
+        .toBe('cloudflare')
+      expect(findConnectorPresetByHost('mcp.eu.intercom.com')?.id)
+        .toBe('intercom')
+    })
+
+    it('matches on a dot boundary only', () => {
+      expect(findConnectorPresetByHost('cloudflare.com.evil.com'))
+        .toBeUndefined()
+      expect(findConnectorPresetByHost('evilcloudflare.com'))
+        .toBeUndefined()
+      expect(findConnectorPresetByHost('mcp.notcloudflare.com'))
+        .toBeUndefined()
+    })
+
+    it('matches nothing for an unknown or malformed host', () => {
+      expect(findConnectorPresetByHost('mcp.example.com')).toBeUndefined()
+      expect(findConnectorPresetByHost('localhost')).toBeUndefined()
+      expect(findConnectorPresetByHost('')).toBeUndefined()
+    })
   })
 })
