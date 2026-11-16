@@ -144,9 +144,11 @@ after it, it sends `thinking.blockBinding: { prefixMismatchBehavior:
 'drop_block' }`. The provider then adds the
 `thinking-binding-controls-2026-08-01` beta, and the API drops the blocks
 that no longer match instead of failing: "The API drops the invalid blocks,
-and the request succeeds. You aren't billed for those blocks". A resumed
-send sets it from the first step. Steps before any change, and sends that
-never change, are sent exactly as before.
+and the request succeeds. You aren't billed for those blocks". A step that
+replays no signed thinking block never gets it. A resumed send gets it from
+the first step when reasoning is on, or when the resume reloaded tools or
+reopened a connector. Steps before any change, and sends that never change,
+are sent exactly as before.
 
 `getAnthropicThinkingBinding()` (`server/utils/providers/anthropic.ts`)
 builds the option. An explicit `thinking` replaces the one the provider
@@ -158,8 +160,10 @@ is set. The unit test captures the request bodies and fails if the provider's
 derived object ever drifts from this one.
 
 Cost: a dropped block is not billed, and the step that changed the tools or
-instructions already misses the prompt cache. The model loses the reasoning of
-the steps before the change. Each send that drops blocks logs
+instructions already misses the prompt cache. The API drops the first
+mismatched block and every thinking block after it in that request, so from
+the change on the model can answer without the thinking of the earlier
+steps. Each send that drops blocks logs
 `attributes.anthropicThinking` (prefix changes and the `thinking_dropped`
 count from `input_transformations`).
 
@@ -169,8 +173,9 @@ a loaded one with a `toolChanges` `tool_addition` in a system message appended
 after its tool result (the `mid-conversation-tool-changes-2026-07-01` beta),
 and move the final-step addendum into an appended system message. That keeps
 every thinking block and the prompt cache, but the wire shape was not checked
-against the live API yet. Gateway routes (Vercel AI Gateway, OpenRouter) to
-these models are not covered either.
+against the live API yet. Also not covered: gateway routes (Vercel AI
+Gateway, OpenRouter) to these models, and the search-answer continuation of a
+resumed send, which replays the resumed thinking with no tools.
 
 ## Cost accounting
 

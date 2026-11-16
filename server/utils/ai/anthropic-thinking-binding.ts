@@ -1,4 +1,4 @@
-import type { PrepareStepFunction, ToolSet } from 'ai'
+import type { ModelMessage, PrepareStepFunction, ToolSet } from 'ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type {
   AnthropicThinkingOption,
@@ -9,6 +9,37 @@ type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
 
 interface InputTransformation {
   type?: unknown
+}
+
+interface AnthropicReasoningOptions {
+  signature?: unknown
+  redactedData?: unknown
+}
+
+/**
+ * Whether the messages replay a thinking block Anthropic signed, which is
+ * the only thing the prefix check can fail on.
+ */
+export function hasSignedAnthropicReasoning(
+  messages: readonly ModelMessage[],
+): boolean {
+  return messages.some((message) => {
+    if (message.role !== 'assistant' || typeof message.content === 'string') {
+      return false
+    }
+
+    return message.content.some((part) => {
+      if (part.type !== 'reasoning') {
+        return false
+      }
+
+      const anthropic = part.providerOptions?.anthropic as
+        | AnthropicReasoningOptions
+        | undefined
+
+      return !!anthropic?.signature || !!anthropic?.redactedData
+    })
+  })
 }
 
 function describeRequestPrefix(
@@ -49,14 +80,17 @@ function countDroppedThinkingBlocks(steps: StepOptions['steps']): number {
  * different conversation", so from the first such step on, every step sends
  * `thinking` with `blockBinding: drop_block`, and the API drops the blocks
  * that no longer match instead. Steps before any change, and sends that never
- * change, are sent exactly as before. The tools each step offers are left as
- * the base decided, so a deferred tool that is not loaded stays out of the
- * step and cannot run.
+ * change, are sent exactly as before, and so is any step that replays no
+ * signed thinking. `bindFromStart` binds from the first step, for an
+ * approval resume that replays thinking produced under another tool set.
+ * The tools each step offers are left as the base decided, so a deferred
+ * tool that is not loaded stays out of the step and cannot run.
  */
 export function withAnthropicThinkingBinding(input: {
   base?: PrepareStepFunction<ToolSet>
   thinking: AnthropicThinkingOption
   toolNames: readonly string[]
+  bindFromStart?: boolean
   logger?: LoggerLike
 }): PrepareStepFunction<ToolSet> {
   const seenPrefixes = new Set<string>()
@@ -66,7 +100,13 @@ export function withAnthropicThinkingBinding(input: {
 
     seenPrefixes.add(describeRequestPrefix(prepared, options, input.toolNames))
 
-    if (seenPrefixes.size < 2) {
+    const prefixChanged = seenPrefixes.size > 1
+
+    if (!prefixChanged && !input.bindFromStart) {
+      return prepared
+    }
+
+    if (!hasSignedAnthropicReasoning(prepared?.messages ?? options.messages)) {
       return prepared
     }
 
@@ -75,6 +115,7 @@ export function withAnthropicThinkingBinding(input: {
         anthropicThinking: {
           blockBinding: 'drop_block',
           prefixChanges: seenPrefixes.size - 1,
+          fromStart: !!input.bindFromStart,
           droppedBlocks: countDroppedThinkingBlocks(options.steps),
         },
       },

@@ -371,6 +371,7 @@ import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
 import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
 import {
+  hasSignedAnthropicReasoning,
   withAnthropicThinkingBinding,
 } from '~~/server/utils/ai/anthropic-thinking-binding'
 import type {
@@ -1430,9 +1431,7 @@ export default defineEventHandler(async (event) => {
           reasoningEffort = anthropicReasoning
           anthropicThinkingBinding = thinkingBinding
           Object.assign(providerOptions, {
-            anthropic: isResume && thinkingBinding
-              ? { ...anthropicProviderOptions, thinking: thinkingBinding }
-              : anthropicProviderOptions,
+            anthropic: anthropicProviderOptions,
           })
 
           break
@@ -2456,6 +2455,12 @@ export default defineEventHandler(async (event) => {
       }),
     }
     : containerToolLoopOptions
+  const resumeReplaysChangedTools = (toolIndex?.loadedNames().length ?? 0) > 0
+    || (toolIndex?.openedConnectors().length ?? 0) > 0
+  const bindThinkingFromStart = isResume
+    && !!anthropicThinkingBinding
+    && (anthropicThinkingBinding.type === 'adaptive'
+      || resumeReplaysChangedTools)
   const toolLoopOptions = anthropicThinkingBinding && guardedToolLoopOptions
     ? {
       ...guardedToolLoopOptions,
@@ -2463,10 +2468,25 @@ export default defineEventHandler(async (event) => {
         base: guardedToolLoopOptions.prepareStep,
         thinking: anthropicThinkingBinding,
         toolNames: Object.keys(parsedTools.tools ?? {}),
+        bindFromStart: bindThinkingFromStart,
         logger,
       }),
     }
     : guardedToolLoopOptions
+
+  if (
+    bindThinkingFromStart
+    && !toolLoopOptions
+    && anthropicThinkingBinding
+    && hasSignedAnthropicReasoning(resumeModelMessages)
+  ) {
+    Object.assign(providerOptions, {
+      anthropic: {
+        ...providerOptions.anthropic,
+        thinking: anthropicThinkingBinding,
+      },
+    })
+  }
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))

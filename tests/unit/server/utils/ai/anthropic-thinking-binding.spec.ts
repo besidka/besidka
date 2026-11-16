@@ -3,9 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { generateText, stepCountIs, tool } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
-import { TOOL_INDEX_LOAD_TOOL_NAME } from '#shared/utils/tool-index'
+import {
+  TOOL_INDEX_LOAD_TOOL_NAME,
+  TOOL_INDEX_USE_CONNECTOR_TOOL_NAME,
+} from '#shared/utils/tool-index'
 import { createToolIndex } from '~~/server/utils/ai/tool-index'
 import {
+  hasSignedAnthropicReasoning,
   withAnthropicThinkingBinding,
 } from '~~/server/utils/ai/anthropic-thinking-binding'
 import {
@@ -83,7 +87,12 @@ function createAnthropicMock(responses: ResponseBlock[][]) {
   return { model: anthropic('claude-haiku-5-5'), requests }
 }
 
-function createSend() {
+interface SendSetup {
+  reasoning?: 'medium'
+  catalog?: boolean
+}
+
+function createSend(setup: SendSetup) {
   const executeDeferred = vi.fn(async () => {
     return '3 workers'
   })
@@ -95,9 +104,26 @@ function createSend() {
       description: 'Counts Workers.',
       toolClass: 'read',
       bytes: 100,
+      ...(setup.catalog ? { catalogKey: 'cloudflare' } : {}),
     }],
     room: { tools: 5, bytes: 10_000 },
     upFrontNames: new Set(),
+    ...(setup.catalog
+      ? {
+        catalog: {
+          connectors: [{
+            key: 'cloudflare',
+            connectorId: 'connector-1',
+            title: 'Cloudflare',
+            host: 'mcp.cloudflare.com',
+            toolCount: 1,
+            isLegacySse: false,
+          }],
+          maxOpen: 3,
+          maxOpenLegacySse: 1,
+        },
+      }
+      : {}),
     logger: { set: vi.fn() },
   })
 
@@ -114,7 +140,10 @@ function createSend() {
     }),
   }
   const toolNames = Object.keys(tools)
-  const thinking = getAnthropicThinkingBinding('claude-haiku-5-5', 'medium')
+  const thinking = getAnthropicThinkingBinding(
+    'claude-haiku-5-5',
+    setup.reasoning ?? 'off',
+  )
 
   if (!thinking) {
     throw new Error('Expected a thinking binding for Claude Haiku 5.5')
@@ -135,15 +164,18 @@ function toolNamesOf(request: CapturedRequest): string[] {
   return (request.body.tools ?? []).map(entry => entry.name)
 }
 
-async function runSend(responses: ResponseBlock[][]) {
+async function runSend(
+  responses: ResponseBlock[][],
+  setup: SendSetup = { reasoning: 'medium' },
+) {
   const { model, requests } = createAnthropicMock(responses)
-  const send = createSend()
+  const send = createSend(setup)
 
   await generateText({
     model,
     instructions: 'You are a test assistant.',
     prompt: 'How many Cloudflare Workers do I have?',
-    reasoning: 'medium',
+    ...(setup.reasoning ? { reasoning: setup.reasoning } : {}),
     tools: send.tools,
     stopWhen: stepCountIs(5),
     prepareStep: send.prepareStep,
@@ -278,18 +310,139 @@ describe('withAnthropicThinkingBinding in an Anthropic send', () => {
         expect(toolNamesOf(request)).not.toContain(DEFERRED_TOOL_NAME)
       }
     })
+  it('binds the same way when use_connector opens a connector', async () => {
+    const { requests } = await runSend([
+      [
+        thinkingBlock('sig-1'),
+        toolUse('toolu_1', TOOL_INDEX_USE_CONNECTOR_TOOL_NAME, {
+          connector: 'cloudflare',
+        }),
+      ],
+      [textBlock('Opened.')],
+    ], { reasoning: 'medium', catalog: true })
+
+    expect(requests).toHaveLength(2)
+
+    const [first, second] = requests as [CapturedRequest, CapturedRequest]
+
+    expect(toolNamesOf(first)).not.toContain(DEFERRED_TOOL_NAME)
+    expect(first.body.thinking).not.toHaveProperty('block_binding')
+    expect(toolNamesOf(second)).toContain(DEFERRED_TOOL_NAME)
+    expect(second.body.thinking).toEqual({
+      type: 'adaptive',
+      display: 'summarized',
+      block_binding: { prefix_mismatch_behavior: 'drop_block' },
+    })
+    expect(second.betas).toContain(BINDING_BETA)
+  })
+
+  it('sends only the binding with reasoning off, after a change', async () => {
+    const { requests } = await runSend([
+      [
+        thinkingBlock('sig-1'),
+        toolUse('toolu_1', TOOL_INDEX_LOAD_TOOL_NAME, {
+          names: [DEFERRED_TOOL_NAME],
+        }),
+      ],
+      [textBlock('Loaded.')],
+    ], {})
+
+    const [first, second] = requests as [CapturedRequest, CapturedRequest]
+
+    expect(first.body).not.toHaveProperty('thinking')
+    expect(first.betas).not.toContain(BINDING_BETA)
+    expect(second.body.thinking).toEqual({
+      block_binding: { prefix_mismatch_behavior: 'drop_block' },
+    })
+    expect(second.betas).toContain(BINDING_BETA)
+  })
+
+  it('sends no binding when no thinking block is replayed', async () => {
+    const { requests } = await runSend([
+      [
+        toolUse('toolu_1', TOOL_INDEX_LOAD_TOOL_NAME, {
+          names: [DEFERRED_TOOL_NAME],
+        }),
+      ],
+      [textBlock('Loaded.')],
+    ], {})
+
+    const [, second] = requests as [CapturedRequest, CapturedRequest]
+
+    expect(toolNamesOf(second)).toContain(DEFERRED_TOOL_NAME)
+    expect(second.body).not.toHaveProperty('thinking')
+    expect(second.betas).not.toContain(BINDING_BETA)
+  })
+})
+
+describe('hasSignedAnthropicReasoning', () => {
+  it('is true only for a reasoning part Anthropic signed or redacted', () => {
+    expect(hasSignedAnthropicReasoning([
+      { role: 'user', content: 'Hi' },
+      {
+        role: 'assistant',
+        content: [{ type: 'reasoning', text: 'Plan.' }, {
+          type: 'text',
+          text: 'Hello.',
+        }],
+      },
+    ])).toBe(false)
+    expect(hasSignedAnthropicReasoning([{
+      role: 'assistant',
+      content: [{
+        type: 'reasoning',
+        text: '',
+        providerOptions: { anthropic: { signature: 'sig-1' } },
+      }],
+    }])).toBe(true)
+    expect(hasSignedAnthropicReasoning([{
+      role: 'assistant',
+      content: [{
+        type: 'reasoning',
+        text: '',
+        providerOptions: { anthropic: { redactedData: 'data' } },
+      }],
+    }])).toBe(true)
+  })
 })
 
 describe('withAnthropicThinkingBinding', () => {
   const thinking = { blockBinding: { prefixMismatchBehavior: 'drop_block' } }
 
-  function stepOptions(stepNumber: number, instructions = 'Base.') {
+  const signedMessages = [{
+    role: 'assistant',
+    content: [{
+      type: 'reasoning',
+      text: '',
+      providerOptions: { anthropic: { signature: 'sig-1' } },
+    }],
+  }]
+
+  function stepOptions(
+    stepNumber: number,
+    messages: unknown[] = signedMessages,
+  ) {
     return {
       stepNumber,
       steps: [],
-      instructions,
+      instructions: 'Base.',
+      messages,
     } as unknown as Parameters<PrepareStepFunction<ToolSet>>[0]
   }
+
+  it('binds from the first step for a resume that replays thinking',
+    async () => {
+      const prepareStep = withAnthropicThinkingBinding({
+        thinking: thinking as never,
+        toolNames: ['search'],
+        bindFromStart: true,
+      })
+
+      expect(await prepareStep(stepOptions(0))).toEqual({
+        providerOptions: { anthropic: { thinking } },
+      })
+      expect(await prepareStep(stepOptions(0, []))).toBeUndefined()
+    })
 
   it('binds from the step whose instructions change, such as the forced '
     + 'final step', async () => {
