@@ -9,6 +9,7 @@ import {
 } from '#shared/utils/connectors-policy'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
+import { consumeIconRateLimit } from '~~/server/utils/connectors/icon-rate-limit'
 import { getConnector } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { requireFeature } from '~~/server/utils/features/guards'
@@ -131,14 +132,7 @@ export async function enforceConnectorRateLimit(
   }
 }
 
-function resolveBucket(options: {
-  selection?: boolean
-  icon?: boolean
-}): RateLimitBucket {
-  if (options.icon) {
-    return ICON_BUCKET
-  }
-
+function resolveBucket(options: { selection?: boolean }): RateLimitBucket {
   return options.selection ? SELECTION_BUCKET : DEFAULT_BUCKET
 }
 
@@ -148,8 +142,9 @@ function resolveBucket(options: {
  * `connectors` flag (and `connectors.oauth` for sign-in routes), then the
  * per-user limit (`selection: true` uses the looser bucket of the per-chat
  * toggles, 60 a minute, so flipping switches in the picker is not throttled
- * like connecting a server; `icon: true` uses the loose bucket of the icon
- * route, 120 a minute). Ownership lookups come after it in the route.
+ * like connecting a server; `icon: true` uses the icon budget of
+ * `consumeIconRateLimit`, 300 a minute, written to KV at most once a
+ * second). Ownership lookups come after it in the route.
  */
 export async function requireConnectorAccess(
   event: RequestEvent,
@@ -179,7 +174,18 @@ export async function requireConnectorAccess(
 
   const userId = parseInt(session.user.id)
 
-  if (options.rateLimit !== false) {
+  if (options.rateLimit !== false && options.icon) {
+    const result = await consumeIconRateLimit(
+      useKV(),
+      ICON_BUCKET.prefix,
+      userId,
+      ICON_BUCKET.max,
+    )
+
+    if (!result.allowed) {
+      throw tooManyRequests(event, result.retryAfter ?? 60, ICON_BUCKET.max)
+    }
+  } else if (options.rateLimit !== false) {
     await enforceConnectorRateLimit(
       event,
       userId,

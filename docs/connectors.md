@@ -2251,7 +2251,10 @@ HTML (C-7 consumes them).
 | `connectors:icon:v2:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
 | `connectors:icon:v2:registry-origin:<sha256(origin)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the favicon or page-link result for one host, shared by every directory entry on it and (C-14 v2) by every user's connector on it; its lock is `connectors:icon-lock:registry-origin:<hash>` |
 | `connectors:registry:directory:v1:<curation version>` | 1 hour | C-14 v2: the filtered, de-duplicated, categorized directory as one JSON blob (about 5.7 MB for 12,400 entries), dropped by a sync that changed rows; never stored for an empty mirror (section 10.3) |
-| `connectors:registry:probe:<sha256(registry name)[:32 hex]>` | 1 day (a failure: 1 hour) | C-14 v2: the auth kind and public tool list of one directory entry, shared by every user (section 10.3) |
+| `connectors:registry:probe:<sha256(registry name + address)[:32 hex]>` | 1 day (a failure: 1 hour) | C-14 v2: the auth kind and public tool list of one directory entry, shared by every user; a changed address is a new key (section 10.3) |
+| `connectors:registry:probe-lock:<sha256(origin)[:32 hex]>` | 60 s (value: busy until, the probe plus a 10 s cooldown) | C-14 v2: one probe per host at a time and about one every ten seconds |
+| `connectors:registry:directory:v1:<curation version>:lock` | 60 s (value: busy until, 30 s) | C-14 v2: an index rebuild in progress; another isolate waits up to 3 s for the built copy |
+| `connectors-icon-rate-limit:<userId>:<minute>` | 120 s | C-14 v2: the icon routes' per-user count for one calendar minute, written at most once a second per isolate (`consumeIconRateLimit`, fails open) |
 | `connectors:registry:sync-now-lock` | 150 s | BES-398: best-effort marker that an admin's Sync now is running |
 | `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
@@ -2955,6 +2958,19 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   kind of anonymous request from Besidka's servers (no user data, no
   cookies, `Besidka-Connectors/1.0`) as browsing the directory. No legal
   text, consent version or notice was touched.
+- **Hardening after the security review.** `readHtmlHead` tests only the
+  new chunk plus a 16-character tail for `</head>` (a page sent one byte at a
+  time stays linear) and has its own 5 s deadline on top of `safeFetch`'s
+  timer, which already covers the body read. The probe is single-flight per
+  entry in an isolate and takes a KV lock per host with a 10 s cooldown, so
+  entries on one host that differ only by query cannot make Besidka hit it
+  repeatedly; the probe cache key covers name and address. The index rebuild
+  reads rows by keyset on `id` (each row once, no `OFFSET`) under a KV lock.
+  The icon routes count per user and calendar minute in the isolate and
+  write the KV key at most once a second (KV allows about one write a second
+  per key, and the old read-then-write counter wrote it on every icon), and
+  they fail open. `findConnectorPresetByUrl` ignores host case and a trailing
+  slash, like `directoryUrlKey`.
 - **Avatar while loading.** The letter (or preset mark) stays until the
   image has loaded, so a slow cold icon never shows an empty white disc. The
   icon bucket is 300 a minute per user (was 120), because the home renders

@@ -1,5 +1,5 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, gt } from 'drizzle-orm'
 import { CONNECTOR_CURATION_VERSION } from '~~/config/connectors-directory'
 import {
   buildDirectoryIndex,
@@ -16,9 +16,14 @@ const DIRECTORY_INDEX_SCHEMA = 1
 const DIRECTORY_INDEX_TTL_SECONDS = 3600
 const DIRECTORY_MEMO_TTL_MS = 5 * 60 * 1000
 const DIRECTORY_READ_PAGE_SIZE = 2500
+const DIRECTORY_LOCK_TTL_SECONDS = 60
+const DIRECTORY_LOCK_HOLD_MS = 30_000
+const DIRECTORY_LOCK_WAIT_MS = 3000
+const DIRECTORY_LOCK_POLL_MS = 250
 
 export const DIRECTORY_INDEX_KEY = 'connectors:registry:directory:'
   + `v${DIRECTORY_INDEX_SCHEMA}:${CONNECTOR_CURATION_VERSION}`
+export const DIRECTORY_INDEX_LOCK_KEY = `${DIRECTORY_INDEX_KEY}:lock`
 
 type RegistryDatabase = ReturnType<typeof useDb>
 
@@ -37,12 +42,18 @@ export function resetDirectoryIndexMemo(): void {
   pending = null
 }
 
-async function readActiveRows(
+/**
+ * Every active registry row, read in pages by id (keyset paging), so each
+ * row is read once however many pages there are.
+ */
+export async function readActiveRows(
   db: RegistryDatabase,
+  pageSize: number = DIRECTORY_READ_PAGE_SIZE,
 ): Promise<DirectorySourceRow[]> {
   const rows: DirectorySourceRow[] = []
+  let lastId: string | null = null
 
-  for (let offset = 0; ; offset += DIRECTORY_READ_PAGE_SIZE) {
+  for (;;) {
     const page = await db.select({
       id: schema.mcpRegistryServers.id,
       name: schema.mcpRegistryServers.name,
@@ -53,10 +64,12 @@ async function readActiveRows(
       registryUpdatedAt: schema.mcpRegistryServers.registryUpdatedAt,
     })
       .from(schema.mcpRegistryServers)
-      .where(eq(schema.mcpRegistryServers.status, 'active'))
+      .where(and(
+        eq(schema.mcpRegistryServers.status, 'active'),
+        lastId === null ? undefined : gt(schema.mcpRegistryServers.id, lastId),
+      ))
       .orderBy(asc(schema.mcpRegistryServers.id))
-      .limit(DIRECTORY_READ_PAGE_SIZE)
-      .offset(offset)
+      .limit(pageSize)
 
     for (const row of page) {
       rows.push({
@@ -70,9 +83,11 @@ async function readActiveRows(
       })
     }
 
-    if (page.length < DIRECTORY_READ_PAGE_SIZE) {
+    if (page.length < pageSize) {
       return rows
     }
+
+    lastId = page.at(-1)!.id
   }
 }
 
@@ -131,9 +146,65 @@ async function storeIndex(
   }
 }
 
+async function acquireRebuildLock(kv: KVNamespace): Promise<boolean> {
+  try {
+    const busyUntil = Number(await kv.get(DIRECTORY_INDEX_LOCK_KEY))
+
+    if (Number.isFinite(busyUntil) && busyUntil > Date.now()) {
+      return false
+    }
+
+    await kv.put(
+      DIRECTORY_INDEX_LOCK_KEY,
+      String(Date.now() + DIRECTORY_LOCK_HOLD_MS),
+      { expirationTtl: DIRECTORY_LOCK_TTL_SECONDS },
+    )
+  } catch {
+    return true
+  }
+
+  return true
+}
+
+async function releaseRebuildLock(kv: KVNamespace): Promise<void> {
+  try {
+    await kv.delete(DIRECTORY_INDEX_LOCK_KEY)
+  } catch {
+    return
+  }
+}
+
+async function waitForStoredIndex(
+  kv: KVNamespace,
+  wait: (ms: number) => Promise<void>,
+): Promise<DirectoryIndex | null> {
+  for (
+    let waited = 0;
+    waited < DIRECTORY_LOCK_WAIT_MS;
+    waited += DIRECTORY_LOCK_POLL_MS
+  ) {
+    await wait(DIRECTORY_LOCK_POLL_MS)
+
+    const stored = await readStoredIndex(kv)
+
+    if (stored) {
+      return stored
+    }
+  }
+
+  return null
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
 async function loadIndex(
   db: RegistryDatabase,
   kv: KVNamespace,
+  wait: (ms: number) => Promise<void>,
 ): Promise<DirectoryIndex> {
   const stored = await readStoredIndex(kv)
 
@@ -141,30 +212,45 @@ async function loadIndex(
     return stored
   }
 
-  const index = buildDirectoryIndex(await readActiveRows(db))
+  if (!await acquireRebuildLock(kv)) {
+    const built = await waitForStoredIndex(kv, wait)
 
-  await storeIndex(kv, index)
+    if (built) {
+      return built
+    }
+  }
 
-  return index
+  try {
+    const index = buildDirectoryIndex(await readActiveRows(db))
+
+    await storeIndex(kv, index)
+
+    return index
+  } finally {
+    await releaseRebuildLock(kv)
+  }
 }
 
 /**
  * The filtered, de-duplicated and categorized directory (docs/connectors.md
  * section 10.3). Kept in memory for five minutes per isolate and as one KV
  * copy for an hour, so a cold isolate parses it instead of reading every
- * registry row; only a miss on both rebuilds it from D1. A sync that
- * changed rows drops the KV copy (`invalidateDirectoryIndex`). An empty
- * mirror is never cached.
+ * registry row; only a miss on both rebuilds it from D1, under a
+ * best-effort KV lock: an isolate that finds another one rebuilding waits up
+ * to three seconds for its copy before building its own. A sync that changed
+ * rows drops the KV copy (`invalidateDirectoryIndex`). An empty mirror is
+ * never cached.
  */
 export async function loadDirectoryIndex(
   db: RegistryDatabase,
   kv: KVNamespace,
+  options: { wait?: (ms: number) => Promise<void> } = {},
 ): Promise<DirectoryIndex> {
   if (memo && Date.now() - memo.loadedAt < DIRECTORY_MEMO_TTL_MS) {
     return memo.index
   }
 
-  pending ??= loadIndex(db, kv)
+  pending ??= loadIndex(db, kv, options.wait ?? sleep)
 
   try {
     const index = await pending

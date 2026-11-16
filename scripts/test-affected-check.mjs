@@ -1787,6 +1787,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/connectors-icon.spec.ts',
     'tests/integration/api/connectors-registry-icon.spec.ts',
     'tests/unit/server/utils/connectors/cleanup.spec.ts',
+    'tests/unit/server/utils/connectors/icon-rate-limit.spec.ts',
   ]
 
   const toolApprovalSpikeTests = [
@@ -3651,7 +3652,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/connectors\/(icon|icon-response|svg-icon|registry-icon|send-tools)\.ts|server\/api\/v1\/connectors\/(\[id\]|registry)\/icon\.get\.ts|server\/api\/v1\/connectors\/delete\/bulk\.post\.ts|server\/utils\/net\/safe-fetch\.ts|shared\/utils\/connectors-policy\.ts|tests\/setup\/helpers\/(connector-icon-kv|mock-mcp-server)\.ts)$/,
+        /^(server\/utils\/connectors\/(icon|icon-response|icon-rate-limit|route|svg-icon|registry-icon|send-tools)\.ts|server\/api\/v1\/connectors\/(\[id\]|registry)\/icon\.get\.ts|server\/api\/v1\/connectors\/delete\/bulk\.post\.ts|server\/utils\/net\/safe-fetch\.ts|shared\/utils\/connectors-policy\.ts|tests\/setup\/helpers\/(connector-icon-kv|mock-mcp-server)\.ts)$/,
       tests: connectorIconTests,
     },
     {

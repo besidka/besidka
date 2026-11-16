@@ -27,6 +27,9 @@ import { listRemoteDefinitions } from '~~/server/utils/connectors/send-tools'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 const PROBE_KEY_PREFIX = 'connectors:registry:probe:'
+const PROBE_LOCK_KEY_PREFIX = 'connectors:registry:probe-lock:'
+const PROBE_LOCK_TTL_SECONDS = 60
+const PROBE_COOLDOWN_MS = 10_000
 const TOOL_NAME_MAX_CHARS = 128
 const TOOL_TITLE_MAX_CHARS = 120
 const TOOL_DESCRIPTION_MAX_CHARS = 300
@@ -95,8 +98,75 @@ export function toDirectoryTools(
   return tools
 }
 
+const inFlightByEntry = new Map<string, Promise<ConnectorDirectoryProbe>>()
+
+async function hashPart(value: string): Promise<string> {
+  return (await hashRegistryName(value)).slice(0, 32)
+}
+
+/**
+ * The cache key of a probe: the entry's name and its address, so an entry
+ * whose address changes is probed again instead of serving the old answer.
+ */
 async function probeKey(entry: DirectoryEntry): Promise<string> {
-  return `${PROBE_KEY_PREFIX}${(await hashRegistryName(entry.name)).slice(0, 32)}`
+  return `${PROBE_KEY_PREFIX}${await hashPart(
+    `${entry.name}\n${entry.remoteUrl}`,
+  )}`
+}
+
+function originOf(remoteUrl: string): string {
+  try {
+    return new URL(remoteUrl).origin
+  } catch {
+    return remoteUrl
+  }
+}
+
+async function probeLockKey(origin: string): Promise<string> {
+  return `${PROBE_LOCK_KEY_PREFIX}${await hashPart(origin)}`
+}
+
+/**
+ * A best-effort lock per host (KV is eventually consistent): taken before a
+ * probe and kept for ten seconds after it, so many directory entries on one
+ * host, which differ only by path or query, contact it at most about once
+ * every ten seconds. The value is the time until which the host is busy.
+ */
+async function acquireProbeLock(
+  kv: KVNamespace,
+  origin: string,
+): Promise<boolean> {
+  try {
+    const key = await probeLockKey(origin)
+    const busyUntil = Number(await kv.get(key))
+
+    if (Number.isFinite(busyUntil) && busyUntil > Date.now()) {
+      return false
+    }
+
+    await kv.put(key, String(Date.now() + REGISTRY_PROBE_TIMEOUT_MS), {
+      expirationTtl: PROBE_LOCK_TTL_SECONDS,
+    })
+  } catch {
+    return true
+  }
+
+  return true
+}
+
+async function startProbeCooldown(
+  kv: KVNamespace,
+  origin: string,
+): Promise<void> {
+  try {
+    await kv.put(
+      await probeLockKey(origin),
+      String(Date.now() + PROBE_COOLDOWN_MS),
+      { expirationTtl: PROBE_LOCK_TTL_SECONDS },
+    )
+  } catch {
+    return
+  }
 }
 
 function staticProbe(entry: DirectoryEntry): ConnectorDirectoryProbe | null {
@@ -242,7 +312,11 @@ export async function readCachedRegistryProbe(
  * 403 checks for OAuth protected-resource metadata; a 2xx lists the tools
  * anonymously. The address comes from the directory row, never from the
  * request. The whole probe has an 8 s deadline, and the result is kept in
- * KV for a day (a failure for an hour), shared by every user.
+ * KV for a day (a failure for an hour), shared by every user and keyed by
+ * the entry's name and address. Concurrent requests for one entry in an
+ * isolate share one probe, and a KV lock per host with a ten-second
+ * cooldown keeps one host to about one probe every ten seconds; a request
+ * that finds the host busy answers `unavailable` without caching it.
  */
 export async function probeRegistryEntry(
   kv: KVNamespace,
@@ -258,6 +332,46 @@ export async function probeRegistryEntry(
     return cached
   }
 
+  const entryKey = await probeKey(entry)
+  const shared = inFlightByEntry.get(entryKey)
+
+  if (shared) {
+    return await shared
+  }
+
+  const task = runLockedProbe(kv, entry, originOf(entry.remoteUrl), options)
+
+  inFlightByEntry.set(entryKey, task)
+
+  try {
+    return await task
+  } finally {
+    inFlightByEntry.delete(entryKey)
+  }
+}
+
+function unavailableProbe(): ConnectorDirectoryProbe {
+  return {
+    authKind: 'unknown',
+    state: 'unavailable',
+    tools: [],
+    checkedAt: new Date().toISOString(),
+  }
+}
+
+async function runLockedProbe(
+  kv: KVNamespace,
+  entry: DirectoryEntry,
+  origin: string,
+  options: {
+    logger?: LoggerLike
+    dependencies?: RegistryProbeDependencies
+  },
+): Promise<ConnectorDirectoryProbe> {
+  if (!await acquireProbeLock(kv, origin)) {
+    return unavailableProbe()
+  }
+
   const dependencies: Required<RegistryProbeDependencies> = {
     probeServer: options.dependencies?.probeServer ?? probeConnectorServer,
     findProtectedResource: options.dependencies?.findProtectedResource
@@ -269,13 +383,10 @@ export async function probeRegistryEntry(
   try {
     probe = await withDeadline(runProbe(entry, dependencies, options.logger))
   } catch {
-    probe = {
-      authKind: 'unknown',
-      state: 'unavailable',
-      tools: [],
-      checkedAt: new Date().toISOString(),
-    }
+    probe = unavailableProbe()
   }
+
+  await startProbeCooldown(kv, origin)
 
   try {
     await kv.put(await probeKey(entry), JSON.stringify(probe), {

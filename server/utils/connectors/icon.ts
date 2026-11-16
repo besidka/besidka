@@ -10,6 +10,7 @@ import {
   CONNECTOR_ICON_MISS_TTL_SECONDS,
   CONNECTOR_ICON_RESOLVE_BUDGET_MS,
   CONNECTOR_ICON_SOURCE_MAX_LENGTH,
+  CONNECTOR_ICON_TIMEOUT_MS,
   CONNECTOR_ICON_TTL_SECONDS,
 } from '#shared/utils/connectors-policy'
 import { SHARED_HOSTING_SUFFIXES } from '~~/config/connectors-directory'
@@ -720,14 +721,41 @@ export function parseConnectorIconLinks(
 
 const HEAD_END = /<\/head\s*>/i
 
+const HEAD_END_TAIL_CHARS = 16
+
+class HtmlReadDeadlineError extends Error {}
+
+async function readBefore(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  deadline: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new HtmlReadDeadlineError('html read deadline'))
+        }, Math.max(0, deadline - Date.now()))
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
- * The start of an HTML body, up to the end of `<head>` or `maxBytes`,
- * whichever comes first; the rest of the stream is canceled unread, so a
- * large page costs no more than its head.
+ * The start of an HTML body, up to the end of `<head>`, `maxBytes` or
+ * `maxMs`, whichever comes first; the rest of the stream is canceled unread,
+ * so a large or slow page costs no more than its head. The `</head>` check
+ * looks only at the new chunk and a short tail of the text before it, so a
+ * page sent one byte at a time stays linear.
  */
 export async function readHtmlHead(
   response: Response,
   maxBytes: number = CONNECTOR_ICON_HTML_MAX_BYTES,
+  maxMs: number = CONNECTOR_ICON_TIMEOUT_MS,
 ): Promise<string> {
   const reader = response.body?.getReader()
 
@@ -736,12 +764,14 @@ export async function readHtmlHead(
   }
 
   const decoder = new TextDecoder()
-  let html = ''
+  const deadline = Date.now() + maxMs
+  const parts: string[] = []
+  let tail = ''
   let bytes = 0
 
   try {
-    while (bytes < maxBytes && !HEAD_END.test(html)) {
-      const { done, value } = await reader.read()
+    while (bytes < maxBytes) {
+      const { done, value } = await readBefore(reader, deadline)
 
       if (done) {
         break
@@ -750,15 +780,28 @@ export async function readHtmlHead(
       const chunk = value.byteLength + bytes > maxBytes
         ? value.subarray(0, maxBytes - bytes)
         : value
+      const text = decoder.decode(chunk, { stream: true })
 
       bytes += chunk.byteLength
-      html += decoder.decode(chunk, { stream: true })
+      parts.push(text)
+
+      const window = tail + text
+
+      if (HEAD_END.test(window)) {
+        break
+      }
+
+      tail = window.slice(-HEAD_END_TAIL_CHARS)
+    }
+  } catch (exception) {
+    if (!(exception instanceof HtmlReadDeadlineError)) {
+      throw exception
     }
   } finally {
     await reader.cancel().catch(() => undefined)
   }
 
-  return html
+  return parts.join('')
 }
 
 /**

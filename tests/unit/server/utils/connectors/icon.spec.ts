@@ -1014,3 +1014,53 @@ describe('parentIconOrigin', () => {
     expect(parentIconOrigin(origin)).toBeNull()
   })
 })
+
+describe('readHtmlHead limits', () => {
+  function byteStream(text: string, chunkSize: number = 1): Response {
+    const bytes = new TextEncoder().encode(text)
+    let offset = 0
+
+    return new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset >= bytes.length) {
+          controller.close()
+
+          return
+        }
+
+        controller.enqueue(bytes.subarray(offset, offset + chunkSize))
+        offset += chunkSize
+      },
+    }))
+  }
+
+  it('finds a head end split across one-byte chunks', async () => {
+    const head = '<head><link rel="icon" href="/a.png"></head>'
+    const html = await readHtmlHead(byteStream(`${head}<body>rest</body>`))
+
+    expect(html).toBe(head)
+  })
+
+  it('stays linear for a page sent one byte at a time', async () => {
+    const startedAt = performance.now()
+    const html = await readHtmlHead(
+      byteStream('x'.repeat(64 * 1024)),
+      64 * 1024,
+    )
+
+    expect(html.length).toBe(64 * 1024)
+    expect(performance.now() - startedAt).toBeLessThan(3000)
+  })
+
+  it('gives up at its deadline when the page stalls', async () => {
+    const stalled = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('<head><title>'))
+      },
+    }))
+    const startedAt = Date.now()
+
+    expect(await readHtmlHead(stalled, 1024, 50)).toBe('<head><title>')
+    expect(Date.now() - startedAt).toBeLessThan(1000)
+  })
+})

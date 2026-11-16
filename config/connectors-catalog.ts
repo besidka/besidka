@@ -150,10 +150,29 @@ export function findConnectorPreset(
   })
 }
 
+function presetUrlKey(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const path = parsed.pathname.replace(/\/+$/, '')
+
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${path}`
+      + parsed.search
+  } catch {
+    return url
+  }
+}
+
+/**
+ * The preset whose address is `url`, compared the way the directory compares
+ * addresses: host case and a trailing slash do not matter, so
+ * `https://mcp.stripe.com` and `https://MCP.stripe.com/` both find Stripe.
+ */
 export function findConnectorPresetByUrl(
   url: string,
 ): ConnectorPreset | undefined {
+  const key = presetUrlKey(url)
+
   return CONNECTOR_PRESETS.find((preset) => {
-    return preset.url === url
+    return presetUrlKey(preset.url) === key
   })
 }

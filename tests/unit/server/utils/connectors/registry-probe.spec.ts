@@ -21,7 +21,13 @@ function entryFor(patch: Record<string, unknown> = {}): DirectoryEntry {
     ...patch,
   }])
 
-  return index.byId.get('io.example/open@1.0.0')!
+  return index.entries.find(entry => !entry.id.startsWith('preset:'))!
+}
+
+function probeTtls(kv: ReturnType<typeof createFakeConnectorKv>) {
+  return [...kv.ttls.entries()]
+    .filter(([key]) => key.startsWith('connectors:registry:probe:'))
+    .map(([, ttl]) => ttl)
 }
 
 function asKv(kv: ReturnType<typeof createFakeConnectorKv>) {
@@ -112,7 +118,7 @@ describe('probeRegistryEntry', () => {
       },
     })
 
-    expect([...kv.ttls.values()]).toEqual([3600])
+    expect(probeTtls(kv)).toEqual([3600])
 
     const okKv = createFakeConnectorKv()
 
@@ -123,7 +129,7 @@ describe('probeRegistryEntry', () => {
       },
     })
 
-    expect([...okKv.ttls.values()]).toEqual([86400])
+    expect(probeTtls(okKv)).toEqual([86400])
   })
 
   it('answers unavailable for an unexpected status', async () => {
@@ -132,5 +138,66 @@ describe('probeRegistryEntry', () => {
         probeServer: async () => ({ status: 500, challenge: null }),
       },
     })).toMatchObject({ authKind: 'unknown', state: 'unavailable' })
+  })
+
+  it('probes one host about once per cooldown, across its entries', async () => {
+    const kv = createFakeConnectorKv()
+    const probeServer = vi.fn(async () => ({ status: 401, challenge: null }))
+    const findProtectedResource = async () => null
+
+    await probeRegistryEntry(asKv(kv), entryFor(), {
+      dependencies: { probeServer, findProtectedResource },
+    })
+
+    const sibling = await probeRegistryEntry(asKv(kv), entryFor({
+      id: 'io.example/open-two@1.0.0',
+      name: 'io.example/open-two',
+      remoteUrl: 'https://mcp.open.example.com/mcp?tools=two',
+    }), { dependencies: { probeServer, findProtectedResource } })
+
+    expect(probeServer).toHaveBeenCalledTimes(1)
+    expect(sibling.state).toBe('unavailable')
+    expect([...kv.values.keys()].filter((key) => {
+      return key.startsWith('connectors:registry:probe:')
+    })).toHaveLength(1)
+  })
+
+  it('shares one probe between concurrent requests for an entry', async () => {
+    const kv = createFakeConnectorKv()
+    const probeServer = vi.fn(async () => ({ status: 401, challenge: null }))
+    const dependencies = {
+      probeServer,
+      findProtectedResource: async () => null,
+    }
+
+    const [first, second] = await Promise.all([
+      probeRegistryEntry(asKv(kv), entryFor(), { dependencies }),
+      probeRegistryEntry(asKv(kv), entryFor(), { dependencies }),
+    ])
+
+    expect(probeServer).toHaveBeenCalledTimes(1)
+    expect(second).toEqual(first)
+  })
+
+  it('probes again when the entry address changes', async () => {
+    const kv = createFakeConnectorKv()
+    const probeServer = vi.fn(async () => ({ status: 401, challenge: null }))
+    const dependencies = {
+      probeServer,
+      findProtectedResource: async () => null,
+    }
+
+    await probeRegistryEntry(asKv(kv), entryFor(), { dependencies })
+
+    const moved = entryFor({ remoteUrl: 'https://mcp.moved.example.com/mcp' })
+
+    expect(await readCachedRegistryProbe(asKv(kv), moved)).toBeNull()
+
+    await probeRegistryEntry(asKv(kv), moved, { dependencies })
+
+    expect(probeServer).toHaveBeenLastCalledWith(
+      'https://mcp.moved.example.com/mcp',
+      undefined,
+    )
   })
 })

@@ -273,4 +273,73 @@ describe('connector directory routes', () => {
         .toBe(404)
     })
   })
+
+  describe('directory index', () => {
+    it('reads every row with keyset pages', async () => {
+      const { readActiveRows } = await import(
+        '~~/server/utils/connectors/directory-index'
+      )
+
+      for (let index = 0; index < 5; index++) {
+        await addServer(`io.example/row-${index}`)
+      }
+
+      await addServer('io.example/gone', { status: 'deleted' })
+
+      const rows = await readActiveRows(testDb.db, 2)
+
+      expect(rows.map(row => row.name)).toEqual([
+        'io.example/row-0',
+        'io.example/row-1',
+        'io.example/row-2',
+        'io.example/row-3',
+        'io.example/row-4',
+      ])
+    })
+
+    it('waits for another isolate\'s rebuild instead of reading D1', async () => {
+      const {
+        DIRECTORY_INDEX_KEY,
+        DIRECTORY_INDEX_LOCK_KEY,
+        loadDirectoryIndex,
+      } = await import('~~/server/utils/connectors/directory-index')
+
+      await addServer('io.example/pay')
+      await kv.put(DIRECTORY_INDEX_LOCK_KEY, String(Date.now() + 30_000), {
+        expirationTtl: 60,
+      })
+
+      const selectSpy = vi.spyOn(testDb.db, 'select')
+      const wait = vi.fn(async () => {
+        await kv.put(DIRECTORY_INDEX_KEY, JSON.stringify({
+          builtAt: Date.now(),
+          sourceRows: 1,
+          excluded: {},
+          entries: [],
+        }), { expirationTtl: 3600 })
+      })
+      const index = await loadDirectoryIndex(testDb.db, kv as never, { wait })
+
+      expect(wait).toHaveBeenCalledTimes(1)
+      expect(index.sourceRows).toBe(1)
+      expect(index.entries).toEqual([])
+      expect(selectSpy).not.toHaveBeenCalled()
+    })
+
+    it('takes and releases the rebuild lock when it builds', async () => {
+      const { DIRECTORY_INDEX_LOCK_KEY, loadDirectoryIndex } = await import(
+        '~~/server/utils/connectors/directory-index'
+      )
+
+      await addServer('io.example/pay')
+      await loadDirectoryIndex(testDb.db, kv as never)
+
+      expect(kv.put).toHaveBeenCalledWith(
+        DIRECTORY_INDEX_LOCK_KEY,
+        expect.any(String),
+        { expirationTtl: 60 },
+      )
+      expect(kv.values.has(DIRECTORY_INDEX_LOCK_KEY)).toBe(false)
+    })
+  })
 })
