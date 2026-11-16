@@ -66,7 +66,7 @@
           Added
         </span>
         <button
-          v-else
+          v-else-if="!isSignInUnavailable"
           type="button"
           class="btn btn-primary btn-sm relative z-10 shrink-0 min-h-11 sm:min-h-8"
           :aria-label="`Add ${item.title}`"
@@ -87,11 +87,28 @@
         <span aria-hidden="true"> · </span>
         {{ getDirectoryCardAuthLabel(item) }}
       </p>
+      <p
+        v-if="isSignInUnavailable && !item.isAdded"
+        class="flex items-center gap-1 text-xs text-base-content/70"
+        data-testid="connector-directory-unavailable"
+      >
+        <Icon
+          name="lucide:info"
+          size="14"
+          class="shrink-0"
+          aria-hidden="true"
+        />
+        {{ CONNECTOR_SIGN_IN_UNAVAILABLE_LABEL }}
+      </p>
     </div>
   </li>
 </template>
 
 <script setup lang="ts">
+import {
+  CONNECTOR_SIGN_IN_UNAVAILABLE_LABEL,
+  isConnectorSignInUnavailable,
+} from '~~/config/connectors-catalog'
 import type { ConnectorDirectoryItem } from '#shared/types/connectors.d'
 
 const props = defineProps<{
@@ -105,5 +122,9 @@ const emit = defineEmits<{
 
 const isPreset = computed<boolean>(() => {
   return isDirectoryPresetItem(props.item)
+})
+
+const isSignInUnavailable = computed<boolean>(() => {
+  return isConnectorSignInUnavailable(props.item.host)
 })
 </script>

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   CONNECTOR_CATALOG_FOOTER,
   CONNECTOR_PRESETS,
+  CONNECTOR_SIGN_IN_UNAVAILABLE_HOSTS,
   findConnectorPreset,
   findConnectorPresetByHost,
   findConnectorPresetByUrl,
+  isConnectorSignInUnavailable,
 } from '~~/config/connectors-catalog'
 import { CONNECTOR_SLUG_PATTERN } from '#shared/utils/connectors-policy'
 
@@ -123,6 +125,42 @@ describe('connector catalog', () => {
     expect(preset?.url).toBe('https://mcp.cloudflare.com/mcp')
     expect(preset?.auth).toEqual(['oauth', 'header'])
     expect(preset?.headerName).toBe('Authorization')
+  })
+
+  it('takes an Intercom API token only, because its sign-in refuses Besidka', () => {
+    const preset = findConnectorPreset('intercom')
+
+    expect(preset?.auth).toEqual(['header'])
+    expect(preset?.headerName).toBe('Authorization')
+  })
+
+  describe('isConnectorSignInUnavailable', () => {
+    it('flags the servers whose sign-in refuses Besidka', () => {
+      expect(isConnectorSignInUnavailable('mcp.vercel.com')).toBe(true)
+      expect(isConnectorSignInUnavailable('MCP.Squareup.com:443')).toBe(true)
+      expect(isConnectorSignInUnavailable('mcp.circleci.com')).toBe(true)
+      expect(isConnectorSignInUnavailable('mcp.figma.com')).toBe(true)
+    })
+
+    it('does not flag other hosts or look-alikes', () => {
+      expect(isConnectorSignInUnavailable('mcp.linear.app')).toBe(false)
+      expect(isConnectorSignInUnavailable('mcp.vercel.com.evil.com'))
+        .toBe(false)
+      expect(isConnectorSignInUnavailable('evil-mcp.vercel.com')).toBe(false)
+      expect(isConnectorSignInUnavailable('')).toBe(false)
+    })
+
+    it('keeps every flagged host out of the presets that take a token', () => {
+      for (const host of CONNECTOR_SIGN_IN_UNAVAILABLE_HOSTS) {
+        const preset = CONNECTOR_PRESETS.find((candidate) => {
+          return new URL(candidate.url).host === host
+        })
+
+        if (preset) {
+          expect(preset.auth).toEqual(['oauth'])
+        }
+      }
+    })
   })
 
   describe('findConnectorPresetByHost', () => {

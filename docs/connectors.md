@@ -2639,7 +2639,7 @@ HTML (C-7 consumes them).
 | `supabase` | Supabase | `https://mcp.supabase.com/mcp` | `['oauth']` | none |
 | `sentry` | Sentry | `https://mcp.sentry.dev/mcp` | `['oauth']` | none |
 | `square` | Square | `https://mcp.squareup.com/mcp` | `['oauth']` | none |
-| `intercom` | Intercom | `https://mcp.intercom.com/mcp` | `['oauth', 'header']` | "For US workspaces. An EU workspace uses https://mcp.eu.intercom.com/mcp: add it by URL." |
+| `intercom` | Intercom | `https://mcp.intercom.com/mcp` | `['header']` | "Intercom does not accept Besidka's sign-in yet, so use an API token. This is the US server; an EU workspace uses https://mcp.eu.intercom.com/mcp: add it by URL." |
 | `clickup` | ClickUp | `https://mcp.clickup.com/mcp` | `['oauth']` | none |
 | `miro` | Miro | `https://mcp.miro.com/` | `['oauth']` | "On an Enterprise plan an admin must turn on MCP first." |
 | `todoist` | Todoist | `https://ai.todoist.net/mcp` | `['oauth']` | none |
@@ -3239,17 +3239,97 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   | Preset | URL | Auth | Source (fetched 2026-11-16) | Probe |
   | --- | --- | --- | --- | --- |
   | `stripe` | `https://mcp.stripe.com/` | OAuth or agent API key (`Authorization`) | [docs.stripe.com/mcp](https://docs.stripe.com/mcp): "use `https://mcp.stripe.com` as the server URL" | 401, issuer `access.stripe.com/mcp`, DCR |
-  | `vercel` | `https://mcp.vercel.com/` | OAuth | [vercel.com/docs/mcp/vercel-mcp](https://vercel.com/docs/mcp/vercel-mcp): "Vercel's official MCP endpoint: `https://mcp.vercel.com`" | 401, issuer `vercel.com`, DCR and CIMD |
+  | `vercel` | `https://mcp.vercel.com/` | OAuth | [vercel.com/docs/mcp/vercel-mcp](https://vercel.com/docs/mcp/vercel-mcp): "Vercel's official MCP endpoint: `https://mcp.vercel.com`" | 401, issuer `vercel.com`, CIMD without `iss`, so DCR, which refuses Besidka (sign-in table below) |
   | `supabase` | `https://mcp.supabase.com/mcp` | OAuth | [supabase.com/docs/guides/getting-started/mcp](https://supabase.com/docs/guides/getting-started/mcp) | 401, issuer `api.supabase.com`, DCR |
   | `sentry` | `https://mcp.sentry.dev/mcp` | OAuth | [mcp.sentry.dev](https://mcp.sentry.dev/) (redirect target of docs.sentry.io/product/sentry-mcp) | 401, issuer `mcp.sentry.dev`, DCR and CIMD |
-  | `square` | `https://mcp.squareup.com/mcp` | OAuth | [developer.squareup.com/docs/mcp](https://developer.squareup.com/docs/mcp) | 401, issuer `mcp.squareup.com`, DCR |
-  | `intercom` | `https://mcp.intercom.com/mcp` | OAuth or API token (`Authorization`) | [developers.intercom.com/docs/guides/mcp](https://developers.intercom.com/docs/guides/mcp) (US; EU is `mcp.eu.intercom.com/mcp`) | 401, issuer `mcp.intercom.com`, DCR |
+  | `square` | `https://mcp.squareup.com/mcp` | OAuth | [developer.squareup.com/docs/mcp](https://developer.squareup.com/docs/mcp) | 401, issuer `mcp.squareup.com`, DCR, which refuses Besidka (sign-in table below) |
+  | `intercom` | `https://mcp.intercom.com/mcp` | API token (`Authorization`) only since 2026-11-16 (its DCR refuses Besidka, see the sign-in table below) | [developers.intercom.com/docs/guides/mcp](https://developers.intercom.com/docs/guides/mcp) (US; EU is `mcp.eu.intercom.com/mcp`) | 401, issuer `mcp.intercom.com`, DCR, which refuses Besidka (sign-in table below) |
   | `clickup` | `https://mcp.clickup.com/mcp` | OAuth | [developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server](https://developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server) | 401, issuer `mcp.clickup.com`, DCR |
   | `miro` | `https://mcp.miro.com/` | OAuth | [developers.miro.com/docs/mcp-intro](https://developers.miro.com/docs/mcp-intro) | 401, issuer `mcp.miro.com`, DCR |
   | `todoist` | `https://ai.todoist.net/mcp` | OAuth | [developer.todoist.com/api/v1](https://developer.todoist.com/api/v1/) | 401, issuer `todoist.com`, DCR and CIMD |
   | `webflow` | `https://mcp.webflow.com/mcp` | OAuth | [developers.webflow.com/mcp/reference/getting-started](https://developers.webflow.com/mcp/reference/getting-started) | 401, issuer `mcp.webflow.com`, DCR |
   | `wix` | `https://mcp.wix.com/mcp` | OAuth (its API key needs a second `wix-account-id` header, which presets cannot carry) | [dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp](https://dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp) | 401, issuer `mcp.wix.com`, DCR |
   | `cloudflare` | `https://mcp.cloudflare.com/mcp` | OAuth or a Cloudflare API token as a bearer (`Authorization`) | [developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/) (fetched 2026-11-16): "The Cloudflare API MCP server at `https://mcp.cloudflare.com/mcp` is the only MCP server you need to work with Cloudflare"; the same page says a connecting client is redirected to Cloudflare to authorize via OAuth, and that an API token can be passed as a bearer token in the `Authorization` header | 401 with `resource_metadata`, issuer `mcp.cloudflare.com`, DCR and CIMD (`probeConnectorServer` and `discoverConnectorAuth`, 2026-11-16) |
+
+  **Sign-in check of 2026-11-16** (BES-249). A 401 with protected-resource
+  metadata plus DCR or CIMD metadata does not mean Besidka can sign in:
+  `resolveClientRegistration` uses CIMD only when the issuer also sets
+  `authorization_response_iss_parameter_supported`, else DCR, and an
+  authorization server may refuse the registration (Vercel answers
+  `invalid_redirect_uri` for the preview and the `https://besidka.com`
+  callbacks). So every preset and every registry entry of the curated list was
+  run through the real `discoverConnectorAuth`, and for each DCR path one
+  `registerDynamicClient` call was made with Besidka's own client metadata and
+  the production callback `https://besidka.com/api/v1/connectors/oauth/callback`
+  (one call per server; a successful one leaves an unused public client at that
+  server). CIMD paths were not fetched further: the issuer checks the document
+  at authorize time, so they are "CIMD (expected OK)". GitHub is excluded
+  (token). Registration is only the first gate: a server that accepts it can
+  still refuse at authorize time, which only a real sign-in shows.
+
+  | Server | Path | Result |
+  | --- | --- | --- |
+  | Notion | CIMD with `iss` | CIMD (expected OK) |
+  | Linear | CIMD with `iss` | CIMD (expected OK) |
+  | Atlassian | DCR (CIMD without `iss`) | registered |
+  | Figma (`com.figma.mcp/mcp`) | DCR | **refused** (`CONNECTOR_OAUTH_REGISTRATION_FAILED`) |
+  | Canva | DCR (CIMD without `iss`) | registered |
+  | Stripe | DCR | registered |
+  | Vercel | DCR (CIMD without `iss`) | **refused** (`invalid_redirect_uri`) |
+  | Supabase | DCR | registered |
+  | Sentry | CIMD with `iss` | CIMD (expected OK) |
+  | monday.com | CIMD with `iss` | CIMD (expected OK) |
+  | Airtable | DCR (CIMD without `iss`) | registered |
+  | GitLab | DCR | registered |
+  | PayPal | DCR | registered |
+  | Square | DCR | **refused** (`invalid_redirect_uri`) |
+  | Intercom | DCR | **refused** (`invalid_redirect_uri`) |
+  | ClickUp | DCR | registered |
+  | Miro | DCR | registered |
+  | Todoist | DCR (CIMD without `iss`) | registered |
+  | Webflow | DCR | registered |
+  | Wix | DCR | registered |
+  | Hugging Face | none | OAuth metadata invalid (discovery fails, nothing to register); not marked, because an access token may still work |
+  | Exa | no sign-in | answers without auth |
+  | Apify | CIMD with `iss` | CIMD (expected OK) |
+  | Cloudflare | CIMD with `iss` | CIMD (expected OK) |
+  | Cloudflare Docs | no sign-in | answers without auth |
+  | Neon | CIMD with `iss` | CIMD (expected OK) |
+  | Railway | CIMD with `iss` | CIMD (expected OK) |
+  | Postman | DCR | registered |
+  | New Relic | DCR | registered |
+  | CircleCI | DCR | **refused** (`invalid_redirect_uri`) |
+  | Amplitude | DCR (CIMD without `iss`) | registered |
+  | Make | DCR | registered |
+  | Basecamp | CIMD with `iss` | CIMD (expected OK) |
+  | Lucid | DCR (CIMD without `iss`) | registered |
+  | Fireflies.ai | CIMD with `iss` | CIMD (expected OK) |
+  | Ahrefs | DCR | registered |
+  | Close | DCR | registered |
+  | Jotform | DCR | registered |
+  | PandaDoc | DCR | registered |
+  | Bitly | DCR | registered |
+  | Mux | DCR | registered |
+  | Cloudinary | DCR | registered |
+  | Egnyte | DCR | registered |
+  | Axiom | CIMD with `iss` | CIMD (expected OK) |
+  | Microsoft Learn | no sign-in | answers without auth |
+  | ScrapingBee | no sign-in | answers without auth |
+
+  **Rule for a refused sign-in.** A server that cannot complete sign-in is
+  not offered as a working connector. `CONNECTOR_SIGN_IN_UNAVAILABLE_HOSTS`
+  (`config/connectors-catalog.ts`, exact host match) lists them: Vercel,
+  Square, CircleCI and Figma. Their directory cards and detail panels, and the
+  preset card, say "Sign-in not available for Besidka yet" and have no Add
+  button (a connector that was already added still shows Added or Open).
+  They stay in the directory and keep their rank, so a user finds out why
+  instead of not finding them. Vercel and Square are OAuth-only presets, so
+  their dialog never offers "Use a token instead" (`canUseHeader` is false for
+  a preset without `header`). Intercom takes a token, so it stays a working
+  preset with `auth: ['header']` (the connect flow skips the OAuth metadata for
+  it) instead of being marked. To lift a mark, remove the host once a sign-in
+  works (re-run this check) and bump `CONNECTOR_CURATION_VERSION` (now
+  `2026-11-16.4`, bumped because Intercom's card changed).
 
   Skipped:
 

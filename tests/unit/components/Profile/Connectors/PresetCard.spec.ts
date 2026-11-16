@@ -8,6 +8,8 @@ enableAutoUnmount(afterEach)
 
 const linear = CONNECTOR_PRESETS.find(preset => preset.id === 'linear')!
 
+const vercel = CONNECTOR_PRESETS.find(preset => preset.id === 'vercel')!
+
 function mountCard(props: Partial<{ isAdded: boolean, isBusy: boolean }> = {}) {
   return mountSuspended(PresetCard, {
     props: { preset: linear, isAdded: false, isBusy: false, ...props },
@@ -42,5 +44,16 @@ describe('Profile/Connectors/PresetCard', () => {
 
     expect(wrapper.find('[data-testid="connector-preset-add-linear"]')
       .attributes('disabled')).toBeDefined()
+  })
+
+  it('shows no Add button for a preset whose sign-in refuses Besidka', async () => {
+    const wrapper = await mountSuspended(PresetCard, {
+      props: { preset: vercel, isAdded: false, isBusy: false },
+    })
+
+    expect(wrapper.find('[data-testid="connector-preset-add-vercel"]').exists())
+      .toBe(false)
+    expect(wrapper.get('[data-testid="connector-preset-unavailable"]').text())
+      .toBe('Sign-in not available for Besidka yet')
   })
 })
