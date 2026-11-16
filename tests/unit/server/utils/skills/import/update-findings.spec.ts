@@ -13,7 +13,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 })
 
 const { findNewFindings } = await import(
-  '~~/server/utils/skills/import/update-check'
+  '~~/server/utils/skills/versions/new-findings'
 )
 
 const LONG_PREFIX = `${'Reference text. '.repeat(10)}See `
@@ -41,7 +41,7 @@ describe('findNewFindings', () => {
   })
 
   it('counts a change in the tail of a long URL as new', async () => {
-    const base = `https://example.com/${'a'.repeat(200)}`
+    const base = `https://example.com/${'a-'.repeat(100)}`
     const { before, after } = maps(`${base}x\n`, `${base}y\n`)
 
     expect(await findNewFindings(before, after)).toHaveLength(1)
@@ -88,7 +88,7 @@ describe('findNewFindings', () => {
     expect(found.map((finding) => {
       return `${finding.path}:${finding.rule}`
     })).toEqual([
-      'c.md:injection-ignore-previous',
+      'c.md:injection-override',
       'a.md:url',
       'c.md:url',
     ])

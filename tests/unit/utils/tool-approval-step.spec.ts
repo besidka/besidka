@@ -10,8 +10,10 @@ import {
   getApprovalReasonText,
   getApprovalSourceLabel,
   getApprovalStepModel,
+  getApprovalStepSummaryLine,
   getApprovalStepTitle,
   getApprovalSummaryLine,
+  getBesidkaAlwaysConfirmText,
   isApprovalInputShortened,
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
@@ -61,10 +63,12 @@ describe('getApprovalStepModel', () => {
       toolCallId: 'call-1',
       toolName: 'mcp__linear__create_issue',
       connectorSlug: 'linear',
+      isBesidka: false,
       tool: 'create_issue',
       reason: 'always-ask',
       summary: 'Linear wants to run mcp__linear__create_issue',
       rememberOptions: ['once'],
+      preview: '',
       input: { title: 'Bug' },
       partState: 'approval-requested',
       approved: null,
@@ -228,6 +232,18 @@ describe('approval copy', () => {
       .toBe('Save to memory')
     expect(getApprovalStepTitle({ ...native, tool: 'besidka__x' }, undefined))
       .toBe('Run besidka__x')
+    expect(getApprovalStepTitle(
+      { ...native, tool: 'run_skill_scripts' },
+      undefined,
+    )).toBe('Run skill scripts')
+  })
+
+  it('keeps the scripts summary as the line under the title', () => {
+    expect(getApprovalSummaryLine(
+      'Run scripts from data-report in Anthropic\'s container on your key?',
+    )).toBe(
+      'Run scripts from data-report in Anthropic\'s container on your key?',
+    )
   })
 
   it('hides summaries that only restate the title', () => {
@@ -248,9 +264,58 @@ describe('approval copy', () => {
       .toBe('Because it would use a different connector')
     expect(getApprovalReasonText('always-ask', ''))
       .toBe('Changes or deletes data')
+    expect(getApprovalReasonText('consent', ''))
+      .toBe('Uploads the skill to your Anthropic workspace')
     expect(getApprovalReasonText('default', ''))
       .toBe('Runs only after you allow it')
   })
+
+  it('titles a Besidka step with its server-written summary', () => {
+    const besidkaPart = {
+      type: 'tool-besidka__delete_chats',
+      toolCallId: 'call-b',
+      state: 'approval-requested',
+      input: { slugs: ['01HZX'] },
+      approval: { id: 'approval-b' },
+    }
+    const besidka = getApprovalStepModel(besidkaPart, new Map([[
+      'call-b',
+      approvalData({
+        toolCallId: 'call-b',
+        toolName: 'besidka__delete_chats',
+        summary: 'Delete 1 chat: 01HZX',
+      }),
+    ]]))!
+
+    expect(besidka).toMatchObject({
+      isBesidka: true,
+      connectorSlug: null,
+      tool: 'delete_chats',
+    })
+    expect(getApprovalStepTitle(besidka, undefined))
+      .toBe('Delete 1 chat: 01HZX')
+    expect(getApprovalStepSummaryLine(besidka)).toBe('')
+    expect(getApprovalStepTitle({ ...besidka, summary: '' }, undefined))
+      .toBe('Besidka wants to delete chats')
+    expect(getApprovalStepSummaryLine(model)).toBe('')
+    expect(getBesidkaAlwaysConfirmText('list_projects'))
+      .toMatch(/^Always allow Besidka to list projects\? /)
+  })
+
+  it('names the user\'s Besidka data as the source after a Besidka read',
+    () => {
+      expect(getApprovalSourceLabel([
+        {
+          type: 'tool-besidka__list_files',
+          toolCallId: 'call-0',
+          state: 'output-available',
+          input: {},
+          output: 'framed',
+        },
+        connectorPart(),
+      ] as unknown as UIMessage['parts'], 1, new Map()))
+        .toBe('your Besidka data')
+    })
 
   it('finds the source of untrusted content before the call', () => {
     const parts = [

@@ -41,6 +41,21 @@
           {{ statusBadge.label }}
         </span>
         <span
+          v-if="skill.highlightCount > 0"
+          class="badge badge-soft badge-warning badge-sm"
+          data-testid="skill-row-highlights"
+        >
+          {{ skill.highlightCount }} to look at
+        </span>
+        <span
+          v-if="skill.hasScripts && skill.allowScripts"
+          class="badge badge-soft badge-sm"
+          :title="scriptsBadgeTitle"
+          data-testid="skill-row-scripts"
+        >
+          Scripts on
+        </span>
+        <span
           v-if="skill.pendingVersion !== null"
           class="badge badge-soft badge-info badge-sm"
           data-testid="skill-row-pending"
@@ -205,6 +220,12 @@ const isMounted = shallowRef<boolean>(false)
 
 const canCheckForUpdates = computed<boolean>(() => {
   return props.skill.sourceKind === 'github' && props.canImportFromUrl
+})
+
+const scriptsBadgeTitle = computed<string>(() => {
+  return props.skill.scriptsUploaded
+    ? 'Uploaded to your Anthropic workspace. Turning scripts off deletes it.'
+    : 'Uploaded to your Anthropic workspace the first time you allow it in a chat.'
 })
 
 const statusBadge = computed<{ label: string, class: string } | null>(() => {

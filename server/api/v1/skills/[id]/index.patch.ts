@@ -41,6 +41,7 @@ export default defineEventHandler(async (event) => {
         ? {}
         : { argumentHint: changes.argumentHint?.trim() || null }),
     },
+    licenseAcknowledged: changes.licenseAcknowledged,
     logger,
   })
 })

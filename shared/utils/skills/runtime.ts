@@ -9,6 +9,14 @@ export const SKILL_TOOL_NAMES = [
 
 export type SkillInvocationSource = 'menu' | 'text'
 
+export const SKILL_ACTIVATION_SOURCE_PROJECT = 'project'
+
+export const SKILL_ACTIVATION_SOURCE_JEV = 'jev'
+
+export type SkillActivationSource
+  = | typeof SKILL_ACTIVATION_SOURCE_PROJECT
+    | typeof SKILL_ACTIVATION_SOURCE_JEV
+
 export interface SkillInvocationPartData {
   skillId: string
   name: string
@@ -17,6 +25,7 @@ export interface SkillInvocationPartData {
 
 export interface SkillActivationPartData extends SkillInvocationPartData {
   activatedAt?: string
+  source?: SkillActivationSource
 }
 
 export interface DataSkillInvocationPart {
@@ -79,6 +88,7 @@ export function toSkillInvocationPart(
 export function toSkillActivationPart(
   data: SkillInvocationPartData,
   activatedAt: string = new Date().toISOString(),
+  source?: SkillActivationSource,
 ): DataSkillActivationPart {
   return {
     type: SKILL_ACTIVATION_PART_TYPE,
@@ -87,8 +97,39 @@ export function toSkillActivationPart(
       name: data.name,
       version: data.version,
       activatedAt,
+      ...(source ? { source } : {}),
     },
   }
+}
+
+/**
+ * An activation that came from a project pin, not from the model or the
+ * user. It only drives the step in the reasoning list: it is never read back
+ * as a skill the chat keeps active, because the pin is read again on every
+ * send and a removed pin must stop applying.
+ */
+export function isProjectSkillActivationPart(part: unknown): boolean {
+  return isDataSkillActivationPart(part)
+    && part.data.source === SKILL_ACTIVATION_SOURCE_PROJECT
+}
+
+/**
+ * An activation of a skill TypeSafe AI picked for one message. Like a project
+ * pin it only drives the step in the reasoning list: a pick applies to that
+ * send only, so a wrong one never stays active for the rest of the chat, and
+ * the next send may pick it again if it still fits.
+ */
+export function isJevSkillActivationPart(part: unknown): boolean {
+  return isDataSkillActivationPart(part)
+    && part.data.source === SKILL_ACTIVATION_SOURCE_JEV
+}
+
+/**
+ * An activation that is shown as a step but never read back as a skill the
+ * chat keeps active: a project pin or a TypeSafe AI pick.
+ */
+export function isTransientSkillActivationPart(part: unknown): boolean {
+  return isProjectSkillActivationPart(part) || isJevSkillActivationPart(part)
 }
 
 export function findSkillInvocation(

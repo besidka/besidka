@@ -52,6 +52,7 @@ command below is for the operator, preview first.
 | Spec objects written in the window | No row, no owner | Medium (privacy) | No |
 | Skills disabled, deleted or pruned in the window (`skills`, `skill_versions`, `skill_files`) | Rows return as they were at B, often enabled; their blobs in R2 stay gone, so a restored skill reads `broken` | High (a disabled skill is live instruction text again) | No |
 | Skill blobs written in the window | No `skill_files` row references them | Low (privacy) | Yes (the hourly sweep, after one hour) |
+| Project skill pins added, changed or removed in the window (`project_skills`) | A removed pin returns; a pin of a deleted skill or project returns but loads nothing | Low (a pin only loads an enabled, ready skill, and skills are disabled after a restore) | No |
 | Connectors deleted, disconnected or disabled in the window (`connectors`, `connector_tool_settings`, `connector_chat_settings`) | Rows return as they were at B, often enabled, with their consent columns | High (a switched-off data channel to a third-party server is open again) | No |
 | Connector credentials revoked in the window (`connector_credentials`) | Encrypted access and refresh tokens and header values return, usable again; the provider may or may not have revoked them | **High (a revoked credential works again)** | No |
 | `connector_tool_calls` audit rows | Rolled back, so the window's calls vanish from the audit trail; rows older than the retention that the sweep deleted return | Medium | Yes (the 90-day sweep) |
@@ -342,6 +343,17 @@ just stale data.
   the user notice (step 7): users re-enable the skills they want. Slash and
   model toggles (`slash_command`, `model_invocable`) are settings, stay as
   they are and do nothing while `enabled` is 0.
+- **Provider copies.** With `skills.scripts`, a skill row can hold the id of
+  a copy in the user's Anthropic workspace (`provider_skill_id`). A restore
+  can bring back an id Besidka already deleted (the delete then answers 404,
+  which counts as gone) and can leave a copy uploaded in the window without
+  an id (the user removes it in the Anthropic Console, under Skills). Neither
+  is a Besidka-side exposure; say so in the user notice for users who allowed
+  scripts. The same holds for a failed account purge: the purge is best
+  effort for the provider copies (it logs only the counts), so a copy that
+  could not be deleted stays in the user's own Anthropic workspace, which the
+  user controls, until the user deletes it in the Anthropic Console. A single
+  skill delete, by contrast, is refused while its copy cannot be deleted.
 - **Deletions come back as rows without blobs.** A skill deleted in the
   window (or with its account) returns with its rows while its blobs under
   `user-skills/` are gone. Replay the deletes from Axiom
@@ -368,6 +380,18 @@ just stale data.
   opened. Only the current and pending versions are used at runtime, and the
   newest 20 versions are kept, so the diff above decides whether the skill
   itself is affected.
+- **Project skills.** `project_skills` (`server/db/schemas/project-skills.ts`,
+  no foreign key, `AUTOINCREMENT`) rolls back with the rest. A pin the user
+  removed in the window comes back, and so does a pin of a skill or a project
+  deleted in the window, pointing at a row that no longer exists. The runtime
+  joins `project_skills` to `skills` for the same user, so a pin without its
+  skill or project loads nothing and needs no repair. A restored always-load
+  pin of a skill that comes back is held by the `UPDATE skills SET enabled = 0`
+  above: the pin is read on every send but only loads an enabled, `ready`
+  skill, so the user chooses again. Add the table to the `sqlite_sequence`
+  record of step 0, and replay project and skill deletes from Axiom
+  (`attributes.skills.projectPinsDeleted`, `attributes.skills.cleanup`) to
+  delete the restored pin rows too.
 - **Per-chat choices.** `skill_chat_settings` rows of chats deleted in the
   window return with a chat id that no longer exists. They do nothing and
   disappear with the account purge; no repair is needed.

@@ -10,6 +10,7 @@ const ARTIFACTS_RUNTIME_INSPECTOR_PORT
 const WEBKIT_SPECS = [
   /new-chat-navigation\.spec\.ts/,
   /artifact-panel-share\.spec\.ts/,
+  /tools-menu\.spec\.ts/,
 ]
 const WEBKIT_PROJECTS = process.env.E2E_WEBKIT
   ? [

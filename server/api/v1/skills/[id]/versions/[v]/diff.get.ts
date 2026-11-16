@@ -11,6 +11,8 @@ import {
 /**
  * What changes if version `v` replaces the current version (or `?against=`
  * another): per-file `+` and `-` lines, at most 2,000 lines and 50 files.
+ * With `?changes=true` it also lists what a reviewer should re-read: new
+ * highlights, new hosts, changed settings and new scripts.
  */
 export default defineEventHandler(async (event) => {
   const { userId } = await requireSkillsSession(event)
@@ -27,5 +29,6 @@ export default defineEventHandler(async (event) => {
     skillId: readSkillIdParam(event),
     version: readVersionParam(event),
     against: query.against,
+    includeChanges: query.changes === 'true',
   })
 })

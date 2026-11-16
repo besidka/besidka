@@ -219,13 +219,17 @@
       :selected-ids="composerConnectors.selectedIds.value"
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
+      :besidka="besidkaPickerRow"
+      :are-connectors-available="composerConnectors.isFeatureActive.value"
       @toggle="composerConnectors.toggle"
+      @toggle-besidka="composerBesidkaTools.toggle"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"
       v-model:open="isSkillPickerOpen"
       :items="composerSkills.items.value"
       :selected-id="skillInvocation.invocation.value?.skillId ?? null"
+      :can-run-scripts="canRunSkillScripts"
       @pick="onSkillSelected"
     />
     <LazyChatTextFileModal
@@ -337,6 +341,7 @@ const {
 } = useChatInput()
 const codeExecutionFeature = useFeature('code-execution')
 const codeExecutionFilesFeature = useFeature('code-execution.files')
+const skillScriptsFeature = useFeature('skills.scripts')
 const { features: loadedFeatures } = useFeatures()
 const { ensureSendConsent } = useLegalConsent()
 const {
@@ -896,6 +901,12 @@ const isCodeExecutionRowVisible = computed<boolean>(() => {
   return isCodeExecutionAvailable.value && !isImageGenerationActive.value
 })
 
+const canRunSkillScripts = computed<boolean>(() => {
+  return skillScriptsFeature.value.active
+    && isCodeExecutionRowVisible.value
+    && selectedModelBillingProviderId.value === 'anthropic'
+})
+
 const isReasoningSectionVisible = computed<boolean>(() => {
   return (isReasoningSupported.value || isReasoningAlwaysOn.value)
     && !isDeepResearchModel.value
@@ -933,6 +944,9 @@ const composerSkills = useComposerSkills()
 const composerConnectors = useComposerConnectors(() => {
   return route.name === 'chats-slug' ? String(route.params.slug) : null
 })
+const composerBesidkaTools = useComposerBesidkaTools(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+})
 const skillInvocation = useComposerSkillInvocation()
 const skillPreview = useSkillPreview()
 const commandPicker = useTemplateRef<{
@@ -948,12 +962,26 @@ const isSkillAttachEnabled = computed<boolean>(() => {
   return composerSkills.isVisible.value && !isDeepResearchModel.value
 })
 
+const besidkaPickerRow = computed(() => {
+  if (!composerBesidkaTools.isAvailable.value) {
+    return null
+  }
+
+  return {
+    enabled: composerBesidkaTools.isEnabled.value,
+    isSaving: composerBesidkaTools.isSaving.value,
+  }
+})
+
 const isConnectorsEnabled = computed<boolean>(() => {
-  return composerConnectors.isVisible.value
-    && isToolCallingSupported.value
-    && !isDeepResearchModel.value
-    && !isImageGenerationEnabled.value
-    && !isImageGenerationRequired.value
+  return (
+    composerConnectors.isVisible.value
+    || composerBesidkaTools.isAvailable.value
+  )
+  && isToolCallingSupported.value
+  && !isDeepResearchModel.value
+  && !isImageGenerationEnabled.value
+  && !isImageGenerationRequired.value
 })
 
 const commands = useComposerCommands({

@@ -2041,36 +2041,42 @@ quotes the behavior documented in 3.1 to 3.19, so re-check it when any of
 those change.
 
 TypeSafe AI Jev is an optional helper that runs on the user's own TypeSafe AI
-key. One key powers seven roles (`JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`).
-Saving the key is the opt-in: every role is then on, each has its own switch,
-and deleting the key stops all of them. No role can allow what a deterministic
+key. One key powers eight roles (`JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`).
+Saving the key is the opt-in: every role except Skill selection (J7, which
+spends the key on messages and so is off until switched on) is then on, each
+has its own switch, and deleting the key stops all of them. No role can allow what a deterministic
 rule refused, and no role can delete user content. Reading order of this
 section:
 
 1. **J0: foundation** - the shared client, settings, the one role table, the
    API every role uses.
 2. **Memory checks** - the first role, the add-only check on memory writes.
-3. **J1 to J6** - one section per role, in order: Auto web search, extraction
+3. **J1 to J7** - one section per role, in order: Auto web search, extraction
    pre-filter, prompt-injection screening, re-ranking, share check, past-chat
-   retrieval.
+   retrieval, skill selection.
 4. **Delta audit fixes (#560)** - the findings of the 2026-10-26 delta audit
    and where each one is described.
 5. **Legal and consent** - recipient, transfer basis and consent version.
 
 #### J0: foundation (shared client, settings, role table)
 
-The memory check (next section) is the first of seven roles that share one
+The memory check (next section) is the first of eight roles that share one
 client in `server/utils/jev/`. The same key powers all of them. Each role is
-assistive. Six of the seven fail toward what Besidka does without the key: when
-TypeSafe AI errors, times out or is rate-limited, the answer is the built-in
-behavior. The exception is `pastChatRetrieval` (J6), which fails toward
-acting: without a key it does not pre-search, but a Jev failure makes it
+assistive. Seven of the eight fail toward what Besidka does without the key:
+when TypeSafe AI errors, times out or is rate-limited, the answer is the
+built-in behavior (for `skillSelection`, J7, that is no change: the model
+still picks from the catalog). The exception is `pastChatRetrieval` (J6),
+which fails toward acting: without a key it does not pre-search, but a Jev failure makes it
 search. The "Failure direction" column below is the single statement of this
 for every role; each role's section repeats it in the same words.
 
 **Settings.** `user_settings.typesafe_roles` is a nullable JSON column. `null`
-means every role is on. A role is on unless it is explicitly `false`. With no
-TypeSafe AI key every role is off, whatever the column says. The roles are
+means every role is on, except the opt-in roles (`JEV_OPT_IN_ROLE_IDS`, today
+`skillSelection`). A role is on unless it is explicitly `false`; an opt-in
+role is on only when it is explicitly `true`, so `null`, `{}` and a missing id
+all mean off for it (`isJevRoleSwitchedOn`, used by the server and by the
+Smart checks toggles). With no TypeSafe AI key every role is off, whatever
+the column says. The roles are
 toggled on the Smart checks tab under "TypeSafe AI checks". The column is
 nullable with no SQL default, so the migration is a plain `ADD COLUMN`.
 
@@ -2092,10 +2098,11 @@ Constants are from `shared/utils/jev-policy.ts` unless a file is named;
 | `memoryChecks` | Memory checks | Entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only: it can block what the gate allowed, never allow what the gate blocked | Block at or above 0.5 (`MEMORY_JEV_SENSITIVE_THRESHOLD`), reject ungrounded below 0.5 (`MEMORY_JEV_GROUNDING_THRESHOLD`); at most 100 questions or 90,000 characters per call; source window 300 characters, source cap 9,000 (all in `server/utils/memory/jev-check.ts`) | 2,500 ms (`MEMORY_JEV_TIMEOUT_MS`) | Fails open to the built-in gate alone |
 | `autoWebSearch` | J1 | Only in the Auto web search mode, each message: the message and the last three turns, never-store removed. A URL, a domain, a recency phrase, an explicit request to search the web or a game-help phrase or a request for sources searches with no Jev call | Four questions in one call, search if any is at or above 0.2 (`searchAtOrAbove`): `w1_live` (live information), `w2_specific` (a particular game, book, film, series, historical event or article; `JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK`), `w3_practical` (practical real-world guidance; `JEV_AUTO_WEB_SEARCH_PRACTICAL`) and `w4_factual` (the catch-all for specific facts a model could misremember; `JEV_AUTO_WEB_SEARCH_FACTUAL`). All four share one false criterion, `JEV_AUTO_WEB_SEARCH_SELF_CONTAINED`; `recentTurns` 3; each turn capped at 4,000 characters (`JEV_SEND_PATH_MAX_TURN_CHARS`) | 800 ms | Searches, as without a key |
 | `extractionPrefilter` | J2 | Before memory is generated from a chat (opt-in extraction, backfill, project Refresh; never extract-now or import): chat text after never-store removal, in chunks. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | `e1_durable`: skip only when every piece scores below 0.4 (`skipBelow`); chunks of up to 8,000 tokens (`maxChunkTokens`) | 2,500 ms per call | Extracts as usual |
-| `injectionScreening` | J3 | Project knowledge files and notes (chunks of the extracted text) and the title and snippet of each Brave and Exa result fetched through Besidka, never-store removed. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | `i2_attack`: flag at or above 0.3 (`flagAtOrAbove`); chunks of 2,000 tokens; 3 concurrent calls; 24 calls per knowledge request; re-screen 10 items per sweep, 12 calls per item, 5 attempts, 14-day queue | 2,500 ms for knowledge, 800 ms for search results | Undecided text is used unscreened: search results are kept with no notice, knowledge is stored `ready` and queued for the hourly re-screen |
+| `injectionScreening` | J3 | Project knowledge files and notes (chunks of the extracted text) and the title and snippet of each Brave and Exa result fetched through Besidka, never-store removed. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked. Also the text of a skill under review (SS-8, `docs/skills.md` section 3.6): same role and toggle, its own five-question set `JEV_SKILL_SCREENING` with the thresholds of the SS-7 eval | `i2_attack`: flag at or above 0.3 (`flagAtOrAbove`); chunks of 2,000 tokens; 3 concurrent calls; 24 calls per knowledge request; re-screen 10 items per sweep, 12 calls per item, 5 attempts, 14-day queue | 2,500 ms for knowledge, 800 ms for search results | Undecided text is used unscreened: search results are kept with no notice, knowledge is stored `ready` and queued for the hourly re-screen |
 | `rerank` | J4 | Past-chat and project-knowledge search: the query and passages, never-store removed, each cut to about 300 tokens, up to 30 per search | Up to 30 candidates (`maxCandidates`); passages 300 tokens (`maxPassageTokens`); drop below 0.5 (`dropBelow`), and only while at least `limit` candidates remain | 800 ms | Original BM25 order |
 | `sharePiiCheck` | J5 | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks | `p1_personal`: warn at or above 0.3 (`warnAtOrAbove`); chunks of 25,000 tokens; request debounce 400 ms (`JEV_SHARE_CHECK_DEBOUNCE_MS`) | 1,500 ms | Detector warnings plus a generic "check before sharing" reminder; Generate untouched |
 | `pastChatRetrieval` | J6 | Sends where `search_chats` and `read_chat` are not registered (a model or gateway without tool calling, a forced `toolChoice`, or image generation), only while **Search and reference chats** is on, each message: the message and the last three turns, never-store removed. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts. A listed phrase searches with no Jev call | `s1_previous`: search at or above 0.25 (`preSearchAtOrAbove`); 3 hits; excerpts capped at 1,500 tokens; message 2,000 characters, each turn 600 | 800 ms | **Searches anyway** (the one role that fails toward acting). Without a key or with the role off: no pre-search |
+| `skillSelection` | J7 | **Opt-in, off until switched on.** Each message, only when the `skills` flag is on, the user attached or typed no skill, and a local BM25 prefilter over the names and descriptions of the user's Auto skills keeps at least one: the message (never-store removed) and, for each of at most three candidates, its name and description cut to 300 characters, in state keys `skill_<i>`. Skills already active in the chat or pinned to always load are not candidates. No candidate means no Jev call. A pick applies to that send only | Prefilter: floor `minScore` 1 (capped for few skills), at least 1 matched term, top 3 (`maxCandidates`). One question per candidate, `sel_<i>`: apply the best one at or above 0.6 (`applyAtOrAbove`); at most one skill per message. Rides in the Auto web search call when that call is made (`decideSendPathJev` `extra`), else one call of its own | 800 ms | No change: the model picks from the catalog as without a key. When the shared web search call fails or times out, Auto web search falls back to searching as before |
 
 **Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
 (for example `attributes.rerankJev`), with counts, scores, statuses and
@@ -2116,7 +2123,7 @@ so no raw `fetch` is needed. Fragile seams to re-check on every upgrade:
 - `providerOptions.typesafe.longContext` must stay off on the send path. The
   eval measured a p95 of 840 ms at 50k tokens, which breaks the 800 ms budget.
 
-**API for role PRs (J1-J6).** Every role builds on these; none of them
+**API for role PRs (J1-J7).** Every role builds on these; none of them
 throws on a Jev failure:
 
 - `resolveJevRoleModel({ db, userId, role, logger? })` in
@@ -2156,7 +2163,8 @@ throws on a Jev failure:
 (`null` or a partial role map). `PATCH` takes `typesafeRoles` as a strict
 partial map of booleans, merged into the stored object with SQLite
 `json_patch` in the same UPDATE, so two toggles saved at once cannot drop each
-other; `null` resets every role to on. The `memoryChecks` role is honored by
+other; `null` resets every role to its default (on, except the opt-in `skillSelection`,
+which goes off). The `memoryChecks` role is honored by
 `resolveMemoryJevChecker`.
 
 #### Memory checks (`memoryChecks`)
@@ -2521,8 +2529,16 @@ Besidka's behavior without a key.
   `unscreened` and queued. Searches are bounded by their 8 or 10 results.
 - **Logging.** `attributes.injectionScreeningJev`: status, calls, input
   tokens, latency, the maximum score per text, and counts
-  `knowledgeFlagged|Clean|Unscreened` or `searchFlagged|Clean|Unscreened`.
+  `knowledgeFlagged|Clean|Unscreened` `searchFlagged|Clean|Unscreened`, or the
+  `skill*` counts of the skill review check (`source: 'skill'`).
   Never text.
+
+**Skills (review screens, SS-8).** The same role and toggle also screen the
+text of a skill under review, automatically when an import, update or
+needs-review screen opens. It does not use `screenTextsForInjection`: it asks
+five questions per chunk (`JEV_SKILL_SCREENING`), is add-only, never shows
+"clean", and keeps its results in KV. Its thresholds come from the SS-7 eval.
+See `docs/skills.md` section 3.6.
 
 **Project knowledge (ingestion time).** `screenKnowledgeTexts`
 (`server/utils/knowledge/injection-screening.ts`) runs inside
@@ -2639,6 +2655,180 @@ into flagging a legitimate document can only cause a review prompt for a file
 (one click puts it back) or withhold one web result with a visible note. It
 can never delete content. A false negative leaves the existing defenses: the
 write lock, the data-not-instructions wrapping and the memory gate.
+
+#### SS-7: skill screening eval (BES-384, 2026-11-15)
+
+The check of a skill under review (SS-8, `JEV_SKILL_SCREENING` in
+`shared/utils/jev-policy.ts`, six questions `i2_attack` and `k1_send_out` to
+`k5_off_purpose`, state keys `text` and `description`) needed thresholds that
+fit skills, and an answer to whether `i2_attack` separates benign skills from
+malicious ones. This is the result. It is a proposal for SS-8, not a change:
+nothing here edits a policy constant. The raw results stay in the session
+scratchpad, as for the J3 eval of 2026-10-26.
+
+**Method.** One call per chunk of at most 2,000 tokens, cut as
+`splitTextWithLineRanges` cuts (the Cyrillic-aware estimate), with the
+question wordings of SS-8 verbatim: no exemption clause an attacker could
+claim, and no skill text in a question. `description` is the skill's real
+frontmatter description on every call, and each description is also sent once
+as its own chunk, as SS-8 does. The calls used the owner's TypeSafe AI key
+(`jev-1.14.0`), with no retries, 3 at a time. The never-store redaction was
+not applied.
+
+- **Benign set (196 chunks, 26 skills).** The 18 vendored `anthropics/skills`
+  folders at the pinned commit (all 51 `SKILL.md` chunks, 18 descriptions, a
+  seeded sample of 112 reference and script chunks: 55 `.md`, 40 `.py`,
+  6 `.html`, 3 `.xml`, 3 `.sh`, 2 `.js`, 3 license), the four Besidka
+  templates (files and descriptions), and four short hand-written Ukrainian
+  and Polish skills, two of them with a benign install or test command. The
+  50 to 100 popular public skills were **skipped**: choosing their sources
+  needs an owner decision, so the benign false-positive rates below come from
+  one vendor's skills and four templates.
+- **Malicious set (66 chunks, 28 patterns).** Every pattern of
+  `tests/fixtures/skills/attack-patterns.ts` (Snyk ToxicSkills categories,
+  Trail of Bits registry redirect and `.docx` pointer, Invariant `<IMPORTANT>`
+  block, Datadog dynamic context, hooks and tag smuggling), the Invariant
+  `~/.cursor/mcp.json` variant, and three off-purpose actions. Each is in a
+  plain and a benign-sounding corporate wording, six of them also in
+  Ukrainian and Polish. Each line sits inside a full-size host chunk (31
+  chunks of 1,500 tokens or more from real `SKILL.md` files), inside a whole
+  template `SKILL.md` (33) or as a description (2), so the same host without
+  the line is a paired negative in the benign set. Which questions each
+  pattern should trigger was written down before any call (26 patterns, 64
+  chunks are labeled; hidden tag text and `allowed-tools: Bash(*)` target no
+  question and count only in the "any question" figures).
+- **Rule, fixed before any score was looked at.** Thresholds 0.1 to 0.9. The
+  proposed `flagAtOrAbove` is the highest threshold that reaches the best
+  labeled recall among thresholds with at most 2% of benign chunks flagged
+  (5% for the low-severity `k5_off_purpose`).
+- **Budget.** 307 calls of the 500 allowed (262 single-chunk, 28 packed, 12
+  padding, 5 probes), 5 of which failed on purpose with `max_tokens_exceeded`
+  (see Padding). About
+  750,000 input tokens, about $0.03 at the published $0.042 per million input
+  tokens (a third-party figure, not checked against billing). The largest call
+  cost about $0.001.
+
+**Results per question.** Cells are labeled recall / benign chunks flagged /
+precision, all in percent. Recall counts malicious chunks labeled for that
+question; the benign rate is of 196 chunks; precision is the share of flagged
+chunks that are malicious in any way (so a `k4` hit on a `k1` attack still
+counts as a true positive). The positives per question are 12, 10, 10, 12, 22
+and 6, so a step of one chunk is 4.5 to 17 points of recall.
+
+| Question | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 |
+|---|---|---|---|---|---|---|---|---|---|
+| `i2_attack` | 91.7 / 23.5 / 55.8 | 91.7 / 4.6 / 84.7 | 91.7 / 2 / 92 | 91.7 / 0 / 100 | 83.3 / 0 / 100 | 83.3 / 0 / 100 | 66.7 / 0 / 100 | 66.7 / 0 / 100 | 25 / 0 / 100 |
+| `k1_send_out` | 90 / 8.7 / 62.2 | 90 / 2 / 86.7 | 90 / 1 / 91.7 | 90 / 0.5 / 94.1 | 90 / 0 / 100 | 80 / 0 / 100 | 80 / 0 / 100 | 70 / 0 / 100 | 50 / 0 / 100 |
+| `k2_conceal` | 100 / 9.7 / 63.5 | 100 / 3.6 / 70.8 | 100 / 2.6 / 72.2 | 100 / 1 / 83.3 | 100 / 0.5 / 90.9 | 100 / 0.5 / 90.9 | 100 / 0.5 / 90.9 | 90 / 0.5 / 90 | 60 / 0.5 / 85.7 |
+| `k3_secrets` | 100 / 3.6 / 73.1 | 91.7 / 1 / 85.7 | 83.3 / 0.5 / 91.7 | 83.3 / 0 / 100 | 83.3 / 0 / 100 | 83.3 / 0 / 100 | 75 / 0 / 100 | 58.3 / 0 / 100 | 41.7 / 0 / 100 |
+| `k4_run_remote` | 100 / 12.8 / 55.4 | 95.5 / 6.1 / 65.7 | 86.4 / 2.6 / 79.2 | 81.8 / 1.5 / 85.7 | 77.3 / 0.5 / 94.4 | 72.7 / 0 / 100 | 68.2 / 0 / 100 | 54.5 / 0 / 100 | 40.9 / 0 / 100 |
+| `k5_off_purpose` | 100 / 80.6 / 29.1 | 100 / 53.1 / 36.6 | 100 / 34.7 / 45.2 | 100 / 24.5 / 52.9 | 100 / 19.9 / 56.7 | 83.3 / 14.8 / 58 | 50 / 10.2 / 59.2 | 50 / 6.1 / 66.7 | 50 / 4.6 / 67.9 |
+
+Benign skills with at least one chunk flagged (of 26), by threshold 0.1 to
+0.9: `i2_attack` 27 / 12 / 12 / 0 / 0 / 0 / 0 / 0 / 0 percent, `k1_send_out`
+12 / 4 / 4 / 4 / 0 / 0 / 0 / 0 / 0, `k2_conceal` 27 / 15 / 15 / 8 / 4 / 4 / 4
+/ 4 / 4, `k3_secrets` 4 / 4 / 4 / 0 (then 0), `k4_run_remote` 31 / 19 / 12 /
+8 / 4 / 0 (then 0), `k5_off_purpose` 89 / 58 / 54 / 42 / 38 / 31 / 31 / 12 / 8.
+
+**Proposed `flagAtOrAbove`** (the rule above; bump `questionSetVersion` to 2
+with them, which also retires the chunk cache):
+
+| Question | Today | Proposed | Labeled recall | Benign chunks flagged | Note |
+|---|---|---|---|---|---|
+| `i2_attack` | 0.3 | **0.4** | 91.7% | 0 of 196 | 0.3 flags 4 benign chunks (2%, 3 skills); the highest benign score is 0.34 |
+| `k1_send_out` | 0.5 | **0.5** | 90% | 0 | unchanged; 0.2 to 0.5 give the same recall |
+| `k2_conceal` | 0.5 | **0.7** | 100% | 1 (0.5%) | a tie-break: 0.5 to 0.7 give the same recall and benign rate; the one benign hit scores 0.9 |
+| `k3_secrets` | 0.5 | **0.2** | 91.7% | 2 (1%) | rests on one chunk: 0.4 to 0.6 keep 83.3% with no benign flag; the two hits are Claude API managed-agents onboarding guides |
+| `k4_run_remote` | 0.5 | **0.4** | 81.8% | 3 (1.5%) | the hits are real install scripts and guides |
+| `k5_off_purpose` | 0.7 | **0.9** | 50% | 9 (4.6%) | weak, see below |
+
+The scores move by about 0.05 between runs of the same text (the three
+padding baselines), so a threshold inside a plateau is as good as its
+neighbor and the proposals are not precise to the second decimal.
+
+**Whole check.** Counting a chunk as flagged when any question fires, at the
+proposed thresholds: the placeholders flag 89.4% of the 66 malicious chunks
+and 13.3% of benign chunks (11 of 26 skills); the proposals flag 89.4% and
+7.7% (5 skills); without `k5_off_purpose` 87.9% and 3.1% (6 chunks, 3
+skills). By wording, any-question recall is 89% plain, 85% corporate and 100%
+Ukrainian and Polish (6 chunks each), and 90% in full-size hosts against 88%
+in template hosts. Missed: the corporate `hooks:` line, the corporate `.docx`
+pointer, tag smuggling and
+`allowed-tools: Bash(*)` (no question covers them, the deterministic rules
+do), and some of the off-purpose actions.
+
+**Decision: keep `i2_attack` for skills, at 0.4.** The fear that an
+instruction-heavy skill trips it was not borne out: the highest benign score
+is 0.34, and 0 of 196 benign chunks flag at 0.4. It is also the only question
+that catches the pure prompt injections (11 of the 12 labeled `i2_attack`
+chunks are missed by `k1` to `k4` together, and `i2_attack` catches 10 of
+them): without it, `k1` to `k4` alone reach 65.2% any-question recall against
+87.9% with it, with the same 3.1% of benign chunks flagged. Keep `k1` to `k4`
+beside it.
+
+**`k5_off_purpose` is not a good mark.** It reads both `text` and
+`description`, and fires on 10% of benign chunks and 31% of benign skills at
+the current 0.7. At 0.9 it still flags 9 benign chunks, all Python
+helper scripts of the `docx` and `xlsx` skills, for 3 true hits of 6. It adds
+1.5 points of recall for 4.6 points of benign flags. Proposal: 0.9, and never
+on `script` files, or drop it from the default marks; with 6 positives the
+evidence is thin either way.
+
+**Decision: no packed calls (no phase 2).** Packing 4 or 8 chunks in one call
+(state keys `text_1` to `text_8` and `description_1` to `description_8`, six
+questions per chunk with the keys renamed, 28 calls, 36 malicious and 108
+benign chunks that had also been scored singly): any-question recall on the
+same malicious chunks fell from 88.9% to 77.8% (11 points, the rule allowed
+5), and the benign rate went from 5.6% to 6.5%. The loss was 4 of 36 malicious
+chunks (the corporate off-purpose action, the dynamic-context fence, the plain
+`.docx` pointer and the corporate role hijack) with none gained; on benign
+chunks 4 flags went away and 5 appeared (net +1). Per question the positives
+are 3 to 14, so the figures are rough, and four chunks is a small base, but
+the direction held: `i2_attack`
+83% to 50%, `k2_conceal` 100% to 83%, `k5_off_purpose` 50% to 25%, `k1` and
+`k4` unchanged, `k3_secrets` 86% to 100%, and the mean absolute score change
+was 0.02 to 0.08. The
+saving is real (a pack of 4 full chunks, about 8,000 input tokens, took 0.2
+to 0.4 s; the cost per call is far below the call limit), but single-chunk
+calls already stay inside the timeout, so the recall loss buys nothing.
+
+**Latency.** For the 112 chunks of 1,800 tokens or more, run 3 at a time from
+a Mac (not from a Worker): p50 186 ms, p95 235 ms, maximum 396 ms, none over
+the 2,500 ms timeout (all 262 single calls: p95 237 ms). A pack of 8 took
+up to 276 ms. A 15,000-token call took 0.2 to 0.4 s and a 24,000-token call
+0.3 to 0.5 s.
+
+**Padding.** Three attacks (`injection-override`, `fetch-pipe-run`,
+`important-block`, plain, in full-size hosts) were prefixed with 100,000
+newlines (about 30,000 estimated, 15,000 real tokens). Through the chunker the
+padding disappears: the whitespace-only chunks are dropped. For two of the
+three attacks the chunk that remains is byte-identical to the unpadded one;
+for `important-block` the host sits at the cap, so the chunker cut it into
+1,920 and 83 tokens and the attack stayed in the first. In all three the
+scores stayed within 0.06 of the single-call baseline. Sent as one call, the
+same padded text also still scored (`i2_attack` 0.81, `k4_run_remote` 0.82,
+`k2_conceal` 0.92 against 0.83, 0.87, 0.94 unpadded), because newlines cost
+few tokens. Prose padding of 24,000 real tokens, sent as one call, did dilute:
+`i2_attack` fell from 0.83 to 0.66 and `k4_run_remote` from 0.87 to 0.74,
+while `k2_conceal` and `k3_secrets` on the `important-block` attack stayed
+near 0.8. Every attack still cleared its proposed threshold, but the margin
+shrinks as padding grows. The model refuses a larger call: 41,000 estimated
+tokens and above returned HTTP 400 `max_tokens_exceeded` (the limit lies
+between 24,000 and 41,000 tokens), which Besidka would count as a failed call.
+So an unchunked skill file either fails or is diluted, and chunking at 2,000
+tokens is the defense; a padded attack can no longer hide its chunk.
+
+**Limits of this eval.** One vendor's skills and four templates stand in for
+benign skills, so the false-positive rates are a floor (the public-skill set
+was skipped for the missing source choice); the 66 malicious chunks are
+synthetic, written from published patterns, and a real attacker can try
+wordings that none of them is; with 6 to 22 positives per question and 196
+benign chunks, 2% is 4 chunks and the rule cannot resolve smaller
+differences; 19 of the 66 malicious chunks sit at the 2,000-token edge because
+a line was added to a near-full host, so SS-8's chunker would cut their last
+lines into a second chunk while the eval scored them whole; latency was
+measured from a Mac; and the cost figure uses a
+published price. Re-tune on real traffic, as for the other roles.
 
 #### J4: Re-ranking (`rerank`)
 
@@ -2892,6 +3082,213 @@ generation) while **Search and reference chats** is on in the settings.
   for a model without tool calling that uses its built-in search in Auto. The
   merge, one shared state and one `decideSendPathJev` call, is described under
   "J6 seam" in J1 and is not done.
+
+#### J7: Skill selection (`skillSelection`, S-14, BES-380, 2026-11-15)
+
+An optional helper that picks one of the user's Auto skills for a message and
+applies it, so a model that cannot call tools can still use a skill and a
+model that can does not have to notice it in the catalog. It is **opt-in**:
+unlike every other role it spends the user's key on messages, so it is off
+until the user switches it on ("no spend without consent"). The decision log
+for the skills runtime is `docs/skills.md` section 5.9.
+
+**Off by default, in code.** `JEV_OPT_IN_ROLE_IDS` lists the roles that need
+`typesafe_roles.<role> === true`. `isJevRoleSwitchedOn` is the one function the
+server (`isJevRoleEnabled`) and the toggles (`useTypesafeRoles`) read, so a
+`null` column, `{}` and a missing id are all off for it, and a settings PATCH
+of `null` ("reset") turns it off. No migration: the toggle lives in the
+existing nullable JSON column. MCP cannot change it (`update_settings` has no
+role field). The toggle sits with the others in the "TypeSafe AI checks"
+section of the Smart checks tab (`/profile/keys?tab=memory-checks`), with a
+short cost note. The row, and the sentence about it in the tab's intro, show
+only while the `skills` feature is active for the user (`feature: 'skills'` on
+the role copy), so nobody sees a setting for something they cannot use yet.
+
+**Order of gates, cheapest first** (`prepareSkillSelection`,
+`server/utils/skills/jev/selection.ts`, called once before Auto web search):
+
+1. Nothing for a resume, an empty message, or a message that already carries
+   a skill the user attached or typed (`findSkillInvocation`). It never runs
+   while typing: only a send reaches it.
+2. The `skills` flag (memoized per request: no extra read).
+3. `resolveJevRoleModel({ role: 'skillSelection' })`: the key and the role
+   switch. Without a key or with the role off: nothing else is read, so the
+   skills catalog is never read for the selector (one key read at most).
+4. The user's Auto skills (`listCatalogSkills`, enabled, model-invocable, not
+   broken), handed on to `prepareSkillsForSend` as `preloadedCatalogSkills` so
+   the catalog is not read twice, minus skills already active in this chat
+   (`collectActivatedSkillIds`: an activation of a skill the model or the user
+   applied, S-3 re-injects it anyway; a stored project-pin or TypeSafe AI
+   activation does not count) and skills pinned to the chat's project at the
+   always level (they load every send). Prefer pins stay candidates.
+5. The local prefilter. No candidate: no Jev call and nothing logged.
+
+The key read is not shared with the `autoWebSearch` role: each role reads its
+key and settings itself (two small D1 reads each), which keeps the roles
+independent.
+
+**Prefilter** (`server/utils/skills/jev/prefilter.ts`). MiniSearch BM25 over
+the stemmed name and description of each skill (the same stemmer and
+`STOP_WORDS` as the knowledge search, plus a short list of English filler
+words such as "this", "between" and "make"); the query is the message's
+distinct terms, at most 24. A skill stays when its score is at least
+`prefilter.minScore` (1) and at least `minMatchedTerms` (1) distinct term hit
+it, and the best `maxCandidates` (3) go on. The floor is a BM25 score, which
+falls with the number of skills, so `resolveSkillMinScore` caps it at 60% of
+the best score one rare term can reach (so one or two skills still work).
+Nothing leaves the process.
+
+**Questions** (`server/utils/skills/jev/questions.ts`, the pattern of
+`rerank.ts`). One state key per candidate, `skill_<i>`, holding
+`name: description` (whitespace collapsed, never-store removed, cut to
+`maxCatalogLineChars`, 300), and one boolean question `sel_<i>`
+(`JEV_SKILL_SELECTION.task`: "Does `message` ask for the kind of work that
+`skill_<i>` describes?") that only names its key. A description is third-party
+text, so no skill text ever sits in an instruction or a criterion; the ids
+cannot collide with `w1_live` to `w4_factual` or the rerank `c<i>`.
+
+**One call.** `decideSendPathJev` takes an optional `extra: { state,
+questions }` that it merges under the base keys. When Auto web search makes
+its call (Auto mode, a chosen search provider, no forced search, no reused
+decision), the skill questions ride in it and `resolveAutoWebSearch` hands the
+raw result back as `jevResult`, so the role adds no HTTP call
+(`calls: 0`, `shared: 1` in the log). Otherwise `resolveSkillSelection` makes
+its own single call with `{ message, recent_turns: [] }`, started after the
+replay and generation-in-progress guards (a replayed or duplicate send never
+spends) and awaited just before `prepareSkillsForSend`, so it overlaps the
+other pre-send work. Regenerate: a turn that already has a stored answer is
+replayed without running the model, so no selection runs; a send retried after
+a stopped or failed stream asks again and may pick again. A failed shared call is not repeated.
+**Deviation from the ticket:** past-chat retrieval (J6) does not use
+`decideSendPathJev` (`decidePastChatSearch` calls `jevDecide` with its own
+state), so on a send with no Auto web search call the skill check is one
+call, and on a model without tool calling with J6 on there are two calls
+that run in parallel. Merging J6 in needs its result before the pre-search
+and was left out.
+
+**Decision.** The best candidate scoring at or above
+`applyAtOrAbove` (0.6) wins; the earlier (better prefiltered) candidate wins a
+tie; at most one skill per message. A missing or non-finite answer is skipped.
+Any failure, the 800 ms timeout or no score at or above the threshold changes
+nothing: the model decides from the catalog, as without a key.
+
+**Injection.** `prepareSkillsForSend` takes the winner as `jevSelection` and
+treats it exactly like a skill attached with "+": the current version is
+loaded into a block appended to the latest user turn (never the system prompt,
+so the prompt cache is untouched), `holdsSkillText` is true so the memory
+write stays locked, the `activate_skill` tool answers "already active", and
+it works without tool calling. The wording differs: "Besidka matched the skill
+below to this message ..." (`SKILL_JEV_INVOCATION_INSTRUCTION`) and
+`invoked="jev"` in the tag, never "The user attached". Nothing is stored on
+the user message (no `data-skill-invocation` part, so no chip on the user's
+text). The send streams and persists a `data-skill-activation` part with
+`source: 'jev'` on the answer, which shows in the reasoning list as
+**"Applied skill · name"** (the step an attached Auto skill already has; no
+card in the reply). A pick applies to that send only: like a project pin, a
+`source: 'jev'` activation is skipped by `collectActivatedSkillIds` and
+`collectActivatedSkillNames` (`isTransientSkillActivationPart`), so it is not
+re-injected as `<active_skills>` on later sends and a false positive never
+persists; the next send may pick it again if it still fits. A skill that
+cannot be read is skipped with no error.
+
+**Logging.** `attributes.skillSelectionJev`: `status`, `calls`, `questions`,
+`inputTokens`, `latencyMs`, `counts` (`candidates`, `shared`, `applied`) and the
+scores, never text. `attributes.skills.selectedByJev` says a pick was injected.
+
+**Cost.** A call with up to three candidates is about 450 to 720 input tokens
+(see SS-14 below), about $0.00003 at the published $0.042 per million input
+tokens. Riding in the web search call adds about 270 tokens for three
+questions. The cost note on the toggle says "a small amount".
+
+**Legal.** This is an eighth TypeSafe AI role with a new purpose (choosing a
+skill from the message). The text for the owner's end-of-phase batch is in the
+S-14 pull request (DPIA 3.7a, the Art. 30 row 11a, the Privacy Policy tables
+and the key guide copy); this change edits none of them and schedules no
+notice.
+
+#### SS-14: skill selection eval (BES-380, 2026-11-15)
+
+The prefilter floor and the Jev threshold of J7 needed values, and a check
+that merging three more questions into the web search call does not shift
+its answers. A small synthetic run, like SS-7; the raw results stay in the
+session scratchpad.
+
+**Method.** 16 skills (14 English, one Ukrainian, one Polish, with realistic
+one-sentence descriptions), 34 filler skills only to grow the corpus for the
+prefilter, and 120 messages: 88 base (48 positives, three per skill, direct
+and paraphrased, three in Ukrainian or Polish; 40 negatives: 16 general, 16
+near-misses that share words with a skill but ask about the topic, 8 in other
+domains) and 32 hard (16 positives with little overlap or two acceptable
+skills, 16 negatives in the same domain asking for something else). The
+shipped wording, state builder and prefilter were bundled from the repo and
+run as is. Prefilter numbers are free and used the 88 base messages at corpus
+sizes of 3, 10, 16, 30 and 50 skills. Jev ran with the owner's TypeSafe AI key
+(`jev-1.14.0`), no retries, 3 at a time, never-store redaction not applied:
+**112 calls** of the 150 allowed (3 probes, 59 base messages with at least
+one candidate, 28 hard messages with candidates, 22 base messages again with
+the four web search questions merged in), 0 failed. The key was read only
+inside the scripts.
+
+- **Cost.** 81,673 input tokens and 5,845 output tokens in all, about $0.0034
+  at the published $0.042 per million input tokens (a third-party figure, not
+  checked against billing; output tokens are not priced). One candidate:
+  446 input tokens; three: 719; three plus the four web questions: 1,553, so
+  the web questions cost about 830 tokens and three skill questions about
+  270. The three-call probe stopped nothing: the dearest call was far below
+  the $0.01 limit.
+- **Latency** (from a Mac, 3 at a time, not from a Worker): p50 173 ms, p95
+  322 ms, max 388 ms over all 112; the merged calls p95 323 ms. The 800 ms
+  budget holds with margin.
+- **Merging does not change the skill answers.** The same 22 messages with
+  and without the four web questions: the largest skill score difference was
+  0.010.
+
+**Prefilter** (message found by name or description words only; the right
+skill must be in the top three; numbers from the shipped code, floor capped
+for few skills). The first run showed the floor alone does not
+separate: single-term matches score 2.4 to 6.4 for the right skill and 2.1 to
+7.1 for the wrong one at 16 to 50 skills, so the floor only removes terms that
+are in most descriptions, and the matched-term count is the real lever.
+
+| Corpus | minTerms 1: right skill in the top 3 / negatives that reach Jev | minTerms 2: right skill in the top 3 / negatives that reach Jev |
+|---|---|---|
+| 3 skills | 77% / 10% | 54% / 8% |
+| 10 | 81% / 33% | 54% / 15% |
+| 16 | 81% / 48% | 54% / 20% |
+| 30 | 77% / 53% | 54% / 23% |
+| 50 | 75% / 53% | 54% / 23% |
+
+Chosen: floor 1 (capped for few skills), one matched term. A paraphrase that
+shares no word with the description, or a message in another language than
+the description (a Ukrainian ask against an English description), is missed
+by design and left to the catalog. The cost is Jev calls on negatives, which
+are cheap: about half the negative messages of a user with 16 or more skills
+reach Jev (59% of the 56 negatives, hard ones included, at 16 skills). The ticket's "most messages cost nothing" holds for few skills and
+for messages that name no skill topic, not for a large library. Stop words:
+the English filler list was added after the first run showed "between",
+"before" and "this" admitting unrelated skills.
+
+**Jev threshold.** Scores are strongly bimodal. Of the 64 positives, 52 had
+an acceptable skill among the candidates (the other 12 were prefilter
+misses, 10 with no candidate at all): the lowest best score was 0.68 (a
+standup note with no keyword), all the others 0.93 to 0.99. Wrong candidates on positive messages scored at most
+0.38; the 51 candidates of the 33 negatives that reached Jev at most 0.15 (a new
+email next to `email-polish`, macOS release notes next to `release-notes`;
+0.06 on the base set). Every threshold from 0.2 to 0.65 gives the same
+decisions: 52 right skills applied, 0 wrong skills, 0 false applies on 56
+negatives (0 of 16 hard ones); at 0.7 the 0.68 is lost. **`applyAtOrAbove` is 0.6**, a precision bias: a skill applied by
+mistake stays active for the rest of the chat and locks memory writes, while
+a miss costs only the catalog fallback. The 0.68 is the thin spot and the
+reason not to go above 0.65.
+
+**Limits of this eval.** Synthetic messages and descriptions written by the
+author, mostly English; the set is easy for Jev (no score between 0.38 and
+0.68 on any candidate), so the plateau hides where the threshold truly sits
+and the margins on real traffic are unknown; 16 skills at most, with
+near-duplicates only in a handful of pairs (commit and pull request, cover
+letter and email); no skill with a long or vague description; the prefilter
+numbers measure vocabulary overlap and say nothing about quality of skills.
+Re-tune on real traffic (the logged scores are what to read).
 
 #### Delta audit fixes (#560)
 

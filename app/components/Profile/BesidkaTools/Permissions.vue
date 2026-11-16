@@ -34,6 +34,14 @@
         Choose what the model may do with your Besidka data in a chat.
         Needs approval asks you before each use.
       </p>
+      <p
+        v-if="isOverOfferLimit"
+        class="text-sm text-warning"
+        data-testid="besidka-tool-permissions-over-limit"
+      >
+        Only {{ BESIDKA_CHAT_TOOLS_MAX }} Besidka tools are offered per
+        message; block the ones you don't need.
+      </p>
       <section
         v-for="group in groups"
         :key="group.tier"
@@ -113,6 +121,7 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import {
+  BESIDKA_CHAT_TOOLS_MAX,
   BESIDKA_TOOL_MODE_LABELS,
   BESIDKA_TOOL_TIERS,
   BESIDKA_TOOL_TIER_DESCRIPTIONS,
@@ -129,6 +138,11 @@ import { getBesidkaToolGroupMode } from '~/utils/besidka-tool-permissions'
 
 const idPrefix = useId()
 const { tools, status, error, refresh, save } = useBesidkaToolPermissions()
+
+const isOverOfferLimit = computed<boolean>(() => {
+  return tools.value.filter(tool => tool.mode !== 'blocked').length
+    > BESIDKA_CHAT_TOOLS_MAX
+})
 
 const groups = computed(() => {
   return BESIDKA_TOOL_TIERS

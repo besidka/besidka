@@ -46,6 +46,37 @@ describe('collectActivatedSkillIds', () => {
     expect(ids).toEqual(['skl9', 'skl3', 'skl1', 'skl2'])
   })
 
+  it('never keeps a project activation active, as the pin is read per send', () => {
+    const projectActivation = {
+      type: 'data-skill-activation',
+      data: { skillId: 'skl4', name: 'pinned', version: 1, source: 'project' },
+    }
+
+    expect(collectActivatedSkillIds([
+      { role: 'assistant', parts: [projectActivation, activation('skl1')] },
+    ])).toEqual(['skl1'])
+    expect(collectActivatedSkillNames([
+      { role: 'assistant', parts: [projectActivation] },
+    ]).size).toBe(0)
+  })
+
+  it('never keeps a skill picked by TypeSafe AI active: a pick is for one send', () => {
+    const jevActivation = {
+      type: 'data-skill-activation',
+      data: { skillId: 'skl5', name: 'picked', version: 1, source: 'jev' },
+    }
+
+    expect(collectActivatedSkillIds([
+      { role: 'assistant', parts: [jevActivation, activation('skl1')] },
+    ])).toEqual(['skl1'])
+    expect(collectActivatedSkillIds([
+      { role: 'assistant', parts: [jevActivation] },
+    ])).toEqual([])
+    expect(collectActivatedSkillNames([
+      { role: 'assistant', parts: [jevActivation] },
+    ]).size).toBe(0)
+  })
+
   it('reads only assistant activations, never a user part', () => {
     expect(collectActivatedSkillIds([
       { role: 'user', parts: [activation('skl1')] },
@@ -109,6 +140,7 @@ describe('buildActiveSkillsBlock', () => {
     skillIds: string[],
     skipSkillIds?: Set<string>,
     skillNames?: Map<string, string>,
+    pinnedSkillIds?: Set<string>,
   ) {
     return buildActiveSkillsBlock({
       db: testDb.db,
@@ -117,6 +149,7 @@ describe('buildActiveSkillsBlock', () => {
       skillIds,
       skillNames,
       skipSkillIds,
+      pinnedSkillIds,
       family: 'anthropic',
     })
   }
@@ -178,6 +211,16 @@ describe('buildActiveSkillsBlock', () => {
     expect(result!.block).not.toContain('Asked body')
     expect(result!.block).toContain('Auto body')
     expect(result!.block).toContain('("asked-only")')
+  })
+
+  it('re-injects an Only when I ask skill that the project pins', async () => {
+    const asked = await seed('asked-pinned', 'Pinned asked body', {
+      modelInvocable: false,
+    })
+    const result = await build([asked], undefined, undefined, new Set([asked]))
+
+    expect(result!.activeSkillIds).toEqual([asked])
+    expect(result!.block).toContain('Pinned asked body')
   })
 
   it('names at most three gone skills, neutralized, and counts the rest', async () => {

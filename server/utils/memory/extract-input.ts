@@ -1,5 +1,6 @@
 import { isConnectorUsedMarker } from '#shared/utils/connectors-parts'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
+import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import type { UIMessage } from 'ai'
 import type {
   ComplianceBlockedCounts,
@@ -138,9 +139,10 @@ function memoryExtractionPartToolName(part: unknown): string | null {
 }
 
 /**
- * An assistant turn that read memory, other chats or a connector. Its text
- * quotes data the user did not write in this chat (stored memory, another
- * chat, a third party's records), so extraction skips it.
+ * An assistant turn that read memory, other chats, a connector or used a
+ * Besidka tool (`besidka__`). Its text quotes data the user did not write in
+ * this chat (stored memory, another chat, a third party's records, the
+ * user's other Besidka data), so extraction skips it.
  */
 export function isMemoryExtractionRecallMessage(row: {
   role: string
@@ -174,6 +176,7 @@ export function isMemoryExtractionRecallMessage(row: {
       && (
         RECALL_TOOL_NAMES.includes(toolName)
         || toolName.startsWith(CONNECTOR_TOOL_NAME_PREFIX)
+        || isBesidkaChatToolName(toolName)
       )
   })
 }

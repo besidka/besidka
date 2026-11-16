@@ -131,12 +131,21 @@ describe('useComposerSkills', () => {
       version: 4,
       mode: 'auto',
       command: null,
+      hasScriptsAllowed: false,
     })
     expect(toComposerSkillItem(createSkillSummary({
       id: 'y',
       name: 'two',
       command: 'two-cmd',
     }))).toMatchObject({ command: 'two-cmd' })
+    expect(toComposerSkillItem(createSkillSummary({
+      hasScripts: true,
+      allowScripts: true,
+    }))).toMatchObject({ hasScriptsAllowed: true })
+    expect(toComposerSkillItem(createSkillSummary({
+      hasScripts: true,
+      allowScripts: false,
+    }))).toMatchObject({ hasScriptsAllowed: false })
     expect(COMPOSER_SKILLS_SEARCH_MIN).toBe(8)
   })
 })

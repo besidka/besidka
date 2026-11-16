@@ -7,6 +7,7 @@ import type {
   SkillVersionOrigin,
 } from '#shared/utils/skills-policy'
 import type { SkillFinding } from '#shared/utils/skills/findings'
+import type { SkillChangedSetting } from '#shared/utils/skills/update-changes'
 import type {
   SkillFileDiff,
   SkillFileDiffStatus,
@@ -31,11 +32,15 @@ export interface SkillSummary {
   sourceVersion: string | null
   metadataVersion: string | null
   updateAvailable: { label: string, ref: string } | null
+  highlightCount: number
   currentVersion: number
   pendingVersion: number | null
   filesCount: number
   bytes: number
   allowScripts: boolean
+  hasScripts: boolean
+  scriptsProviderName: string | null
+  scriptsUploaded: boolean
   createdVia: SkillCreatedVia
   createdByClientId: string | null
   createdAt: string
@@ -103,9 +108,18 @@ export interface SkillFileTextResponse extends SkillFileSummary {
   text: string
 }
 
+export interface SkillVersionChanges {
+  newFindings: SkillFinding[]
+  newHosts: string[]
+  changedSettings: SkillChangedSetting[]
+  newScripts: string[]
+  isPartial: boolean
+}
+
 export interface SkillVersionDiffResponse {
   from: SkillVersionSummary
   to: SkillVersionSummary
+  changes: SkillVersionChanges | null
   diff: {
     files: SkillFileDiff[]
     added: number
@@ -174,6 +188,7 @@ export interface SkillImportPreview {
     fromRepositoryRoot: boolean
   }
   requiresLicenseAcknowledgement: boolean
+  jev?: 'available'
 }
 
 export interface SkillGithubPick {

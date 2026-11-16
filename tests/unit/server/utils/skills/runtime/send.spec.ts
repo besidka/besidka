@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryExtractionTestDb,
+  seedProject,
   seedUser,
 } from '../../../../../setup/helpers/memory-extraction-db'
 import type {
@@ -344,6 +345,119 @@ describe('prepareSkillsForSend', () => {
     expect(result.invocationBlock).toBeNull()
   })
 
+  describe('skill picked by TypeSafe AI', () => {
+    function selection(skillId: string, name: string) {
+      return { skillId, name, version: 1 }
+    }
+
+    it('injects the picked skill like an attachment, worded as Besidka\'s match', async () => {
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toContain('Besidka matched the skill')
+      expect(result.invocationBlock).not.toContain('The user attached')
+      expect(result.invocationBlock).toContain('invoked="jev"')
+      expect(result.invocationBlock).toContain('AUTO BODY hello')
+      expect(result.holdsSkillText).toBe(true)
+      expect(result.instructionBlock).not.toContain('AUTO BODY')
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          skills: expect.objectContaining({ selectedByJev: true }),
+        },
+      })
+    })
+
+    it('shows as a skill step but applies to this send only, not later ones', async () => {
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.streamActivations).toHaveLength(1)
+      expect(result.streamActivations[0]).toMatchObject({
+        type: 'data-skill-activation',
+        data: { skillId: autoId, version: 1, source: 'jev' },
+      })
+
+      const later = await prepare({
+        storedMessages: [
+          { role: 'assistant', parts: [result.streamActivations[0]!] },
+        ],
+      })
+
+      expect(later.activeSkillsBlock).toBeNull()
+      expect(later.invocationBlock).toBeNull()
+      expect(later.instructionBlock).not.toContain('AUTO BODY')
+      expect(later.instructionBlock).not.toContain('<active_skills>')
+    })
+
+    it('reads the preloaded catalog instead of the database', async () => {
+      const skills = await import('~~/server/utils/skills/runtime/load')
+      const listed = await skills.listCatalogSkills(testDb.db, userId)
+      const result = await prepare({
+        preloadedCatalogSkills: [],
+      })
+
+      expect(listed.length).toBeGreaterThan(0)
+      expect(result.toolsRegistered).toBe(false)
+      expect(result.instructionBlock).toBeNull()
+    })
+
+    it('marks the skill active for the tools, so activate_skill answers already active', async () => {
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.toolsRegistered).toBe(true)
+      expect(result.activeSkillsBlock).toBeNull()
+    })
+
+    it('works without tool calling', async () => {
+      const result = await prepare({
+        isToolCallingAllowed: false,
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.toolsRegistered).toBe(false)
+      expect(result.invocationBlock).toContain('AUTO BODY')
+    })
+
+    it('never overrides a skill the user attached', async () => {
+      const result = await prepare({
+        newMessageParts: [invocation(askId, 'ask-skill')],
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toContain('ASK BODY')
+      expect(result.invocationBlock).not.toContain('AUTO BODY')
+      expect(result.invocationBlock).toContain('The user attached')
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('skips a picked skill that cannot be read, without an error', async () => {
+      bucket.objects.clear()
+
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toBeNull()
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('does nothing for a skill that is no longer runnable', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ enabled: false })
+        .where(eq(schema.skills.id, autoId))
+
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toBeNull()
+    })
+  })
+
   it('sets the memory guard only through the tools, never at preparation', async () => {
     const guard = { untrustedResultSeen: false }
 
@@ -364,5 +478,180 @@ describe('prepareSkillsForSend', () => {
       skill: 'ask-skill',
       path: 'SKILL.md',
     }).success).toBe(true)
+  })
+
+  describe('project skills', () => {
+    let projectId: string
+    let position: number
+
+    async function pin(skillId: string, level: 'always' | 'prefer') {
+      await testDb.db.insert(schema.projectSkills).values({
+        projectId,
+        skillId,
+        userId,
+        level,
+        position: position++,
+      })
+    }
+
+    beforeEach(async () => {
+      projectId = await seedProject(testDb.db, userId)
+      position = 0
+    })
+
+    it('adds nothing for a project without pins', async () => {
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).not.toContain('<project_skills>')
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('loads an always skill in every send, also without tool calling', async () => {
+      await pin(askId, 'always')
+
+      const withTools = await prepare({ projectId })
+      const withoutTools = await prepare({
+        projectId,
+        isToolCallingAllowed: false,
+      })
+
+      for (const result of [withTools, withoutTools]) {
+        expect(result.instructionBlock).toContain('ASK BODY')
+        expect(result.activeSkillsBlock).toContain('ASK BODY')
+        expect(result.holdsSkillText).toBe(true)
+        expect(result.streamActivations).toEqual([
+          expect.objectContaining({
+            type: 'data-skill-activation',
+            data: expect.objectContaining({
+              skillId: askId,
+              source: 'project',
+            }),
+          }),
+        ])
+      }
+
+      expect(withoutTools.toolsRegistered).toBe(false)
+    })
+
+    it('keeps an always skill out of the catalog and registers no tools without one', async () => {
+      await pin(autoId, 'always')
+
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).toContain('AUTO BODY')
+      expect(result.instructionBlock).not.toContain('- auto-skill:')
+      expect(result.toolsRegistered).toBe(false)
+    })
+
+    it('lets the model read the files of an always skill when a catalog exists', async () => {
+      await pin(askId, 'always')
+
+      const result = await prepare({ projectId })
+      const readFile = result.tools.read_skill_file as unknown as {
+        inputSchema: { safeParse: (value: unknown) => { success: boolean } }
+      }
+      const activate = result.tools.activate_skill as unknown as {
+        inputSchema: { safeParse: (value: unknown) => { success: boolean } }
+      }
+
+      expect(result.toolsRegistered).toBe(true)
+      expect(result.instructionBlock).toContain('ASK BODY')
+      expect(result.instructionBlock).not.toContain('- ask-skill')
+      expect(readFile.inputSchema.safeParse({
+        skill: 'ask-skill',
+        path: 'SKILL.md',
+      }).success).toBe(true)
+      expect(activate.inputSchema.safeParse({ name: 'ask-skill' }).success)
+        .toBe(true)
+    })
+
+    it('lists a prefer skill first with the marker, even in Only when I ask', async () => {
+      await pin(askId, 'prefer')
+
+      const result = await prepare({ projectId })
+
+      expect(result.toolsRegistered).toBe(true)
+      expect(result.instructionBlock).not.toContain('ASK BODY')
+      expect(result.instructionBlock!.indexOf('- ask-skill (project\'s choice)'))
+        .toBeLessThan(result.instructionBlock!.indexOf('- auto-skill:'))
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('never loads an Off pinned skill', async () => {
+      const off = await seed('off-skill', 'OFF BODY', { enabled: false })
+
+      await pin(off, 'always')
+
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).not.toContain('OFF BODY')
+      expect(result.holdsSkillText).toBe(false)
+    })
+
+    it('lets the skill the user attached win over the same project pin', async () => {
+      await pin(askId, 'always')
+
+      const result = await prepare({
+        projectId,
+        newMessageParts: [invocation(askId, 'ask-skill')],
+      })
+
+      expect(result.invocationBlock).toContain('ASK BODY')
+      expect(result.instructionBlock).not.toContain('invoked="project"')
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('does not apply another project\'s pins', async () => {
+      const otherProject = await seedProject(testDb.db, userId)
+
+      await testDb.db.insert(schema.projectSkills).values({
+        projectId: otherProject,
+        skillId: askId,
+        userId,
+        level: 'always',
+        position: 0,
+      })
+
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).not.toContain('ASK BODY')
+    })
+
+    it('does not re-inject a project skill from stored project activations', async () => {
+      const result = await prepare({
+        projectId,
+        storedMessages: [{
+          role: 'assistant',
+          parts: [{
+            type: 'data-skill-activation',
+            data: {
+              skillId: autoId,
+              name: 'auto-skill',
+              version: 1,
+              source: 'project',
+            },
+          }],
+        }],
+      })
+
+      expect(result.activeSkillsBlock).toBeNull()
+    })
+
+    it('keeps an activated prefer skill active on the next send in Only when I ask', async () => {
+      await pin(askId, 'prefer')
+
+      const result = await prepare({
+        projectId,
+        storedMessages: [{
+          role: 'assistant',
+          parts: [{
+            type: 'data-skill-activation',
+            data: { skillId: askId, name: 'ask-skill', version: 1 },
+          }],
+        }],
+      })
+
+      expect(result.activeSkillsBlock).toContain('ASK BODY')
+    })
   })
 })

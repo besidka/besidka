@@ -5,6 +5,10 @@ import { z } from 'zod'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
+import {
+  SKILL_SCRIPTS_GATE_TOOL_NAME,
+  SKILL_SCRIPTS_GRANT_KEY,
+} from '#shared/utils/skills/scripts'
 import * as schema from '~~/server/db/schema'
 import { buildExposedToolName } from '~~/server/utils/connectors/tool-definitions'
 import {
@@ -84,13 +88,96 @@ function alwaysGrantItems(
     .map(setting => grantItem('always', connector, setting.toolName))
 }
 
+function besidkaGrantItem(
+  scope: ToolApprovalGrantItem['scope'],
+  toolName: string,
+): ToolApprovalGrantItem {
+  return {
+    scope,
+    connectorId: '',
+    connectorTitle: 'Besidka',
+    toolName,
+    source: 'besidka',
+  }
+}
+
+/**
+ * The Besidka approvals that apply in this chat: its "Allow in this chat"
+ * grants whose registry hash still matches, and, while the chat's Besidka
+ * row is on, every tool set to Always allow. Registry names only.
+ */
+async function listBesidkaGrantItems(
+  db: DbClient,
+  userId: number,
+  chatPublicId: string,
+): Promise<ToolApprovalGrantItem[]> {
+  const { readBesidkaChatSettings } = await import(
+    '~~/server/utils/besidka-tools/chat-settings'
+  )
+  const settings = await readBesidkaChatSettings(db, userId, chatPublicId)
+  const permissions = await import(
+    '~~/server/utils/besidka-tools/permissions'
+  )
+  const { listChatExposedBesidkaTools } = await import(
+    '~~/server/utils/besidka-tools/registry'
+  )
+  const { hashBesidkaChatTool, toBesidkaChatToolName } = await import(
+    '~~/server/utils/besidka-tools/chat-adapter'
+  )
+  const modes = await permissions.loadBesidkaToolPermissionModes(userId, db)
+  const items: ToolApprovalGrantItem[] = []
+
+  for (const besidkaTool of listChatExposedBesidkaTools()) {
+    const exposedName = toBesidkaChatToolName(besidkaTool.name)
+    const chatHash = Object.hasOwn(settings.alwaysAllowTools, exposedName)
+      ? settings.alwaysAllowTools[exposedName]
+      : null
+    const isAskEveryTime = besidkaTool.chat.tier === 'ask-every-time'
+
+    if (
+      chatHash
+      && !isAskEveryTime
+      && chatHash === await hashBesidkaChatTool(besidkaTool)
+    ) {
+      items.push(besidkaGrantItem('chat', besidkaTool.name))
+    }
+
+    if (
+      settings.enabled
+      && permissions.pickBesidkaPermissionMode(besidkaTool.name, modes)
+      === 'allow'
+    ) {
+      items.push(besidkaGrantItem('always', besidkaTool.name))
+    }
+  }
+
+  const scriptsHash = Object.hasOwn(
+    settings.alwaysAllowTools,
+    SKILL_SCRIPTS_GRANT_KEY,
+  )
+    ? settings.alwaysAllowTools[SKILL_SCRIPTS_GRANT_KEY]
+    : null
+
+  if (scriptsHash) {
+    items.push({
+      scope: 'chat',
+      connectorId: '',
+      connectorTitle: 'Skill scripts',
+      toolName: SKILL_SCRIPTS_GATE_TOOL_NAME,
+      source: 'besidka',
+    })
+  }
+
+  return items
+}
+
 /**
  * The approvals the user gave that still apply in this chat: "Allow in this
  * chat" grants of this chat, and "Always allow" grants of the connectors
- * this chat has on. A grant whose stored hash no longer matches the tool's
- * reviewed definition, or on a tool whose name now makes it always-ask, is
- * left out, because the send ignores it too. Only
- * names leave the server, never hashes.
+ * this chat has on, then the Besidka ones (`listBesidkaGrantItems`). A
+ * grant whose stored hash no longer matches the tool's reviewed definition,
+ * or on a tool whose name now makes it always-ask, is left out, because the
+ * send ignores it too. Only names leave the server, never hashes.
  */
 export async function listChatToolApprovalGrants(
   db: DbClient,
@@ -102,9 +189,10 @@ export async function listChatToolApprovalGrants(
     userId,
     chatPublicId,
   )
+  const besidkaItems = await listBesidkaGrantItems(db, userId, chatPublicId)
 
   if (chatSettings.length === 0) {
-    return []
+    return besidkaItems
   }
 
   const connectors = new Map((await listConnectors(db, userId))
@@ -137,7 +225,7 @@ export async function listChatToolApprovalGrants(
     }
   }
 
-  return items
+  return [...items, ...besidkaItems]
 }
 
 /**

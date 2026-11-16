@@ -102,6 +102,83 @@ async function mountMessage(
 const STEP = '[data-testid="reasoning-approval-step"]'
 
 describe('Chat/Reasoning approval steps', () => {
+  it('shows the skill scripts consent with its summary, reason and both buttons',
+    async () => {
+      const wrapper = await mountMessage([
+        approvalCall('1', {
+          type: 'tool-run_skill_scripts',
+          toolName: undefined,
+          input: {},
+        }),
+        approvalData('1', {
+          toolName: 'run_skill_scripts',
+          reason: 'consent',
+          summary: 'Run scripts from data-report in Anthropic\'s container '
+            + 'on your key?',
+          rememberOptions: ['once', 'chat'],
+        }),
+      ])
+      const step = wrapper.get(STEP)
+
+      expect(step.get('[data-testid="reasoning-approval-step-title"]').text())
+        .toBe('Run skill scripts')
+      expect(step.get('[data-testid="reasoning-approval-step-summary"]').text())
+        .toContain('Anthropic\'s container on your key?')
+      expect(step.get('[data-testid="reasoning-approval-step-reason"]').text())
+        .toBe('Uploads the skill to your Anthropic workspace')
+      expect(step.find('[data-testid="reasoning-approval-step-allow-once"]')
+        .exists()).toBe(true)
+      expect(step.find('[data-testid="reasoning-approval-step-allow-chat"]')
+        .exists()).toBe(true)
+      expect(step.find('[data-testid="reasoning-approval-step-allow-always"]')
+        .exists()).toBe(false)
+    })
+
+  it('shows a Besidka call with the Besidka mark and its summary as title',
+    async () => {
+      const wrapper = await mountMessage([
+        {
+          type: 'tool-besidka__list_projects',
+          toolCallId: 'call-read',
+          state: 'output-available',
+          input: {},
+          output: 'framed',
+        },
+        {
+          type: 'data-tool-grant',
+          id: 'grant-call-read',
+          data: {
+            toolCallId: 'call-read',
+            toolName: 'besidka__list_projects',
+            scope: 'always',
+          },
+        },
+        approvalCall('1', {
+          type: 'tool-besidka__delete_chats',
+          toolName: undefined,
+          input: { slugs: ['01HZX'] },
+        }),
+        approvalData('1', {
+          toolName: 'besidka__delete_chats',
+          summary: 'Delete 1 chat: 01HZX',
+        }),
+      ])
+      const step = wrapper.get(STEP)
+      const kinds = wrapper.findAll('[data-testid="reasoning-step-icon"]')
+        .map(icon => icon.attributes('data-kind'))
+
+      expect(step.get('[data-testid="reasoning-approval-step-title"]').text())
+        .toBe('Delete 1 chat: 01HZX')
+      expect(step.find('[data-testid="reasoning-approval-step-summary"]')
+        .exists()).toBe(false)
+      expect(step.get('[data-testid="reasoning-approval-step-reason"]').text())
+        .toBe('Changes or deletes data')
+      expect(kinds).toEqual(['besidka', 'besidka'])
+      expect(wrapper.text()).toContain('Besidka: list projects')
+      expect(wrapper.get('[data-testid="reasoning-grant-marker"]').text())
+        .toContain('Ran without asking (Always allowed)')
+    })
+
   it('keeps the old title when the flag is off', async () => {
     const wrapper = await mountMessage(
       [approvalCall('1'), approvalData('1')],

@@ -1,3 +1,4 @@
+import { withoutSkillJevFindingCounts } from '#shared/utils/skills/jev-findings'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { WorkingSkillFile } from '~~/server/utils/skills/versions/apply'
 import {
@@ -143,7 +144,7 @@ export async function restoreSkillVersion(
     blobsToWrite: new Map(),
     origin: 'restore',
     note: input.note ?? `Restored version ${version}`,
-    findingCounts: target.findings ?? {},
+    findingCounts: withoutSkillJevFindingCounts(target.findings),
     blobsVerified: skill.status === 'broken' ? true : undefined,
     logger: input.logger,
   })

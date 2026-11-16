@@ -1,10 +1,11 @@
-import { getTableColumns, getTableName, is } from 'drizzle-orm'
+import { eq, getTableColumns, getTableName, is } from 'drizzle-orm'
 import { SQLiteTable, getTableConfig } from 'drizzle-orm/sqlite-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
   seedChat,
+  seedProject,
   seedUser,
 } from '../../../../setup/helpers/memory-extraction-db'
 import type {
@@ -92,6 +93,13 @@ describe('skills tables', () => {
   })
 })
 
+describe('project_skills table', () => {
+  it('carries user_id and no foreign key', () => {
+    expect(getTableColumns(schema.projectSkills)).toHaveProperty('userId')
+    expect(getTableConfig(schema.projectSkills).foreignKeys).toHaveLength(0)
+  })
+})
+
 describe('skills deletion hooks', () => {
   let testDb: MemoryExtractionTestDb
   let bucket: FakeSkillBucket
@@ -152,6 +160,33 @@ describe('skills deletion hooks', () => {
         .toHaveBeenCalledWith(userId, mocks.logger)
     })
 
+    it('deletes the project pins of the skill and no other pin', async () => {
+      const skillId = await seedFullSkill(userId)
+      const otherSkillId = await seedFullSkill(userId)
+      const projectId = await seedProject(testDb.db, userId)
+
+      await testDb.db.insert(schema.projectSkills).values([
+        { projectId, skillId, userId, level: 'always', position: 0 },
+        {
+          projectId,
+          skillId: otherSkillId,
+          userId,
+          level: 'prefer',
+          position: 1,
+        },
+      ])
+
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+      const pins = await testDb.db.select().from(schema.projectSkills)
+
+      expect(result.projectSkillsDeleted).toBe(1)
+      expect(pins.map(pin => pin.skillId)).toEqual([otherSkillId])
+    })
+
     it('keeps the cache when the skill is not the caller\'s', async () => {
       const skillId = await seedFullSkill(otherUserId)
 
@@ -176,6 +211,13 @@ describe('skills deletion hooks', () => {
         skillId,
         enabled: true,
       })
+      await testDb.db.insert(schema.projectSkills).values({
+        projectId: await seedProject(testDb.db, owner),
+        skillId,
+        userId: owner,
+        level: 'always',
+        position: 0,
+      })
       bucket.objects.set(`skills-staging/u${owner}/stage1/SKILL.md`, {
         bytes: new Uint8Array([1]),
         uploaded: new Date(),
@@ -194,15 +236,18 @@ describe('skills deletion hooks', () => {
       )
 
       expect(result).toEqual({
+        providerCopiesDeleted: 0,
+        providerCopiesFailed: 0,
         skillsDeleted: 1,
         skillVersionsDeleted: 1,
         skillFilesDeleted: 2,
         skillChatSettingsDeleted: 1,
+        projectSkillsDeleted: 1,
         skillObjectsDeleted: 2,
         skillStagingObjectsDeleted: 1,
       })
 
-      for (const table of SKILLS_TABLES) {
+      for (const table of [...SKILLS_TABLES, schema.projectSkills]) {
         const rows = await testDb.db.select().from(table)
 
         expect(rows.every((row) => {
@@ -279,6 +324,197 @@ describe('skills deletion hooks', () => {
             },
           },
         },
+      })
+    })
+  })
+
+  describe('provider copies', () => {
+    function stubProvider(status = 204) {
+      const calls: string[] = []
+      const fetcher = vi.fn(async (url: unknown, init?: RequestInit) => {
+        calls.push(`${init?.method} ${String(url)}`)
+
+        return init?.method === 'GET'
+          ? new Response(JSON.stringify({ data: [] }), { status: 200 })
+          : new Response(null, { status })
+      })
+
+      vi.stubGlobal('fetch', fetcher)
+      vi.stubGlobal('useDecryptText', async (value: string) => value)
+
+      return calls
+    }
+
+    async function seedAnthropicKey(owner: number) {
+      await testDb.db.insert(schema.keys).values({
+        userId: owner,
+        provider: 'anthropic',
+        apiKey: 'sk-ant-test',
+      })
+    }
+
+    async function seedUploadedSkill(owner: number) {
+      const skillId = await seedFullSkill(owner)
+
+      await testDb.db.update(schema.skills)
+        .set({
+          allowScripts: true,
+          providerSkillId: 'skill_01',
+          providerSkillVersion: '1:1759178010',
+          providerUploadedName: 'a-skill',
+        })
+        .where(eq(schema.skills.id, skillId))
+
+      return skillId
+    }
+
+    it('deletes the Anthropic copy when the skill is deleted', async () => {
+      await seedAnthropicKey(userId)
+
+      const calls = stubProvider()
+      const skillId = await seedUploadedSkill(userId)
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.providerCopy).toBe('deleted')
+      expect(calls).toContain(
+        'DELETE https://api.anthropic.com/v1/skills/skill_01',
+      )
+      expect(await countRows(schema.skills)).toBe(0)
+    })
+
+    it('refuses to delete the skill while its Anthropic copy cannot be deleted', async () => {
+      await seedAnthropicKey(userId)
+      stubProvider(500)
+
+      const skillId = await seedUploadedSkill(userId)
+
+      await expect(deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)).rejects.toMatchObject({
+        status: 502,
+        code: 'provider-copy-delete-failed',
+        message: 'Could not delete the copy in your Anthropic workspace. '
+          + 'Try again, or delete it there.',
+      })
+
+      const [row] = await testDb.db.select().from(schema.skills)
+
+      expect(row?.providerSkillId).toBe('skill_01')
+      expect(await countRows(schema.skillVersions)).toBe(1)
+      expect(await countRows(schema.skillFiles)).toBe(2)
+      expect(bucket.objects.size).toBeGreaterThan(0)
+    })
+
+    it('deletes the skill on a retry once the copy is gone at Anthropic', async () => {
+      await seedAnthropicKey(userId)
+
+      const skillId = await seedUploadedSkill(userId)
+
+      stubProvider(500)
+
+      await expect(deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)).rejects.toMatchObject({ status: 502 })
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response(null, { status: 404 })
+      }))
+
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.skillDeleted).toBe(true)
+      expect(result.providerCopy).toBe('already-gone')
+    })
+
+    it('refuses the delete when the key cannot be decrypted, keeping the id', async () => {
+      await seedAnthropicKey(userId)
+
+      const calls = stubProvider()
+
+      vi.stubGlobal('useDecryptText', async () => {
+        throw new Error('bad ciphertext')
+      })
+
+      const skillId = await seedUploadedSkill(userId)
+
+      await expect(deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)).rejects.toMatchObject({
+        code: 'provider-copy-delete-failed',
+      })
+
+      const [row] = await testDb.db.select().from(schema.skills)
+
+      expect(row?.providerSkillId).toBe('skill_01')
+      expect(calls).toEqual([])
+    })
+
+    it('makes no provider request for a skill that was never uploaded', async () => {
+      const calls = stubProvider()
+      const skillId = await seedFullSkill(userId)
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.providerCopy).toBe('none')
+      expect(calls).toEqual([])
+    })
+
+    it('deletes the copies of the account before its rows go', async () => {
+      await seedAnthropicKey(userId)
+
+      const calls = stubProvider()
+
+      await seedUploadedSkill(userId)
+
+      const result = await purgeUserSkills(
+        testDb.db,
+        userId,
+        mocks.logger,
+        bucket,
+      )
+
+      expect(result).toMatchObject({
+        providerCopiesDeleted: 1,
+        providerCopiesFailed: 0,
+        skillsDeleted: 1,
+      })
+      expect(calls).toContain(
+        'DELETE https://api.anthropic.com/v1/skills/skill_01',
+      )
+      expect(await countRows(schema.skills)).toBe(0)
+    })
+
+    it('keeps the account purge best effort when a copy cannot be deleted', async () => {
+      stubProvider()
+      await seedUploadedSkill(userId)
+
+      const result = await purgeUserSkills(
+        testDb.db,
+        userId,
+        mocks.logger,
+        bucket,
+      )
+
+      expect(result).toMatchObject({
+        providerCopiesFailed: 1,
+        skillsDeleted: 1,
       })
     })
   })

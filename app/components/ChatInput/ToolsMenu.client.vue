@@ -240,6 +240,7 @@ const highlightedSection = shallowRef<ToolsSection | null>(null)
 const opener = shallowRef<HTMLElement | null>(null)
 const popoverMaxHeight = shallowRef<number>(POPOVER_FALLBACK_HEIGHT_PX)
 const lastInteraction = shallowRef<'keyboard' | 'pointer'>('keyboard')
+const isPointerPressInsideRoot = shallowRef<boolean>(false)
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
 
 const {
@@ -252,11 +253,14 @@ const {
 } = useScrollEdgeFade(sheetScroll)
 const { fadeStyle: chipRowFadeStyle } = useScrollEdgeFade(chipRow, 'x')
 
-useEventListener(document, 'pointerdown', () => {
+useEventListener(document, 'pointerdown', (event: PointerEvent) => {
   lastInteraction.value = 'pointer'
+  isPointerPressInsideRoot.value = event.target instanceof Node
+    && !!root.value?.contains(event.target)
 }, { capture: true, passive: true })
 useEventListener(document, 'keydown', () => {
   lastInteraction.value = 'keyboard'
+  isPointerPressInsideRoot.value = false
 }, { capture: true, passive: true })
 
 function updatePopoverMaxHeight() {
@@ -432,6 +436,7 @@ function close(restoreFocus: boolean) {
 function toggle() {
   if (isOpen.value) {
     close(false)
+    trigger.value?.focus()
 
     return
   }
@@ -451,6 +456,10 @@ function onPopoverFocusOut(event: FocusEvent) {
   const nextTarget = event.relatedTarget
 
   if (!(nextTarget instanceof Node) || root.value?.contains(nextTarget)) {
+    return
+  }
+
+  if (isPointerPressInsideRoot.value) {
     return
   }
 

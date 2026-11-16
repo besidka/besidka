@@ -23,8 +23,15 @@ export type SkillEditErrorCode
     | 'frontmatter-invalid'
     | 'files-missing'
     | 'pending-version'
+    | 'needs-review'
     | 'version-is-current'
     | 'skill-broken'
+    | 'scripts-missing'
+    | 'scripts-disclosure-required'
+    | 'scripts-rename-confirmation-required'
+    | 'scripts-key-missing'
+    | 'scripts-name-invalid'
+    | 'provider-copy-delete-failed'
 
 const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'skill-not-found': 404,
@@ -49,8 +56,15 @@ const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'frontmatter-invalid': 400,
   'files-missing': 409,
   'pending-version': 409,
+  'needs-review': 409,
   'version-is-current': 409,
   'skill-broken': 409,
+  'scripts-missing': 400,
+  'scripts-disclosure-required': 400,
+  'scripts-rename-confirmation-required': 409,
+  'scripts-key-missing': 409,
+  'scripts-name-invalid': 400,
+  'provider-copy-delete-failed': 502,
 }
 
 interface SkillEditErrorDetails {
@@ -109,4 +123,23 @@ export function createSkillCommandTakenError(command: string) {
     why: 'Another of your skills already uses this command',
     fix: 'Pick another command, or clear it on the other skill first',
   })
+}
+
+export const PROVIDER_COPY_DELETE_FAILED_MESSAGE = 'Could not delete the copy '
+  + 'in your Anthropic workspace. Try again, or delete it there.'
+
+export function createProviderCopyDeleteError() {
+  return createSkillEditError('provider-copy-delete-failed', {
+    message: PROVIDER_COPY_DELETE_FAILED_MESSAGE,
+    why: 'Anthropic did not delete the uploaded copy of this skill, or the '
+      + 'Anthropic key could not be used',
+    fix: 'Try again, or delete the skill in the Anthropic Console under '
+      + 'Skills, then delete it here',
+  })
+}
+
+export function isProviderCopyDeleteError(exception: unknown): boolean {
+  return typeof exception === 'object'
+    && exception !== null
+    && (exception as { code?: unknown }).code === 'provider-copy-delete-failed'
 }

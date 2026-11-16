@@ -22,7 +22,7 @@
               Add skill
             </h3>
             <p class="mt-1 text-sm text-base-content/70">
-              Attach one skill to your next message
+              {{ subtitle }}
             </p>
           </div>
           <button
@@ -87,6 +87,20 @@
                   <span class="truncate text-xs text-base-content/60">
                     {{ item.description }}
                   </span>
+                  <span
+                    v-if="item.hasScriptsAllowed && !canRunScripts"
+                    class="truncate text-xs text-base-content/60"
+                    data-testid="skill-picker-scripts-note"
+                  >
+                    Scripts need a Claude model with code execution
+                  </span>
+                </span>
+                <span
+                  v-if="item.hasScriptsAllowed && canRunScripts"
+                  class="badge badge-soft badge-sm shrink-0"
+                  data-testid="skill-picker-scripts-badge"
+                >
+                  scripts
                 </span>
                 <span class="badge badge-soft badge-sm shrink-0">
                   {{ SKILL_MODE_LABELS[item.mode] }}
@@ -152,10 +166,15 @@
 import { SKILL_MODE_LABELS } from '#shared/utils/skills/mode'
 import type { ComposerSkillItem } from '~/composables/composer-skills'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: ComposerSkillItem[]
   selectedId: string | null
-}>()
+  subtitle?: string
+  canRunScripts?: boolean
+}>(), {
+  subtitle: 'Attach one skill to your next message',
+  canRunScripts: false,
+})
 
 const emit = defineEmits<{
   pick: [item: ComposerSkillItem]

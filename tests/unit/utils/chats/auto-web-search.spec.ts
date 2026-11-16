@@ -342,7 +342,33 @@ describe('resolveAutoWebSearch', () => {
       messageText: 'Who is the CEO of Intel?',
     }))
 
-    expect(result).toEqual({ tools: BRAVE, outcome: 'searched' })
+    expect(result).toMatchObject({ tools: BRAVE, outcome: 'searched' })
+    expect(result.jevResult).toMatchObject({ ok: true })
+  })
+
+  it('sends the extra state and questions in the same single call', async () => {
+    mocks.decide.mockResolvedValueOnce(answer(0.86))
+
+    const result = await resolveAutoWebSearch(baseInput({
+      messageText: 'Who is the CEO of Intel?',
+      extraJev: {
+        state: { skill_0: 'notes: Write meeting notes', message: 'ignored' },
+        questions: {
+          sel_0: { type: 'boolean', instructions: 'Is `skill_0` a fit?' },
+          w1_live: { type: 'boolean', instructions: 'ignored' },
+        },
+      },
+    }))
+    const call = mocks.decide.mock.calls[0]![0]
+
+    expect(mocks.decide).toHaveBeenCalledTimes(1)
+    expect(call.state.skill_0).toBe('notes: Write meeting notes')
+    expect(call.state.message).toBe('Who is the CEO of Intel?')
+    expect(Object.keys(call.questions)).toEqual(
+      expect.arrayContaining(['sel_0', 'w1_live', 'w4_factual']),
+    )
+    expect(call.questions.w1_live).toEqual(JEV_AUTO_WEB_SEARCH.question)
+    expect(result.jevResult).toMatchObject({ ok: true })
   })
 
   it('drops only the web-search tool when Jev says no search is needed',
@@ -355,7 +381,7 @@ describe('resolveAutoWebSearch', () => {
         logger,
       }))
 
-      expect(result).toEqual({ tools: [], outcome: 'skipped' })
+      expect(result).toMatchObject({ tools: [], outcome: 'skipped' })
       expect(attributes.autoWebSearchJev).toMatchObject({
         model: 'jev-1.14.0',
         status: 'ok',
@@ -384,7 +410,8 @@ describe('resolveAutoWebSearch', () => {
 
     const result = await resolveAutoWebSearch(baseInput({ logger }))
 
-    expect(result).toEqual({ tools: BRAVE, outcome: 'fallback' })
+    expect(result).toMatchObject({ tools: BRAVE, outcome: 'fallback' })
+    expect(result.jevResult).toMatchObject({ ok: false, status })
     expect(attributes.autoWebSearchJev).toMatchObject({
       status,
       counts: { fallback: 1 },

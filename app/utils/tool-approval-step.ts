@@ -14,6 +14,10 @@ import {
   parseConnectorToolName,
 } from '#shared/utils/connectors-parts'
 import { TOOL_APPROVAL_REASONS } from '#shared/utils/tool-approval-policy'
+import {
+  BESIDKA_TOOL_NAME_PREFIX,
+  isBesidkaChatToolName,
+} from '#shared/utils/besidka-tool-permissions'
 import { formatConnectorArguments } from '~/utils/connector-step'
 
 export type ApprovalStepState
@@ -30,10 +34,12 @@ export interface ApprovalStepModel {
   toolCallId: string
   toolName: string
   connectorSlug: string | null
+  isBesidka: boolean
   tool: string
   reason: ToolApprovalReason
   summary: string
   rememberOptions: ToolApprovalRemember[]
+  preview: string
   input: unknown
   partState: string
   approved: boolean | null
@@ -80,6 +86,7 @@ const NATIVE_APPROVAL_TITLES: Record<string, string> = {
   create_artifact: 'Create an artifact',
   update_artifact: 'Update an artifact',
   create_document: 'Create a document',
+  run_skill_scripts: 'Run skill scripts',
 }
 
 const SUMMARY_ONLY_INPUT_TOOLS = new Set<string>([
@@ -190,16 +197,21 @@ export function getApprovalStepModel(
   }
 
   const connector = parseConnectorToolName(toolName)
+  const isBesidka = isBesidkaChatToolName(toolName)
 
   return {
     approvalId,
     toolCallId,
     toolName,
     connectorSlug: connector?.slug ?? null,
-    tool: connector?.tool ?? toolName,
+    isBesidka,
+    tool: isBesidka
+      ? toolName.slice(BESIDKA_TOOL_NAME_PREFIX.length)
+      : connector?.tool ?? toolName,
     reason: isApprovalReason(data?.reason) ? data.reason : 'default',
     summary: typeof data?.summary === 'string' ? data.summary : '',
     rememberOptions: readRememberOptions(data?.rememberOptions),
+    preview: typeof data?.preview === 'string' ? data.preview : '',
     input: part.input,
     partState: part.state,
     approved: typeof approval?.approved === 'boolean'
@@ -255,7 +267,58 @@ export function getApprovalStepTitle(
     return `${connectorTitle || model.connectorSlug} wants to run ${model.tool}`
   }
 
+  if (model.isBesidka) {
+    return model.summary.trim() || `Besidka wants to ${
+      humanizeBesidkaToolName(model.tool)
+    }`
+  }
+
   return NATIVE_APPROVAL_TITLES[model.tool] ?? `Run ${model.tool}`
+}
+
+const PREVIEW_COLLAPSED_MAX_CHARS = 500
+
+/**
+ * The start of a content write's text for the approval step; the full text
+ * is in View details.
+ */
+export function clipApprovalPreview(preview: string): {
+  text: string
+  isClipped: boolean
+} {
+  const characters = Array.from(preview)
+
+  if (characters.length <= PREVIEW_COLLAPSED_MAX_CHARS) {
+    return { text: preview, isClipped: false }
+  }
+
+  return {
+    text: `${characters.slice(0, PREVIEW_COLLAPSED_MAX_CHARS).join('')}…`,
+    isClipped: true,
+  }
+}
+
+export function humanizeBesidkaToolName(tool: string): string {
+  return tool.replaceAll('_', ' ')
+}
+
+/**
+ * What the "Always allow" confirmation says for a Besidka tool: the mode it
+ * sets, and that a message that read untrusted content still asks.
+ */
+export function getBesidkaAlwaysConfirmText(tool: string): string {
+  return `Always allow Besidka to ${humanizeBesidkaToolName(tool)}? Besidka `
+    + 'will run it without asking in every chat, except in a message that '
+    + 'read content from outside the conversation. You can change this in '
+    + 'Labs, under Tool permissions.'
+}
+
+/**
+ * The line under the title of an approval step. A Besidka step has none:
+ * its server-written summary already is the title.
+ */
+export function getApprovalStepSummaryLine(model: ApprovalStepModel): string {
+  return model.isBesidka ? '' : getApprovalSummaryLine(model.summary)
 }
 
 /**
@@ -300,6 +363,14 @@ export function getApprovalSourceLabel(
 
     const toolName = isRecord(part) ? readToolName(part) : null
 
+    if (
+      toolName
+      && isBesidkaChatToolName(toolName)
+      && (part as { state?: unknown }).state === 'output-available'
+    ) {
+      return 'your Besidka data'
+    }
+
     if (toolName && WEB_SOURCE_TOOL_NAMES.has(toolName)) {
       return 'the web'
     }
@@ -324,6 +395,10 @@ export function getApprovalReasonText(
 
   if (reason === 'always-ask') {
     return 'Changes or deletes data'
+  }
+
+  if (reason === 'consent') {
+    return 'Uploads the skill to your Anthropic workspace'
   }
 
   return 'Runs only after you allow it'

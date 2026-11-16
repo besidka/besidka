@@ -3,6 +3,7 @@ import type { KVNamespace } from '@cloudflare/workers-types'
 import {
   MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT,
   MCP_PRIVATE_DELETE_RATE_LIMIT,
+  MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT,
   MCP_PRIVATE_TOOL_RATE_LIMIT,
   MCP_PRIVATE_WRITE_RATE_LIMIT,
 } from '~~/config/mcp-server'
@@ -232,6 +233,28 @@ describe('enforceMcpToolRateLimit', () => {
       .rejects.toMatchObject({ status: 429 })
     await expect(enforceMcpToolRateLimit(7, 'delete_chats', kv)).resolves
       .toBeUndefined()
+  })
+
+  it('gives delete_skills its own hourly budget on top of the write '
+    + 'budget', async () => {
+    const kv = createKv()
+
+    expect(MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT)
+      .toEqual({ window: 3600, max: 20 })
+
+    for (
+      let call = 0;
+      call < MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT.max;
+      call++
+    ) {
+      await enforceMcpToolRateLimit(7, 'delete_skills', kv)
+    }
+
+    await expect(enforceMcpToolRateLimit(7, 'delete_skills', kv))
+      .rejects.toMatchObject({ status: 429 })
+    await expect(enforceMcpToolRateLimit(7, 'delete_chats', kv)).resolves
+      .toBeUndefined()
+    expect(kv.get).toHaveBeenCalledWith('mcp:rate-limit:write:7')
   })
 
   it('keeps the delete counter for the whole window', async () => {

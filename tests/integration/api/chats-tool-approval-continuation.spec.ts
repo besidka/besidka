@@ -42,6 +42,10 @@ const mocks = vi.hoisted(() => ({
   memoryWrites: [] as Array<Record<string, any>>,
   claims: new Map<string, Record<string, any>>(),
   updates: [] as Array<Record<string, any>>,
+  besidkaModes: new Map<string, string>(),
+  listMcpProjects: null as null | ((...args: unknown[]) => unknown),
+  grantCalls: [] as Array<unknown[]>,
+  scriptsRun: null as null | Record<string, any>,
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -51,6 +55,75 @@ const mocks = vi.hoisted(() => ({
     settlements: [] as Array<Record<string, any>>,
   },
 }))
+
+vi.mock('~~/server/utils/besidka-tools/chat-settings', () => ({
+  readBesidkaChatSettings: async () => {
+    return { enabled: true, alwaysAllowTools: {} }
+  },
+  setBesidkaChatEnabled: async () => ({ enabled: true, alwaysAllowTools: {} }),
+  addBesidkaChatGrant: async (...args: unknown[]) => {
+    mocks.grantCalls.push(args)
+  },
+}))
+
+vi.mock('~~/server/utils/skills/send-container-options', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/skills/send-container-options')
+  >()
+
+  return {
+    ...actual,
+    prepareSkillScriptsForSend: async () => mocks.scriptsRun ?? {
+      gate: {
+        isActive: false,
+        isGrantMatched: false,
+        skillNames: [],
+        definitionHash: null,
+        tools: {},
+        approvalEntries: new Map(),
+      },
+      eligibleSkills: [],
+      attach: async () => ({
+        container: null,
+        attachedCount: 0,
+        failed: false,
+      }),
+    },
+  }
+})
+
+vi.mock('~~/server/utils/besidka-tools/permissions', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/besidka-tools/permissions')
+  >()
+
+  return {
+    ...actual,
+    resolveBesidkaPermissionModes: async (
+      _userId: number,
+      toolNames: readonly string[],
+    ) => {
+      return new Map(toolNames.map((toolName) => {
+        const name = actual.toBesidkaRegistryName(toolName)
+
+        return [toolName, mocks.besidkaModes.get(name) ?? 'blocked']
+      }))
+    },
+  }
+})
+
+vi.mock('~~/server/utils/mcp/private/projects', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/mcp/private/projects')
+  >()
+
+  return {
+    ...actual,
+    listMcpProjects: (...args: unknown[]) => mocks.listMcpProjects?.(...args),
+  }
+})
 
 vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
   const actual = await importOriginal<
@@ -704,6 +777,13 @@ describe('tool approval continuation', () => {
     mocks.memoryWrites = []
     mocks.claims = new Map()
     mocks.updates = []
+    mocks.besidkaModes = new Map()
+    mocks.grantCalls = []
+    mocks.scriptsRun = null
+    mocks.listMcpProjects = vi.fn(async () => ({
+      projects: [{ id: 'prj_1', name: 'Launch' }],
+      nextCursor: null,
+    }))
     mocks.kv = new Map()
     mocks.chatMessages = []
     mocks.capabilityTools = {}
@@ -825,6 +905,180 @@ describe('tool approval continuation', () => {
       body: answerBody(paused.messagePublicId, responses),
     })
   }
+
+  describe('the skill scripts consent', () => {
+    const GATE = 'run_skill_scripts'
+    const GATE_HASH = 'c'.repeat(64)
+    const CONTAINER = {
+      skills: [{
+        type: 'custom',
+        providerReference: { anthropic: 'skill_01' },
+        version: '1759178010',
+      }],
+    }
+
+    function installGate(hash = GATE_HASH) {
+      const execute = vi.fn(async () => 'Allowed.')
+      const attach = vi.fn(async (input: { isApproved: boolean }) => {
+        return input.isApproved
+          ? { container: CONTAINER, attachedCount: 1, failed: false }
+          : { container: null, attachedCount: 0, failed: false }
+      })
+
+      mocks.scriptsRun = {
+        gate: {
+          isActive: true,
+          isGrantMatched: false,
+          skillNames: ['data-report'],
+          definitionHash: hash,
+          tools: {
+            [GATE]: tool({
+              description: 'Ask for the scripts consent.',
+              inputSchema: z.object({}),
+              execute,
+            }),
+          },
+          approvalEntries: new Map([[GATE, {
+            descriptor: {
+              family: 'native',
+              access: 'write',
+              toolName: GATE,
+              destructiveHint: false,
+              consentGate: true,
+              definitionHash: hash,
+            },
+            summary:
+              'Run scripts from data-report in Anthropic\'s container on '
+              + 'your key?',
+            taint: null,
+            readSource: null,
+            alwaysGrant: null,
+            alwaysGrantWhenTainted: false,
+            connector: null,
+          }]]),
+        },
+        eligibleSkills: [],
+        attach,
+      }
+
+      return { execute, attach }
+    }
+
+    async function pauseGate() {
+      const [toolCall, finish] = toolCallChunks('call-gate', GATE, {})
+
+      return await pauseTurn({
+        servers: [linear],
+        steps: [[toolCall!, finish!]],
+      })
+    }
+
+    it('pauses the first run with a consent request and uploads nothing', async () => {
+      const { execute, attach } = installGate()
+      const paused = await pauseGate()
+      const approvalPart = findPart(
+        paused.assistantParts,
+        'data-tool-approval',
+      )
+
+      expect(paused.approvalIds).toHaveLength(1)
+      expect(approvalPart?.data).toMatchObject({
+        toolName: GATE,
+        reason: 'consent',
+        rememberOptions: ['once', 'chat'],
+        summary:
+          'Run scripts from data-report in Anthropic\'s container on your key?',
+      })
+      expect(execute).not.toHaveBeenCalled()
+      expect(attach).not.toHaveBeenCalledWith({ isApproved: true })
+    })
+
+    it('uploads and sends container.skills once the answer is approved', async () => {
+      const { execute, attach } = installGate()
+      const paused = await pauseGate()
+      const [approvalId] = paused.approvalIds
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true, remember: 'once' },
+      ], [textChunks('Ran it.')])
+      const options = doStream.mock.calls[0]![0] as any
+
+      expect(attach).toHaveBeenCalledWith({ isApproved: true })
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(options.providerOptions.anthropic.container).toEqual(CONTAINER)
+      expect(mocks.grantCalls).toEqual([])
+    })
+
+    it('stores the chat grant for the exact set on Allow in this chat', async () => {
+      installGate()
+
+      const paused = await pauseGate()
+      const [approvalId] = paused.approvalIds
+
+      await answer(paused, [
+        { approvalId, approved: true, remember: 'chat' },
+      ], [textChunks('Ran it.')])
+
+      expect(mocks.grantCalls).toHaveLength(1)
+      expect(mocks.grantCalls[0]!.slice(2)).toEqual([
+        CHAT_PUBLIC_ID,
+        { toolName: GATE, definitionHash: GATE_HASH },
+      ])
+    })
+
+    it('never stores a grant for Always, which the request did not offer', async () => {
+      installGate()
+
+      const paused = await pauseGate()
+      const [approvalId] = paused.approvalIds
+
+      await answer(paused, [
+        { approvalId, approved: true, remember: 'always' },
+      ], [textChunks('Ran it.')])
+
+      expect(mocks.grantCalls).toEqual([])
+    })
+
+    it.each([
+      ['a version of the skill was edited', 'd'.repeat(64)],
+      ['another skill was enabled for scripts', 'e'.repeat(64)],
+    ])('asks again instead of uploading when %s after the request', async (
+      _label,
+      newHash,
+    ) => {
+      installGate()
+
+      const paused = await pauseGate()
+      const [approvalId] = paused.approvalIds
+      const drifted = installGate(newHash)
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true, remember: 'chat' },
+      ], [textChunks('Asking again.')])
+      const options = doStream.mock.calls[0]![0] as any
+
+      expect(drifted.execute).not.toHaveBeenCalled()
+      expect(drifted.attach).not.toHaveBeenCalledWith({ isApproved: true })
+      expect(options.providerOptions.anthropic?.container).toBeUndefined()
+      expect(mocks.grantCalls).toEqual([])
+      expect(JSON.stringify(lastToolMessage(doStream))).toContain(
+        'changed',
+      )
+    })
+
+    it('uploads nothing and sends no container when the user denies', async () => {
+      const { execute, attach } = installGate()
+      const paused = await pauseGate()
+      const [approvalId] = paused.approvalIds
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: false },
+      ], [textChunks('Continuing without scripts.')])
+      const options = doStream.mock.calls[0]![0] as any
+
+      expect(execute).not.toHaveBeenCalled()
+      expect(attach).not.toHaveBeenCalledWith({ isApproved: true })
+      expect(options.providerOptions.anthropic?.container).toBeUndefined()
+      expect(lastToolMessage(doStream)).toBeDefined()
+    })
+  })
 
   it('runs an approved call once and resumes the same message', async () => {
     const paused = await pauseCreateIssue()
@@ -1358,6 +1612,67 @@ describe('tool approval continuation', () => {
     expect(toolNamesOf(0)).toContain('web_search')
     expect(toolNamesOf(1)).not.toContain('web_search')
     expect(toolNamesOf(1)).toContain('mcp__linear__list_issues')
+  })
+
+  describe('Besidka tools', () => {
+    beforeEach(() => {
+      mocks.flags = new Set(['connectors', 'tool-approvals', 'besidka-tools'])
+      mocks.besidkaModes = new Map([['list_projects', 'ask']])
+    })
+
+    async function pauseListProjects() {
+      return await pauseTurn({
+        servers: [linear],
+        steps: [toolCallChunks('call-b', 'besidka__list_projects', {})],
+      })
+    }
+
+    it('runs an approved Besidka call once and frames its result',
+      async () => {
+        const paused = await pauseListProjects()
+        const [approvalId] = paused.approvalIds
+
+        expect(mocks.listMcpProjects).not.toHaveBeenCalled()
+        expect(readKvJson(`tool-approval:${approvalId}`))
+          .toMatchObject({ family: 'besidka' })
+
+        await answer(paused, [{ approvalId, approved: true }])
+
+        const toolPart = findPart(
+          mocks.updates.at(-1)!.parts,
+          'tool-besidka__list_projects',
+        )
+
+        expect(mocks.listMcpProjects).toHaveBeenCalledTimes(1)
+        expect(toolPart).toMatchObject({
+          state: 'output-available',
+          output: expect.stringContaining(
+            '<untrusted_tool_result connector="besidka"',
+          ),
+        })
+        expect(mocks.claims.get(approvalId)?.status).toBe('done')
+      })
+
+    it('denies an approved Besidka call the user has since blocked',
+      async () => {
+        const paused = await pauseListProjects()
+        const [approvalId] = paused.approvalIds
+
+        mocks.besidkaModes = new Map([['list_projects', 'blocked']])
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ])
+
+        expect(mocks.listMcpProjects).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: 'This tool is blocked in the user\'s settings, so the '
+            + 'action did not run.',
+        })
+        expect(writtenChunks().some(chunk => chunk.type === 'error'))
+          .toBe(false)
+      })
   })
 
   it('answers 404 when the tool-approvals flag is off', async () => {

@@ -3,12 +3,14 @@ import { parseError } from 'evlog'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { formatSkillCatalogLine } from '#shared/utils/skills/compose'
 import { getSkillSourceGroup } from '#shared/utils/skills/edit'
+import { scanSkillText } from '#shared/utils/skills/findings'
 import {
   formatGithubSourceVersion,
   isSemverTag,
 } from '#shared/utils/skills/release'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
+import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type {
   SkillSummary,
   SkillsListResponse,
@@ -29,6 +31,7 @@ export const SKILLS_FILTER_MIN_OPTIONS = 2
 export const SKILLS_SEARCH_MIN_ITEMS = 8
 export const SKILLS_SEARCH_DEBOUNCE_MS = 300
 export const SKILL_VIEW_KEY_PREFIX = 'skill:'
+export const SKILL_HIGHLIGHT_SCAN_MAX_FILES = 20
 
 const SOURCE_FILTERS: readonly SkillSourceGroup[] = [
   'created',
@@ -451,6 +454,32 @@ export function useSkillUpdateReview() {
   return { skillId, open, close }
 }
 
+async function readSkillFileListing(skillId: string) {
+  const listing = await $fetch(`/api/v1/skills/${skillId}/files`)
+
+  return 'files' in listing && listing.files ? listing.files : []
+}
+
+function pickHighlightScanPaths(
+  files: Array<{ path: string, kind?: string }>,
+): string[] {
+  const textFiles = files.filter((file) => {
+    return file.kind !== 'asset'
+  })
+  const skillFile = textFiles.filter((file) => {
+    return file.path === SKILL_MD_FILE_NAME
+  })
+  const otherFiles = textFiles.filter((file) => {
+    return file.path !== SKILL_MD_FILE_NAME
+  })
+
+  return [...skillFile, ...otherFiles]
+    .slice(0, SKILL_HIGHLIGHT_SCAN_MAX_FILES)
+    .map((file) => {
+      return file.path
+    })
+}
+
 /**
  * Changes that go through `PATCH /api/v1/skills/[id]` and the actions that
  * touch the skill as a whole. Every action reports its own failure, so a
@@ -484,6 +513,7 @@ export function useSkillActions() {
       mode?: SkillMode
       command?: string | null
       argumentHint?: string | null
+      licenseAcknowledged?: boolean
     },
   ): Promise<boolean> {
     return await runExclusive(skillId, async () => {
@@ -536,21 +566,83 @@ export function useSkillActions() {
     })
   }
 
+  /**
+   * The "Look closely" kinds of the current version, read by scanning its
+   * files here in the browser: SKILL.md first, then up to the next
+   * `SKILL_HIGHLIGHT_SCAN_MAX_FILES - 1` text files. A file that cannot be
+   * read is skipped; an empty string comes back when none can be read.
+   */
+  async function readHighlightCategories(skillId: string): Promise<string> {
+    const [listing] = await Promise.allSettled([
+      readSkillFileListing(skillId),
+    ])
+
+    if (listing.status === 'rejected') {
+      return ''
+    }
+
+    const scans = await Promise.allSettled(
+      pickHighlightScanPaths(listing.value).map(async (path) => {
+        const file = await $fetch(`/api/v1/skills/${skillId}/files`, {
+          query: { path },
+        })
+
+        return 'text' in file ? scanSkillText(path, file.text) : []
+      }),
+    )
+    const findings = scans.flatMap((scan) => {
+      return scan.status === 'fulfilled' ? scan.value : []
+    })
+
+    return describeHighlightCategories(findings)
+  }
+
+  async function describeHighlightsForConfirmation(
+    skill: Pick<SkillSummary, 'id'> & Partial<Pick<SkillSummary, 'highlightCount'>>,
+  ): Promise<string> {
+    if (!skill.highlightCount) {
+      return ''
+    }
+
+    const categories = await runExclusive(skill.id, async () => {
+      return await readHighlightCategories(skill.id)
+    })
+    const count = skill.highlightCount === 1
+      ? '1 highlight is marked Look closely'
+      : `${skill.highlightCount} highlights are marked Look closely`
+
+    return categories
+      ? ` ${count}: ${categories}.`
+      : ` ${count}.`
+  }
+
   async function setMode(
-    skill: Pick<SkillSummary, 'id' | 'name' | 'sourceKind' | 'enabled'>,
+    skill: Pick<SkillSummary, 'id' | 'name' | 'sourceKind' | 'enabled'>
+      & Partial<Pick<SkillSummary, 'status' | 'licenseClass' | 'highlightCount'>>,
     mode: SkillMode,
   ): Promise<boolean> {
+    const needsLicenseTick = mode !== 'off'
+      && !skill.enabled
+      && skill.status === 'needs-review'
+      && (skill.licenseClass === 'none' || skill.licenseClass === 'custom')
+
     if (
       mode !== 'off'
       && !skill.enabled
-      && requiresEnableConfirmation(skill)
+      && (requiresEnableConfirmation(skill) || needsLicenseTick)
     ) {
+      const licenseWarning = skill.licenseClass === 'custom'
+        ? ' It carries a custom license: confirm that you may use it.'
+        : ' It states no license, so its author keeps all rights: confirm '
+          + 'that you may use it.'
       const confirmation = await useConfirm({
         text: `Turn on "${skill.name}"?`,
         subtitle: 'This skill was not written by you. Once it is on, the '
           + 'model can read it and follow its instructions in your chats. '
-          + 'Review it first if you have not.',
-        actions: ['Turn on'],
+          + 'Review it first if you have not.'
+          + await describeHighlightsForConfirmation(skill)
+          + (needsLicenseTick ? licenseWarning : ''),
+        actions: [needsLicenseTick ? 'Turn on and confirm' : 'Turn on'],
         labelDecline: 'Keep off',
       })
 
@@ -561,7 +653,72 @@ export function useSkillActions() {
       }
     }
 
-    return await saveSettings(skill.id, { mode })
+    return await saveSettings(skill.id, {
+      mode,
+      ...(needsLicenseTick ? { licenseAcknowledged: true } : {}),
+    })
+  }
+
+  async function setScripts(
+    skill: Pick<SkillSummary, 'id' | 'name'>,
+    isEnabled: boolean,
+  ): Promise<boolean> {
+    if (!isEnabled) {
+      const confirmation = await useConfirm({
+        text: `Turn off scripts for "${skill.name}"?`,
+        subtitle: 'The copy of this skill in your Anthropic workspace is '
+          + 'deleted. Its scripts stay shown as text only.',
+        actions: ['Turn off'],
+      })
+
+      if (!confirmation) {
+        await refreshSkillData(skill.id)
+
+        return false
+      }
+    }
+
+    return await runExclusive(skill.id, async () => {
+      try {
+        if (isEnabled) {
+          await $fetch(`/api/v1/skills/${skill.id}/scripts`, {
+            method: 'POST',
+            body: { disclosureAccepted: true, renameConfirmed: true },
+          })
+        } else {
+          const result = await $fetch(`/api/v1/skills/${skill.id}/scripts`, {
+            method: 'DELETE',
+          })
+
+          warnAboutProviderCopy(result.providerCopy)
+        }
+
+        await refreshSkillData(skill.id)
+
+        return true
+      } catch (exception) {
+        const parsedException = parseError(exception)
+
+        useErrorMessage(
+          parsedException.message || 'Failed to change scripts',
+          parsedException.why,
+        )
+        await refreshSkillData(skill.id)
+
+        return false
+      }
+    })
+  }
+
+  function warnAboutProviderCopy(providerCopy: string) {
+    if (providerCopy !== 'failed') {
+      return
+    }
+
+    useErrorMessage(
+      'The copy at Anthropic could not be deleted',
+      'Delete it in the Anthropic Console, under Skills.',
+    )
   }
 
   async function deleteSkill(
@@ -653,6 +810,7 @@ export function useSkillActions() {
     saveSettings,
     saveCommand,
     setMode,
+    setScripts,
     deleteSkill,
     checkForUpdates,
   }

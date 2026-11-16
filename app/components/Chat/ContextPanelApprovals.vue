@@ -41,8 +41,17 @@
             {{ grant.connectorTitle }} · {{ scopeLabel(grant) }}
           </span>
         </span>
+        <NuxtLink
+          v-if="grant.scope === 'always' && grant.source === 'besidka'"
+          :to="BESIDKA_TOOL_PERMISSIONS_LABS_PATH"
+          class="btn btn-ghost btn-xs min-h-6 shrink-0"
+          :aria-label="`Change the permission of ${grant.toolName}`"
+          data-testid="chat-context-approval-manage-besidka"
+        >
+          Manage
+        </NuxtLink>
         <button
-          v-if="grant.scope === 'always'"
+          v-else-if="grant.scope === 'always'"
           type="button"
           class="btn btn-ghost btn-xs min-h-6 shrink-0"
           :disabled="!!busyKey"
@@ -76,6 +85,7 @@
 </template>
 
 <script setup lang="ts">
+import { BESIDKA_TOOL_PERMISSIONS_LABS_PATH } from '~/utils/besidka-tool-permissions'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
