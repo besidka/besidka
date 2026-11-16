@@ -366,11 +366,18 @@ const isReviewed = computed<boolean>(() => {
     && listing.value.counts.pending === 0
 })
 
+const ENABLED_HINTS: Record<ConnectorToolMode, string> = {
+  'manual': 'Turn it on in a chat\'s + menu to let the model use it.',
+  'auto': 'Available in every chat. Switch it off for one chat in the + menu.',
+  'always-on': 'Its tools go with every message. Switch it off for one chat in '
+    + 'the + menu.',
+}
+
 const enableHint = computed<string>(() => {
   const current = connector.value
 
   if (!current || current.enabled) {
-    return 'Turn it on in a chat\'s + menu to let the model use it.'
+    return ENABLED_HINTS[current?.toolMode ?? 'manual']
   }
 
   if (current.status === 'drifted') {

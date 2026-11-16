@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   refreshConnectors: vi.fn(),
   success: vi.fn(),
+  errorMessage: vi.fn(),
   assign: vi.fn(),
 }))
 
@@ -30,6 +31,7 @@ const connector = ref<ConnectorPageItem>(createConnectorItem())
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('refreshConnectors', () => mocks.refreshConnectors)
 mockNuxtImport('useSuccessMessage', () => mocks.success)
+mockNuxtImport('useErrorMessage', () => mocks.errorMessage)
 mockNuxtImport('useConnectorById', () => {
   return () => computed(() => connector.value)
 })
@@ -86,6 +88,7 @@ describe('Profile/Connectors/ConnectDialog', () => {
     mocks.fetch.mockReset()
     mocks.refreshConnectors.mockReset().mockResolvedValue(undefined)
     mocks.success.mockReset()
+    mocks.errorMessage.mockReset()
     mocks.assign.mockReset()
     vi.spyOn(window.location, 'assign').mockImplementation(mocks.assign)
   })
@@ -141,6 +144,67 @@ describe('Profile/Connectors/ConnectDialog', () => {
       expect(mocks.assign)
         .toHaveBeenCalledWith('https://auth.linear.app/authorize?state=x')
     })
+
+  it('offers the three modes on the consent step, preselected to the '
+    + 'current one, and leaves an unchanged mode alone', async () => {
+    respond({
+      '/connect/discover': OAUTH_DISCOVERY,
+      '/consent': { connector: {} },
+    })
+    await mountDialog()
+
+    expect((getByTestId('connector-connect-mode-auto') as HTMLInputElement)
+      .checked).toBe(true)
+    expect(findByTestId('connector-connect-mode-manual')).not.toBeNull()
+    expect(findByTestId('connector-connect-mode-always-on')).not.toBeNull()
+
+    await checkTestId('connector-consent-checkbox')
+    await clickTestId('connector-consent-continue')
+
+    expect(mocks.fetch.mock.calls.filter(([, options]) => {
+      return options?.method === 'PATCH'
+    })).toHaveLength(0)
+  })
+
+  it('saves a changed mode before the sign-in step', async () => {
+    respond({
+      '/connect/discover': OAUTH_DISCOVERY,
+      '/consent': { connector: {} },
+      '/api/v1/connectors/conn1': { connector: {} },
+    })
+    await mountDialog()
+    await checkTestId('connector-connect-mode-manual')
+    await checkTestId('connector-consent-checkbox')
+    await clickTestId('connector-consent-continue')
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/conn1', {
+      method: 'PATCH',
+      body: { toolMode: 'manual' },
+    })
+    expect(findByTestId('connector-connect-sign-in')).not.toBeNull()
+  })
+
+  it('stays on the consent step and shows the error when the mode cannot '
+    + 'be saved', async () => {
+    respond({
+      '/connect/discover': OAUTH_DISCOVERY,
+      '/api/v1/connectors/conn1': Object.assign(new Error('boom'), {
+        data: { message: 'Could not save the mode' },
+      }),
+    })
+    await mountDialog()
+    await checkTestId('connector-connect-mode-always-on')
+    await checkTestId('connector-consent-checkbox')
+    await clickTestId('connector-consent-continue')
+
+    expect(mocks.errorMessage).toHaveBeenCalledTimes(1)
+    expect(findByTestId('connector-consent-continue')).not.toBeNull()
+    expect(findByTestId('connector-connect-sign-in')).toBeNull()
+    expect(mocks.fetch).not.toHaveBeenCalledWith(
+      '/api/v1/connectors/conn1/consent',
+      expect.anything(),
+    )
+  })
 
   it('skips the consent when it is current for the same issuer, and keeps '
     + 'sign-in off without the OAuth flag', async () => {

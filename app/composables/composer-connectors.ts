@@ -20,6 +20,7 @@ export interface ComposerConnectorItem {
 export interface ChatConnectorSelectionState {
   chatKey: string
   ids: string[]
+  offIds: string[]
   isKnown: boolean
 }
 
@@ -54,6 +55,10 @@ export function planTurnAllOn(
   return { ids, skippedCount: itemIds.length - ids.length }
 }
 
+function isManualMode(toolMode: ConnectorToolMode): boolean {
+  return toolMode === 'manual'
+}
+
 function isSelectableConnector(connector: {
   enabled: boolean
   status: string
@@ -71,13 +76,19 @@ function isSelectableConnector(connector: {
 export function useChatConnectorSelection() {
   const selection = useState<ChatConnectorSelectionState>(
     'connectors:selection',
-    () => ({ chatKey: NEW_CHAT_CONNECTORS_KEY, ids: [], isKnown: true }),
+    () => ({
+      chatKey: NEW_CHAT_CONNECTORS_KEY,
+      ids: [],
+      offIds: [],
+      isKnown: true,
+    }),
   )
 
   function handOff(chatSlug: string) {
     if (
       selection.value.chatKey !== NEW_CHAT_CONNECTORS_KEY
-      || selection.value.ids.length === 0
+      || (selection.value.ids.length === 0
+        && selection.value.offIds.length === 0)
     ) {
       return
     }
@@ -85,6 +96,7 @@ export function useChatConnectorSelection() {
     selection.value = {
       chatKey: chatSlug,
       ids: selection.value.ids,
+      offIds: selection.value.offIds,
       isKnown: true,
     }
   }
@@ -159,18 +171,57 @@ export function useComposerConnectors(
 
   const isVisible = computed<boolean>(() => library.isActive.value)
 
-  const selectedIds = computed<string[]>(() => {
+  const storedIds = computed<string[]>(() => {
     return selection.value.chatKey === chatKey.value
       ? selection.value.ids
       : []
+  })
+
+  const offIds = computed<string[]>(() => {
+    return selection.value.chatKey === chatKey.value
+      ? selection.value.offIds
+      : []
+  })
+
+  const manualItemIds = computed<Set<string>>(() => {
+    return new Set(
+      items.value
+        .filter(item => isManualMode(item.toolMode))
+        .map(item => item.id),
+    )
+  })
+
+  const selectedIds = computed<string[]>(() => {
+    return storedIds.value.filter(id => manualItemIds.value.has(id))
+  })
+
+  const availableIds = computed<string[]>(() => {
+    return items.value
+      .filter((item) => {
+        return isManualMode(item.toolMode)
+          ? storedIds.value.includes(item.id)
+          : !offIds.value.includes(item.id)
+      })
+      .map(item => item.id)
   })
 
   const selectedCount = computed<number>(() => {
     return selectedIds.value.length
   })
 
+  const alwaysOnAvailableCount = computed<number>(() => {
+    return items.value.filter((item) => {
+      return item.toolMode === 'always-on'
+        && !offIds.value.includes(item.id)
+    }).length
+  })
+
+  const manualCapacity = computed<number>(() => {
+    return Math.max(0, CONNECTORS_PER_SEND - alwaysOnAvailableCount.value)
+  })
+
   const isAtLimit = computed<boolean>(() => {
-    return selectedCount.value >= CONNECTORS_PER_SEND
+    return selectedCount.value >= manualCapacity.value
   })
 
   watch(chatKey, (key) => {
@@ -181,6 +232,7 @@ export function useComposerConnectors(
     selection.value = {
       chatKey: key,
       ids: [],
+      offIds: [],
       isKnown: key === NEW_CHAT_CONNECTORS_KEY,
     }
   }, { immediate: true })
@@ -216,6 +268,8 @@ export function useComposerConnectors(
         selection.value = {
           chatKey: key,
           ids: response.connectorIds.filter(id => selectableIds.has(id)),
+          offIds: (response.offConnectorIds ?? [])
+            .filter(id => selectableIds.has(id)),
           isKnown: true,
         }
       } catch {
@@ -228,28 +282,46 @@ export function useComposerConnectors(
   )
 
   watch(
-    [library.isLoaded, items, () => selection.value.ids],
-    ([isLoaded, currentItems, currentIds]) => {
+    [
+      library.isLoaded,
+      items,
+      () => selection.value.ids,
+      () => selection.value.offIds,
+    ],
+    ([isLoaded, currentItems, currentIds, currentOffIds]) => {
       if (!isLoaded || selection.value.chatKey !== chatKey.value) {
         return
       }
 
       const knownIds = new Set(currentItems.map(item => item.id))
       const keptIds = currentIds.filter(id => knownIds.has(id))
+      const keptOffIds = currentOffIds.filter(id => knownIds.has(id))
 
-      if (keptIds.length !== currentIds.length) {
-        selection.value = { ...selection.value, ids: keptIds }
+      if (
+        keptIds.length !== currentIds.length
+        || keptOffIds.length !== currentOffIds.length
+      ) {
+        selection.value = {
+          ...selection.value,
+          ids: keptIds,
+          offIds: keptOffIds,
+        }
       }
     },
     { immediate: true },
   )
 
-  async function setSelectedIds(nextIds: string[]) {
+  async function setSelection(nextIds: string[], nextOffIds: string[]) {
     const key = chatKey.value
     const slug = toValue(chatSlug)
     const previous = selection.value
 
-    selection.value = { chatKey: key, ids: nextIds, isKnown: true }
+    selection.value = {
+      chatKey: key,
+      ids: nextIds,
+      offIds: nextOffIds,
+      isKnown: true,
+    }
 
     if (!slug) {
       return
@@ -260,13 +332,14 @@ export function useComposerConnectors(
     try {
       const response = await $fetch(`/api/v1/chats/${slug}/connectors`, {
         method: 'PUT',
-        body: { connectorIds: nextIds },
+        body: { connectorIds: nextIds, offConnectorIds: nextOffIds },
       })
 
       if (selection.value.chatKey === key) {
         selection.value = {
           chatKey: key,
           ids: response.connectorIds,
+          offIds: response.offConnectorIds ?? [],
           isKnown: true,
         }
       }
@@ -291,16 +364,30 @@ export function useComposerConnectors(
       return
     }
 
+    const item = items.value.find(candidate => candidate.id === connectorId)
+
+    if (item && !isManualMode(item.toolMode)) {
+      await setSelection(
+        storedIds.value,
+        offIds.value.includes(connectorId)
+          ? offIds.value.filter(id => id !== connectorId)
+          : [...offIds.value, connectorId],
+      )
+
+      return
+    }
+
     const isSelected = selectedIds.value.includes(connectorId)
 
     if (!isSelected && isAtLimit.value) {
       return
     }
 
-    await setSelectedIds(
+    await setSelection(
       isSelected
         ? selectedIds.value.filter(id => id !== connectorId)
         : [...selectedIds.value, connectorId],
+      offIds.value,
     )
   }
 
@@ -309,10 +396,11 @@ export function useComposerConnectors(
       return
     }
 
-    const knownIds = new Set(items.value.map(item => item.id))
-
-    await setSelectedIds(
-      nextIds.filter(id => knownIds.has(id)).slice(0, CONNECTORS_PER_SEND),
+    await setSelection(
+      nextIds
+        .filter(id => manualItemIds.value.has(id))
+        .slice(0, manualCapacity.value),
+      offIds.value,
     )
   }
 
@@ -321,7 +409,7 @@ export function useComposerConnectors(
       return
     }
 
-    await setSelectedIds([])
+    await setSelection([], offIds.value)
   }
 
   const isSelectionKnown = computed<boolean>(() => {
@@ -335,7 +423,10 @@ export function useComposerConnectors(
     isLoaded: library.isLoaded,
     isSelectionKnown,
     selectedIds,
+    availableIds,
+    offIds,
     selectedCount,
+    manualCapacity,
     isAtLimit,
     isSaving,
     toggle,

@@ -101,6 +101,45 @@
         :issuer-host="discovery.issuerHost"
         :is-disabled="isBusy"
       />
+      <section
+        class="grid gap-2"
+        aria-labelledby="connector-connect-mode-heading"
+        data-testid="connector-connect-mode"
+      >
+        <h3
+          id="connector-connect-mode-heading"
+          class="font-medium"
+        >
+          How the model gets its tools
+        </h3>
+        <div
+          class="join w-full"
+          role="radiogroup"
+          aria-labelledby="connector-connect-mode-heading"
+        >
+          <input
+            v-for="mode in CONNECTOR_TOOL_MODES"
+            :key="mode"
+            v-model="selectedToolMode"
+            type="radio"
+            name="connector-connect-mode"
+            class="join-item btn btn-sm min-h-11 flex-1 sm:min-h-8"
+            :class="{
+              'btn-active btn-primary': selectedToolMode === mode,
+            }"
+            :value="mode"
+            :aria-label="CONNECTOR_TOOL_MODE_LABELS[mode]"
+            :disabled="isBusy"
+            :data-testid="`connector-connect-mode-${mode}`"
+          >
+        </div>
+        <p
+          class="text-xs text-base-content/70"
+          data-testid="connector-connect-mode-hint"
+        >
+          {{ CONNECTOR_TOOL_MODE_DESCRIPTIONS[selectedToolMode] }}
+        </p>
+      </section>
     </div>
 
     <div
@@ -266,8 +305,17 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
-import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
-import type { ConnectorAuthType } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_CONSENT_VERSION,
+  CONNECTOR_NEW_TOOL_MODE,
+  CONNECTOR_TOOL_MODE_DESCRIPTIONS,
+  CONNECTOR_TOOL_MODE_LABELS,
+  CONNECTOR_TOOL_MODES,
+} from '#shared/utils/connectors-policy'
+import type {
+  ConnectorAuthType,
+  ConnectorToolMode,
+} from '#shared/utils/connectors-policy'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 
 type ConnectStep = 'discovering' | 'consent' | 'auth' | 'failed'
@@ -294,6 +342,9 @@ const step = shallowRef<ConnectStep>('discovering')
 const discovery = shallowRef<Discovery | null>(null)
 const authKind = shallowRef<ConnectorAuthType>('none')
 const isConsentAccepted = shallowRef<boolean>(false)
+const selectedToolMode = shallowRef<ConnectorToolMode>(
+  CONNECTOR_NEW_TOOL_MODE,
+)
 const isBusy = shallowRef<boolean>(false)
 const errorTitle = shallowRef<string>('')
 const errorDetail = shallowRef<string>('')
@@ -418,10 +469,37 @@ async function discover() {
       return
     }
 
+    selectedToolMode.value = connector.value?.toolMode
+      ?? CONNECTOR_NEW_TOOL_MODE
     step.value = 'consent'
     liveMessage.value = 'Review the consent before you connect'
   } catch (exception) {
     fail(exception, 'Could not reach the server')
+  }
+}
+
+async function applyToolMode(): Promise<boolean> {
+  if (connector.value?.toolMode === selectedToolMode.value) {
+    return true
+  }
+
+  try {
+    await $fetch(`/api/v1/connectors/${props.connectorId}`, {
+      method: 'PATCH',
+      body: { toolMode: selectedToolMode.value },
+    })
+    await refreshConnectors()
+
+    return true
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Could not change how the model gets the tools',
+      parsedException.why,
+    )
+
+    return false
   }
 }
 
@@ -435,6 +513,12 @@ async function giveConsent() {
   isBusy.value = true
 
   try {
+    const isModeApplied = await applyToolMode()
+
+    if (!isModeApplied) {
+      return
+    }
+
     await $fetch(`/api/v1/connectors/${props.connectorId}/consent`, {
       method: 'POST',
       body: {

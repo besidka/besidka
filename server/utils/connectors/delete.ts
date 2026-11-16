@@ -1,3 +1,4 @@
+import { deleteCatalogSnapshot } from '~~/server/utils/connectors/tool-cache'
 import {
   CONNECTOR_REVOKE_DEADLINE_MS,
 } from '#shared/utils/connectors-policy'
@@ -92,6 +93,7 @@ export async function deleteConnectorsWithRevocation(
 
     deleted.push(connector.id)
     await deleteConnectorIconCache(kv, connector.id)
+    await deleteCatalogSnapshot(kv, connector.id)
 
     if (connector.consented) {
       withdrawnHosts.push(connector.host)

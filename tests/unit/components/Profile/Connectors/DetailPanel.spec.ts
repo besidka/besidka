@@ -389,7 +389,7 @@ describe('Profile/Connectors/DetailPanel', () => {
     expect((wrapper.get('[data-testid="connector-detail-mode-auto"]')
       .element as HTMLInputElement).checked).toBe(true)
     expect(wrapper.get('[data-testid="connector-detail-mode-hint"]').text())
-      .toContain('loads the ones a request needs')
+      .toContain('Available in every chat')
 
     await wrapper.get('[data-testid="connector-detail-mode-always-on"]')
       .trigger('change')
@@ -400,6 +400,39 @@ describe('Profile/Connectors/DetailPanel', () => {
       body: { toolMode: 'always-on' },
     })
     expect(mocks.refreshConnectors).toHaveBeenCalled()
+  })
+
+  it('offers Manual, Auto and Always on and checks the current mode', async () => {
+    connector.value = createConnectorItem({ toolMode: 'manual' })
+
+    const wrapper = await mountPanel()
+    const radios = wrapper.findAll('[name="connector-detail-mode"]')
+
+    expect(radios.map(radio => radio.attributes('aria-label')))
+      .toEqual(['Manual', 'Auto', 'Always on'])
+    expect((wrapper.get('[data-testid="connector-detail-mode-manual"]')
+      .element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-testid="connector-detail-mode-auto"]')
+      .element as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('explains in the Use in chats row what each mode does when enabled', async () => {
+    const hints = {
+      'manual': 'Turn it on in a chat\'s + menu',
+      'auto': 'Available in every chat. Switch it off for one chat',
+      'always-on': 'Its tools go with every message',
+    } as const
+
+    for (const [toolMode, hint] of Object.entries(hints)) {
+      connector.value = createConnectorItem({
+        enabled: true,
+        toolMode: toolMode as keyof typeof hints,
+      })
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.text()).toContain(hint)
+    }
   })
 
   it('does not save the mode the connector already has', async () => {

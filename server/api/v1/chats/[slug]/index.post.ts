@@ -344,7 +344,9 @@ import {
   resolveSkillSelection,
 } from '~~/server/utils/skills/jev/selection'
 import {
+  CONNECTORS_PER_SEND,
   CONNECTORS_PER_USER,
+  CONNECTOR_SSE_PER_SEND,
   CONNECTOR_STEPS_PER_TURN,
   CONNECTOR_TOOLS_PER_REQUEST,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
@@ -353,6 +355,7 @@ import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approv
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import {
   isToolIndexLoadToolName,
+  TOOL_INDEX_CATALOG_STEPS,
   TOOL_INDEX_LOAD_STEPS,
   TOOL_INDEX_RESERVED_BYTES,
   TOOL_INDEX_RESERVED_TOOLS,
@@ -372,9 +375,9 @@ import {
   createConnectorArgsHasher,
 } from '~~/server/utils/connectors/audit'
 import {
-  listChatConnectorIds,
+  listChatConnectorStates,
   persistChatConnectorSelection,
-  resolveConnectorSelection,
+  planSendConnectors,
 } from '~~/server/utils/connectors/chat-selection'
 import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
 import {
@@ -458,6 +461,8 @@ const chatSendBodySchema = z.object({
     .default(DEFAULT_EXA_SEARCH_LEVEL),
   webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
   connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
+    .optional(),
+  offConnectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
     .optional(),
   besidkaToolsEnabled: z.boolean().optional(),
   messages: z.array(incomingUserMessageSchema).length(1),
@@ -2153,82 +2158,100 @@ export default defineEventHandler(async (event) => {
     }
 
     if (sendFeatures.isFeatureActive('connectors')) {
-      const requestedConnectorIds = sendBody.connectorIds
-        ?? await listChatConnectorIds(db, userId, chat.id)
+      const storedStates = await listChatConnectorStates(db, userId, chat.id)
+      const userConnectors = await listConnectors(db, userId)
+      const knownConnectorIds = new Set(userConnectors.map((connector) => {
+        return connector.id
+      }))
+      const offConnectorIds = (!isResume && sendBody.offConnectorIds)
+        ? sendBody.offConnectorIds.filter((connectorId) => {
+          return knownConnectorIds.has(connectorId)
+        })
+        : storedStates.offIds
+      const onConnectorIds = sendBody.connectorIds ?? storedStates.onIds
+      const plan = planSendConnectors({
+        connectors: userConnectors,
+        onIds: onConnectorIds,
+        offIds: offConnectorIds,
+      })
+      const selection = plan.live
 
-      if (requestedConnectorIds.length > 0 || sendBody.connectorIds) {
-        const userConnectors = await listConnectors(db, userId)
-        const selection = resolveConnectorSelection(
-          userConnectors,
-          requestedConnectorIds,
-        )
-
-        if (sendBody.connectorIds && !isResume) {
-          try {
-            await persistChatConnectorSelection(db, {
-              userId,
-              chatPublicId: chat.id,
-              selectedIds: selection.selected.map(connector => connector.id),
-            })
-          } catch (exception) {
-            aiLogger.set({
-              attributes: {
-                connectors: {
-                  selectionPersist: 'failed',
-                  error: exceptionMessage(exception),
-                },
-              },
-            })
-          }
-        }
-
-        if (selection.selected.length > 0 && !toolCallingAllowed) {
-          connectorNotices.push('Connectors are off for this message.')
-        }
-
-        if (selection.selected.length > 0 && toolCallingAllowed) {
-          for (const connector of selection.overCap) {
-            connectorNotices.push(
-              `${connector.title} was left out: a message can use at most 5 connectors.`,
-            )
-          }
-
-          for (const connector of selection.skipped) {
-            connectorNotices.push(
-              `${connector.title} is switched off or not connected, so its tools were not used.`,
-            )
-          }
-
-          connectorsRun = await getConnectorTools({
-            db,
-            kv: useKV(),
+      if (sendBody.connectorIds && !isResume) {
+        try {
+          await persistChatConnectorSelection(db, {
             userId,
             chatPublicId: chat.id,
-            connectors: selection.selected,
-            existingToolCount: nativeToolCount,
-            reserve: toolIndexReserve,
-            hashArgs: hashConnectorArgs,
-            ...(toolApprovalsActive
-              ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
-              : {}),
-            ...(resume
-              ? {
-                approvedAuditRow: (toolCallId: string | undefined) => {
-                  return approvedAuditRows.get(toolCallId ?? '') ?? null
-                },
-                callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
-              }
-              : {}),
-            guard: chatSearchBudget,
-            logger: aiLogger,
+            selectedIds: selection.selected
+              .filter(connector => onConnectorIds.includes(connector.id))
+              .map(connector => connector.id),
+            connectors: userConnectors,
+            ...(sendBody.offConnectorIds ? { offIds: offConnectorIds } : {}),
           })
-          connectorNotices.push(...connectorsRun.notices)
+        } catch (exception) {
+          aiLogger.set({
+            attributes: {
+              connectors: {
+                selectionPersist: 'failed',
+                error: exceptionMessage(exception),
+              },
+            },
+          })
+        }
+      }
 
-          if (Object.keys(connectorsRun.tools).length > 0) {
-            parsedTools = {
-              ...parsedTools,
-              tools: { ...parsedTools.tools, ...connectorsRun.tools },
+      const hasConnectors = selection.selected.length > 0
+        || plan.catalog.length > 0
+
+      if (selection.selected.length > 0 && !toolCallingAllowed) {
+        connectorNotices.push('Connectors are off for this message.')
+      }
+
+      if (hasConnectors && toolCallingAllowed) {
+        for (const connector of selection.overCap) {
+          connectorNotices.push(
+            `${connector.title} was left out: a message can use at most 5 connectors.`,
+          )
+        }
+
+        for (const connector of plan.requestedSkipped) {
+          connectorNotices.push(
+            `${connector.title} is switched off or not connected, so its tools were not used.`,
+          )
+        }
+
+        connectorsRun = await getConnectorTools({
+          db,
+          kv: useKV(),
+          userId,
+          chatPublicId: chat.id,
+          connectors: selection.selected,
+          catalogConnectors: plan.catalog,
+          optionalConnectorIds: new Set(selection.selected
+            .filter(connector => !onConnectorIds.includes(connector.id))
+            .map(connector => connector.id)),
+          existingToolCount: nativeToolCount,
+          reserve: toolIndexReserve,
+          hashArgs: hashConnectorArgs,
+          ...(toolApprovalsActive
+            ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
+            : {}),
+          ...(resume
+            ? {
+              approvedAuditRow: (toolCallId: string | undefined) => {
+                return approvedAuditRows.get(toolCallId ?? '') ?? null
+              },
+              callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
             }
+            : {}),
+          guard: chatSearchBudget,
+          logger: aiLogger,
+        })
+        connectorNotices.push(...connectorsRun.notices)
+
+        if (Object.keys(connectorsRun.tools).length > 0) {
+          parsedTools = {
+            ...parsedTools,
+            tools: { ...parsedTools.tools, ...connectorsRun.tools },
           }
         }
       }
@@ -2374,7 +2397,10 @@ export default defineEventHandler(async (event) => {
       ? CONNECTOR_STEPS_PER_TURN
       : 0,
     besidkaSteps: hasBesidkaTools ? TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN : 0,
-    toolIndexSteps: toolIndex ? TOOL_INDEX_LOAD_STEPS : 0,
+    toolIndexSteps: toolIndex
+      ? TOOL_INDEX_LOAD_STEPS
+      + (connectorsRun?.catalog.length ? TOOL_INDEX_CATALOG_STEPS : 0)
+      : 0,
     guard: chatSearchBudget,
   })
   const forwardedToolLoopOptions = toolLoop
@@ -3459,25 +3485,42 @@ function attachToolIndex(input: {
     ...input.besidka?.upFrontNames ?? [],
     ...input.connectors?.upFrontNames ?? [],
   ]
+  const catalogConnectors = input.connectors?.catalog ?? []
+  const loaderToolCount = catalogConnectors.length > 0 ? 2 : 1
   const room = {
     tools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
-      - upFrontNames.length - 1,
+      - upFrontNames.length - loaderToolCount,
     bytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
       - (input.besidka?.definitionBytes ?? 0)
       - (input.connectors?.definitionBytes ?? 0),
   }
+  const liveConnectorCount = input.connectors?.connectorIds.length ?? 0
   const toolIndex = createToolIndex({
     entries,
     room,
     upFrontNames: new Set(upFrontNames),
+    ...(catalogConnectors.length > 0
+      ? {
+        catalog: {
+          connectors: catalogConnectors,
+          maxOpen: Math.max(0, CONNECTORS_PER_SEND - liveConnectorCount),
+          maxOpenLegacySse: Math.max(
+            0,
+            CONNECTOR_SSE_PER_SEND
+            - (input.connectors?.liveLegacySseCount ?? 0),
+          ),
+        },
+      }
+      : {}),
     logger: input.logger,
   })
 
-  if (entries.length > 0) {
+  if (entries.length > 0 || catalogConnectors.length > 0) {
     input.logger.set({
       attributes: {
         toolIndex: {
           entries: entries.length,
+          catalogConnectors: catalogConnectors.length,
           roomTools: room.tools,
           roomBytes: room.bytes,
           ...(toolIndex ? {} : { noRoom: true }),

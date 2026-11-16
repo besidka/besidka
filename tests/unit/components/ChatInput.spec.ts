@@ -112,9 +112,14 @@ const composerSkillItems = shallowRef<ComposerSkillItem[]>([])
 const composerConnectorState = {
   isVisible: shallowRef<boolean>(false),
   selectedIds: shallowRef<string[]>([]),
+  availableIds: shallowRef<string[]>([]),
   toggle: vi.fn(async (connectorId: string) => {
     composerConnectorState.selectedIds.value = [
       ...composerConnectorState.selectedIds.value,
+      connectorId,
+    ]
+    composerConnectorState.availableIds.value = [
+      ...composerConnectorState.availableIds.value,
       connectorId,
     ]
   }),
@@ -140,6 +145,8 @@ mockNuxtImport('useComposerConnectors', () => {
     isLoaded: computed(() => true),
     isSelectionKnown: computed(() => true),
     selectedIds: computed(() => composerConnectorState.selectedIds.value),
+    availableIds: computed(() => composerConnectorState.availableIds.value),
+    offIds: computed(() => []),
     selectedCount: computed(() => {
       return composerConnectorState.selectedIds.value.length
     }),
@@ -4257,6 +4264,7 @@ describe('ChatInput.client', () => {
     beforeEach(() => {
       composerConnectorState.isVisible.value = true
       composerConnectorState.selectedIds.value = []
+      composerConnectorState.availableIds.value = []
       composerConnectorState.toggle.mockClear()
 
       const chatInput = mocks.useChatInput() as Record<string, unknown>
@@ -4334,9 +4342,10 @@ describe('ChatInput.client', () => {
       expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
     })
 
-    it('says nothing for a connector that is already on or not named',
+    it('says nothing for a connector that is already available or not named',
       async () => {
         composerConnectorState.selectedIds.value = ['conn-doop']
+        composerConnectorState.availableIds.value = ['conn-doop']
 
         const wrapper = await mountChatInput()
 
@@ -4347,11 +4356,30 @@ describe('ChatInput.client', () => {
         expect(hasTestId(wrapper, 'connector-suggestion')).toBe(false)
 
         composerConnectorState.selectedIds.value = []
+        composerConnectorState.availableIds.value = []
         await wrapper.get('[data-testid="chat-input-textarea"]')
           .setValue('the doopler effect')
         await flushPromises()
 
         expect(hasTestId(wrapper, 'connector-suggestion')).toBe(false)
       })
+
+    it('says nothing for an Auto connector the chat can already use, and '
+      + 'offers one the chat switched off', async () => {
+      composerConnectorState.availableIds.value = ['conn-doop']
+
+      const wrapper = await mountChatInput()
+
+      await wrapper.get('[data-testid="chat-input-textarea"]')
+        .setValue('what do I have in Doop?')
+      await flushPromises()
+
+      expect(hasTestId(wrapper, 'connector-suggestion')).toBe(false)
+
+      composerConnectorState.availableIds.value = []
+      await flushPromises()
+
+      expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
+    })
   })
 })

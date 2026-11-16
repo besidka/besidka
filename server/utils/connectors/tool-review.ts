@@ -46,6 +46,7 @@ import {
   readCachedToolDefinitions,
   resolveToolsCacheTtlSeconds,
   writeCachedToolDefinitions,
+  writeCatalogSnapshot,
 } from '~~/server/utils/connectors/tool-cache'
 import {
   canonicalJson,
@@ -176,6 +177,7 @@ export async function loadConnectorToolDefinitions(input: {
       listed.definitions,
       resolveToolsCacheTtlSeconds(listed.ttlMs),
     )
+    await writeCatalogSnapshot(kv, connector.id, listed.definitions)
 
     return {
       definitions: listed.definitions,

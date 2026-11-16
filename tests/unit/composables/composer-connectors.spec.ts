@@ -45,6 +45,7 @@ function createConnector(
     host: string
     status: string
     enabled: boolean
+    toolMode: string
   }> = {},
 ) {
   return {
@@ -54,6 +55,7 @@ function createConnector(
     host: 'mcp.notion.com',
     status: 'ready',
     enabled: true,
+    toolMode: 'manual',
     authType: 'oauth',
     createdVia: 'preset',
     presetId: 'notion',
@@ -82,6 +84,7 @@ function resetSelection() {
   useChatConnectorSelection().selection.value = {
     chatKey: NEW_CHAT_CONNECTORS_KEY,
     ids: [],
+    offIds: [],
     isKnown: true,
   }
 }
@@ -147,6 +150,7 @@ describe('useComposerConnectors', () => {
       title: 'Drift',
       host: 'mcp.notion.com',
       status: 'drifted',
+      toolMode: 'manual',
       presetId: 'notion',
       isIconAvailable: true,
     })
@@ -222,7 +226,7 @@ describe('useComposerConnectors', () => {
 
     expect(mocks.fetch).toHaveBeenLastCalledWith(
       '/api/v1/chats/chat-slug/connectors',
-      { method: 'PUT', body: { connectorIds: ['c1', 'c2'] } },
+      { method: 'PUT', body: { connectorIds: ['c1', 'c2'], offConnectorIds: [] } },
     )
     expect(composable.selectedIds.value).toEqual(['c1', 'c2'])
   })
@@ -257,6 +261,7 @@ describe('useComposerConnectors', () => {
     selection.selection.value = {
       chatKey: NEW_CHAT_CONNECTORS_KEY,
       ids: ['c1'],
+      offIds: [],
       isKnown: true,
     }
     selection.handOff('chat-slug')
@@ -295,7 +300,7 @@ describe('useComposerConnectors', () => {
 
     expect(mocks.fetch).toHaveBeenLastCalledWith(
       '/api/v1/chats/chat-slug/connectors',
-      { method: 'PUT', body: { connectorIds: ['c1', 'c2'] } },
+      { method: 'PUT', body: { connectorIds: ['c1', 'c2'], offConnectorIds: [] } },
     )
     expect(composable.selectedIds.value).toEqual(['c1', 'c2'])
   })
@@ -388,7 +393,7 @@ describe('useComposerConnectors', () => {
 
     expect(mocks.fetch).toHaveBeenLastCalledWith(
       '/api/v1/chats/chat-slug/connectors',
-      { method: 'PUT', body: { connectorIds: [] } },
+      { method: 'PUT', body: { connectorIds: [], offConnectorIds: [] } },
     )
     expect(composable.selectedIds.value).toEqual([])
   })
@@ -427,7 +432,7 @@ describe('useComposerConnectors', () => {
       '/api/v1/chats/chat-slug/connectors',
       {
         method: 'PUT',
-        body: { connectorIds: ['c0', 'c1', 'c2', 'c3', 'c4'] },
+        body: { connectorIds: ['c0', 'c1', 'c2', 'c3', 'c4'], offConnectorIds: [] },
       },
     )
     expect(composable.selectedIds.value)
@@ -452,6 +457,233 @@ describe('useComposerConnectors', () => {
       '/api/v1/chats/chat-b/connectors',
     )
     expect(composable.selectedIds.value).toEqual([])
+  })
+})
+
+describe('useComposerConnectors modes', () => {
+  beforeEach(() => {
+    connectorsActive.value = true
+    data.value = null
+    mocks.execute.mockReset()
+    mocks.fetch.mockReset()
+    mocks.errorMessage.mockReset()
+    resetSelection()
+  })
+
+  function createModeConnectors() {
+    return [
+      createConnector({ id: 'm1', slug: 'manual-one', title: 'Manual One' }),
+      createConnector({
+        id: 'a1',
+        slug: 'auto-one',
+        title: 'Auto One',
+        toolMode: 'auto',
+      }),
+      createConnector({
+        id: 'o1',
+        slug: 'always-one',
+        title: 'Always One',
+        toolMode: 'always-on',
+      }),
+    ]
+  }
+
+  it('makes an Auto and an Always on connector available without a toggle', async () => {
+    data.value = { connectors: createModeConnectors() }
+
+    const { composable } = await mountComposable()
+
+    expect(composable.availableIds.value).toEqual(['o1', 'a1'])
+    expect(composable.selectedIds.value).toEqual([])
+    expect(composable.offIds.value).toEqual([])
+  })
+
+  it('adds a Manual connector to the available ones only once it is on', async () => {
+    data.value = { connectors: createModeConnectors() }
+
+    const { composable } = await mountComposable()
+
+    await composable.toggle('m1')
+
+    expect(composable.selectedIds.value).toEqual(['m1'])
+    expect(composable.availableIds.value).toEqual(['o1', 'a1', 'm1'])
+  })
+
+  it('switches an Auto connector off for the chat and saves both lists', async () => {
+    data.value = { connectors: createModeConnectors() }
+    mocks.fetch
+      .mockResolvedValueOnce({ connectorIds: [], offConnectorIds: [] })
+      .mockResolvedValueOnce({ connectorIds: [], offConnectorIds: ['a1'] })
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+    await composable.toggle('a1')
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/chats/chat-slug/connectors',
+      { method: 'PUT', body: { connectorIds: [], offConnectorIds: ['a1'] } },
+    )
+    expect(composable.offIds.value).toEqual(['a1'])
+    expect(composable.availableIds.value).toEqual(['o1'])
+    expect(composable.selectedIds.value).toEqual([])
+  })
+
+  it('switches an Auto connector back on by clearing its off', async () => {
+    data.value = { connectors: createModeConnectors() }
+    mocks.fetch
+      .mockResolvedValueOnce({ connectorIds: [], offConnectorIds: ['a1'] })
+      .mockResolvedValueOnce({ connectorIds: [], offConnectorIds: [] })
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+
+    expect(composable.availableIds.value).toEqual(['o1'])
+
+    await composable.toggle('a1')
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/chats/chat-slug/connectors',
+      { method: 'PUT', body: { connectorIds: [], offConnectorIds: [] } },
+    )
+    expect(composable.availableIds.value).toEqual(['o1', 'a1'])
+  })
+
+  it('keeps the off list on a new chat in client state only', async () => {
+    data.value = { connectors: createModeConnectors() }
+
+    const { composable } = await mountComposable()
+
+    await composable.toggle('o1')
+
+    expect(composable.offIds.value).toEqual(['o1'])
+    expect(composable.availableIds.value).toEqual(['a1'])
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+
+  it('rolls an off back when saving fails', async () => {
+    data.value = { connectors: createModeConnectors() }
+    mocks.fetch
+      .mockResolvedValueOnce({ connectorIds: [], offConnectorIds: [] })
+      .mockRejectedValueOnce({ data: { message: 'nope' } })
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+    await composable.toggle('a1')
+
+    expect(composable.offIds.value).toEqual([])
+    expect(mocks.errorMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts Always on connectors against the cap that only blocks Manual ones', async () => {
+    data.value = {
+      connectors: [
+        ...Array.from({ length: 4 }, (_, index) => {
+          return createConnector({
+            id: `m${index}`,
+            slug: `manual${index}`,
+            title: `Manual ${index}`,
+          })
+        }),
+        createConnector({
+          id: 'o1',
+          slug: 'always-one',
+          title: 'Always One',
+          toolMode: 'always-on',
+        }),
+        createConnector({
+          id: 'a1',
+          slug: 'auto-one',
+          title: 'Auto One',
+          toolMode: 'auto',
+        }),
+      ],
+    }
+
+    const { composable } = await mountComposable()
+
+    expect(composable.manualCapacity.value).toBe(4)
+
+    for (const index of [0, 1, 2, 3]) {
+      await composable.toggle(`m${index}`)
+    }
+
+    expect(composable.isAtLimit.value).toBe(true)
+
+    await composable.toggle('a1')
+
+    expect(composable.offIds.value).toEqual(['a1'])
+
+    await composable.toggle('o1')
+
+    expect(composable.offIds.value).toEqual(['a1', 'o1'])
+    expect(composable.isAtLimit.value).toBe(false)
+  })
+
+  it('turns all on and off for Manual connectors only and leaves offs alone', async () => {
+    data.value = { connectors: createModeConnectors() }
+    mocks.fetch
+      .mockResolvedValueOnce({ connectorIds: [], offConnectorIds: ['a1'] })
+      .mockImplementation(async (_url: string, options: {
+        body: { connectorIds: string[], offConnectorIds: string[] }
+      }) => ({
+        connectorIds: options.body.connectorIds,
+        offConnectorIds: options.body.offConnectorIds,
+      }))
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+    await composable.setAll(['m1', 'a1', 'o1'])
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/chats/chat-slug/connectors',
+      { method: 'PUT', body: { connectorIds: ['m1'], offConnectorIds: ['a1'] } },
+    )
+
+    await composable.clear()
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/chats/chat-slug/connectors',
+      { method: 'PUT', body: { connectorIds: [], offConnectorIds: ['a1'] } },
+    )
+  })
+
+  it('drops off ids whose connector is gone', async () => {
+    data.value = { connectors: createModeConnectors() }
+    mocks.fetch.mockResolvedValueOnce({
+      connectorIds: [],
+      offConnectorIds: ['a1', 'gone'],
+    })
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+
+    expect(composable.offIds.value).toEqual(['a1'])
+  })
+
+  it('hands an off over from the new chat page', async () => {
+    data.value = { connectors: createModeConnectors() }
+
+    const selection = useChatConnectorSelection()
+
+    selection.selection.value = {
+      chatKey: NEW_CHAT_CONNECTORS_KEY,
+      ids: [],
+      offIds: ['a1'],
+      isKnown: true,
+    }
+    selection.handOff('chat-slug')
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(composable.offIds.value).toEqual(['a1'])
   })
 })
 

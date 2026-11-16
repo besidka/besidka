@@ -7,6 +7,7 @@ import {
 } from '#shared/utils/connectors-slug'
 import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import {
+  CONNECTOR_NEW_TOOL_MODE,
   CONNECTOR_TITLE_MAX_LENGTH,
   CONNECTORS_MCP_DISABLED_MAX,
   CONNECTORS_PER_USER,
@@ -383,6 +384,7 @@ export async function createConnector(
           presetId: input.presetId ?? null,
           createdVia: input.createdVia,
           createdByClientId: input.createdByClientId ?? null,
+          toolMode: CONNECTOR_NEW_TOOL_MODE,
         }).returning(connectorPublicColumns),
         db.delete(schema.connectors)
           .where(and(
