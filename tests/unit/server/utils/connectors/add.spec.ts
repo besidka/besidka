@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { addConnector } from '~~/server/utils/connectors/add'
 import { CONNECTOR_ERRORS } from '~~/server/utils/connectors/errors'
 
@@ -66,5 +66,68 @@ describe('addConnector own-server rule', () => {
 
   it('links the Labs page from the error text', () => {
     expect(CONNECTOR_ERRORS.CONNECTOR_OWN_SERVER.link).toBe('/profile/labs')
+  })
+})
+
+describe('addConnector verifyServer', () => {
+  it('refuses an own server before any verification', async () => {
+    const verifyServer = vi.fn()
+
+    await expect(addConnector(db, {
+      userId: 1,
+      url: 'https://besidka.com/mcp',
+      source: { via: 'app' },
+      verifyServer,
+    })).rejects.toMatchObject({ code: 'CONNECTOR_OWN_SERVER' })
+    expect(verifyServer).not.toHaveBeenCalled()
+  })
+
+  it('does not insert when the verification throws', async () => {
+    const insertSpy = vi.fn()
+    const spyDb = { insert: insertSpy } as unknown as DbClient
+    const failure = Object.assign(new Error('not mcp'), {
+      code: 'CONNECTOR_DISCOVERY_FAILED',
+    })
+
+    await expect(addConnector(spyDb, {
+      userId: 1,
+      url: 'https://mcp.example.com/mcp',
+      source: { via: 'app' },
+      verifyServer: async () => {
+        throw failure
+      },
+    })).rejects.toBe(failure)
+    expect(insertSpy).not.toHaveBeenCalled()
+  })
+
+  it('hands the verification the normalized address and whether OAuth is '
+    + 'allowed', async () => {
+    const verifyServer = vi.fn(async () => {
+      throw new Error('stop')
+    })
+
+    await expect(addConnector(db, {
+      userId: 1,
+      url: 'https://mcp.example.com/mcp',
+      source: { via: 'app' },
+      verifyServer,
+    })).rejects.toThrow('stop')
+    expect(verifyServer).toHaveBeenCalledWith({
+      url: 'https://mcp.example.com/mcp',
+      allowOAuth: true,
+    })
+
+    verifyServer.mockClear()
+
+    await expect(addConnector(db, {
+      userId: 1,
+      presetId: 'github',
+      source: { via: 'app' },
+      verifyServer,
+    })).rejects.toThrow('stop')
+    expect(verifyServer).toHaveBeenCalledWith({
+      url: 'https://api.githubcopilot.com/mcp/',
+      allowOAuth: false,
+    })
   })
 })

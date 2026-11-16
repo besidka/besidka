@@ -11,6 +11,8 @@ import {
   findActiveRegistryEntry,
 } from '~~/server/utils/connectors/add'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
+import { discoverConnectorAuth } from '~~/server/utils/connectors/oauth-metadata'
+import { connectorErrorCodeOf } from '~~/server/utils/connectors/errors'
 import { requireConnectorAccess } from '~~/server/utils/connectors/route'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -46,15 +48,18 @@ async function findDirectoryEntry(
 }
 
 /**
- * Adds a connector without any network request (docs/connectors.md section
- * 5.1): the URL is checked syntactically, a preset's own URL (or a
- * directory entry's, from the local MCP Registry copy) replaces the input,
- * and the row starts disabled in `needs-auth`.
+ * Adds a connector from the app (docs/connectors.md section 5.1): the URL is
+ * checked syntactically, a preset's own URL (or a directory entry's, from the
+ * local MCP Registry copy) replaces the input, the server gets the same
+ * unauthenticated probe the Connect step sends, and only when it answers as
+ * an MCP server does the row start, disabled, in `needs-auth`. A failed probe
+ * stores nothing.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event)
   const body = await readConnectorBody(event, bodySchema)
   const db = useDb()
+  const logger = useRequestLogger(event)
   const registryEntry = body.registryId && !body.presetId
     ? await findDirectoryEntry(event, db, body.registryId)
     : null
@@ -66,9 +71,31 @@ export default defineEventHandler(async (event) => {
     source: registryEntry
       ? { via: 'registry', entry: registryEntry }
       : { via: 'app' },
+    verifyServer: async (target) => {
+      try {
+        await discoverConnectorAuth(target.url, logger, {
+          allowOAuth: target.allowOAuth,
+        })
+      } catch (exception) {
+        logger.set({
+          attributes: {
+            connectors: {
+              step: 'create',
+              code: connectorErrorCodeOf(
+                exception,
+                'CONNECTOR_DISCOVERY_FAILED',
+              ),
+              stored: false,
+            },
+          },
+        })
+
+        throw exception
+      }
+    },
   })
 
-  useRequestLogger(event).set({
+  logger.set({
     attributes: {
       connectors: {
         id: connector.id,

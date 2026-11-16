@@ -98,4 +98,32 @@ describe('Ui/ToolPermissions/ModeControl', () => {
     expect(document.activeElement).toBe(radios[2]!.element)
     expect(wrapper.emitted('select')).toBeUndefined()
   })
+
+  it.each([
+    ['allow', 'btn-success'],
+    ['ask', 'btn-warning'],
+    ['blocked', 'btn-error'],
+  ])('marks the checked %s mode with the soft %s variant', async (
+    mode,
+    colorClass,
+  ) => {
+    const wrapper = await mountControl({ mode })
+    const checked = wrapper.get(`[data-testid="tool-permission-option-${mode}"]`)
+    const classes = checked.classes()
+
+    expect(classes).toContain('btn-soft')
+    expect(classes).toContain('btn-soft-selected')
+    expect(classes).toContain(colorClass)
+    expect(classes).not.toContain('btn-ghost')
+
+    for (const other of ['allow', 'ask', 'blocked'].filter(m => m !== mode)) {
+      const otherClasses = wrapper
+        .get(`[data-testid="tool-permission-option-${other}"]`)
+        .classes()
+
+      expect(otherClasses).toContain('btn-ghost')
+      expect(otherClasses).not.toContain('btn-soft')
+      expect(otherClasses).not.toContain('btn-soft-selected')
+    }
+  })
 })

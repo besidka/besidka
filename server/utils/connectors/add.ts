@@ -24,6 +24,12 @@ export interface AddConnectorInput {
     | { via: 'app' }
     | { via: 'mcp', clientId: string }
     | { via: 'registry', entry: RegistryEntryAddress }
+  verifyServer?: (target: ConnectorVerifyTarget) => Promise<void>
+}
+
+export interface ConnectorVerifyTarget {
+  url: string
+  allowOAuth: boolean
 }
 
 export interface RegistryEntryAddress {
@@ -95,12 +101,15 @@ export async function findActiveRegistryEntry(
 }
 
 /**
- * Adds a connector without any network request (docs/connectors.md section
- * 5.1), for the app route and for the MCP tool alike: the URL is checked
+ * Adds a connector (docs/connectors.md section 5.1): the URL is checked
  * syntactically, a preset's own URL (or a directory entry's, from the local
  * MCP Registry copy) replaces the input, and the row starts disabled in
- * `needs-auth`. Anything added over MCP is recorded as `mcp` with the OAuth
- * client that added it, even from a preset; a directory entry as `registry`.
+ * `needs-auth`. Without `verifyServer` (the MCP tool) no request is made.
+ * With it (the app route) the callback runs after the URL check and before
+ * the insert, and a throw means nothing is stored: a server that never
+ * answered as an MCP server never becomes a connector. Anything added over
+ * MCP is recorded as `mcp` with the OAuth client that added it, even from a
+ * preset; a directory entry as `registry`.
  */
 export async function addConnector(
   db: DbClient,
@@ -143,6 +152,12 @@ export async function addConnector(
     registryEntry?.title ?? '',
     CONNECTOR_TITLE_MAX_LENGTH,
   ) || parsed.url.hostname
+
+  await input.verifyServer?.({
+    url: parsed.url.toString(),
+    allowOAuth: !preset || preset.auth.includes('oauth'),
+  })
+
   const connector = await createConnector(db, {
     userId: input.userId,
     title,

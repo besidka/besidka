@@ -294,6 +294,9 @@ describe('Connectors page routes', () => {
     it('adds the entry\'s own address as a registry connector', async () => {
       mocks.flags.add('connectors.registry')
       await addEntry('io.example/tracker@1.0.0', 'active')
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response('{}', { status: 200 })
+      }))
 
       const result = await call(createPath, {
         body: {
@@ -309,6 +312,23 @@ describe('Connectors page routes', () => {
         status: 'needs-auth',
         enabled: false,
       })
+    })
+
+    it('stores nothing when the entry\'s server does not answer as an '
+      + 'MCP server', async () => {
+      mocks.flags.add('connectors.registry')
+      await addEntry('io.example/tracker@1.0.0', 'active')
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response('not found', { status: 404 })
+      }))
+
+      const failure = await failureOf(call(createPath, {
+        body: { registryId: 'io.example/tracker@1.0.0' },
+      })) as { status: number, code?: string }
+
+      expect(failure.status).toBe(502)
+      expect(failure.code).toBe('CONNECTOR_DISCOVERY_FAILED')
+      expect(await testDb.db.select().from(schema.connectors)).toEqual([])
     })
 
     it('needs the registry flag for a directory entry', async () => {

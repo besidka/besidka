@@ -105,11 +105,17 @@ resolves a disagreement between tickets and is listed in section 13.
    Error code `CONNECTOR_CONSENT_REQUIRED`, handled like
    `TRANSFER_CONSENT_REQUIRED` (`shared/utils/legal-consent.ts`). The sign-up
    consent and `CURRENT_CONSENT_VERSION` are unchanged.
-6. **Adding makes no network request (pre-check, this doc).** `POST
-   /api/v1/connectors` and MCP `add_connector` only validate the URL
-   syntactically (section 4) and store a disabled row with
-   `status='needs-auth'`. Discovery, probing and sign-in happen when the user
-   presses **Connect** in the app.
+6. **Adding over MCP makes no network request (pre-check, this doc); adding in
+   the app stores a connector only after the server answered.** MCP
+   `add_connector` only validates the URL syntactically (section 4) and stores
+   a disabled row with `status='needs-auth'`. `POST /api/v1/connectors` (the
+   user pressing Add) validates the same way, then sends the one
+   unauthenticated probe of the Connect step (discovery, including the OAuth
+   metadata); a server that does not answer as an MCP server, or whose OAuth
+   metadata is refused, stores nothing and the Add dialog shows the error. The
+   row that is stored is `needs-auth`, disabled, and may stay so when the
+   sign-in is canceled. Consent, sign-in and credentials still wait for
+   **Connect**.
 7. **Enabling happens only in the app.** MCP may add connectors (disabled),
    list them, reduce tool permissions and delete them. Reason: enabling opens a
    new data channel to a new recipient, which needs the consent screen; an
@@ -378,19 +384,23 @@ Other C-3 choices that differ from or add to the text above:
 
 ## 5. Adding and connecting a connector
 
-### 5.1 Add (no network)
+### 5.1 Add
 
-`POST /api/v1/connectors` `{ url, title?, presetId? }` (app) and MCP
-`add_connector` `{ url, title?, presetId? }` both:
+`POST /api/v1/connectors` `{ url, title?, presetId?, registryId? }` (app) and
+MCP `add_connector` `{ url, title?, presetId? }` both:
 
 1. Run `parseSafeOutboundUrl`. A preset id must match a catalog entry, and its
    URL replaces the input.
-2. Derive the slug (section 8.1).
-3. Insert a row with `enabled=false`, `status='needs-auth'`, `auth_type=null`,
+2. App only: run the section 5.2 discovery against the address (same
+   `safeFetch` rules, purpose `mcp`, `allowOAuth` false for a token-only
+   preset). Any failure ends the request with that error and stores nothing
+   (no row, no credentials, no KV state).
+3. Derive the slug (section 8.1).
+4. Insert a row with `enabled=false`, `status='needs-auth'`, `auth_type=null`,
    no consent, `created_via` (`app`, `preset`, `registry` or `mcp`; any row
    added over MCP is `mcp`, even with a `presetId`) and, for MCP,
    `created_by_client_id`.
-4. Make no request to the URL.
+5. MCP makes no request to the URL.
 
 ### 5.2 Connect (in the app only)
 

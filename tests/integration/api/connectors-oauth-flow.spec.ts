@@ -136,7 +136,21 @@ describe('connector OAuth flow', () => {
     }
   }
 
-  async function createConnector(body: Record<string, unknown> = {
+  async function createConnector(body: {
+    url?: string
+    presetId?: string
+  } = { url: MCP_SERVER_URL }) {
+    const { addConnector } = await import('~~/server/utils/connectors/add')
+    const { connector } = await addConnector(testDb.db, {
+      userId,
+      ...body,
+      source: { via: 'app' },
+    })
+
+    return connector as { id: string, status: string }
+  }
+
+  async function createConnectorThroughRoute(body: Record<string, unknown> = {
     url: MCP_SERVER_URL,
   }) {
     const { result } = await call('~~/server/api/v1/connectors/index.post', {
@@ -144,6 +158,12 @@ describe('connector OAuth flow', () => {
     })
 
     return result.connector as { id: string, status: string }
+  }
+
+  async function connectorRows() {
+    return await testDb.db.select()
+      .from(schema.connectors)
+      .where(eq(schema.connectors.userId, userId))
   }
 
   async function discover(id: string) {
@@ -1039,6 +1059,77 @@ describe('connector OAuth flow', () => {
     })
   })
 
+  describe('adding from the app', () => {
+    it('probes the server once and stores the connector when it answers '
+      + 'as an MCP server', async () => {
+      useServer()
+
+      const connector = await createConnectorThroughRoute()
+
+      expect(connector.status).toBe('needs-auth')
+      expect(server.requests.map(request => request.url)[0])
+        .toBe(MCP_SERVER_URL)
+      expect(await connectorRows()).toHaveLength(1)
+    })
+
+    it('stores nothing when the server does not answer as an MCP server',
+      async () => {
+        useServer({ probeStatus: 404, challenge: '' })
+
+        const failure = await failureOf(createConnectorThroughRoute())
+
+        expect(failure.code).toBe('CONNECTOR_DISCOVERY_FAILED')
+        expect(failure.status).toBe(502)
+        expect(await connectorRows()).toEqual([])
+        expect(await credentialRows()).toEqual([])
+      })
+
+    it('stores nothing when the server is unreachable', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      }))
+
+      await failureOf(createConnectorThroughRoute())
+
+      expect(await connectorRows()).toEqual([])
+    })
+
+    it('stores nothing when OAuth discovery fails', async () => {
+      useServer({
+        metadata: {
+          ...defaultMetadata(),
+          code_challenge_methods_supported: ['plain'],
+        },
+      })
+
+      expect((await failureOf(createConnectorThroughRoute())).code)
+        .toBe('CONNECTOR_OAUTH_PKCE_UNSUPPORTED')
+      expect(await connectorRows()).toEqual([])
+    })
+
+    it('keeps a connector whose sign-in was never finished', async () => {
+      useServer()
+
+      const connector = await createConnectorThroughRoute()
+      const stored = await connectorRow(connector.id)
+
+      expect(stored.status).toBe('needs-auth')
+      expect(stored.enabled).toBe(false)
+    })
+
+    it('stores nothing for an address that fails the URL rules without '
+      + 'a request', async () => {
+      useServer()
+
+      await failureOf(createConnectorThroughRoute({
+        url: 'https://10.0.0.1/mcp',
+      }))
+
+      expect(server.fetch).not.toHaveBeenCalled()
+      expect(await connectorRows()).toEqual([])
+    })
+  })
+
   describe('outbound URL rules', () => {
     it.each([
       ['a private resource_metadata URL', 'https://169.254.169.254/latest'],
@@ -1096,7 +1187,7 @@ describe('connector OAuth flow', () => {
       expect(server.fetch).not.toHaveBeenCalled()
     })
 
-    it('makes no request when a connector is added', async () => {
+    it('makes no request when a connector is added over MCP', async () => {
       await createConnector()
 
       expect(server.fetch).not.toHaveBeenCalled()
@@ -1115,7 +1206,8 @@ describe('connector OAuth flow', () => {
     it('answers 404 without the connectors flag', async () => {
       mocks.flags = new Set()
 
-      expect((await failureOf(createConnector())).status).toBe(404)
+      expect((await failureOf(createConnectorThroughRoute())).status)
+        .toBe(404)
     })
 
     it('answers 404 for another user\'s connector', async () => {

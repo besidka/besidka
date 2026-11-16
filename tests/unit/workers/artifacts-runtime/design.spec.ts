@@ -103,7 +103,6 @@ const APP_VALUES_UNDER_OVERRIDE = {
   light: {
     '--color-secondary': 'var(--color-white)',
     '--color-secondary-content': 'var(--color-stone-800)',
-    '--color-success-content': 'var(--color-emerald-950)',
   },
   dark: {
     '--color-primary': 'var(--color-stone-800)',

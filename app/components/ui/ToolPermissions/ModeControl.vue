@@ -59,9 +59,9 @@ interface ModeOption {
 }
 
 const MODE_CHECKED_CLASS: Record<ToolPermissionMode, string> = {
-  allow: 'btn-soft btn-success',
-  ask: 'btn-soft btn-warning',
-  blocked: 'btn-soft btn-error',
+  allow: 'btn-soft btn-soft-selected btn-success',
+  ask: 'btn-soft btn-soft-selected btn-warning',
+  blocked: 'btn-soft btn-soft-selected btn-error',
 }
 
 const NEXT_KEYS: ReadonlySet<string> = new Set(['ArrowRight', 'ArrowDown'])
