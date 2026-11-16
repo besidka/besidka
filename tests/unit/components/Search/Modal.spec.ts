@@ -1314,6 +1314,145 @@ describe('Search/Modal.client', () => {
     )
   })
 
+  describe('recent chats skeleton', () => {
+    type HistoryResponse = ReturnType<typeof createHistoryResponse>
+
+    function deferHistory() {
+      let resolve!: (response: HistoryResponse) => void
+      let reject!: (reason: Error) => void
+
+      mocks.fetchMock.mockImplementation(() => {
+        return new Promise<HistoryResponse>((resolvePromise, rejectPromise) => {
+          resolve = resolvePromise
+          reject = rejectPromise
+        })
+      })
+
+      return {
+        resolve: (response: HistoryResponse) => resolve(response),
+        reject: (reason: Error) => reject(reason),
+      }
+    }
+
+    async function waitForCollapse() {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300)
+      })
+      await nextTick()
+    }
+
+    it('reserves three skeleton rows under the Recent heading while the '
+      + 'chats load, outside the keyboard options', async () => {
+      useSearchModal().isModalOpen.value = true
+      deferHistory()
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const skeleton = wrapper.find('[data-testid="search-recent-skeleton"]')
+
+      expect(skeleton.exists()).toBe(true)
+      expect(skeleton.find('[aria-hidden="true"]').exists()).toBe(true)
+      expect(skeleton.text()).toContain('Recent')
+      expect(skeleton.findAll('.skeleton.skeleton--default')).toHaveLength(3)
+      expect(skeleton.findAll('[role="option"]')).toHaveLength(0)
+
+      const optionIds = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(optionIds[0]).toBe('search-option-history')
+    })
+
+    it('replaces the skeleton with the recent rows once loaded', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const history = deferHistory()
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      history.resolve(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+      await waitForRecentChatsFetch()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+      expect(wrapper.find('#search-option-recent-recent-1').exists())
+        .toBe(true)
+    })
+
+    it('collapses the skeleton, then removes it, when there are no recent '
+      + 'chats', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const history = deferHistory()
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      history.resolve(createHistoryResponse())
+      await waitForRecentChatsFetch()
+
+      const collapsing = wrapper.find('[data-testid="search-recent-skeleton"]')
+
+      expect(collapsing.exists()).toBe(true)
+      expect(collapsing.classes()).toContain('grid-rows-[0fr]')
+      expect(collapsing.classes()).toContain('opacity-0')
+
+      await waitForCollapse()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+    })
+
+    it('drops the skeleton when the request fails', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const history = deferHistory()
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      history.reject(new Error('network error'))
+      await waitForRecentChatsFetch()
+      await waitForCollapse()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+    })
+
+    it('shows the cached rows, not a skeleton, when reopened', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      deferHistory()
+      useSearchModal().isModalOpen.value = false
+      await nextTick()
+      useSearchModal().isModalOpen.value = true
+      await nextTick()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+      expect(wrapper.find('#search-option-recent-recent-1').exists())
+        .toBe(true)
+    })
+
+    it('shows no skeleton when signed out', async () => {
+      loggedIn.value = false
+      useSearchModal().isModalOpen.value = true
+      deferHistory()
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+    })
+  })
+
   describe('pin toggle', () => {
     function mockPinFetch(
       history: ReturnType<typeof createHistoryResponse>,

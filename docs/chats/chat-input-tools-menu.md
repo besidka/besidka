@@ -485,6 +485,31 @@ connector it shows "No connectors yet" and a primary "Add a connector" link
 (`/chats/connectors?add=presets`); a skeleton shows until the list has
 loaded. Connectors are never listed inline in the menu.
 
+**Connected connectors that are off (BES-249).** The picker lists every
+connected (`ready` or `drifted`) connector, also one whose "Use in chats" is
+off on `/chats/connectors`; without that the user had to leave the chat to
+turn a new connector on. Those rows sit in a "Not turned on" group under the
+enabled ones (`connector-picker-disabled-group`, `useComposerConnectors().
+disabledItems`; `items` is unchanged, so the tile, the cap, the suggestion
+chip and the bulk buttons only ever see enabled connectors). Each shows the
+host and the mode (`connector-picker-mode-<slug>`); the heading says it is off.
+The row has a toggle when the connector can be enabled under the same rules
+as the detail panel and the `PATCH /api/v1/connectors/[id]` route: status
+`ready`, a current consent and a reviewed tool list (`getConnectorEnableBlock`,
+`tools.isBaselined`). Otherwise it has a link to
+`/chats/connectors?connector=<id>` that closes the picker: "Review tools" for
+a changed or never reviewed list, "Connect" for a consent or sign-in that is
+not current. Turning the toggle on enables the connector for the account (not
+only this chat), awaits the list refresh, and then, for a Manual connector
+with room under the five-per-send cap, also selects it for this chat; Auto
+and Always on connectors are available as soon as they are enabled. A
+refusal from the route is shown as an error toast and the list is reloaded.
+Switching it off afterwards in the picker is per chat only; turning the
+connector off for the account stays on the Connectors page. The list is
+reloaded every time the picker opens (`openConnectorPicker` in
+`ChatInput.client.vue`), keeping the cached rows on screen, so a connector
+added or changed in another tab shows up without a page reload.
+
 The choice is per chat. On an existing chat each toggle saves at once through
 `PUT /api/v1/chats/[slug]/connectors` and rolls back on failure; on
 `/chats/new` it is held in client state and handed to the new chat's slug

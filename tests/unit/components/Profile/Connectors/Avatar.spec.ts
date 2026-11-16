@@ -1,9 +1,20 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { computed, ref } from 'vue'
 import Avatar from '../../../../../app/components/Profile/Connectors/Avatar.vue'
 
 enableAutoUnmount(afterEach)
+
+const cachedConnector = ref<{ host: string } | null>(null)
+
+mockNuxtImport('useConnectorById', () => {
+  return () => computed(() => cachedConnector.value)
+})
+
+beforeEach(() => {
+  cachedConnector.value = null
+})
 
 describe('Profile/Connectors/Avatar', () => {
   it('shows a letter when nothing can be fetched', async () => {
@@ -114,4 +125,30 @@ describe('Profile/Connectors/Avatar', () => {
     expect(wrapper.text()).toBe('')
     expect(wrapper.find('img').classes()).not.toContain('opacity-0')
   })
+
+  it('draws the preset brand mark for a connector added by URL whose host '
+    + 'belongs to a preset', async () => {
+    cachedConnector.value = { host: 'mcp.cloudflare.com' }
+
+    const wrapper = await mountSuspended(Avatar, {
+      props: { title: 'Cloudflare', connectorId: 'c9' },
+    })
+
+    expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
+      .toBe(true)
+    expect(wrapper.text()).not.toBe('C')
+  })
+
+  it('keeps the letter for a URL-added connector on an unknown host',
+    async () => {
+      cachedConnector.value = { host: 'mcp.example.com' }
+
+      const wrapper = await mountSuspended(Avatar, {
+        props: { title: 'Cloudflare', connectorId: 'c9' },
+      })
+
+      expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).toBe('C')
+    })
 })

@@ -2,7 +2,10 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ConnectorPicker from '../../../../app/components/ChatInput/ConnectorPicker.client.vue'
-import type { ComposerConnectorItem } from '../../../../app/composables/composer-connectors'
+import type {
+  ComposerConnectorItem,
+  ComposerDisabledConnectorItem,
+} from '../../../../app/composables/composer-connectors'
 
 enableAutoUnmount(afterEach)
 
@@ -39,6 +42,42 @@ const items: ComposerConnectorItem[] = [
   },
 ]
 
+const disabledItems: ComposerDisabledConnectorItem[] = [
+  {
+    id: 'g1',
+    slug: 'gmail',
+    title: 'Gmail',
+    host: 'gmailmcp.googleapis.com',
+    status: 'ready',
+    toolMode: 'manual',
+    presetId: null,
+    isIconAvailable: false,
+    block: null,
+  },
+  {
+    id: 'g2',
+    slug: 'asana',
+    title: 'Asana',
+    host: 'mcp.asana.com',
+    status: 'drifted',
+    toolMode: 'auto',
+    presetId: null,
+    isIconAvailable: false,
+    block: 'review',
+  },
+  {
+    id: 'g3',
+    slug: 'box',
+    title: 'Box',
+    host: 'mcp.box.com',
+    status: 'ready',
+    toolMode: 'manual',
+    presetId: null,
+    isIconAvailable: false,
+    block: 'connect',
+  },
+]
+
 function find(id: string): HTMLElement | null {
   return document.body.querySelector(`[data-testid="${id}"]`)
 }
@@ -56,6 +95,7 @@ function get(id: string): HTMLElement {
 async function mountPicker(
   overrides: Partial<{
     items: ComposerConnectorItem[]
+    disabledItems: ComposerDisabledConnectorItem[]
     selectedIds: string[]
     offIds: string[]
     isAtLimit: boolean
@@ -599,6 +639,91 @@ describe('ChatInput/ConnectorPicker', () => {
       ])
       expect(get('connector-picker-bulk-notice').textContent)
         .toContain('4 of 6 are on. At most 4 can be on at once.')
+    })
+  })
+
+  describe('connectors that are not turned on', () => {
+    it('lists them under their own heading with the host and the mode, '
+      + 'apart from the enabled ones', async () => {
+      await mountPicker({ disabledItems })
+
+      const group = get('connector-picker-disabled-group')
+
+      expect(group.textContent).toContain('Not turned on')
+      expect(group.querySelectorAll('li')).toHaveLength(3)
+      expect(get('connector-picker-mode-gmail').textContent?.trim())
+        .toBe('gmailmcp.googleapis.com · Manual')
+      expect(get('connector-picker-mode-asana').textContent?.trim())
+        .toBe('mcp.asana.com · Auto')
+      expect(get('connector-picker-list').querySelectorAll('li'))
+        .toHaveLength(3)
+    })
+
+    it('shows the group and no empty state when only these exist', async () => {
+      await mountPicker({ items: [], disabledItems })
+
+      expect(find('connector-picker-empty')).toBeNull()
+      expect(find('connector-picker-disabled-group')).not.toBeNull()
+    })
+
+    it('shows no group when there are none', async () => {
+      await mountPicker()
+
+      expect(find('connector-picker-disabled-group')).toBeNull()
+    })
+
+    it('emits enable from a toggle and keeps it unchecked until the list '
+      + 'reloads', async () => {
+      const wrapper = await mountPicker({ disabledItems })
+      const toggle = get('connector-picker-toggle-gmail') as HTMLInputElement
+
+      toggle.checked = true
+      toggle.dispatchEvent(new Event('change'))
+      await flushPromises()
+
+      expect(wrapper.emitted('enable')).toEqual([['g1']])
+      expect(toggle.checked).toBe(false)
+    })
+
+    it('shows a Review tools link instead of a toggle when the tools need '
+      + 'a review', async () => {
+      await mountPicker({ disabledItems })
+
+      const link = get('connector-picker-review-asana')
+
+      expect(link.textContent?.trim()).toBe('Review tools')
+      expect(link.outerHTML).toContain('/chats/connectors?connector=g2')
+      expect(find('connector-picker-toggle-asana')).toBeNull()
+    })
+
+    it('shows a Connect link when the consent is not current', async () => {
+      await mountPicker({ disabledItems })
+
+      expect(get('connector-picker-review-box').textContent?.trim())
+        .toBe('Connect')
+      expect(find('connector-picker-toggle-box')).toBeNull()
+    })
+
+    it('closes the picker from the Review tools link', async () => {
+      const wrapper = await mountPicker({ disabledItems })
+
+      get('connector-picker-review-asana').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
+    })
+
+    it('disables the toggle while a save is running', async () => {
+      await mountPicker({ disabledItems, isSaving: true })
+
+      expect((get('connector-picker-toggle-gmail') as HTMLInputElement)
+        .disabled).toBe(true)
+    })
+
+    it('keeps the bulk buttons to the enabled connectors', async () => {
+      await mountPicker({ items: [items[0]!], disabledItems })
+
+      expect(find('connector-picker-bulk')).toBeNull()
     })
   })
 })

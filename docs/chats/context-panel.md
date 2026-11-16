@@ -53,7 +53,12 @@ slot 5.
   `setHistoryChatPinnedBySlug()` moves the chat between History's Pinned and
   chat lists in every loaded cache entry; a chat that is not loaded yet appears
   when History next refreshes on mount. The search modal reloads its Recent
-  list on every open. In the other direction, `setHistoryChatPinned()` (the
+  list on every open; on the first open after sign-in it reserves the space
+  with a three-row skeleton (`search-recent-skeleton`, outside the keyboard
+  options) so the groups below do not jump, swaps in the rows at the same
+  height, and collapses the skeleton over 200 ms when there are no recent
+  chats or the request fails. Later opens show the cached rows at once.
+  In the other direction, `setHistoryChatPinned()` (the
   search modal's pin toggle) also patches the panel's cached context, so a pin
   made in quick search shows in the panel without a reload. Icons match
   History and quick search: `lucide:pin` to pin, `lucide:pin-off` to unpin.
