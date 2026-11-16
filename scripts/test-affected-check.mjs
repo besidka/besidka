@@ -970,6 +970,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/google.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
     'tests/unit/utils/providers/anthropic.spec.ts',
+    'tests/unit/server/utils/ai/anthropic-thinking-binding.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
     'tests/unit/utils/reasoning-levels.spec.ts',
     'tests/unit/providers/reasoning-control-state.spec.ts',
@@ -1641,6 +1642,7 @@ export function getAffectedTests(changedFiles) {
 
   const connectorsChatToolsTests = [
     'tests/unit/server/utils/ai/tool-index-prefetch.spec.ts',
+    'tests/unit/server/utils/ai/anthropic-thinking-binding.spec.ts',
     'tests/unit/server/utils/connectors/send-tools.spec.ts',
     'tests/unit/server/utils/ai/tool-index.spec.ts',
     'tests/integration/api/chats-besidka-tools.spec.ts',
@@ -3498,7 +3500,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts|tool-index)\.ts|server\/utils\/ai\/tool-index(-prefetch)?\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|tool-index)\.ts|server\/utils\/ai\/(tool-index(-prefetch)?|anthropic-thinking-binding)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
       tests: connectorsChatToolsTests,
     },
     {

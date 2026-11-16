@@ -370,6 +370,12 @@ import type { ToolIndex } from '~~/server/utils/ai/tool-index'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
 import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
+import {
+  withAnthropicThinkingBinding,
+} from '~~/server/utils/ai/anthropic-thinking-binding'
+import type {
+  AnthropicThinkingOption,
+} from '~~/server/utils/providers/anthropic'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
   auditConnectorCall,
@@ -1274,6 +1280,7 @@ export default defineEventHandler(async (event) => {
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
+  let anthropicThinkingBinding: AnthropicThinkingOption | undefined
   const providerOptions: SharedV2ProviderOptions = {}
   let generatedImage: {
     modelId: string
@@ -1410,6 +1417,7 @@ export default defineEventHandler(async (event) => {
             tools: anthropicTools,
             providerOptions: anthropicProviderOptions,
             reasoning: anthropicReasoning,
+            thinkingBinding,
           } = await useAnthropic(
             session.user.id,
             model.id,
@@ -1420,8 +1428,11 @@ export default defineEventHandler(async (event) => {
           instance = anthropicInstance
           parsedTools = anthropicTools
           reasoningEffort = anthropicReasoning
+          anthropicThinkingBinding = thinkingBinding
           Object.assign(providerOptions, {
-            anthropic: anthropicProviderOptions,
+            anthropic: isResume && thinkingBinding
+              ? { ...anthropicProviderOptions, thinking: thinkingBinding }
+              : anthropicProviderOptions,
           })
 
           break
@@ -2434,7 +2445,7 @@ export default defineEventHandler(async (event) => {
   const guardsProviderTools = toolApprovalsActive
     && !isAnthropicRoute
     && hasGuardedProviderTool(toolApprovalSend, parsedTools.tools)
-  const toolLoopOptions = guardsProviderTools
+  const guardedToolLoopOptions = guardsProviderTools
     ? {
       ...containerToolLoopOptions,
       prepareStep: withProviderToolEgressGuard({
@@ -2445,6 +2456,17 @@ export default defineEventHandler(async (event) => {
       }),
     }
     : containerToolLoopOptions
+  const toolLoopOptions = anthropicThinkingBinding && guardedToolLoopOptions
+    ? {
+      ...guardedToolLoopOptions,
+      prepareStep: withAnthropicThinkingBinding({
+        base: guardedToolLoopOptions.prepareStep,
+        thinking: anthropicThinkingBinding,
+        toolNames: Object.keys(parsedTools.tools ?? {}),
+        logger,
+      }),
+    }
+    : guardedToolLoopOptions
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
