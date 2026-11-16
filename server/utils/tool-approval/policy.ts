@@ -1,5 +1,6 @@
 import {
   TOOL_ACCESS_LEVELS,
+  TOOL_APPROVAL_BESIDKA_READ_SOURCE,
   TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
   TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
@@ -33,6 +34,10 @@ import type { ApprovalState } from '~~/server/utils/tool-approval/state'
  * document tools) that asks only after connector or skill output; every
  * other native write counts every taint kind, so an unclassified tool fails
  * closed.
+ * `consentGate` marks a tool that only records the user's consent to an
+ * action the provider then runs (the skill scripts gate): it asks until a
+ * chat grant for its exact definition hash exists, whatever the taint, and
+ * offers `once` and `chat` only.
  */
 export interface ToolApprovalDescriptor {
   family: ToolFamily
@@ -43,6 +48,7 @@ export interface ToolApprovalDescriptor {
   destructiveHint: boolean
   writesMemory?: boolean
   onlyConnectorOrSkillTaint?: boolean
+  consentGate?: boolean
 }
 
 export interface DestructiveHintAnnotations {
@@ -74,8 +80,14 @@ const ALWAYS_ASK_TOOL_NAME_WORDS: ReadonlySet<string> = new Set([
   'purge',
   'invite',
   'share',
+  'unshare',
   'transfer',
   'publish',
+  'unpublish',
+  'send',
+  'post',
+  'forward',
+  'reply',
 ])
 
 function toolNameWords(name: string): string[] {
@@ -90,12 +102,15 @@ function toolNameWords(name: string): string[] {
 /**
  * Whether a connector tool's remote name or title names an action that
  * removes data or hands it to someone else (delete, remove, revoke, destroy,
- * drop, purge, invite, share, transfer, publish). Such a tool is always-ask
- * whatever its annotations say, because the annotations are the server's
- * own claim. Words are split on non-letters and camelCase, so
- * `delete_issue`, `deleteIssue` and "Share file" match and `dropdown_list`
- * does not. Pass the remote name and title, never the exposed
- * `mcp__<slug>__` name, so a connector slug cannot change the result.
+ * drop, purge, invite, share, unshare, transfer, publish, unpublish, send,
+ * post, forward, reply). Such a tool is always-ask whatever its annotations
+ * say, because the annotations are the server's own claim. Words are split
+ * on non-letters and camelCase and must match whole, so `delete_issue`,
+ * `deleteIssue`, `send_email`, `unshare_page` and "Share file" match, while
+ * `dropdown_list` and the plural nouns of `search_posts` or
+ * `list_shared_drives` do not. Pass the remote name and title, never the
+ * exposed `mcp__<slug>__` name, so a connector slug cannot change the
+ * result.
  */
 export function hasAlwaysAskToolName(
   ...names: ReadonlyArray<string | null | undefined>
@@ -117,7 +132,7 @@ export interface ToolApprovalGrant {
   toolName: string
 }
 
-export type ToolApprovalRule = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+export type ToolApprovalRule = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -174,6 +189,7 @@ const REMEMBER_OPTIONS_BY_REASON: Record<
   'untrusted-output': ['once'],
   'cross-source': ['once'],
   'always-ask': ['once'],
+  'consent': ['once', 'chat'],
   'default': ['once', 'chat', 'always'],
 }
 
@@ -201,11 +217,13 @@ function denied(
 function ask(
   rule: ToolApprovalRule,
   reason: ToolApprovalReason,
+  rememberOptions: readonly ToolApprovalRemember[]
+    = REMEMBER_OPTIONS_BY_REASON[reason],
 ): ToolApprovalDecision {
   return {
     status: { type: 'user-approval', reason },
     reason,
-    rememberOptions: [...REMEMBER_OPTIONS_BY_REASON[reason]],
+    rememberOptions: [...rememberOptions],
     rule,
   }
 }
@@ -247,8 +265,7 @@ function isTaintedFor(
   state: ApprovalState,
 ): boolean {
   if (
-    descriptor.family === 'native'
-    && descriptor.onlyConnectorOrSkillTaint === true
+    descriptor.onlyConnectorOrSkillTaint === true
     && !isMemoryWrite(descriptor)
   ) {
     return UNTRUSTED_NATIVE_WRITE_TAINT.some((kind) => {
@@ -259,23 +276,52 @@ function isTaintedFor(
   return state.taint.size > 0
 }
 
+function ownReadSourceOf(descriptor: ToolApprovalDescriptor): string | null {
+  if (descriptor.family === 'besidka') {
+    return TOOL_APPROVAL_BESIDKA_READ_SOURCE
+  }
+
+  return descriptor.family === 'connector' && descriptor.connectorId
+    ? connectorReadSource(descriptor.connectorId)
+    : null
+}
+
+function ownTaintKindOf(
+  descriptor: ToolApprovalDescriptor,
+): ToolApprovalTaintKind | null {
+  if (descriptor.family === 'besidka') {
+    return 'besidka'
+  }
+
+  return descriptor.family === 'connector' ? 'connector' : null
+}
+
 /**
- * Whether a Besidka tool counts the send as tainted for rule 4. A Besidka
- * read ignores the taint of earlier Besidka results: the user's own data
- * feeding another read of the user's own data carries nothing out (the
- * provider's web search is withheld after a Besidka read, and a connector
- * call asks `cross-source`). Any other taint kind still counts for a read,
- * and every taint kind counts for a Besidka write.
+ * Whether the send holds content from outside the tool's own source, for a
+ * connector or Besidka write (rule 2). Taint from the tool's own source
+ * (its own connector, or the user's Besidka data for a Besidka tool) does
+ * not count: owner decision, 2026-11-15. Because `connector` taint carries
+ * no connector id, it counts as the tool's own only while the send read the
+ * tool's own connector and nothing else; a read of another connector,
+ * Besidka data for a connector tool, the `overflow` marker or a missing
+ * connector id makes it foreign. Every other taint kind is foreign.
  */
-export function isTaintedForBesidka(
+export function hasForeignTaint(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
 ): boolean {
-  if (descriptor.access !== 'read') {
-    return state.taint.size > 0
-  }
+  const ownKind = ownTaintKindOf(descriptor)
+  const ownSource = ownReadSourceOf(descriptor)
+  const hasOtherSource = [...state.readSources].some((source) => {
+    return source !== ownSource
+  })
+  const isOwnTaintTraced = ownSource !== null && (
+    descriptor.family === 'besidka' || state.readSources.has(ownSource)
+  )
 
-  return [...state.taint].some(kind => kind !== 'besidka')
+  return [...state.taint].some((kind) => {
+    return kind !== ownKind || hasOtherSource || !isOwnTaintTraced
+  })
 }
 
 function hasCrossSourceRead(
@@ -286,9 +332,7 @@ function hasCrossSourceRead(
     return false
   }
 
-  const ownSource = descriptor.connectorId
-    ? connectorReadSource(descriptor.connectorId)
-    : null
+  const ownSource = ownReadSourceOf(descriptor)
 
   return [...state.readSources].some(source => source !== ownSource)
 }
@@ -318,36 +362,86 @@ function grantMatches(
 }
 
 /**
+ * Whether a tool is in the always-ask tier: a delete, an instructions write
+ * or a destructive tool (a server `destructiveHint: true`, a connector tool
+ * whose name names a delete or share action, the Besidka ask-every-time
+ * tier). Such a tool asks Allow once or Deny every time, and no mode, grant
+ * or answer can set it to Always allow.
+ */
+export function isAlwaysAskTier(descriptor: ToolApprovalDescriptor): boolean {
+  return descriptor.access === 'delete'
+    || descriptor.access === 'instructions'
+    || descriptor.destructiveHint
+}
+
+function resolveNativeApproval(
+  descriptor: ToolApprovalDescriptor,
+  state: ApprovalState,
+): ToolApprovalDecision {
+  if (descriptor.access === 'read') {
+    return allowed(1)
+  }
+
+  if (isTaintedFor(descriptor, state)) {
+    return ask(2, 'untrusted-output')
+  }
+
+  if (isAlwaysAskTier(descriptor)) {
+    return ask(5, 'always-ask')
+  }
+
+  return allowed(8)
+}
+
+/**
  * The approval decision for one tool call, as a pure function of the tool,
- * what this send has already read, the user's setting for the tool and the
+ * what this send has already read, the user's mode for the tool and the
  * grants they gave. The rules apply in order and the first match wins:
  *
  * 0. Invalid input, or Blocked by the user: denied. Input is invalid when
  *    the permission mode, family or access is not one of the known values,
  *    the tool name is empty or `destructiveHint` is not a boolean; it is
  *    denied with `invalid-input`, never guessed at.
- * 1. Native read: no approval.
- * 2. Any non-read call after untrusted content: ask `untrusted-output`.
- *    Native writes marked `onlyConnectorOrSkillTaint` (artifact and
- *    document) count only connector and skill taint. Every other native
- *    write, memory writes and unclassified tools included, counts every
- *    taint kind, so a web page cannot steer it without asking.
- * 3. Connector call after reading another source: ask `cross-source`.
- * 4. Besidka tool after untrusted content: ask `untrusted-output`. A
- *    Besidka read does not count earlier Besidka results as untrusted
- *    (`isTaintedForBesidka`); web, knowledge, file, skill, connector and
- *    shared-branch taint still count for it.
- * 5. Delete, instructions or `destructiveHint`: ask `always-ask`.
- * 6. User "always" grant whose tool name and definition hash still match,
- *    and for a connector the connector id too (or a Besidka tool set to
- *    Allow): no approval.
- * 7. Chat grant that matches the same way: no approval.
- * 8. Native write: no approval.
- * 9. Otherwise ask `default`.
  *
- * Rules 6 and 7 come after rule 5, so an "always" or chat grant never lifts
- * a delete, an instructions write or a destructive tool. A missing hash on
- * either side never matches a grant.
+ * Native tools (Besidka's own lookups and writes):
+ *
+ * 1. Native read: no approval.
+ * 2. Native write after untrusted content: ask `untrusted-output`. Artifact
+ *    and document writes (`onlyConnectorOrSkillTaint`) count only connector
+ *    and skill taint; every other native write, memory writes and
+ *    unclassified tools included, counts every taint kind.
+ * 8. Otherwise a native write runs.
+ *
+ * Connector and Besidka reads (not in the always-ask tier), owner decisions
+ * of 2026-11-15:
+ *
+ * 2, 3. A connector read after content from outside its own connector asks
+ *    `untrusted-output` (foreign taint) or `cross-source` (another source
+ *    read), whatever its mode, because its arguments go to the connector's
+ *    server; it offers every answer, so the user can still set a mode.
+ *    A Besidka read skips both: its arguments stay inside Besidka.
+ * 6. Always allow (a Besidka tool set to Allow, or a connector "always"
+ *    grant whose connector id, tool name and definition hash match, the
+ *    default of a plain connector read included): no approval.
+ * 7. Chat grant that matches the same way: no approval.
+ * 9. Otherwise ask `default`, with every answer offered.
+ *
+ * Connector and Besidka writes, and the always-ask tier:
+ *
+ * 2. Content from outside the tool's own source (`hasForeignTaint`): ask
+ *    `untrusted-output`.
+ * 3. A connector call after reading another source (F2): ask
+ *    `cross-source`.
+ * 5. Always-ask tier: ask `always-ask`.
+ * 6. Always allow, 7. chat grant, matched as for reads: no approval.
+ * 9. Otherwise ask `default`.
+ * 10. A consent gate (`consentGate`) is decided right after rule 0, before
+ *    every other rule: a chat grant that matches its definition hash lets it
+ *    run, anything else asks `consent` (`once` or `chat`), whatever the
+ *    taint.
+ *
+ * Grants and Always allow never lift rules 2, 3 and 5 for a write, and a
+ * missing hash on either side never matches a grant.
  */
 export function resolveToolApproval(
   input: ResolveToolApprovalInput,
@@ -365,11 +459,47 @@ export function resolveToolApproval(
     return denied(0, 'blocked')
   }
 
-  if (descriptor.family === 'native' && descriptor.access === 'read') {
-    return allowed(1)
+  if (descriptor.consentGate === true) {
+    return grantMatches(input.chatGrant, descriptor)
+      ? allowed(10)
+      : ask(10, 'consent')
   }
 
-  if (descriptor.access !== 'read' && isTaintedFor(descriptor, state)) {
+  if (descriptor.family === 'native') {
+    return resolveNativeApproval(descriptor, state)
+  }
+
+  const isAlwaysAsk = isAlwaysAskTier(descriptor)
+  const isAlwaysAllowed = !isAlwaysAsk && (
+    (descriptor.family === 'besidka' && input.permissionMode === 'allow')
+    || grantMatches(input.alwaysGrant, descriptor)
+  )
+  const isChatAllowed = !isAlwaysAsk
+    && grantMatches(input.chatGrant, descriptor)
+
+  if (descriptor.access === 'read' && !isAlwaysAsk) {
+    if (descriptor.family === 'connector') {
+      if (hasForeignTaint(descriptor, state)) {
+        return ask(2, 'untrusted-output', REMEMBER_OPTIONS_BY_REASON.default)
+      }
+
+      if (hasCrossSourceRead(descriptor, state)) {
+        return ask(3, 'cross-source', REMEMBER_OPTIONS_BY_REASON.default)
+      }
+    }
+
+    if (isAlwaysAllowed) {
+      return allowed(6)
+    }
+
+    if (isChatAllowed) {
+      return allowed(7)
+    }
+
+    return ask(9, 'default')
+  }
+
+  if (hasForeignTaint(descriptor, state)) {
     return ask(2, 'untrusted-output')
   }
 
@@ -377,34 +507,16 @@ export function resolveToolApproval(
     return ask(3, 'cross-source')
   }
 
-  if (
-    descriptor.family === 'besidka'
-    && isTaintedForBesidka(descriptor, state)
-  ) {
-    return ask(4, 'untrusted-output')
-  }
-
-  if (
-    descriptor.access === 'delete'
-    || descriptor.access === 'instructions'
-    || descriptor.destructiveHint
-  ) {
+  if (isAlwaysAsk) {
     return ask(5, 'always-ask')
   }
 
-  const besidkaAllowed = descriptor.family === 'besidka'
-    && input.permissionMode === 'allow'
-
-  if (besidkaAllowed || grantMatches(input.alwaysGrant, descriptor)) {
+  if (isAlwaysAllowed) {
     return allowed(6)
   }
 
-  if (grantMatches(input.chatGrant, descriptor)) {
+  if (isChatAllowed) {
     return allowed(7)
-  }
-
-  if (descriptor.family === 'native' && descriptor.access === 'write') {
-    return allowed(8)
   }
 
   return ask(9, 'default')
@@ -441,7 +553,8 @@ function pendingMatchesDescriptor(
   }
 
   if (descriptor.family === 'native') {
-    return true
+    return descriptor.definitionHash === undefined
+      || (pending.definitionHash ?? null) === descriptor.definitionHash
   }
 
   if (descriptor.family === 'besidka') {

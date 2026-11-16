@@ -8,9 +8,17 @@ export const JEV_ROLE_IDS = [
   'rerank',
   'sharePiiCheck',
   'pastChatRetrieval',
+  'skillSelection',
 ] as const
 
 export type JevRoleId = typeof JEV_ROLE_IDS[number]
+
+/**
+ * Roles that spend the user's key on every message they apply to, so they
+ * stay off until the user switches them on: a `null` column or a missing
+ * role id means off, not on.
+ */
+export const JEV_OPT_IN_ROLE_IDS: readonly JevRoleId[] = ['skillSelection']
 
 export type JevRoleSettings = Partial<Record<JevRoleId, boolean>>
 
@@ -350,6 +358,45 @@ export const JEV_PAST_CHAT_RETRIEVAL = {
   [key: string]: unknown
 }
 
+/**
+ * Skill selection (S-14, BES-380): which of the user's Auto skills, if any,
+ * to apply to one message. A local BM25 prefilter over the names and
+ * descriptions keeps at most `maxCandidates` skills; only then do the
+ * candidates become one boolean question each, in the state keys
+ * `skill_<i>` (never in a question's instructions, so a description cannot
+ * steer its own score). The best candidate at or above `applyAtOrAbove` wins.
+ * The role is opt-in (`JEV_OPT_IN_ROLE_IDS`) and fails toward no change: the
+ * model still decides from the catalog. Values come from the S-14 synthetic
+ * calibration in `docs/memory-architecture.md` section 3.19.
+ */
+export const JEV_SKILL_SELECTION = {
+  questionIdPrefix: 'sel_',
+  stateKeyPrefix: 'skill_',
+  statePlaceholder: '{skill}',
+  maxCandidates: 3,
+  maxCatalogLineChars: 300,
+  prefilter: {
+    minScore: 1,
+    minMatchedTerms: 1,
+    maxQueryTerms: 24,
+    minTermLength: 3,
+  },
+  applyAtOrAbove: 0.6,
+  task: 'Does `message` ask for the kind of work that `{skill}` describes?',
+  criteria: {
+    true: 'The message asks for the task, output or workflow that the skill '
+      + 'describes, so following the skill would change how the work is '
+      + 'done.',
+    false: 'The message is general conversation, or only shares words or a '
+      + 'topic with the skill without asking for the work it describes. '
+      + 'Questions about the topic, or about the skill itself, do not '
+      + 'count.',
+  },
+} as const satisfies {
+  criteria: JevBooleanCriteria
+  [key: string]: unknown
+}
+
 const WEB_TLDS = 'com|org|net|io|dev|app|ai|co|info|eu|gov|edu|pl|ua|ru'
   + '|de|uk|fr|es|it|nl|cz|us|ca'
 
@@ -523,5 +570,9 @@ export function isJevRoleSwitchedOn(
   roles: JevRoleSettings | null | undefined,
   role: JevRoleId,
 ): boolean {
+  if (JEV_OPT_IN_ROLE_IDS.includes(role)) {
+    return roles?.[role] === true
+  }
+
   return roles?.[role] !== false
 }

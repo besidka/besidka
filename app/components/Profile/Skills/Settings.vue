@@ -76,6 +76,66 @@
     </section>
 
     <section
+      v-if="skill.hasScripts && scriptsFeature.enabled"
+      class="grid gap-2"
+      aria-labelledby="skill-settings-scripts"
+      data-testid="skill-setting-scripts"
+    >
+      <h3
+        id="skill-settings-scripts"
+        class="font-semibold"
+      >
+        Scripts
+      </h3>
+      <label class="flex cursor-pointer items-center justify-between gap-3">
+        <span class="min-w-0 flex-1 text-sm">
+          Allow scripts in Anthropic's container
+        </span>
+        <input
+          type="checkbox"
+          class="toggle toggle-sm shrink-0"
+          :checked="skill.allowScripts"
+          :disabled="isBusy || !canToggleScripts"
+          data-testid="skill-setting-scripts-toggle"
+          @change="onToggleScripts"
+        >
+      </label>
+      <p
+        v-if="!scriptsFeature.active"
+        class="text-xs text-base-content/70"
+        data-testid="skill-setting-scripts-optin"
+      >
+        Turn on Skill scripts in Labs to run the scripts of this skill. They
+        use your own Anthropic key.
+      </p>
+      <p
+        v-else
+        class="text-xs text-base-content/70"
+      >
+        The model can run the scripts of this skill in Anthropic's code
+        sandbox on your key. Besidka asks once per chat before the skill is
+        uploaded, and only when Run code is on for the message.
+      </p>
+      <p
+        v-if="skill.allowScripts && skill.scriptsUploaded"
+        class="text-xs text-base-content/70"
+        data-testid="skill-setting-scripts-uploaded"
+      >
+        Uploaded to your Anthropic workspace<template
+          v-if="skill.scriptsProviderName"
+        > as {{ skill.scriptsProviderName }}</template>. Turning this off
+        deletes that copy.
+      </p>
+      <p
+        v-else-if="skill.allowScripts"
+        class="text-xs text-base-content/70"
+      >
+        Not uploaded yet. Besidka uploads it the first time you allow scripts
+        in a chat.
+      </p>
+    </section>
+
+    <section
       class="grid gap-2"
       aria-labelledby="skill-settings-about"
     >
@@ -197,6 +257,11 @@
         </button>
       </div>
     </section>
+    <LazyProfileSkillsScriptsDialog
+      ref="scriptsDialog"
+      :skill="skill"
+      @confirm="onConfirmScripts"
+    />
   </div>
 </template>
 
@@ -227,6 +292,8 @@ const actions = useSkillActions()
 const { onDownloadClick } = useFileDownload()
 
 const commandsFeature = useFeature('skills.commands')
+const scriptsFeature = useFeature('skills.scripts')
+const scriptsDialog = useTemplateRef<{ open: () => void }>('scriptsDialog')
 
 const commandInput = shallowRef<string>(props.skill.command ?? '')
 const hint = shallowRef<string>(props.skill.argumentHint ?? '')
@@ -242,6 +309,10 @@ const tokens = computed<number>(() => {
 
 const mode = computed<SkillMode>(() => {
   return getSkillMode(props.skill)
+})
+
+const canToggleScripts = computed<boolean>(() => {
+  return props.skill.allowScripts || scriptsFeature.value.active
 })
 
 const hasCommandInput = computed<boolean>(() => {
@@ -286,6 +357,23 @@ watch(commandInput, () => {
 
 async function onSelectMode(selected: SkillMode) {
   await actions.setMode(props.skill, selected)
+}
+
+async function onToggleScripts(event: Event) {
+  const input = event.target as HTMLInputElement
+
+  if (!input.checked) {
+    await actions.setScripts(props.skill, false)
+
+    return
+  }
+
+  input.checked = false
+  scriptsDialog.value?.open()
+}
+
+async function onConfirmScripts() {
+  await actions.setScripts(props.skill, true)
 }
 
 async function onSaveCommand() {

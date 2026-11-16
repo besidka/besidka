@@ -5,6 +5,10 @@ import { z } from 'zod'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
+import {
+  SKILL_SCRIPTS_GATE_TOOL_NAME,
+  SKILL_SCRIPTS_GRANT_KEY,
+} from '#shared/utils/skills/scripts'
 import * as schema from '~~/server/db/schema'
 import { buildExposedToolName } from '~~/server/utils/connectors/tool-definitions'
 import {
@@ -147,6 +151,23 @@ async function listBesidkaGrantItems(
     }
   }
 
+  const scriptsHash = Object.hasOwn(
+    settings.alwaysAllowTools,
+    SKILL_SCRIPTS_GRANT_KEY,
+  )
+    ? settings.alwaysAllowTools[SKILL_SCRIPTS_GRANT_KEY]
+    : null
+
+  if (scriptsHash) {
+    items.push({
+      scope: 'chat',
+      connectorId: '',
+      connectorTitle: 'Skill scripts',
+      toolName: SKILL_SCRIPTS_GATE_TOOL_NAME,
+      source: 'besidka',
+    })
+  }
+
   return items
 }
 
@@ -246,7 +267,7 @@ export function isDecodableConnectorId(connectorId: string): boolean {
 }
 
 /**
- * Sets one connector tool back to "Ask every time": the setting keeps its
+ * Sets one connector tool back to "Needs approval": the setting keeps its
  * reviewed definition hash and loses the approved one. The connector id is
  * decoded and looked up through the user's own connectors first, so an id
  * that does not decode or belongs to someone else changes nothing. Returns
@@ -268,7 +289,7 @@ export async function revokeAlwaysToolApprovalGrant(
   }
 
   const rows = await db.update(schema.connectorToolSettings)
-    .set({ approval: 'ask', approvedDefinitionHash: null })
+    .set({ approval: 'needs-approval', approvedDefinitionHash: null })
     .where(and(
       eq(schema.connectorToolSettings.userId, userId),
       eq(schema.connectorToolSettings.connectorId, input.connectorId),

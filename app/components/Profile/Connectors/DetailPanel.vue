@@ -200,8 +200,7 @@
           :tools="reviewedTools"
           :per-message-limit="listing.counts.perMessageLimit"
           :is-busy="isBusy"
-          @toggle="toggleTool"
-          @remove-always="removeAlways"
+          @set-modes="setToolModes"
         />
       </template>
     </section>
@@ -250,6 +249,9 @@ import type {
   ConnectorReviewTool,
   ConnectorToolsListing,
 } from '#shared/types/connectors.d'
+import type { ToolPermissionChange } from '~/utils/tool-permissions'
+
+const TOOL_SETTINGS_PER_REQUEST = 40
 
 const STATUS_BADGE_CLASS: Record<ConnectorStatusTone, string> = {
   success: 'badge-success',
@@ -460,25 +462,64 @@ async function onToggleEnabled(event: Event) {
   }, 'Could not change the connector')
 }
 
-async function toggleTool(toolName: string, enabled: boolean) {
-  await run(() => {
-    return $fetch(`/api/v1/connectors/${props.connectorId}/tools/settings`, {
-      method: 'POST',
-      body: { tools: [{ name: toolName, enabled }] },
-    })
-  }, 'Could not change the tool', { reloadTools: true })
+function applyToolModes(changes: readonly ToolPermissionChange[]) {
+  const current = listing.value
+
+  if (current?.state !== 'ok') {
+    return
+  }
+
+  const modes = new Map(changes.map(change => [change.name, change.mode]))
+
+  listing.value = {
+    ...current,
+    tools: current.tools.map((tool) => {
+      const mode = modes.get(tool.name)
+
+      return mode
+        ? {
+          ...tool,
+          mode,
+          enabled: mode !== 'blocked',
+          alwaysAllowed: mode === 'allow',
+        }
+        : tool
+    }),
+  }
 }
 
-async function removeAlways(toolName: string) {
-  const isRemoved = await run(() => {
-    return $fetch(`/api/v1/connectors/${props.connectorId}/tools/settings`, {
-      method: 'POST',
-      body: { tools: [{ name: toolName, approval: 'ask' }] },
-    })
-  }, 'Could not remove the approval', { reloadTools: true })
+async function setToolModes(changes: ToolPermissionChange[]) {
+  if (changes.length === 0) {
+    return
+  }
 
-  if (isRemoved) {
-    useSuccessMessage('Besidka asks again before this tool runs')
+  isBusy.value = true
+
+  try {
+    for (
+      let start = 0;
+      start < changes.length;
+      start += TOOL_SETTINGS_PER_REQUEST
+    ) {
+      const batch = changes.slice(start, start + TOOL_SETTINGS_PER_REQUEST)
+
+      await $fetch(`/api/v1/connectors/${props.connectorId}/tools/settings`, {
+        method: 'POST',
+        body: {
+          tools: batch.map((change) => {
+            return { name: change.name, mode: change.mode }
+          }),
+        },
+      })
+      applyToolModes(batch)
+    }
+
+    await refreshConnectors()
+  } catch (exception) {
+    reportConnectorError(exception, 'Could not change the tool permission')
+    await loadTools()
+  } finally {
+    isBusy.value = false
   }
 }
 

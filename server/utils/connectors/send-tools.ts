@@ -79,6 +79,7 @@ import {
   callToolResultToText,
   frameUntrustedResult,
   hashToolDefinitions,
+  isConnectorToolDefaultAllowed,
   isDefinitionAutoRunnable,
   isDefinitionReadOnly,
   normalizeToolDefinitions,
@@ -169,7 +170,7 @@ interface Candidate {
   connector: ConnectorRecord
   definition: ConnectorToolDefinition
   definitionHash: string
-  alwaysGrantHash: string | null
+  alwaysGrant: { hash: string | null, isDefault: boolean }
   isReadOnly: boolean
   handle: ConnectorClientHandle
   secrets: Set<string>
@@ -408,23 +409,42 @@ async function saveBaseline(
 }
 
 /**
- * The user's "Always allow" grant of one connector tool: the hash the
- * continuation stored in `approvedDefinitionHash` when the tool setting is
- * `always`, else null.
+ * The Always allow grant of one connector tool and whether it is only the
+ * default: the hash stored in `approvedDefinitionHash` when the user set
+ * the tool to `always`; the reviewed hash when the user never chose a mode
+ * (stored `ask`, or no baseline yet in this send) and the tool is a plain
+ * read (`isConnectorToolDefaultAllowed`); else null. An explicit Needs
+ * approval (`needs-approval`) has no grant.
  */
-function alwaysGrantHashOf(
+function alwaysGrantOf(input: {
   settings: ReadonlyArray<{
     toolName: string
+    definitionHash: string
     approval: string
     approvedDefinitionHash: string | null
-  }>,
-  toolName: string,
-): string | null {
-  const setting = settings.find(row => row.toolName === toolName)
+  }>
+  definition: ConnectorToolDefinition
+  definitionHash: string
+}): { hash: string | null, isDefault: boolean } {
+  const setting = input.settings.find((row) => {
+    return row.toolName === input.definition.name
+  })
 
-  return setting?.approval === 'always'
-    ? setting.approvedDefinitionHash
-    : null
+  if (setting?.approval === 'always') {
+    return { hash: setting.approvedDefinitionHash, isDefault: false }
+  }
+
+  if (
+    (!setting || setting.approval === 'ask')
+    && isConnectorToolDefaultAllowed(input.definition)
+  ) {
+    return {
+      hash: setting?.definitionHash ?? input.definitionHash,
+      isDefault: true,
+    }
+  }
+
+  return { hash: null, isDefault: false }
 }
 
 function chatGrantHashOf(
@@ -822,9 +842,13 @@ export async function getConnectorTools(
           connector,
           definition,
           definitionHash: hashes.get(definition.name)!,
-          alwaysGrantHash: input.consumeClearedCall
-            ? alwaysGrantHashOf(settings, definition.name)
-            : null,
+          alwaysGrant: input.consumeClearedCall
+            ? alwaysGrantOf({
+              settings: isBaselined ? settings : [],
+              definition,
+              definitionHash: hashes.get(definition.name)!,
+            })
+            : { hash: null, isDefault: false },
           isReadOnly: isDefinitionAutoRunnable(definition),
           handle,
           secrets,
@@ -1061,8 +1085,9 @@ export async function getConnectorTools(
           : {}),
         definitionHash: candidate.definitionHash,
         annotations: candidate.definition.annotations,
+        isAlwaysDefault: candidate.alwaysGrant.isDefault,
         grantHashes: {
-          always: candidate.alwaysGrantHash,
+          always: candidate.alwaysGrant.hash,
           chat: chatGrantHashOf(
             chatGrantsByConnector.get(candidate.connector.id),
             exposedName,

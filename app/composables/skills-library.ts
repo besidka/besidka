@@ -659,6 +659,68 @@ export function useSkillActions() {
     })
   }
 
+  async function setScripts(
+    skill: Pick<SkillSummary, 'id' | 'name'>,
+    isEnabled: boolean,
+  ): Promise<boolean> {
+    if (!isEnabled) {
+      const confirmation = await useConfirm({
+        text: `Turn off scripts for "${skill.name}"?`,
+        subtitle: 'The copy of this skill in your Anthropic workspace is '
+          + 'deleted. Its scripts stay shown as text only.',
+        actions: ['Turn off'],
+      })
+
+      if (!confirmation) {
+        await refreshSkillData(skill.id)
+
+        return false
+      }
+    }
+
+    return await runExclusive(skill.id, async () => {
+      try {
+        if (isEnabled) {
+          await $fetch(`/api/v1/skills/${skill.id}/scripts`, {
+            method: 'POST',
+            body: { disclosureAccepted: true, renameConfirmed: true },
+          })
+        } else {
+          const result = await $fetch(`/api/v1/skills/${skill.id}/scripts`, {
+            method: 'DELETE',
+          })
+
+          warnAboutProviderCopy(result.providerCopy)
+        }
+
+        await refreshSkillData(skill.id)
+
+        return true
+      } catch (exception) {
+        const parsedException = parseError(exception)
+
+        useErrorMessage(
+          parsedException.message || 'Failed to change scripts',
+          parsedException.why,
+        )
+        await refreshSkillData(skill.id)
+
+        return false
+      }
+    })
+  }
+
+  function warnAboutProviderCopy(providerCopy: string) {
+    if (providerCopy !== 'failed') {
+      return
+    }
+
+    useErrorMessage(
+      'The copy at Anthropic could not be deleted',
+      'Delete it in the Anthropic Console, under Skills.',
+    )
+  }
+
   async function deleteSkill(
     skill: Pick<SkillSummary, 'id' | 'name'>,
   ): Promise<boolean> {
@@ -748,6 +810,7 @@ export function useSkillActions() {
     saveSettings,
     saveCommand,
     setMode,
+    setScripts,
     deleteSkill,
     checkForUpdates,
   }

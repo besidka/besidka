@@ -485,6 +485,30 @@ function writtenChunks(): Array<Record<string, any>> {
     .map(([chunk]) => chunk)
 }
 
+async function setAlwaysAllow(input: {
+  servers: MockMcpServer[]
+  connectorIds: string[]
+  toolNames: string[]
+}) {
+  await runSend({
+    servers: input.servers,
+    connectorIds: input.connectorIds,
+    steps: [textChunks('Ready.')],
+    messageId: 'user-baseline',
+  })
+
+  for (const setting of mocks.store.toolSettings) {
+    if (input.toolNames.includes(setting.toolName)) {
+      setting.approval = 'always'
+      setting.approvedDefinitionHash = setting.definitionHash
+    }
+  }
+
+  mocks.store.audit = []
+  mocks.mergedStreams = []
+  mocks.writers = []
+}
+
 function findPart(parts: Array<Record<string, any>>, type: string) {
   return parts.find(part => part.type === type)
 }
@@ -532,6 +556,7 @@ describe('tool approval requests in the chat send', () => {
           description: 'List pages.',
           annotations: { readOnlyHint: true },
         },
+        { name: 'create_page', description: 'Create a page.' },
       ],
       respond: name => ({ text: `${name} result` }),
     })
@@ -710,51 +735,128 @@ describe('tool approval requests in the chat send', () => {
     }))
   })
 
-  it('still runs a read-only connector tool without a request', async () => {
-    const { assistantInsert } = await runSend({
-      servers: [linear],
-      connectorIds: ['conn-linear'],
-      steps: [
-        toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
-        textChunks('One open issue.'),
-      ],
+  it('runs a plain read-only connector tool by default, as before',
+    async () => {
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          textChunks('One open issue.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(findPart(parts, 'dynamic-tool'))
+        .toMatchObject({ state: 'output-available' })
+      expect(findPart(parts, 'data-tool-grant')).toBeUndefined()
     })
 
-    expect(linear.callCount('tools/call')).toBe(1)
-    expect(findPart(assistantInsert?.parts ?? [], 'dynamic-tool')).toMatchObject({
-      state: 'output-available',
-    })
-    expect([...mocks.kv.keys()].some((key) => {
-      return key.startsWith('tool-approval:')
-    })).toBe(false)
-  })
+  it('asks before a read-only connector tool set to Needs approval',
+    async () => {
+      await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [textChunks('Ready.')],
+        messageId: 'user-baseline',
+      })
 
-  it('asks untrusted-output before a second open-world read of the same '
-    + 'connector', async () => {
-    const { assistantInsert } = await runSend({
-      servers: [linear],
-      connectorIds: ['conn-linear'],
-      steps: [
-        toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
-        toolCallChunks('call-2', 'mcp__linear__list_issues', { page: 2 }),
-        textChunks('Never reached.'),
-      ],
-    })
-    const parts = assistantInsert?.parts ?? []
+      for (const setting of mocks.store.toolSettings) {
+        if (setting.toolName === 'list_issues') {
+          setting.approval = 'needs-approval'
+        }
+      }
 
-    expect(linear.callCount('tools/call')).toBe(1)
-    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-      data: { toolCallId: 'call-2', reason: 'untrusted-output' },
-    })
-  })
+      mocks.mergedStreams = []
+      mocks.writers = []
 
-  it('asks with reason cross-source for a second connector after the '
-    + 'first one was read', async () => {
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          textChunks('Never reached.'),
+        ],
+      })
+
+      expect(linear.callCount('tools/call')).toBe(0)
+      expect(findPart(
+        assistantInsert?.parts ?? [],
+        TOOL_APPROVAL_DATA_PART_TYPE,
+      )).toMatchObject({
+        data: {
+          toolCallId: 'call-1',
+          reason: 'default',
+          rememberOptions: ['once', 'chat', 'always'],
+        },
+      })
+    })
+
+  it('runs a read-only connector tool set to Always allow without a request',
+    async () => {
+      await setAlwaysAllow({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        toolNames: ['list_issues'],
+      })
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          textChunks('One open issue.'),
+        ],
+      })
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(findPart(assistantInsert?.parts ?? [], 'dynamic-tool'))
+        .toMatchObject({ state: 'output-available' })
+      expect([...mocks.kv.keys()].some((key) => {
+        return key.startsWith('tool-approval:') && !key.includes(':chat:')
+      })).toBe(false)
+    })
+
+  it('runs every Always allow read of one step and of later steps',
+    async () => {
+      await setAlwaysAllow({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        toolNames: ['list_issues'],
+      })
+
+      await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [
+          [
+            ...toolCallChunks('call-1', 'mcp__linear__list_issues', {})
+              .filter(chunk => chunk.type !== 'finish'),
+            ...toolCallChunks('call-2', 'mcp__linear__list_issues', {
+              page: 2,
+            }),
+          ],
+          toolCallChunks('call-3', 'mcp__linear__list_issues', { page: 3 }),
+          textChunks('Three pages.'),
+        ],
+      })
+
+      expect(linear.callCount('tools/call')).toBe(3)
+    })
+
+  it('asks Allow once only before an Always allow write to a second '
+    + 'connector after the first one was read', async () => {
     seedConnector({
       id: 'conn-notion',
       slug: 'notion',
       title: 'Notion',
       url: NOTION_URL,
+    })
+    await setAlwaysAllow({
+      servers: [linear, notion],
+      connectorIds: ['conn-linear', 'conn-notion'],
+      toolNames: ['list_issues', 'create_page'],
     })
 
     const { assistantInsert } = await runSend({
@@ -762,7 +864,7 @@ describe('tool approval requests in the chat send', () => {
       connectorIds: ['conn-linear', 'conn-notion'],
       steps: [
         toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
-        toolCallChunks('call-2', 'mcp__notion__list_pages', {}),
+        toolCallChunks('call-2', 'mcp__notion__create_page', {}),
         textChunks('Never reached.'),
       ],
     })
@@ -773,9 +875,9 @@ describe('tool approval requests in the chat send', () => {
 
     expect(linear.callCount('tools/call')).toBe(1)
     expect(notion.callCount('tools/call')).toBe(0)
-    expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__list_pages' })
+    expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__create_page' })
     expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-      data: { reason: 'cross-source', rememberOptions: ['once'] },
+      data: { reason: 'untrusted-output', rememberOptions: ['once'] },
     })
 
     const pending = readKvJson(`tool-approval:${pendingPart.approval.id}`)
@@ -792,6 +894,11 @@ describe('tool approval requests in the chat send', () => {
     async () => {
       mocks.flags.add('artifacts')
       createArtifactTool()
+      await setAlwaysAllow({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        toolNames: ['list_issues'],
+      })
 
       const { assistantInsert } = await runSend({
         servers: [linear],

@@ -201,6 +201,65 @@ describe('Profile/Keys/ProviderKeyCard', () => {
     })
   })
 
+  it('warns about live skill uploads before the Anthropic key goes', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: true }])
+
+    const defaultFetch = mocks.fetch.getMockImplementation()!
+
+    mocks.fetch.mockImplementation((url: string, options?: unknown) => {
+      if (url === '/api/v1/profiles/keys/anthropic/uploads') {
+        return Promise.resolve({
+          skills: [
+            { skillId: 'a', name: 'data-report' },
+            { skillId: 'b', name: 'claude-api' },
+          ],
+        })
+      }
+
+      return defaultFetch(url, options)
+    })
+
+    const wrapper = await mountCard('anthropic')
+
+    await deleteButton(wrapper)?.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
+        subtitle: expect.stringContaining('data-report, claude-api'),
+      }))
+    })
+    expect(mocks.confirm.mock.calls[0]![0].subtitle)
+      .toContain('Anthropic Console')
+  })
+
+  it('adds no warning when no skill is uploaded', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: true }])
+
+    const wrapper = await mountCard('anthropic')
+
+    await deleteButton(wrapper)?.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(mocks.confirm).toHaveBeenCalled()
+    })
+    expect(mocks.confirm.mock.calls[0]![0].subtitle).toBeUndefined()
+  })
+
+  it('asks the uploads route for Anthropic only', async () => {
+    summaryFor([{ provider: 'openai', hasKey: true }])
+
+    const wrapper = await mountCard('openai')
+
+    await deleteButton(wrapper)?.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(mocks.confirm).toHaveBeenCalled()
+    })
+    expect(mocks.fetch.mock.calls.some(([url]) => {
+      return String(url).endsWith('/uploads')
+    })).toBe(false)
+  })
+
   it('does not delete when the confirmation is declined', async () => {
     summaryFor([{ provider: 'anthropic', hasKey: true }])
     mocks.confirm.mockResolvedValue(null)

@@ -23,6 +23,7 @@ const labsFeatureIcons: Record<string, string> = {
   'connectors': 'lucide:cable',
   'google.drive': 'lucide:hard-drive',
   'skills': 'lucide:wand-sparkles',
+  'skills.scripts': 'lucide:file-terminal',
   'tool-approvals': 'lucide:shield-check',
   'besidka-tools': 'lucide:wrench',
   'ui.side-panel-demo': 'lucide:panel-right',

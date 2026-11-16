@@ -676,7 +676,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/rerank.spec.ts',
     'tests/integration/api/jev-rerank.spec.ts',
   ]
+  const skillSelectionTests = [
+    'tests/unit/server/utils/skills/jev/prefilter.spec.ts',
+    'tests/unit/server/utils/skills/jev/questions.spec.ts',
+    'tests/unit/server/utils/skills/jev/selection.spec.ts',
+    'tests/unit/server/utils/skills/runtime/send.spec.ts',
+  ]
   const jevFoundationTests = [
+    ...skillSelectionTests,
     'tests/unit/utils/jev/client.spec.ts',
     'tests/unit/utils/jev/logging.spec.ts',
     'tests/unit/utils/jev/roles.spec.ts',
@@ -1688,6 +1695,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Search/Modal.spec.ts',
   ]
 
+  const toolPermissionsUiTests = [
+    'tests/unit/components/ui/ToolPermissions.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/utils/tool-permissions.spec.ts',
+    'tests/unit/utils/besidka-tool-permissions.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
+  ]
+
   const toolApprovalPolicyTests = [
     'tests/unit/utils/tool-approval-policy.spec.ts',
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
@@ -1816,6 +1832,7 @@ export function getAffectedTests(changedFiles) {
 
   const skillsStorageTests = [
     ...skillJevScreeningTests,
+    ...skillSelectionTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/server/utils/skills/storage.spec.ts',
@@ -1944,6 +1961,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Skills/ModeControl.spec.ts',
     'tests/unit/components/Profile/Skills/ModelView.spec.ts',
     'tests/unit/components/Profile/Skills/NewMenu.spec.ts',
+    'tests/unit/components/Profile/Skills/ScriptsDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/Settings.spec.ts',
     'tests/unit/components/Profile/Skills/RenameForm.spec.ts',
     'tests/unit/components/Profile/Skills/Review.spec.ts',
     'tests/unit/components/Profile/Skills/Row.spec.ts',
@@ -1957,6 +1976,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsRuntimeTests = [
+    ...skillSelectionTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/mode.spec.ts',
     'tests/unit/server/utils/skills/runtime/text.spec.ts',
@@ -1981,6 +2001,19 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/model-turns.spec.ts',
     'tests/integration/api/chats-skills.spec.ts',
+  ]
+
+  const skillsScriptsTests = [
+    'tests/unit/utils/skills/scripts.spec.ts',
+    'tests/unit/server/utils/skills/provider-upload.spec.ts',
+    'tests/unit/server/utils/skills/send-container-options.spec.ts',
+    'tests/unit/server/utils/skills/scripts-toggle.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/unit/utils/code-execution/send.spec.ts',
+    'tests/integration/api/chats-code-execution.spec.ts',
   ]
 
   const skillsComposerTests = [
@@ -3479,6 +3512,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
+      tests: toolPermissionsUiTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/connectors\/(tool-review|page|errors|store)\.ts$/,
+      tests: ['tests/unit/server/utils/connectors/tool-review.spec.ts'],
+    },
+    {
+      pattern:
         /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors)\.ts|app\/utils\/connector-brand-icons\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
       tests: connectorsPageTests,
     },
@@ -3496,6 +3539,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/scripts\.ts|server\/utils\/skills\/(provider-upload|send-container-options|scripts-toggle|cleanup)\.ts|server\/api\/v1\/skills\/\[id\]\/scripts\/.*\.ts|server\/api\/v1\/profiles\/keys\/anthropic\/uploads\/.*\.ts|server\/utils\/tool-approval\/(policy|continuation)\.ts|server\/utils\/besidka-tools\/chat-settings\.ts|shared\/utils\/features\/registry\.ts)$/,
+      tests: skillsScriptsTests,
     },
     {
       pattern:

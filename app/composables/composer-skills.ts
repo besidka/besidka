@@ -11,6 +11,7 @@ export interface ComposerSkillItem {
   version: number
   mode: SkillMode
   command: string | null
+  hasScriptsAllowed?: boolean
 }
 
 export function toComposerSkillItem(skill: SkillSummary): ComposerSkillItem {
@@ -21,6 +22,7 @@ export function toComposerSkillItem(skill: SkillSummary): ComposerSkillItem {
     version: skill.currentVersion,
     mode: getSkillMode(skill),
     command: skill.command,
+    hasScriptsAllowed: skill.hasScripts && skill.allowScripts,
   }
 }
 

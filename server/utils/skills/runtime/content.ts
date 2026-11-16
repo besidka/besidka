@@ -63,13 +63,14 @@ export function buildSkillResourceList(
  * frontmatter, cut at 40 KiB and at `SKILL_ACTIVATE_MAX_TOKENS` for the model
  * family (whichever comes first), with its delimiters neutralized, inside
  * `<skill_content name source version>` and followed by the resource list.
- * `invokedBy` marks a skill the user attached or the project pinned, and
+ * `invokedBy` marks a skill the user attached, the project pinned or
+ * TypeSafe AI selected for this message, and
  * `argumentsText` fills `$ARGUMENTS`.
  */
 export function formatSkillContent(input: {
   skill: LoadedSkillContent
   family: KnowledgeTokenFamily
-  invokedBy?: 'user' | 'project'
+  invokedBy?: 'user' | 'project' | 'jev'
   argumentsText?: string
 }): FormattedSkillContent {
   const { skill, family } = input

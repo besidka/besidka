@@ -536,7 +536,11 @@ function buildApprovalStep(
     connectorName: connectorSlug
       ? titlesBySlug.value.get(connectorSlug) || connectorSlug
       : '',
-    reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
+    reasonText: getApprovalReasonText(
+      entry.model.reason,
+      sourceLabel,
+      entry.model.toolName,
+    ),
     summaryLine: getApprovalStepSummaryLine(entry.model),
     progress: isLastAwaiting && entry.state !== 'sending'
       ? formatApprovalProgress(answeredCount, awaiting.length)

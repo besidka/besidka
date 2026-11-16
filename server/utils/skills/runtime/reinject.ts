@@ -3,7 +3,7 @@ import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { SKILL_ACTIVE_BLOCK_MAX_TOKENS } from '#shared/utils/skills-policy'
 import {
   isDataSkillActivationPart,
-  isProjectSkillActivationPart,
+  isTransientSkillActivationPart,
 } from '#shared/utils/skills/runtime'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { formatSkillContent } from '~~/server/utils/skills/runtime/content'
@@ -42,8 +42,9 @@ export const SKILL_ACTIVE_INSTRUCTION = 'These skills are active in this '
 /**
  * The skills a chat keeps active, newest activation first, one entry per
  * skill. An activation is a `data-skill-activation` part of an assistant
- * message; `extraSkillIds` adds the skills this send activates (a skill the
- * user attached that stays active).
+ * message, except the step-only ones (a project pin, a TypeSafe AI pick);
+ * `extraSkillIds` adds the skills this send activates (a skill the user
+ * attached that stays active).
  */
 export function collectActivatedSkillIds(
   messages: readonly StoredMessage[],
@@ -65,7 +66,7 @@ export function collectActivatedSkillIds(
     for (const part of [...message.parts].reverse()) {
       if (
         isDataSkillActivationPart(part)
-        && !isProjectSkillActivationPart(part)
+        && !isTransientSkillActivationPart(part)
         && !ids.includes(part.data.skillId)
       ) {
         ids.push(part.data.skillId)
@@ -94,7 +95,7 @@ export function collectActivatedSkillNames(
     for (const part of [...message.parts].reverse()) {
       if (
         isDataSkillActivationPart(part)
-        && !isProjectSkillActivationPart(part)
+        && !isTransientSkillActivationPart(part)
         && !names.has(part.data.skillId)
       ) {
         names.set(part.data.skillId, part.data.name)

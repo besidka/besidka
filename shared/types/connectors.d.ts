@@ -3,6 +3,7 @@ import type {
   ConnectorCreatedVia,
   ConnectorStatus,
 } from '#shared/utils/connectors-policy'
+import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 
 export type ConnectorConsentState
   = | 'missing'
@@ -58,6 +59,8 @@ export interface ConnectorReviewTool {
   change: ConnectorToolChange
   enabled: boolean
   alwaysAllowed: boolean
+  mode: ToolPermissionMode
+  canAlwaysAllow: boolean
 }
 
 export interface ConnectorToolsReview {

@@ -1,8 +1,15 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { createProviderCopyDeleteError } from '~~/server/utils/skills/versions/errors'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import {
+  loadAnthropicApiKeyOrNull,
+  removeAllProviderCopies,
+  removeProviderCopy,
+} from '~~/server/utils/skills/provider-upload'
+import type { ProviderSkillDeleteOutcome } from '~~/server/utils/skills/provider-upload'
 import {
   deleteSkillPrefix,
   skillPrefix,
@@ -20,6 +27,8 @@ type DbClient = ReturnType<typeof useDb>
 const MAX_BATCH_QUERY_PARAMS = 90
 
 export interface PurgeUserSkillsResult {
+  providerCopiesDeleted: number
+  providerCopiesFailed: number
   skillsDeleted: number
   skillVersionsDeleted: number
   skillFilesDeleted: number
@@ -37,6 +46,7 @@ export interface DeleteUserSkillResult {
   projectSkillsDeleted: number
   skillObjectsDeleted: number
   objectCleanupFailed: boolean
+  providerCopy: ProviderSkillDeleteOutcome | 'none'
 }
 
 export interface SkillChatCleanupResult {
@@ -119,6 +129,7 @@ export async function purgeUserSkills(
   logger: LoggerLike,
   bucket: SkillBlobBucket = useFileStorage(),
 ): Promise<PurgeUserSkillsResult> {
+  const providerCopies = await removeAllProviderCopies({ db, userId, logger })
   const skillChatSettings = await db.delete(schema.skillChatSettings)
     .where(eq(schema.skillChatSettings.userId, userId))
     .returning({ id: schema.skillChatSettings.id })
@@ -145,6 +156,8 @@ export async function purgeUserSkills(
   await purgeUserSkillJevMarks({ userId })
 
   const result: PurgeUserSkillsResult = {
+    providerCopiesDeleted: providerCopies.deleted,
+    providerCopiesFailed: providerCopies.failed,
     skillsDeleted: skills.length,
     skillVersionsDeleted: skillVersions.length,
     skillFilesDeleted: skillFiles.length,
@@ -157,6 +170,42 @@ export async function purgeUserSkills(
   logger.set({ attributes: { skills: { cleanup: { purge: result } } } })
 
   return result
+}
+
+/**
+ * Deletes the Anthropic copy of the skill before its rows go. A failed
+ * delete does not stop the skill from being deleted; the outcome is returned
+ * so the caller can point the user to the Anthropic Console.
+ */
+async function removeSkillProviderCopy(
+  db: DbClient,
+  input: { userId: number, skillId: string, logger: LoggerLike },
+): Promise<ProviderSkillDeleteOutcome | 'none'> {
+  const [skill] = await db.select({
+    id: schema.skills.id,
+    providerSkillId: schema.skills.providerSkillId,
+    providerSkillVersion: schema.skills.providerSkillVersion,
+    providerUploadedName: schema.skills.providerUploadedName,
+    providerDeletedAt: schema.skills.providerDeletedAt,
+  })
+    .from(schema.skills)
+    .where(and(
+      eq(schema.skills.userId, input.userId),
+      eq(schema.skills.id, input.skillId),
+    ))
+    .limit(1)
+
+  if (!skill?.providerSkillId || skill.providerDeletedAt) {
+    return 'none'
+  }
+
+  return await removeProviderCopy({
+    db,
+    userId: input.userId,
+    skill,
+    apiKey: await loadAnthropicApiKeyOrNull(db, input.userId, input.logger),
+    logger: input.logger,
+  })
 }
 
 /**
@@ -173,6 +222,18 @@ export async function deleteUserSkill(
   bucket: SkillBlobBucket = useFileStorage(),
 ): Promise<DeleteUserSkillResult> {
   const { userId, skillId, logger } = input
+  const providerCopy = await removeSkillProviderCopy(db, input)
+
+  if (providerCopy === 'failed') {
+    logger.set({
+      attributes: {
+        skills: { cleanup: { skillDeleteRefused: { skillId } } },
+      },
+    })
+
+    throw createProviderCopyDeleteError()
+  }
+
   const [chatSettings, projectPins, files, versions, skills] = await db.batch([
     db.delete(schema.skillChatSettings)
       .where(and(
@@ -216,6 +277,7 @@ export async function deleteUserSkill(
     projectSkillsDeleted: projectPins.length,
     skillObjectsDeleted: 0,
     objectCleanupFailed: false,
+    providerCopy,
   }
 
   if (!result.skillDeleted) {

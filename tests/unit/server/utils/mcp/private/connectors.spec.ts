@@ -626,6 +626,10 @@ describe('private MCP connector tools', () => {
         id: connector.id,
         tools: [{ name: 'search' }],
       })).rejects.toMatchObject({ status: 400 })
+      await expect(updateMcpConnectorTools(context(), {
+        id: connector.id,
+        tools: [{ name: 'create', mode: 'allow' } as never],
+      })).rejects.toMatchObject({ status: 400 })
 
       const settings = await listConnectorToolSettings(
         testDb.db,

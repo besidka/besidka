@@ -332,6 +332,16 @@ import {
   redactSkillToolPartsForPersistence,
 } from '~~/server/utils/skills/runtime/persist'
 import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
+import { SKILL_SCRIPTS_GATE_TOOL_NAME } from '#shared/utils/skills/scripts'
+import {
+  buildSkillScriptsInstruction,
+  prepareSkillScriptsForSend,
+} from '~~/server/utils/skills/send-container-options'
+import type { SkillScriptsAttachment } from '~~/server/utils/skills/send-container-options'
+import {
+  prepareSkillSelection,
+  resolveSkillSelection,
+} from '~~/server/utils/skills/jev/selection'
 import {
   CONNECTORS_PER_USER,
   CONNECTOR_STEPS_PER_TURN,
@@ -809,6 +819,17 @@ export default defineEventHandler(async (event) => {
     encryptedExaApiKey = exaKey.apiKey
   }
 
+  const skillSelectionPlan = await prepareSkillSelection({
+    event,
+    db,
+    userId,
+    projectId: chat.projectId,
+    isResume,
+    messageText: readUserMessageText(newMessage.parts),
+    newMessageParts: newMessage.parts,
+    storedMessages: chat.messages,
+    logger,
+  })
   const autoWebSearch = await resolveAutoWebSearch({
     db,
     userId,
@@ -823,6 +844,7 @@ export default defineEventHandler(async (event) => {
       }),
       JEV_AUTO_WEB_SEARCH.recentTurns,
     ),
+    extraJev: skillSelectionPlan?.extraJev ?? undefined,
     logger,
   })
   const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
@@ -989,6 +1011,11 @@ export default defineEventHandler(async (event) => {
       })
     }
   }
+
+  const skillSelectionRun = resolveSkillSelection(
+    skillSelectionPlan,
+    autoWebSearch.jevResult,
+  )
 
   const resumedAssistantId = resume?.owner.messagePublicId ?? null
   const allMessages = [
@@ -1701,6 +1728,7 @@ export default defineEventHandler(async (event) => {
       'artifacts.llm-bridge',
       'documents',
       'skills',
+      'skills.scripts',
       'connectors',
       'tool-approvals',
       'besidka-tools',
@@ -1890,9 +1918,40 @@ export default defineEventHandler(async (event) => {
     userMessageText,
     isStoredUserMessage,
     preloadedInvocation: preloadedSkillInvocation,
+    jevSelection: await skillSelectionRun,
+    preloadedCatalogSkills: skillSelectionPlan?.catalogSkills,
     guard: chatSearchBudget,
     logger: aiLogger,
   })
+
+  const skillScriptsRun = await prepareSkillScriptsForSend({
+    db,
+    getBucket: () => useFileStorage(),
+    userId,
+    chatPublicId: chat.id,
+    candidateSkillIds: skillsSend.scriptCandidateSkillIds,
+    isFeatureActive: sendFeatures.isFeatureActive('skills.scripts'),
+    isApprovalsActive: toolApprovalsActive,
+    isToolCallingAllowed: toolCallingAllowed,
+    isDirectAnthropic: !gatewayId && provider?.id === 'anthropic',
+    isCodeExecutionActive: codeExecutionGate.active,
+    apiKey: codeExecutionSession?.apiKey ?? null,
+    logger: aiLogger,
+  })
+  let skillScriptsAttachment: SkillScriptsAttachment | null
+    = skillScriptsRun.gate.isGrantMatched
+      ? await skillScriptsRun.attach({ isApproved: false })
+      : null
+  const skillsInstructionBlock = [
+    skillsSend.instructionBlock,
+    skillScriptsRun.gate.isActive
+      ? buildSkillScriptsInstruction({
+        skillNames: skillScriptsRun.gate.skillNames,
+        isAttached: skillScriptsAttachment?.container != null,
+        hasFailed: skillScriptsAttachment?.failed === true,
+      })
+      : null,
+  ].filter(Boolean).join('\n\n') || null
 
   const knowledgeSendModel: KnowledgeSendModel = gatewayId
     ? {
@@ -1936,7 +1995,7 @@ export default defineEventHandler(async (event) => {
         memoryInstructions,
         artifactInstructions,
         documentsContextLine,
-        skillsInstructionBlock: skillsSend.instructionBlock,
+        skillsInstructionBlock,
         codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
       }),
       artifactContextBlock,
@@ -2022,6 +2081,13 @@ export default defineEventHandler(async (event) => {
     parsedTools = {
       ...parsedTools,
       tools: { ...parsedTools.tools, ...skillsSend.tools },
+    }
+  }
+
+  if (Object.keys(skillScriptsRun.gate.tools).length > 0) {
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...skillScriptsRun.gate.tools },
     }
   }
 
@@ -2154,6 +2220,7 @@ export default defineEventHandler(async (event) => {
         new Map([
           ...besidkaToolsRun?.approvalEntries ?? [],
           ...connectorsRun?.approvalEntries ?? [],
+          ...skillScriptsRun.gate.approvalEntries,
         ]),
       )
       parsedTools = {
@@ -2280,7 +2347,9 @@ export default defineEventHandler(async (event) => {
       .filter(toolName => !isArtifactToolName(toolName)),
   )
   const isApprovalGatedToolName = (toolName: string) => {
-    return isConnectorToolName(toolName) || isBesidkaChatToolName(toolName)
+    return isConnectorToolName(toolName)
+      || isBesidkaChatToolName(toolName)
+      || toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
   }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
@@ -2386,6 +2455,26 @@ export default defineEventHandler(async (event) => {
         },
       },
     })
+
+    if (
+      skillScriptsRun.gate.isActive
+      && !skillScriptsRun.gate.isGrantMatched
+      && resumeDecisions.some((decision) => {
+        return decision.approved
+          && decision.toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
+      })
+    ) {
+      skillScriptsAttachment = await skillScriptsRun.attach({
+        isApproved: true,
+      })
+    }
+  }
+
+  if (skillScriptsAttachment?.container) {
+    providerOptions.anthropic = {
+      ...providerOptions.anthropic,
+      container: skillScriptsAttachment.container,
+    }
   }
 
   const stream = createUIMessageStream({
@@ -2662,7 +2751,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
               documentsContextLine,
-              skillsInstructionBlock: skillsSend.instructionBlock,
+              skillsInstructionBlock,
               connectorsInstructionBlock,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
@@ -2988,6 +3077,7 @@ export default defineEventHandler(async (event) => {
             userId,
             apiKey: codeExecutionSession.apiKey,
             filesEnabled: codeExecutionSession.filesActive,
+            skillsAttached: skillScriptsAttachment?.attachedCount ?? 0,
             tracker: codeExecutionSession.tracker,
             rates: resolveCodeExecutionRatesFromConfig(),
             logger: aiLogger,

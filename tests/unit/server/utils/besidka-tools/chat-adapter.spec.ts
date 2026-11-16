@@ -192,6 +192,23 @@ describe('selectBesidkaChatTools', () => {
   })
 })
 
+describe('Besidka tiers and the always-ask name list', () => {
+  it('keeps every exposed tool named like a delete, share or send in the '
+    + 'ask-every-time tier', async () => {
+    const { hasAlwaysAskToolName } = await import(
+      '~~/server/utils/tool-approval/policy'
+    )
+    const misfiled = listChatExposedBesidkaTools()
+      .filter((besidkaTool) => {
+        return hasAlwaysAskToolName(besidkaTool.name)
+          && besidkaTool.chat.tier !== 'ask-every-time'
+      })
+      .map(besidkaTool => besidkaTool.name)
+
+    expect(misfiled).toEqual([])
+  })
+})
+
 describe('Besidka tool descriptors', () => {
   it('takes the access from the registry tier, not the annotations', () => {
     expect(besidkaToolAccess(exposedTool('list_projects'))).toBe('read')
@@ -454,7 +471,7 @@ describe('Besidka tools in the send policy', () => {
     expect(approval.state.counters.builtInCalls).toBe(2)
   })
 
-  it('asks before an Always allow write after a Besidka read', async () => {
+  it('runs an Always allow write after a Besidka read', async () => {
     const approval = await createApproval(modesWith({
       list_projects: 'allow',
       rename_file: 'allow',
@@ -465,13 +482,29 @@ describe('Besidka tools in the send policy', () => {
     expect(decide(approval, 'c2', 'besidka__rename_file', {
       fileId: 'f1',
       name: 'x.txt',
-    })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-    expect(approval.getPendingDecision('c2')?.decision.rememberOptions)
-      .toEqual(['once'])
+    })).toBe('not-applicable')
   })
 
   it.each(['web', 'knowledge', 'file', 'skill', 'connector'] as const)(
-    'asks before an Always allow read after %s taint',
+    'asks before an Always allow write after %s taint',
+    async (kind) => {
+      const approval = await createApproval(modesWith({
+        rename_file: 'allow',
+      }))
+
+      approval.state.taint.add(kind)
+
+      expect(decide(approval, 'c1', 'besidka__rename_file', {
+        fileId: 'f1',
+        name: 'x.txt',
+      })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
+        .toEqual(['once'])
+    },
+  )
+
+  it.each(['web', 'knowledge', 'file', 'skill', 'connector'] as const)(
+    'runs an Always allow read after %s taint',
     async (kind) => {
       const approval = await createApproval(modesWith({
         list_projects: 'allow',
@@ -480,9 +513,21 @@ describe('Besidka tools in the send policy', () => {
       approval.state.taint.add(kind)
 
       expect(decide(approval, 'c1', 'besidka__list_projects'))
-        .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+        .toBe('not-applicable')
     },
   )
+
+  it('asks default with every answer for a Needs approval read after taint',
+    async () => {
+      const approval = await createApproval(modesWith({}))
+
+      approval.state.taint.add('skill')
+
+      expect(decide(approval, 'c1', 'besidka__list_projects'))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+      expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
+        .toEqual(['once', 'chat', 'always'])
+    })
 
   it('runs a read granted in this chat after a Besidka read', async () => {
     const hash = await hashBesidkaChatTool(exposedTool('list_files'))
@@ -771,22 +816,23 @@ describe('audit fixes', () => {
       })
 
       const { run } = await build({
-        modes: modesWith({ list_projects: 'allow', rename_file: 'allow' }),
+        modes: modesWith({ list_projects: 'allow' }),
       })
       const approval = createSendToolApproval({ state })
 
       approval.registerTools(run.tools, run.approvalEntries)
 
+      expect([...state.taint]).toEqual(['besidka'])
       expect(approval.toolApproval({
         toolCall: { toolCallId: 'c1', toolName: 'besidka__list_projects', input: {} },
       })).toBe('not-applicable')
       expect(approval.toolApproval({
         toolCall: {
           toolCallId: 'c2',
-          toolName: 'besidka__rename_file',
-          input: { fileId: 'f1', name: 'x.txt' },
+          toolName: 'besidka__delete_chats',
+          input: { slugs: [OTHER_SLUG] },
         },
-      })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      })).toEqual({ type: 'user-approval', reason: 'always-ask' })
       expect(hasBesidkaToolResult([{
         type: 'tool-besidka__list_files',
         state: 'approval-requested',

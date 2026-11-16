@@ -482,8 +482,6 @@ function buildApprovalEntry(input: {
     permissionMode: input.mode,
     taint: 'besidka',
     readSource: TOOL_APPROVAL_BESIDKA_READ_SOURCE,
-    alwaysGrant: null,
-    alwaysGrantWhenTainted: false,
     userGrants: {
       always: null,
       chat: input.chatGrantHash === definitionHash

@@ -57,6 +57,19 @@ async function mountPanel() {
   return wrapper
 }
 
+function toolRows(wrapper: Awaited<ReturnType<typeof mountPanel>>) {
+  return wrapper.findAll('[data-testid="tool-permissions-row"]')
+}
+
+function toolRow(
+  wrapper: Awaited<ReturnType<typeof mountPanel>>,
+  name: string,
+) {
+  return wrapper.get(
+    `[data-testid="tool-permissions-row"][data-tool-name="${name}"]`,
+  )
+}
+
 function callsTo(suffix: string) {
   return mocks.fetch.mock.calls.filter(([url]) => {
     return String(url).endsWith(suffix)
@@ -112,7 +125,7 @@ describe('Profile/Connectors/DetailPanel', () => {
     })
 
     const wrapper = await mountPanel()
-    const tools = wrapper.findAll('[data-testid="connector-tool"]')
+    const tools = toolRows(wrapper)
 
     expect(callsTo('/tools/list')[0]?.[1]).toEqual({ method: 'POST' })
     expect(tools).toHaveLength(2)
@@ -120,36 +133,123 @@ describe('Profile/Connectors/DetailPanel', () => {
     expect(tools[0]!.text()).toContain('<img src=x onerror=alert(1)>')
     expect(tools[0]!.find('img').exists()).toBe(false)
     expect(tools[1]!.text()).toContain('Changes data')
-    expect(tools[1]!.find('[data-testid="connector-tool-always"]').exists())
-      .toBe(true)
+    expect(tools[1]!.get('[role="radio"][aria-checked="true"]')
+      .attributes('data-mode')).toBe('allow')
+    expect(wrapper.find('[data-testid="tool-permissions-group-read"]')
+      .text()).toContain('Read-only')
+    expect(wrapper.find('[data-testid="tool-permissions-group-write"]')
+      .text()).toContain('Write')
     expect(wrapper.get('[data-testid="connector-tools-counter"]').text())
       .toContain('2 of 2 on')
   })
 
-  it('removes an Always allow and turns a tool off', async () => {
+  it('keeps the always-ask tier in a locked group without Always allow',
+    async () => {
+      const wrapper = await mountPanel()
+      const group = wrapper.get(
+        '[data-testid="tool-permissions-group-always-asks"]',
+      )
+
+      expect(group.text()).toContain('Always asks')
+      expect(group.get('[data-testid="tool-permissions-group-select-always-asks"]')
+        .findAll('option')
+        .map(option => option.text()))
+        .toEqual(['Blocked', 'Needs approval'])
+
+      const allow = toolRow(wrapper, 'delete_issue')
+        .get('[data-testid="tool-permission-option-allow"]')
+
+      expect(allow.attributes('aria-disabled')).toBe('true')
+
+      await allow.trigger('click')
+      await flushPromises()
+
+      expect(callsTo('/tools/settings')).toHaveLength(0)
+    })
+
+  it('sets a group to Always allow for every tool that takes it',
+    async () => {
+      listing = createToolsReview({
+        tools: [
+          createReviewTool({ name: 'search_issues' }),
+          createReviewTool({ name: 'list_projects', mode: 'blocked' }),
+          createReviewTool({ name: 'get_issue', alwaysAllowed: true }),
+        ],
+      })
+
+      const wrapper = await mountPanel()
+      const select = wrapper.get(
+        '[data-testid="tool-permissions-group-select-read"]',
+      )
+
+      await select.setValue('allow')
+      await flushPromises()
+
+      expect(callsTo('/tools/settings')[0]?.[1]).toEqual({
+        method: 'POST',
+        body: {
+          tools: [
+            { name: 'search_issues', mode: 'allow' },
+            { name: 'list_projects', mode: 'allow' },
+          ],
+        },
+      })
+      expect((select.element as HTMLSelectElement).value).toBe('allow')
+      expect(mocks.refreshConnectors).toHaveBeenCalled()
+    })
+
+  it('reloads the tools and reports when a change is refused', async () => {
+    mocks.fetch.mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/tools/settings')) {
+        throw Object.assign(new Error('refused'), {
+          data: { message: 'This tool cannot be set to Always allow' },
+        })
+      }
+
+      return listing
+    })
+
+    const wrapper = await mountPanel()
+    const listCalls = callsTo('/tools/list').length
+
+    await toolRow(wrapper, 'search_issues')
+      .get('[data-testid="tool-permission-option-allow"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(callsTo('/tools/list').length).toBe(listCalls + 1)
+    expect(toolRow(wrapper, 'search_issues')
+      .get('[role="radio"][aria-checked="true"]')
+      .attributes('data-mode')).toBe('ask')
+  })
+
+  it('sets one tool to Needs approval and another to Blocked', async () => {
     const wrapper = await mountPanel()
 
-    await wrapper.get('[data-testid="connector-tool-always-remove"]')
+    await toolRow(wrapper, 'update_issue')
+      .get('[data-testid="tool-permission-option-ask"]')
       .trigger('click')
     await flushPromises()
 
     expect(callsTo('/tools/settings')[0]?.[1]).toEqual({
       method: 'POST',
-      body: { tools: [{ name: 'update_issue', approval: 'ask' }] },
+      body: { tools: [{ name: 'update_issue', mode: 'ask' }] },
     })
-    expect(mocks.success)
-      .toHaveBeenCalledWith('Besidka asks again before this tool runs')
+    expect(toolRow(wrapper, 'update_issue')
+      .get('[role="radio"][aria-checked="true"]')
+      .attributes('data-mode')).toBe('ask')
 
-    const toggle = wrapper.findAll('[data-testid="connector-tool-toggle"]')[0]!
-
-    ;(toggle.element as HTMLInputElement).checked = false
-    await toggle.trigger('change')
+    await toolRow(wrapper, 'search_issues')
+      .get('[data-testid="tool-permission-option-blocked"]')
+      .trigger('click')
     await flushPromises()
 
     expect(callsTo('/tools/settings')[1]?.[1]).toEqual({
       method: 'POST',
-      body: { tools: [{ name: 'search_issues', enabled: false }] },
+      body: { tools: [{ name: 'search_issues', mode: 'blocked' }] },
     })
+    expect(wrapper.get('[data-testid="connector-tools-counter"]').text())
+      .toContain('1 of 3 on')
   })
 
   it('shows changed tools for review and accepts them with the review '
@@ -180,7 +280,7 @@ describe('Profile/Connectors/DetailPanel', () => {
     expect(review.text()).toContain('New tool')
     expect(review.get('[data-testid="connector-tool-review-removed"]').text())
       .toContain('old_tool')
-    expect(wrapper.findAll('[data-testid="connector-tool"]')).toHaveLength(1)
+    expect(toolRows(wrapper)).toHaveLength(1)
     expect(wrapper.get('[data-testid="connector-detail-toggle"]')
       .attributes('disabled')).toBeDefined()
 

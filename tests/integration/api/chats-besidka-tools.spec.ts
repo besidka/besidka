@@ -419,6 +419,7 @@ async function runSend(input: {
   steps: Array<Array<Record<string, unknown>>>
   besidkaToolsEnabled?: boolean
   messageId?: string
+  tools?: string[]
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -439,7 +440,7 @@ async function runSend(input: {
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
       model: MODEL_ID,
-      tools: [],
+      tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.besidkaToolsEnabled === undefined
         ? {}
@@ -716,48 +717,48 @@ describe('Besidka tools in the chat send', () => {
         })
     })
 
-  it('runs Always allow reads one after another and asks before a write',
-    async () => {
-      setModes({
-        list_projects: 'allow',
-        list_files: 'allow',
-        rename_file: 'allow',
-      })
-
-      const { assistantInsert } = await runSend({
-        steps: [
-          toolCallChunks('call-1', 'besidka__list_projects', {}),
-          toolCallChunks('call-2', 'besidka__list_files', {}),
-          toolCallChunks('call-3', 'besidka__rename_file', {
-            fileId: 'f1',
-            name: 'notes.txt',
-          }),
-          textChunks('Never reached.'),
-        ],
-      })
-      const parts = assistantInsert?.parts ?? []
-
-      expect(mocks.listMcpProjects).toHaveBeenCalledTimes(1)
-      expect(findPart(parts, 'tool-besidka__list_projects')).toMatchObject({
-        state: 'output-available',
-        output: expect.stringContaining(
-          '<untrusted_tool_result connector="besidka"',
-        ),
-      })
-      expect(findPart(parts, 'tool-besidka__list_files')).toMatchObject({
-        state: expect.stringMatching(/^output-/),
-      })
-      expect(findPart(parts, 'data-tool-grant')).toMatchObject({
-        data: { toolCallId: 'call-1', scope: 'always' },
-      })
-      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-        data: {
-          toolCallId: 'call-3',
-          reason: 'untrusted-output',
-          rememberOptions: ['once'],
-        },
-      })
+  it('runs Always allow reads one after another and asks before a write '
+    + 'set to Needs approval, offering Always allow', async () => {
+    setModes({
+      list_projects: 'allow',
+      list_files: 'allow',
+      rename_file: 'ask',
     })
+
+    const { assistantInsert } = await runSend({
+      steps: [
+        toolCallChunks('call-1', 'besidka__list_projects', {}),
+        toolCallChunks('call-2', 'besidka__list_files', {}),
+        toolCallChunks('call-3', 'besidka__rename_file', {
+          fileId: 'f1',
+          name: 'notes.txt',
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(mocks.listMcpProjects).toHaveBeenCalledTimes(1)
+    expect(findPart(parts, 'tool-besidka__list_projects')).toMatchObject({
+      state: 'output-available',
+      output: expect.stringContaining(
+        '<untrusted_tool_result connector="besidka"',
+      ),
+    })
+    expect(findPart(parts, 'tool-besidka__list_files')).toMatchObject({
+      state: expect.stringMatching(/^output-/),
+    })
+    expect(findPart(parts, 'data-tool-grant')).toMatchObject({
+      data: { toolCallId: 'call-1', scope: 'always' },
+    })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: {
+        toolCallId: 'call-3',
+        reason: 'default',
+        rememberOptions: ['once', 'chat', 'always'],
+      },
+    })
+  })
 
   it('answers after a Besidka read without the search-answer continuation',
     async () => {
@@ -844,41 +845,51 @@ describe('Besidka tools in the chat send', () => {
       })
     })
 
-  it('asks before a write when an earlier answer used Besidka tools',
-    async () => {
-      setModes({ list_projects: 'allow', rename_file: 'allow' })
-      mocks.chatMessages = [{
-        id: 'row-old',
-        publicId: 'old-assistant',
-        role: 'assistant',
-        parts: [{
-          type: 'tool-besidka__list_files',
-          toolCallId: 'old-call',
-          state: 'output-available',
-          input: {},
-          output: 'framed',
-        }],
-        tools: [],
-        reasoning: 'off',
-        usage: null,
-        createdAt: new Date(),
-      }]
+  it('asks Allow once only before an Always allow write after web content '
+    + 'and an earlier Besidka answer', async () => {
+    setModes({ list_projects: 'allow', rename_file: 'allow' })
+    mocks.chatMessages = [{
+      id: 'row-old',
+      publicId: 'old-assistant',
+      role: 'assistant',
+      parts: [{
+        type: 'tool-besidka__list_files',
+        toolCallId: 'old-call',
+        state: 'output-available',
+        input: {},
+        output: 'framed',
+      }],
+      tools: [],
+      reasoning: 'off',
+      usage: null,
+      createdAt: new Date(),
+    }]
 
-      const { assistantInsert } = await runSend({
-        steps: [
-          toolCallChunks('call-1', 'besidka__rename_file', {
-            fileId: 'f1',
-            name: 'notes.txt',
-          }),
-          textChunks('Never reached.'),
-        ],
-      })
-
-      const parts = assistantInsert?.parts ?? []
-
-      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE))
-        .toMatchObject({ data: { reason: 'untrusted-output' } })
+    const { assistantInsert } = await runSend({
+      tools: ['web_search'],
+      steps: [
+        toolCallChunks('call-1', 'besidka__list_projects', {}),
+        toolCallChunks('call-2', 'besidka__rename_file', {
+          fileId: 'f1',
+          name: 'notes.txt',
+        }),
+        textChunks('Never reached.'),
+      ],
     })
+
+    const parts = assistantInsert?.parts ?? []
+
+    expect(findPart(parts, 'tool-besidka__list_projects'))
+      .toMatchObject({ state: 'output-available' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE))
+      .toMatchObject({
+        data: {
+          toolCallId: 'call-2',
+          reason: 'untrusted-output',
+          rememberOptions: ['once'],
+        },
+      })
+  })
 
   it('offers 24 tools at most, read first, with no notice in the chat',
     async () => {
