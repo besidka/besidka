@@ -87,6 +87,11 @@ describe('Profile/Connectors/Avatar', () => {
 
     expect(wrapper.find('img').exists()).toBe(true)
     expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
+      .toBe(true)
+
+    await wrapper.find('img').trigger('load')
+
+    expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
       .toBe(false)
 
     await wrapper.find('img').trigger('error')
@@ -94,5 +99,19 @@ describe('Profile/Connectors/Avatar', () => {
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
       .toBe(true)
+  })
+
+  it('keeps the letter visible until the image has loaded', async () => {
+    const wrapper = await mountSuspended(Avatar, {
+      props: { title: 'Notion', registryId: 'com.notion/mcp@1.0.0' },
+    })
+
+    expect(wrapper.text()).toBe('N')
+    expect(wrapper.find('img').classes()).toContain('opacity-0')
+
+    await wrapper.find('img').trigger('load')
+
+    expect(wrapper.text()).toBe('')
+    expect(wrapper.find('img').classes()).not.toContain('opacity-0')
   })
 })

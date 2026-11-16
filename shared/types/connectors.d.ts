@@ -89,14 +89,51 @@ export type ConnectorToolsListing
   = | ConnectorToolsReview
     | ConnectorToolsUnavailable
 
+export type ConnectorDirectoryAuthKind = 'oauth' | 'header' | 'none' | 'unknown'
+
 export interface ConnectorDirectoryItem {
   id: string
   name: string
-  title: string | null
+  title: string
   description: string
   remoteUrl: string
+  host: string
   authHint: 'header' | 'unknown'
   presetId: string | null
   publisher: string | null
+  isOfficial: boolean
+  isCurated: boolean
+  category: string
   isAdded: boolean
+  addedConnectorId: string | null
+}
+
+export interface ConnectorDirectoryCategorySection {
+  id: string
+  label: string
+  count: number
+  items: ConnectorDirectoryItem[]
+}
+
+export interface ConnectorDirectoryHome {
+  top: ConnectorDirectoryItem[]
+  topCount: number
+  new: ConnectorDirectoryItem[]
+  newCount: number
+  categories: ConnectorDirectoryCategorySection[]
+  total: number
+  syncing?: true
+}
+
+export interface ConnectorDirectoryTool {
+  name: string
+  title: string | null
+  description: string
+}
+
+export interface ConnectorDirectoryProbe {
+  authKind: ConnectorDirectoryAuthKind
+  state: 'listed' | 'needs-auth' | 'unavailable'
+  tools: ConnectorDirectoryTool[]
+  checkedAt: string
 }

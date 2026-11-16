@@ -11,7 +11,7 @@ describe('getConnectorBrandIcon', () => {
   })
 
   it('has nothing for an unknown, empty or inherited id', () => {
-    expect(getConnectorBrandIcon('sentry')).toBeNull()
+    expect(getConnectorBrandIcon('slack')).toBeNull()
     expect(getConnectorBrandIcon(null)).toBeNull()
     expect(getConnectorBrandIcon(undefined)).toBeNull()
     expect(getConnectorBrandIcon('constructor')).toBeNull()

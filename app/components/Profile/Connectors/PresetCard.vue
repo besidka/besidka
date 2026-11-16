@@ -28,6 +28,7 @@
       <button
         type="button"
         class="btn btn-sm min-h-11 sm:min-h-8"
+        :class="{ 'btn-primary': !isAdded }"
         :disabled="isBusy || isAdded"
         :aria-label="`${isAdded ? 'Added' : 'Add'} ${preset.title}`"
         :data-testid="`connector-preset-add-${preset.id}`"

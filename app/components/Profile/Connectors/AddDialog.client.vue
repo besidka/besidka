@@ -1,14 +1,14 @@
 <template>
   <ProfileConnectorsDialog
-    title="Add connector"
+    :title="registryFeature.active ? 'Add by URL' : 'Add connector'"
     hook-class="js-connector-add-modal"
     test-id="connector-add-dialog"
-    :size="registryFeature.active ? 'lg' : 'md'"
     :is-busy="isSubmitting"
     @close="emit('close')"
   >
     <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div
+        v-if="tabOptions.length > 1"
         class="tabs tabs-box tabs-sm w-full"
         role="tablist"
         aria-label="How to add a connector"
@@ -118,8 +118,8 @@
               id="connector-add-url-help"
               class="text-xs text-base-content/70"
             >
-              The https address of a remote MCP server. Adding it sends
-              nothing; you connect it in the next step.
+              The https address of a remote MCP server. Besidka checks that
+              it answers before it saves it; you sign in in the next step.
             </p>
           </div>
           <div class="grid gap-1">
@@ -154,31 +154,6 @@
             Add
           </button>
         </form>
-
-        <template v-else>
-          <ProfileConnectorsRegistrySearch
-            :added-preset-ids="addedPresetIds"
-            :is-adding="isSubmitting"
-            @add="addFromDirectory"
-            @add-preset="addPreset"
-          />
-          <p
-            v-if="presetError"
-            class="text-sm text-error"
-            role="alert"
-            data-testid="connector-preset-error"
-          >
-            {{ presetError }}
-          </p>
-          <p
-            v-if="directoryError"
-            class="text-sm text-error"
-            role="alert"
-            data-testid="connector-registry-add-error"
-          >
-            {{ directoryError }}
-          </p>
-        </template>
       </div>
 
       <p class="text-xs text-base-content/70">
@@ -200,9 +175,9 @@ import {
   CONNECTOR_CATALOG_FOOTER,
   CONNECTOR_PRESETS,
 } from '~~/config/connectors-catalog'
-import type { ConnectorDirectoryItem } from '#shared/types/connectors.d'
 
 type AddTab = 'presets' | 'url' | 'directory'
+type DialogTab = 'presets' | 'url'
 
 const props = defineProps<{
   addedPresetIds: ReadonlySet<string>
@@ -215,42 +190,40 @@ const emit = defineEmits<{
 }>()
 
 const registryFeature = useFeature('connectors.registry')
-const tab = shallowRef<AddTab>(resolveInitialTab())
+const tab = shallowRef<DialogTab>(resolveInitialTab())
 const url = shallowRef<string>('')
 const title = shallowRef<string>('')
 const urlError = shallowRef<string>('')
 const urlErrorLink = shallowRef<string>('')
 const presetError = shallowRef<string>('')
-const directoryError = shallowRef<string>('')
 const isSubmitting = shallowRef<boolean>(false)
 
-const tabOptions = computed<Array<{ id: AddTab, label: string }>>(() => {
-  return [
-    registryFeature.value.active
-      ? { id: 'directory', label: 'Browse' }
-      : { id: 'presets', label: 'Presets' },
-    { id: 'url', label: 'Add by URL' },
-  ]
+const tabOptions = computed<Array<{ id: DialogTab, label: string }>>(() => {
+  return registryFeature.value.active
+    ? [{ id: 'url', label: 'Add by URL' }]
+    : [
+      { id: 'presets', label: 'Presets' },
+      { id: 'url', label: 'Add by URL' },
+    ]
 })
 
 const addedPresetIds = computed<ReadonlySet<string>>(() => {
   return props.addedPresetIds
 })
 
-function resolveInitialTab(): AddTab {
-  if (props.initialTab === 'url') {
+function resolveInitialTab(): DialogTab {
+  if (props.initialTab === 'url' || registryFeature.value.active) {
     return 'url'
   }
 
-  return registryFeature.value.active ? 'directory' : 'presets'
+  return 'presets'
 }
 
-function selectTab(next: AddTab) {
+function selectTab(next: DialogTab) {
   tab.value = next
   urlError.value = ''
   urlErrorLink.value = ''
   presetError.value = ''
-  directoryError.value = ''
 }
 
 async function onTabKeydown(event: KeyboardEvent) {
@@ -300,24 +273,6 @@ async function addPreset(presetId: string) {
     await create({ presetId })
   } catch (exception) {
     presetError.value = describeError(exception, 'Could not add the connector')
-  } finally {
-    isSubmitting.value = false
-  }
-}
-
-async function addFromDirectory(item: ConnectorDirectoryItem) {
-  isSubmitting.value = true
-  directoryError.value = ''
-
-  try {
-    await create(item.presetId
-      ? { presetId: item.presetId }
-      : { registryId: item.id })
-  } catch (exception) {
-    directoryError.value = describeError(
-      exception,
-      'Could not add the connector',
-    )
   } finally {
     isSubmitting.value = false
   }

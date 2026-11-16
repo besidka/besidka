@@ -1,3 +1,5 @@
+import { CURATED_CONNECTORS } from '~~/config/connectors-directory'
+import type { CuratedConnector } from '~~/config/connectors-directory'
 import { eq } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
@@ -82,14 +84,16 @@ function resolveCreatedVia(
 }
 
 /**
- * The address and title of an active entry of the local MCP Registry copy,
- * or null for an unknown or inactive id.
+ * The address and title of an active entry of the local MCP Registry copy
+ * (a curated title wins, so `com.notion/mcp` becomes "Notion"), or null for
+ * an unknown or inactive id.
  */
 export async function findActiveRegistryEntry(
   db: DbClient,
   registryId: string,
 ): Promise<RegistryEntryAddress | null> {
   const [entry] = await db.select({
+    name: schema.mcpRegistryServers.name,
     remoteUrl: schema.mcpRegistryServers.remoteUrl,
     title: schema.mcpRegistryServers.title,
     status: schema.mcpRegistryServers.status,
@@ -98,9 +102,14 @@ export async function findActiveRegistryEntry(
     .where(eq(schema.mcpRegistryServers.id, registryId))
     .limit(1)
 
-  return entry?.status === 'active'
-    ? { remoteUrl: entry.remoteUrl, title: entry.title }
-    : null
+  if (entry?.status !== 'active') {
+    return null
+  }
+
+  const curated = (CURATED_CONNECTORS as readonly CuratedConnector[])
+    .find(item => item.registryName === entry.name)
+
+  return { remoteUrl: entry.remoteUrl, title: curated?.title ?? entry.title }
 }
 
 /**

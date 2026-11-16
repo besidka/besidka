@@ -26,17 +26,20 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const connectorsActive = ref<boolean>(true)
+const registryActive = ref<boolean>(false)
 const data = ref<unknown>(null)
 const fetchError = ref<unknown>(null)
 const connectTarget = ref<string | null>(null)
 const viewKey = ref<string | null>(null)
 
 mockNuxtImport('useFeature', () => {
-  return () => computed(() => ({
-    enabled: connectorsActive.value,
-    active: connectorsActive.value,
-    variant: null,
-  }))
+  return (flag: string) => computed(() => {
+    const isActive = flag === 'connectors.registry'
+      ? registryActive.value
+      : connectorsActive.value
+
+    return { enabled: isActive, active: isActive, variant: null }
+  })
 })
 mockNuxtImport('useConnectorsPage', () => {
   return () => ({
@@ -94,6 +97,12 @@ mockComponent('ProfileConnectorsAddDialog', () => {
   }
 })
 
+mockComponent('ProfileConnectorsDirectory', () => {
+  return {
+    template: '<div data-testid="directory-stub">directory</div>',
+  }
+})
+
 mockComponent('ProfileConnectorsConnectDialog', () => {
   return {
     props: ['connectorId'],
@@ -114,6 +123,7 @@ describe('chats connectors page', () => {
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     connectorsActive.value = true
+    registryActive.value = false
     data.value = { connectors: [] }
     fetchError.value = null
     connectTarget.value = null
@@ -187,9 +197,8 @@ describe('chats connectors page', () => {
         .toBe('2 of 3 tools on')
       expect(rows[0]!.get('[data-testid="connector-avatar-image"]')
         .attributes('src')).toBe('/api/v1/connectors/conn1/icon')
-      expect(rows[1]!.find('[data-testid="connector-avatar-image"]').exists())
-        .toBe(false)
-      expect(rows[1]!.get('[data-testid="connector-avatar"]').text()).toBe('N')
+      expect(rows[1]!.get('[data-testid="connector-avatar-image"]')
+        .attributes('src')).toBe('/api/v1/connectors/conn2/icon')
       expect(rows[1]!.get('[data-testid="connector-row-added-by"]').text())
         .toBe('Added by Claude, not by you in the app')
       expect(rows[1]!.get('[data-testid="connector-row-mcp-badge"]').text())
@@ -345,5 +354,78 @@ describe('chats connectors page', () => {
 
     expect(tab.attributes('aria-current')).toBe('page')
     expect(tab.attributes('to')).toBe('/chats/connectors')
+  })
+
+  describe('with the directory', () => {
+    beforeEach(() => {
+      registryActive.value = true
+    })
+
+    it('shows Yours and Discover, and Discover shows the directory', async () => {
+      data.value = { connectors: [createConnectorItem()] }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.find('[data-testid="connectors-view-filter"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="connector-row"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="directory-stub"]').exists())
+        .toBe(false)
+
+      await wrapper.get('[data-testid="connectors-view-discover"]')
+        .trigger('change')
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="directory-stub"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="connector-row"]').exists())
+        .toBe(false)
+      expect(mocks.replace).toHaveBeenCalledWith({
+        path: '/chats/connectors',
+        query: { tab: 'discover' },
+      })
+    })
+
+    it('makes Add connector the primary button and opens Discover', async () => {
+      data.value = { connectors: [createConnectorItem()] }
+
+      const wrapper = await mountPage()
+      const add = wrapper.get('[data-testid="connectors-add"]')
+
+      expect(add.classes()).toContain('btn-primary')
+      expect(wrapper.get('[data-testid="connectors-add-url"]').classes())
+        .not.toContain('btn-primary')
+
+      await add.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="directory-stub"]').exists())
+        .toBe(true)
+    })
+
+    it('opens Discover for the tab query and the old add links', async () => {
+      for (const query of [
+        { tab: 'discover' },
+        { add: 'directory' },
+        { add: 'presets' },
+      ]) {
+        mocks.query = query
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.find('[data-testid="directory-stub"]').exists())
+          .toBe(true)
+        expect(wrapper.find('[data-testid="add-dialog-stub"]').exists())
+          .toBe(false)
+      }
+    })
+
+    it('still opens the address form for the url add link', async () => {
+      mocks.query = { add: 'url' }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.get('[data-testid="add-dialog-stub"]').text()).toBe('url')
+    })
   })
 })

@@ -8,12 +8,23 @@ import {
 import { CONNECTOR_SLUG_PATTERN } from '#shared/utils/connectors-policy'
 
 describe('connector catalog', () => {
-  it('lists the four curated presets', () => {
+  it('lists the curated presets, the four originals first', () => {
     expect(CONNECTOR_PRESETS.map(preset => preset.id)).toEqual([
       'github',
       'notion',
       'linear',
       'atlassian',
+      'stripe',
+      'vercel',
+      'supabase',
+      'sentry',
+      'square',
+      'intercom',
+      'clickup',
+      'miro',
+      'todoist',
+      'webflow',
+      'wix',
     ])
   })
 
@@ -78,10 +89,13 @@ describe('connector catalog', () => {
     expect(findConnectorPreset('linear')?.notice).toBeNull()
   })
 
-  it('matches a preset by exact URL only', () => {
+  it('matches a preset by its address only, a trailing slash aside', () => {
     expect(findConnectorPresetByUrl('https://mcp.linear.app/mcp')?.id)
       .toBe('linear')
-    expect(findConnectorPresetByUrl('https://mcp.linear.app/mcp/')).toBeUndefined()
+    expect(findConnectorPresetByUrl('https://mcp.linear.app/mcp/')?.id)
+      .toBe('linear')
+    expect(findConnectorPresetByUrl('https://mcp.linear.app/mcp/other'))
+      .toBeUndefined()
     expect(findConnectorPresetByUrl('https://mcp.linear.app.evil.com/mcp'))
       .toBeUndefined()
   })
@@ -89,5 +103,15 @@ describe('connector catalog', () => {
   it('says the names belong to their owners', () => {
     expect(CONNECTOR_CATALOG_FOOTER)
       .toBe('Names belong to their owners. Besidka is not affiliated with them.')
+  })
+
+  it('finds a preset by URL whatever the host case or trailing slash', () => {
+    expect(findConnectorPresetByUrl('https://mcp.stripe.com')?.id)
+      .toBe('stripe')
+    expect(findConnectorPresetByUrl('https://MCP.notion.com/mcp/')?.id)
+      .toBe('notion')
+    expect(findConnectorPresetByUrl('https://mcp.notion.com/mcp?x=1'))
+      .toBeUndefined()
+    expect(findConnectorPresetByUrl('not a url')).toBeUndefined()
   })
 })

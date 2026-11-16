@@ -1,5 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
+import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 import AddDialog from '../../../../../app/components/Profile/Connectors/AddDialog.client.vue'
@@ -19,8 +19,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const registryActive = ref<boolean>(false)
-
-const emptyDirectory = { items: [], nextCursor: null, total: 0 }
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('refreshConnectors', () => mocks.refreshConnectors)
@@ -79,37 +77,24 @@ describe('Profile/Connectors/AddDialog', () => {
     expect(document.body.querySelector('img')).toBeNull()
   })
 
-  it('opens on Browse by default and for the old presets link when the '
-    + 'registry flag is on', async () => {
+  it('shows only the address form when the registry flag is on, whatever '
+    + 'tab is asked for', async () => {
     registryActive.value = true
-    mocks.fetch.mockResolvedValue(emptyDirectory)
 
-    await mountDialog()
+    for (const initialTab of [undefined, 'presets', 'directory', 'url']) {
+      document.body.innerHTML = ''
 
-    expect(getByTestId('connector-add-tab-directory').textContent)
-      .toContain('Browse')
-    expect(getByTestId('connector-add-tab-directory')
-      .getAttribute('aria-selected')).toBe('true')
-    expect(findByTestId('connector-add-tab-presets')).toBeNull()
-    expect(getByTestId('connector-add-presets').textContent)
-      .toContain('Linear')
+      await mountDialog(initialTab ? { initialTab } : {})
 
-    document.body.innerHTML = ''
+      expect(findByTestId('connector-add-tab-url')).toBeNull()
+      expect(findByTestId('connector-add-tab-presets')).toBeNull()
+      expect(findByTestId('connector-add-presets')).toBeNull()
+      expect(getByTestId('connector-add-url-form')).not.toBeNull()
+      expect(document.body.querySelector('h2')?.textContent)
+        .toContain('Add by URL')
+    }
 
-    await mountDialog({ initialTab: 'presets' })
-
-    expect(getByTestId('connector-add-tab-directory')
-      .getAttribute('aria-selected')).toBe('true')
-  })
-
-  it('opens Add by URL when asked, with or without the registry flag', async () => {
-    registryActive.value = true
-    mocks.fetch.mockResolvedValue(emptyDirectory)
-
-    await mountDialog({ initialTab: 'url' })
-
-    expect(getByTestId('connector-add-tab-url')
-      .getAttribute('aria-selected')).toBe('true')
+    expect(mocks.fetch).not.toHaveBeenCalled()
   })
 
   it('falls back to Presets when Browse is asked for without the registry flag', async () => {
@@ -138,68 +123,6 @@ describe('Profile/Connectors/AddDialog', () => {
     })
     expect(mocks.refreshConnectors).toHaveBeenCalled()
     expect(wrapper.emitted('added')?.[0]).toEqual(['new1'])
-  })
-
-  it('browses the directory, searches it, shows its text as plain text '
-    + 'and adds an entry by its id', async () => {
-    registryActive.value = true
-    mocks.fetch.mockImplementation(async (url: string) => {
-      if (url === '/api/v1/connectors/registry') {
-        return {
-          items: [{
-            id: 'io.example/tracker@1.0.0',
-            name: 'io.example/tracker',
-            title: null,
-            description: '<script>alert(1)</script> Tracks issues',
-            remoteUrl: 'https://mcp.tracker.example/mcp',
-            transport: 'streamable-http',
-            authHint: 'header',
-            presetId: null,
-            publisher: 'example.com',
-            isAdded: false,
-          }],
-          nextCursor: null,
-          total: 1,
-        }
-      }
-
-      return { connector: { id: 'new2' } }
-    })
-
-    const wrapper = await mountDialog()
-
-    await flushPromises()
-
-    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/registry', {
-      query: {},
-    })
-
-    await setTestIdValue('connector-registry-query', 'tracker')
-    await new Promise(resolve => setTimeout(resolve, 350))
-    await flushPromises()
-
-    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/registry', {
-      query: { q: 'tracker' },
-    })
-
-    const results = getByTestId('connector-registry-results')
-
-    expect(results.textContent).toContain('tracker')
-    expect(results.textContent).toContain('mcp.tracker.example')
-    expect(results.textContent).toContain('by example.com')
-    expect(results.textContent).toContain('<script>alert(1)</script>')
-    expect(results.querySelector('script')).toBeNull()
-    expect(results.querySelector('a')).toBeNull()
-    expect(getByTestId('connector-registry').textContent)
-      .toContain('Not reviewed by Besidka')
-
-    await clickTestId('connector-registry-add')
-
-    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors', {
-      method: 'POST',
-      body: { registryId: 'io.example/tracker@1.0.0' },
-    })
-    expect(wrapper.emitted('added')?.[0]).toEqual(['new2'])
   })
 
   it('refuses a non-https address before asking the server', async () => {
