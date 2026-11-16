@@ -40,6 +40,14 @@
       @pick="commands.pick"
     />
     <ChatInputToolApprovalChip />
+    <ChatInputConnectorSuggestion
+      v-if="connectorSuggestion"
+      :title="connectorSuggestion.title"
+      :is-at-limit="composerConnectors.isAtLimit.value"
+      :is-saving="composerConnectors.isSaving.value"
+      @turn-on="turnOnSuggestedConnector"
+      @dismiss="dismissSuggestedConnector"
+    />
     <div class="flex justify-center w-full px-2">
       <UiBubble
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
@@ -797,8 +805,12 @@ function focusMessageAtEnd() {
   element.setSelectionRange(element.value.length, element.value.length)
 }
 
+const prefilledTexts = shallowRef<string[]>([])
+
 async function prefillMessage(text: string) {
   const draft = message.value.trimEnd()
+
+  prefilledTexts.value = [...prefilledTexts.value, text]
 
   message.value = draft ? `${draft}\n\n${text}` : text
   await nextTick()
@@ -976,6 +988,8 @@ const besidkaPickerRow = computed(() => {
 })
 
 const connectorsRegistryFeature = useFeature('connectors.registry')
+const lastSentConnectorText = shallowRef<string>('')
+const dismissedConnectorIds = shallowRef<ReadonlySet<string>>(new Set())
 
 const isConnectorsEnabled = computed<boolean>(() => {
   return composerConnectors.isVisible.value
@@ -984,6 +998,59 @@ const isConnectorsEnabled = computed<boolean>(() => {
     && !isImageGenerationEnabled.value
     && !isImageGenerationRequired.value
 })
+
+watch(message, (text) => {
+  if (!text.trim() && prefilledTexts.value.length > 0) {
+    prefilledTexts.value = []
+  }
+})
+
+const connectorSuggestion = computed(() => {
+  if (
+    !isConnectorsEnabled.value
+    || !composerConnectors.isLoaded.value
+    || !composerConnectors.isSelectionKnown.value
+    || prefilledTexts.value.length > 0
+  ) {
+    return null
+  }
+
+  return findMentionedConnector({
+    text: message.value.trim() || lastSentConnectorText.value,
+    candidates: composerConnectors.items.value,
+    selectedIds: composerConnectors.selectedIds.value,
+    dismissedIds: dismissedConnectorIds.value,
+  })
+})
+
+watch(() => route.path, () => {
+  lastSentConnectorText.value = ''
+  dismissedConnectorIds.value = new Set()
+  prefilledTexts.value = []
+})
+
+async function turnOnSuggestedConnector() {
+  const suggestion = connectorSuggestion.value
+
+  if (!suggestion) {
+    return
+  }
+
+  await composerConnectors.toggle(suggestion.id)
+}
+
+function dismissSuggestedConnector() {
+  const suggestion = connectorSuggestion.value
+
+  if (!suggestion) {
+    return
+  }
+
+  dismissedConnectorIds.value = new Set([
+    ...dismissedConnectorIds.value,
+    suggestion.id,
+  ])
+}
 
 const commands = useComposerCommands({
   textarea,
@@ -1679,6 +1746,11 @@ async function sendMessage() {
   if (!await ensureSendConsent(selectedTransferProviderId.value)) {
     return
   }
+
+  lastSentConnectorText.value = prefilledTexts.value.length > 0
+    ? ''
+    : commands.stripFromText(message.value)
+  prefilledTexts.value = []
 
   const text = joinMessageWithPastedTexts(
     commands.stripFromText(message.value),

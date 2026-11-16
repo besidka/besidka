@@ -13,6 +13,7 @@ import {
   CONNECTOR_SSE_PER_SEND,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
   CONNECTOR_TOOLS_PER_REQUEST,
+  resolveConnectorToolMode,
 } from '#shared/utils/connectors-policy'
 import {
   CONNECTOR_APPROVAL_DENIAL_TEXT,
@@ -21,6 +22,8 @@ import {
   CONNECTOR_RATE_LIMIT_TEXT,
   CONNECTOR_UNAPPROVED_CALL_TEXT,
 } from '#shared/utils/connectors-parts'
+import { toolIndexClassOf } from '~~/server/utils/ai/tool-index'
+import type { ToolIndexEntry } from '~~/server/utils/ai/tool-index'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import {
@@ -126,7 +129,8 @@ export const CONNECTOR_FAILURE_TEXT = 'The connector tool call failed.'
 export interface ConnectorSendSummary {
   connectors: number
   tools: number
-  cappedTools: number
+  upFrontTools: number
+  deferredTools: number
   hiddenTools: number
   cacheHits: number
   failedConnectors: number
@@ -134,6 +138,9 @@ export interface ConnectorSendSummary {
 
 export interface ConnectorToolsRun {
   tools: ToolSet
+  upFrontNames: string[]
+  indexEntries: ToolIndexEntry[]
+  definitionBytes: number
   approvalEntries: Map<string, SendToolEntry>
   connectorIds: string[]
   handles: ConnectorClientHandle[]
@@ -151,6 +158,7 @@ export interface GetConnectorToolsInput {
   connectors: readonly ConnectorRecord[]
   existingToolCount: number
   existingDefinitionBytes?: number
+  reserve?: { tools: number, bytes: number }
   hashArgs: ConnectorArgsHasher
   consumeClearedCall?: (call: ClearedCallCheck) => boolean
   approvedAuditRow?: (
@@ -172,6 +180,7 @@ interface Candidate {
   definitionHash: string
   alwaysGrant: { hash: string | null, isDefault: boolean }
   isReadOnly: boolean
+  isAlwaysOn: boolean
   handle: ConnectorClientHandle
   secrets: Set<string>
 }
@@ -535,11 +544,17 @@ async function syncDriftStatus(
  * connector to `drifted`, a removed tool is dropped. Tools the user turned
  * off are dropped too.
  *
- * Across connectors, tools the server marks read-only come first, then the
- * list stops at 40 tools (counting the send's other tools) or 32 KiB of
- * descriptions plus input schemas (counting the Besidka tools' definitions,
- * `existingDefinitionBytes`). Each exposed tool is
- * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`.
+ * Every enabled, reviewed tool becomes an AI SDK tool named
+ * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`, with its approval
+ * entry. Which ones the model sees up front depends on the connector's mode
+ * (`connectors.tool_mode`, null is Auto): tools of an Always on connector,
+ * read-only first, are offered up front while they fit in 40 tools (counting
+ * the send's other tools and `reserve`, the room kept for loading) and
+ * 32 KiB of descriptions plus input schemas (counting the Besidka tools'
+ * definitions, `existingDefinitionBytes`). Every other tool, Auto or not
+ * fitting, goes to `indexEntries` for the tool index and is offered only
+ * once the model loads it (`server/utils/ai/tool-index.ts`). No tool is left
+ * out, so there is no "left out" notice.
  *
  * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
  * call may run is decided by the send's approval policy
@@ -583,7 +598,8 @@ export async function getConnectorTools(
   const summary: ConnectorSendSummary = {
     connectors: input.connectors.length,
     tools: 0,
-    cappedTools: 0,
+    upFrontTools: 0,
+    deferredTools: 0,
     hiddenTools: 0,
     cacheHits: 0,
     failedConnectors: 0,
@@ -850,6 +866,8 @@ export async function getConnectorTools(
             })
             : { hash: null, isDefault: false },
           isReadOnly: isDefinitionAutoRunnable(definition),
+          isAlwaysOn: resolveConnectorToolMode(connector.toolMode)
+            === 'always-on',
           handle,
           secrets,
         })
@@ -862,14 +880,19 @@ export async function getConnectorTools(
     ]
     const toolBudget = Math.max(
       0,
-      CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
+      CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount
+      - (input.reserve?.tools ?? 0),
     )
+    const bytesBudget = CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
+      - (input.reserve?.bytes ?? 0)
     const tools: ToolSet = {}
+    const upFrontNames: string[] = []
+    const indexEntries: ToolIndexEntry[] = []
     const approvalEntries = new Map<string, SendToolEntry>()
     let definitionBytes = Math.max(0, input.existingDefinitionBytes ?? 0)
+    let upFrontBytes = 0
     let callsThisTurn = Math.max(0, input.callsUsedThisTurn ?? 0)
     let sourceConnectorId: string | null = null
-    let isCapped = false
 
     async function recordCall(call: {
       candidate: Candidate
@@ -1047,17 +1070,6 @@ export async function getConnectorTools(
     for (const candidate of ordered) {
       const bytes = byteLength(candidate.definition.description)
         + byteLength(JSON.stringify(candidate.definition.inputSchema))
-
-      if (
-        Object.keys(tools).length >= toolBudget
-        || definitionBytes + bytes > CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
-      ) {
-        isCapped = true
-        summary.cappedTools += 1
-
-        continue
-      }
-
       const exposedName = await buildExposedToolName(
         candidate.connector.slug,
         candidate.definition.name,
@@ -1073,8 +1085,7 @@ export async function getConnectorTools(
         continue
       }
 
-      definitionBytes += bytes
-      approvalEntries.set(exposedName, buildConnectorApprovalEntry({
+      const approvalEntry = buildConnectorApprovalEntry({
         exposedName,
         connectorId: candidate.connector.id,
         connectorTitle: candidate.connector.title,
@@ -1093,7 +1104,28 @@ export async function getConnectorTools(
             exposedName,
           ),
         },
-      }))
+      })
+      const isUpFront = candidate.isAlwaysOn
+        && upFrontNames.length < toolBudget
+        && definitionBytes + bytes <= bytesBudget
+
+      approvalEntries.set(exposedName, approvalEntry)
+
+      if (isUpFront) {
+        definitionBytes += bytes
+        upFrontBytes += bytes
+        upFrontNames.push(exposedName)
+      } else {
+        indexEntries.push({
+          name: exposedName,
+          sourceKey: candidate.connector.slug,
+          sourceTitle: candidate.connector.title,
+          description: candidate.definition.description,
+          toolClass: toolIndexClassOf(approvalEntry.descriptor),
+          bytes,
+        })
+      }
+
       tools[exposedName] = withFollowUpTurn(dynamicTool({
         description: candidate.definition.description,
         ...(candidate.definition.title
@@ -1107,14 +1139,8 @@ export async function getConnectorTools(
     }
 
     summary.tools = Object.keys(tools).length
-
-    if (isCapped) {
-      notices.push(
-        `Some connector tools were left out to stay within the tool limits `
-        + `of a message (${CONNECTOR_TOOLS_PER_REQUEST} tools, 32 KiB of `
-        + 'definitions).',
-      )
-    }
+    summary.upFrontTools = upFrontNames.length
+    summary.deferredTools = indexEntries.length
 
     async function close(): Promise<void> {
       if (isClosed) {
@@ -1140,7 +1166,8 @@ export async function getConnectorTools(
         connectors: {
           selected: summary.connectors,
           exposedTools: summary.tools,
-          cappedTools: summary.cappedTools,
+          upFrontTools: summary.upFrontTools,
+          deferredTools: summary.deferredTools,
           hiddenTools: summary.hiddenTools,
           cacheHits: summary.cacheHits,
           failed: summary.failedConnectors,
@@ -1156,6 +1183,9 @@ export async function getConnectorTools(
 
     return {
       tools,
+      upFrontNames,
+      indexEntries,
+      definitionBytes: upFrontBytes,
       approvalEntries,
       connectorIds: [...new Set(candidates.map((candidate) => {
         return candidate.connector.id

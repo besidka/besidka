@@ -94,6 +94,47 @@
 
     <section
       class="grid gap-2"
+      aria-labelledby="connector-detail-mode-heading"
+      data-testid="connector-detail-mode"
+    >
+      <h3
+        id="connector-detail-mode-heading"
+        class="font-medium"
+      >
+        How the model gets its tools
+      </h3>
+      <div
+        class="join w-full"
+        role="radiogroup"
+        aria-labelledby="connector-detail-mode-heading"
+      >
+        <input
+          v-for="mode in CONNECTOR_TOOL_MODES"
+          :key="mode"
+          type="radio"
+          name="connector-detail-mode"
+          class="join-item btn btn-sm min-h-11 flex-1 sm:min-h-8"
+          :class="{
+            'btn-active btn-primary': connector.toolMode === mode,
+          }"
+          :value="mode"
+          :aria-label="CONNECTOR_TOOL_MODE_LABELS[mode]"
+          :checked="connector.toolMode === mode"
+          :disabled="isBusy"
+          :data-testid="`connector-detail-mode-${mode}`"
+          @change="setToolMode(mode)"
+        >
+      </div>
+      <p
+        class="text-xs text-base-content/70"
+        data-testid="connector-detail-mode-hint"
+      >
+        {{ CONNECTOR_TOOL_MODE_DESCRIPTIONS[connector.toolMode] }}
+      </p>
+    </section>
+
+    <section
+      class="grid gap-2"
       aria-labelledby="connector-detail-consent-heading"
     >
       <h3
@@ -249,6 +290,12 @@ import type {
   ConnectorReviewTool,
   ConnectorToolsListing,
 } from '#shared/types/connectors.d'
+import {
+  CONNECTOR_TOOL_MODE_DESCRIPTIONS,
+  CONNECTOR_TOOL_MODE_LABELS,
+  CONNECTOR_TOOL_MODES,
+} from '#shared/utils/connectors-policy'
+import type { ConnectorToolMode } from '#shared/utils/connectors-policy'
 import type { ToolPermissionChange } from '~/utils/tool-permissions'
 
 const TOOL_SETTINGS_PER_REQUEST = 40
@@ -460,6 +507,19 @@ async function onToggleEnabled(event: Event) {
       body: { enabled },
     })
   }, 'Could not change the connector')
+}
+
+async function setToolMode(toolMode: ConnectorToolMode) {
+  if (connector.value?.toolMode === toolMode) {
+    return
+  }
+
+  await run(() => {
+    return $fetch(`/api/v1/connectors/${props.connectorId}`, {
+      method: 'PATCH',
+      body: { toolMode },
+    })
+  }, 'Could not change how the model gets the tools')
 }
 
 function applyToolModes(changes: readonly ToolPermissionChange[]) {

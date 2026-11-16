@@ -7,6 +7,7 @@ import {
   CONNECTOR_REGISTRY_REMOTE_TYPES,
   CONNECTOR_STATUSES,
   CONNECTOR_TOOL_APPROVALS,
+  CONNECTOR_TOOL_MODES,
   CONNECTOR_TRANSPORTS,
 } from '#shared/utils/connectors-policy'
 import {
@@ -50,6 +51,7 @@ export const connectors = snakeCase.table(
     nativeOptInAt: integer({ mode: 'timestamp' }),
     lastError: text({ mode: 'json' }).$type<ConnectorLastError>(),
     lastConnectedAt: integer({ mode: 'timestamp' }),
+    toolMode: text({ enum: CONNECTOR_TOOL_MODES }),
   },
   table => [
     uniqueIndex('uq_connectors_user_slug').on(table.userId, table.slug),

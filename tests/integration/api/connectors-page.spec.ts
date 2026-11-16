@@ -581,6 +581,45 @@ describe('Connectors page routes', () => {
 
       expect(result.connector.enabled).toBe(false)
     })
+
+    it('lists Auto for a connector that never chose a mode', async () => {
+      await addConnector('linear', { enabled: true })
+
+      expect((await call(listPath)).connectors[0].toolMode).toBe('auto')
+    })
+
+    it('sets Always on and back to Auto without touching the switch',
+      async () => {
+        const connectorId = await addConnector('linear', { enabled: false })
+        const alwaysOn = await call(patchPath, {
+          params: { id: connectorId },
+          body: { toolMode: 'always-on' },
+        })
+
+        expect(alwaysOn.connector).toMatchObject({
+          toolMode: 'always-on',
+          enabled: false,
+        })
+        expect((await call(listPath)).connectors[0].toolMode)
+          .toBe('always-on')
+
+        const auto = await call(patchPath, {
+          params: { id: connectorId },
+          body: { toolMode: 'auto' },
+        })
+
+        expect(auto.connector.toolMode).toBe('auto')
+      })
+
+    it('refuses an unknown mode', async () => {
+      const connectorId = await addConnector('linear', { enabled: true })
+      const failure = await failureOf(call(patchPath, {
+        params: { id: connectorId },
+        body: { toolMode: 'everything' },
+      }))
+
+      expect(failure.status).toBe(400)
+    })
   })
 
   describe('POST /api/v1/connectors/[id]/tools/settings', () => {

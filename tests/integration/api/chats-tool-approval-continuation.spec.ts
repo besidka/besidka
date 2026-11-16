@@ -579,6 +579,7 @@ function seedConnector(input: {
     consentVersion: CONNECTOR_CONSENT_VERSION,
     consentedAt: now,
     consentWithdrawnAt: null,
+    toolMode: 'always-on',
     updatedAt: now,
   })
   mocks.store.credentials = {
@@ -1119,6 +1120,38 @@ describe('tool approval continuation', () => {
       expect.objectContaining({ callId: 1, outcome: 'ok', approval: 'once' }),
     ])
   })
+
+  it('keeps a tool loaded before the pause offered after the approval',
+    async () => {
+      mocks.store.connectors[0]!.toolMode = null
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-load', 'tool_index__load', {
+            names: [CREATE_ISSUE],
+          }),
+          toolCallChunks('call-1', CREATE_ISSUE, { title: 'x' }),
+        ],
+      })
+      const [approvalId] = paused.approvalIds
+
+      expect(approvalId).toBeDefined()
+      expect(linear.callCount('tools/call')).toBe(0)
+
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true },
+      ], [textChunks('Created the issue.')])
+      const toolNames = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((tool: { name: string }) => tool.name)
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(toolNames).toContain('tool_index__load')
+      expect(toolNames).toContain(CREATE_ISSUE)
+      expect(mocks.store.settlements).toEqual([
+        expect.objectContaining({ outcome: 'ok', approval: 'once' }),
+      ])
+    })
 
   it('stores the call provider metadata and replays it to the model',
     async () => {

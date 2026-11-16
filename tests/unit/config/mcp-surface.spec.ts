@@ -161,4 +161,21 @@ describe('MCP surface snapshot', () => {
       + 'config/mcp-server.ts and server.json (see docs/mcp-marketplaces.md).',
     ).toMatchFileSnapshot(SURFACE_FILE)
   })
+
+  it('gives no MCP tool a way to set a connector\'s tool mode', async () => {
+    const surface = (await import(SURFACE_FILE)).default as {
+      tools: Array<{ name: string, inputSchema?: unknown }>
+    }
+    const connectorTools = surface.tools.filter((tool) => {
+      return tool.name.includes('connector')
+    })
+
+    expect(connectorTools.length).toBeGreaterThan(0)
+
+    for (const tool of connectorTools) {
+      const schema = JSON.stringify(tool.inputSchema ?? {})
+
+      expect(schema, tool.name).not.toMatch(/toolMode|tool_mode|always-on/)
+    }
+  })
 })

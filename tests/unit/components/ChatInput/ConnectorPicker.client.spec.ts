@@ -13,6 +13,7 @@ const items: ComposerConnectorItem[] = [
     title: 'Notion',
     host: 'mcp.notion.com',
     status: 'ready',
+    toolMode: 'auto',
     presetId: 'notion',
     isIconAvailable: false,
   },
@@ -22,6 +23,7 @@ const items: ComposerConnectorItem[] = [
     title: 'Linear',
     host: 'mcp.linear.app',
     status: 'drifted',
+    toolMode: 'always-on',
     presetId: null,
     isIconAvailable: true,
   },
@@ -31,6 +33,7 @@ const items: ComposerConnectorItem[] = [
     title: 'Sentry',
     host: 'mcp.sentry.dev',
     status: 'ready',
+    toolMode: 'auto',
     presetId: null,
     isIconAvailable: false,
   },
@@ -442,5 +445,14 @@ describe('ChatInput/ConnectorPicker', () => {
       expect((get('connector-picker-turn-all-off') as HTMLButtonElement)
         .disabled).toBe(true)
     })
+  })
+
+  it('shows each connector\'s mode next to its host', async () => {
+    await mountPicker()
+
+    expect(get('connector-picker-mode-notion').textContent?.replace(/\s+/g, ' ')
+      .trim()).toBe('mcp.notion.com · Auto')
+    expect(get('connector-picker-mode-linear').textContent?.replace(/\s+/g, ' ')
+      .trim()).toBe('mcp.linear.app · Always on')
   })
 })

@@ -97,6 +97,7 @@ interface ConnectorSeed {
   url: string
   auth: 'header' | 'oauth' | 'none'
   transport?: 'streamable-http' | 'sse'
+  toolMode?: 'auto' | 'always-on'
 }
 
 describe('getConnectorTools', () => {
@@ -148,6 +149,7 @@ describe('getConnectorTools', () => {
       consentIssuer: seed.auth === 'oauth' ? new URL(ISSUER).host : null,
       consentVersion: CONNECTOR_CONSENT_VERSION,
       consentedAt: new Date(),
+      ...(seed.toolMode ? { toolMode: seed.toolMode } : {}),
     })
 
     return connector.id
@@ -157,6 +159,7 @@ describe('getConnectorTools', () => {
     connectorSeeds: ConnectorSeed[]
     servers: MockMcpServer[]
     existingToolCount?: number
+    reserve?: { tools: number, bytes: number }
     guard?: { untrustedResultSeen: boolean }
     isCallCleared?: (toolCallId: string | undefined) => boolean
     legacy?: boolean
@@ -191,6 +194,7 @@ describe('getConnectorTools', () => {
           return slugs.indexOf(first.slug) - slugs.indexOf(second.slug)
         }),
       existingToolCount: options.existingToolCount ?? 0,
+      ...(options.reserve ? { reserve: options.reserve } : {}),
       hashArgs,
       ...(options.legacy
         ? {}
@@ -748,19 +752,51 @@ describe('getConnectorTools', () => {
   })
 
   describe('caps', () => {
-    it('stops at 40 tools counting the other tools, read-only first',
+    it('offers an Always on connector up front within 40 tools counting the '
+      + 'other tools, read-only first, and defers the rest', async () => {
+      const manyTools: MockMcpTool[] = Array.from(
+        { length: 50 },
+        (_unused, index) => ({
+          name: `tool_${String(index).padStart(2, '0')}`,
+          description: 'Tool.',
+          ...(index % 2 === 0
+            ? { annotations: { readOnlyHint: true } }
+            : {}),
+        }),
+      )
+      const alpha = server('mcp.alpha.example.com', { tools: manyTools })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+        toolMode: 'always-on',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools, upFrontNames, indexEntries, notices } = await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        existingToolCount: 6,
+      })
+
+      expect(Object.keys(tools)).toHaveLength(50)
+      expect(upFrontNames).toHaveLength(CONNECTOR_TOOLS_PER_REQUEST - 6)
+      expect(upFrontNames.slice(0, 25)).toEqual(
+        Array.from({ length: 25 }, (_unused, index) => {
+          return `mcp__alpha__tool_${String(index * 2).padStart(2, '0')}`
+        }),
+      )
+      expect(indexEntries).toHaveLength(50 - upFrontNames.length)
+      expect(indexEntries.every((entry) => {
+        return !upFrontNames.includes(entry.name)
+      })).toBe(true)
+      expect(notices.join(' ')).not.toContain('left out')
+    })
+
+    it('lists every tool of an Auto connector in the index and none up front',
       async () => {
-        const manyTools: MockMcpTool[] = Array.from(
-          { length: 50 },
-          (_unused, index) => ({
-            name: `tool_${String(index).padStart(2, '0')}`,
-            description: 'Tool.',
-            ...(index % 2 === 0
-              ? { annotations: { readOnlyHint: true } }
-              : {}),
-          }),
-        )
-        const alpha = server('mcp.alpha.example.com', { tools: manyTools })
+        const alpha = server('mcp.alpha.example.com')
         const seeds: ConnectorSeed[] = [{
           slug: 'alpha',
           url: alpha.url,
@@ -769,22 +805,63 @@ describe('getConnectorTools', () => {
 
         await addConnector(seeds[0]!)
 
-        const { tools, notices } = await run({
+        const {
+          tools,
+          upFrontNames,
+          indexEntries,
+          summary,
+          definitionBytes,
+          approvalEntries,
+        } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+        expect(Object.keys(tools).sort()).toEqual([
+          'mcp__alpha__create_issue',
+          'mcp__alpha__list_issues',
+        ])
+        expect(upFrontNames).toEqual([])
+        expect(definitionBytes).toBe(0)
+        expect(summary.deferredTools).toBe(2)
+        expect(indexEntries.map((entry) => {
+          return [entry.name, entry.sourceKey, entry.toolClass]
+        }).sort()).toEqual([
+          ['mcp__alpha__create_issue', 'alpha', 'write'],
+          ['mcp__alpha__list_issues', 'alpha', 'read'],
+        ])
+        expect(indexEntries.every(entry => entry.bytes > 0)).toBe(true)
+        expect([...approvalEntries.keys()].sort())
+          .toEqual(Object.keys(tools).sort())
+        expect(approvalEntries.get('mcp__alpha__create_issue')?.descriptor)
+          .toMatchObject({
+            family: 'connector',
+            definitionHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          })
+      })
+
+    it('keeps the reserved room free when offering tools up front',
+      async () => {
+        const manyTools: MockMcpTool[] = Array.from(
+          { length: 40 },
+          (_unused, index) => ({ name: `tool_${index}`, description: 'Tool.' }),
+        )
+        const alpha = server('mcp.alpha.example.com', { tools: manyTools })
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'header',
+          toolMode: 'always-on',
+        }]
+
+        await addConnector(seeds[0]!)
+
+        const { upFrontNames, indexEntries } = await run({
           connectorSeeds: seeds,
           servers: [alpha],
-          existingToolCount: 6,
+          existingToolCount: 5,
+          reserve: { tools: 11, bytes: 0 },
         })
-        const names = Object.keys(tools)
 
-        expect(names).toHaveLength(CONNECTOR_TOOLS_PER_REQUEST - 6)
-        expect(names.slice(0, 25)).toEqual(
-          Array.from({ length: 25 }, (_unused, index) => {
-            return `mcp__alpha__tool_${String(index * 2).padStart(2, '0')}`
-          }),
-        )
-        expect(notices.join(' ')).toContain(
-          'Some connector tools were left out',
-        )
+        expect(upFrontNames).toHaveLength(CONNECTOR_TOOLS_PER_REQUEST - 5 - 11)
+        expect(indexEntries).toHaveLength(40 - upFrontNames.length)
       })
 
     it('is deterministic for the same input', async () => {
@@ -830,11 +907,12 @@ describe('getConnectorTools', () => {
           slug: 'alpha',
           url: alpha.url,
           auth: 'header',
+          toolMode: 'always-on',
         }]
 
         await addConnector(seeds[0]!)
 
-        const { tools, notices } = await run({
+        const { tools, upFrontNames, indexEntries, notices } = await run({
           connectorSeeds: seeds,
           servers: [alpha],
         })
@@ -842,9 +920,12 @@ describe('getConnectorTools', () => {
           .map(tool => (tool as { description: string }).description)
 
         expect(descriptions.every(text => text.length === 1024)).toBe(true)
-        expect(descriptions).toHaveLength(expectedCount)
+        expect(upFrontNames).toHaveLength(expectedCount)
         expect(expectedCount).toBeLessThan(CONNECTOR_TOOLS_PER_REQUEST)
-        expect(notices.join(' ')).toContain('Some connector tools were left out')
+        expect(indexEntries).toHaveLength(
+          CONNECTOR_TOOLS_PER_REQUEST - expectedCount,
+        )
+        expect(notices.join(' ')).not.toContain('left out')
       })
 
     it('counts the input schema toward the 32 KiB budget and drops the rest '
@@ -868,23 +949,25 @@ describe('getConnectorTools', () => {
         slug: 'alpha',
         url: alpha.url,
         auth: 'header',
+        toolMode: 'always-on',
       }]
 
       await addConnector(seeds[0]!)
 
       const first = await run({ connectorSeeds: seeds, servers: [alpha] })
       const second = await run({ connectorSeeds: seeds, servers: [alpha] })
-      const names = Object.keys(first.tools)
+      const names = first.upFrontNames
 
       expect(names).toHaveLength(4)
-      expect(names).toEqual(Object.keys(second.tools))
+      expect(names).toEqual(second.upFrontNames)
       expect(names).toEqual([
         'mcp__alpha__heavy_0',
         'mcp__alpha__heavy_1',
         'mcp__alpha__heavy_2',
         'mcp__alpha__heavy_3',
       ])
-      expect(first.summary.cappedTools).toBe(6)
+      expect(first.summary.deferredTools).toBe(6)
+      expect(Object.keys(first.tools)).toHaveLength(10)
     })
 
     it('skips a tool whose input schema is over 8 KiB', async () => {

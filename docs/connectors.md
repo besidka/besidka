@@ -843,8 +843,9 @@ Choices that differ from or add to section 6, 10 and 14:
   connections holds). Connector tools count toward the 40
   tools of the request together with the send's other tools, and the
   descriptions plus serialized input schemas of the exposed tools count
-  toward one budget of 32 KiB (a tool that does not fit is dropped, in the
-  same order every time, with the same notice). A connector
+  toward one budget of 32 KiB. Since C-15 a tool that does not fit is no
+  longer dropped: it goes to the tool index (section 6.2), and the "Some
+  connector tools were left out" notice is gone. A connector
   past the fifth, or one that is off or not connected, is left out with a
   notice. `connectorIds` accepts up to 20 ids (not 5), so the sixth is
   reported instead of failing validation.
@@ -924,6 +925,125 @@ Choices that differ from or add to section 6, 10 and 14:
   on, `presets` and `directory` both open Browse (the four presets are its
   Featured row); without it, `directory` falls back to Presets (section 10.2). The row badge is the number of
   connectors on in the chat plus one when Besidka tools are on.
+
+### 6.2 As built: the tool index and connector modes (C-15, 2026-11-16)
+
+Owner report (preview pr-923): every message with a big connector showed
+"Some connector tools were left out…", two connectors already had about 150
+tools, and `delete_files` was cut by the 24 Besidka tools cap. The cap was not
+raised (every definition costs the user's key on every send, provider caps
+differ, tool choice gets worse). Tools are loaded on demand instead.
+
+**Mechanism (`ai@7.0.173`, checked in `dist/index.js`).** `prepareStep`
+returns `activeTools`; `filterActiveTools` builds the step's tools, which are
+both the definitions sent to the provider and the set the step parses and
+executes tool calls against. A call to a tool that is not active fails with
+`NoSuchToolError` and never runs. An approval continuation runs approved calls
+against the full `tools` (`validateApprovedToolApprovals`), so a tool loaded
+before a pause still runs after it. The SDK's own `toolSearch()` and
+`deferLoading` were not used: their discovered set lives inside one
+`streamText` call (lost on an approval continuation), they have no count or
+byte cap, and the search returns remote descriptions as tool output.
+
+**How a send is built** (`server/api/v1/chats/[slug]/index.post.ts`,
+`server/utils/ai/tool-index.ts`):
+
+1. Every eligible tool is registered with the AI SDK as before: each
+   connector tool that is on, reviewed and not drifted, of a connector that is
+   on for the chat (`selection.selected`), and each Besidka tool that is not
+   Blocked. Each keeps its own approval entry, taint, definition hash and
+   grants, so a loaded tool goes through exactly the same policy as one sent
+   up front. Nothing is looked up by name later.
+2. Up front: the native tools, up to 24 Besidka tools, and the tools of
+   **Always on** connectors (read-only first), within 40 tools and 32 KiB of
+   definitions minus the room kept for loading (10 tools plus the load tool,
+   12 KiB; `shared/utils/tool-index.ts`). Besidka and the connectors are each
+   sized against that room, and when together they do not fit, the Always
+   on tools (the user's explicit choice) win: Besidka's last up-front tools
+   move to the index (`fitUpFrontTools`), where they stay reachable.
+3. Everything else (all tools of an **Auto** connector, and the overflow of
+   an Always on connector or of Besidka) is listed in the index and offered
+   only once loaded.
+4. The index goes into the system prompt as one `<tool_index>` block: one
+   line per tool, `name | source | access | description`, sorted by source
+   and name, the description cut to its first sentence and 100 characters,
+   control, format, `<`, `>`, `|` and backtick characters removed from remote
+   text, and a line saying the block is data, not instructions. Past 24 KiB
+   a line keeps only the name, source and access. The lines never pass
+   40 KiB in all (`TOOL_INDEX_TOTAL_MAX_BYTES`): past that the rest are
+   dropped and one line says how many more tools there are, to be loaded by
+   exact name, so the block has a fixed maximum size whatever the tool
+   counts.
+   `access` is `read`, `write` or `always-ask`, from the approval descriptor.
+5. One more tool, `tool_index__load({ names })` (at most 10 names), marks
+   tools loaded for the next step. It is a native read with no taint
+   (`classifyNativeTool`), so it never asks. It resolves names only against
+   this send's index, so a Blocked tool, a disabled or drifted tool, or a
+   connector that is off answers "Not available in this chat" exactly like a
+   name that never existed. Its result is Besidka's own text with tool names
+   only, never a remote description.
+6. `withActivation` wraps the tool loop's `prepareStep` under the provider
+   egress guard: it keeps a step's own `activeTools` (the forced final step
+   sets none) and otherwise offers every tool except the deferred ones not
+   loaded yet, with loaded tools last (`toolOrder`). Loaded tools fit in the
+   room left in the step (40 tools, 32 KiB); a load that does not fit unloads
+   the oldest tool loaded earlier in the send (never one named in the same
+   call) and says so; a tool that could not fit even then is refused before
+   anything is unloaded.
+7. An approval continuation rebuilds the loaded set from the resumed
+   assistant parts (`replay`, completed `tool_index__load` parts only).
+8. A send with no room at all for the index (40 tools of native tools) drops
+   the deferred tools from the request instead of offering them up front,
+   and logs `toolIndex.noRoom`.
+9. Loading gets its own `TOOL_INDEX_LOAD_STEPS` (2) in the tool loop, and the
+   load tool is not an answer-guarantee tool (like skill activation).
+
+**Modes** (`connectors.tool_mode`, section 8.1): **Off** is the existing
+switch (`enabled = false`); **Auto** (null, the default for every connector,
+existing ones included) lists the tools in the index; **Always on** offers
+them up front within the caps and indexes the rest. The mode is set in the
+connector's detail panel on `/chats/connectors` ("How the model gets its
+tools", Auto or Always on), shown as a badge on the row when the connector is
+on, and next to the host in the composer picker. Only the app sets it: the
+`PATCH` route takes `toolMode`, and no MCP tool has the field (the
+`mcp-surface.spec.ts` check). The model can never turn on a connector: it
+only sees tools of connectors on for the chat, and `tool_index__load` cannot
+reach anything else.
+
+**Prompt cache.** The index sits in the system prompt and is the same text
+from send to send while the tool lists do not change (sorted, no timestamps),
+and the first step of every send carries the same up-front tools plus the load
+tool, so the cross-send cache works as before, on a smaller prefix than
+sending every tool. A load changes the tool list, and Anthropic invalidates
+the whole cache (tools, system, messages) when tool definitions change
+(`docs/providers/anthropic.md`): the step after a load writes the prefix
+again (1.25x on the cached part), and later steps of the same send read it.
+Loaded tools are appended last, so a prefix cache (OpenAI) can keep the
+up-front tool block. The integration spec checks that the system prompt is
+byte-identical between the steps before and after a load. Not measured live:
+the cache-read token count before and after a load on a real Haiku send is
+still to be taken on the PR preview.
+
+**Suggest on mention** (`app/utils/connector-mention.ts`,
+`app/components/ChatInput/ConnectorSuggestion.vue`): when the text the user
+is typing (or the message they just sent) names a connector that is on in
+the app but off in this chat, as a whole word (the title of at least 3
+characters, the host, or the host's main label of at least 4 characters,
+`notion` for `mcp.notion.com`), the composer shows "Notion is off in this
+chat. Turn it on?" with Turn on and Not now. Turn on uses the picker's own
+toggle (the per-chat PUT, consent and the 5-connector cap apply; at the cap
+the button is disabled and says why). Not now hides it for this page only, in
+component state, so there is no new storage key. Only the composer's text
+triggers it, never model output or a tool result, and nothing is turned on
+without the click. While the message holds text that was prefilled (an
+artifact's "Ask to fix" error, an earlier prompt), the chip stays hidden even
+after edits, until the message is cleared or sent. No TypeSafe AI role.
+
+**Legal batch (not edited here).** The consent copy and the Privacy Policy
+describe connector tools as sent with a message. With Auto, a connector's
+tool names and one-line descriptions go to the model provider with every
+message, and its full definitions only once the model loads them. That line,
+and the mode itself, go into the end-of-phase legal batch.
 
 ## 7. Approvals
 
@@ -1958,6 +2078,7 @@ to the public id on the way out (`encodePublicId`) and decodes it on the way in
 | `consented_at` | timestamp, null | |
 | `consent_withdrawn_at` | timestamp, null | |
 | `native_opt_in_at` | timestamp, null | OpenAI-run calls opt-in (section 12) |
+| `tool_mode` | text, null | how the tools reach the model (C-15, section 6.2): null or `auto` is Auto, `always-on` is Always on; no SQL default (`resolveConnectorToolMode` reads null as Auto). Set only in the app (`PATCH /api/v1/connectors/[id]`), never over MCP. Off is `enabled = false` |
 | `last_error` | json, null | a fixed code plus a short fixed message, and the scope `degraded` note. **Never upstream text**: no response body, no remote error message, no URL (a URL can carry a secret, and upstream text is attacker-controlled and shown on the card). Map every failure to a code and a message Besidka wrote |
 | `last_connected_at` | timestamp, null | |
 | `created_at`, `updated_at` | timestamps | |
@@ -2953,8 +3074,9 @@ term forbids third-party MCP clients or the preset text.
   (for example an allowlist of target repositories) makes some writes safe to
   run unattended.
 - **More than 40 tools or 5 connectors**: measurements on Cyrillic chats show
-  the description budget has room, or tool search (deferred tool loading) is
-  added.
+  the description budget has room. Deferred tool loading shipped in C-15
+  (section 6.2), so the 40-tool cap now limits one step, not what a chat can
+  reach.
 - **MCP Apps (`ui://` resources)**: when the Phase 1 artifact runtime ships,
   render them through it.
 - **Scheduled use (Phase 6)**: routines reuse `connector_chat_settings`; any

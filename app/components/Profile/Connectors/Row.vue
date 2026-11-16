@@ -42,6 +42,13 @@
           Added by a connected app
         </span>
         <span
+          v-if="connector.enabled"
+          class="badge badge-soft badge-sm"
+          data-testid="connector-row-mode"
+        >
+          {{ CONNECTOR_TOOL_MODE_LABELS[connector.toolMode] }}
+        </span>
+        <span
           v-if="toolsLine"
           data-testid="connector-row-tools"
         >
@@ -95,6 +102,7 @@
 
 <script setup lang="ts">
 import type { ConnectorPageItem } from '#shared/types/connectors.d'
+import { CONNECTOR_TOOL_MODE_LABELS } from '#shared/utils/connectors-policy'
 
 const STATUS_BADGE_CLASS: Record<ConnectorStatusTone, string> = {
   success: 'badge-success',

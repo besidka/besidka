@@ -352,6 +352,7 @@ function seedConnector(overrides: Record<string, any> = {}) {
     consentVersion: CONNECTOR_CONSENT_VERSION,
     consentedAt: now,
     consentWithdrawnAt: null,
+    toolMode: 'always-on',
     updatedAt: now,
     ...overrides,
   }]
@@ -608,6 +609,78 @@ describe('connector tools in the chat send', () => {
         'mcp__linear__list_issues',
       )
     })
+
+  it('sends only the index and the load tool for an Auto connector, then '
+    + 'runs a loaded tool through the same path', async () => {
+    seedConnector({ toolMode: null })
+
+    const { doStream, assistantInsert } = await runSend({
+      server,
+      connectorIds: [CONNECTOR_ID],
+      steps: [
+        toolCallChunks('call-load', 'tool_index__load', {
+          names: ['mcp__linear__list_issues'],
+        }),
+        toolCallChunks('call-1', 'mcp__linear__list_issues', { state: 'open' }),
+        textChunks('You have one open issue.'),
+      ],
+    })
+    const firstCall = doStream.mock.calls[0]?.[0] as any
+    const secondCall = doStream.mock.calls[1]?.[0] as any
+    const systemPrompt = readSystemPrompt(firstCall)
+
+    expect(readToolNames(firstCall)).toEqual(['tool_index__load'])
+    expect(systemPrompt).toContain('<tool_index>')
+    expect(systemPrompt).toContain(
+      'mcp__linear__create_issue | Linear | write | Create an issue.',
+    )
+    expect(systemPrompt).toContain(
+      'mcp__linear__list_issues | Linear | read | List issues.',
+    )
+    expect(readToolNames(secondCall)).toEqual([
+      'tool_index__load',
+      'mcp__linear__list_issues',
+    ])
+    expect(readSystemPrompt(secondCall)).toBe(systemPrompt)
+
+    const parts = assistantInsert?.parts ?? []
+
+    expect(parts).toContainEqual(expect.objectContaining({
+      type: 'tool-tool_index__load',
+      state: 'output-available',
+      output: 'Loaded: mcp__linear__list_issues. You can call it from your '
+        + 'next step.',
+    }))
+    expect(parts).toContainEqual(expect.objectContaining({
+      type: 'dynamic-tool',
+      toolName: 'mcp__linear__list_issues',
+      state: 'output-available',
+    }))
+    expect(mocks.store.audit[0]).toMatchObject({
+      toolName: 'list_issues',
+      outcome: 'ok',
+    })
+    expect(connectorNoticeLines().join(' ')).not.toContain('left out')
+  })
+
+  it('never runs an Auto connector tool the model did not load', async () => {
+    seedConnector({ toolMode: null })
+
+    const { assistantInsert } = await runSend({
+      server,
+      connectorIds: [CONNECTOR_ID],
+      steps: [
+        toolCallChunks('call-1', 'mcp__linear__list_issues', { state: 'open' }),
+        textChunks('I could not list them.'),
+      ],
+    })
+
+    expect(server.callCount('tools/call')).toBe(0)
+    expect(mocks.store.audit).toHaveLength(0)
+    expect(JSON.stringify(assistantInsert?.parts ?? [])).not.toContain(
+      'list_issues result',
+    )
+  })
 
   it('refuses a write tool with the approval sentence and never reaches '
     + 'the server', async () => {

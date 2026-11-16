@@ -375,6 +375,7 @@ function seedConnector(input: {
     consentVersion: CONNECTOR_CONSENT_VERSION,
     consentedAt: now,
     consentWithdrawnAt: null,
+    toolMode: 'always-on',
     updatedAt: now,
   })
   mocks.store.credentials = {

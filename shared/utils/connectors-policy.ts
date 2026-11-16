@@ -30,6 +30,28 @@ export const CONNECTOR_TOOL_APPROVALS = [
   'needs-approval',
 ] as const
 
+export const CONNECTOR_TOOL_MODES = ['auto', 'always-on'] as const
+
+export const CONNECTOR_DEFAULT_TOOL_MODE = 'auto'
+
+export function resolveConnectorToolMode(value: unknown): ConnectorToolMode {
+  return value === 'always-on' ? 'always-on' : CONNECTOR_DEFAULT_TOOL_MODE
+}
+
+export const CONNECTOR_TOOL_MODE_LABELS: Record<ConnectorToolMode, string> = {
+  'auto': 'Auto',
+  'always-on': 'Always on',
+}
+
+export const CONNECTOR_TOOL_MODE_DESCRIPTIONS: Record<
+  ConnectorToolMode,
+  string
+> = {
+  'auto': 'The model sees a short list of the tools and loads the ones a '
+    + 'request needs.',
+  'always-on': 'The model gets the tools with every message, as many as fit.',
+}
+
 export const CONNECTOR_AUDIT_OUTCOMES = [
   'ok',
   'error',
@@ -58,6 +80,7 @@ export type ConnectorCreatedVia = typeof CONNECTOR_CREATED_VIA[number]
 export type ConnectorRegistrationKind
   = typeof CONNECTOR_REGISTRATION_KINDS[number]
 export type ConnectorToolApproval = typeof CONNECTOR_TOOL_APPROVALS[number]
+export type ConnectorToolMode = typeof CONNECTOR_TOOL_MODES[number]
 export type ConnectorAuditOutcome = typeof CONNECTOR_AUDIT_OUTCOMES[number]
 export type ConnectorAuditApproval = typeof CONNECTOR_AUDIT_APPROVALS[number]
 export type ConnectorAuditPath = typeof CONNECTOR_AUDIT_PATHS[number]

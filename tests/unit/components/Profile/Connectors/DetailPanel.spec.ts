@@ -382,4 +382,34 @@ describe('Profile/Connectors/DetailPanel', () => {
     expect(wrapper.get('[data-testid="connector-detail-added-by"]').text())
       .toContain('Added by Claude')
   })
+
+  it('shows the tool mode and saves a change in the app only', async () => {
+    const wrapper = await mountPanel()
+
+    expect((wrapper.get('[data-testid="connector-detail-mode-auto"]')
+      .element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('[data-testid="connector-detail-mode-hint"]').text())
+      .toContain('loads the ones a request needs')
+
+    await wrapper.get('[data-testid="connector-detail-mode-always-on"]')
+      .trigger('change')
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/conn1', {
+      method: 'PATCH',
+      body: { toolMode: 'always-on' },
+    })
+    expect(mocks.refreshConnectors).toHaveBeenCalled()
+  })
+
+  it('does not save the mode the connector already has', async () => {
+    const wrapper = await mountPanel()
+
+    mocks.fetch.mockClear()
+    await wrapper.get('[data-testid="connector-detail-mode-auto"]')
+      .trigger('change')
+    await flushPromises()
+
+    expect(callsTo('/api/v1/connectors/conn1')).toHaveLength(0)
+  })
 })
