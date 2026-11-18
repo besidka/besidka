@@ -1808,15 +1808,21 @@ missing ones in the payload only, so the step shows a muted "deleted" tile
 instead of requesting each image; a thumbnail that fails to load shows "Not
 found".
 
-**UI.** Several images collapse into one pile with daisyUI's `stack`
-component (`stack stack-end`, sized with `h-*`/`w-*` as its docs say, no
-custom stacking CSS): the top three images are layered and a `badge
-badge-soft badge-xs` shows `+N` for the rest. The collapsed steps header
-shows one such stack of every kept image of the message (24 px high in the
-fixed 24 px slot, so nothing shifts; it is one small pile at 375 px too);
-deleted images are not counted there. Expanded, a step row whose call kept
-two or more images shows a 32 px stack at its right edge; one image stays a
-plain thumbnail. The stack is one focusable button labeled "Open 5
+**UI.** Several images collapse into daisyUI's "Avatar group with counter"
+(`avatar-group` with `-space-x-3` in the header and `-space-x-4` in a row, no
+custom stacking CSS): the first three images are round avatars (`object-cover`
+crops the screenshots) and, when more were kept, a fourth `avatar
+avatar-placeholder` of the same size shows `+N` in daisyUI's documented
+`bg-neutral text-neutral-content` colors. The avatars keep daisyUI's group
+ring, narrowed to `border-2` so the group fits the slot: 24 px outer (inner
+`w-5`) in the collapsed steps header, which keeps its fixed 24 px slot so
+nothing shifts and stays one small group at 375 px, and 32 px (inner `w-7`)
+in a step row. The header shows one such group of every kept image of the
+message; deleted images are not counted there. Expanded, a step row whose
+call kept two or more images shows the group at its right edge; one image
+stays a single round avatar (24 px in the header, 32 px in a row) with no
+group or counter, and a deleted image is a muted round "deleted" avatar in the
+row only. The group is one focusable button labeled "Open 5
 screenshots from Doop" (the layer images have empty alt text). A click
 opens the shared image viewer (`ChatImagePreview`, with Download) on the top
 image without toggling the steps (`ConnectorThumbnail.vue`,
