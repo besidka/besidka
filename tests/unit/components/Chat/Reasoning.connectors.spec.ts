@@ -199,8 +199,8 @@ describe('Chat/Reasoning connector images', () => {
       })
   })
 
-  it('collapses the message images into one daisyUI stack with +N in the '
-    + 'header', async () => {
+  it('collapses the message images into one daisyUI avatar group with a '
+    + '+N counter in the header', async () => {
     const wrapper = await mountMessage([
       connectorCall(),
       connectorImage('call-1', 0),
@@ -212,18 +212,19 @@ describe('Chat/Reasoning connector images', () => {
     ])
     const header = wrapper.get('[data-testid="reasoning-header-images"]')
     const stack = header.get('[data-testid="reasoning-connector-image-stack"]')
+    const group = stack.get('.avatar-group')
 
     expect(stack.element.tagName).toBe('BUTTON')
-    expect(stack.classes()).toEqual(expect.arrayContaining([
-      'stack',
-      'stack-end',
-      'h-6',
-    ]))
+    expect(group.classes()).toContain('-space-x-3')
     expect(stack.attributes('aria-label'))
       .toBe('Open 4 screenshots from Notion')
     expect(stack.findAll('img')).toHaveLength(3)
+    expect(group.findAll('.avatar')).toHaveLength(4)
     expect(header.get('[data-testid="reasoning-connector-image-more"]')
-      .classes()).toEqual(expect.arrayContaining(['badge', 'badge-soft']))
+      .classes()).toEqual(expect.arrayContaining([
+      'avatar',
+      'avatar-placeholder',
+    ]))
     expect(header.get('[data-testid="reasoning-connector-image-more"]').text())
       .toBe('+1')
     expect(header.find('[data-testid="reasoning-connector-image-deleted"]')
@@ -259,7 +260,7 @@ describe('Chat/Reasoning connector images', () => {
       .toBe(true)
   })
 
-  it('stacks a call with several images and shows a deleted tile when it '
+  it('groups a call with several images and shows a deleted avatar when it '
     + 'is gone', async () => {
     const wrapper = await mountMessage([
       connectorCall(),

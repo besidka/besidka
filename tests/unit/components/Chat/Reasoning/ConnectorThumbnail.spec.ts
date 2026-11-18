@@ -162,7 +162,7 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
       .toBe(false)
   })
 
-  it('shows a muted deleted tile and no image for a deleted file',
+  it('shows a muted round deleted avatar and no image for a deleted file',
     async () => {
       const wrapper = await mountThumbnail(imageOf({ deleted: true }))
 
@@ -181,7 +181,7 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
         .text()).toContain('Image not found')
     })
 
-  it('collapses several images into one focusable daisyUI stack',
+  it('collapses several images into one focusable daisyUI avatar group',
     async () => {
       const gallery = ['a', 'b', 'c', 'd', 'e'].map((fileId) => {
         return {
@@ -195,38 +195,98 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
           alt: 'Screenshot from Doop',
           gallery,
           stackLabel: 'Open 5 screenshots from Doop',
+          size: 'sm',
         },
         global: {
           stubs: { LazyChatImagePreview: LazyImagePreview, teleport: true },
         },
       })
-      const stack = wrapper.get(
+      const button = wrapper.get(
         '[data-testid="reasoning-connector-image-stack"]',
       )
+      const group = button.get('.avatar-group')
 
-      expect(stack.element.tagName).toBe('BUTTON')
-      expect(stack.attributes('aria-label'))
+      expect(button.element.tagName).toBe('BUTTON')
+      expect(button.attributes('aria-label'))
         .toBe('Open 5 screenshots from Doop')
-      expect(stack.classes()).toEqual(expect.arrayContaining([
-        'stack',
-        'stack-end',
-        'rounded-box',
-      ]))
-      expect(stack.findAll('img').map(image => image.attributes('src')))
+      expect(button.classes()).toContain('rounded-full')
+      expect(group.classes()).toContain('-space-x-3')
+      expect(group.findAll('.avatar')).toHaveLength(4)
+      expect(group.findAll('img').map(image => image.attributes('src')))
         .toEqual([
           expect.stringContaining('connector-a.png'),
           expect.stringContaining('connector-b.png'),
           expect.stringContaining('connector-c.png'),
         ])
-      expect(wrapper.get('[data-testid="reasoning-connector-image-more"]')
-        .text()).toBe('+2')
+      expect(group.findAll('img').map(image => image.attributes('alt')))
+        .toEqual(['', '', ''])
 
-      await stack.trigger('click')
+      const counter = group.get(
+        '[data-testid="reasoning-connector-image-more"]',
+      )
+
+      expect(counter.classes()).toEqual(expect.arrayContaining([
+        'avatar',
+        'avatar-placeholder',
+      ]))
+      expect(counter.get('div').classes()).toEqual(expect.arrayContaining([
+        'bg-neutral',
+        'text-neutral-content',
+        'w-5',
+      ]))
+      expect(counter.text()).toBe('+2')
+
+      await button.trigger('click')
       await flushPromises()
 
       expect(wrapper.get('[data-testid="image-preview-position"]').text())
         .toBe('1 of 5')
       expect(wrapper.get('[data-testid="image-preview-image"]')
         .attributes('src')).toContain('connector-a.png')
+    })
+
+  it('shows no counter avatar for three images and the row size for md',
+    async () => {
+      const gallery = ['a', 'b', 'c'].map((fileId) => {
+        return {
+          image: imageOf({ fileId, url: `/files/connector-${fileId}.png` }),
+          alt: 'Screenshot from Doop',
+        }
+      })
+      const wrapper = await mountSuspended(ConnectorThumbnail, {
+        props: {
+          image: gallery[0]!.image,
+          alt: 'Screenshot from Doop',
+          gallery,
+          stackLabel: 'Open 3 screenshots from Doop',
+        },
+        global: {
+          stubs: { LazyChatImagePreview: LazyImagePreview, teleport: true },
+        },
+      })
+      const group = wrapper.get('.avatar-group')
+
+      expect(group.classes()).toContain('-space-x-4')
+      expect(group.findAll('.avatar')).toHaveLength(3)
+      expect(group.findAll('.avatar > div')[0]!.classes()).toContain('w-7')
+      expect(wrapper.find('[data-testid="reasoning-connector-image-more"]')
+        .exists()).toBe(false)
+    })
+
+  it('keeps a single image as one round avatar without a group',
+    async () => {
+      const wrapper = await mountThumbnail()
+      const button = wrapper.get('[data-testid="reasoning-connector-image"]')
+
+      expect(wrapper.find('.avatar-group').exists()).toBe(false)
+      expect(button.classes()).toEqual(expect.arrayContaining([
+        'avatar',
+        'rounded-full',
+      ]))
+      expect(button.get('div').classes()).toEqual(expect.arrayContaining([
+        'rounded-full',
+        'size-8',
+      ]))
+      expect(button.get('img').attributes('alt')).toBe('Screenshot from Doop')
     })
 })

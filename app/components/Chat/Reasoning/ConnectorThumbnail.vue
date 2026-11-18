@@ -2,7 +2,7 @@
   <span class="contents">
     <span
       v-if="isUnavailable"
-      class="flex shrink-0 items-center justify-center rounded-box bg-base-200 text-base-content/50"
+      class="flex shrink-0 items-center justify-center rounded-full bg-base-200 text-base-content/50"
       :class="sizeClass"
       :title="image.deleted ? 'Image deleted' : 'Image not found'"
       data-testid="reasoning-connector-image-deleted"
@@ -12,62 +12,75 @@
         {{ image.deleted ? 'Image deleted' : 'Image not found' }}
       </span>
     </span>
-    <span
-      v-else-if="isStacked"
-      class="flex shrink-0 items-center gap-1"
+    <button
+      v-else-if="isGrouped"
+      type="button"
+      class="block shrink-0 cursor-zoom-in rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      :aria-label="stackLabel"
+      data-testid="reasoning-connector-image-stack"
+      @click.stop.prevent="openPreview"
+      @keydown.space.stop
+      @keydown.enter.stop
     >
-      <button
-        type="button"
-        class="stack stack-end shrink-0 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-box"
-        :class="stackSizeClass"
-        :aria-label="stackLabel"
-        data-testid="reasoning-connector-image-stack"
-        @click.stop.prevent="openPreview"
-        @keydown.space.stop
-        @keydown.enter.stop
+      <div
+        class="avatar-group"
+        :class="groupSpacingClass"
       >
-        <img
+        <div
           v-for="layer in stackLayers"
           :key="`${layer.image.toolCallId}:${layer.image.fileId}`"
-          :src="layer.links!.openUrl"
-          alt=""
-          :width="layer.image.width"
-          :height="layer.image.height"
-          class="block rounded-box bg-base-300 object-cover"
-          loading="lazy"
-          decoding="async"
-          @error="onLayerError(layer.links!.openUrl)"
+          class="avatar border-2"
         >
-      </button>
-      <span
-        v-if="hiddenCount > 0"
-        class="badge badge-soft badge-xs shrink-0"
-        data-testid="reasoning-connector-image-more"
-      >
-        +{{ hiddenCount }}
-      </span>
-    </span>
+          <div :class="groupAvatarClass">
+            <img
+              :src="layer.links!.openUrl"
+              alt=""
+              :width="layer.image.width"
+              :height="layer.image.height"
+              loading="lazy"
+              decoding="async"
+              @error="onLayerError(layer.links!.openUrl)"
+            >
+          </div>
+        </div>
+        <div
+          v-if="hiddenCount > 0"
+          class="avatar avatar-placeholder border-2"
+          data-testid="reasoning-connector-image-more"
+        >
+          <div
+            class="bg-neutral text-neutral-content"
+            :class="groupAvatarClass"
+          >
+            <span :class="counterTextClass">+{{ hiddenCount }}</span>
+          </div>
+        </div>
+      </div>
+    </button>
     <button
       v-else-if="links"
       type="button"
-      class="relative block shrink-0 cursor-zoom-in overflow-hidden rounded-box bg-base-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-      :class="sizeClass"
+      class="avatar shrink-0 cursor-zoom-in rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       :aria-label="`Preview ${alt}`"
       data-testid="reasoning-connector-image"
       @click.stop.prevent="openPreview"
       @keydown.space.stop
       @keydown.enter.stop
     >
-      <img
-        :src="links.openUrl"
-        :alt="alt"
-        :width="image.width"
-        :height="image.height"
-        class="block size-full object-cover"
-        loading="lazy"
-        decoding="async"
-        @error="onImageError"
+      <div
+        class="rounded-full"
+        :class="sizeClass"
       >
+        <img
+          :src="links.openUrl"
+          :alt="alt"
+          :width="image.width"
+          :height="image.height"
+          loading="lazy"
+          decoding="async"
+          @error="onImageError"
+        >
+      </div>
     </button>
     <LazyChatImagePreview
       v-if="isPreviewOpen && previewEntry?.links"
@@ -132,7 +145,7 @@ const stackEntries = computed<PreviewEntry[]>(() => {
   })
 })
 
-const isStacked = computed<boolean>(() => {
+const isGrouped = computed<boolean>(() => {
   return !props.image.deleted && stackEntries.value.length > 1
 })
 
@@ -154,8 +167,18 @@ const hiddenCount = computed<number>(() => {
   return Math.max(0, stackEntries.value.length - STACK_LAYERS_MAX)
 })
 
-const stackSizeClass = computed<string>(() => {
-  return props.size === 'sm' ? 'h-6 w-8' : 'h-8 w-10'
+const groupSpacingClass = computed<string>(() => {
+  return props.size === 'sm' ? '-space-x-3' : '-space-x-4'
+})
+
+const groupAvatarClass = computed<string>(() => {
+  return props.size === 'sm' ? 'w-5' : 'w-7'
+})
+
+const counterTextClass = computed<string>(() => {
+  return props.size === 'sm'
+    ? 'text-[0.625rem] leading-none'
+    : 'text-xs leading-none'
 })
 
 const previewEntry = computed<PreviewEntry | null>(() => {
@@ -184,7 +207,7 @@ function openPreview() {
     return
   }
 
-  const topImage = isStacked.value
+  const topImage = isGrouped.value
     ? stackLayers.value[0]?.image ?? props.image
     : props.image
   const index = previewEntries.value.findIndex((entry) => {
