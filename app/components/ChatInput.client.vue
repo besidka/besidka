@@ -1124,7 +1124,6 @@ const toolsState = computed<ChatInputToolsState>(() => {
       visible: isConnectorsEnabled.value,
       items: composerConnectors.items.value,
       selectedIds: composerConnectors.selectedIds.value,
-      isBesidkaOn: besidkaPickerRow.value?.enabled === true,
     },
     project: {
       visible: shouldDisplayProjectPicker.value,

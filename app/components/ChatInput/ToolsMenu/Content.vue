@@ -256,16 +256,7 @@ const isReasoningSectionVisible = computed<boolean>(() => {
 })
 
 const connectorsBadge = computed<number | undefined>(() => {
-  const connectors = props.state.connectors
-
-  if (!connectors) {
-    return undefined
-  }
-
-  const count = connectors.selectedIds.length
-    + (connectors.isBesidkaOn ? 1 : 0)
-
-  return count || undefined
+  return countSelectedConnectors(props.state.connectors) || undefined
 })
 
 const isAddSectionVisible = computed<boolean>(() => {

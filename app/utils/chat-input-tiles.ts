@@ -327,6 +327,22 @@ function buildSkillTile(
   }
 }
 
+export function countSelectedConnectors(
+  connectors: ChatInputToolsState['connectors'],
+): number {
+  if (!connectors) {
+    return 0
+  }
+
+  const manualItemIds = new Set(
+    connectors.items
+      .filter(item => item.toolMode === 'manual')
+      .map(item => item.id),
+  )
+
+  return connectors.selectedIds.filter(id => manualItemIds.has(id)).length
+}
+
 function buildConnectorsTile(
   state: ChatInputToolsState,
 ): ChatInputTile | null {
@@ -336,11 +352,11 @@ function buildConnectorsTile(
     return null
   }
 
-  const itemIds = new Set(connectors.items.map(item => item.id))
   const selectedItems = connectors.items.filter((item) => {
-    return connectors.selectedIds.includes(item.id)
+    return item.toolMode === 'manual'
+      && connectors.selectedIds.includes(item.id)
   })
-  const count = connectors.selectedIds.filter(id => itemIds.has(id)).length
+  const count = countSelectedConnectors(connectors)
 
   if (count === 0) {
     return null
