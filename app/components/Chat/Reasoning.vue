@@ -1040,7 +1040,13 @@ watch(
       return
     }
 
-    if (!candidateTitle || candidateTitle === streamingTitle.value) {
+    if (
+      !candidateTitle
+      || (
+        candidateTitle === streamingTitle.value
+        && isSameStepIcon(candidateIcon, streamingTitleIcon.value)
+      )
+    ) {
       return
     }
 
@@ -1080,6 +1086,13 @@ watch(
     flush: 'post',
   },
 )
+
+function isSameStepIcon(
+  first: ReasoningStepIcon | null,
+  second: ReasoningStepIcon | null,
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second)
+}
 
 function clearStreamingTitleTimer() {
   if (!streamingTitleUpdateTimer.value) {

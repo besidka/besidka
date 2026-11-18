@@ -2236,7 +2236,10 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   icon of the step its label names (the same descriptor and the same
   `StepIcon.vue` as the row, so on shared pages it is the plug too); thinking
   text and the finished generic labels keep the thinking icon. The icon box
-  is a fixed `size-4`, so switching causes no layout shift.
+  is a fixed `size-4`, so switching causes no layout shift. The header can
+  make the first icon request on a collapsed streaming message, because the
+  row's lazy image sits inside a closed `details`; the route's private
+  `max-age` cache absorbs the duplicate request when the row opens.
 - **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 

@@ -1,5 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
@@ -196,10 +196,37 @@ describe('Chat/Reasoning step icons', () => {
   })
 
   describe('header icon', () => {
-    async function settleStreamingTitle() {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 300)
+    beforeEach(() => {
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
       })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    async function settleStreamingTitle() {
+      await vi.advanceTimersByTimeAsync(300)
+    }
+
+    function messageWith(parts: unknown[], searchProvider?: string) {
+      return {
+        id: 'msg-icons',
+        role: 'assistant',
+        parts,
+        metadata: searchProvider
+          ? { usage: { searchProvider } }
+          : undefined,
+      } as UIMessage
+    }
+
+    const runningConnectorPart = {
+      type: 'dynamic-tool',
+      toolName: 'mcp__notion__search_pages',
+      toolCallId: 'a',
+      state: 'input-available',
+      input: {},
     }
 
     function pending(type: string, toolCallId: string, extra = {}) {
@@ -289,20 +316,85 @@ describe('Chat/Reasoning step icons', () => {
         .find('[data-testid="reasoning-step-icon"]').exists()).toBe(false)
     })
 
-    it('keeps the header icon box the same size when it switches', async () => {
-      const wrapper = await mountMessage([{
-        type: 'dynamic-tool',
-        toolName: 'mcp__notion__search_pages',
-        toolCallId: 'a',
-        state: 'input-available',
-        input: {},
-      }], { streaming: true })
-
-      expect(headerIcon(wrapper).classes()).toContain('size-4')
+    it('keeps the same header icon box when it switches', async () => {
+      const wrapper = await mountMessage([
+        { type: 'reasoning', text: '**Planning**\n\nLooking.', state: 'streaming' },
+      ], { streaming: true })
 
       await settleStreamingTitle()
 
+      const box = headerIcon(wrapper).element
+
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('thinking')
+
+      await wrapper.setProps({ message: messageWith([runningConnectorPart]) })
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).element).toBe(box)
       expect(headerIcon(wrapper).classes()).toContain('size-4')
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('connector')
+    })
+
+    it('goes back to the thinking icon when streaming ends', async () => {
+      const wrapper = await mountMessage([runningConnectorPart], {
+        streaming: true,
+      })
+
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('connector')
+
+      await wrapper.setProps({
+        status: 'ready',
+        isTurnThinkingHeld: false,
+        message: messageWith([
+          { ...runningConnectorPart, state: 'output-available', output: 'ok' },
+        ]),
+      })
+
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('thinking')
+      expect(headerIcon(wrapper)
+        .find('[data-testid="reasoning-step-icon"]').exists()).toBe(false)
+    })
+
+    it('goes back to the thinking icon when thinking text takes over', async () => {
+      const wrapper = await mountMessage([runningConnectorPart], {
+        streaming: true,
+      })
+
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('connector')
+
+      await wrapper.setProps({
+        message: messageWith([
+          { ...runningConnectorPart, state: 'output-available', output: 'ok' },
+          {
+            type: 'reasoning',
+            text: '**Reading results**\n\nChecking them.',
+            state: 'streaming',
+          },
+        ]),
+      })
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('thinking')
+    })
+
+    it('follows an icon change when the label stays the same', async () => {
+      const part = pending('tool-web_search_preview', 'a')
+      const wrapper = await mountMessage([part], { streaming: true })
+
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).findComponent({ name: 'NuxtIcon' })
+        .props('name')).toBe('lucide:globe')
+
+      await wrapper.setProps({ message: messageWith([part], 'anthropic') })
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).findComponent({ name: 'ProviderIcon' })
+        .props('providerId')).toBe('anthropic')
     })
 
     it('never requests a connector icon in the header on a shared page', async () => {
