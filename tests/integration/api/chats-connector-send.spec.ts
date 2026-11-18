@@ -14,6 +14,10 @@ import {
   createMockMcpServer,
 } from '../../setup/helpers/mock-mcp-server'
 import type { MockMcpServer } from '../../setup/helpers/mock-mcp-server'
+import {
+  RED_PNG_BASE64,
+  mcpImage,
+} from '../../setup/helpers/connector-images'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -320,7 +324,10 @@ function createDb() {
   }
 }
 
-function stubChatProvider(toolCall: boolean) {
+function stubChatProvider(
+  toolCall: boolean,
+  inputModalities: string[] = ['text'],
+) {
   vi.stubGlobal('useChatProvider', vi.fn(() => ({
     provider: { id: 'openai' },
     model: {
@@ -328,9 +335,41 @@ function stubChatProvider(toolCall: boolean) {
       name: 'GPT-5 mini',
       tools: ['web_search', 'image_generation', 'code_execution'],
       toolCall,
-      modalities: { input: ['text'], output: ['text'] },
+      modalities: { input: inputModalities, output: ['text'] },
     },
   })))
+}
+
+async function readMergedChunks(): Promise<unknown[]> {
+  const chunks: unknown[] = []
+
+  for (const stream of mocks.mergedStreams) {
+    if (stream.locked) {
+      continue
+    }
+
+    const reader = stream.getReader()
+
+    for (;;) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        break
+      }
+
+      chunks.push(value)
+    }
+  }
+
+  return chunks
+}
+
+function readToolResultOutputs(callOptions: any): any[] {
+  return (callOptions?.prompt ?? [])
+    .filter((entry: any) => entry.role === 'tool')
+    .flatMap((entry: any) => entry.content)
+    .filter((part: any) => part.type === 'tool-result')
+    .map((part: any) => part.output)
 }
 
 function seedConnector(overrides: Record<string, any> = {}) {
@@ -615,6 +654,88 @@ describe('connector tools in the chat send', () => {
     expect(
       server.requests.every(request => request.method !== 'GET'),
     ).toBe(true)
+  })
+
+  describe('images in a tool result', () => {
+    const SHOWN_LINE = '[image/png, 75 B: shown to the model, not saved]'
+
+    function imageServer() {
+      return createMockMcpServer({
+        url: CONNECTOR_URL,
+        tools: [{
+          name: 'list_issues',
+          description: 'List issues.',
+          annotations: { readOnlyHint: true },
+        }],
+        respond: () => ({
+          content: [
+            { type: 'text', text: 'Frame A' },
+            mcpImage(RED_PNG_BASE64),
+          ],
+        }),
+      })
+    }
+
+    it('gives the image to a direct OpenAI model that takes images and '
+      + 'keeps it out of the stream, D1 and the logs', async () => {
+      stubChatProvider(true, ['text', 'image'])
+
+      const { doStream, assistantInsert } = await runSend({
+        server: imageServer(),
+        connectorIds: [CONNECTOR_ID],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          textChunks('It is red.'),
+        ],
+      })
+      const [output] = readToolResultOutputs(doStream.mock.calls[1]?.[0])
+
+      expect(output.type).toBe('content')
+      expect(output.value[0].text).toContain(SHOWN_LINE)
+      expect(output.value.at(-1)).toMatchObject({
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'data', data: RED_PNG_BASE64 },
+      })
+
+      const part = (assistantInsert?.parts ?? []).find((candidate: any) => {
+        return candidate.type === 'dynamic-tool'
+      })
+
+      expect(part.output).toContain(SHOWN_LINE)
+      expect(JSON.stringify(assistantInsert)).not.toContain(RED_PNG_BASE64)
+      const streamed = JSON.stringify(await readMergedChunks())
+
+      expect(streamed).toContain(SHOWN_LINE)
+      expect(streamed).not.toContain(RED_PNG_BASE64)
+      expect(JSON.stringify(mocks.writers.map((writer) => {
+        return writer.write.mock.calls
+      }))).not.toContain(RED_PNG_BASE64)
+      expect(JSON.stringify(mocks.aiLoggerSet.mock.calls))
+        .not.toContain(RED_PNG_BASE64)
+      expect(connectorLogs()).toContainEqual(expect.objectContaining({
+        calls: [expect.objectContaining({ imagesForwarded: 1 })],
+      }))
+    })
+
+    it('sends only the placeholder text to a model without image input',
+      async () => {
+        const { doStream, assistantInsert } = await runSend({
+          server: imageServer(),
+          connectorIds: [CONNECTOR_ID],
+          steps: [
+            toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+            textChunks('I cannot see it.'),
+          ],
+        })
+        const secondPrompt = doStream.mock.calls[1]?.[0]
+        const [output] = readToolResultOutputs(secondPrompt)
+
+        expect(output.type).toBe('text')
+        expect(output.value).toContain('[image omitted: image/png]')
+        expect(JSON.stringify(secondPrompt)).not.toContain(RED_PNG_BASE64)
+        expect(JSON.stringify(assistantInsert)).not.toContain(RED_PNG_BASE64)
+      })
   })
 
   it('uses the stored per-chat choice when the body has no connectorIds',

@@ -4,6 +4,7 @@ import type { ToolSet } from 'ai'
 import { createError } from 'evlog'
 import {
   CONNECTOR_CALL_TIMEOUT_MS,
+  CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CATALOG_WARMUPS_PER_SEND,
   CONNECTOR_CLOSE_TIMEOUT_MS,
@@ -115,6 +116,14 @@ import {
   redactSecrets,
 } from '~~/server/utils/connectors/tool-definitions'
 import { recordDeclaredConnectorIcons } from '~~/server/utils/connectors/icon'
+import {
+  buildConnectorModelOutput,
+  collectConnectorImages,
+  createConnectorImageStore,
+} from '~~/server/utils/connectors/tool-images'
+import type {
+  ConnectorImageDropReason,
+} from '~~/server/utils/connectors/tool-images'
 import type { ConnectorToolDefinition } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
@@ -207,6 +216,7 @@ export interface GetConnectorToolsInput {
     toolCallId: string | undefined,
   ) => { auditCallId: number, approval: ConnectorAuditApproval } | null
   callsUsedThisTurn?: number
+  forwardImages?: boolean
   guard?: UntrustedContentGuard
   logger: LoggerLike
   requestId?: string
@@ -642,6 +652,14 @@ async function syncDriftStatus(
  * An upstream error text never reaches the model: a call that fails or times
  * out throws an error with a sentence Besidka wrote, so the persisted tool
  * part is an error.
+ * With `forwardImages` (`canForwardConnectorImages`), valid images in a
+ * result go to the model only, through the tool's `toModelOutput`, from a
+ * map of this run keyed by tool call id and cleared on `close`; the text the
+ * chat shows and stores keeps a placeholder line instead
+ * (`server/utils/connectors/tool-images.ts`). Such a send lets a
+ * `tools/call` response grow to 8 MiB, so at most two of its calls receive
+ * and parse a response at once (`CONNECTOR_IMAGE_CALLS_IN_FLIGHT`), which
+ * bounds the large bodies in memory to 16 MiB.
  */
 export async function getConnectorTools(
   input: GetConnectorToolsInput,
@@ -807,6 +825,7 @@ export async function getConnectorTools(
         limiter: connectLimiter,
         logger,
         logsHost: connector.presetId !== null,
+        largeCallResponses: input.forwardImages === true,
         dependencies: input.dependencies,
       })
       addLogRedactions(connector.id, url)
@@ -951,6 +970,7 @@ export async function getConnectorTools(
         limiter: connectLimiter,
         logger,
         logsHost: connector.presetId !== null,
+        largeCallResponses: input.forwardImages === true,
         dependencies: input.dependencies,
       })
       addLogRedactions(connector.id, url)
@@ -1231,6 +1251,10 @@ export async function getConnectorTools(
     let sourceConnectorId: string | null = null
     let callErrorCount = 0
     let callRecordCount = 0
+    const imageStore = createConnectorImageStore()
+    const imageCallLimiter = createConcurrencyLimiter(
+      CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
+    )
 
     async function recordCall(call: {
       candidate: Candidate
@@ -1309,6 +1333,8 @@ export async function getConnectorTools(
       outcome: 'ok' | 'error' | 'timeout' | 'denied' | 'tool-changed'
       startedAt: number
       category?: ConnectorCallErrorCategory
+      imagesForwarded?: number
+      imagesDropped?: Partial<Record<ConnectorImageDropReason, number>>
     }) {
       if (callRecordCount >= CONNECTOR_CALL_LOG_MAX) {
         return
@@ -1328,6 +1354,13 @@ export async function getConnectorTools(
                 : { tool: call.candidate.definition.name }),
               outcome: call.outcome,
               ...(call.category ? { category: call.category } : {}),
+              ...(call.imagesForwarded
+                ? { imagesForwarded: call.imagesForwarded }
+                : {}),
+              ...(call.imagesDropped
+                && Object.keys(call.imagesDropped).length > 0
+                ? { imagesDropped: call.imagesDropped }
+                : {}),
               durationMs: Math.max(0, now() - call.startedAt),
             }],
           },
@@ -1521,24 +1554,43 @@ export async function getConnectorTools(
         ? AbortSignal.any([timeoutSignal, options.abortSignal])
         : timeoutSignal
 
-      try {
+      async function callRemote() {
         const client = await candidate.handle.getClient()
         const result = await client.callTool({
           name: candidate.definition.name,
           arguments: isRecord(args) ? args : {},
           options: { signal, timeout: CONNECTOR_CALL_TIMEOUT_MS },
         })
-        const framed = frameUntrustedResult({
-          slug: candidate.connector.slug,
-          toolName: candidate.definition.name,
-          text: redactSecrets(
-            callToolResultToText(result),
-            [...candidate.secrets],
-          ),
+        const images = collectConnectorImages(result, {
+          isEnabled: input.forwardImages === true && !!toolCallId,
+          remainingBytes: imageStore.remainingBytes(),
+          remainingImages: imageStore.remainingImages(),
         })
-        const outcome = (result as { isError?: boolean }).isError
-          ? 'error'
-          : 'ok'
+
+        if (toolCallId) {
+          imageStore.add(toolCallId, images.images)
+        }
+
+        return {
+          images,
+          framed: frameUntrustedResult({
+            slug: candidate.connector.slug,
+            toolName: candidate.definition.name,
+            text: redactSecrets(
+              callToolResultToText(result, images.lines),
+              [...candidate.secrets],
+            ),
+          }),
+          outcome: (result as { isError?: boolean }).isError
+            ? 'error' as const
+            : 'ok' as const,
+        }
+      }
+
+      try {
+        const { images, framed, outcome } = input.forwardImages
+          ? await imageCallLimiter.run(callRemote)
+          : await callRemote()
 
         await recordCall({
           candidate,
@@ -1548,7 +1600,13 @@ export async function getConnectorTools(
           startedAt,
           toolCallId,
         })
-        logCallRecord({ candidate, outcome, startedAt })
+        logCallRecord({
+          candidate,
+          outcome,
+          startedAt,
+          imagesForwarded: images.images.length,
+          imagesDropped: images.dropped,
+        })
 
         return framed.text
       } catch (exception) {
@@ -1654,6 +1712,14 @@ export async function getConnectorTools(
           candidate.definition.inputSchema as Parameters<typeof jsonSchema>[0],
         ),
         execute: buildExecute(candidate, exposedName),
+        toModelOutput: ({ toolCallId, output }) => {
+          return buildConnectorModelOutput({
+            output,
+            images: imageStore.get(toolCallId),
+            connectorTitle: candidate.connector.title,
+            toolName: exposedName,
+          })
+        },
       })) as ToolSet[string]
     }
 
@@ -1662,6 +1728,8 @@ export async function getConnectorTools(
     summary.deferredTools = indexEntries.length
 
     async function close(): Promise<void> {
+      imageStore.clear()
+
       if (isClosed) {
         return
       }

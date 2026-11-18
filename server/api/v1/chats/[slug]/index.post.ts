@@ -346,6 +346,7 @@ import {
 import {
   CONNECTORS_PER_SEND,
   CONNECTORS_PER_USER,
+  canForwardConnectorImages,
   resolveConnectorToolMode,
   CONNECTOR_SSE_PER_SEND,
   CONNECTOR_STEPS_PER_TURN,
@@ -2259,6 +2260,11 @@ export default defineEventHandler(async (event) => {
               callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
             }
             : {}),
+          forwardImages: canForwardConnectorImages({
+            gatewayId,
+            providerId: provider?.id,
+            inputModalities: model ? getModelInputModalities(model) : null,
+          }),
           guard: chatSearchBudget,
           logger: aiLogger,
           requestId: getRequestId(event),

@@ -3,6 +3,8 @@ import { eq, sql } from 'drizzle-orm'
 import {
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CONSENT_VERSION,
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
+  CONNECTOR_RESPONSE_MAX_BYTES,
   CONNECTOR_RESULT_MAX_BYTES,
   CONNECTOR_SSE_PER_SEND,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
@@ -41,6 +43,11 @@ import type {
   MockMcpServerOptions,
   MockMcpTool,
 } from '../../../../setup/helpers/mock-mcp-server'
+import {
+  RED_PNG_BASE64,
+  mcpImage,
+  pngHeaderBytes,
+} from '../../../../setup/helpers/connector-images'
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
@@ -180,6 +187,7 @@ describe('getConnectorTools', () => {
     catalogSlugs?: string[]
     optionalSlugs?: string[]
     wrapFetch?: (base: typeof fetch) => typeof fetch
+    forwardImages?: boolean
   }) {
     const baseFetch = createMockMcpFetch(options.servers) as typeof fetch
 
@@ -233,6 +241,7 @@ describe('getConnectorTools', () => {
           },
         }),
       guard: options.guard,
+      ...(options.forwardImages ? { forwardImages: true } : {}),
       logger: { set: (values: unknown) => logged.push(values) },
       dependencies: {
         limitCalls: options.limitCalls ?? allowCalls,
@@ -868,6 +877,238 @@ describe('getConnectorTools', () => {
       expect(output).toContain('chart below\n[image omitted: image/png]')
       expect(output).not.toContain('AAAA')
     })
+  })
+
+  describe('images', () => {
+    const SHOWN_LINE = '[image/png, 75 B: shown to the model, not saved]'
+
+    async function imageRun(forwardImages: boolean) {
+      const alpha = server('mcp.alpha.example.com', {
+        respond: () => ({
+          content: [
+            { type: 'text', text: 'frame A' },
+            mcpImage(RED_PNG_BASE64),
+          ],
+        }),
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      if ((await listConnectors(testDb.db, userId)).length === 0) {
+        await addConnector(seeds[0]!)
+      }
+
+      return await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        forwardImages,
+      })
+    }
+
+    async function modelOutput(
+      tools: Record<string, any>,
+      output: unknown,
+      toolCallId = 'call-1',
+    ) {
+      return await tools.mcp__alpha__list_issues.toModelOutput({
+        toolCallId,
+        input: {},
+        output,
+      })
+    }
+
+    it('keeps the bytes out of the text and gives them to the model',
+      async () => {
+        const { tools } = await imageRun(true)
+        const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+        expect(output).toContain(`frame A\n${SHOWN_LINE}`)
+        expect(output).not.toContain(RED_PNG_BASE64)
+
+        const forModel = await modelOutput(tools, output)
+
+        expect(forModel.type).toBe('content')
+        expect(forModel.value[0]).toEqual({ type: 'text', text: output })
+        expect(forModel.value[1].text).toContain(
+          'from the connector "alpha", tool "mcp__alpha__list_issues"',
+        )
+        expect(forModel.value[2]).toEqual({
+          type: 'file',
+          mediaType: 'image/png',
+          data: { type: 'data', data: RED_PNG_BASE64 },
+        })
+        expect(await modelOutput(tools, output)).toEqual(forModel)
+        expect(loggedConnectorValues('calls')).toContainEqual(
+          expect.objectContaining({ outcome: 'ok', imagesForwarded: 1 }),
+        )
+        expect(JSON.stringify(logged)).not.toContain(RED_PNG_BASE64)
+      })
+
+    it('sends only text when the send cannot show images', async () => {
+      const { tools } = await imageRun(false)
+      const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+      expect(output).toContain('frame A\n[image omitted: image/png]')
+      expect(await modelOutput(tools, output))
+        .toEqual({ type: 'text', value: output })
+      expect(loggedConnectorValues('calls')).toContainEqual(
+        expect.objectContaining({
+          outcome: 'ok',
+          imagesDropped: { 'not-supported': 1 },
+        }),
+      )
+    })
+
+    async function largeResponseRun(
+      content: unknown[],
+      options: {
+        forwardImages?: boolean
+        wrapFetch?: (base: typeof fetch) => typeof fetch
+      } = {},
+    ) {
+      const alpha = server('mcp.alpha.example.com', {
+        respond: () => ({ content }),
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      return await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        forwardImages: options.forwardImages ?? true,
+        ...(options.wrapFetch ? { wrapFetch: options.wrapFetch } : {}),
+      })
+    }
+
+    function screenshotBase64(): string {
+      const screenshot = new Uint8Array(1.5 * 1024 * 1024)
+
+      screenshot.set(pngHeaderBytes(1920, 1080))
+
+      return Buffer.from(screenshot).toString('base64')
+    }
+
+    it('lets a screenshot past the 1 MiB default through the 8 MiB call cap',
+      async () => {
+        const base64 = screenshotBase64()
+
+        expect(base64.length).toBeGreaterThan(CONNECTOR_RESPONSE_MAX_BYTES)
+
+        const { tools } = await largeResponseRun([mcpImage(base64)])
+        const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+        expect(output)
+          .toContain('[image/png, 1.5 MB: shown to the model, not saved]')
+        expect((await modelOutput(tools, output)).value.at(-1)).toMatchObject({
+          type: 'file',
+          data: { type: 'data', data: base64 },
+        })
+      })
+
+    it('keeps the 1 MiB cap when the send does not forward images',
+      async () => {
+        const { tools } = await largeResponseRun(
+          [mcpImage(screenshotBase64())],
+          { forwardImages: false },
+        )
+        const exception = await execute(tools, 'mcp__alpha__list_issues')
+          .catch((caught: Error) => caught)
+
+        expect(exception).toBeInstanceOf(Error)
+        expect(parseConnectorCallErrorText(exception.message)?.category)
+          .toBe('protocol')
+      })
+
+    it('keeps at most two large responses in flight per send', async () => {
+      let inFlight = 0
+      let maxInFlight = 0
+
+      function release() {
+        inFlight -= 1
+      }
+
+      const { tools } = await largeResponseRun([mcpImage(screenshotBase64())], {
+        wrapFetch: base => (async (input, init) => {
+          const isCall = typeof init?.body === 'string'
+            && init.body.includes('"tools/call"')
+
+          if (!isCall) {
+            return await base(input, init)
+          }
+
+          inFlight += 1
+          maxInFlight = Math.max(maxInFlight, inFlight)
+
+          await new Promise(resolve => setTimeout(resolve, 10))
+
+          const response = await base(input, init)
+          const counted = response.body!.pipeThrough(new TransformStream({
+            flush: release,
+          }))
+
+          return new Response(counted, {
+            status: response.status,
+            headers: response.headers,
+          })
+        }) as typeof fetch,
+      })
+      const callIds = Array.from({ length: 6 }, (_, index) => `call-${index}`)
+      const outputs = await Promise.all(callIds.map((toolCallId) => {
+        return tools.mcp__alpha__list_issues.execute({}, {
+          toolCallId,
+          messages: [],
+        })
+      }))
+
+      expect(outputs).toHaveLength(6)
+      expect(outputs.every((output: string) => {
+        return output.includes('shown to the model, not saved')
+      })).toBe(true)
+      expect(maxInFlight).toBe(2)
+      expect(inFlight).toBe(0)
+    })
+
+    it('fails a call whose response is larger than 8 MiB as a protocol error',
+      async () => {
+        const { tools } = await largeResponseRun([
+          mcpImage('A'.repeat(CONNECTOR_CALL_RESPONSE_MAX_BYTES)),
+        ])
+        const exception = await execute(tools, 'mcp__alpha__list_issues')
+          .catch((caught: Error) => caught)
+
+        expect(exception).toBeInstanceOf(Error)
+        expect(parseConnectorCallErrorText(exception.message)?.category)
+          .toBe('protocol')
+      })
+
+    it('never shares images between sends and drops them on close',
+      async () => {
+        const first = await imageRun(true)
+        const output: string = await execute(
+          first.tools,
+          'mcp__alpha__list_issues',
+        )
+        const second = await imageRun(true)
+
+        expect(await modelOutput(second.tools, output))
+          .toEqual({ type: 'text', value: output })
+        expect((await modelOutput(first.tools, output)).type).toBe('content')
+        expect(await modelOutput(first.tools, output, 'call-2'))
+          .toEqual({ type: 'text', value: output })
+
+        await first.close()
+
+        expect(await modelOutput(first.tools, output))
+          .toEqual({ type: 'text', value: output })
+      })
   })
 
   describe('caps', () => {
