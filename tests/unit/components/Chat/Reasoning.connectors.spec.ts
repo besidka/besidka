@@ -17,8 +17,8 @@ mockNuxtImport('useConnectorLibrary', () => {
 })
 mockNuxtImport('useUserSetting', () => {
   return () => ({
-    reasoningExpanded: shallowRef<boolean>(false),
-    reasoningAutoHide: shallowRef<boolean>(true),
+    stepsExpanded: shallowRef<boolean>(false),
+    stepsAutoHide: shallowRef<boolean>(true),
   })
 })
 

@@ -1,15 +1,17 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
-import { shallowRef } from 'vue'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { nextTick, shallowRef } from 'vue'
 import type { ChatInputToolsState } from '../../../../../app/types/chat-input-tools'
 import Content from '../../../../../app/components/ChatInput/ToolsMenu/Content.vue'
 
+const stepsExpanded = shallowRef<boolean>(false)
+
 mockNuxtImport('useUserSetting', () => {
   return () => ({
-    reasoningExpanded: shallowRef(false),
-    reasoningAutoHide: shallowRef(true),
-    setReasoningExpanded: () => undefined,
-    setReasoningAutoHide: () => undefined,
+    stepsExpanded,
+    stepsAutoHide: shallowRef(true),
+    setStepsExpanded: () => undefined,
+    setStepsAutoHide: () => undefined,
   })
 })
 
@@ -137,12 +139,28 @@ async function mountContent(state: ChatInputToolsState) {
 
 type ContentWrapper = Awaited<ReturnType<typeof mountContent>>
 
-function layout(wrapper: ContentWrapper): string[] {
+function fullLayout(wrapper: ContentWrapper): string[] {
   return Array.from(wrapper.element.children).map((child) => {
     return child.getAttribute('data-section')
       ?? (child.getAttribute('data-testid') === 'tools-menu-divider'
         ? '---'
         : '?')
+  })
+}
+
+function layout(wrapper: ContentWrapper): string[] {
+  const sections = fullLayout(wrapper)
+  const stepsIndex = sections.indexOf('steps')
+
+  if (stepsIndex === -1) {
+    return sections
+  }
+
+  const hasDividerAfterSteps = sections[stepsIndex + 1] === '---'
+
+  return sections.filter((_section, index) => {
+    return index !== stepsIndex
+      && !(hasDividerAfterSteps && index === stepsIndex + 1)
   })
 }
 
@@ -383,7 +401,7 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     const wrapper = await mountContent(createState())
     const dividers = wrapper.findAll('[data-testid="tools-menu-divider"]')
 
-    expect(dividers).toHaveLength(3)
+    expect(dividers).toHaveLength(4)
 
     for (const divider of dividers) {
       expect(divider.classes()).toEqual(
@@ -534,11 +552,11 @@ describe('ChatInput/ToolsMenu/Content section titles', () => {
     }
   })
 
-  it('titles the sections Reasoning, Web search and Add, top to bottom', async () => {
+  it('titles the sections Steps, Reasoning, Web search and Add, top to bottom', async () => {
     const wrapper = await mountContent(createState())
     const titles = wrapper.findAll('h3').map(heading => heading.text())
 
-    expect(titles).toEqual(['Reasoning', 'Web search', 'Add'])
+    expect(titles).toEqual(['Steps', 'Reasoning', 'Web search', 'Add'])
   })
 })
 
@@ -688,5 +706,71 @@ describe('ChatInput/ToolsMenu/Content memory row', () => {
     await wrapper.get('[data-testid="new-chat-memory-toggle"]').setValue(false)
 
     expect(wrapper.emitted('update:use-memory')).toEqual([[false]])
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content steps section', () => {
+  beforeEach(() => {
+    stepsExpanded.value = false
+  })
+
+  function withMemory(excluded: boolean): ChatInputToolsState {
+    return { ...createState(), memory: { excluded } }
+  }
+
+  function withReasoningOff(): ChatInputToolsState {
+    const state = withMemory(false)
+
+    return {
+      ...state,
+      reasoning: { ...state.reasoning, level: 'off' },
+    }
+  }
+
+  it('sits directly above the memory section', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const sections = fullLayout(wrapper)
+
+    expect(sections.slice(0, 3)).toEqual(['steps', '---', 'memory'])
+  })
+
+  it('shows Show steps expanded with reasoning Off and a Steps title',
+    async () => {
+      const wrapper = await mountContent(withReasoningOff())
+      const section = wrapper.get('[data-section="steps"]')
+
+      expect(section.get('h3').text()).toBe('Steps')
+      expect(section.get('[data-testid="steps-expanded-toggle"]').exists())
+        .toBe(true)
+      expect(wrapper.get('[data-section="reasoning"]')
+        .find('[data-testid="steps-expanded-toggle"]').exists()).toBe(false)
+    })
+
+  it('renders the Steps section even when reasoning is unavailable',
+    async () => {
+      const state = createState({ reasoning: false })
+      const wrapper = await mountContent(state)
+
+      expect(fullLayout(wrapper)).toContain('steps')
+      expect(wrapper.find('[data-section="reasoning"]').exists())
+        .toBe(false)
+    })
+
+  it('reveals Auto-hide only while steps are expanded', async () => {
+    const wrapper = await mountContent(withReasoningOff())
+    const autoHideReveal = () => {
+      return wrapper.get('[data-testid="steps-auto-hide-toggle"]')
+        .element
+        .closest('[data-open]')
+    }
+
+    expect(autoHideReveal()?.getAttribute('data-open')).toBe('false')
+    expect(autoHideReveal()?.hasAttribute('inert')).toBe(true)
+
+    stepsExpanded.value = true
+    await nextTick()
+
+    expect(autoHideReveal()?.getAttribute('data-open')).toBe('true')
+    expect(autoHideReveal()?.hasAttribute('inert')).toBe(false)
   })
 })

@@ -63,8 +63,8 @@ export default defineEventHandler(async (event) => {
       userId,
     },
     columns: {
-      reasoningExpanded: true,
-      reasoningAutoHide: true,
+      stepsExpanded: true,
+      stepsAutoHide: true,
       defaultReasoningLevel: true,
       allowExternalLinks: true,
       notificationPromptState: true,
@@ -94,8 +94,8 @@ export default defineEventHandler(async (event) => {
     : settings?.aboutMe ?? MEMORY_SETTING_DEFAULTS.aboutMe
 
   return {
-    reasoningExpanded: settings?.reasoningExpanded ?? false,
-    reasoningAutoHide: settings?.reasoningAutoHide ?? true,
+    reasoningExpanded: settings?.stepsExpanded ?? false,
+    reasoningAutoHide: settings?.stepsAutoHide ?? true,
     defaultReasoningLevel: parseReasoningLevel(
       settings?.defaultReasoningLevel,
     ),

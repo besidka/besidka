@@ -47,9 +47,9 @@ describe('useUserSetting', () => {
   it('uses local storage fallback before user settings are loaded', () => {
     localStorage.setItem('settings_reasoning_expanded', 'true')
 
-    const { reasoningExpanded } = useUserSetting()
+    const { stepsExpanded } = useUserSetting()
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
   })
 
   it('syncs settings once for the same user and reuses cached value', async () => {
@@ -59,7 +59,7 @@ describe('useUserSetting', () => {
     })
     const {
       syncForUser,
-      reasoningExpanded,
+      stepsExpanded,
     } = useUserSetting()
 
     await syncForUser('user-1')
@@ -72,7 +72,7 @@ describe('useUserSetting', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/profiles/settings',
     )
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
   })
 
   it('uses DB value as source of truth after authenticated sync', async () => {
@@ -83,15 +83,15 @@ describe('useUserSetting', () => {
       reasoningAutoHide: true,
     })
     const {
-      reasoningExpanded,
+      stepsExpanded,
       syncForUser,
     } = useUserSetting()
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
 
     await syncForUser('user-1')
 
-    expect(reasoningExpanded.value).toBe(false)
+    expect(stepsExpanded.value).toBe(false)
     expect(localStorage.getItem('settings_reasoning_expanded')).toBe(
       'false',
     )
@@ -100,13 +100,13 @@ describe('useUserSetting', () => {
   it('updates local storage without API call for guests', async () => {
     fetchMock.mockReset()
     const {
-      reasoningExpanded,
-      setReasoningExpanded,
+      stepsExpanded,
+      setStepsExpanded,
     } = useUserSetting()
 
-    await setReasoningExpanded(true)
+    await setStepsExpanded(true)
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -122,18 +122,18 @@ describe('useUserSetting', () => {
       })
     const {
       syncForUser,
-      reasoningExpanded,
-      setReasoningExpanded,
+      stepsExpanded,
+      setStepsExpanded,
     } = useUserSetting()
 
     await syncForUser('user-1')
 
-    const savePromise = setReasoningExpanded(true)
+    const savePromise = setStepsExpanded(true)
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
     await savePromise
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock).toHaveBeenLastCalledWith(
       '/api/v1/profiles/settings',
@@ -153,15 +153,15 @@ describe('useUserSetting', () => {
     })
     const {
       activeUserId,
-      reasoningExpanded,
-      setReasoningExpanded,
+      stepsExpanded,
+      setStepsExpanded,
     } = useUserSetting()
 
     activeUserId.value = 'user-1'
 
-    await setReasoningExpanded(true)
+    await setStepsExpanded(true)
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/profiles/settings',
@@ -182,57 +182,57 @@ describe('useUserSetting', () => {
       })
       .mockRejectedValueOnce(new Error('Save failed'))
     const {
-      reasoningExpanded,
+      stepsExpanded,
       settingsError,
       syncForUser,
-      setReasoningExpanded,
+      setStepsExpanded,
     } = useUserSetting()
 
     await syncForUser('user-1')
 
-    expect(reasoningExpanded.value).toBe(false)
+    expect(stepsExpanded.value).toBe(false)
 
-    const savePromise = setReasoningExpanded(true)
+    const savePromise = setStepsExpanded(true)
 
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
     await savePromise
 
-    expect(reasoningExpanded.value).toBe(false)
+    expect(stepsExpanded.value).toBe(false)
     expect(settingsError.value).not.toBeNull()
   })
 
-  it('uses localStorage fallback of true for reasoningAutoHide before sync', () => {
-    const { reasoningAutoHide } = useUserSetting()
+  it('uses localStorage fallback of true for stepsAutoHide before sync', () => {
+    const { stepsAutoHide } = useUserSetting()
 
-    expect(reasoningAutoHide.value).toBe(true)
+    expect(stepsAutoHide.value).toBe(true)
   })
 
-  it('syncs reasoningAutoHide from server response', async () => {
+  it('syncs stepsAutoHide from server response', async () => {
     fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: false,
     })
-    const { syncForUser, reasoningAutoHide } = useUserSetting()
+    const { syncForUser, stepsAutoHide } = useUserSetting()
 
     await syncForUser('user-1')
 
-    expect(reasoningAutoHide.value).toBe(false)
+    expect(stepsAutoHide.value).toBe(false)
     expect(localStorage.getItem('settings_reasoning_auto_hide')).toBe(
       'false',
     )
   })
 
-  it('updates reasoningAutoHide without API call for guests', async () => {
+  it('updates stepsAutoHide without API call for guests', async () => {
     fetchMock.mockReset()
-    const { reasoningAutoHide, setReasoningAutoHide } = useUserSetting()
+    const { stepsAutoHide, setStepsAutoHide } = useUserSetting()
 
-    await setReasoningAutoHide(false)
+    await setStepsAutoHide(false)
 
-    expect(reasoningAutoHide.value).toBe(false)
+    expect(stepsAutoHide.value).toBe(false)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('persists reasoningAutoHide for authenticated users', async () => {
+  it('persists stepsAutoHide for authenticated users', async () => {
     fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
@@ -243,18 +243,18 @@ describe('useUserSetting', () => {
       })
     const {
       syncForUser,
-      reasoningAutoHide,
-      setReasoningAutoHide,
+      stepsAutoHide,
+      setStepsAutoHide,
     } = useUserSetting()
 
     await syncForUser('user-1')
 
-    const savePromise = setReasoningAutoHide(false)
+    const savePromise = setStepsAutoHide(false)
 
-    expect(reasoningAutoHide.value).toBe(false)
+    expect(stepsAutoHide.value).toBe(false)
     await savePromise
 
-    expect(reasoningAutoHide.value).toBe(false)
+    expect(stepsAutoHide.value).toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock).toHaveBeenLastCalledWith(
       '/api/v1/profiles/settings',
@@ -267,7 +267,7 @@ describe('useUserSetting', () => {
     )
   })
 
-  it('rolls back optimistic reasoningAutoHide when authenticated save fails', async () => {
+  it('rolls back optimistic stepsAutoHide when authenticated save fails', async () => {
     fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
@@ -275,22 +275,22 @@ describe('useUserSetting', () => {
       })
       .mockRejectedValueOnce(new Error('Save failed'))
     const {
-      reasoningAutoHide,
+      stepsAutoHide,
       settingsError,
       syncForUser,
-      setReasoningAutoHide,
+      setStepsAutoHide,
     } = useUserSetting()
 
     await syncForUser('user-1')
 
-    expect(reasoningAutoHide.value).toBe(true)
+    expect(stepsAutoHide.value).toBe(true)
 
-    const savePromise = setReasoningAutoHide(false)
+    const savePromise = setStepsAutoHide(false)
 
-    expect(reasoningAutoHide.value).toBe(false)
+    expect(stepsAutoHide.value).toBe(false)
     await savePromise
 
-    expect(reasoningAutoHide.value).toBe(true)
+    expect(stepsAutoHide.value).toBe(true)
     expect(settingsError.value).not.toBeNull()
   })
 
@@ -1213,8 +1213,8 @@ describe('useUserSetting just-in-time consent request', () => {
   it('asks for every explicit guest change', async () => {
     const settings = useUserSetting()
 
-    await settings.setReasoningExpanded(true)
-    await settings.setReasoningAutoHide(false)
+    await settings.setStepsExpanded(true)
+    await settings.setStepsAutoHide(false)
     await settings.setSidebarPinned(true)
     await settings.setFavoriteModels(['gpt-5.4'])
     await settings.setFavoriteGatewayModels({ vercel: ['openai/gpt-5.4'] })
@@ -1237,8 +1237,8 @@ describe('useUserSetting just-in-time consent request', () => {
       const settings = useUserSetting()
 
       await settings.syncForUser('user-1')
-      await settings.setReasoningExpanded(true)
-      await settings.setReasoningAutoHide(false)
+      await settings.setStepsExpanded(true)
+      await settings.setStepsAutoHide(false)
       await settings.setSidebarPinned(true)
       await settings.setFavoriteModels(['gpt-5.4'])
       await settings.setFavoriteGatewayModels({ vercel: ['openai/gpt-5.4'] })

@@ -12,6 +12,7 @@ import { getUserStorageBreakdown } from '~~/server/utils/storage/usage'
 import {
   applyUserSettingsUpdate,
   dedupeFavoriteGatewayModels,
+  toPublicSettingsFields,
 } from '~~/server/utils/settings/apply-user-settings'
 import type {
   UserSettingsFieldUpdates,
@@ -40,8 +41,8 @@ export async function getMcpSettings(db: DbClient, userId: number) {
       userId,
     },
     columns: {
-      reasoningExpanded: true,
-      reasoningAutoHide: true,
+      stepsExpanded: true,
+      stepsAutoHide: true,
       defaultReasoningLevel: true,
       sidebarPinned: true,
       favoriteModels: true,
@@ -55,8 +56,8 @@ export async function getMcpSettings(db: DbClient, userId: number) {
   })
 
   return {
-    reasoningExpanded: settings?.reasoningExpanded ?? false,
-    reasoningAutoHide: settings?.reasoningAutoHide ?? true,
+    reasoningExpanded: settings?.stepsExpanded ?? false,
+    reasoningAutoHide: settings?.stepsAutoHide ?? true,
     defaultReasoningLevel: parseReasoningLevel(
       settings?.defaultReasoningLevel,
     ),
@@ -95,11 +96,11 @@ function buildFieldUpdates(patch: McpSettingsPatch): UserSettingsFieldUpdates {
   const fieldUpdates: UserSettingsFieldUpdates = {}
 
   if (patch.reasoningExpanded !== undefined) {
-    fieldUpdates.reasoningExpanded = patch.reasoningExpanded
+    fieldUpdates.stepsExpanded = patch.reasoningExpanded
   }
 
   if (patch.reasoningAutoHide !== undefined) {
-    fieldUpdates.reasoningAutoHide = patch.reasoningAutoHide
+    fieldUpdates.stepsAutoHide = patch.reasoningAutoHide
   }
 
   if (patch.defaultReasoningLevel !== undefined) {
@@ -199,5 +200,5 @@ export async function updateMcpSettings(
 
   await applyUserSettingsUpdate({ db, userId, fieldUpdates })
 
-  return fieldUpdates
+  return toPublicSettingsFields(fieldUpdates)
 }

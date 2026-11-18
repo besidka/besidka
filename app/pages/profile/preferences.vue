@@ -83,7 +83,7 @@
             closest one they support.
           </p>
           <div
-            v-if="!isReasoningReady"
+            v-if="!isSettingsReady"
             class="skeleton skeleton--default h-8 w-full rounded-box"
             data-testid="preferences-reasoning-skeleton"
           />
@@ -122,35 +122,49 @@
             class="min-h-4 text-xs text-base-content/60"
             data-testid="default-reasoning-product-default"
           >
-            <template v-if="isReasoningReady && defaultReasoningLevel === null">
+            <template v-if="isSettingsReady && defaultReasoningLevel === null">
               Product default
             </template>
           </p>
         </fieldset>
+      </div>
+    </ProfileSecuritySectionCard>
+    <ProfileSecuritySectionCard heading="Steps">
+      <template #icon>
+        <Icon
+          :name="STEPS_SECTION_ICON"
+          size="20"
+          class="shrink-0"
+          aria-hidden="true"
+          data-testid="preferences-steps-icon"
+        />
+      </template>
+      <div class="grid gap-5">
         <label class="flex items-start justify-between gap-4 cursor-pointer">
           <span class="grid gap-1">
             <span class="inline-flex items-center gap-2">
               <Icon
-                :name="REASONING_EXPANDED_ICON"
+                :name="STEPS_EXPANDED_ICON"
                 size="16"
                 class="shrink-0 opacity-75"
                 aria-hidden="true"
-                data-testid="preferences-reasoning-expanded-icon"
+                data-testid="preferences-steps-expanded-icon"
               />
               <span
-                id="reasoning-expanded-title"
+                id="steps-expanded-title"
                 class="font-bold"
-              >Show reasoning steps expanded</span>
+              >Show steps expanded</span>
             </span>
             <span
-              id="reasoning-expanded-description"
+              id="steps-expanded-description"
               class="ps-6 text-sm text-base-content/70"
             >
-              Opens the model's reasoning steps while it thinks.
+              Keeps the steps behind a reply open: reasoning, web searches,
+              skills and connector calls.
             </span>
           </span>
           <span
-            v-if="!isReasoningReady"
+            v-if="!isSettingsReady"
             class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
             data-testid="preferences-expanded-skeleton"
           />
@@ -158,40 +172,38 @@
             v-else
             type="checkbox"
             class="toggle mt-1 shrink-0"
-            aria-labelledby="reasoning-expanded-title"
-            aria-describedby="reasoning-expanded-description"
-            data-testid="preferences-reasoning-expanded-toggle"
-            :checked="reasoningExpanded"
+            aria-labelledby="steps-expanded-title"
+            aria-describedby="steps-expanded-description"
+            data-testid="preferences-steps-expanded-toggle"
+            :checked="stepsExpanded"
             @change="onExpandedChange"
           >
         </label>
-        <label
-          class="ms-6 flex items-start justify-between gap-4 border-s ps-4"
-          :class="isAutoHideAvailable ? 'cursor-pointer' : 'opacity-60'"
-        >
+        <label class="flex items-start justify-between gap-4 cursor-pointer">
           <span class="grid gap-1">
             <span class="inline-flex items-center gap-2">
               <Icon
-                :name="REASONING_AUTO_HIDE_ICON"
+                :name="STEPS_AUTO_HIDE_ICON"
                 size="16"
                 class="shrink-0 opacity-75"
                 aria-hidden="true"
-                data-testid="preferences-reasoning-auto-hide-icon"
+                data-testid="preferences-steps-auto-hide-icon"
               />
               <span
-                id="reasoning-auto-hide-title"
+                id="steps-auto-hide-title"
                 class="font-bold"
               >Auto-hide when done</span>
             </span>
             <span
-              id="reasoning-auto-hide-description"
+              id="steps-auto-hide-description"
               class="ps-6 text-sm text-base-content/70"
             >
-              Collapses the reasoning steps once the answer is ready.
+              Collapses the steps once the answer is ready. Applies when steps
+              are shown expanded.
             </span>
           </span>
           <span
-            v-if="!isReasoningReady"
+            v-if="!isSettingsReady"
             class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
             data-testid="preferences-auto-hide-skeleton"
           />
@@ -199,11 +211,10 @@
             v-else
             type="checkbox"
             class="toggle mt-1 shrink-0"
-            aria-labelledby="reasoning-auto-hide-title"
-            aria-describedby="reasoning-auto-hide-description"
-            data-testid="preferences-reasoning-auto-hide-toggle"
-            :checked="reasoningAutoHide"
-            :disabled="!reasoningExpanded"
+            aria-labelledby="steps-auto-hide-title"
+            aria-describedby="steps-auto-hide-description"
+            data-testid="preferences-steps-auto-hide-toggle"
+            :checked="stepsAutoHide"
             @change="onAutoHideChange"
           >
         </label>
@@ -242,7 +253,7 @@
           </span>
         </span>
         <span
-          v-if="!isReasoningReady"
+          v-if="!isSettingsReady"
           class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
           data-testid="preferences-sidebar-pinned-skeleton"
         />
@@ -296,12 +307,12 @@ const levelOptions: LevelOption[] = (
 const {
   isSettingsLoaded,
   defaultReasoningLevel,
-  reasoningExpanded,
-  reasoningAutoHide,
+  stepsExpanded,
+  stepsAutoHide,
   sidebarPinned,
   setDefaultReasoningLevel,
-  setReasoningExpanded,
-  setReasoningAutoHide,
+  setStepsExpanded,
+  setStepsAutoHide,
   setSidebarPinned,
 } = useUserSetting()
 const { showPinToggle } = useSidebarPinToggle()
@@ -317,12 +328,8 @@ const {
 
 const isMounted = shallowRef<boolean>(false)
 
-const isReasoningReady = computed<boolean>(() => {
+const isSettingsReady = computed<boolean>(() => {
   return isMounted.value && isSettingsLoaded.value
-})
-
-const isAutoHideAvailable = computed<boolean>(() => {
-  return isReasoningReady.value && reasoningExpanded.value
 })
 
 const isPinToggleAvailable = computed<boolean>(() => {
@@ -377,13 +384,13 @@ async function onLevelClick(level: ReasoningLevel) {
 async function onExpandedChange(event: Event) {
   const input = event.target as HTMLInputElement
 
-  await setReasoningExpanded(input.checked)
+  await setStepsExpanded(input.checked)
 }
 
 async function onAutoHideChange(event: Event) {
   const input = event.target as HTMLInputElement
 
-  await setReasoningAutoHide(input.checked)
+  await setStepsAutoHide(input.checked)
 }
 
 async function onSidebarPinnedChange(event: Event) {

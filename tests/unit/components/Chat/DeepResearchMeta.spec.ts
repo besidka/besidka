@@ -347,7 +347,7 @@ describe('Chat/DeepResearchMeta', () => {
     expect(entryDetails.attributes('open')).toBeUndefined()
   })
 
-  it('defaults the trace collapse to closed when reasoningExpanded is off', async () => {
+  it('defaults the trace collapse to closed when stepsExpanded is off', async () => {
     const wrapper = await mountSuspended(DeepResearchMeta, {
       props: {
         message: createMessage([
@@ -364,7 +364,7 @@ describe('Chat/DeepResearchMeta', () => {
     expect(wrapper.find('details').attributes('open')).toBeUndefined()
   })
 
-  it('defaults the trace collapse to open when reasoningExpanded is on', async () => {
+  it('defaults the trace collapse to open when stepsExpanded is on', async () => {
     localStorage.setItem('settings_reasoning_expanded', 'true')
 
     const wrapper = await mountSuspended(DeepResearchMeta, {

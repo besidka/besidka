@@ -860,8 +860,8 @@ const headerStepIcon = computed<ReasoningStepIcon | null>(() => {
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
 const {
-  reasoningExpanded: isReasoningExpanded,
-  reasoningAutoHide,
+  stepsExpanded: isStepsExpanded,
+  stepsAutoHide,
 } = useUserSetting()
 
 const isMainExpanded = shallowRef<boolean>(false)
@@ -896,7 +896,7 @@ watch(
     isThinkingStreaming,
     () => reasoningSteps.value.at(-1)?.id,
     latestExpandableStepId,
-    isReasoningExpanded,
+    isStepsExpanded,
     isStreamingExpandOverride,
   ],
   ([
@@ -931,7 +931,7 @@ watch(hasTextPart, (textStarted, hadText) => {
     return
   }
 
-  if (!reasoningAutoHide.value) {
+  if (!stepsAutoHide.value) {
     return
   }
 

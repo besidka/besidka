@@ -18,7 +18,20 @@
       </span>
     </div>
     <div
-      v-if="state.isDeepResearchModel && state.research && hasTopGroup"
+      v-if="state.isDeepResearchModel && state.research"
+      class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
+    />
+    <ChatInputToolsMenuSection
+      id="steps"
+      title="Steps"
+      :icon="STEPS_SECTION_ICON"
+      :is-highlighted="highlightedSection === 'steps'"
+    >
+      <ChatInputToolsMenuStepsSection />
+    </ChatInputToolsMenuSection>
+    <div
+      v-if="hasDividerAfterSteps"
       class="h-px mx-2 my-1 bg-base-content/10"
       data-testid="tools-menu-divider"
     />
@@ -264,6 +277,13 @@ const isAddSectionVisible = computed<boolean>(() => {
     || props.state.skills?.visible === true
     || props.state.connectors?.visible === true
     || props.state.project.visible
+})
+
+const hasDividerAfterSteps = computed<boolean>(() => {
+  return hasTopGroup.value
+    || isReasoningSectionVisible.value
+    || props.state.webSearch.visible
+    || isAddSectionVisible.value
 })
 
 const hasDividerAfterTopGroup = computed<boolean>(() => {

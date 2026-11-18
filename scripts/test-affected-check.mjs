@@ -130,6 +130,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/StepsSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Segmented.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Reveal.spec.ts',
@@ -4199,7 +4200,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/components\/ChatInput\/ToolsMenu\/(ReasoningSection|Segmented|ToggleRow)\.vue$/,
+        /^app\/components\/ChatInput\/ToolsMenu\/(ReasoningSection|StepsSection|Segmented|ToggleRow)\.vue$/,
       tests: [
         ...profileSettingsTests,
         ...chatInputToolsTests,
