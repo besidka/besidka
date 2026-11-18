@@ -54,7 +54,9 @@ import {
 } from '~~/server/utils/connectors/consent'
 import {
   classifyConnectorCallError,
+  collectUrlRedactions,
   redactLoggedMessage,
+  sanitizeLoggedIdentifier,
 } from '~~/server/utils/connectors/call-errors'
 import type {
   ClassifiedConnectorCallError,
@@ -683,6 +685,26 @@ export async function getConnectorTools(
     catalogSkipped: 0,
   }
   const credentialsByConnector = new Map<string, ConnectorCredentials | null>()
+  const logRedactions = new Map<string, Set<string>>()
+
+  function addLogRedactions(connectorId: string, url?: string): void {
+    const values = logRedactions.get(connectorId) ?? new Set<string>()
+    const credentials = credentialsByConnector.get(connectorId)
+
+    for (const value of [
+      credentials?.refreshToken,
+      credentials?.clientRegistration?.clientSecret,
+      credentials?.accessToken,
+      credentials?.headerValue,
+      ...(url ? collectUrlRedactions(url) : []),
+    ]) {
+      if (value) {
+        values.add(value)
+      }
+    }
+
+    logRedactions.set(connectorId, values)
+  }
   const connectors: ConnectorRecord[] = []
   let sseConnectors = 0
 
@@ -798,8 +820,10 @@ export async function getConnectorTools(
         resolveAuth: resolver,
         limiter: connectLimiter,
         logger,
+        logsHost: connector.presetId !== null,
         dependencies: input.dependencies,
       })
+      addLogRedactions(connector.id, url)
 
       handles.push(handle)
 
@@ -940,8 +964,10 @@ export async function getConnectorTools(
         resolveAuth: resolver,
         limiter: connectLimiter,
         logger,
+        logsHost: connector.presetId !== null,
         dependencies: input.dependencies,
       })
+      addLogRedactions(connector.id, url)
 
       return realHandle
     }
@@ -1347,13 +1373,16 @@ export async function getConnectorTools(
 
       if (callErrorCount < CONNECTOR_CALL_ERROR_LOG_MAX) {
         callErrorCount += 1
+        addLogRedactions(failure.candidate.connector.id)
 
         logger.set({
           attributes: {
             connectors: {
               callError: [{
                 connectorId: failure.candidate.connector.id,
-                tool: failure.candidate.definition.name,
+                ...(failure.candidate.connector.presetId
+                  ? { tool: failure.candidate.definition.name }
+                  : {}),
                 category: failure.category,
                 step: failure.step,
                 ...(failure.detail?.httpStatus != null
@@ -1361,15 +1390,24 @@ export async function getConnectorTools(
                   : {}),
                 ...(failure.detail
                   ? {
-                    errorName: failure.detail.errorName,
+                    errorName: sanitizeLoggedIdentifier(
+                      failure.detail.errorName,
+                    ),
                     message: redactLoggedMessage(
                       failure.detail.message,
-                      [...failure.candidate.secrets],
+                      [
+                        ...failure.candidate.secrets,
+                        ...(logRedactions.get(
+                          failure.candidate.connector.id,
+                        ) ?? []),
+                      ],
                     ),
                   }
                   : {}),
                 reference,
-                ...(input.requestId ? { requestId: input.requestId } : {}),
+                ...(input.requestId
+                  ? { requestId: sanitizeLoggedIdentifier(input.requestId) }
+                  : {}),
               }],
             },
           },

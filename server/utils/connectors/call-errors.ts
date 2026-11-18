@@ -230,15 +230,73 @@ export function classifyConnectorCallError(
   }
 }
 
+const URL_IN_TEXT = /https?:\/\/\S+/gi
+const CONTROL_CHARACTERS = /\p{Cc}/gu
+const LOGGED_IDENTIFIER_MAX_LENGTH = 64
+const URL_REDACTION_MIN_LENGTH = 4
+
+function pushRedaction(target: Set<string>, value: string): void {
+  if (value.length >= URL_REDACTION_MIN_LENGTH) {
+    target.add(value)
+    target.add(encodeURIComponent(value))
+    target.add(encodeURI(value))
+  }
+}
+
+/**
+ * The parts of a connector address that can carry a secret and are not part
+ * of its origin: the path, the query, and each query value, in plain and
+ * URL-encoded form. They are redacted from logged messages on top of the
+ * credentials, because a server may echo the request address in an error.
+ */
+export function collectUrlRedactions(url: string): string[] {
+  const redactions = new Set<string>()
+
+  try {
+    const parsed = new URL(url)
+    const pathWithQuery = `${parsed.pathname}${parsed.search}`
+
+    if (parsed.pathname !== '/') {
+      pushRedaction(redactions, parsed.pathname)
+    }
+
+    if (parsed.search) {
+      pushRedaction(redactions, pathWithQuery)
+      pushRedaction(redactions, parsed.search.slice(1))
+    }
+
+    for (const value of parsed.searchParams.values()) {
+      pushRedaction(redactions, value)
+    }
+  } catch {
+    return []
+  }
+
+  return [...redactions]
+}
+
+/**
+ * A value for a log field that is not free text: control characters removed
+ * and cut to 64 characters.
+ */
+export function sanitizeLoggedIdentifier(value: string): string {
+  return value
+    .replace(CONTROL_CHARACTERS, '')
+    .slice(0, LOGGED_IDENTIFIER_MAX_LENGTH)
+}
+
 /**
  * The remote error message as it may appear in a log: redacted of this
- * connector's secrets, flattened to one line and cut to 300 characters.
+ * connector's secrets and address parts, every address replaced by `[url]`,
+ * flattened to one line and cut to 300 characters.
  */
 export function redactLoggedMessage(
   message: string,
   secrets: readonly string[],
 ): string {
   return redactSecrets(message, secrets)
+    .replace(URL_IN_TEXT, '[url]')
+    .replace(CONTROL_CHARACTERS, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, LOGGED_MESSAGE_MAX_LENGTH)

@@ -1,8 +1,5 @@
 import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 import { z } from 'zod'
-import {
-  CONNECTOR_HEADER_VALUE_MAX_BYTES,
-} from '#shared/utils/connectors-policy'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import {
@@ -12,11 +9,15 @@ import {
   connectorToolModeSchema,
   resolveConnectTarget,
 } from '~~/server/utils/connectors/connect-target'
-import { isValidConnectorHeader } from '~~/server/utils/connectors/credentials'
 import {
   connectorErrorCodeOf,
   createConnectorError,
 } from '~~/server/utils/connectors/errors'
+import {
+  connectorHeaderAuthSchema,
+  connectorLegacyHeaderSchema,
+  readConnectorHeaderCredential,
+} from '~~/server/utils/connectors/header-auth'
 import {
   discoverConnectorAuth,
   verifyConnectorCredentialHeader,
@@ -35,17 +36,16 @@ const bodySchema = z.object({
   ...connectorTargetShape,
   toolMode: connectorToolModeSchema.optional(),
   consent: connectorConsentSchema,
-  header: z.object({
-    name: z.string().min(1).max(64),
-    value: z.string().min(1).max(CONNECTOR_HEADER_VALUE_MAX_BYTES),
-  }).optional(),
+  auth: connectorHeaderAuthSchema.optional(),
+  header: connectorLegacyHeaderSchema.optional(),
 })
 
 /**
  * Adds a connector that needs no sign-in or takes a key in a header
  * (docs/connectors.md section 5.1). It is one step: the address, the consent
- * the user ticked and, for a key, the header, arrive together. The server
- * sends the probe with the key (or without credentials for a server that
+ * the user ticked and, for a key, the `auth` choice (a bearer token or a
+ * custom header; the older `header` pair still works), arrive together. The
+ * server sends the probe with the key (or without credentials for a server that
  * needs none) and only when the server answers does it insert the connector
  * row, already `ready`, with the consent and the encrypted key. A rejected
  * key, an unreachable server or a closed dialog leaves nothing behind. An
@@ -63,11 +63,9 @@ export default defineEventHandler(async (event) => {
 
   event.res.headers.set('cache-control', 'no-store')
 
-  if (
-    body.header
-    && (!isValidConnectorHeader(body.header.name, body.header.value)
-      || (preset && !preset.auth.includes('header')))
-  ) {
+  const credential = readConnectorHeaderCredential(body)
+
+  if (credential && preset && !preset.auth.includes('header')) {
     throw createConnectorError('CONNECTOR_HEADER_INVALID')
   }
 
@@ -89,8 +87,8 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    if (body.header) {
-      await verifyConnectorCredentialHeader(target.url, body.header, logger)
+    if (credential) {
+      await verifyConnectorCredentialHeader(target.url, credential, logger)
     } else {
       const discovery = await discoverConnectorAuth(target.url, logger, {
         allowOAuth: target.allowOAuth,
@@ -123,7 +121,7 @@ export default defineEventHandler(async (event) => {
     createdVia: target.createdVia,
     presetId: target.presetId,
     connected: {
-      authType: body.header ? 'header' : 'none',
+      authType: credential ? 'header' : 'none',
       consent: {
         issuerHost: null,
         version: body.consent.version,
@@ -133,14 +131,14 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  if (body.header) {
+  if (credential) {
     try {
       await replaceConnectorCredentials(db, {
         userId,
         connectorId: connector.id,
         issuer: '',
-        headerName: body.header.name,
-        headerValue: body.header.value,
+        headerName: credential.name,
+        headerValue: credential.value,
       })
     } catch (exception) {
       logConsentNotStored()

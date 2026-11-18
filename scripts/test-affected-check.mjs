@@ -1246,6 +1246,7 @@ export function getAffectedTests(changedFiles) {
   const featureLabsTests = [
     'tests/integration/api/profiles-features.spec.ts',
     'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/composables/feature-opt-in.spec.ts',
     'tests/unit/utils/labs.spec.ts',
     'tests/unit/server/utils/features/opt-ins.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
@@ -1696,6 +1697,8 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const connectorsPageTests = [
+    'tests/unit/utils/connectors-auth.spec.ts',
+    'tests/unit/server/utils/connectors/header-auth.spec.ts',
     'tests/integration/api/connectors-page.spec.ts',
     'tests/integration/api/connectors-chat-selection.spec.ts',
     'tests/unit/utils/connectors-messages.spec.ts',
@@ -1712,6 +1715,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Connectors/DirectoryDetailPanel.spec.ts',
     'tests/unit/composables/connector-directory.spec.ts',
     'tests/unit/components/Profile/Connectors/Avatar.spec.ts',
+    'tests/unit/components/Profile/Connectors/BesidkaRow.spec.ts',
+    'tests/unit/composables/feature-opt-in.spec.ts',
     'tests/unit/components/Profile/Connectors/PresetCard.spec.ts',
     'tests/unit/utils/connector-brand-icons.spec.ts',
     'tests/unit/utils/connectors-publisher.spec.ts',
@@ -3558,7 +3563,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy|connectors-connected)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory)\.ts|app\/utils\/connector-brand-icons\.ts|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
+        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy|connectors-connected|connectors-auth)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body|header-auth)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory|feature-opt-in)\.ts|app\/utils\/(connector-brand-icons|besidka-tool-permissions)\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
       tests: connectorsPageTests,
     },
     {
@@ -3603,7 +3608,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/user-keys\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
+        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/(user-keys|feature-opt-in)\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
       tests: featureLabsTests,
     },
     {

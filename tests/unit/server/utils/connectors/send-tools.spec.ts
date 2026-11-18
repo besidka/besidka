@@ -546,8 +546,8 @@ describe('getConnectorTools', () => {
       const callErrors = loggedConnectorValues('callError')
 
       expect(callErrors).toHaveLength(1)
+      expect(callErrors[0]).not.toHaveProperty('tool')
       expect(callErrors[0]).toMatchObject({
-        tool: 'list_issues',
         category: 'unreachable',
         step: 'call',
         reference: parsed!.reference,
@@ -563,6 +563,38 @@ describe('getConnectorTools', () => {
         }),
       ])
       expect(loggedConnectorValues('calls')[0]).not.toHaveProperty('tool')
+    })
+
+    it('does not log a key from the connector address that a 4xx body '
+      + 'echoes', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: `${alpha.url}?key=abc123secret`,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response(
+          'bad request https://mcp.alpha.example.com/mcp?key=abc123secret '
+          + 'key=abc123secret',
+          { status: 400 },
+        )
+      }))
+
+      await execute(tools, 'mcp__alpha__list_issues').catch(() => undefined)
+
+      const [callError] = loggedConnectorValues('callError') as Array<
+        Record<string, unknown>
+      >
+
+      expect(callError).toBeDefined()
+      expect(callError).toMatchObject({ category: 'protocol', httpStatus: 400 })
+      expect(JSON.stringify(logged)).not.toContain('abc123secret')
     })
 
     it('records a successful call without a category', async () => {

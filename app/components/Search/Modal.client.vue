@@ -125,7 +125,7 @@
 import type { HistoryChat } from '#shared/types/history.d'
 import { parseError } from 'evlog'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
-import { BESIDKA_TOOL_PERMISSIONS_LABS_PATH } from '~/utils/besidka-tool-permissions'
+import { getBesidkaToolPermissionsPath } from '~/utils/besidka-tool-permissions'
 
 interface SearchInputInstance {
   inputRef: HTMLInputElement | null
@@ -321,7 +321,9 @@ function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
           id: 'search-option-besidka-tool-permissions',
           iconName: 'lucide:wrench',
           label: 'Besidka tool permissions',
-          run: () => goTo(BESIDKA_TOOL_PERMISSIONS_LABS_PATH),
+          run: () => goTo(
+            getBesidkaToolPermissionsPath(connectorsFeature.value.active),
+          ),
         }]
         : []),
     ],

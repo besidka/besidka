@@ -27,7 +27,15 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 type DbClient = ReturnType<typeof useDb>
 
 const REFRESH_LOCK_KEY_PREFIX = 'connectors:refresh:'
-const FORBIDDEN_HEADER_CHAR_CODES: ReadonlySet<number> = new Set([0, 10, 13])
+const FORBIDDEN_HEADER_CHAR_CODES: ReadonlySet<number> = new Set([
+  0,
+  9,
+  10,
+  11,
+  12,
+  13,
+  0x7F,
+])
 const MAX_HEADER_CHAR_CODE = 0xFF
 const textEncoder = new TextEncoder()
 

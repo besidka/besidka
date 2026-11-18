@@ -85,6 +85,34 @@
       </div>
     </div>
 
+    <ul
+      v-if="isBesidkaRowVisible || (hasLoaded && connectors.length)"
+      class="list"
+      data-testid="connectors-list"
+    >
+      <ProfileConnectorsBesidkaRow
+        v-if="isBesidkaRowVisible"
+        :is-active="isBesidkaActive"
+        :is-busy="isBesidkaBusy"
+        :is-selected="isBesidkaSelected"
+        @open="openBesidkaPermissions"
+        @toggle="toggleBesidka"
+      />
+      <template v-if="hasLoaded">
+        <ProfileConnectorsRow
+          v-for="connector in connectors"
+          :key="connector.id"
+          :connector="connector"
+          :is-busy="busyIds.has(connector.id)"
+          :is-selected="selectedId === connector.id"
+          @open="openDetail"
+          @connect="item => connect.open(item.id)"
+          @remove="removeConnector"
+          @toggle="toggleConnector"
+        />
+      </template>
+    </ul>
+
     <div
       v-if="error && !hasLoaded"
       class="alert alert-error alert-soft items-start"
@@ -167,23 +195,6 @@
       </div>
     </div>
 
-    <ul
-      v-else
-      class="list"
-      data-testid="connectors-list"
-    >
-      <ProfileConnectorsRow
-        v-for="connector in connectors"
-        :key="connector.id"
-        :connector="connector"
-        :is-busy="busyIds.has(connector.id)"
-        :is-selected="selectedId === connector.id"
-        @open="openDetail"
-        @connect="item => connect.open(item.id)"
-        @remove="removeConnector"
-        @toggle="toggleConnector"
-      />
-    </ul>
     </template>
   </HistoryPageShell>
 
@@ -206,6 +217,11 @@
 <script setup lang="ts">
 import type { ConnectorPageItem } from '#shared/types/connectors.d'
 import { CONNECTORS_PER_USER } from '#shared/utils/connectors-policy'
+import BesidkaToolPermissions from '~/components/Profile/BesidkaTools/Permissions.vue'
+import {
+  BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
+  BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE,
+} from '~/utils/besidka-tool-permissions'
 
 definePageMeta({
   auth: {
@@ -230,13 +246,18 @@ const HANDLED_QUERY_KEYS = new Set([
   'connector',
   'add',
   'tab',
+  'panel',
 ])
+
+const BESIDKA_TOOLS_FEATURE_KEY = 'besidka-tools'
+const BESIDKA_PERMISSIONS_TITLE = 'Tool permissions'
 
 type AddTabId = typeof ADD_TAB_IDS[number]
 type ConnectorsView = 'yours' | 'discover'
 
 const connectorsFeature = useFeature('connectors')
 const registryFeature = useFeature('connectors.registry')
+const besidkaToolsFeature = useFeature(BESIDKA_TOOLS_FEATURE_KEY)
 
 if (!connectorsFeature.value.active) {
   await navigateTo('/chats/history', { replace: true })
@@ -246,6 +267,7 @@ const route = useRoute()
 const router = useRouter()
 const sidePanel = useSidePanel()
 const connect = useConnectorConnect()
+const { setFeatureOptIn } = useFeatureOptIn()
 const detailPanel = useConnectorDetailPanel()
 const { connectors, hasLoaded, error, refresh } = useConnectorsPage()
 
@@ -254,6 +276,7 @@ const view = shallowRef<ConnectorsView>('yours')
 const busyIds = shallowRef<Set<string>>(new Set())
 const liveMessage = shallowRef<string>('')
 const pendingOpenId = shallowRef<string | null>(null)
+const isBesidkaBusy = shallowRef<boolean>(false)
 
 const addedPresetIds = computed<ReadonlySet<string>>(() => {
   return new Set(connectors.value
@@ -268,6 +291,18 @@ const selectedId = computed<string | null>(() => {
   return viewKey?.startsWith(CONNECTOR_VIEW_KEY_PREFIX)
     ? viewKey.slice(CONNECTOR_VIEW_KEY_PREFIX.length)
     : null
+})
+
+const isBesidkaRowVisible = computed<boolean>(() => {
+  return besidkaToolsFeature.value.enabled
+})
+
+const isBesidkaActive = computed<boolean>(() => {
+  return besidkaToolsFeature.value.active
+})
+
+const isBesidkaSelected = computed<boolean>(() => {
+  return sidePanel.viewKey.value === BESIDKA_TOOL_PERMISSIONS_PANEL_KEY
 })
 
 function openAdd(tab: AddTabId) {
@@ -297,6 +332,42 @@ async function startAdding() {
 
 function openDetail(connector: Pick<ConnectorPageItem, 'id' | 'title'>) {
   detailPanel.open(connector)
+}
+
+function openBesidkaPermissions() {
+  sidePanel.open({
+    viewKey: BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
+    title: BESIDKA_PERMISSIONS_TITLE,
+    component: BesidkaToolPermissions,
+  })
+}
+
+async function toggleBesidka(enabled: boolean) {
+  isBesidkaBusy.value = true
+
+  try {
+    await setFeatureOptIn(BESIDKA_TOOLS_FEATURE_KEY, enabled)
+
+    if (!enabled && isBesidkaSelected.value) {
+      sidePanel.close()
+    }
+
+    if (isBesidkaActive.value !== enabled) {
+      useErrorMessage(
+        'Besidka tools may not have updated',
+        'Your choice was saved, but this page could not refresh. '
+        + 'Reload the page to see the current state.',
+      )
+
+      return
+    }
+
+    liveMessage.value = `Besidka tools turned ${enabled ? 'on' : 'off'}`
+  } catch (exception) {
+    reportConnectorError(exception, 'Could not change Besidka tools')
+  } finally {
+    isBesidkaBusy.value = false
+  }
 }
 
 function setBusy(connectorId: string, isBusy: boolean) {
@@ -379,13 +450,19 @@ async function handleRouteQuery() {
     : null
 
   const requestedAddTab = ADD_TAB_IDS.find(id => id === query.add) ?? null
+  const requestedBesidkaPanel
+    = query.panel === BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE
 
   if (query.tab === 'discover' && registryFeature.value.active) {
     view.value = 'discover'
   }
 
-  if (!callback && !requestedId && !requestedAddTab) {
+  if (!callback && !requestedId && !requestedAddTab && !requestedBesidkaPanel) {
     return
+  }
+
+  if (requestedBesidkaPanel && isBesidkaActive.value) {
+    openBesidkaPermissions()
   }
 
   if (requestedAddTab === 'url' || !registryFeature.value.active) {
@@ -449,12 +526,19 @@ watch(() => route.query.connector, async (connectorId) => {
   }
 })
 
+watch(() => route.query.panel, async (panel) => {
+  if (panel === BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE) {
+    await handleRouteQuery()
+  }
+})
+
 onBeforeUnmount(() => {
   const viewKey = sidePanel.viewKey.value ?? ''
 
   if (
     viewKey.startsWith(CONNECTOR_VIEW_KEY_PREFIX)
     || viewKey.startsWith(CONNECTOR_DIRECTORY_VIEW_KEY_PREFIX)
+    || viewKey === BESIDKA_TOOL_PERMISSIONS_PANEL_KEY
   ) {
     sidePanel.close()
   }
