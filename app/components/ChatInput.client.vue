@@ -58,7 +58,7 @@
     </div>
     <div class="flex justify-center w-full px-2">
       <UiBubble
-        class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
+        class="relative z-20 grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
       >
         <div
           class="p-1 pb-0 bg-transparent"

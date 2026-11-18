@@ -3292,6 +3292,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern:
+        /^app\/components\/(Chat\/Scroll\.client|ChatInput\.client|ChatInput\/ToolsMenu\.client|ChatInput\/ModelsTrigger|Ui\/Bubble)\.vue$/,
+      tests: [
+        'tests/e2e/chat/composer-menus-layer.spec.ts',
+      ],
+    },
+    {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
       tests: [
         'tests/e2e/chat/scroll-spacer.spec.ts',
