@@ -1,6 +1,7 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
+import { FEATURE_REGISTRY } from '#shared/utils/features/registry'
 import BesidkaRow from '../../../../../app/components/Profile/Connectors/BesidkaRow.vue'
 
 enableAutoUnmount(afterEach)
@@ -20,8 +21,9 @@ describe('Profile/Connectors/BesidkaRow', () => {
       const wrapper = await mountRow()
 
       expect(wrapper.text()).toContain('Besidka')
-      expect(wrapper.text())
-        .toContain('Your chats, projects, files and settings')
+      expect(wrapper.get('[data-testid="besidka-connector-row-description"]')
+        .text().replace(/\s+/g, ' '))
+        .toBe(FEATURE_REGISTRY['besidka-tools'].description)
       expect(wrapper.find('[data-testid="connector-row-remove"]').exists())
         .toBe(false)
       expect(wrapper.find('[data-testid="connector-row-mode"]').exists())
@@ -62,6 +64,13 @@ describe('Profile/Connectors/BesidkaRow', () => {
     const wrapper = await mountRow({ isBusy: true })
 
     expect(wrapper.get(TOGGLE).attributes('disabled')).toBeDefined()
+    expect(wrapper.get(TOGGLE).attributes('aria-busy')).toBe('true')
+  })
+
+  it('is not busy by default', async () => {
+    const wrapper = await mountRow()
+
+    expect(wrapper.get(TOGGLE).attributes('aria-busy')).toBe('false')
   })
 
   it('marks itself selected while its panel is open', async () => {

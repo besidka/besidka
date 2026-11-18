@@ -33,10 +33,11 @@
         Besidka
       </span>
       <p
-        class="mt-1 truncate text-xs text-base-content/70"
+        class="mt-1 text-xs text-base-content/70"
         data-testid="besidka-connector-row-description"
       >
-        Your chats, projects, files and settings
+        Let the model use your Besidka data and tools in chats, with your
+        permission for each tool.
       </p>
     </div>
     <label class="flex items-center gap-2 text-sm">
@@ -46,6 +47,7 @@
         class="toggle toggle-sm"
         :checked="isActive"
         :disabled="isBusy"
+        :aria-busy="isBusy"
         data-testid="besidka-connector-row-toggle"
         @change="onToggle"
       >

@@ -110,8 +110,9 @@ replay reads it as missing.
 ## Labs and the panel
 
 - **Connectors page** (`/chats/connectors`, "Yours"): the main entry point. A
-  pinned first row "Besidka" (`ProfileConnectorsBesidkaRow`, Besidka logo,
-  "Your chats, projects, files and settings") shows whenever the user has
+  pinned first row "Besidka" (`ProfileConnectorsBesidkaRow`, Besidka logo, the
+  Labs description "Let the model use your Besidka data and tools in chats,
+  with your permission for each tool.") shows whenever the user has
   access to the `besidka-tools` flag (`useFeature('besidka-tools').enabled`),
   before or after the opt-in. It is composed in the browser only: it is not a
   row of `connectors`, not in `GET /api/v1/connectors`, `list_connectors`, the
@@ -119,7 +120,10 @@ replay reads it as missing.
   Labs opt-in itself: it calls `useFeatureOptIn().setFeatureOptIn`
   (`app/composables/feature-opt-in.ts`), the writer the Labs page uses, which
   posts `{ optedIn }` to `/api/v1/profiles/features/besidka-tools/opt-in` and
-  refreshes the client features. There is no second flag or setting. With the
+  refreshes the client features. When that refresh does not show the new
+  state (`refreshFeatures` swallows a failed `GET /api/v1/features`), the page
+  shows an error toast and announces nothing. Turning the opt-in off closes the
+  open permissions panel. There is no second flag or setting. With the
   opt-in on, the name opens the Tool permissions panel; with it off the name is
   plain text. The row has no delete, no Manual/Auto/Always on mode, no consent
   block and no "Not connected" status. `?panel=besidka-tool-permissions` on
@@ -334,6 +338,6 @@ step titled "Besidka: list projects".
 The chat panel's Approvals section (`listChatToolApprovalGrants`) lists the
 Besidka grants too: "Allow in this chat" grants whose registry hash still
 matches, and, while the chat's Besidka row is on, every tool set to Always
-allow. A Besidka Always allow row links to the Labs permissions panel
-("Manage") instead of a Remove button; "Reset approvals in this chat" clears
+allow. A Besidka Always allow row links to the permissions panel on the Connectors page (Labs when
+the `connectors` flag is off) ("Manage") instead of a Remove button; "Reset approvals in this chat" clears
 the Besidka chat grants with the connector ones.

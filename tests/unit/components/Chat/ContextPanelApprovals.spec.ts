@@ -1,4 +1,4 @@
-import { computed, shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +15,16 @@ const mocks = vi.hoisted(() => ({
   resetChatGrants: vi.fn(async () => {}),
   revokeAlwaysGrant: vi.fn(async () => {}),
 }))
+
+const connectorsActive = ref<boolean>(false)
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => ({
+    enabled: connectorsActive.value,
+    active: connectorsActive.value,
+    variant: null,
+  }))
+})
 
 mockNuxtImport('useChatToolApprovalGrants', () => {
   return () => {
@@ -52,6 +62,7 @@ const ALWAYS_GRANT: ToolApprovalGrantItem = {
 describe('Chat/ContextPanelApprovals', () => {
   beforeEach(() => {
     mocks.grants = []
+    connectorsActive.value = false
     mocks.refresh.mockClear()
     mocks.resetChatGrants.mockClear()
     mocks.revokeAlwaysGrant.mockClear()
@@ -116,6 +127,25 @@ describe('Chat/ContextPanelApprovals', () => {
         .toBe('/profile/labs?panel=besidka-tool-permissions')
       expect(row.find('[data-testid="chat-context-approval-remove"]')
         .exists()).toBe(false)
+    })
+
+  it('points Manage at the Connectors page when connectors are on',
+    async () => {
+      connectorsActive.value = true
+      mocks.grants = [{
+        scope: 'always',
+        connectorId: '',
+        connectorTitle: 'Besidka',
+        toolName: 'list_projects',
+        source: 'besidka',
+      }]
+
+      const wrapper = await mountSuspended(ContextPanelApprovals)
+
+      expect(wrapper.get(
+        '[data-testid="chat-context-approval-manage-besidka"]',
+      ).attributes('to'))
+        .toBe('/chats/connectors?panel=besidka-tool-permissions')
     })
 
   it('hides Reset when only always grants apply', async () => {

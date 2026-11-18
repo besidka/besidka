@@ -352,6 +352,16 @@ async function toggleBesidka(enabled: boolean) {
       sidePanel.close()
     }
 
+    if (isBesidkaActive.value !== enabled) {
+      useErrorMessage(
+        'Besidka tools may not have updated',
+        'Your choice was saved, but this page could not refresh. '
+        + 'Reload the page to see the current state.',
+      )
+
+      return
+    }
+
     liveMessage.value = `Besidka tools turned ${enabled ? 'on' : 'off'}`
   } catch (exception) {
     reportConnectorError(exception, 'Could not change Besidka tools')
