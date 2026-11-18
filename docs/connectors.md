@@ -1747,7 +1747,15 @@ found".
 not counted there. Expanded, each connector step row shows one 32 px
 thumbnail at its right edge with `+N` over it when the call kept more. A
 click opens the shared image viewer (`ChatImagePreview`, with Download)
-without toggling the steps (`ConnectorThumbnail.vue`, `.stop.prevent`). Alt
+without toggling the steps (`ConnectorThumbnail.vue`, `.stop.prevent`), on
+the clicked image, with previous and next buttons, an "N of M" counter and
+the left and right arrow keys (the viewer's optional `position` prop and
+`navigate` event; one image shows no navigation). From a step row the
+viewer moves through the kept images of that call, from the header through
+every kept image of the message, so every kept image can be opened. Deleted
+images are skipped. `delete_connector_images` is excluded from chat models
+(`chat.excluded`; `chat-adapter.spec.ts` checks it is never in the chat tool
+set). Alt
 text: "Screenshot from <connector title>". A shared chat shows none.
 
 **Logs.** `attributes.connectors.calls[]` gains `imagesForwarded`,

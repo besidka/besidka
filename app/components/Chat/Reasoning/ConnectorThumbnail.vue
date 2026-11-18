@@ -42,32 +42,61 @@
       </span>
     </button>
     <LazyChatImagePreview
-      v-if="isPreviewOpen && links"
+      v-if="isPreviewOpen && previewEntry?.links"
       v-model:open="isPreviewOpen"
-      :src="links.openUrl"
-      :download-url="links.downloadUrl"
-      :alt="alt"
-      :filename="image.name"
+      :src="previewEntry.links.openUrl"
+      :download-url="previewEntry.links.downloadUrl"
+      :alt="previewEntry.alt"
+      :filename="previewEntry.image.name"
+      :position="{ index: previewIndex, total: previewEntries.length }"
+      @navigate="onNavigate"
     />
   </span>
 </template>
 
 <script setup lang="ts">
 import type { ConnectorImagePartData } from '#shared/utils/connector-image-parts'
+import type { SafeFileLinks } from '~/utils/files'
+
+interface ConnectorImageEntry {
+  image: ConnectorImagePartData
+  alt: string
+}
+
+interface PreviewEntry extends ConnectorImageEntry {
+  links: SafeFileLinks | null
+}
 
 const props = withDefaults(defineProps<{
   image: ConnectorImagePartData
   alt: string
   size?: 'sm' | 'md'
   extraCount?: number
+  gallery?: ConnectorImageEntry[]
 }>(), {
   size: 'md',
   extraCount: 0,
+  gallery: () => [],
 })
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
 const isPreviewOpen = shallowRef<boolean>(false)
 const hasLoadError = shallowRef<boolean>(false)
+const previewIndex = shallowRef<number>(0)
+
+const previewEntries = computed<PreviewEntry[]>(() => {
+  const entries = props.gallery.length > 0
+    ? props.gallery.filter(entry => !entry.image.deleted)
+    : [{ image: props.image, alt: props.alt }]
+
+  return entries.map((entry) => {
+    return { ...entry, links: getSafeFileLinks(entry.image.url) }
+  })
+})
+
+const previewEntry = computed<PreviewEntry | null>(() => {
+  return previewEntries.value[previewIndex.value] ?? null
+})
 
 const links = computed(() => getSafeFileLinks(props.image.url))
 
@@ -79,16 +108,43 @@ const sizeClass = computed<string>(() => {
   return props.size === 'sm' ? 'size-6' : 'size-8'
 })
 
+function isSameImage(
+  left: ConnectorImagePartData,
+  right: ConnectorImagePartData,
+): boolean {
+  return left.toolCallId === right.toolCallId && left.fileId === right.fileId
+}
+
 function openPreview() {
   if (isImagePreviewSuppressed.value || !links.value) {
     return
   }
 
+  const index = previewEntries.value.findIndex((entry) => {
+    return isSameImage(entry.image, props.image)
+  })
+
+  previewIndex.value = Math.max(0, index)
   isPreviewOpen.value = true
+}
+
+function onNavigate(direction: -1 | 1) {
+  const nextIndex = previewIndex.value + direction
+
+  if (nextIndex < 0 || nextIndex >= previewEntries.value.length) {
+    return
+  }
+
+  previewIndex.value = nextIndex
 }
 
 function onImageError() {
   hasLoadError.value = true
-  isPreviewOpen.value = false
+
+  const current = previewEntry.value
+
+  if (current && isSameImage(current.image, props.image)) {
+    isPreviewOpen.value = false
+  }
 }
 </script>

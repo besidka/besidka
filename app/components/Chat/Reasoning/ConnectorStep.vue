@@ -70,6 +70,7 @@
       :image="shownImage"
       :alt="imageAlt"
       :extra-count="images.length - 1"
+      :gallery="imageGallery"
     />
   </div>
 </template>
@@ -104,6 +105,10 @@ const shownImage = computed<ConnectorImagePartData | null>(() => {
 
 const imageAlt = computed<string>(() => {
   return getConnectorImageAlt(props.connectorTitle || props.data.slug)
+})
+
+const imageGallery = computed(() => {
+  return props.images.map(image => ({ image, alt: imageAlt.value }))
 })
 
 const COPIED_RESET_MS = 2000

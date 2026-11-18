@@ -88,6 +88,80 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
       .toBe(false)
   })
 
+  it('opens the clicked image of a gallery and moves through the rest',
+    async () => {
+      const first = imageOf({ fileId: 'a', url: '/files/connector-a.png' })
+      const gone = imageOf({ fileId: 'b', deleted: true })
+      const third = imageOf({
+        toolCallId: 'call-2',
+        fileId: 'c',
+        url: '/files/connector-c.png',
+        name: 'figma-get_screenshot.png',
+      })
+      const wrapper = await mountSuspended(ConnectorThumbnail, {
+        props: {
+          image: third,
+          alt: 'Screenshot from Figma',
+          gallery: [
+            { image: first, alt: 'Screenshot from Doop' },
+            { image: gone, alt: 'Screenshot from Doop' },
+            { image: third, alt: 'Screenshot from Figma' },
+          ],
+        },
+        global: {
+          stubs: { LazyChatImagePreview: LazyImagePreview, teleport: true },
+        },
+      })
+
+      await wrapper.get('[data-testid="reasoning-connector-image"]')
+        .trigger('click')
+      await flushPromises()
+
+      const position = () => {
+        return wrapper.get('[data-testid="image-preview-position"]').text()
+      }
+      const shownSource = () => {
+        return wrapper.get('[data-testid="image-preview-image"]')
+          .attributes('src')
+      }
+
+      expect(position()).toBe('2 of 2')
+      expect(shownSource()).toContain('connector-c.png')
+      expect(wrapper.get('[data-testid="image-preview-next"]')
+        .attributes('aria-disabled')).toBe('true')
+
+      await wrapper.get('[data-testid="image-preview-previous"]')
+        .trigger('click')
+
+      expect(position()).toBe('1 of 2')
+      expect(shownSource()).toContain('connector-a.png')
+      expect(wrapper.get('[data-testid="image-preview-image"]')
+        .attributes('alt')).toBe('Screenshot from Doop')
+      expect(wrapper.get('[data-testid="image-preview-download"]')
+        .attributes('href')).toContain('connector-a.png')
+
+      await wrapper.get('[data-testid="image-preview-modal"]')
+        .trigger('keydown', { key: 'ArrowRight' })
+
+      expect(position()).toBe('2 of 2')
+      expect(shownSource()).toContain('connector-c.png')
+
+      await wrapper.get('[data-testid="image-preview-next"]').trigger('click')
+
+      expect(position()).toBe('2 of 2')
+    })
+
+  it('shows no navigation for a single image', async () => {
+    const wrapper = await mountThumbnail()
+
+    await wrapper.get('[data-testid="reasoning-connector-image"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="image-preview-gallery"]').exists())
+      .toBe(false)
+  })
+
   it('shows a muted deleted tile and no image for a deleted file',
     async () => {
       const wrapper = await mountThumbnail(imageOf({ deleted: true }))

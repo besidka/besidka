@@ -1,8 +1,10 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref, shallowRef } from 'vue'
+import { defineAsyncComponent, ref, shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
 import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
 
 vi.mock('@panzoom/panzoom', () => {
@@ -53,7 +55,11 @@ function connectorCall(overrides: Record<string, unknown> = {}) {
 
 async function mountMessage(
   parts: unknown[],
-  options: { status?: 'ready' | 'streaming', role?: UIMessage['role'] } = {},
+  options: {
+    status?: 'ready' | 'streaming'
+    role?: UIMessage['role']
+    stubTeleport?: boolean
+  } = {},
 ) {
   return await mountSuspended(Reasoning, {
     props: {
@@ -69,7 +75,19 @@ async function mountMessage(
       reasoningSegmentStartedAt: 0,
       isTurnThinkingHeld: false,
     },
-    global: { stubs: { MDCCached: true } },
+    global: {
+      stubs: {
+        MDCCached: true,
+        ...(options.stubTeleport
+          ? {
+            teleport: true,
+            LazyChatImagePreview: defineAsyncComponent(() => {
+              return Promise.resolve(ImagePreview)
+            }),
+          }
+          : {}),
+      },
+    },
   })
 }
 
@@ -245,6 +263,34 @@ describe('Chat/Reasoning connector images', () => {
         '[data-testid="reasoning-connector-image-deleted"]',
       ).exists()).toBe(true)
     })
+
+  it('opens a header image among every image of the message and a row '
+    + 'image among the images of its call', async () => {
+    const parts = [
+      connectorCall(),
+      connectorImage('call-1', 0),
+      connectorImage('call-1', 1),
+      connectorCall({ toolCallId: 'call-2' }),
+      connectorImage('call-2', 0),
+    ]
+    const wrapper = await mountMessage(parts, { stubTeleport: true })
+
+    await wrapper.findAll('[data-testid="reasoning-header-images"] '
+      + '[data-testid="reasoning-connector-image"]')[2]!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="image-preview-position"]').text())
+      .toBe('3 of 3')
+
+    const expanded = await mountMessage(parts, { stubTeleport: true })
+
+    await expanded.findAll('[data-testid="reasoning-connector-step"]')[0]!
+      .get('[data-testid="reasoning-connector-image"]').trigger('click')
+    await flushPromises()
+
+    expect(expanded.get('[data-testid="image-preview-position"]').text())
+      .toBe('1 of 2')
+  })
 
   it('shows no images in a shared chat', async () => {
     const wrapper = await mountSuspended(Reasoning, {

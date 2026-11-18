@@ -2486,6 +2486,9 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/Chat/ImagePreview.client.spec.ts',
         'tests/unit/composables/image-zoom.spec.ts',
+        'tests/unit/components/Chat/Reasoning/ConnectorThumbnail.spec.ts',
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/unit/components/Chat/Files.spec.ts',
       ],
     },
     {

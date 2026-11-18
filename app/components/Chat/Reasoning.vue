@@ -104,6 +104,7 @@
               :image="entry.image"
               :alt="entry.alt"
               size="sm"
+              :gallery="headerImages"
             />
           </span>
           <span

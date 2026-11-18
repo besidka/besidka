@@ -27,6 +27,7 @@ const {
   previewBesidkaToolCall,
   selectBesidkaChatTools,
   targetsCurrentChat,
+  toBesidkaChatToolName,
   toChatToolResult,
 } = await import('~~/server/utils/besidka-tools/chat-adapter')
 const { listChatExposedBesidkaTools } = await import(
@@ -265,6 +266,27 @@ describe('Besidka tool descriptors', () => {
 })
 
 describe('buildBesidkaChatTools', () => {
+  it('never offers delete_connector_images to a chat model, even when '
+    + 'every mode allows it', async () => {
+    const { run } = await build({
+      modes: new Map([
+        ...modesWith({}, 'always'),
+        ['delete_connector_images', 'always'],
+      ]),
+    })
+    const exposedNames = listChatExposedBesidkaTools().map((besidkaTool) => {
+      return besidkaTool.name
+    })
+
+    expect(exposedNames).not.toContain('delete_connector_images')
+    expect(Object.keys(run.tools)).not.toContain(
+      toBesidkaChatToolName('delete_connector_images'),
+    )
+    expect(Object.keys(run.tools).some((name) => {
+      return name.includes('connector_images')
+    })).toBe(false)
+  })
+
   beforeEach(() => {
     mocks.listMcpProjects.mockReset()
   })
