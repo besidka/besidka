@@ -257,6 +257,8 @@ export const CONNECTOR_IMAGES_PER_CALL = 4
 export const CONNECTOR_IMAGE_MAX_BYTES = 3.5 * MEBIBYTE
 export const CONNECTOR_IMAGES_MAX_BYTES_PER_SEND = 12 * MEBIBYTE
 export const CONNECTOR_IMAGE_MAX_DIMENSION = 8000
+export const CONNECTOR_IMAGES_PER_SEND = 20
+export const CONNECTOR_IMAGE_CALLS_IN_FLIGHT = 2
 
 /**
  * Direct providers whose adapter sends an image inside a tool result as an

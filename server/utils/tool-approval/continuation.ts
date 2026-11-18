@@ -31,7 +31,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { isFramedConnectorOutput } from '#shared/utils/connectors-parts'
 import {
   toReplayedConnectorImageText,
-} from '~~/server/utils/connectors/tool-images'
+} from '~~/server/utils/connectors/image-placeholders'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   claimApproval,

@@ -42,12 +42,15 @@ describe('connector transport fetch', () => {
     expect(safeFetch).toHaveBeenCalledTimes(2)
   })
 
-  it('raises the body cap to 8 MiB for tools/call only', async () => {
+  async function sentInits(largeCallResponses: boolean) {
     const safeFetch = vi.fn(async () => new Response('ok'))
     const createFetch = vi.fn(() => safeFetch as unknown as typeof fetch)
     const transportFetch = createConnectorTransportFetch(
       'streamable-http',
       createFetch,
+      undefined,
+      true,
+      largeCallResponses,
     )
     const message = (method: string) => {
       return JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} })
@@ -66,14 +69,29 @@ describe('connector transport fetch', () => {
       body: 'not json',
     })
 
-    const inits = safeFetch.mock.calls.map((call) => {
+    return safeFetch.mock.calls.map((call) => {
       return (call as unknown as [string, Record<string, unknown>])[1]
     })
+  }
 
-    expect(inits[0]?.maxResponseBytes).toBe(CONNECTOR_CALL_RESPONSE_MAX_BYTES)
-    expect(inits[1]).not.toHaveProperty('maxResponseBytes')
-    expect(inits[2]).not.toHaveProperty('maxResponseBytes')
-  })
+  it('raises the body cap to 8 MiB for tools/call of an image send only',
+    async () => {
+      const inits = await sentInits(true)
+
+      expect(inits[0]?.maxResponseBytes)
+        .toBe(CONNECTOR_CALL_RESPONSE_MAX_BYTES)
+      expect(inits[1]).not.toHaveProperty('maxResponseBytes')
+      expect(inits[2]).not.toHaveProperty('maxResponseBytes')
+    })
+
+  it('keeps the 1 MiB default for every request of a send without images',
+    async () => {
+      const inits = await sentInits(false)
+
+      for (const init of inits) {
+        expect(init).not.toHaveProperty('maxResponseBytes')
+      }
+    })
 
   it('gives the legacy SSE transport a session deadline and size cap',
     () => {

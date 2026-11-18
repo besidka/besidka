@@ -142,16 +142,18 @@ function isToolCallRequest(init?: RequestInit): boolean {
  * (the transport reads it as "no stream offered") and never leaves the
  * Worker, which keeps a send from holding one connection per connector open.
  * The legacy SSE transport needs its one `GET` stream, so it gets a session
- * deadline and size cap instead. On streamable HTTP a `tools/call` response
- * may carry images, so its body cap is `CONNECTOR_CALL_RESPONSE_MAX_BYTES`
- * (8 MiB) instead of the 1 MiB `mcp` default every other request keeps; the
- * body is still counted as it streams and cut at the cap.
+ * deadline and size cap instead. With `largeCallResponses` (a send that
+ * forwards images to its model), a `tools/call` response on streamable HTTP
+ * may be up to `CONNECTOR_CALL_RESPONSE_MAX_BYTES` (8 MiB); every other
+ * request, and every request of a send without images, keeps the 1 MiB
+ * `mcp` default. The body is counted as it streams and cut at the cap.
  */
 export function createConnectorTransportFetch(
   transport: ConnectorTransport,
   createFetch: typeof createSafeFetch = createSafeFetch,
   logger?: LoggerLike,
   logsHost: boolean = true,
+  largeCallResponses: boolean = false,
 ): typeof fetch {
   const netLogger = scopeNetLogger(logger, logsHost)
 
@@ -176,7 +178,7 @@ export function createConnectorTransportFetch(
       )
     }
 
-    if (isToolCallRequest(init)) {
+    if (largeCallResponses && isToolCallRequest(init)) {
       return safeFetch(input, {
         ...init,
         maxResponseBytes: CONNECTOR_CALL_RESPONSE_MAX_BYTES,
@@ -258,6 +260,7 @@ export function createConnectorClientHandle(input: {
   limiter: ConcurrencyLimiter
   logger?: LoggerLike
   logsHost?: boolean
+  largeCallResponses?: boolean
   dependencies?: ConnectorClientDependencies
 }): ConnectorClientHandle {
   const createClient = input.dependencies?.createClient ?? createMCPClient
@@ -266,6 +269,7 @@ export function createConnectorClientHandle(input: {
     input.dependencies?.createFetch,
     input.logger,
     input.logsHost,
+    input.largeCallResponses,
   )
   let clientPromise: Promise<ConnectorClient> | null = null
   let isClosed = false

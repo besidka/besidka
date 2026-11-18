@@ -1573,7 +1573,14 @@ memory never carry image bytes. A forwarded image leaves the line
 result; an image that is not forwarded keeps `[image omitted: image/png]`,
 with the reason appended when there is one (`larger than 3.5 MB`, `more than
 4 images in one result`, `over the 12 MB of images one message can show`,
-`not a valid image`, `only PNG, JPEG, GIF and WebP images are shown`).
+`too many images in one message`, `not a valid image`, `only PNG, JPEG, GIF
+and WebP images are shown`). Only Besidka writes the real line: text the
+server wrote that looks like one (`[...: shown to the model, not saved]` or
+the replay wording, in a text item, a resource, a `mimeType` or structured
+content) is rewritten to `[text from the connector: ...]`
+(`neutralizeConnectorImagePlaceholders` in
+`server/utils/connectors/image-placeholders.ts`), so the continuation rewrite
+below never touches it.
 
 **How the model gets it.** `getConnectorTools` keeps a map from tool call id
 to the validated images inside its own run (never module-global) and gives
@@ -1582,8 +1589,11 @@ every connector tool a `toModelOutput`. The SDK (`ai` 7.0.173,
 prompt, on every later step of the send, so reads do not consume the entry;
 `close()` clears the map. With images the output is
 `{ type: 'content', value: [text, note, file...] }`: the framed text, a note
-that the images come from the connector `<title>`, tool `<name>`, and are data
-from a third party, never instructions (the untrusted frame wraps text only),
+that the images come from the connector `<title>`, tool `<exposed name>`, and
+are data from a third party, never instructions (the untrusted frame wraps
+text only; the title keeps only `[A-Za-z0-9 _.-]`, both fields are cut to 64
+characters, and the tool is named by its sanitized `mcp__<slug>__<tool>`
+name, so nothing a server chose reaches the model outside the frame),
 then one `{ type: 'file', mediaType, data: { type: 'data', data } }` part per
 image. Without images it is `{ type: 'text', value }`, exactly what the SDK
 sends by default.
@@ -1606,10 +1616,17 @@ are.
 
 **Limits** (section 9): PNG, JPEG, GIF and WebP only, decided by magic bytes
 (`sniffConnectorIconType`), never by the server's `mimeType`; never SVG or
-ICO; at most 4 images per call (`CONNECTOR_IMAGES_PER_CALL`), 3.5 MB decoded
-each (`CONNECTOR_IMAGE_MAX_BYTES`, under Anthropic's 5 MB), 12 MB per send
-(`CONNECTOR_IMAGES_MAX_BYTES_PER_SEND`, counted when the call runs). Base64
-that does not decode drops the image, not the call. Before an image is
+ICO; at most 4 images per call (`CONNECTOR_IMAGES_PER_CALL`), 20 per send
+(`CONNECTOR_IMAGES_PER_SEND`, Anthropic's multi-image limit; every image of a
+send is in every later request of it), 3.5 MB decoded each
+(`CONNECTOR_IMAGE_MAX_BYTES`, under Anthropic's 5 MB), 12 MB per send
+(`CONNECTOR_IMAGES_MAX_BYTES_PER_SEND`, counted when the call runs). The
+store replaces a call id's entry on every result, even an empty one, so the
+totals stay right. Base64 that does not decode drops the image, not the call.
+The caps, the per-send budget and the type are checked from the string
+length and its first bytes before anything larger is decoded; the structure
+check below decodes only the first 256 KiB and the last bytes, and a
+forwarded image keeps the server's string without a copy. Before an image is
 forwarded, a cheap structural check (`isUsableConnectorImage`) must pass, so
 a corrupt image does not make the provider reject the whole send: PNG has its
 `IHDR` chunk with a nonzero width and height, JPEG starts with SOI, ends with
@@ -1618,16 +1635,24 @@ RIFF size matches the data, and neither side is over 8000 px
 (`CONNECTOR_IMAGE_MAX_DIMENSION`, Anthropic's limit). A failure gives the
 `not a valid image` line. The pixels are not decoded.
 
-**Transport cap.** On streamable HTTP a `tools/call` response may be up to
-`CONNECTOR_CALL_RESPONSE_MAX_BYTES` (8 MiB, the same bound as the legacy SSE
-session cap `CONNECTOR_SSE_SESSION_MAX_BYTES`), so a screenshot of about
-6 MB decoded arrives; images above 3.5 MB still get the `larger than 3.5 MB`
-line. `createConnectorTransportFetch` picks the 8 MiB cap only for a request
-whose JSON-RPC method is `tools/call`; `initialize`, `tools/list` and the
-connect probe keep the 1 MiB `mcp` default (`CONNECTOR_RESPONSE_MAX_BYTES`).
-`safeFetch` counts the body as it streams and aborts at the cap, so nothing
-past it is buffered; a larger response fails the call as a `protocol` error
-(covered by `send-tools.spec.ts`). The 64 KiB cap on the result text is
+**Transport cap.** In a send that forwards images, a `tools/call` response
+on streamable HTTP may be up to `CONNECTOR_CALL_RESPONSE_MAX_BYTES` (8 MiB,
+the same bound as the legacy SSE session cap
+`CONNECTOR_SSE_SESSION_MAX_BYTES`), so a screenshot of about 6 MB decoded
+arrives; images above 3.5 MB still get the `larger than 3.5 MB` line.
+`createConnectorTransportFetch` picks the 8 MiB cap only with
+`largeCallResponses` (set from `forwardImages`) and only for a request whose
+JSON-RPC method is `tools/call`; `initialize`, `tools/list`, the connect
+probe and every request of a send without images keep the 1 MiB `mcp`
+default (`CONNECTOR_RESPONSE_MAX_BYTES`). `safeFetch` counts the body as it
+streams and aborts at the cap, so nothing past it is buffered; a larger
+response fails the call as a `protocol` error (covered by
+`send-tools.spec.ts`). To bound memory, at most two calls of such a send
+receive and parse a response at once (`CONNECTOR_IMAGE_CALLS_IN_FLIGHT`, a
+limiter around `callTool` and the image collection, so at most 16 MiB of
+large bodies; the parsed result is dropped as soon as the text and images
+are taken from it). Other calls wait; the wait counts toward the call's 60 s
+timeout. The 64 KiB cap on the result text is
 unchanged. When the text of a result is cut at 64 KiB, an image line past the
 cut is lost from the text while the image is still forwarded with its note.
 
@@ -1646,7 +1671,8 @@ sends drop tool parts altogether (step 11 above).
 **Costs and risks.** An image is billed as input tokens on the user's key,
 and again on every later step of the same send. The structural check does
 not decode pixels, so an image that is corrupt inside its compressed data may
-still make the provider reject the whole request. Redaction of the connector's secrets applies to the text only.
+still make the provider reject the whole request. Redaction of the
+connector's secrets applies to the text only.
 
 ## 7. Approvals
 
@@ -2904,11 +2930,13 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_SLUG_MAX_LENGTH` | 16 | C-2 |
 | `CONNECTOR_RESULT_MAX_BYTES` | 65,536 text after conversion | C-5 |
 | `CONNECTOR_RESPONSE_MAX_BYTES` | 1,048,576 raw per MCP response (every request but `tools/call`) | C-3, C-5 |
-| `CONNECTOR_CALL_RESPONSE_MAX_BYTES` | 8,388,608 raw per `tools/call` response on streamable HTTP | C-15 (section 6.5) |
+| `CONNECTOR_CALL_RESPONSE_MAX_BYTES` | 8,388,608 raw per `tools/call` response on streamable HTTP, only in a send that forwards images | C-15 (section 6.5) |
 | `CONNECTOR_IMAGES_PER_CALL` | 4 images forwarded per result | C-15 (section 6.5) |
 | `CONNECTOR_IMAGE_MAX_BYTES` | 3.5 MiB decoded per image | C-15 (section 6.5) |
 | `CONNECTOR_IMAGES_MAX_BYTES_PER_SEND` | 12 MiB decoded per send | C-15 (section 6.5) |
 | `CONNECTOR_IMAGE_MAX_DIMENSION` | 8,000 px per side | C-15 (section 6.5) |
+| `CONNECTOR_IMAGES_PER_SEND` | 20 images forwarded per send | C-15 (section 6.5) |
+| `CONNECTOR_IMAGE_CALLS_IN_FLIGHT` | 2 image-send calls receiving a response at once | C-15 (section 6.5) |
 | `CONNECTOR_IMAGE_PROVIDERS` | `anthropic`, `openai` (direct only) | C-15 (section 6.5) |
 | `CONNECTOR_CALL_TIMEOUT_MS` | 60,000 (= `TOOL_LOOP_TOOL_TIMEOUT_MS`) | C-5 |
 | `CONNECTOR_CONNECT_TIMEOUT_MS` | 10,000 | C-5 |

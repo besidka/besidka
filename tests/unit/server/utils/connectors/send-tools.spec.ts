@@ -933,7 +933,7 @@ describe('getConnectorTools', () => {
         expect(forModel.type).toBe('content')
         expect(forModel.value[0]).toEqual({ type: 'text', text: output })
         expect(forModel.value[1].text).toContain(
-          'from the connector "alpha", tool "list_issues"',
+          'from the connector "alpha", tool "mcp__alpha__list_issues"',
         )
         expect(forModel.value[2]).toEqual({
           type: 'file',
@@ -962,7 +962,13 @@ describe('getConnectorTools', () => {
       )
     })
 
-    async function largeResponseRun(content: unknown[]) {
+    async function largeResponseRun(
+      content: unknown[],
+      options: {
+        forwardImages?: boolean
+        wrapFetch?: (base: typeof fetch) => typeof fetch
+      } = {},
+    ) {
       const alpha = server('mcp.alpha.example.com', {
         respond: () => ({ content }),
       })
@@ -977,17 +983,22 @@ describe('getConnectorTools', () => {
       return await run({
         connectorSeeds: seeds,
         servers: [alpha],
-        forwardImages: true,
+        forwardImages: options.forwardImages ?? true,
+        ...(options.wrapFetch ? { wrapFetch: options.wrapFetch } : {}),
       })
+    }
+
+    function screenshotBase64(): string {
+      const screenshot = new Uint8Array(1.5 * 1024 * 1024)
+
+      screenshot.set(pngHeaderBytes(1920, 1080))
+
+      return Buffer.from(screenshot).toString('base64')
     }
 
     it('lets a screenshot past the 1 MiB default through the 8 MiB call cap',
       async () => {
-        const screenshot = new Uint8Array(1.5 * 1024 * 1024)
-
-        screenshot.set(pngHeaderBytes(1920, 1080))
-
-        const base64 = Buffer.from(screenshot).toString('base64')
+        const base64 = screenshotBase64()
 
         expect(base64.length).toBeGreaterThan(CONNECTOR_RESPONSE_MAX_BYTES)
 
@@ -1001,6 +1012,69 @@ describe('getConnectorTools', () => {
           data: { type: 'data', data: base64 },
         })
       })
+
+    it('keeps the 1 MiB cap when the send does not forward images',
+      async () => {
+        const { tools } = await largeResponseRun(
+          [mcpImage(screenshotBase64())],
+          { forwardImages: false },
+        )
+        const exception = await execute(tools, 'mcp__alpha__list_issues')
+          .catch((caught: Error) => caught)
+
+        expect(exception).toBeInstanceOf(Error)
+        expect(parseConnectorCallErrorText(exception.message)?.category)
+          .toBe('protocol')
+      })
+
+    it('keeps at most two large responses in flight per send', async () => {
+      let inFlight = 0
+      let maxInFlight = 0
+
+      function release() {
+        inFlight -= 1
+      }
+
+      const { tools } = await largeResponseRun([mcpImage(screenshotBase64())], {
+        wrapFetch: base => (async (input, init) => {
+          const isCall = typeof init?.body === 'string'
+            && init.body.includes('"tools/call"')
+
+          if (!isCall) {
+            return await base(input, init)
+          }
+
+          inFlight += 1
+          maxInFlight = Math.max(maxInFlight, inFlight)
+
+          await new Promise(resolve => setTimeout(resolve, 10))
+
+          const response = await base(input, init)
+          const counted = response.body!.pipeThrough(new TransformStream({
+            flush: release,
+          }))
+
+          return new Response(counted, {
+            status: response.status,
+            headers: response.headers,
+          })
+        }) as typeof fetch,
+      })
+      const callIds = Array.from({ length: 6 }, (_, index) => `call-${index}`)
+      const outputs = await Promise.all(callIds.map((toolCallId) => {
+        return tools.mcp__alpha__list_issues.execute({}, {
+          toolCallId,
+          messages: [],
+        })
+      }))
+
+      expect(outputs).toHaveLength(6)
+      expect(outputs.every((output: string) => {
+        return output.includes('shown to the model, not saved')
+      })).toBe(true)
+      expect(maxInFlight).toBe(2)
+      expect(inFlight).toBe(0)
+    })
 
     it('fails a call whose response is larger than 8 MiB as a protocol error',
       async () => {

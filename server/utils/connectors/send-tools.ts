@@ -4,6 +4,7 @@ import type { ToolSet } from 'ai'
 import { createError } from 'evlog'
 import {
   CONNECTOR_CALL_TIMEOUT_MS,
+  CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CATALOG_WARMUPS_PER_SEND,
   CONNECTOR_CLOSE_TIMEOUT_MS,
@@ -655,7 +656,10 @@ async function syncDriftStatus(
  * result go to the model only, through the tool's `toModelOutput`, from a
  * map of this run keyed by tool call id and cleared on `close`; the text the
  * chat shows and stores keeps a placeholder line instead
- * (`server/utils/connectors/tool-images.ts`).
+ * (`server/utils/connectors/tool-images.ts`). Such a send lets a
+ * `tools/call` response grow to 8 MiB, so at most two of its calls receive
+ * and parse a response at once (`CONNECTOR_IMAGE_CALLS_IN_FLIGHT`), which
+ * bounds the large bodies in memory to 16 MiB.
  */
 export async function getConnectorTools(
   input: GetConnectorToolsInput,
@@ -821,6 +825,7 @@ export async function getConnectorTools(
         limiter: connectLimiter,
         logger,
         logsHost: connector.presetId !== null,
+        largeCallResponses: input.forwardImages === true,
         dependencies: input.dependencies,
       })
       addLogRedactions(connector.id, url)
@@ -965,6 +970,7 @@ export async function getConnectorTools(
         limiter: connectLimiter,
         logger,
         logsHost: connector.presetId !== null,
+        largeCallResponses: input.forwardImages === true,
         dependencies: input.dependencies,
       })
       addLogRedactions(connector.id, url)
@@ -1246,6 +1252,9 @@ export async function getConnectorTools(
     let callErrorCount = 0
     let callRecordCount = 0
     const imageStore = createConnectorImageStore()
+    const imageCallLimiter = createConcurrencyLimiter(
+      CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
+    )
 
     async function recordCall(call: {
       candidate: Candidate
@@ -1545,7 +1554,7 @@ export async function getConnectorTools(
         ? AbortSignal.any([timeoutSignal, options.abortSignal])
         : timeoutSignal
 
-      try {
+      async function callRemote() {
         const client = await candidate.handle.getClient()
         const result = await client.callTool({
           name: candidate.definition.name,
@@ -1555,22 +1564,33 @@ export async function getConnectorTools(
         const images = collectConnectorImages(result, {
           isEnabled: input.forwardImages === true && !!toolCallId,
           remainingBytes: imageStore.remainingBytes(),
+          remainingImages: imageStore.remainingImages(),
         })
-        const framed = frameUntrustedResult({
-          slug: candidate.connector.slug,
-          toolName: candidate.definition.name,
-          text: redactSecrets(
-            callToolResultToText(result, images.lines),
-            [...candidate.secrets],
-          ),
-        })
-        const outcome = (result as { isError?: boolean }).isError
-          ? 'error'
-          : 'ok'
 
         if (toolCallId) {
           imageStore.add(toolCallId, images.images)
         }
+
+        return {
+          images,
+          framed: frameUntrustedResult({
+            slug: candidate.connector.slug,
+            toolName: candidate.definition.name,
+            text: redactSecrets(
+              callToolResultToText(result, images.lines),
+              [...candidate.secrets],
+            ),
+          }),
+          outcome: (result as { isError?: boolean }).isError
+            ? 'error' as const
+            : 'ok' as const,
+        }
+      }
+
+      try {
+        const { images, framed, outcome } = input.forwardImages
+          ? await imageCallLimiter.run(callRemote)
+          : await callRemote()
 
         await recordCall({
           candidate,
@@ -1697,7 +1717,7 @@ export async function getConnectorTools(
             output,
             images: imageStore.get(toolCallId),
             connectorTitle: candidate.connector.title,
-            toolName: candidate.definition.name,
+            toolName: exposedName,
           })
         },
       })) as ToolSet[string]

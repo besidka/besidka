@@ -11,6 +11,9 @@ import {
   CONNECTOR_TOOL_SCHEMA_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
 import { truncateToByteBudget } from '~~/server/utils/skills/runtime/text'
+import {
+  neutralizeConnectorImagePlaceholders,
+} from '~~/server/utils/connectors/image-placeholders'
 import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 const HASH_HEX_LENGTH = 6
@@ -303,25 +306,14 @@ export function describeOmittedMedia(
     reason ?? '',
   ].filter(Boolean)
 
-  return `[${limitField(item.type)} omitted${
+  return neutralizeConnectorImagePlaceholders(`[${limitField(item.type)} omitted${
     details.length > 0 ? `: ${details.join(', ')}` : ''
-  }]`
+  }]`)
 }
 
-function describeContentItem(
-  item: unknown,
-  imageLine?: string,
-): string | null {
-  if (!isRecord(item) || typeof item.type !== 'string') {
-    return null
-  }
-
+function describeRemoteItem(item: Record<string, unknown>): string | null {
   if (item.type === 'text') {
     return typeof item.text === 'string' ? item.text : null
-  }
-
-  if (item.type === 'image' && imageLine !== undefined) {
-    return imageLine
   }
 
   if (item.type === 'image' || item.type === 'audio') {
@@ -345,13 +337,31 @@ function describeContentItem(
   return `[${limitField(item.type)} content omitted]`
 }
 
+function describeContentItem(
+  item: unknown,
+  imageLine?: string,
+): string | null {
+  if (!isRecord(item) || typeof item.type !== 'string') {
+    return null
+  }
+
+  if (item.type === 'image' && imageLine !== undefined) {
+    return imageLine
+  }
+
+  const line = describeRemoteItem(item)
+
+  return line === null ? null : neutralizeConnectorImagePlaceholders(line)
+}
+
 /**
  * The result of a `tools/call` as plain text: text items joined, every other
  * kind described in one line. `imageLines` holds the line for each `image`
  * item in order (`server/utils/connectors/tool-images.ts`), and an image
  * without one is described as omitted; the bytes are never part of the
- * text. When the server sent only `structuredContent`, that JSON is the
- * text.
+ * text. Text the server wrote that looks like an image placeholder is
+ * marked as the connector's (`neutralizeConnectorImagePlaceholders`). When
+ * the server sent only `structuredContent`, that JSON is the text.
  */
 export function callToolResultToText(
   result: CallToolResult,
@@ -379,7 +389,9 @@ export function callToolResultToText(
       .structuredContent
 
     if (structured !== undefined) {
-      return JSON.stringify(structured) ?? ''
+      return neutralizeConnectorImagePlaceholders(
+        JSON.stringify(structured) ?? '',
+      )
     }
   }
 

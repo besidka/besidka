@@ -5,6 +5,7 @@ import {
   CONNECTOR_IMAGE_MAX_DIMENSION,
   CONNECTOR_IMAGES_MAX_BYTES_PER_SEND,
   CONNECTOR_IMAGES_PER_CALL,
+  CONNECTOR_IMAGES_PER_SEND,
   isConnectorImageMediaType,
 } from '#shared/utils/connectors-policy'
 import type { ConnectorImageMediaType } from '#shared/utils/connectors-policy'
@@ -12,30 +13,35 @@ import {
   readConnectorIconDimensions,
   sniffConnectorIconType,
 } from '~~/server/utils/connectors/icon'
+import {
+  buildConnectorImageLine,
+  formatImageSize,
+} from '~~/server/utils/connectors/image-placeholders'
 import { describeOmittedMedia } from '~~/server/utils/connectors/tool-definitions'
+
+export {
+  buildConnectorImageLine,
+  formatImageSize,
+  toReplayedConnectorImageText,
+} from '~~/server/utils/connectors/image-placeholders'
 
 type ToolResultOutput = ToolResultPart['output']
 
 const KIBIBYTE = 1024
-const MEBIBYTE = 1024 * KIBIBYTE
 const BASE64_WHITESPACE = /\s+/g
+const BASE64_HAS_WHITESPACE = /\s/
 const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/
 const BASE64_GROUP_LENGTH = 4
+const BASE64_GROUP_BYTES = 3
 const MAGIC_BYTES_HEAD_LENGTH = 16
+const STRUCTURE_HEAD_BYTES = 256 * KIBIBYTE
+const TAIL_BASE64_LENGTH = 8
 const PNG_MIN_LENGTH = 33
 const JPEG_END_OF_IMAGE = [0xFF, 0xD9]
 const GIF_MIN_LENGTH = 13
 const RIFF_HEADER_LENGTH = 8
-const PROVENANCE_FIELD_MAX_LENGTH = 128
-const PROVENANCE_UNSAFE_CHARACTERS = /["\p{Cc}]/gu
-const SHOWN_SUFFIX = 'shown to the model, not saved'
-const GONE_SUFFIX = 'no longer available; call the tool again to see it'
-const SHOWN_LINE_PATTERN = new RegExp(
-  `\\[(image/(?:png|jpeg|gif|webp)), (\\d+(?:\\.\\d)? (?:B|KB|MB)): ${
-    SHOWN_SUFFIX
-  }\\]`,
-  'g',
-)
+const PROVENANCE_FIELD_MAX_LENGTH = 64
+const PROVENANCE_UNSAFE_CHARACTERS = /[^A-Za-z0-9 _.-]/g
 
 export const CONNECTOR_IMAGE_DROP_REASONS = [
   'not-supported',
@@ -44,6 +50,7 @@ export const CONNECTOR_IMAGE_DROP_REASONS = [
   'per-call',
   'too-large',
   'send-budget',
+  'send-count',
 ] as const
 
 export type ConnectorImageDropReason
@@ -62,6 +69,12 @@ export interface ConnectorImageCollection {
   dropped: Partial<Record<ConnectorImageDropReason, number>>
 }
 
+interface ImageView {
+  head: Uint8Array
+  tail: Uint8Array
+  length: number
+}
+
 const DROP_REASON_TEXT: Record<ConnectorImageDropReason, string | undefined> = {
   'not-supported': undefined,
   'invalid': 'not a valid image',
@@ -71,63 +84,17 @@ const DROP_REASON_TEXT: Record<ConnectorImageDropReason, string | undefined> = {
   'send-budget': `over the ${
     formatImageSize(CONNECTOR_IMAGES_MAX_BYTES_PER_SEND)
   } of images one message can show`,
+  'send-count': 'too many images in one message',
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/**
- * A byte count for the placeholder: `512 B`, `412 KB`, `3.5 MB` (1024
- * based, one decimal at most).
- */
-export function formatImageSize(bytes: number): string {
-  if (bytes < KIBIBYTE) {
-    return `${bytes} B`
-  }
-
-  if (bytes < MEBIBYTE) {
-    return `${Math.round(bytes / KIBIBYTE)} KB`
-  }
-
-  return `${Math.round((bytes / MEBIBYTE) * 10) / 10} MB`
-}
-
-/**
- * The placeholder an image forwarded to the model leaves in the tool's
- * text, which is what the chat shows and stores: `[image/png, 412 KB: shown
- * to the model, not saved]`. `isGone` builds the line a replay shows once
- * the bytes are gone.
- */
-export function buildConnectorImageLine(
-  image: Pick<ConnectorForwardedImage, 'mediaType' | 'bytes'>,
-  isGone = false,
-): string {
-  return `[${image.mediaType}, ${formatImageSize(image.bytes)}: ${
-    isGone ? GONE_SUFFIX : SHOWN_SUFFIX
-  }]`
-}
-
-/**
- * Rewrites every "shown to the model" image line in a stored tool output to
- * say the image is no longer available. Used where an earlier result is
- * replayed to a model without its bytes; any value that is not a string is
- * returned as it is.
- */
-export function toReplayedConnectorImageText<Value>(value: Value): Value {
-  if (typeof value !== 'string' || !value.includes(SHOWN_SUFFIX)) {
-    return value
-  }
-
-  return value.replace(SHOWN_LINE_PATTERN, (_line, mediaType, size) => {
-    return `[${mediaType}, ${size}: ${GONE_SUFFIX}]`
-  }) as Value
-}
-
 function decodedLengthOf(base64: string): number {
   const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
 
-  return (base64.length / BASE64_GROUP_LENGTH) * 3 - padding
+  return (base64.length / BASE64_GROUP_LENGTH) * BASE64_GROUP_BYTES - padding
 }
 
 function decodeBase64(base64: string): Uint8Array | null {
@@ -145,12 +112,21 @@ function decodeBase64(base64: string): Uint8Array | null {
   }
 }
 
+function decodeHead(base64: string, byteCount: number): Uint8Array | null {
+  const length = Math.ceil(byteCount / BASE64_GROUP_BYTES)
+    * BASE64_GROUP_LENGTH
+
+  return decodeBase64(base64.slice(0, length))
+}
+
 function normalizeBase64(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null
   }
 
-  const base64 = value.replace(BASE64_WHITESPACE, '')
+  const base64 = BASE64_HAS_WHITESPACE.test(value)
+    ? value.replace(BASE64_WHITESPACE, '')
+    : value
 
   if (
     base64.length === 0
@@ -179,19 +155,36 @@ function endsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
 }
 
 function hasCompleteContainer(
-  bytes: Uint8Array,
+  view: ImageView,
   mediaType: ConnectorImageMediaType,
 ): boolean {
   switch (mediaType) {
     case 'image/png':
-      return bytes.length >= PNG_MIN_LENGTH
+      return view.length >= PNG_MIN_LENGTH
     case 'image/jpeg':
-      return endsWith(bytes, JPEG_END_OF_IMAGE)
+      return endsWith(view.tail, JPEG_END_OF_IMAGE)
     case 'image/gif':
-      return bytes.length >= GIF_MIN_LENGTH
+      return view.length >= GIF_MIN_LENGTH
     case 'image/webp':
-      return readRiffSize(bytes) + RIFF_HEADER_LENGTH === bytes.length
+      return readRiffSize(view.head) + RIFF_HEADER_LENGTH === view.length
   }
+}
+
+function isUsableImageView(
+  view: ImageView,
+  mediaType: ConnectorImageMediaType,
+): boolean {
+  if (!hasCompleteContainer(view, mediaType)) {
+    return false
+  }
+
+  const dimensions = readConnectorIconDimensions(view.head, mediaType)
+
+  return !!dimensions
+    && dimensions.width > 0
+    && dimensions.height > 0
+    && dimensions.width <= CONNECTOR_IMAGE_MAX_DIMENSION
+    && dimensions.height <= CONNECTOR_IMAGE_MAX_DIMENSION
 }
 
 /**
@@ -205,17 +198,10 @@ export function isUsableConnectorImage(
   bytes: Uint8Array,
   mediaType: ConnectorImageMediaType,
 ): boolean {
-  if (!hasCompleteContainer(bytes, mediaType)) {
-    return false
-  }
-
-  const dimensions = readConnectorIconDimensions(bytes, mediaType)
-
-  return !!dimensions
-    && dimensions.width > 0
-    && dimensions.height > 0
-    && dimensions.width <= CONNECTOR_IMAGE_MAX_DIMENSION
-    && dimensions.height <= CONNECTOR_IMAGE_MAX_DIMENSION
+  return isUsableImageView(
+    { head: bytes, tail: bytes, length: bytes.length },
+    mediaType,
+  )
 }
 
 function sniffImageType(
@@ -237,22 +223,42 @@ function sniffImageType(
 }
 
 /**
+ * Only the first 256 KiB and the last few bytes are decoded: the pattern
+ * check already proved the whole string is base64, and the header, the
+ * frame size and the JPEG end marker are all the structure check reads.
+ */
+function viewOf(base64: string, length: number): ImageView | null {
+  const head = decodeHead(base64, Math.min(length, STRUCTURE_HEAD_BYTES))
+  const tail = decodeBase64(base64.slice(-TAIL_BASE64_LENGTH))
+
+  return head && tail ? { head, tail, length } : null
+}
+
+/**
  * Decides, for each `image` item of a `tools/call` result in order, whether
  * its bytes go to the model, and returns the line that stands in for it in
  * the tool's text. An image is forwarded only when `isEnabled` (the send's
- * provider and model take images, `canForwardConnectorImages`), its data is
- * valid base64 whose magic bytes are PNG, JPEG, GIF or WebP (the server's
- * `mimeType` is never trusted, SVG is never shown), it is one of the first
- * four images of the result, it decodes to at most 3.5 MB and passes
- * `isUsableConnectorImage` (structure, at most 8000 px a side), and it fits in
- * `remainingBytes`, the send's 12 MB image budget. Every other image gets
- * the "omitted" line with the reason. Nothing here is logged or stored.
+ * provider and model take images, `canForwardConnectorImages`), it is one of
+ * the first four images of the result and fits in `remainingImages` (20 per
+ * send) and `remainingBytes` (12 MB per send), its data is base64 of at most
+ * 3.5 MB decoded whose magic bytes are PNG, JPEG, GIF or WebP (the server's
+ * `mimeType` is never trusted, SVG is never shown), and it passes
+ * `isUsableConnectorImage` (structure, at most 8000 px a side). The caps and
+ * the type are checked from the string length and its first bytes, before
+ * anything larger is decoded, and the forwarded image keeps the server's
+ * string without a copy. Every other image gets the "omitted" line with the
+ * reason. Nothing here is logged or stored.
  */
 export function collectConnectorImages(
   result: CallToolResult,
-  options: { isEnabled: boolean, remainingBytes: number },
+  options: {
+    isEnabled: boolean
+    remainingBytes: number
+    remainingImages?: number
+  },
 ): ConnectorImageCollection {
   const content = (result as { content?: unknown }).content
+  const remainingImages = options.remainingImages ?? CONNECTOR_IMAGES_PER_SEND
   const collection: ConnectorImageCollection = {
     lines: [],
     images: [],
@@ -289,6 +295,12 @@ export function collectConnectorImages(
       continue
     }
 
+    if (collection.images.length >= remainingImages) {
+      drop(item, 'send-count')
+
+      continue
+    }
+
     const base64 = normalizeBase64(item.data)
 
     if (!base64) {
@@ -301,6 +313,12 @@ export function collectConnectorImages(
 
     if (bytes > CONNECTOR_IMAGE_MAX_BYTES) {
       drop(item, 'too-large')
+
+      continue
+    }
+
+    if (collection.bytes + bytes > options.remainingBytes) {
+      drop(item, 'send-budget')
 
       continue
     }
@@ -319,15 +337,9 @@ export function collectConnectorImages(
       continue
     }
 
-    if (collection.bytes + bytes > options.remainingBytes) {
-      drop(item, 'send-budget')
+    const view = viewOf(base64, bytes)
 
-      continue
-    }
-
-    const decoded = decodeBase64(base64)
-
-    if (!decoded || !isUsableConnectorImage(decoded, mediaType)) {
+    if (!view || !isUsableImageView(view, mediaType)) {
       drop(item, 'invalid')
 
       continue
@@ -345,7 +357,7 @@ export function collectConnectorImages(
 
 function toProvenanceField(value: string): string {
   return value
-    .replace(PROVENANCE_UNSAFE_CHARACTERS, ' ')
+    .replace(PROVENANCE_UNSAFE_CHARACTERS, '')
     .trim()
     .slice(0, PROVENANCE_FIELD_MAX_LENGTH)
 }
@@ -353,6 +365,9 @@ function toProvenanceField(value: string): string {
 /**
  * The note that goes next to forwarded images, since the untrusted frame
  * only wraps the text: where the images come from, and that they are data.
+ * The connector title keeps only `[A-Za-z0-9 _.-]` and the tool is named by
+ * its exposed name (`mcp__<slug>__<tool>`), both cut to 64 characters, so no
+ * text a server chose reaches the model outside the frame.
  */
 export function buildConnectorImageProvenance(input: {
   connectorTitle: string
@@ -414,27 +429,43 @@ export function buildConnectorModelOutput(input: {
   }
 }
 
+function sumBytes(images: readonly ConnectorForwardedImage[]): number {
+  return images.reduce((sum, image) => sum + image.bytes, 0)
+}
+
 /**
  * The images of one send, by tool call id. It lives inside one
  * `getConnectorTools` run and is cleared when the run closes, so two sends
  * never share it and nothing outlives the request. Reads do not consume:
  * the SDK builds the model output again for every later step of the send.
+ * `add` always replaces the entry of its call id, even with no images, and
+ * keeps the send's byte and image totals in step.
  */
 export function createConnectorImageStore() {
   const imagesByCallId = new Map<string, ConnectorForwardedImage[]>()
   let usedBytes = 0
+  let usedImages = 0
 
   return {
     remainingBytes(): number {
       return Math.max(0, CONNECTOR_IMAGES_MAX_BYTES_PER_SEND - usedBytes)
     },
+    remainingImages(): number {
+      return Math.max(0, CONNECTOR_IMAGES_PER_SEND - usedImages)
+    },
     add(toolCallId: string, images: readonly ConnectorForwardedImage[]) {
+      const previous = imagesByCallId.get(toolCallId) ?? []
+
+      usedBytes += sumBytes(images) - sumBytes(previous)
+      usedImages += images.length - previous.length
+
       if (images.length === 0) {
+        imagesByCallId.delete(toolCallId)
+
         return
       }
 
       imagesByCallId.set(toolCallId, [...images])
-      usedBytes += images.reduce((sum, image) => sum + image.bytes, 0)
     },
     get(toolCallId: string | undefined): readonly ConnectorForwardedImage[] {
       return toolCallId ? imagesByCallId.get(toolCallId) ?? [] : []
