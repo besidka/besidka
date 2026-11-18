@@ -477,7 +477,12 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  --sheet-bottom-padding: calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
   --landing-header-offset: 4rem;
+
+  @media (display-mode: standalone) {
+    --sheet-bottom-padding: calc(env(safe-area-inset-bottom, 0px) + 2rem);
+  }
 }
 
 @utility max-w-chat-column {
@@ -559,10 +564,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 
 @utility sheet-safe-padding {
   @media (width < 40rem) {
-    padding-bottom: max(
-      calc(1rem + var(--sab, 0px)),
-      env(safe-area-inset-bottom)
-    );
+    padding-bottom: var(--sheet-bottom-padding);
 
     html[data-keyboard-open] & {
       padding-bottom: 1rem;

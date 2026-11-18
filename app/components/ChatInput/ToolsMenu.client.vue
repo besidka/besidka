@@ -144,7 +144,7 @@
         <div
           ref="sheetScroll"
           data-testid="chat-input-tools-sheet-scroll"
-          class="min-h-0 overflow-y-auto overscroll-contain px-2 pb-[max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))]"
+          class="min-h-0 overflow-y-auto overscroll-contain px-2 pb-[var(--sheet-bottom-padding)]"
           :style="sheetFadeStyle"
         >
           <ChatInputToolsMenuContent

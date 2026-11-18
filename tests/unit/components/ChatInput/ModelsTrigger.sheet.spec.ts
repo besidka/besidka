@@ -205,6 +205,9 @@ describe('ChatInput/ModelsTrigger below md', () => {
     expect(box.classes()).toEqual(
       expect.arrayContaining(['rounded-t-box', 'rounded-b-none', 'h-[85dvh]']),
     )
+    expect(box.classes()).toContain(
+      '[--models-sheet-bottom-padding:var(--sheet-bottom-padding)]',
+    )
     expect(box.attributes('autofocus')).toBeDefined()
     expect(sheet.find('[data-testid="models-picker-close"]').exists())
       .toBe(true)
