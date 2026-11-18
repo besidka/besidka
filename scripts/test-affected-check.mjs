@@ -1503,6 +1503,11 @@ export function getAffectedTests(changedFiles) {
 
   const authSecurityTests = [
     'tests/unit/utils/auth-rate-limit.spec.ts',
+    'tests/unit/utils/auth-rate-limit-kv-errors.spec.ts',
+    'tests/unit/utils/auth-init.spec.ts',
+    'tests/unit/server/utils/auth-instance.spec.ts',
+    'tests/unit/server/middleware/evlog-auth.spec.ts',
+    'tests/integration/server/session.spec.ts',
     'tests/unit/utils/auth-captcha.spec.ts',
     'tests/unit/utils/auth-captcha-plugin.spec.ts',
     'tests/unit/utils/auth-hosts.spec.ts',
@@ -1512,6 +1517,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const keysApiTests = [
+    'tests/unit/server/utils/keys-rate-limit.spec.ts',
     'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-brave.spec.ts',
     'tests/integration/api/profile-keys-exa.spec.ts',
@@ -2479,7 +2485,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts|auth-secondary-storage)\.ts$/,
+        /^server\/utils\/(email|auth|auth-instance|auth-rate-limit|auth-captcha|auth-hosts|auth-secondary-storage|keys-rate-limit)\.ts$/,
       tests: [...emailTests, ...authSecurityTests],
     },
     {
@@ -2796,7 +2802,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/middleware\/evlog-auth\.ts$/,
-      tests: ['tests/integration/api/stats.spec.ts'],
+      tests: [
+        'tests/integration/api/stats.spec.ts',
+        'tests/unit/server/middleware/evlog-auth.spec.ts',
+        'tests/unit/server/utils/auth-instance.spec.ts',
+      ],
     },
     {
       pattern: /^shared\/types\/landing\.d\.ts$/,
@@ -3604,6 +3614,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/session\.ts$/,
       tests: [
         'tests/integration/server/session.spec.ts',
+        'tests/unit/server/utils/auth-instance.spec.ts',
         'tests/integration/api/chats-new.spec.ts',
         'tests/integration/api/projects.spec.ts',
         'tests/integration/api/chats-branch.spec.ts',
@@ -4501,7 +4512,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/auth-rate-limit\.ts$/,
-      tests: ['tests/unit/utils/auth-rate-limit-oauth.spec.ts'],
+      tests: [
+        'tests/unit/utils/auth-rate-limit-oauth.spec.ts',
+        'tests/unit/utils/auth-rate-limit-kv-errors.spec.ts',
+        'tests/unit/server/utils/keys-rate-limit.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/account\/(purge-user-data|revoke-user-oauth-grants)\.ts$/,

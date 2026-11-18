@@ -521,7 +521,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   from-scratch client-side QR encoder), passkeys (the RP-ID vs.
   `allowedHosts` mismatch that blocks versioned preview URLs), and why
   password-only 2FA gating (no challenge via passkey/OAuth sign-in) is a
-  confirmed, accepted design decision rather than a gap
+  confirmed, accepted design decision rather than a gap; also the auth
+  instance init rule on Workers (only a settled instance is shared across
+  requests) and rate-limit storage failures (a KV error answers 429, never
+  allows; `/get-session`, `/.well-known/**` and key-route reads do not write
+  KV)
 - `docs/analytics-utm.md` - Campaign attribution + activation funnel: UTM
   sanitizer, URL-only propagation (no cookie) into `user_attribution`, the
   `user_activation_events` ledger (once per user), the Analytics Engine blob
@@ -1137,6 +1141,11 @@ $fetch('/api/v1/files/delete/bulk', { method: 'POST', body: { ids } })
 
 - Prefer sequential operations for per-item R2/KV calls.
 - Use batch APIs when available (for example, R2 batch delete where applicable).
+- Never cache an unsettled promise across requests on Workers: a promise
+  that waits on I/O belongs to the request that started it and never settles
+  once that request ends. Cache only the settled value, and let each request
+  await its own init until one is ready (see `docs/auth-security.md`, "Auth
+  instance init on Workers").
 
 ## File Management
 

@@ -1,10 +1,15 @@
 import { defineEventHandler } from 'nuxt/server'
+import { runOnceAfterInit } from '~~/server/utils/auth-instance'
 import { withOriginResource } from '~~/server/utils/oauth/protected-resource-metadata'
 
 const DEFAULT_SITE_URL = 'https://besidka.com'
 
 export default defineEventHandler(async (event) => {
-  const response = await useServerAuth().handler(event.req)
+  const response = await runOnceAfterInit(
+    () => useServerAuth().$context,
+    () => useServerAuth().handler(event.req),
+    () => dropServerAuth(),
+  )
   const contentType = response.headers.get('content-type') || ''
 
   if (response.status !== 200 || !contentType.includes('application/json')) {
