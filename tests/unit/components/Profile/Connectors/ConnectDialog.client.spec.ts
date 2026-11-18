@@ -254,12 +254,13 @@ describe('Profile/Connectors/ConnectDialog', () => {
     await checkTestId('connector-consent-checkbox')
     await clickTestId('connector-consent-continue')
 
-    expect((getByTestId('connector-header-name') as HTMLInputElement).value)
-      .toBe('Authorization')
+    expect(findByTestId('connector-header-name')).toBeNull()
+    expect((getByTestId('connector-header-kind-bearer') as HTMLInputElement)
+      .checked).toBe(true)
     expect(getByTestId('connector-header-value').getAttribute('type'))
       .toBe('password')
 
-    await setTestIdValue('connector-header-value', 'Bearer ghp_secret')
+    await setTestIdValue('connector-header-value', 'ghp_secret')
     getByTestId('connector-connect-header-form')
       .dispatchEvent(new Event('submit'))
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -268,7 +269,7 @@ describe('Profile/Connectors/ConnectDialog', () => {
       '/api/v1/connectors/conn1/credentials',
       {
         method: 'POST',
-        body: { headerName: 'Authorization', headerValue: 'Bearer ghp_secret' },
+        body: { auth: { kind: 'bearer', token: 'ghp_secret' } },
       },
     )
     expect(mocks.success).toHaveBeenCalledWith('GitHub connected')
@@ -355,10 +356,9 @@ describe('Profile/Connectors/ConnectDialog', () => {
       await clickTestId('connector-connect-use-token')
 
       expect(findByTestId('connector-connect-error')).toBeNull()
-      expect((getByTestId('connector-header-name') as HTMLInputElement).value)
-        .toBe('Authorization')
+      expect(findByTestId('connector-header-name')).toBeNull()
 
-      await setTestIdValue('connector-header-value', 'Bearer secret')
+      await setTestIdValue('connector-header-value', 'secret')
       getByTestId('connector-connect-header-form')
         .dispatchEvent(new Event('submit'))
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -367,7 +367,7 @@ describe('Profile/Connectors/ConnectDialog', () => {
         '/api/v1/connectors/conn1/credentials',
         {
           method: 'POST',
-          body: { headerName: 'Authorization', headerValue: 'Bearer secret' },
+          body: { auth: { kind: 'bearer', token: 'secret' } },
         },
       )
       expect(wrapper.emitted('connected')?.[0]).toEqual(['conn1'])
@@ -575,7 +575,7 @@ describe('Profile/Connectors/ConnectDialog', () => {
 
       expect(urlsFetched()).toEqual(['/api/v1/connectors/connect/discover'])
 
-      await setTestIdValue('connector-header-value', 'Bearer ghp_secret')
+      await setTestIdValue('connector-header-value', 'ghp_secret')
       await clickTestId('connector-header-save')
 
       expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/connectors', {
@@ -588,12 +588,124 @@ describe('Profile/Connectors/ConnectDialog', () => {
             version: CONNECTOR_CONSENT_VERSION,
             issuerHost: null,
           },
-          header: { name: 'Authorization', value: 'Bearer ghp_secret' },
+          auth: { kind: 'bearer', token: 'ghp_secret' },
         },
       })
       expect(mocks.refreshConnectors).toHaveBeenCalled()
       expect(mocks.success).toHaveBeenCalledWith('GitHub connected')
       expect(wrapper.emitted('connected')?.[0]).toEqual(['new1'])
+    })
+
+    describe('how the key is sent', () => {
+      const REGISTRY_DRAFT = { registryId: 'reg1' }
+
+      function registryDiscovery(headerNames: string[]) {
+        return {
+          authType: 'header',
+          host: 'mcp.exa.ai',
+          issuerHost: null,
+          issuerDiffers: false,
+          notice: null,
+          title: 'Exa',
+          presetId: null,
+          headerName: null,
+          headerNames,
+        }
+      }
+
+      async function openKeyForm(headerNames: string[]) {
+        respond({
+          '/api/v1/connectors/connect/discover': registryDiscovery(
+            headerNames,
+          ),
+          '/api/v1/connectors': { connector: { id: 'new1' } },
+        })
+
+        await mountDialog({ draft: REGISTRY_DRAFT })
+        await checkTestId('connector-consent-checkbox')
+        await clickTestId('connector-consent-continue')
+      }
+
+      function kindInput(kind: string) {
+        return getByTestId(`connector-header-kind-${kind}`) as HTMLInputElement
+      }
+
+      it('defaults to an API key or token when the entry names no header',
+        async () => {
+          await openKeyForm([])
+
+          expect(kindInput('bearer').checked).toBe(true)
+          expect(findByTestId('connector-header-name')).toBeNull()
+          expect(getByTestId('connector-header-hint').textContent)
+            .toContain('Authorization: Bearer')
+        })
+
+      it('defaults to an API key or token when the entry declares '
+        + 'Authorization', async () => {
+        await openKeyForm(['authorization'])
+
+        expect(kindInput('bearer').checked).toBe(true)
+        expect(findByTestId('connector-header-name')).toBeNull()
+      })
+
+      it('opens the custom header with the declared name prefilled',
+        async () => {
+          await openKeyForm(['x-api-key'])
+
+          expect(kindInput('header').checked).toBe(true)
+          expect((getByTestId('connector-header-name') as HTMLInputElement)
+            .value).toBe('x-api-key')
+          expect(getByTestId('connector-header-hint').textContent)
+            .toContain('Sent exactly as typed')
+        })
+
+      it('sends a pasted key as a bearer token', async () => {
+        await openKeyForm([])
+        await setTestIdValue('connector-header-value', 'Bearer exa_key')
+        await clickTestId('connector-header-save')
+
+        expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/connectors', {
+          method: 'POST',
+          body: {
+            registryId: 'reg1',
+            toolMode: 'auto',
+            consent: {
+              accepted: true,
+              version: CONNECTOR_CONSENT_VERSION,
+              issuerHost: null,
+            },
+            auth: { kind: 'bearer', token: 'Bearer exa_key' },
+          },
+        })
+      })
+
+      it('sends a custom header exactly as typed after a mode switch',
+        async () => {
+          await openKeyForm([])
+          await setTestIdValue('connector-header-value', 'secret')
+          await checkTestId('connector-header-kind-header')
+
+          expect(
+            (getByTestId('connector-header-value') as HTMLInputElement).value,
+          ).toBe('')
+          expect(
+            (getByTestId('connector-header-save') as HTMLButtonElement)
+              .disabled,
+          ).toBe(true)
+
+          await setTestIdValue('connector-header-name', ' x-api-key ')
+          await setTestIdValue('connector-header-value', 'raw-key')
+          await clickTestId('connector-header-save')
+
+          expect(mocks.fetch).toHaveBeenLastCalledWith(
+            '/api/v1/connectors',
+            expect.objectContaining({
+              body: expect.objectContaining({
+                auth: { kind: 'header', name: 'x-api-key', value: 'raw-key' },
+              }),
+            }),
+          )
+        })
     })
 
     it('keeps the form and stores nothing when the server rejects the key',

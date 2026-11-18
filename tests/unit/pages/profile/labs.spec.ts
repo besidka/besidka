@@ -1,7 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import LabsPage from '../../../../app/pages/profile/labs.vue'
 import ProfileLayout from '../../../../app/layouts/profile.vue'
 
@@ -16,7 +16,16 @@ const mocks = vi.hoisted(() => ({
   navigateTo: vi.fn(),
 }))
 
+const connectorsActive = ref<boolean>(false)
+
 mockNuxtImport('useFetch', () => mocks.fetchData)
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => ({
+    enabled: connectorsActive.value,
+    active: connectorsActive.value,
+    variant: null,
+  }))
+})
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useErrorMessage', () => mocks.error)
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
@@ -105,6 +114,7 @@ describe('profile labs page', () => {
     mocks.keyStatus.mockReset().mockReturnValue('saved')
     mocks.openPanel.mockReset()
     mocks.navigateTo.mockReset().mockResolvedValue(undefined)
+    connectorsActive.value = false
   })
 
   it('renders accessible features grouped under their parent', async () => {
@@ -455,6 +465,37 @@ describe('profile labs page', () => {
         viewKey: 'besidka-tool-permissions',
         title: 'Tool permissions',
       }))
+    })
+
+    it('goes to the Connectors page from the button when connectors are on',
+      async () => {
+        connectorsActive.value = true
+
+        const wrapper = await mountPage({ features: [besidkaTools] })
+
+        await wrapper.get(openButton).trigger('click')
+
+        expect(mocks.navigateTo).toHaveBeenCalledWith(
+          '/chats/connectors?panel=besidka-tool-permissions',
+        )
+        expect(mocks.openPanel).not.toHaveBeenCalled()
+      })
+
+    it('forwards an old panel link to the Connectors page when connectors '
+      + 'are on', async () => {
+      connectorsActive.value = true
+
+      await mountPage({
+        features: [besidkaTools],
+        route: '/profile/labs?panel=besidka-tool-permissions',
+      })
+      await flushPromises()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith(
+        '/chats/connectors?panel=besidka-tool-permissions',
+        { replace: true },
+      )
+      expect(mocks.openPanel).not.toHaveBeenCalled()
     })
 
     it('opens the panel from the search link and clears the query',

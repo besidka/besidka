@@ -105,6 +105,7 @@ export interface ResolvedConnectorTarget {
   presetId: string | null
   slugBase: string
   allowOAuth: boolean
+  headerNames: string[]
   createdVia: ConnectorCreatedVia
   createdByClientId: string | null
 }
@@ -113,6 +114,7 @@ export interface RegistryEntryAddress {
   name?: string
   remoteUrl: string
   title: string | null
+  headerNames?: string[]
 }
 
 export interface AddedConnector {
@@ -170,6 +172,7 @@ export async function findActiveRegistryEntry(
     remoteUrl: schema.mcpRegistryServers.remoteUrl,
     title: schema.mcpRegistryServers.title,
     status: schema.mcpRegistryServers.status,
+    headerNames: schema.mcpRegistryServers.headerNames,
   })
     .from(schema.mcpRegistryServers)
     .where(eq(schema.mcpRegistryServers.id, registryId))
@@ -186,6 +189,7 @@ export async function findActiveRegistryEntry(
     name: entry.name,
     remoteUrl: entry.remoteUrl,
     title: curated?.title ?? entry.title,
+    headerNames: Array.isArray(entry.headerNames) ? entry.headerNames : [],
   }
 }
 
@@ -271,6 +275,9 @@ export function resolveConnectorTarget(
     presetId: preset?.id ?? null,
     slugBase,
     allowOAuth: !preset || preset.auth.includes('oauth'),
+    headerNames: preset?.headerName
+      ? [preset.headerName]
+      : registryEntry?.headerNames ?? [],
     createdVia: resolveCreatedVia(input, preset !== null),
     createdByClientId: input.source.via === 'mcp'
       ? input.source.clientId

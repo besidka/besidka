@@ -109,9 +109,34 @@ replay reads it as missing.
 
 ## Labs and the panel
 
-- **Labs** (`/profile/labs`): under the `besidka-tools` row, once the opt-in
-  is on, a "Tool permissions" button opens the panel. There is no new page,
-  so no profile tab (CLAUDE.md, "Profile pages navigation").
+- **Connectors page** (`/chats/connectors`, "Yours"): the main entry point. A
+  pinned first row "Besidka" (`ProfileConnectorsBesidkaRow`, Besidka logo, the
+  Labs description "Let the model use your Besidka data and tools in chats,
+  with your permission for each tool.") shows whenever the user has
+  access to the `besidka-tools` flag (`useFeature('besidka-tools').enabled`),
+  before or after the opt-in. It is composed in the browser only: it is not a
+  row of `connectors`, not in `GET /api/v1/connectors`, `list_connectors`, the
+  "N of 20" count, the catalog or the Discover "Added" state. Its switch is the
+  Labs opt-in itself: it calls `useFeatureOptIn().setFeatureOptIn`
+  (`app/composables/feature-opt-in.ts`), the writer the Labs page uses, which
+  posts `{ optedIn }` to `/api/v1/profiles/features/besidka-tools/opt-in` and
+  refreshes the client features. When that refresh does not show the new
+  state (`refreshFeatures` swallows a failed `GET /api/v1/features`), the page
+  shows an error toast and announces nothing. Turning the opt-in off closes the
+  open permissions panel. There is no second flag or setting. With the
+  opt-in on, the name opens the Tool permissions panel; with it off the name is
+  plain text. The row has no delete, no Manual/Auto/Always on mode, no consent
+  block and no "Not connected" status. `?panel=besidka-tool-permissions` on
+  `/chats/connectors` opens the panel (only while the opt-in is on) and is then
+  removed from the URL.
+- **Labs** (`/profile/labs`): keeps the `besidka-tools` switch. Once the
+  opt-in is on, its "Tool permissions" button goes to
+  `/chats/connectors?panel=besidka-tool-permissions`. An account without the
+  `connectors` flag has no such page, so there the button still opens the panel
+  in place. A link to the old `/profile/labs?panel=besidka-tool-permissions`
+  forwards to the Connectors page (or opens the panel in place without the
+  `connectors` flag). There is no new page, so no profile tab (CLAUDE.md,
+  "Profile pages navigation").
 - **Panel**: `app/components/Profile/BesidkaTools/Permissions.vue` in the
   shared `UiSidePanel` (`docs/ui/side-panel.md`; a bottom sheet below `md`).
   It renders the shared `ui/ToolPermissions.vue`, the same component as the
@@ -129,8 +154,10 @@ replay reads it as missing.
   replaces the local one, and a failure drops the optimistic value and
   shows a toast from `parseError`.
 - **Search popup**: with the flag on, Settings gets a "Besidka tool
-  permissions" row after Labs. It opens `/profile/labs?panel=besidka-tool-permissions`,
-  and Labs opens the panel, then clears the query.
+  permissions" row after Labs. It opens
+  `/chats/connectors?panel=besidka-tool-permissions` (or the Labs link when the
+  `connectors` flag is off, `getBesidkaToolPermissionsPath`), and the page opens
+  the panel, then clears the query.
 
 ## MCP
 
@@ -311,6 +338,6 @@ step titled "Besidka: list projects".
 The chat panel's Approvals section (`listChatToolApprovalGrants`) lists the
 Besidka grants too: "Allow in this chat" grants whose registry hash still
 matches, and, while the chat's Besidka row is on, every tool set to Always
-allow. A Besidka Always allow row links to the Labs permissions panel
-("Manage") instead of a Remove button; "Reset approvals in this chat" clears
+allow. A Besidka Always allow row links to the permissions panel on the Connectors page (Labs when
+the `connectors` flag is off) ("Manage") instead of a Remove button; "Reset approvals in this chat" clears
 the Besidka chat grants with the connector ones.

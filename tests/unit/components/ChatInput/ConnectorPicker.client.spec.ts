@@ -215,7 +215,7 @@ describe('ChatInput/ConnectorPicker', () => {
     await mountPicker()
 
     expect(get('connector-picker-limit-hint').textContent)
-      .toContain('Up to 5 at once')
+      .toContain('A message can use up to 5 connectors, Auto ones included')
     expect((get('connector-picker-toggle-linear') as HTMLInputElement).disabled)
       .toBe(false)
   })
@@ -346,7 +346,7 @@ describe('ChatInput/ConnectorPicker', () => {
     await mountPicker({ items: [] })
 
     expect(get('connector-picker-limit-hint').textContent)
-      .toContain('Up to 5 at once')
+      .toContain('A message can use up to 5 connectors, Auto ones included')
   })
 
   it('closes from the close button', async () => {

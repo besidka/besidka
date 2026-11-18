@@ -19,28 +19,50 @@ const mocks = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
   navigateTo: vi.fn(),
+  setFeatureOptIn: vi.fn(),
   replace: vi.fn(),
   sidePanelOpen: vi.fn(),
   sidePanelClose: vi.fn(),
   query: {} as Record<string, unknown>,
 }))
 
+const queryRef = ref<Record<string, unknown>>({})
 const connectorsActive = ref<boolean>(true)
 const registryActive = ref<boolean>(false)
+const besidkaEnabled = ref<boolean>(false)
+const besidkaActive = ref<boolean>(false)
 const data = ref<unknown>(null)
 const fetchError = ref<unknown>(null)
 const connectTarget = ref<string | null>(null)
 const connectDraft = ref<Record<string, string> | null>(null)
 const viewKey = ref<string | null>(null)
 
+Object.defineProperty(mocks, 'query', {
+  get: () => queryRef.value,
+  set: (value: Record<string, unknown>) => {
+    queryRef.value = value
+  },
+})
+
 mockNuxtImport('useFeature', () => {
   return (flag: string) => computed(() => {
+    if (flag === 'besidka-tools') {
+      return {
+        enabled: besidkaEnabled.value,
+        active: besidkaActive.value,
+        variant: null,
+      }
+    }
+
     const isActive = flag === 'connectors.registry'
       ? registryActive.value
       : connectorsActive.value
 
     return { enabled: isActive, active: isActive, variant: null }
   })
+})
+mockNuxtImport('useFeatureOptIn', () => {
+  return () => ({ setFeatureOptIn: mocks.setFeatureOptIn })
 })
 mockNuxtImport('useConnectorsPage', () => {
   return () => ({
@@ -84,7 +106,12 @@ mockNuxtImport('useSuccessMessage', () => mocks.success)
 mockNuxtImport('useErrorMessage', () => mocks.error)
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
 mockNuxtImport('useRoute', () => {
-  return () => ({ path: '/chats/connectors', query: mocks.query })
+  return () => ({
+    path: '/chats/connectors',
+    get query() {
+      return queryRef.value
+    },
+  })
 })
 mockNuxtImport('useRouter', (original) => {
   return () => {
@@ -141,6 +168,8 @@ describe('chats connectors page', () => {
     vi.stubGlobal('useSeoMeta', vi.fn())
     connectorsActive.value = true
     registryActive.value = false
+    besidkaEnabled.value = false
+    besidkaActive.value = false
     data.value = { connectors: [] }
     fetchError.value = null
     connectTarget.value = null
@@ -154,6 +183,7 @@ describe('chats connectors page', () => {
     }
     mocks.fetch.mockResolvedValue({})
     mocks.refreshConnectors.mockResolvedValue(undefined)
+    mocks.setFeatureOptIn.mockResolvedValue(undefined)
   })
 
   it('shows a skeleton while loading and a retry on error', async () => {
@@ -455,6 +485,254 @@ describe('chats connectors page', () => {
 
     expect(tab.attributes('aria-current')).toBe('page')
     expect(tab.attributes('to')).toBe('/chats/connectors')
+  })
+
+  describe('Besidka row', () => {
+    const rowSelector = '[data-testid="besidka-connector-row"]'
+    const toggleSelector = '[data-testid="besidka-connector-row-toggle"]'
+
+    it('is not shown without access to the besidka-tools flag', async () => {
+      data.value = { connectors: [createConnectorItem()] }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.find(rowSelector).exists()).toBe(false)
+    })
+
+    it('is pinned above the connectors with no delete, mode or status',
+      async () => {
+        besidkaEnabled.value = true
+        besidkaActive.value = true
+        data.value = { connectors: [createConnectorItem()] }
+
+        const wrapper = await mountPage()
+        const items = wrapper.findAll(
+          '[data-testid="connectors-list"] > li',
+        )
+        const row = wrapper.get(rowSelector)
+
+        expect(items[0]!.attributes('data-testid'))
+          .toBe('besidka-connector-row')
+        expect(items).toHaveLength(2)
+        expect(row.text()).toContain('Besidka')
+        expect(row.find('[data-testid="connector-row-remove"]').exists())
+          .toBe(false)
+        expect(row.find('[data-testid="connector-row-mode"]').exists())
+          .toBe(false)
+        expect(row.find('[data-testid="connector-row-status"]').exists())
+          .toBe(false)
+        expect(wrapper.get('[data-testid="connectors-count"]').text())
+          .toBe('1 of 20 connectors')
+      })
+
+    it('shows above the empty state when there are no connectors',
+      async () => {
+        besidkaEnabled.value = true
+        besidkaActive.value = true
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.find(rowSelector).exists()).toBe(true)
+        expect(wrapper.find('[data-testid="connectors-empty"]').exists())
+          .toBe(true)
+        expect(wrapper.get('[data-testid="connectors-count"]').text())
+          .toBe('0 of 20 connectors')
+      })
+
+    it('has a switch that is off while the opt-in is off', async () => {
+      besidkaEnabled.value = true
+
+      const wrapper = await mountPage()
+      const toggle = wrapper.get(toggleSelector)
+
+      expect((toggle.element as HTMLInputElement).checked).toBe(false)
+      expect(wrapper.find('[data-testid="besidka-connector-row-open"]')
+        .exists()).toBe(false)
+    })
+
+    it('turns the Labs opt-in on and off through the shared writer',
+      async () => {
+        besidkaEnabled.value = true
+        mocks.setFeatureOptIn.mockImplementation(async (_key, enabled) => {
+          besidkaActive.value = enabled
+        })
+
+        const wrapper = await mountPage()
+        const toggle = wrapper.get(toggleSelector)
+        const input = toggle.element as HTMLInputElement
+
+        input.checked = true
+        await toggle.trigger('change')
+        await flushPromises()
+
+        expect(mocks.setFeatureOptIn)
+          .toHaveBeenCalledWith('besidka-tools', true)
+        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(input.checked).toBe(true)
+        expect(wrapper.find('[data-testid="besidka-connector-row-open"]')
+          .exists()).toBe(true)
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('Besidka tools turned on')
+
+        input.checked = false
+        await toggle.trigger('change')
+        await flushPromises()
+
+        expect(mocks.setFeatureOptIn)
+          .toHaveBeenLastCalledWith('besidka-tools', false)
+        expect(input.checked).toBe(false)
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('Besidka tools turned off')
+      })
+
+    it('does not announce a change the refreshed state does not show',
+      async () => {
+        besidkaEnabled.value = true
+
+        const wrapper = await mountPage()
+        const toggle = wrapper.get(toggleSelector)
+
+        ;(toggle.element as HTMLInputElement).checked = true
+        await toggle.trigger('change')
+        await flushPromises()
+
+        expect(mocks.setFeatureOptIn).toHaveBeenCalled()
+        expect(mocks.error).toHaveBeenCalledWith(
+          'Besidka tools may not have updated',
+          expect.stringContaining('Reload the page'),
+        )
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('')
+        expect((toggle.element as HTMLInputElement).checked).toBe(false)
+      })
+
+    it('closes the open panel when the opt-in is turned off', async () => {
+      besidkaEnabled.value = true
+      besidkaActive.value = true
+      viewKey.value = 'besidka-tool-permissions'
+      mocks.setFeatureOptIn.mockImplementation(async (_key, enabled) => {
+        besidkaActive.value = enabled
+      })
+
+      const wrapper = await mountPage()
+      const toggle = wrapper.get(toggleSelector)
+
+      ;(toggle.element as HTMLInputElement).checked = false
+      await toggle.trigger('change')
+      await flushPromises()
+
+      expect(mocks.sidePanelClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves another open panel alone when the opt-in is turned off',
+      async () => {
+        besidkaEnabled.value = true
+        besidkaActive.value = true
+        viewKey.value = 'connector:conn1'
+        mocks.setFeatureOptIn.mockImplementation(async (_key, enabled) => {
+          besidkaActive.value = enabled
+        })
+
+        const wrapper = await mountPage()
+        const toggle = wrapper.get(toggleSelector)
+
+        ;(toggle.element as HTMLInputElement).checked = false
+        await toggle.trigger('change')
+        await flushPromises()
+
+        expect(mocks.sidePanelClose).not.toHaveBeenCalled()
+      })
+
+    it('closes its panel when the page is left', async () => {
+      besidkaEnabled.value = true
+      besidkaActive.value = true
+      viewKey.value = 'besidka-tool-permissions'
+
+      const wrapper = await mountPage()
+
+      wrapper.unmount()
+
+      expect(mocks.sidePanelClose).toHaveBeenCalled()
+    })
+
+    it('opens the panel again when the panel query changes on the page',
+      async () => {
+        besidkaEnabled.value = true
+        besidkaActive.value = true
+
+        await mountPage()
+
+        expect(mocks.sidePanelOpen).not.toHaveBeenCalled()
+
+        mocks.query = { panel: 'besidka-tool-permissions' }
+        await flushPromises()
+
+        expect(mocks.sidePanelOpen).toHaveBeenCalledWith(
+          expect.objectContaining({ viewKey: 'besidka-tool-permissions' }),
+        )
+        expect(mocks.replace).toHaveBeenCalledWith({
+          path: '/chats/connectors',
+          query: {},
+        })
+      })
+
+    it('reports a failed save and leaves the switch alone', async () => {
+      besidkaEnabled.value = true
+      mocks.setFeatureOptIn.mockRejectedValue(new Error('nope'))
+
+      const wrapper = await mountPage()
+      const toggle = wrapper.get(toggleSelector)
+
+      ;(toggle.element as HTMLInputElement).checked = true
+      await toggle.trigger('change')
+      await flushPromises()
+
+      expect(mocks.error).toHaveBeenCalled()
+      expect((toggle.element as HTMLInputElement).checked).toBe(false)
+    })
+
+    it('opens the tool permissions panel from the row', async () => {
+      besidkaEnabled.value = true
+      besidkaActive.value = true
+
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="besidka-connector-row-open"]')
+        .trigger('click')
+
+      expect(mocks.sidePanelOpen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          viewKey: 'besidka-tool-permissions',
+          title: 'Tool permissions',
+        }),
+      )
+    })
+
+    it('opens the panel from the panel query and clears it', async () => {
+      besidkaEnabled.value = true
+      besidkaActive.value = true
+      mocks.query = { panel: 'besidka-tool-permissions', keep: '1' }
+
+      await mountPage()
+
+      expect(mocks.sidePanelOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ viewKey: 'besidka-tool-permissions' }),
+      )
+      expect(mocks.replace).toHaveBeenCalledWith({
+        path: '/chats/connectors',
+        query: { keep: '1' },
+      })
+    })
+
+    it('does not open the panel from the query while the opt-in is off',
+      async () => {
+        besidkaEnabled.value = true
+        mocks.query = { panel: 'besidka-tool-permissions' }
+
+        await mountPage()
+
+        expect(mocks.sidePanelOpen).not.toHaveBeenCalled()
+      })
   })
 
   describe('with the directory', () => {

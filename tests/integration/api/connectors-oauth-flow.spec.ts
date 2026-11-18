@@ -1045,6 +1045,57 @@ describe('connector OAuth flow', () => {
       expect(await credentialRows()).toHaveLength(0)
     })
 
+    it('stores a bearer token as Authorization: Bearer', async () => {
+      const connector = await createConnector({ presetId: 'github' })
+
+      await consent(connector.id, null)
+      await call('~~/server/api/v1/connectors/[id]/credentials.post', {
+        params: { id: connector.id },
+        body: { auth: { kind: 'bearer', token: 'Bearer pat_secret' } },
+      })
+
+      const [row] = await credentialRows()
+
+      expect(row!.headerName).toBe('Authorization')
+      expect(fakeDecrypt(row!.headerValue!)).toBe('Bearer pat_secret')
+    })
+
+    it.each([
+      [{ auth: { kind: 'bearer', token: 'a' }, headerName: 'X-Api-Key' }],
+      [{ auth: { kind: 'bearer', token: 'a' }, headerValue: 'b' }],
+      [{ headerName: 'X-Api-Key' }],
+      [{ headerValue: 'b' }],
+      [{}],
+    ])('refuses the mixed or partial body %j', async (body) => {
+      const connector = await createConnector()
+
+      await consent(connector.id, null)
+
+      const failure = await failureOf(
+        call('~~/server/api/v1/connectors/[id]/credentials.post', {
+          params: { id: connector.id },
+          body,
+        }),
+      )
+
+      expect(failure.status).toBe(400)
+      expect(await credentialRows()).toHaveLength(0)
+    })
+
+    it('refuses a key for a preset that does not allow header auth',
+      async () => {
+        const connector = await createConnector({ presetId: 'notion' })
+
+        await consent(connector.id, null)
+
+        const failure = await failureOf(
+          saveHeader(connector.id, 'Authorization', 'Bearer x'),
+        )
+
+        expect(failure.code).toBe('CONNECTOR_HEADER_INVALID')
+        expect(await credentialRows()).toHaveLength(0)
+      })
+
     it('needs consent first', async () => {
       const connector = await createConnector()
 

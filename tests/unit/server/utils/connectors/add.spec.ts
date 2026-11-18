@@ -86,6 +86,7 @@ describe('resolveConnectorTarget', () => {
         presetId: null,
         slugBase: 'example',
         allowOAuth: true,
+        headerNames: [],
         createdVia: 'app',
         createdByClientId: null,
       })

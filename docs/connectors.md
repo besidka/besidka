@@ -254,10 +254,46 @@ consent screen names the issuer host when it differs from the server host
 
 ### 4.3 Header rules
 
-Header name `^[A-Za-z0-9-]{1,64}$`, value at most 4,096 bytes with no CR or
-LF. Rejected names: `Host`, `Cookie`, `Content-Length`, `Transfer-Encoding`,
-`Connection`, `Mcp-Session-Id`, `Mcp-Protocol-Version`. Values are stored
+Header name `^[A-Za-z0-9-]{1,64}$`, value at most 4,096 bytes with no NUL,
+TAB, LF, VT, FF, CR or DEL. Rejected names: `Host`, `Cookie`,
+`Content-Length`, `Transfer-Encoding`, `Connection`, `Mcp-Session-Id`,
+`Mcp-Protocol-Version`, `Keep-Alive`, `Upgrade`, `TE`, `Trailer`,
+`Proxy-Authorization` (`safeFetch` strips the same list from every request,
+except the two MCP transport headers on MCP calls). A bearer token is capped
+so that `Bearer ` plus the token fits the 4,096 bytes (4,089 bytes of token);
+a longer one answers "This key is too long". The credentials route also
+refuses a key for a preset whose `auth` has no `header`, and a body that mixes
+`auth` with `headerName` or `headerValue`. Values are stored
 encrypted and sent verbatim, never templated.
+
+Besidka asks for the key in one of two explicit modes (the Connect dialog's
+"How to send it" choice, shared code in `shared/utils/connectors-auth.ts`,
+server side in `server/utils/connectors/header-auth.ts`):
+
+- **API key or token** (default): one secret input, and the server builds
+  `Authorization: Bearer <token>` itself. A pasted value that already starts
+  with `Bearer ` (any letter case, repeated or not) loses that prefix, so the
+  scheme is never doubled. This exists because a raw key in `Authorization`
+  is read as no key by servers such as Exa (`mcp.exa.ai` takes `Authorization:
+  Bearer <key>` or `x-api-key: <key>`, and treats a bare value as anonymous),
+  and the old free name and value pair gave no hint that the scheme was part
+  of the value.
+- **Custom header**: a name and a full value, sent exactly as typed (the name
+  is trimmed). The hint reads "Sent exactly as typed. For Authorization,
+  include the scheme, for example Bearer <token>." The name rules above apply.
+
+Both modes store the same two columns (`header_name`, encrypted
+`header_value`); nothing is migrated, so existing connectors keep what they
+have and the same two modes appear when the key is entered again.
+
+The mode opens from what the server declares. For a registry entry the
+`remotes[].headers` names (the mirror keeps names only, never values or
+descriptions) reach the dialog through `headerNames` in the
+`connect/discover` answer: `Authorization` or no header opens "API key or
+token"; another name (for example `x-api-key`) opens "Custom header" with
+that name filled in. A preset's `headerName` is read the same way. The
+registry's free-text header descriptions (for example "Bearer <personal key>")
+are not stored, so they are not shown.
 
 ### 4.4 Test vectors
 
@@ -416,7 +452,9 @@ until the dialog asks:
 3. The final request depends on the auth kind:
    - **No sign-in or a key in a header**: `POST /api/v1/connectors` with
      `{ presetId | registryId | url, title?, toolMode?, consent: { accepted,
-     version, issuerHost }, header?: { name, value } }`. The order is: header
+     version, issuerHost }, auth?: { kind: 'bearer', token } | { kind:
+     'header', name, value } }`; the older `header?: { name, value }` is still
+     accepted, and sending both is `CONNECTOR_HEADER_INVALID`. The order is: header
      validation (section 4.3, and a preset must allow `header`), the consent
      version (`CONNECTOR_CONSENT_OUTDATED`), the sign-up consent
      (`requireLegalConsent`), the per-user cap, then the probe. The grant
@@ -526,8 +564,10 @@ of an id and store nothing until the connect succeeds. All requests go through
      requestedScope, createdAt }`), return `{ authorizationUrl }`. The browser goes there with
      `window.location.assign` (full-page redirect, not a popup).
    - Header (`POST /api/v1/connectors/[id]/credentials`
-     `{ headerName, headerValue }`): validated per section 4.3. GitHub preset:
-     header `Authorization`, value `Bearer <PAT>`; the screen suggests a
+     `{ auth: { kind: 'bearer', token } | { kind: 'header', name, value } }`,
+     or the older `{ headerName, headerValue }`): validated per section 4.3.
+     GitHub preset: a token in "API key or token" mode, stored as header
+     `Authorization`, value `Bearer <PAT>`; the screen suggests a
      fine-grained PAT with the fewest permissions.
    - None: nothing to store.
 4. **Callback** (`GET /api/v1/connectors/oauth/callback?code&state&iss`): load
@@ -2310,6 +2350,14 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   hop (`mcp.linear.app` also asking `linear.app`) was built and removed in
   review: on a shared platform host (`mcp.vercel.app`) it would show the
   platform's logo for someone else's server (threat T6).
+- **Header icon.** While a step streams, the reasoning header shows the
+  icon of the step its label names (the same descriptor and the same
+  `StepIcon.vue` as the row, so on shared pages it is the plug too); thinking
+  text and the finished generic labels keep the thinking icon. The icon box
+  is a fixed `size-4`, so switching causes no layout shift. The header can
+  make the first icon request on a collapsed streaming message, because the
+  row's lazy image sits inside a closed `details`; the route's private
+  `max-age` cache absorbs the duplicate request when the row opens.
 - **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 
