@@ -1610,10 +1610,14 @@ ICO; at most 4 images per call (`CONNECTOR_IMAGES_PER_CALL`), 3.5 MB decoded
 each (`CONNECTOR_IMAGE_MAX_BYTES`, under Anthropic's 5 MB), 12 MB per send
 (`CONNECTOR_IMAGES_MAX_BYTES_PER_SEND`, counted when the call runs). Base64
 that does not decode drops the image, not the call. The transport cap comes
-first: one MCP response is at most `CONNECTOR_RESPONSE_MAX_BYTES` (1 MiB), so
-today an image above roughly 750 KB decoded makes the whole call fail as a
-`protocol` error before these rules run. Raising that cap is a separate
-decision.
+first: on the streamable HTTP transport one MCP response is at most
+`CONNECTOR_RESPONSE_MAX_BYTES` (1 MiB), so today an image above roughly
+750 KB decoded makes the whole call fail as a `protocol` error before these
+rules run (covered by `send-tools.spec.ts`). The legacy SSE transport has an
+8 MiB session cap (`CONNECTOR_SSE_SESSION_MAX_BYTES`) instead. Raising the
+1 MiB cap is a separate decision. When the text of a result is cut at 64 KiB,
+an image line past the cut is lost from the text while the image is still
+forwarded with its note.
 
 **Continuation.** After an approval ends a send, the continuation rebuilds
 the earlier calls from D1, where the bytes never were. `convertToModelMessages`

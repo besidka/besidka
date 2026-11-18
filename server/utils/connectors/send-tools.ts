@@ -1697,7 +1697,7 @@ export async function getConnectorTools(
             output,
             images: imageStore.get(toolCallId),
             connectorTitle: candidate.connector.title,
-            toolName: candidate.definition.title ?? candidate.definition.name,
+            toolName: candidate.definition.name,
           })
         },
       })) as ToolSet[string]

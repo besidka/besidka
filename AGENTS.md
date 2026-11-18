@@ -813,9 +813,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   only by the user's own text; section 6.3 for Auto connectors in every
   chat: the per-chat plan (an off always wins), the 30-day tool-definition
   snapshot with no connection at send start, warm-ups, the live hash check
-  on first call, the `<connector_catalog>` block and `use_connector`; section
-  6.5 for images in tool results (model only, same send, never stored; the
-  direct Anthropic and OpenAI allowlist, caps, continuation placeholder)
+  on first call, the `<connector_catalog>` block and `use_connector`
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link

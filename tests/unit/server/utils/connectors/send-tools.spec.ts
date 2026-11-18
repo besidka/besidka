@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm'
 import {
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CONSENT_VERSION,
+  CONNECTOR_RESPONSE_MAX_BYTES,
   CONNECTOR_RESULT_MAX_BYTES,
   CONNECTOR_SSE_PER_SEND,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
@@ -958,6 +959,34 @@ describe('getConnectorTools', () => {
         }),
       )
     })
+
+    it('fails a call whose image makes the response larger than 1 MiB',
+      async () => {
+        const alpha = server('mcp.alpha.example.com', {
+          respond: () => ({
+            content: [mcpImage('A'.repeat(CONNECTOR_RESPONSE_MAX_BYTES))],
+          }),
+        })
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'header',
+        }]
+
+        await addConnector(seeds[0]!)
+
+        const { tools } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha],
+          forwardImages: true,
+        })
+        const exception = await execute(tools, 'mcp__alpha__list_issues')
+          .catch((caught: Error) => caught)
+
+        expect(exception).toBeInstanceOf(Error)
+        expect(parseConnectorCallErrorText(exception.message)?.category)
+          .toBe('protocol')
+      })
 
     it('never shares images between sends and drops them on close',
       async () => {
