@@ -126,6 +126,7 @@ export const CONNECTOR_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$/
 export const CONNECTOR_TITLE_MAX_LENGTH = 80
 export const CONNECTOR_RESULT_MAX_BYTES = 64 * KIBIBYTE
 export const CONNECTOR_RESPONSE_MAX_BYTES = MEBIBYTE
+export const CONNECTOR_CALL_RESPONSE_MAX_BYTES = 8 * MEBIBYTE
 export const CONNECTOR_CALL_TIMEOUT_MS = 60 * SECOND_MS
 export const CONNECTOR_CONNECT_TIMEOUT_MS = 10 * SECOND_MS
 export const CONNECTOR_PARALLEL_CONNECTS = 3
@@ -255,6 +256,7 @@ export const CONNECTOR_IMAGE_MEDIA_TYPES = [
 export const CONNECTOR_IMAGES_PER_CALL = 4
 export const CONNECTOR_IMAGE_MAX_BYTES = 3.5 * MEBIBYTE
 export const CONNECTOR_IMAGES_MAX_BYTES_PER_SEND = 12 * MEBIBYTE
+export const CONNECTOR_IMAGE_MAX_DIMENSION = 8000
 
 /**
  * Direct providers whose adapter sends an image inside a tool result as an

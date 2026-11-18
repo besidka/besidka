@@ -17,9 +17,13 @@ import { callToolResultToText } from '~~/server/utils/connectors/tool-definition
 import {
   RED_PNG_BASE64,
   RED_PNG_BYTES,
+  gifBytes,
   imageOfBytes,
+  jpegBytes,
   mcpImage,
+  pngHeaderBytes,
   toBase64,
+  webpBytes,
 } from '../../../../setup/helpers/connector-images'
 
 const JPEG_SIGNATURE = [0xFF, 0xD8, 0xFF, 0xE0]
@@ -50,9 +54,9 @@ describe('connector tool images', () => {
       const collection = collect([
         { type: 'text', text: 'Frame' },
         mcpImage(RED_PNG_BASE64, 'image/svg+xml'),
-        mcpImage(imageOfBytes(JPEG_SIGNATURE, 30), 'image/png'),
-        mcpImage(imageOfBytes(GIF_SIGNATURE, 30)),
-        mcpImage(imageOfBytes(WEBP_SIGNATURE, 30)),
+        mcpImage(toBase64(jpegBytes(640, 480)), 'image/png'),
+        mcpImage(toBase64(gifBytes(16, 16))),
+        mcpImage(toBase64(webpBytes(1280, 800))),
       ])
 
       expect(collection.images.map(image => image.mediaType)).toEqual([
@@ -69,6 +73,47 @@ describe('connector tool images', () => {
       expect(collection.lines[0])
         .toBe('[image/png, 75 B: shown to the model, not saved]')
       expect(collection.dropped).toEqual({})
+    })
+
+    it('drops images whose structure is broken', () => {
+      const truncatedJpeg = jpegBytes(640, 480).slice(0, -2)
+      const webp = webpBytes(100, 100)
+      const wrongRiffSize = [...webp, 0x00, 0x00]
+      const cases = [
+        imageOfBytes(PNG_SIGNATURE, 64),
+        toBase64(pngHeaderBytes(0, 10)),
+        toBase64(pngHeaderBytes(10, 0)),
+        toBase64(truncatedJpeg),
+        imageOfBytes(JPEG_SIGNATURE, 30),
+        imageOfBytes(GIF_SIGNATURE, 30),
+        toBase64(gifBytes(0, 10)),
+        toBase64(wrongRiffSize),
+        imageOfBytes(WEBP_SIGNATURE, 30),
+      ]
+      const collection = collect(cases.map(data => mcpImage(data)))
+
+      expect(collection.images).toEqual([])
+      expect(collection.dropped).toEqual({ invalid: cases.length })
+      expect(new Set(collection.lines)).toEqual(new Set([
+        '[image omitted: image/png, not a valid image]',
+      ]))
+    })
+
+    it('drops images wider or taller than 8000 px', () => {
+      const cases = [
+        toBase64(pngHeaderBytes(8001, 10)),
+        toBase64(jpegBytes(10, 8001)),
+        toBase64(gifBytes(8001, 8001)),
+        toBase64(webpBytes(10, 9000)),
+      ]
+      const collection = collect(cases.map(data => mcpImage(data)))
+
+      expect(collection.images).toEqual([])
+      expect(collection.dropped).toEqual({ invalid: 4 })
+      expect(collect([
+        mcpImage(toBase64(pngHeaderBytes(8000, 8000))),
+        mcpImage(toBase64(webpBytes(8000, 1))),
+      ]).images).toHaveLength(2)
     })
 
     it('never forwards SVG, ICO or unknown bytes', () => {

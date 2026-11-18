@@ -1,6 +1,7 @@
 import { createMCPClient } from '@ai-sdk/mcp'
 import type { MCPClient } from '@ai-sdk/mcp'
 import {
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
   CONNECTOR_CLOSE_TIMEOUT_MS,
   CONNECTOR_CONNECT_TIMEOUT_MS,
   CONNECTOR_PARALLEL_CONNECTS,
@@ -116,6 +117,22 @@ function scopeNetLogger(
   }
 }
 
+function isToolCallRequest(init?: RequestInit): boolean {
+  if (typeof init?.body !== 'string') {
+    return false
+  }
+
+  try {
+    const message: unknown = JSON.parse(init.body)
+
+    return typeof message === 'object'
+      && message !== null
+      && (message as { method?: unknown }).method === 'tools/call'
+  } catch {
+    return false
+  }
+}
+
 /**
  * The `fetch` of one connector's MCP transport. Every request goes through
  * `safeFetch` with purpose `mcp` (https only, no private names, same-origin
@@ -125,7 +142,10 @@ function scopeNetLogger(
  * (the transport reads it as "no stream offered") and never leaves the
  * Worker, which keeps a send from holding one connection per connector open.
  * The legacy SSE transport needs its one `GET` stream, so it gets a session
- * deadline and size cap instead.
+ * deadline and size cap instead. On streamable HTTP a `tools/call` response
+ * may carry images, so its body cap is `CONNECTOR_CALL_RESPONSE_MAX_BYTES`
+ * (8 MiB) instead of the 1 MiB `mcp` default every other request keeps; the
+ * body is still counted as it streams and cut at the cap.
  */
 export function createConnectorTransportFetch(
   transport: ConnectorTransport,
@@ -154,6 +174,13 @@ export function createConnectorTransportFetch(
       return Promise.resolve(
         new Response(null, { status: HTTP_METHOD_NOT_ALLOWED }),
       )
+    }
+
+    if (isToolCallRequest(init)) {
+      return safeFetch(input, {
+        ...init,
+        maxResponseBytes: CONNECTOR_CALL_RESPONSE_MAX_BYTES,
+      } as RequestInit)
     }
 
     return safeFetch(input, init)

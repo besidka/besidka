@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
   CONNECTOR_SSE_SESSION_MAX_BYTES,
   CONNECTOR_SSE_SESSION_TIMEOUT_MS,
 } from '#shared/utils/connectors-policy'
@@ -39,6 +40,39 @@ describe('connector transport fetch', () => {
 
     expect(createFetch).toHaveBeenCalledWith('mcp')
     expect(safeFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('raises the body cap to 8 MiB for tools/call only', async () => {
+    const safeFetch = vi.fn(async () => new Response('ok'))
+    const createFetch = vi.fn(() => safeFetch as unknown as typeof fetch)
+    const transportFetch = createConnectorTransportFetch(
+      'streamable-http',
+      createFetch,
+    )
+    const message = (method: string) => {
+      return JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} })
+    }
+
+    await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: message('tools/call'),
+    })
+    await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: message('tools/list'),
+    })
+    await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: 'not json',
+    })
+
+    const inits = safeFetch.mock.calls.map((call) => {
+      return (call as unknown as [string, Record<string, unknown>])[1]
+    })
+
+    expect(inits[0]?.maxResponseBytes).toBe(CONNECTOR_CALL_RESPONSE_MAX_BYTES)
+    expect(inits[1]).not.toHaveProperty('maxResponseBytes')
+    expect(inits[2]).not.toHaveProperty('maxResponseBytes')
   })
 
   it('gives the legacy SSE transport a session deadline and size cap',

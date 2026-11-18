@@ -2,12 +2,16 @@ import type { CallToolResult } from '@ai-sdk/mcp'
 import type { ToolResultPart } from 'ai'
 import {
   CONNECTOR_IMAGE_MAX_BYTES,
+  CONNECTOR_IMAGE_MAX_DIMENSION,
   CONNECTOR_IMAGES_MAX_BYTES_PER_SEND,
   CONNECTOR_IMAGES_PER_CALL,
   isConnectorImageMediaType,
 } from '#shared/utils/connectors-policy'
 import type { ConnectorImageMediaType } from '#shared/utils/connectors-policy'
-import { sniffConnectorIconType } from '~~/server/utils/connectors/icon'
+import {
+  readConnectorIconDimensions,
+  sniffConnectorIconType,
+} from '~~/server/utils/connectors/icon'
 import { describeOmittedMedia } from '~~/server/utils/connectors/tool-definitions'
 
 type ToolResultOutput = ToolResultPart['output']
@@ -18,6 +22,10 @@ const BASE64_WHITESPACE = /\s+/g
 const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/
 const BASE64_GROUP_LENGTH = 4
 const MAGIC_BYTES_HEAD_LENGTH = 16
+const PNG_MIN_LENGTH = 33
+const JPEG_END_OF_IMAGE = [0xFF, 0xD9]
+const GIF_MIN_LENGTH = 13
+const RIFF_HEADER_LENGTH = 8
 const PROVENANCE_FIELD_MAX_LENGTH = 128
 const PROVENANCE_UNSAFE_CHARACTERS = /["\p{Cc}]/gu
 const SHOWN_SUFFIX = 'shown to the model, not saved'
@@ -155,6 +163,61 @@ function normalizeBase64(value: unknown): string | null {
   return base64
 }
 
+function readRiffSize(bytes: Uint8Array): number {
+  return (bytes[4] ?? 0)
+    + ((bytes[5] ?? 0) << 8)
+    + ((bytes[6] ?? 0) << 16)
+    + ((bytes[7] ?? 0) * 0x1000000)
+}
+
+function endsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
+  const start = bytes.length - signature.length
+
+  return start >= 0 && signature.every((value, index) => {
+    return bytes[start + index] === value
+  })
+}
+
+function hasCompleteContainer(
+  bytes: Uint8Array,
+  mediaType: ConnectorImageMediaType,
+): boolean {
+  switch (mediaType) {
+    case 'image/png':
+      return bytes.length >= PNG_MIN_LENGTH
+    case 'image/jpeg':
+      return endsWith(bytes, JPEG_END_OF_IMAGE)
+    case 'image/gif':
+      return bytes.length >= GIF_MIN_LENGTH
+    case 'image/webp':
+      return readRiffSize(bytes) + RIFF_HEADER_LENGTH === bytes.length
+  }
+}
+
+/**
+ * A cheap structural check, so a corrupt image does not make the provider
+ * reject the whole send: PNG has its `IHDR` chunk, JPEG starts with SOI, ends
+ * with EOI and has a frame header, GIF has its logical screen size, WebP's
+ * RIFF size matches the data, and both sides are between 1 and 8000 pixels
+ * (Anthropic's limit). The pixels themselves are not decoded.
+ */
+export function isUsableConnectorImage(
+  bytes: Uint8Array,
+  mediaType: ConnectorImageMediaType,
+): boolean {
+  if (!hasCompleteContainer(bytes, mediaType)) {
+    return false
+  }
+
+  const dimensions = readConnectorIconDimensions(bytes, mediaType)
+
+  return !!dimensions
+    && dimensions.width > 0
+    && dimensions.height > 0
+    && dimensions.width <= CONNECTOR_IMAGE_MAX_DIMENSION
+    && dimensions.height <= CONNECTOR_IMAGE_MAX_DIMENSION
+}
+
 function sniffImageType(
   base64: string,
 ): ConnectorImageMediaType | 'other' | null {
@@ -180,7 +243,8 @@ function sniffImageType(
  * provider and model take images, `canForwardConnectorImages`), its data is
  * valid base64 whose magic bytes are PNG, JPEG, GIF or WebP (the server's
  * `mimeType` is never trusted, SVG is never shown), it is one of the first
- * four images of the result, it decodes to at most 3.5 MB, and it fits in
+ * four images of the result, it decodes to at most 3.5 MB and passes
+ * `isUsableConnectorImage` (structure, at most 8000 px a side), and it fits in
  * `remainingBytes`, the send's 12 MB image budget. Every other image gets
  * the "omitted" line with the reason. Nothing here is logged or stored.
  */
@@ -261,7 +325,9 @@ export function collectConnectorImages(
       continue
     }
 
-    if (!decodeBase64(base64)) {
+    const decoded = decodeBase64(base64)
+
+    if (!decoded || !isUsableConnectorImage(decoded, mediaType)) {
       drop(item, 'invalid')
 
       continue

@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm'
 import {
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CONSENT_VERSION,
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
   CONNECTOR_RESPONSE_MAX_BYTES,
   CONNECTOR_RESULT_MAX_BYTES,
   CONNECTOR_SSE_PER_SEND,
@@ -45,6 +46,7 @@ import type {
 import {
   RED_PNG_BASE64,
   mcpImage,
+  pngHeaderBytes,
 } from '../../../../setup/helpers/connector-images'
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -960,26 +962,51 @@ describe('getConnectorTools', () => {
       )
     })
 
-    it('fails a call whose image makes the response larger than 1 MiB',
+    async function largeResponseRun(content: unknown[]) {
+      const alpha = server('mcp.alpha.example.com', {
+        respond: () => ({ content }),
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      return await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        forwardImages: true,
+      })
+    }
+
+    it('lets a screenshot past the 1 MiB default through the 8 MiB call cap',
       async () => {
-        const alpha = server('mcp.alpha.example.com', {
-          respond: () => ({
-            content: [mcpImage('A'.repeat(CONNECTOR_RESPONSE_MAX_BYTES))],
-          }),
-        })
-        const seeds: ConnectorSeed[] = [{
-          slug: 'alpha',
-          url: alpha.url,
-          auth: 'header',
-        }]
+        const screenshot = new Uint8Array(1.5 * 1024 * 1024)
 
-        await addConnector(seeds[0]!)
+        screenshot.set(pngHeaderBytes(1920, 1080))
 
-        const { tools } = await run({
-          connectorSeeds: seeds,
-          servers: [alpha],
-          forwardImages: true,
+        const base64 = Buffer.from(screenshot).toString('base64')
+
+        expect(base64.length).toBeGreaterThan(CONNECTOR_RESPONSE_MAX_BYTES)
+
+        const { tools } = await largeResponseRun([mcpImage(base64)])
+        const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+        expect(output)
+          .toContain('[image/png, 1.5 MB: shown to the model, not saved]')
+        expect((await modelOutput(tools, output)).value.at(-1)).toMatchObject({
+          type: 'file',
+          data: { type: 'data', data: base64 },
         })
+      })
+
+    it('fails a call whose response is larger than 8 MiB as a protocol error',
+      async () => {
+        const { tools } = await largeResponseRun([
+          mcpImage('A'.repeat(CONNECTOR_CALL_RESPONSE_MAX_BYTES)),
+        ])
         const exception = await execute(tools, 'mcp__alpha__list_issues')
           .catch((caught: Error) => caught)
 
