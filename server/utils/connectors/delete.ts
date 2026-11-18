@@ -1,3 +1,4 @@
+import { CONNECTOR_CALL_LOG_MAX } from '#shared/utils/connectors-errors'
 import { deleteCatalogSnapshot } from '~~/server/utils/connectors/tool-cache'
 import {
   CONNECTOR_REVOKE_DEADLINE_MS,
@@ -38,7 +39,18 @@ export async function deleteConnectorsWithRevocation(
   const deleted: string[] = []
   const notFound: string[] = []
   const withdrawnHosts: string[] = []
-  const owned: Array<{ id: string, host: string, consented: boolean }> = []
+  const owned: Array<{
+    id: string
+    host: string
+    consented: boolean
+    directoryId: string
+    authType: string
+  }> = []
+  const lifecycle: Array<{
+    action: 'delete'
+    directoryId: string
+    authType: string
+  }> = []
   const credentials: ConnectorCredentials[] = []
 
   for (const connectorId of new Set(connectorIds)) {
@@ -60,6 +72,8 @@ export async function deleteConnectorsWithRevocation(
       id: connectorId,
       host: new URL(connector.origin).host,
       consented: connector.consentedAt !== null,
+      directoryId: connector.presetId ?? 'custom',
+      authType: connector.authType ?? 'none',
     })
 
     const stored = await readConnectorCredentials(db, userId, connectorId)
@@ -92,6 +106,11 @@ export async function deleteConnectorsWithRevocation(
     }
 
     deleted.push(connector.id)
+    lifecycle.push({
+      action: 'delete',
+      directoryId: connector.directoryId,
+      authType: connector.authType,
+    })
     await deleteConnectorIconCache(kv, connector.id)
     await deleteCatalogSnapshot(kv, connector.id)
 
@@ -114,7 +133,12 @@ export async function deleteConnectorsWithRevocation(
 
   logger.set({
     attributes: {
-      connectors: { step: 'delete', ids: deleted, deleted: deleted.length },
+      connectors: {
+        step: 'delete',
+        ids: deleted,
+        deleted: deleted.length,
+        lifecycle: lifecycle.slice(0, CONNECTOR_CALL_LOG_MAX),
+      },
     },
   })
 

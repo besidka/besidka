@@ -606,6 +606,13 @@ async function completeNewConnector(
 
   input.logger?.set({
     attributes: {
+      connectors: {
+        lifecycle: [{
+          action: 'create',
+          directoryId: draft.presetId ?? 'custom',
+          authType: 'oauth',
+        }],
+      },
       legalConsent: {
         action: 'connector-granted',
         connectorId,

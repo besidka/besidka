@@ -13,6 +13,10 @@ import {
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
   CONNECTOR_UNAPPROVED_CALL_TEXT,
 } from '#shared/utils/connectors-parts'
+import {
+  buildConnectorCallErrorText,
+  parseConnectorCallErrorText,
+} from '#shared/utils/connectors-errors'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -101,6 +105,10 @@ interface ConnectorSeed {
   auth: 'header' | 'oauth' | 'none'
   transport?: 'streamable-http' | 'sse'
   toolMode?: 'auto' | 'always-on'
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 describe('getConnectorTools', () => {
@@ -237,6 +245,16 @@ describe('getConnectorTools', () => {
     closers.push(result.close)
 
     return result
+  }
+
+  function loggedConnectorValues(key: string): unknown[] {
+    return logged.flatMap((entry) => {
+      const connectors = (entry as {
+        attributes?: { connectors?: Record<string, unknown> }
+      }).attributes?.connectors?.[key]
+
+      return Array.isArray(connectors) ? connectors : []
+    })
   }
 
   function server(
@@ -500,18 +518,98 @@ describe('getConnectorTools', () => {
 
       alpha.tools.length = 0
       vi.stubGlobal('fetch', vi.fn(async () => {
-        throw new TypeError('socket to https://mcp.alpha.example.com/mcp?k=1')
+        throw new TypeError(
+          `socket to https://mcp.alpha.example.com/mcp?k=${HEADER_SECRET}`,
+        )
       }))
 
       const exception = await execute(tools, 'mcp__alpha__list_issues')
         .catch((caught: Error) => caught)
+      const parsed = parseConnectorCallErrorText(
+        (exception as Error).message,
+      )
 
       expect(exception).toBeInstanceOf(Error)
+      expect(parsed).toMatchObject({ category: 'unreachable' })
       expect((exception as Error).message).toBe(
-        'The connector tool call failed.',
+        buildConnectorCallErrorText('unreachable', parsed!.reference),
       )
       expect((exception as Error).message).not.toContain('socket')
       expect((await auditRows())[0]).toMatchObject({ outcome: 'error' })
+
+      const callErrors = loggedConnectorValues('callError')
+
+      expect(callErrors).toHaveLength(1)
+      expect(callErrors[0]).not.toHaveProperty('tool')
+      expect(callErrors[0]).toMatchObject({
+        category: 'unreachable',
+        step: 'call',
+        reference: parsed!.reference,
+      })
+      expect(JSON.stringify(callErrors)).not.toContain(HEADER_SECRET)
+      expect((callErrors[0] as { message: string }).message.length)
+        .toBeLessThanOrEqual(300)
+      expect(loggedConnectorValues('calls')).toEqual([
+        expect.objectContaining({
+          directoryId: 'custom',
+          outcome: 'error',
+          category: 'unreachable',
+        }),
+      ])
+      expect(loggedConnectorValues('calls')[0]).not.toHaveProperty('tool')
+    })
+
+    it('does not log a key from the connector address that a 4xx body '
+      + 'echoes', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: `${alpha.url}?key=abc123secret`,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response(
+          'bad request https://mcp.alpha.example.com/mcp?key=abc123secret '
+          + 'key=abc123secret',
+          { status: 400 },
+        )
+      }))
+
+      await execute(tools, 'mcp__alpha__list_issues').catch(() => undefined)
+
+      const [callError] = loggedConnectorValues('callError') as Array<
+        Record<string, unknown>
+      >
+
+      expect(callError).toBeDefined()
+      expect(callError).toMatchObject({ category: 'protocol', httpStatus: 400 })
+      expect(JSON.stringify(logged)).not.toContain('abc123secret')
+    })
+
+    it('records a successful call without a category', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      await execute(tools, 'mcp__alpha__list_issues')
+
+      const [record] = loggedConnectorValues('calls')
+
+      expect(record).toMatchObject({ outcome: 'ok', directoryId: 'custom' })
+      expect(record).not.toHaveProperty('category')
+      expect(loggedConnectorValues('callError')).toEqual([])
     })
 
     it('leaves calls to a second connector to the approval policy',
@@ -2220,7 +2318,16 @@ describe('getConnectorTools', () => {
 
         const output = await execute(tools, 'mcp__alpha__list_issues')
 
-        expect(output).toBe(CONNECTOR_TOOL_CHANGED_TEXT)
+        expect(output).toMatch(
+          new RegExp(`^${escapeRegExp(CONNECTOR_TOOL_CHANGED_TEXT)} `
+            + 'Reference: [0-9A-Z]{4}-[0-9A-Z]{4}\\.$'),
+        )
+        expect(loggedConnectorValues('callError')[0]).toMatchObject({
+          category: 'tool-changed',
+        })
+        expect(loggedConnectorValues('calls')[0]).toMatchObject({
+          outcome: 'tool-changed',
+        })
         expect(rpcCount(alpha, 'tools/list')).toBe(1)
         expect(rpcCount(alpha, 'tools/call')).toBe(0)
 

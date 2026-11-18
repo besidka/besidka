@@ -23,6 +23,33 @@
         Untrusted output
       </span>
     </div>
+    <p
+      v-if="failureReason"
+      class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1 text-xs text-base-content/60"
+      data-testid="reasoning-connector-step-reason"
+    >
+      <span data-testid="reasoning-connector-step-reason-text">
+        {{ failureReason }}.
+      </span>
+      <span data-testid="reasoning-connector-step-reference">
+        Reference {{ data.error?.reference }}
+      </span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs btn-square"
+        :aria-label="isReferenceCopied
+          ? 'Reference copied'
+          : 'Copy reference'"
+        data-testid="reasoning-connector-step-copy-reference"
+        @click="copyReference"
+      >
+        <Icon
+          :name="isReferenceCopied ? 'lucide:check' : 'lucide:copy'"
+          size="12"
+          aria-hidden="true"
+        />
+      </button>
+    </p>
     <details
       v-if="argumentsText"
       class="mt-1 text-xs"
@@ -51,7 +78,52 @@ const props = defineProps<{
   icon?: ReasoningStepIcon | null
 }>()
 
+const COPIED_RESET_MS = 2000
+
 useConnectorLibrary()
+
+const isReferenceCopied = shallowRef<boolean>(false)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+const failureReason = computed<string>(() => {
+  const reason = props.data.error?.reason
+
+  if (!reason) {
+    return ''
+  }
+
+  return reason.charAt(0).toUpperCase() + reason.slice(1)
+})
+
+async function copyReference() {
+  const reference = props.data.error?.reference
+
+  if (!reference) {
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(reference)
+    isReferenceCopied.value = true
+
+    if (copiedTimer) {
+      clearTimeout(copiedTimer)
+    }
+
+    copiedTimer = setTimeout(() => {
+      isReferenceCopied.value = false
+      copiedTimer = null
+    }, COPIED_RESET_MS)
+  } catch {
+    useErrorMessage('Failed to copy the reference')
+  }
+}
+
+onBeforeUnmount(() => {
+  if (copiedTimer) {
+    clearTimeout(copiedTimer)
+  }
+})
 
 const argumentsText = computed<string>(() => {
   return formatConnectorArguments(props.data.input)
