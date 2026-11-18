@@ -205,7 +205,26 @@ describe('resolveConnectorTarget', () => {
     expect(slugBaseOf({
       url: 'https://mcp.exa.ai/mcp',
       source: { via: 'app' },
-    })).toBe('exa-2')
+    })).toBe('exa')
+    expect(slugBaseOf({
+      url: 'https://mcp.exa.ai/mcp',
+      title: 'Exa',
+      source: { via: 'app' },
+    })).toBe('exa')
+    expect(slugBaseOf({
+      url: 'https://mcp.exa.evil.example/mcp',
+      title: 'Exa',
+      source: { via: 'app' },
+    })).toBe('evil')
+    expect(slugBaseOf({
+      url: 'https://mcp.linear.app/mcp',
+      source: { via: 'app' },
+    })).toBe('linear')
+    expect(slugBaseOf({
+      url: 'https://mcp.linear.evil.example/mcp',
+      title: 'Linear',
+      source: { via: 'app' },
+    })).toBe('evil')
   })
 
   it('gives the curated entry its own id', () => {

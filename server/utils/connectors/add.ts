@@ -15,6 +15,7 @@ import {
 import {
   CONNECTOR_PRESETS,
   findConnectorPreset,
+  findConnectorPresetByHost,
 } from '~~/config/connectors-catalog'
 import * as schema from '~~/server/db/schema'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
@@ -24,9 +25,12 @@ import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 
 type DbClient = ReturnType<typeof useDb>
 
+const CURATED_ENTRIES = CURATED_CONNECTORS as readonly CuratedConnector[]
+const GENERIC_NAMESPACE_LABELS: ReadonlySet<string> = new Set(['mcp'])
+
 const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   ...CONNECTOR_PRESETS.map(preset => preset.id),
-  ...(CURATED_CONNECTORS as readonly CuratedConnector[]).flatMap((curated) => {
+  ...CURATED_ENTRIES.flatMap((curated) => {
     return [
       curated.id,
       curated.presetId,
@@ -35,10 +39,51 @@ const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   }),
 ])
 
-function unreservedSlugBase(candidate: string | null): string | null {
-  return candidate !== null && !RESERVED_SLUGS.has(candidate)
-    ? candidate
-    : null
+function registryNamespaceDomain(registryName: string): string | null {
+  const labels = registryName.split('/')[0]?.split('.').reverse() ?? []
+
+  if (labels.length > 2 && GENERIC_NAMESPACE_LABELS.has(labels[0]!)) {
+    labels.shift()
+  }
+
+  return labels.length >= 2 ? labels.join('.') : null
+}
+
+function isSlugOwnedByHost(slug: string, hostname: string): boolean {
+  if (findConnectorPresetByHost(hostname)?.id === slug) {
+    return true
+  }
+
+  return CURATED_ENTRIES.some((curated) => {
+    const names = [
+      curated.id,
+      curated.presetId,
+      deriveConnectorSlugBaseFromTitle(curated.title),
+    ]
+
+    if (!names.includes(slug) || !curated.registryName) {
+      return false
+    }
+
+    const domain = registryNamespaceDomain(curated.registryName)
+
+    return domain !== null
+      && (hostname === domain || hostname.endsWith(`.${domain}`))
+  })
+}
+
+function claimableSlugBase(
+  candidate: string | null,
+  hostname: string,
+): string | null {
+  if (candidate === null) {
+    return null
+  }
+
+  const isClaimable = !RESERVED_SLUGS.has(candidate)
+    || isSlugOwnedByHost(candidate, hostname)
+
+  return isClaimable ? candidate : null
 }
 
 export interface ConnectorTargetInput {
@@ -196,6 +241,7 @@ export function resolveConnectorTarget(
   )
   const title = typedTitle || preset?.title || registryTitle
     || parsed.url.hostname
+  const domainSlugBase = deriveConnectorSlugBase(parsed.url.hostname)
   const ownCurated = registryEntry?.name
     ? CURATED_CONNECTORS.find((curated) => {
       return 'registryName' in curated
@@ -204,12 +250,19 @@ export function resolveConnectorTarget(
     : undefined
   const slugBase = preset?.id
     ?? ownCurated?.id
-    ?? unreservedSlugBase(deriveConnectorSlugBaseFromTitle(registryTitle))
-    ?? unreservedSlugBase(deriveConnectorSlugBaseFromTitle(typedTitle))
-    ?? allocateConnectorSlug(
-      deriveConnectorSlugBase(parsed.url.hostname),
-      RESERVED_SLUGS,
+    ?? claimableSlugBase(
+      deriveConnectorSlugBaseFromTitle(registryTitle),
+      parsed.url.hostname,
     )
+    ?? claimableSlugBase(
+      deriveConnectorSlugBaseFromTitle(typedTitle),
+      parsed.url.hostname,
+    )
+    ?? claimableSlugBase(
+      domainSlugBase,
+      parsed.url.hostname,
+    )
+    ?? allocateConnectorSlug(domainSlugBase, RESERVED_SLUGS)
 
   return {
     url: parsed.url.toString(),
