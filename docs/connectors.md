@@ -2232,6 +2232,14 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   hop (`mcp.linear.app` also asking `linear.app`) was built and removed in
   review: on a shared platform host (`mcp.vercel.app`) it would show the
   platform's logo for someone else's server (threat T6).
+- **Header icon.** While a step streams, the reasoning header shows the
+  icon of the step its label names (the same descriptor and the same
+  `StepIcon.vue` as the row, so on shared pages it is the plug too); thinking
+  text and the finished generic labels keep the thinking icon. The icon box
+  is a fixed `size-4`, so switching causes no layout shift. The header can
+  make the first icon request on a collapsed streaming message, because the
+  row's lazy image sits inside a closed `details`; the route's private
+  `max-age` cache absorbs the duplicate request when the row opens.
 - **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 
