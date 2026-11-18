@@ -107,6 +107,11 @@ export const CONNECTOR_REJECTED_HEADER_NAMES: readonly string[] = [
   'connection',
   'mcp-session-id',
   'mcp-protocol-version',
+  'keep-alive',
+  'upgrade',
+  'te',
+  'trailer',
+  'proxy-authorization',
 ]
 export const CONNECTORS_PER_USER = 20
 export const CONNECTORS_MCP_DISABLED_MAX = 5

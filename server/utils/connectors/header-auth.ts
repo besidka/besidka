@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { z } from 'zod'
 import {
   CONNECTOR_HEADER_VALUE_MAX_BYTES,
@@ -12,6 +13,7 @@ import { isValidConnectorHeader } from '~~/server/utils/connectors/credentials'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
 
 const HEADER_NAME_MAX_LENGTH = 64
+const textEncoder = new TextEncoder()
 
 export const connectorHeaderAuthSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -55,6 +57,20 @@ export function readConnectorHeaderCredential(
 
   if (!request.auth && !request.header) {
     return null
+  }
+
+  if (
+    request.auth?.kind === 'bearer'
+    && credential
+    && textEncoder.encode(credential.value).byteLength
+    > CONNECTOR_HEADER_VALUE_MAX_BYTES
+  ) {
+    throw createError({
+      message: 'This key is too long',
+      status: 400,
+      why: 'With "Bearer " added, the header is over 4,096 bytes',
+      fix: 'Use a key of at most 4,089 bytes',
+    })
   }
 
   if (

@@ -51,6 +51,15 @@ describe('readConnectorHeaderCredential', () => {
     })).toThrow()
   })
 
+  it('refuses a key that only fits without the Bearer prefix', () => {
+    expect(() => readConnectorHeaderCredential({
+      auth: { kind: 'bearer', token: 'k'.repeat(4090) },
+    })).toThrow('This key is too long')
+    expect(readConnectorHeaderCredential({
+      auth: { kind: 'bearer', token: 'k'.repeat(4089) },
+    })?.value).toHaveLength(4096)
+  })
+
   it('refuses both shapes in one request', () => {
     expect(() => readConnectorHeaderCredential({
       auth: { kind: 'bearer', token: 'a' },

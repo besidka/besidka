@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   CONNECTOR_HEADER_VALUE_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
+import { findConnectorPreset } from '~~/config/connectors-catalog'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import { assertConnectorConsent } from '~~/server/utils/connectors/consent'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
@@ -44,14 +45,24 @@ export default defineEventHandler(async (event) => {
   const connector = await requireOwnedConnector(event, userId)
   const body = await readConnectorBody(event, bodySchema)
 
+  const hasLegacyField = body.headerName !== undefined
+    || body.headerValue !== undefined
+
+  if (body.auth && hasLegacyField) {
+    throw createConnectorError('CONNECTOR_HEADER_INVALID')
+  }
+
   const credential = readConnectorHeaderCredential({
     auth: body.auth,
     header: body.headerName !== undefined && body.headerValue !== undefined
       ? { name: body.headerName, value: body.headerValue }
       : undefined,
   })
+  const preset = connector.presetId
+    ? findConnectorPreset(connector.presetId)
+    : undefined
 
-  if (!credential) {
+  if (!credential || (preset && !preset.auth.includes('header'))) {
     throw createConnectorError('CONNECTOR_HEADER_INVALID')
   }
 

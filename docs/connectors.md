@@ -254,9 +254,16 @@ consent screen names the issuer host when it differs from the server host
 
 ### 4.3 Header rules
 
-Header name `^[A-Za-z0-9-]{1,64}$`, value at most 4,096 bytes with no CR or
-LF. Rejected names: `Host`, `Cookie`, `Content-Length`, `Transfer-Encoding`,
-`Connection`, `Mcp-Session-Id`, `Mcp-Protocol-Version`. Values are stored
+Header name `^[A-Za-z0-9-]{1,64}$`, value at most 4,096 bytes with no NUL,
+TAB, LF, VT, FF, CR or DEL. Rejected names: `Host`, `Cookie`,
+`Content-Length`, `Transfer-Encoding`, `Connection`, `Mcp-Session-Id`,
+`Mcp-Protocol-Version`, `Keep-Alive`, `Upgrade`, `TE`, `Trailer`,
+`Proxy-Authorization` (`safeFetch` strips the same list from every request,
+except the two MCP transport headers on MCP calls). A bearer token is capped
+so that `Bearer ` plus the token fits the 4,096 bytes (4,089 bytes of token);
+a longer one answers "This key is too long". The credentials route also
+refuses a key for a preset whose `auth` has no `header`, and a body that mixes
+`auth` with `headerName` or `headerValue`. Values are stored
 encrypted and sent verbatim, never templated.
 
 Besidka asks for the key in one of two explicit modes (the Connect dialog's
