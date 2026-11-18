@@ -65,6 +65,23 @@ async function findConnectorFilesByIds(
 }
 
 /**
+ * The connector image files these parts point at (the user's own rows
+ * only), so deleting a message can check them like its origin files even
+ * when their origin is another message.
+ */
+export async function findConnectorImageFilesForParts(
+  db: DbClient,
+  userId: number,
+  parts: readonly unknown[],
+): Promise<ConnectorImageFile[]> {
+  const fileIds = collectConnectorImageFileIds(parts)
+
+  return fileIds.length > 0
+    ? await findConnectorFilesByIds(db, userId, fileIds)
+    : []
+}
+
+/**
  * Every connector image the messages of these chats show, found through
  * their `data-connector-image` parts, so a chat takes its connector images
  * with it even when a row was never linked to its origin message. Must run

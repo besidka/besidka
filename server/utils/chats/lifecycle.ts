@@ -9,7 +9,10 @@ import {
   findMessageOriginFiles,
   withoutConnectorImageFiles,
 } from '~~/server/utils/files/chat-deletion-cleanup'
-import { findChatsConnectorImageFiles } from '~~/server/utils/files/connector-images'
+import {
+  findChatsConnectorImageFiles,
+  findConnectorImageFilesForParts,
+} from '~~/server/utils/files/connector-images'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
@@ -345,6 +348,7 @@ export async function deleteChatMessage(
     columns: {
       id: true,
       publicId: true,
+      parts: true,
     },
   })
 
@@ -356,9 +360,20 @@ export async function deleteChatMessage(
   }
 
   const messageRowId = safeDecodePublicId(message.id)
-  const originFiles = messageRowId === null
+  const messageOriginFiles = messageRowId === null
     ? []
     : await findMessageOriginFiles(messageRowId, userId)
+  const shownConnectorImages = await findConnectorImageFilesForParts(
+    db,
+    userId,
+    Array.isArray(message.parts) ? message.parts : [],
+  )
+  const originFiles = [
+    ...messageOriginFiles,
+    ...shownConnectorImages.filter((file) => {
+      return !messageOriginFiles.some(origin => origin.id === file.id)
+    }),
+  ]
 
   const deleteResult = await db.delete(schema.messages)
     .where(and(

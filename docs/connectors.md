@@ -1722,9 +1722,11 @@ the bulk delete find them through the chat's `data-connector-image` parts
 (`findChatsConnectorImageFiles`, so an unlinked row goes too), take them out
 of the origin-file reference check and delete them
 (`deleteConnectorImagesOfDeletedChats`: R2 batch delete per 90, then the
-rows, then the storage cache). Deleting one message keeps the usual
-reference check, which now also reads `data-connector-image` parts, so an
-image a later step still shows survives. The account purge deletes every
+rows, then the storage cache). Deleting one message checks its origin files
+and every connector image its parts show (a reused image's origin may be an
+earlier message, `findConnectorImageFilesForParts`) with the usual reference
+check, which now also reads `data-connector-image` parts, so an image a
+later step still shows survives and one nothing shows any more is deleted. The account purge deletes every
 `files` row and object regardless of source. The Storage page row
 "Connector images" has its own **Delete all** (confirm dialog, `POST
 /api/v1/storage/connector-images/delete`, at most 20 batches of 90 per call

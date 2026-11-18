@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     findChatOriginFiles: vi.fn(),
     findMessageOriginFiles: vi.fn(),
     findChatsConnectorImageFiles: vi.fn(),
+    findConnectorImageFilesForParts: vi.fn(),
     deleteConnectorImagesOfDeletedChats: vi.fn(),
     cleanupFilesOrphanedByChatDeletion: vi.fn(),
     cleanupDocumentsForDeletedChats: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock('~~/server/utils/files/chat-deletion-cleanup', () => {
 vi.mock('~~/server/utils/files/connector-images', () => {
   return {
     findChatsConnectorImageFiles: mocks.findChatsConnectorImageFiles,
+    findConnectorImageFilesForParts: mocks.findConnectorImageFilesForParts,
   }
 })
 
@@ -116,7 +118,11 @@ const USER_ID = 3
 
 interface FakeDbOptions {
   returnedChat?: { id: string, projectId: string | null }
-  message?: { id: string, publicId?: string | null } | undefined
+  message?: {
+    id: string
+    publicId?: string | null
+    parts?: unknown[]
+  } | undefined
   deletedMessageRows?: number
   targetProject?: { memoryAutoUpdate: 'on' | 'off' | null }
 }
@@ -187,6 +193,7 @@ describe('chat lifecycle', () => {
     mocks.findChatOriginFiles.mockResolvedValue([])
     mocks.findMessageOriginFiles.mockResolvedValue([])
     mocks.findChatsConnectorImageFiles.mockResolvedValue([])
+    mocks.findConnectorImageFilesForParts.mockResolvedValue([])
     mocks.deleteConnectorImagesOfDeletedChats.mockImplementation(async () => {
       mocks.calls.push('connector-image-cleanup')
     })
@@ -661,6 +668,28 @@ describe('chat lifecycle', () => {
           },
         )
       })
+
+    it('also checks the connector images the message shows', async () => {
+      const parts = [{ type: 'data-connector-image' }]
+      const { db } = createDb({
+        message: { id: 'row-9', publicId: 'msg-public', parts },
+      })
+      const origin = { id: 'f1', storageKey: 'k1' }
+      const reused = { id: 'img1', storageKey: 'connector-a.png' }
+
+      mocks.findMessageOriginFiles.mockResolvedValue([origin])
+      mocks.findConnectorImageFilesForParts.mockResolvedValue([
+        origin,
+        reused,
+      ])
+
+      await deleteChatMessage(db, USER_ID, 'c1', 'msg', mocks.logger)
+
+      expect(mocks.findConnectorImageFilesForParts)
+        .toHaveBeenCalledWith(db, USER_ID, parts)
+      expect(mocks.cleanupFilesOrphanedByChatDeletion)
+        .toHaveBeenCalledWith([origin, reused], USER_ID, mocks.logger)
+    })
 
     it('skips the file lookup for an id that does not decode', async () => {
       const { db } = createDb({ message: { id: 'not-a-row' } })
