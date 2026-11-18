@@ -420,7 +420,8 @@ const limitHint = computed<string>(() => {
       + 'another.'
   }
 
-  return `Up to ${CONNECTORS_PER_SEND} at once`
+  return `A message can use up to ${CONNECTORS_PER_SEND} connectors, Auto `
+    + 'ones included'
 })
 
 function turnAllOn() {

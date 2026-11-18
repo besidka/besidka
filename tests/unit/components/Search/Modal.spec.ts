@@ -396,6 +396,21 @@ describe('Search/Modal.client', () => {
       .toHaveBeenCalledWith('/profile/labs?panel=besidka-tool-permissions')
   })
 
+  it('sends the Besidka tool permissions row to the Connectors page when connectors are on', async () => {
+    besidkaToolsActive.value = true
+    connectorsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    await wrapper.find('#search-option-besidka-tool-permissions')
+      .trigger('click')
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/chats/connectors?panel=besidka-tool-permissions')
+  })
+
   it('omits the Besidka tool permissions row without the besidka-tools feature', async () => {
     artifactsActive.value = true
     useSearchModal().isModalOpen.value = true

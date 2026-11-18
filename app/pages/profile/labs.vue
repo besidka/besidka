@@ -203,6 +203,7 @@ import type { FeatureKeyKind } from '#shared/utils/features/registry'
 import { parseError } from 'evlog'
 import BesidkaToolPermissions from '~/components/Profile/BesidkaTools/Permissions.vue'
 import {
+  BESIDKA_TOOL_PERMISSIONS_CONNECTORS_PATH,
   BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
   BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE,
 } from '~/utils/besidka-tool-permissions'
@@ -227,6 +228,8 @@ const { data, status, refresh } = await useFetch(
 )
 const { keyStatusForProvider } = useUserKeys()
 const { refreshFeatures } = useFeatures()
+const { setFeatureOptIn } = useFeatureOptIn()
+const connectorsFeature = useFeature('connectors')
 const route = useRoute()
 const { open: openSidePanel } = useSidePanel()
 
@@ -275,7 +278,13 @@ function hasToolPermissions(feature: LabsFeature): boolean {
   return feature.key === BESIDKA_TOOLS_FEATURE_KEY && isOptedIn(feature)
 }
 
-function openToolPermissions() {
+async function openToolPermissions() {
+  if (connectorsFeature.value.active) {
+    await navigateTo(BESIDKA_TOOL_PERMISSIONS_CONNECTORS_PATH)
+
+    return
+  }
+
   openSidePanel({
     viewKey: BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
     title: 'Tool permissions',
@@ -293,7 +302,16 @@ async function openToolPermissionsFromQuery() {
   })
 
   if (besidkaTools && hasToolPermissions(besidkaTools)) {
-    openToolPermissions()
+    if (connectorsFeature.value.active) {
+      await navigateTo(
+        BESIDKA_TOOL_PERMISSIONS_CONNECTORS_PATH,
+        { replace: true },
+      )
+
+      return
+    }
+
+    await openToolPermissions()
   }
 
   await navigateTo({ path: route.path, query: {} }, { replace: true })
@@ -340,11 +358,8 @@ async function toggleOptIn(feature: LabsFeature, event: Event) {
   setOverride(feature.key, optedIn)
 
   try {
-    await $fetch(`/api/v1/profiles/features/${feature.key}/opt-in`, {
-      method: 'POST',
-      body: { optedIn },
-    })
-    await Promise.all([refresh(), refreshFeatures()])
+    await setFeatureOptIn(feature.key, optedIn)
+    await refresh()
   } catch (exception) {
     const parsedException = parseError(exception)
 

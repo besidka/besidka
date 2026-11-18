@@ -24,7 +24,6 @@ function createState(
     connectors?: boolean
     connectorsOn?: number
     connectorItems?: boolean
-    besidkaOn?: boolean
     project?: boolean
     projectName?: string
   } = {},
@@ -39,7 +38,6 @@ function createState(
     connectors = false,
     connectorsOn = 0,
     connectorItems = true,
-    besidkaOn = false,
     project = false,
     projectName,
   } = overrides
@@ -104,6 +102,9 @@ function createState(
             title: 'Notion',
             host: 'mcp.notion.com',
             status: 'ready',
+            toolMode: 'manual',
+            presetId: null,
+            isIconAvailable: false,
           },
           {
             id: 'c2',
@@ -111,10 +112,12 @@ function createState(
             title: 'Linear',
             host: 'mcp.linear.app',
             status: 'ready',
+            toolMode: 'manual',
+            presetId: null,
+            isIconAvailable: false,
           },
         ],
       selectedIds: ['c1', 'c2'].slice(0, connectorsOn),
-      isBesidkaOn: besidkaOn,
     },
     project: {
       visible: project,
@@ -253,22 +256,41 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
       .find('.badge').exists()).toBe(false)
   })
 
-  it('counts Besidka tools as one in the badge when they are on', async () => {
-    const onlyBesidka = await mountContent(createState({
-      connectors: true,
-      connectorItems: false,
-      besidkaOn: true,
-    }))
-    const both = await mountContent(createState({
-      connectors: true,
-      connectorsOn: 2,
-      besidkaOn: true,
-    }))
+  it('counts only the Manual connectors that are on, never Besidka', async () => {
+    const state = createState({ connectors: true, connectorsOn: 1 })
+    const [first, second] = state.connectors?.items ?? []
 
-    expect(onlyBesidka.get('[data-testid="tools-action-connectors"] .badge')
+    if (!state.connectors || !first || !second) {
+      throw new Error('the state needs two connector items')
+    }
+
+    state.connectors = {
+      ...state.connectors,
+      items: [first, { ...second, toolMode: 'auto' }],
+      selectedIds: [first.id, second.id],
+    }
+
+    const wrapper = await mountContent(state)
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"] .badge')
       .text()).toBe('1')
-    expect(both.get('[data-testid="tools-action-connectors"] .badge').text())
-      .toBe('3')
+  })
+
+  it('shows no badge when only Auto connectors are available', async () => {
+    const state = createState({ connectors: true })
+    const items = (state.connectors?.items ?? [])
+      .map(item => ({ ...item, toolMode: 'auto' as const }))
+
+    state.connectors = {
+      visible: true,
+      items,
+      selectedIds: items.map(item => item.id),
+    }
+
+    const wrapper = await mountContent(state)
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"]')
+      .find('.badge').exists()).toBe(false)
   })
 
   it('sits after Add skill and before the Project row', async () => {
