@@ -48,7 +48,7 @@ describe('user settings sync plugin', () => {
       reasoningAutoHide: true,
     })
     const { user } = useAuth()
-    const { activeUserId, reasoningExpanded } = useUserSetting()
+    const { activeUserId, stepsExpanded } = useUserSetting()
 
     user.value = {
       id: 'user-1',
@@ -60,7 +60,7 @@ describe('user settings sync plugin', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/profiles/settings')
     expect(activeUserId.value).toBe('user-1')
-    expect(reasoningExpanded.value).toBe(true)
+    expect(stepsExpanded.value).toBe(true)
   })
 
   it('clears user context when auth user becomes null', async () => {

@@ -16,6 +16,7 @@ import type {
 
 export type ToolsSection
   = | 'add'
+    | 'steps'
     | 'skills'
     | 'connectors'
     | 'search'

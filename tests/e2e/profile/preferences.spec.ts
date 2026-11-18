@@ -62,9 +62,9 @@ test.describe('profile preferences direct load', () => {
     await expect(tabList.locator('label.tab')).toHaveCount(4)
     await expect(page.getByTestId('preferences-reasoning-skeleton'))
       .toHaveCount(0)
-    await expect(page.getByTestId('preferences-reasoning-expanded-toggle'))
+    await expect(page.getByTestId('preferences-steps-expanded-toggle'))
       .toBeVisible()
-    await expect(page.getByTestId('preferences-reasoning-auto-hide-toggle'))
+    await expect(page.getByTestId('preferences-steps-auto-hide-toggle'))
       .toBeVisible()
 
     const skeletonsWithContent = await page.evaluate(() => {

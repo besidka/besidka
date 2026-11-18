@@ -262,7 +262,8 @@ Note:
 - Future option: make this threshold configurable per model or effort level.
 
 ### Auto-expand/follow logic
-- Global preference: `reasoningExpanded`.
+- Global preference: `stepsExpanded` (HTTP and MCP field `reasoningExpanded`,
+  see `docs/chats/chat-input-tools-menu.md`, "Steps section").
 - If enabled and reasoning is streaming:
   - main section auto-opens,
   - latest step auto-opens (follow mode).
@@ -291,10 +292,11 @@ Note:
   the Preferences page (see `docs/chats/chat-input-tools-menu.md`).
 - Sent with each user message and persisted in `messages.reasoning`.
 
-### Reasoning expanded (UI preference)
+### Steps expanded (UI preference)
 - Fallback key: `settings_reasoning_expanded` (local storage).
 - Synced setting for signed-in users:
-  - DB table: `user_settings.reasoning_expanded`,
+  - DB table: `user_settings.reasoning_expanded` (Drizzle property
+    `stepsExpanded`; the SQL column keeps its name),
   - API:
     - `GET /api/v1/profiles/settings`
     - `PATCH /api/v1/profiles/settings`.

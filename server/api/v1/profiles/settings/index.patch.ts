@@ -22,6 +22,7 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import {
   applyUserSettingsUpdate,
   dedupeFavoriteGatewayModels,
+  toPublicSettingsFields,
 } from '~~/server/utils/settings/apply-user-settings'
 import type {
   UserSettingsFieldUpdates,
@@ -79,11 +80,11 @@ export default defineEventHandler(async (event) => {
   const fieldUpdates: UserSettingsFieldUpdates = {}
 
   if (body.data.reasoningExpanded !== undefined) {
-    fieldUpdates.reasoningExpanded = body.data.reasoningExpanded
+    fieldUpdates.stepsExpanded = body.data.reasoningExpanded
   }
 
   if (body.data.reasoningAutoHide !== undefined) {
-    fieldUpdates.reasoningAutoHide = body.data.reasoningAutoHide
+    fieldUpdates.stepsAutoHide = body.data.reasoningAutoHide
   }
 
   if ('defaultReasoningLevel' in body.data) {
@@ -188,5 +189,5 @@ export default defineEventHandler(async (event) => {
 
   await applyUserSettingsUpdate({ db, userId, fieldUpdates })
 
-  return fieldUpdates
+  return toPublicSettingsFields(fieldUpdates)
 })

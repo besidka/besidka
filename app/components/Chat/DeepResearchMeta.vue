@@ -174,7 +174,7 @@ const props = defineProps<{
   message: Pick<UIMessage, 'id' | 'parts'>
 }>()
 
-const { reasoningExpanded } = useUserSetting()
+const { stepsExpanded } = useUserSetting()
 const { openResearchLink } = useResearchLink()
 
 const metadata = computed<ResearchMetadata | null>(() => {
@@ -251,7 +251,7 @@ const durationLabel = computed<string>(() => {
   return formatResearchElapsed(durationMs)
 })
 
-const isExpanded = shallowRef<boolean>(reasoningExpanded.value)
+const isExpanded = shallowRef<boolean>(stepsExpanded.value)
 const expandedEntryIndex = shallowRef<number>(-1)
 
 function toggleExpanded() {

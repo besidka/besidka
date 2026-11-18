@@ -15,14 +15,14 @@ default shows as a tile at the start of the attachments row.
 | Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue`, `InlineButton.vue` |
 | Animated show/hide wrapper | `ToolsMenu/Reveal.vue` |
 | Reveal guard and focus rescue | `app/composables/reveal-guard.ts`, `app/composables/tools-menu-focus-rescue.ts` |
-| Web search and reasoning sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` |
+| Web search, reasoning and steps sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` (the level control and its default caption only), `ToolsMenu/StepsSection.vue` (Show steps expanded and Auto-hide when done) |
 | A setting tile | `app/components/ChatInput/SettingTile.vue` |
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
 | "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
 | "Add skill" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/SkillPicker.client.vue` (below, `docs/skills.md` section 10.5) |
 | Types | `app/types/chat-input-tools.d.ts` |
-| Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
+| Reasoning and steps icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `STEPS_SECTION_ICON`, `STEPS_EXPANDED_ICON`, `STEPS_AUTO_HIDE_ICON`) |
 
 `ChatInput.client.vue` builds one `ChatInputToolsState` object. The menu and
 the tile builder only read it; every change goes back through ChatInput's
@@ -34,12 +34,12 @@ clamp and restore watchers), so capability gating has one owner.
 The menu opens above the composer (a popover above "+", a bottom sheet below
 md), so the rows nearest the trigger are the cheapest to reach. The order is
 therefore, top to bottom: the deep-research note (research models only),
-**Use memory**, Create image and Run code (the rarely used toggles), then
+**Steps** (always shown, see "Steps section"), **Use memory**, Create image and Run code (the rarely used toggles), then
 **Reasoning**, **Web search**, and the **Add** section last (Attach files, Add
 from library, Generated images, Add artifact, Add skill, Project). It used to
 run the other way, with Add on top and memory at the bottom, which put the
 rows people use on every message farthest from the thumb. Dividers separate
-the groups (memory/image/code, Reasoning, Web search, Add) and render only
+the groups (Steps, memory/image/code, Reasoning, Web search, Add) and render only
 when something visible sits on the other side, so a missing group never
 leaves a double divider.
 
@@ -219,8 +219,9 @@ resolves to the product default, Off.
 - The Reasoning section offers "Save X as default" as an inline link in a
   fixed-height caption under the level segments (see "Reasoning caption").
   Saving calls `setDefaultReasoningLevel(level)` and the tile disappears.
-- "Show steps expanded" and "Auto-hide when done" are hidden until they can
-  act (see "Hidden rows and animated reveals").
+- "Auto-hide when done" is hidden until it can act (see "Hidden rows and
+  animated reveals"). "Show steps expanded" is not in the Reasoning section any
+  more (see "Steps section").
 - The web search selection does not need the same guard (checked
   2026-10-27). `webSearchProviderOptions` is rebuilt as a new but equal array
   on every preference-storage write, and the tools watcher re-filters
@@ -231,6 +232,36 @@ resolves to the product default, Off.
   saved Brave or Exa choice). The ChatInput unit tests rebuild equal options
   in the same flush as a preference write and as a provider pick, and both
   keep the selection.
+
+## Steps section
+
+The collapsible block in an assistant message started as "reasoning steps" and
+now lists every progress step: reasoning, web searches, skills, connector calls
+and Besidka tools. It shows even when reasoning is Off, so its two settings no
+longer live in the Reasoning section, where they were hidden with reasoning
+Off. They have their own **Steps** section (`ToolsMenu/StepsSection.vue`),
+directly above Use memory and always rendered, whatever the model and the
+reasoning level:
+
+- **Show steps expanded** is always visible.
+- **Auto-hide when done** reveals (the same `Reveal` animation) only while
+  Show steps expanded is on, because collapsing a block that was never opened
+  does nothing.
+- `/profile/preferences` has a matching **Steps** card, apart from the
+  Reasoning card. There Auto-hide is always enabled, and its description says
+  it applies when steps are shown expanded.
+
+Naming: the code calls these `stepsExpanded` and `stepsAutoHide`
+(`useUserSetting()`, `setStepsExpanded`, `setStepsAutoHide`, the Drizzle
+properties of `user_settings`). The SQL columns are still `reasoning_expanded`
+and `reasoning_auto_hide`: the schema names them explicitly, `db:generate`
+produces nothing for the rename, and renaming a column would rebuild
+`user_settings` (see the D1 migration safety section of `CLAUDE.md`). The
+public HTTP fields (`reasoningExpanded`, `reasoningAutoHide` on
+`/api/v1/profiles/settings`), the MCP `get_settings` and `update_settings`
+fields and the local storage keys (`settings_reasoning_expanded`,
+`settings_reasoning_auto_hide`, listed in the Cookie Policy) keep their names
+for compatibility; the server and `useUserSetting` map between them.
 
 ## Design: controls appear only when they can act
 
@@ -262,8 +293,7 @@ mitigated by the 160 ms animation and the 400 ms reveal guard.
 |---|---|
 | Exa depth | Exa is the selected provider |
 | Web search Auto | Auto is available and a provider is selected (search is not Off) |
-| Show steps expanded | reasoning is not Off |
-| Auto-hide when done | reasoning is not Off and steps are expanded |
+| Auto-hide when done | steps are expanded (the reasoning level does not matter) |
 
 The popover (above "+") and the mobile sheet are bottom-anchored, so any row
 that is inserted pushes everything above it, including the control just
@@ -365,8 +395,8 @@ later open are not guarded either.
   name), `providerId` or `iconComponent` (a component name such as
   `SvgoThinkLow`); the icon inherits the segment's text color, so it follows
   the checked, hover and disabled states with no extra rules.
-- Every titled section header has an icon left of the title: Add
-  `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the
+- Every titled section header has an icon left of the title: Steps
+  `lucide:list-checks`, Add `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the
   icon the High level uses; it is an SVGO component, so `Section` takes both
   `icon` for an Iconify name and `iconComponent`). Only the allowed icon
   prefixes of `docs/nuxt-icon-collections.md` are used. The header is one
@@ -413,8 +443,8 @@ later open are not guarded either.
 - Reasoning level segments carry the per-level think icons
   (`SvgoThinkOff|Low|Medium|High`; a toggle-mode model gets Off and the one
   level's icon on "On").
-- The groups are separated by one divider each (memory and the other toggles,
-  Reasoning, Web search, then Add; see "Row order"). A divider renders only
+- The groups are separated by one divider each (Steps, memory and the other
+  toggles, Reasoning, Web search, then Add; see "Row order"). A divider renders only
   when something above it and something below it is visible, so a missing
   group never leaves a double divider.
 

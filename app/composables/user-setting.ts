@@ -35,12 +35,12 @@ export function useUserSetting() {
     'user-settings:loaded-user-id',
     () => null,
   )
-  const serverReasoningExpanded = useState<boolean | null>(
-    'user-settings:reasoning-expanded',
+  const serverStepsExpanded = useState<boolean | null>(
+    'user-settings:steps-expanded',
     () => null,
   )
-  const serverReasoningAutoHide = useState<boolean | null>(
-    'user-settings:reasoning-auto-hide',
+  const serverStepsAutoHide = useState<boolean | null>(
+    'user-settings:steps-auto-hide',
     () => null,
   )
   const serverDefaultReasoningLevel = useState<ReasoningLevel | null>(
@@ -100,7 +100,7 @@ export function useUserSetting() {
     () => 0,
   )
   const prefStorage = usePreferenceStorage()
-  const fallbackReasoningExpanded = customRef<boolean>((track, trigger) => ({
+  const fallbackStepsExpanded = customRef<boolean>((track, trigger) => ({
     get() {
       track()
 
@@ -113,7 +113,7 @@ export function useUserSetting() {
       trigger()
     },
   }))
-  const fallbackReasoningAutoHide = customRef<boolean>((track, trigger) => ({
+  const fallbackStepsAutoHide = customRef<boolean>((track, trigger) => ({
     get() {
       track()
 
@@ -189,28 +189,28 @@ export function useUserSetting() {
     }),
   )
 
-  const reasoningExpanded = computed<boolean>(() => {
+  const stepsExpanded = computed<boolean>(() => {
     if (
       !activeUserId.value
       || loadedUserId.value !== activeUserId.value
-      || serverReasoningExpanded.value === null
+      || serverStepsExpanded.value === null
     ) {
-      return fallbackReasoningExpanded.value
+      return fallbackStepsExpanded.value
     }
 
-    return serverReasoningExpanded.value
+    return serverStepsExpanded.value
   })
 
-  const reasoningAutoHide = computed<boolean>(() => {
+  const stepsAutoHide = computed<boolean>(() => {
     if (
       !activeUserId.value
       || loadedUserId.value !== activeUserId.value
-      || serverReasoningAutoHide.value === null
+      || serverStepsAutoHide.value === null
     ) {
-      return fallbackReasoningAutoHide.value
+      return fallbackStepsAutoHide.value
     }
 
-    return serverReasoningAutoHide.value
+    return serverStepsAutoHide.value
   })
 
   const isSettingsLoaded = computed<boolean>(() => {
@@ -360,7 +360,7 @@ export function useUserSetting() {
 
     if (
       loadedUserId.value === userId
-      && serverReasoningExpanded.value !== null
+      && serverStepsExpanded.value !== null
     ) {
       return
     }
@@ -383,18 +383,18 @@ export function useUserSetting() {
         return
       }
 
-      const nextReasoningExpanded = Boolean(
+      const nextStepsExpanded = Boolean(
         response.reasoningExpanded,
       )
-      const nextReasoningAutoHide = Boolean(
+      const nextStepsAutoHide = Boolean(
         response.reasoningAutoHide ?? true,
       )
 
       loadedUserId.value = userId
-      serverReasoningExpanded.value = nextReasoningExpanded
-      fallbackReasoningExpanded.value = nextReasoningExpanded
-      serverReasoningAutoHide.value = nextReasoningAutoHide
-      fallbackReasoningAutoHide.value = nextReasoningAutoHide
+      serverStepsExpanded.value = nextStepsExpanded
+      fallbackStepsExpanded.value = nextStepsExpanded
+      serverStepsAutoHide.value = nextStepsAutoHide
+      fallbackStepsAutoHide.value = nextStepsAutoHide
       const savedDefaultReasoningLevel = parseReasoningLevel(
         response.defaultReasoningLevel,
       )
@@ -440,8 +440,8 @@ export function useUserSetting() {
       }
 
       loadedUserId.value = null
-      serverReasoningExpanded.value = null
-      serverReasoningAutoHide.value = null
+      serverStepsExpanded.value = null
+      serverStepsAutoHide.value = null
       serverDefaultReasoningLevel.value = null
       serverAllowExternalLinks.value = null
       serverNotificationPromptState.value = null
@@ -461,14 +461,14 @@ export function useUserSetting() {
     }
   }
 
-  async function setReasoningExpanded(
-    reasoningExpanded: boolean,
+  async function setStepsExpanded(
+    stepsExpanded: boolean,
   ) {
     settingsError.value = null
 
-    const previousFallbackReasoningExpanded
-      = fallbackReasoningExpanded.value
-    fallbackReasoningExpanded.value = reasoningExpanded
+    const previousFallbackStepsExpanded
+      = fallbackStepsExpanded.value
+    fallbackStepsExpanded.value = stepsExpanded
 
     if (!activeUserId.value) {
       requestPersistence()
@@ -477,17 +477,17 @@ export function useUserSetting() {
     }
 
     const currentUserId = activeUserId.value as string
-    const previousServerReasoningExpanded
-      = serverReasoningExpanded.value as boolean
+    const previousServerStepsExpanded
+      = serverStepsExpanded.value as boolean
 
-    serverReasoningExpanded.value = reasoningExpanded
+    serverStepsExpanded.value = stepsExpanded
     isSavingSettings.value = true
 
     try {
       await $fetch('/api/v1/profiles/settings', {
         method: 'PATCH',
         body: {
-          reasoningExpanded,
+          reasoningExpanded: stepsExpanded,
         },
       })
 
@@ -496,15 +496,15 @@ export function useUserSetting() {
       }
 
       loadedUserId.value = currentUserId
-      serverReasoningExpanded.value = reasoningExpanded
-      fallbackReasoningExpanded.value = reasoningExpanded
+      serverStepsExpanded.value = stepsExpanded
+      fallbackStepsExpanded.value = stepsExpanded
     } catch (exception) {
       if (activeUserId.value !== currentUserId) {
         return
       }
 
-      serverReasoningExpanded.value = previousServerReasoningExpanded
-      fallbackReasoningExpanded.value = previousFallbackReasoningExpanded
+      serverStepsExpanded.value = previousServerStepsExpanded
+      fallbackStepsExpanded.value = previousFallbackStepsExpanded
 
       const parsedException = parseError(exception)
 
@@ -515,12 +515,12 @@ export function useUserSetting() {
     }
   }
 
-  async function setReasoningAutoHide(value: boolean) {
+  async function setStepsAutoHide(value: boolean) {
     settingsError.value = null
 
-    const previousFallbackReasoningAutoHide
-      = fallbackReasoningAutoHide.value
-    fallbackReasoningAutoHide.value = value
+    const previousFallbackStepsAutoHide
+      = fallbackStepsAutoHide.value
+    fallbackStepsAutoHide.value = value
 
     if (!activeUserId.value) {
       requestPersistence()
@@ -529,10 +529,10 @@ export function useUserSetting() {
     }
 
     const currentUserId = activeUserId.value as string
-    const previousServerReasoningAutoHide
-      = serverReasoningAutoHide.value as boolean
+    const previousServerStepsAutoHide
+      = serverStepsAutoHide.value as boolean
 
-    serverReasoningAutoHide.value = value
+    serverStepsAutoHide.value = value
     isSavingSettings.value = true
 
     try {
@@ -548,15 +548,15 @@ export function useUserSetting() {
       }
 
       loadedUserId.value = currentUserId
-      serverReasoningAutoHide.value = value
-      fallbackReasoningAutoHide.value = value
+      serverStepsAutoHide.value = value
+      fallbackStepsAutoHide.value = value
     } catch (exception) {
       if (activeUserId.value !== currentUserId) {
         return
       }
 
-      serverReasoningAutoHide.value = previousServerReasoningAutoHide
-      fallbackReasoningAutoHide.value = previousFallbackReasoningAutoHide
+      serverStepsAutoHide.value = previousServerStepsAutoHide
+      fallbackStepsAutoHide.value = previousFallbackStepsAutoHide
 
       const parsedException = parseError(exception)
 
@@ -967,8 +967,8 @@ export function useUserSetting() {
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
-    serverReasoningExpanded.value = null
-    serverReasoningAutoHide.value = null
+    serverStepsExpanded.value = null
+    serverStepsAutoHide.value = null
     serverDefaultReasoningLevel.value = null
     serverAllowExternalLinks.value = null
     serverNotificationPromptState.value = null
@@ -983,8 +983,8 @@ export function useUserSetting() {
 
   return {
     activeUserId,
-    reasoningExpanded,
-    reasoningAutoHide,
+    stepsExpanded,
+    stepsAutoHide,
     defaultReasoningLevel,
     isSettingsLoaded,
     allowExternalLinks,
@@ -997,8 +997,8 @@ export function useUserSetting() {
     isSavingSettings,
     settingsError,
     syncForUser,
-    setReasoningExpanded,
-    setReasoningAutoHide,
+    setStepsExpanded,
+    setStepsAutoHide,
     setDefaultReasoningLevel,
     setAllowExternalLinks,
     setNotificationPromptState,

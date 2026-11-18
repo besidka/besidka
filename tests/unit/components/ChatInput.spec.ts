@@ -24,8 +24,8 @@ const mocks = vi.hoisted(() => ({
   requestPersistence: vi.fn(),
   ensureSendConsent: vi.fn(async () => true),
   setDefaultReasoningLevel: vi.fn(async () => {}),
-  setReasoningExpanded: vi.fn(async () => {}),
-  setReasoningAutoHide: vi.fn(async () => {}),
+  setStepsExpanded: vi.fn(async () => {}),
+  setStepsAutoHide: vi.fn(async () => {}),
 }))
 
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
@@ -64,12 +64,12 @@ mockNuxtImport('useFeature', () => {
 
 mockNuxtImport('useUserSetting', () => {
   return () => ({
-    reasoningExpanded: computed(() => false),
-    reasoningAutoHide: computed(() => true),
+    stepsExpanded: computed(() => false),
+    stepsAutoHide: computed(() => true),
     defaultReasoningLevel: computed(() => defaultReasoningLevel.value),
     setDefaultReasoningLevel: mocks.setDefaultReasoningLevel,
-    setReasoningExpanded: mocks.setReasoningExpanded,
-    setReasoningAutoHide: mocks.setReasoningAutoHide,
+    setStepsExpanded: mocks.setStepsExpanded,
+    setStepsAutoHide: mocks.setStepsAutoHide,
   })
 })
 
@@ -3155,16 +3155,18 @@ describe('ChatInput.client', () => {
 
       expect(hasTestId(wrapper, 'reasoning-level-low')).toBe(true)
       expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
-      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
-        .toBe(false)
-      expect(isTestIdRevealed(wrapper, 'reasoning-auto-hide-toggle'))
+      expect(isTestIdRevealed(wrapper, 'steps-expanded-toggle'))
+        .toBe(true)
+      expect(isTestIdRevealed(wrapper, 'steps-auto-hide-toggle'))
         .toBe(false)
 
       await pickTestId(wrapper, 'reasoning-level-low')
       await flushPromises()
 
-      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
+      expect(isTestIdRevealed(wrapper, 'steps-expanded-toggle'))
         .toBe(true)
+      expect(isTestIdRevealed(wrapper, 'steps-auto-hide-toggle'))
+        .toBe(false)
     })
 
     it('renders a checked and disabled reasoning row for an always-on '

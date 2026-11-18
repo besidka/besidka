@@ -179,7 +179,7 @@ describe('profile preferences page', () => {
       'Used for new chats. Models that can\'t use this level pick the '
       + 'closest one they support.',
     )
-    expect(wrapper.text()).toContain('Show reasoning steps expanded')
+    expect(wrapper.text()).toContain('Show steps expanded')
     expect(wrapper.text()).toContain('Auto-hide when done')
   })
 
@@ -257,8 +257,8 @@ describe('profile preferences page', () => {
       const wrapper = await mountPage()
 
       for (const testId of [
-        'preferences-reasoning-expanded-icon',
-        'preferences-reasoning-auto-hide-icon',
+        'preferences-steps-expanded-icon',
+        'preferences-steps-auto-hide-icon',
       ]) {
         expect(wrapper.get(`[data-testid="${testId}"]`).attributes(
           'aria-hidden',
@@ -279,7 +279,7 @@ describe('profile preferences page', () => {
     expect(wrapper.find('input[name="default-reasoning-level"]').exists())
       .toBe(false)
     expect(wrapper.find(
-      '[data-testid="preferences-reasoning-expanded-toggle"]',
+      '[data-testid="preferences-steps-expanded-toggle"]',
     ).exists()).toBe(false)
 
     await loadSettings({ defaultReasoningLevel: 'high' })
@@ -416,10 +416,10 @@ describe('profile preferences page', () => {
 
     const wrapper = await mountPage()
     const expanded = wrapper.get(
-      '[data-testid="preferences-reasoning-expanded-toggle"]',
+      '[data-testid="preferences-steps-expanded-toggle"]',
     )
     const autoHide = wrapper.get(
-      '[data-testid="preferences-reasoning-auto-hide-toggle"]',
+      '[data-testid="preferences-steps-auto-hide-toggle"]',
     )
 
     expect((expanded.element as HTMLInputElement).checked).toBe(true)
@@ -427,17 +427,37 @@ describe('profile preferences page', () => {
     expect((autoHide.element as HTMLInputElement).disabled).toBe(false)
   })
 
-  it('disables auto-hide while reasoning steps are not expanded',
-    async () => {
-      await loadSettings({ reasoningExpanded: false })
+  it('keeps auto-hide enabled while steps are not expanded', async () => {
+    await loadSettings({ reasoningExpanded: false })
 
-      const wrapper = await mountPage()
-      const autoHide = wrapper.get(
-        '[data-testid="preferences-reasoning-auto-hide-toggle"]',
-      )
+    const wrapper = await mountPage()
+    const autoHide = wrapper.get(
+      '[data-testid="preferences-steps-auto-hide-toggle"]',
+    )
 
-      expect((autoHide.element as HTMLInputElement).disabled).toBe(true)
+    expect((autoHide.element as HTMLInputElement).disabled).toBe(false)
+    expect(wrapper.text()).toContain('Applies when steps are shown expanded')
+  })
+
+  it('groups both step toggles under a Steps heading apart from '
+    + 'Reasoning', async () => {
+    await loadSettings()
+
+    const wrapper = await mountPage()
+    const cards = wrapper.findAll('section')
+    const stepsCard = cards.find((card) => {
+      return card.text().includes('Show steps expanded')
     })
+    const reasoningCard = cards.find((card) => {
+      return card.text().includes('Default reasoning effort')
+    })
+
+    expect(stepsCard?.text()).toContain('Steps')
+    expect(stepsCard?.text()).toContain('Auto-hide when done')
+    expect(stepsCard?.text()).not.toContain('Default reasoning effort')
+    expect(reasoningCard?.text()).not.toContain('Show steps expanded')
+    expect(reasoningCard?.text()).not.toContain('Auto-hide when done')
+  })
 
   it('saves the expanded toggle through the shared setter', async () => {
     await loadSettings({ reasoningExpanded: false })
@@ -446,12 +466,12 @@ describe('profile preferences page', () => {
     const wrapper = await mountPage()
 
     await wrapper
-      .get('[data-testid="preferences-reasoning-expanded-toggle"]')
+      .get('[data-testid="preferences-steps-expanded-toggle"]')
       .setValue(true)
     await flushPromises()
 
     expect(patchBodies()).toEqual([{ reasoningExpanded: true }])
-    expect(useUserSetting().reasoningExpanded.value).toBe(true)
+    expect(useUserSetting().stepsExpanded.value).toBe(true)
   })
 
   it('saves the auto-hide toggle through the shared setter', async () => {
@@ -464,12 +484,12 @@ describe('profile preferences page', () => {
     const wrapper = await mountPage()
 
     await wrapper
-      .get('[data-testid="preferences-reasoning-auto-hide-toggle"]')
+      .get('[data-testid="preferences-steps-auto-hide-toggle"]')
       .setValue(false)
     await flushPromises()
 
     expect(patchBodies()).toEqual([{ reasoningAutoHide: false }])
-    expect(useUserSetting().reasoningAutoHide.value).toBe(false)
+    expect(useUserSetting().stepsAutoHide.value).toBe(false)
   })
 
   describe('notifications section', () => {
