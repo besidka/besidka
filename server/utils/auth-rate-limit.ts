@@ -1,5 +1,5 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import { resolveServerLogger } from '~~/server/utils/files/logger'
 
 interface AuthRateLimitRule {
@@ -233,7 +233,7 @@ export function createAuthRateLimitStorage(
           kvReadFailed: operation === 'read',
           kvWriteFailed: operation === 'write',
           denied: true,
-          error: exceptionMessage(exception),
+          ...exceptionSummary(exception),
         },
       },
     })

@@ -379,8 +379,9 @@ The rule since then:
   Better Auth's storage and the key routes create the storage with
   `createAuthRateLimitStorage(kv, prefix, { denyOnKvError: true })`: a failed
   KV read or write logs `attributes.rateLimit` (`keyPrefix`, `kvReadFailed`,
-  `kvWriteFailed`, `denied`, `error`; never the bucket key, which holds the
-  client IP) and answers 429 with a one-second retry (`X-Retry-After: 1` from
+  `kvWriteFailed`, `denied`, and the error's name and code from
+  `exceptionSummary()`; never the error message or the bucket key, which
+  holds the client IP) and answers 429 with a one-second retry (`X-Retry-After: 1` from
   Better Auth, `Retry-After: 1` from the key routes). This covers sign-in,
   sign-up, password reset, 2FA, passkeys and every other row in the table.
 - **Low-risk reads do not write KV at all.** `/get-session` and
@@ -437,11 +438,19 @@ The rule now (`server/utils/auth-instance.ts`):
 - The middleware passes evlog a resolver that calls `useServerAuth()` per
   request instead of capturing one instance, so skipped paths never build
   the instance.
-- `useUserSession()`, the middleware and the routes that hand requests to
-  `auth.handler()` retry once after that error, through
-  `retryOnEndedRequestPromise()`, which drops the cached instance first and
-  logs `attributes.authInit`. `handler()` retries only while the request
-  body is unread.
+- `useUserSession()` and the middleware retry the session read once after
+  that error, through `retryOnEndedRequestPromise()`, which drops the cached
+  instance first and logs `attributes.authInit`. Reading a session is safe
+  to repeat.
+- The routes that hand requests to `auth.handler()` (`/api/auth/**` and the
+  `/.well-known/` documents) go through `runOnceAfterInit()`: only the wait
+  for `auth.$context` is retried, and the handler runs exactly once. A
+  handler run can have side effects before it fails (`/sign-in/email`,
+  `/sign-up/email` and `/send-verification-email` read a clone of the body,
+  and `/callback/*`, `/verify-email`, `/delete-user/callback` and
+  `/oauth2/authorize` read none), so checking the body could not tell a safe
+  retry from a second sign-in. If the error still comes out of the handler,
+  the cache is dropped and the error rethrown.
 
 `useToolApprovalSecret()` had the same shape (a module-level pending HKDF
 promise) and now caches only the derived string.

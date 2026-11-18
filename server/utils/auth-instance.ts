@@ -90,16 +90,21 @@ export function createSettledInstanceCache<Instance extends object>(
   return { get, drop }
 }
 
+function logEndedRequestPromise(retried: boolean): void {
+  resolveServerLogger().set({
+    attributes: { authInit: { endedRequestPromise: true, retried } },
+  })
+}
+
 /**
  * Runs an operation that awaits a cached instance and, when it fails because
  * a promise inside that instance belonged to a request that has ended, drops
- * the cache and runs it once more against a fresh instance. `canRetry` lets a
- * caller refuse the second run, for example once a request body was read.
+ * the cache and runs it once more against a fresh instance. Only for
+ * operations that are safe to run twice, such as reading a session.
  */
 export async function retryOnEndedRequestPromise<Result>(
   operation: () => Promise<Result>,
   recover: () => void,
-  canRetry: () => boolean = () => true,
 ): Promise<Result> {
   try {
     return await operation()
@@ -109,17 +114,34 @@ export async function retryOnEndedRequestPromise<Result>(
     }
 
     recover()
-
-    const retried = canRetry()
-
-    resolveServerLogger().set({
-      attributes: { authInit: { endedRequestPromise: true, retried } },
-    })
-
-    if (!retried) {
-      throw exception
-    }
+    logEndedRequestPromise(true)
 
     return await operation()
+  }
+}
+
+/**
+ * Waits for the instance's init, retrying only that wait once after the
+ * ended-request error, then runs `operation` exactly once. A handler run may
+ * have side effects (sign-in, email, OAuth callbacks) before it fails, so it
+ * is never repeated: the same error from it only drops the cache and is
+ * rethrown.
+ */
+export async function runOnceAfterInit<Result>(
+  waitForInit: () => Promise<unknown>,
+  operation: () => Promise<Result>,
+  recover: () => void,
+): Promise<Result> {
+  await retryOnEndedRequestPromise(waitForInit, recover)
+
+  try {
+    return await operation()
+  } catch (exception) {
+    if (isEndedRequestPromiseError(exception)) {
+      recover()
+      logEndedRequestPromise(false)
+    }
+
+    throw exception
   }
 }

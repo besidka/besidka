@@ -104,22 +104,31 @@ describe('createAuthRateLimitStorage with denyOnKvError', () => {
             kvReadFailed: false,
             kvWriteFailed: true,
             denied: true,
-            error: KV_429_MESSAGE,
+            errorName: 'Error',
           },
         },
       })
     })
 
-  it('never logs the bucket key, which holds the client IP', async () => {
-    const storage = createDenyingStorage(createRefusingKv())
+  it('never logs the error message, even one that echoes the bucket key',
+    async () => {
+      const storage = createDenyingStorage(createKv({
+        put: async (key: string) => {
+          throw new Error(`${KV_429_MESSAGE} for ${key}`)
+        },
+      }))
 
-    await storage.consume(`${CLIENT_IP}|/sign-in/email`, {
-      window: 300,
-      max: 10,
+      await storage.consume(`${CLIENT_IP}|/sign-in/email`, {
+        window: 300,
+        max: 10,
+      })
+
+      const logged = JSON.stringify(mocks.loggerSet.mock.calls)
+
+      expect(mocks.loggerSet).toHaveBeenCalled()
+      expect(logged).not.toContain(CLIENT_IP)
+      expect(logged).not.toContain(KV_429_MESSAGE)
     })
-
-    expect(JSON.stringify(mocks.loggerSet.mock.calls)).not.toContain(CLIENT_IP)
-  })
 
   it('refuses when KV cannot be read', async () => {
     const kv = createKv({

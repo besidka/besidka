@@ -3,6 +3,7 @@ import {
   createSettledInstanceCache,
   isEndedRequestPromiseError,
   retryOnEndedRequestPromise,
+  runOnceAfterInit,
 } from '~~/server/utils/auth-instance'
 
 const mocks = vi.hoisted(() => ({
@@ -216,21 +217,67 @@ describe('retryOnEndedRequestPromise', () => {
     expect(recover).not.toHaveBeenCalled()
     expect(operation).toHaveBeenCalledTimes(1)
   })
+})
 
-  it('drops the cache but does not retry when the caller refuses',
-    async () => {
-      const recover = vi.fn()
-      const operation = vi.fn()
-        .mockRejectedValue(new Error(WORKERD_ENDED_REQUEST_MESSAGE))
+describe('runOnceAfterInit', () => {
+  beforeEach(() => {
+    mocks.loggerSet.mockClear()
+  })
 
-      await expect(retryOnEndedRequestPromise(operation, recover, () => false))
-        .rejects.toThrow('since ended')
-      expect(recover).toHaveBeenCalledTimes(1)
-      expect(operation).toHaveBeenCalledTimes(1)
-      expect(mocks.loggerSet).toHaveBeenCalledWith({
-        attributes: {
-          authInit: { endedRequestPromise: true, retried: false },
-        },
-      })
+  it('retries only the init wait, then runs the handler once', async () => {
+    const recover = vi.fn()
+    const waitForInit = vi.fn()
+      .mockRejectedValueOnce(new Error(WORKERD_ENDED_REQUEST_MESSAGE))
+      .mockResolvedValueOnce(undefined)
+    const handler = vi.fn().mockResolvedValue('response')
+
+    await expect(runOnceAfterInit(waitForInit, handler, recover))
+      .resolves.toBe('response')
+    expect(waitForInit).toHaveBeenCalledTimes(2)
+    expect(recover).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('never runs a handler twice after a side effect, even on the workerd '
+    + 'error', async () => {
+    const recover = vi.fn()
+    const sideEffect = vi.fn()
+    const handler = vi.fn(async () => {
+      sideEffect()
+
+      throw new Error(WORKERD_ENDED_REQUEST_MESSAGE)
     })
+
+    await expect(runOnceAfterInit(async () => {}, handler, recover))
+      .rejects.toThrow('since ended')
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(sideEffect).toHaveBeenCalledTimes(1)
+    expect(recover).toHaveBeenCalledTimes(1)
+    expect(mocks.loggerSet).toHaveBeenCalledWith({
+      attributes: {
+        authInit: { endedRequestPromise: true, retried: false },
+      },
+    })
+  })
+
+  it('rethrows other handler errors without dropping the cache', async () => {
+    const recover = vi.fn()
+    const handler = vi.fn().mockRejectedValue(new Error('D1 unavailable'))
+
+    await expect(runOnceAfterInit(async () => {}, handler, recover))
+      .rejects.toThrow('D1 unavailable')
+    expect(recover).not.toHaveBeenCalled()
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not run the handler when init keeps failing', async () => {
+    const handler = vi.fn()
+    const waitForInit = vi.fn()
+      .mockRejectedValue(new Error(WORKERD_ENDED_REQUEST_MESSAGE))
+
+    await expect(runOnceAfterInit(waitForInit, handler, vi.fn()))
+      .rejects.toThrow('since ended')
+    expect(waitForInit).toHaveBeenCalledTimes(2)
+    expect(handler).not.toHaveBeenCalled()
+  })
 })
