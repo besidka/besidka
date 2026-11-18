@@ -475,18 +475,27 @@ function sumBytes(images: readonly ConnectorForwardedImage[]): number {
   return images.reduce((sum, image) => sum + image.bytes, 0)
 }
 
+export interface ConnectorImageUsage {
+  count: number
+  bytes: number
+}
+
 /**
  * The images of one send, by tool call id. It lives inside one
  * `getConnectorTools` run and is cleared when the run closes, so two sends
  * never share it and nothing outlives the request. Reads do not consume:
  * the SDK builds the model output again for every later step of the send.
  * `add` always replaces the entry of its call id, even with no images, and
- * keeps the send's byte and image totals in step.
+ * keeps the send's byte and image totals in step. `reserved` is what the
+ * send already shows before any call runs (kept images shown again on an
+ * approval continuation), so new images only get what is left of the caps.
  */
-export function createConnectorImageStore() {
+export function createConnectorImageStore(
+  reserved: ConnectorImageUsage = { count: 0, bytes: 0 },
+) {
   const imagesByCallId = new Map<string, ConnectorForwardedImage[]>()
-  let usedBytes = 0
-  let usedImages = 0
+  let usedBytes = Math.max(0, reserved.bytes)
+  let usedImages = Math.max(0, reserved.count)
 
   return {
     remainingBytes(): number {

@@ -114,6 +114,50 @@ export async function findChatsConnectorImageFiles(
   return files
 }
 
+export interface ChatConnectorImageFile extends ConnectorImageFile {
+  size: number
+}
+
+/**
+ * The connector image files of one chat among these public ids: the user's
+ * own rows whose chat marker (`toConnectorImageChatMarker`) is this chat, so
+ * a part copied into another chat never reads a file of the first one.
+ */
+export async function findChatConnectorImageFilesByIds(
+  db: DbClient,
+  input: {
+    userId: number
+    chatPublicId: string
+    fileIds: readonly string[]
+  },
+): Promise<ChatConnectorImageFile[]> {
+  const files: ChatConnectorImageFile[] = []
+  const chunks = chunkArray(input.fileIds, CONNECTOR_IMAGE_DELETE_BATCH_SIZE)
+
+  for (const chunk of chunks) {
+    const rows = await db
+      .select({
+        id: schema.files.id,
+        storageKey: schema.files.storageKey,
+        size: schema.files.size,
+      })
+      .from(schema.files)
+      .where(and(
+        eq(schema.files.userId, input.userId),
+        eq(schema.files.source, 'connector'),
+        eq(
+          schema.files.originProvider,
+          toConnectorImageChatMarker(input.chatPublicId),
+        ),
+        inArray(schema.files.id, chunk),
+      ))
+
+    files.push(...rows)
+  }
+
+  return files
+}
+
 /**
  * The connector image ids these parts point at whose file no longer exists
  * (deleted from the Storage page, with its message, or by MCP), in one query

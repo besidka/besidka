@@ -26,6 +26,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 const {
   deleteAllConnectorImages,
   deleteConnectorImageFiles,
+  findChatConnectorImageFilesByIds,
   findChatsConnectorImageFiles,
   findMissingConnectorImageFileIds,
   markDeletedConnectorImages,
@@ -135,6 +136,41 @@ describe('connector image files', () => {
     )
 
     expect(files.map(file => file.id).sort()).toEqual([shown, unlinked].sort())
+  })
+
+  it('finds the given ids only among this user\'s connector files of the '
+    + 'chat', async () => {
+    const chat = await seedChat(testDb.db, userId)
+    const otherChat = await seedChat(testDb.db, userId)
+    const own = await insertFile(userId, 'connector-own.png', 'connector', chat.id)
+    const otherChatFile = await insertFile(
+      userId,
+      'connector-other-chat.png',
+      'connector',
+      otherChat.id,
+    )
+    const otherUserFile = await insertFile(
+      otherUserId,
+      'connector-other-user.png',
+      'connector',
+      chat.id,
+    )
+    const generated = await insertFile(
+      userId,
+      'generated.png',
+      'assistant',
+      chat.id,
+    )
+
+    const files = await findChatConnectorImageFilesByIds(testDb.db, {
+      userId,
+      chatPublicId: chat.id,
+      fileIds: [own, otherChatFile, otherUserFile, generated, 'missing'],
+    })
+
+    expect(files).toEqual([
+      { id: own, storageKey: 'connector-own.png', size: 75 },
+    ])
   })
 
   it('reports and marks the images whose file is gone in one pass',

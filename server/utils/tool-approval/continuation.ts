@@ -626,15 +626,27 @@ function isModelContextPart(part: unknown): boolean {
 
 /**
  * A finished connector call as the model sees it again on a continuation:
- * the bytes of any image it forwarded lived only in the paused send, so
- * each "shown to the model" line says the image is no longer available.
+ * a kept image whose line index is in `shownAgain` for the call goes to the
+ * model again (`server/utils/connectors/kept-images.ts`) and its line says
+ * so; every other "shown to the model" line says the image is no longer
+ * available.
  */
-function withReplayedConnectorImages(part: unknown): unknown {
+function withReplayedConnectorImages(
+  part: unknown,
+  shownAgain: ReadonlyMap<string, ReadonlySet<number>> | undefined,
+): unknown {
   if (!isToolPart(part) || !isFramedConnectorOutput(part.output)) {
     return part
   }
 
-  return { ...part, output: toReplayedConnectorImageText(part.output) }
+  const shownAgainIndexes = typeof part.toolCallId === 'string'
+    ? shownAgain?.get(part.toolCallId)
+    : undefined
+
+  return {
+    ...part,
+    output: toReplayedConnectorImageText(part.output, shownAgainIndexes),
+  }
 }
 
 /**
@@ -650,7 +662,9 @@ function withReplayedConnectorImages(part: unknown): unknown {
  *   signatures, Gemini thought signatures) in their original order, step
  *   boundaries stay, and parts the model never needs (data, sources, files,
  *   unfinished calls) are dropped. A connector image line that said "shown
- *   to the model" now says the image is no longer available.
+ *   to the model" now says the image is no longer available, or, for a
+ *   kept image in `shownAgain` (per tool call id, the indexes among the
+ *   call's kept lines), that it is shown to the model again.
  * - `storedMessage` keeps the stored parts as they are, with the answered
  *   calls moved to `approval-responded` and no input or signature added, so
  *   it can seed `readUIMessageStream` and be written back to D1.
@@ -659,6 +673,7 @@ export function buildResumedAssistantMessages(input: {
   messageId: string
   parts: readonly unknown[]
   decisions: readonly ContinuationDecision[]
+  shownAgain?: ReadonlyMap<string, ReadonlySet<number>>
 }): { modelMessage: UIMessage, storedMessage: UIMessage } {
   const decisionsByApprovalId = new Map(input.decisions.map((decision) => {
     return [decision.approvalId, decision]
@@ -674,7 +689,7 @@ export function buildResumedAssistantMessages(input: {
       storedParts.push(part)
 
       if (isModelContextPart(part)) {
-        modelParts.push(withReplayedConnectorImages(part))
+        modelParts.push(withReplayedConnectorImages(part, input.shownAgain))
       }
 
       continue

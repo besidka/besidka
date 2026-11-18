@@ -1664,10 +1664,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/tool-images-providers.spec.ts',
     'tests/unit/server/utils/connectors/image-saver.spec.ts',
     'tests/unit/server/utils/connectors/image-parts-stream.spec.ts',
+    'tests/unit/server/utils/connectors/kept-images.spec.ts',
     'tests/unit/server/utils/files/connector-images.spec.ts',
     'tests/unit/utils/connector-image-parts.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
     'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
     'tests/unit/server/utils/connectors/mcp-client.spec.ts',
     'tests/unit/server/utils/connectors/audit.spec.ts',
     'tests/unit/server/utils/connectors/call-limits.spec.ts',
@@ -1827,6 +1829,7 @@ export function getAffectedTests(changedFiles) {
 
   const toolApprovalContinuationTests = [
     'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/connectors/kept-images.spec.ts',
     'tests/unit/server/utils/tool-approval/send.spec.ts',
     'tests/integration/api/chats-tool-approval-continuation.spec.ts',
     'tests/integration/api/chats-tool-approval-request.spec.ts',

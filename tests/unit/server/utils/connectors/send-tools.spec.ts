@@ -4,6 +4,7 @@ import {
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CONSENT_VERSION,
   CONNECTOR_CALL_RESPONSE_MAX_BYTES,
+  CONNECTOR_IMAGES_PER_SEND,
   CONNECTOR_RESPONSE_MAX_BYTES,
   CONNECTOR_RESULT_MAX_BYTES,
   CONNECTOR_SSE_PER_SEND,
@@ -188,6 +189,7 @@ describe('getConnectorTools', () => {
     optionalSlugs?: string[]
     wrapFetch?: (base: typeof fetch) => typeof fetch
     forwardImages?: boolean
+    reservedImages?: { count: number, bytes: number }
   }) {
     const baseFetch = createMockMcpFetch(options.servers) as typeof fetch
 
@@ -242,6 +244,9 @@ describe('getConnectorTools', () => {
         }),
       guard: options.guard,
       ...(options.forwardImages ? { forwardImages: true } : {}),
+      ...(options.reservedImages
+        ? { reservedImages: options.reservedImages }
+        : {}),
       logger: { set: (values: unknown) => logged.push(values) },
       dependencies: {
         limitCalls: options.limitCalls ?? allowCalls,
@@ -882,7 +887,10 @@ describe('getConnectorTools', () => {
   describe('images', () => {
     const SHOWN_LINE = '[image/png, 75 B: shown to the model, not kept]'
 
-    async function imageRun(forwardImages: boolean) {
+    async function imageRun(
+      forwardImages: boolean,
+      reservedImages?: { count: number, bytes: number },
+    ) {
       const alpha = server('mcp.alpha.example.com', {
         respond: () => ({
           content: [
@@ -905,6 +913,7 @@ describe('getConnectorTools', () => {
         connectorSeeds: seeds,
         servers: [alpha],
         forwardImages,
+        ...(reservedImages ? { reservedImages } : {}),
       })
     }
 
@@ -945,6 +954,24 @@ describe('getConnectorTools', () => {
           expect.objectContaining({ outcome: 'ok', imagesForwarded: 1 }),
         )
         expect(JSON.stringify(logged)).not.toContain(RED_PNG_BASE64)
+      })
+
+    it('leaves a new image out once kept images shown again filled the send',
+      async () => {
+        const { tools } = await imageRun(true, {
+          count: CONNECTOR_IMAGES_PER_SEND,
+          bytes: 0,
+        })
+        const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+        expect(output).toContain(
+          'frame A\n[image omitted: image/png, too many images in one message]',
+        )
+        expect(await modelOutput(tools, output))
+          .toEqual({ type: 'text', value: output })
+        expect(loggedConnectorValues('calls')).toContainEqual(
+          expect.objectContaining({ imagesDropped: { 'send-count': 1 } }),
+        )
       })
 
     it('sends only text when the send cannot show images', async () => {

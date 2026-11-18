@@ -126,6 +126,7 @@ import {
 import type {
   ConnectorImageCollection,
   ConnectorImageDropReason,
+  ConnectorImageUsage,
 } from '~~/server/utils/connectors/tool-images'
 import type {
   ConnectorImageSaver,
@@ -223,6 +224,7 @@ export interface GetConnectorToolsInput {
   ) => { auditCallId: number, approval: ConnectorAuditApproval } | null
   callsUsedThisTurn?: number
   forwardImages?: boolean
+  reservedImages?: ConnectorImageUsage
   imageSaver?: ConnectorImageSaver
   guard?: UntrustedContentGuard
   logger: LoggerLike
@@ -666,7 +668,9 @@ async function syncDriftStatus(
  * (`server/utils/connectors/tool-images.ts`). With `imageSaver`, the same
  * images are saved to the user's files before the text is built, and the
  * line says whether each one was saved; a failed save never fails the
- * call (`server/utils/connectors/image-saver.ts`). Such a send lets a
+ * call (`server/utils/connectors/image-saver.ts`). `reservedImages` counts
+ * the kept images an approval continuation shows again against the send's
+ * caps first (`server/utils/connectors/kept-images.ts`). Such a send lets a
  * `tools/call` response grow to 8 MiB, so at most two of its calls receive
  * and parse a response at once (`CONNECTOR_IMAGE_CALLS_IN_FLIGHT`), which
  * bounds the large bodies in memory to 16 MiB.
@@ -1261,7 +1265,7 @@ export async function getConnectorTools(
     let sourceConnectorId: string | null = null
     let callErrorCount = 0
     let callRecordCount = 0
-    const imageStore = createConnectorImageStore()
+    const imageStore = createConnectorImageStore(input.reservedImages)
     const imageCallLimiter = createConcurrencyLimiter(
       CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
     )

@@ -413,7 +413,10 @@ describe('buildResumedAssistantMessages connector images', () => {
     + `tool="get_frame_screenshot">\nFrame A\n${shownLine}\n`
     + '</untrusted_tool_result>'
 
-  function resumed(output: unknown) {
+  function resumed(
+    output: unknown,
+    shownAgain?: ReadonlyMap<string, ReadonlySet<number>>,
+  ) {
     const [decision] = decideContinuation({
       answers: [{
         response: { approvalId: 'approval-1', approved: true, remember: 'once' },
@@ -445,8 +448,35 @@ describe('buildResumedAssistantMessages connector images', () => {
         },
       ],
       decisions: [decision!],
+      ...(shownAgain ? { shownAgain } : {}),
     })
   }
+
+  it('says a kept image is shown again only for the selected lines', () => {
+    const keptLine = '[image/png, 87 KB: shown to the model, kept with this '
+      + 'chat]'
+    const output = '<untrusted_tool_result connector="doop" '
+      + `tool="get_frame_screenshot">\n${keptLine}\n${keptLine}\n`
+      + `${shownLine}\n</untrusted_tool_result>`
+    const { modelMessage, storedMessage } = resumed(
+      output,
+      new Map([['call-0', new Set([1])]]),
+    )
+    const modelTool = modelMessage.parts[1] as { output: string }
+
+    expect(modelTool.output.split('\n').slice(1, 4)).toEqual([
+      '[image/png, 87 KB: kept with this chat, no longer available to the '
+      + 'model; call the tool again to see it]',
+      '[image/png, 87 KB: kept with this chat, shown to the model again]',
+      goneLine,
+    ])
+    expect((storedMessage.parts[1] as { output: string }).output)
+      .toBe(output)
+    expect(
+      (resumed(output, new Map([['call-9', new Set([0])]]))
+        .modelMessage.parts[1] as { output: string }).output,
+    ).not.toContain('shown to the model again')
+  })
 
   it('tells the model a forwarded image is gone and keeps D1 as stored',
     async () => {

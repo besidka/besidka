@@ -403,6 +403,12 @@ import {
 } from '~~/server/utils/connectors/image-saver'
 import { collectConnectorImageFileIds } from '#shared/utils/connector-image-parts'
 import type { ConnectorImageSaver } from '~~/server/utils/connectors/image-saver'
+import {
+  attachKeptConnectorImages,
+  keptConnectorImageLineIndexes,
+  loadKeptConnectorImages,
+} from '~~/server/utils/connectors/kept-images'
+import type { KeptConnectorImages } from '~~/server/utils/connectors/kept-images'
 import { withConnectorImageParts } from '~~/server/utils/connectors/image-parts-stream'
 import {
   listConnectors,
@@ -2136,6 +2142,12 @@ export default defineEventHandler(async (event) => {
   )
   let connectorsRun: ConnectorToolsRun | null = null
   let connectorImageSaver: ConnectorImageSaver | null = null
+  let keptConnectorImages: KeptConnectorImages | null = null
+  const forwardsConnectorImages = canForwardConnectorImages({
+    gatewayId,
+    providerId: provider?.id,
+    inputModalities: model ? getModelInputModalities(model) : null,
+  })
   let besidkaToolsRun: PreparedBesidkaChatTools | null = null
   let toolIndex: ToolIndex | null
   const toolIndexReserve = {
@@ -2185,6 +2197,19 @@ export default defineEventHandler(async (event) => {
       const knownConnectorIds = new Set(userConnectors.map((connector) => {
         return connector.id
       }))
+
+      if (resume && forwardsConnectorImages) {
+        keptConnectorImages = await loadKeptConnectorImages({
+          db,
+          userId,
+          chatPublicId: chat.id,
+          parts: resume.assistant.parts,
+          connectorTitles: new Map(userConnectors.map((connector) => {
+            return [connector.slug, connector.title]
+          })),
+          logger: aiLogger,
+        })
+      }
       const offConnectorIds = (!isResume && sendBody.offConnectorIds)
         ? sendBody.offConnectorIds.filter((connectorId) => {
           return knownConnectorIds.has(connectorId)
@@ -2241,12 +2266,6 @@ export default defineEventHandler(async (event) => {
           )
         }
 
-        const forwardsConnectorImages = canForwardConnectorImages({
-          gatewayId,
-          providerId: provider?.id,
-          inputModalities: model ? getModelInputModalities(model) : null,
-        })
-
         connectorImageSaver = forwardsConnectorImages
           ? createConnectorImageSaver({
             db,
@@ -2283,6 +2302,9 @@ export default defineEventHandler(async (event) => {
             }
             : {}),
           forwardImages: forwardsConnectorImages,
+          ...(keptConnectorImages
+            ? { reservedImages: keptConnectorImages.usage }
+            : {}),
           ...(connectorImageSaver ? { imageSaver: connectorImageSaver } : {}),
           guard: chatSearchBudget,
           logger: aiLogger,
@@ -2428,6 +2450,9 @@ export default defineEventHandler(async (event) => {
         messageId: resume.owner.messagePublicId,
         parts: resume.assistant.parts,
         decisions: resumeDecisions,
+        ...(keptConnectorImages
+          ? { shownAgain: keptConnectorImageLineIndexes(keptConnectorImages) }
+          : {}),
       })
       const resumeHistory = buildKnowledgeAwareMessagesForModel({
         messagesForAI,
@@ -2444,6 +2469,14 @@ export default defineEventHandler(async (event) => {
         ...resumeHistory,
         resumedMessages.modelMessage,
       ])
+
+      if (keptConnectorImages) {
+        resumeModelMessages = attachKeptConnectorImages(
+          resumeModelMessages,
+          keptConnectorImages,
+        )
+      }
+
       assertEndsWithApprovalResponse(resumeModelMessages)
     }
   } catch (exception) {
