@@ -27,10 +27,23 @@
         class="collapse-title flex items-center gap-1 px-0 py-1.5 min-h-0"
         @click.prevent="toggleMain"
       >
-        <component
+        <span
+          aria-hidden="true"
+          :data-kind="headerStepIcon ? headerStepIcon.kind : 'thinking'"
+          data-testid="reasoning-header-icon"
+          class="inline-flex size-4 shrink-0 items-center justify-center"
+        >
+          <ChatReasoningStepIcon
+            v-if="headerStepIcon"
+            :icon="headerStepIcon"
+            class="size-4!"
+          />
+          <component
             :is="reasoningIcon"
+            v-else
             class="size-4 text-base-content/80"
           />
+        </span>
         <span
           :title="isHiddenReasoningSummary ? HIDDEN_REASONING_TITLE : undefined"
           :data-testid="
@@ -782,10 +795,11 @@ const hiddenReasoningTokens = computed<number>(() => {
 })
 
 const streamingTitle = shallowRef<string>('')
+const streamingTitleIcon = shallowRef<ReasoningStepIcon | null>(null)
 const streamingTitleUpdateTimer = shallowRef<
   ReturnType<typeof setTimeout> | null
 >(null)
-const latestStreamingTitleCandidate = computed<string>(() => {
+const latestPendingToolStep = computed<ReasoningStep | null>(() => {
   const pendingToolStep = reasoningSteps.value
     .filter((step) => {
       return step.kind === 'tool' && step.pending
@@ -793,12 +807,22 @@ const latestStreamingTitleCandidate = computed<string>(() => {
     .at(-1)
 
   if (pendingToolStep && !isReasoningTextStreaming.value) {
-    return pendingToolStep.title
+    return pendingToolStep
+  }
+
+  return null
+})
+const latestStreamingTitleCandidate = computed<string>(() => {
+  if (latestPendingToolStep.value) {
+    return latestPendingToolStep.value.title
   }
 
   return extractLastCompleteReasoningTitle(
     reasoningParts.value.at(-1)?.text || '',
   )
+})
+const latestStreamingIconCandidate = computed<ReasoningStepIcon | null>(() => {
+  return latestPendingToolStep.value?.icon ?? null
 })
 
 const isHiddenReasoningSummary = computed<boolean>(() => {
@@ -823,6 +847,14 @@ const activeStreamingTitle = computed<string>(() => {
   }
 
   return streamingTitle.value
+})
+
+const headerStepIcon = computed<ReasoningStepIcon | null>(() => {
+  if (!isThinkingStreaming.value || !activeStreamingTitle.value.length) {
+    return null
+  }
+
+  return streamingTitleIcon.value
 })
 
 const reasoningSeconds = shallowRef<number>(0)
@@ -994,10 +1026,15 @@ watch(isThinkingStreaming, (streaming, wasStreaming) => {
 })
 
 watch(
-  [isThinkingStreaming, latestStreamingTitleCandidate],
-  ([streaming, candidateTitle]) => {
+  [
+    isThinkingStreaming,
+    latestStreamingTitleCandidate,
+    latestStreamingIconCandidate,
+  ],
+  ([streaming, candidateTitle, candidateIcon]) => {
     if (!streaming) {
       streamingTitle.value = ''
+      streamingTitleIcon.value = null
       clearStreamingTitleTimer()
 
       return
@@ -1010,6 +1047,7 @@ watch(
     clearStreamingTitleTimer()
     streamingTitleUpdateTimer.value = setTimeout(() => {
       streamingTitle.value = candidateTitle
+      streamingTitleIcon.value = candidateIcon
       streamingTitleUpdateTimer.value = null
     }, 250)
   },

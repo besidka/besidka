@@ -23,9 +23,14 @@ mockNuxtImport('useUserSetting', () => {
 
 async function mountMessage(
   parts: unknown[],
-  options: { isShared?: boolean, searchProvider?: string } = {},
+  options: {
+    isShared?: boolean
+    searchProvider?: string
+    streaming?: boolean
+    reasoningLevel?: string
+  } = {},
 ) {
-  return await mountSuspended(Reasoning, {
+  const wrapper = await mountSuspended(Reasoning, {
     props: {
       message: {
         id: 'msg-icons',
@@ -36,7 +41,7 @@ async function mountMessage(
           : undefined,
       } as UIMessage,
       status: 'ready',
-      reasoningLevel: 'off',
+      reasoningLevel: options.reasoningLevel ?? 'off',
       turnStartedAt: 0,
       reasoningAccumulatedMs: 0,
       reasoningSegmentStartedAt: 0,
@@ -45,6 +50,12 @@ async function mountMessage(
     },
     global: { stubs: { MDCCached: true } },
   })
+
+  if (options.streaming) {
+    await wrapper.setProps({ status: 'streaming', isTurnThinkingHeld: true })
+  }
+
+  return wrapper
 }
 
 function iconRoots(wrapper: Awaited<ReturnType<typeof mountMessage>>) {
@@ -182,5 +193,132 @@ describe('Chat/Reasoning step icons', () => {
       expect(root.attributes('aria-hidden')).toBe('true')
       expect(root.text()).toBe('')
     }
+  })
+
+  describe('header icon', () => {
+    async function settleStreamingTitle() {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300)
+      })
+    }
+
+    function pending(type: string, toolCallId: string, extra = {}) {
+      return {
+        type,
+        toolCallId,
+        state: 'input-available',
+        input: {},
+        ...extra,
+      }
+    }
+
+    function headerIcon(wrapper: Awaited<ReturnType<typeof mountMessage>>) {
+      return wrapper.get('[data-testid="reasoning-header-icon"]')
+    }
+
+    it('shows the connector icon for a running connector call', async () => {
+      const wrapper = await mountMessage([{
+        type: 'dynamic-tool',
+        toolName: 'mcp__notion__search_pages',
+        toolCallId: 'a',
+        state: 'input-available',
+        input: {},
+      }], { streaming: true })
+
+      await settleStreamingTitle()
+
+      const header = headerIcon(wrapper)
+
+      expect(header.attributes('aria-hidden')).toBe('true')
+      expect(header.attributes('data-kind')).toBe('connector')
+      expect(header.get('[data-testid="reasoning-step-icon-image"]')
+        .attributes('src')).toBe('/api/v1/connectors/conn1/icon')
+    })
+
+    it('shows the web search icon for a running web search', async () => {
+      const wrapper = await mountMessage(
+        [pending('tool-web_search_brave', 'a', { input: { query: 'x' } })],
+        { streaming: true },
+      )
+
+      await settleStreamingTitle()
+
+      const header = headerIcon(wrapper)
+
+      expect(header.attributes('data-kind')).toBe('provider')
+      expect(header.findComponent({ name: 'ProviderIcon' })
+        .props('providerId')).toBe('brave')
+    })
+
+    it('shows the same icon as the step row', async () => {
+      const wrapper = await mountMessage(
+        [pending('tool-activate_skill', 'a')],
+        { streaming: true },
+      )
+
+      await settleStreamingTitle()
+
+      const rowIcon = wrapper.get('[data-testid="reasoning-steps"]')
+        .findComponent({ name: 'NuxtIcon' })
+
+      expect(headerIcon(wrapper).findComponent({ name: 'NuxtIcon' })
+        .props('name')).toBe(rowIcon.props('name'))
+    })
+
+    it('keeps the thinking icon while only thinking streams', async () => {
+      const wrapper = await mountMessage([
+        { type: 'reasoning', text: '**Planning**\n\nLooking at it.' },
+      ], { streaming: true, reasoningLevel: 'high' })
+
+      await settleStreamingTitle()
+
+      const header = headerIcon(wrapper)
+
+      expect(header.attributes('data-kind')).toBe('thinking')
+      expect(header.find('[data-testid="reasoning-step-icon"]').exists())
+        .toBe(false)
+    })
+
+    it('keeps the thinking icon on the finished generic label', async () => {
+      const wrapper = await mountMessage([
+        done('tool-web_search_brave', 'a', { output: { results: [] } }),
+      ])
+
+      expect(headerIcon(wrapper).attributes('data-kind')).toBe('thinking')
+      expect(headerIcon(wrapper)
+        .find('[data-testid="reasoning-step-icon"]').exists()).toBe(false)
+    })
+
+    it('keeps the header icon box the same size when it switches', async () => {
+      const wrapper = await mountMessage([{
+        type: 'dynamic-tool',
+        toolName: 'mcp__notion__search_pages',
+        toolCallId: 'a',
+        state: 'input-available',
+        input: {},
+      }], { streaming: true })
+
+      expect(headerIcon(wrapper).classes()).toContain('size-4')
+
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).classes()).toContain('size-4')
+    })
+
+    it('never requests a connector icon in the header on a shared page', async () => {
+      const wrapper = await mountMessage([{
+        type: 'dynamic-tool',
+        toolName: 'mcp__notion__search_pages',
+        toolCallId: 'a',
+        state: 'input-available',
+        input: {},
+      }], { streaming: true, isShared: true })
+
+      await settleStreamingTitle()
+
+      expect(headerIcon(wrapper).find('img').exists()).toBe(false)
+      expect(headerIcon(wrapper).findComponent({ name: 'NuxtIcon' })
+        .props('name')).toBe('lucide:plug')
+    })
   })
 })
