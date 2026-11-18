@@ -622,6 +622,29 @@ describe('ChatInput/ToolsMenu', () => {
         showModal.mockRestore()
       })
 
+    it('pads the sheet scroll area with the shared sheet bottom padding',
+      async () => {
+        const showModal = vi
+          .spyOn(HTMLDialogElement.prototype, 'showModal')
+          .mockImplementation(function (this: HTMLDialogElement) {
+            this.setAttribute('open', '')
+          })
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+
+        const scroll = wrapper.get(
+          '[data-testid="chat-input-tools-sheet-scroll"]',
+        )
+        const box = wrapper.get('[data-testid="chat-input-tools-panel"]')
+          .get('.modal-box')
+
+        expect(scroll.classes()).toContain('pb-[var(--sheet-bottom-padding)]')
+        expect(box.classes()).toContain('p-0')
+
+        showModal.mockRestore()
+      })
+
     it('closes the sheet when the "+" button is clicked while it is open',
       async () => {
         vi.spyOn(HTMLDialogElement.prototype, 'showModal')

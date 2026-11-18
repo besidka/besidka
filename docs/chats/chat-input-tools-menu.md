@@ -29,6 +29,25 @@ the tile builder only read it; every change goes back through ChatInput's
 existing handlers (`selectWebSearchProvider`, `toggleImageGeneration`, the
 clamp and restore watchers), so capability gating has one owner.
 
+## Bottom space in the sheet
+
+Below md the sheet is docked to the screen edge, so its last row ("Project")
+sits next to the rounded screen corners and the home indicator. The scroll
+container pads its bottom with the shared `--sheet-bottom-padding` from
+`app/assets/css/main.css` (`pb-[var(--sheet-bottom-padding)]`): the safe-area
+inset plus `1.5rem`, and the inset plus `2rem` in the installed PWA
+(`@media (display-mode: standalone)`), where the home indicator and the
+corners eat the most. The old `max(1rem + --sab, env(safe-area-inset-bottom))`
+came to about 50 px on an iPhone and left the row short of room to tap.
+`--sab` is declared on `:root`, so it did resolve inside the `showModal()`
+dialog (custom properties inherit from the DOM parent, not the top layer);
+the value was just too small. The sheet box keeps `p-0`, so there is one
+padding only, and the action rows stay `max-md:min-h-11` (44 px). The padding
+lives inside the `max-h-[85dvh]` box and scrolls with the content, so the
+height cap is unchanged. The popover at md+ is untouched. Every composer
+sheet takes the same value: the model picker, the skill, connector, artifact
+and project pickers (`sheet-safe-padding`) and the text file sheet.
+
 ## Row order: the most used rows nearest the "+"
 
 The menu opens above the composer (a popover above "+", a bottom sheet below

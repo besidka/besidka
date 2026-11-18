@@ -33,6 +33,13 @@ window) closes it.
 
 ## The sheet
 
+The footer's safe-area padding is the shared `--sheet-bottom-padding`
+(`app/assets/css/main.css`): the safe-area inset plus `1.5rem`, plus `2rem` in
+the installed PWA. The box sets `--models-sheet-bottom-padding` to it, the
+gateway rail reads that property, and the keyboard lift overrides it with
+`0.375rem` inline. The same value pads the tools sheet; see "Bottom space in
+the sheet" in `docs/chats/chat-input-tools-menu.md`.
+
 - A `<dialog class="modal modal-bottom">` opened with `showModal()`: focus is
   trapped, the page is inert and scroll-locked (daisyUI). The box has the
   tools sheet chrome: grab handle, a "Models" title that labels the dialog,
