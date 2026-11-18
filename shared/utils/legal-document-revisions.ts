@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: 'd5ee0da3a5fce6a70636022b701238395d1edcfe292981900d3d54d297447f19',
+    hash: '2ac8ff662c2de4e732fe264ef23234626fce0e7e362481bd57e1b9df7b4567c2',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -29,7 +29,15 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'clarifications (BES-393): artifacts count against the one storage '
       + 'limit instead of a separate 25 MB, and Read your settings includes '
       + 'storage use by type; no new purpose, recipient, transfer or '
-      + 'retention. Also the two connected-app permissions for connectors '
+      + 'retention. CONNECTORS (C-10, BES-257): the section Connectors you '
+      + 'add, the recipient row, the transfer paragraph (explicit consent '
+      + 'per connector, Art. 49(1)(a)), the legal-basis and retention rows '
+      + '(tool-call log 90 days, registry copy) and the registry copy are '
+      + 'judged MATERIAL (new purpose, new recipient category, new '
+      + 'transfer, new retention) and are NOT described by the notice id on '
+      + 'this record, which predates them. No notice exists for connectors: '
+      + 'announcing them is the owner\'s decision in /admin/legal. '
+      + 'Also the two connected-app permissions for connectors '
       + '(see and add, switch off, restrict and delete; BES-256): they '
       + 'describe what MCP tools can do and cannot do (never switch a '
       + 'connector on, sign in or allow a tool without asking), and the '
@@ -43,12 +51,25 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'skill on or set it to Auto), with no new purpose, recipient, '
       + 'transfer or retention; whether the existing notice needs to say '
       + 'more is the owner\'s decision. '
+      + 'PHASE 4 LEGAL BATCH (2026-11-16): the new Skills section (sources, '
+      + 'GitHub import, what is kept, catalog and text to the chat\'s '
+      + 'provider, never public, scripts copied to the user\'s Anthropic '
+      + 'workspace and deleted again), TypeSafe AI skill screening and the '
+      + 'eighth, opt-in Skill selection check, connector modes (Auto, Always '
+      + 'on, Manual) with the catalog sent to the provider, per-tool modes, '
+      + 'the 30-day tool snapshot and the anonymous directory requests, with '
+      + 'the matching recipient, transfer, logging, retention and deletion '
+      + 'rows, and the paragraph on other people in a skill. Judged MATERIAL under WP260 (new purposes, new recipients '
+      + 'GitHub and the Anthropic workspace copy, new retention) and NOT '
+      + 'described by the notice id on this record. Owner decision of '
+      + '2026-11-16: updated without notice emails, no LEGAL_NOTICES entry '
+      + 'and no consent version bump. '
       + 'An earlier edit changed British spellings to American '
       + 'English, with no change of meaning, so it adds no new '
       + 'classification.',
   },
   'terms-of-use': {
-    hash: '74f82cf285bd82700c1393da884409cb1626b78e8f336c0b3852e19a69f4bb0b',
+    hash: '6a7cf7f84be8e9a5f0ea0068a9fe705aaf4c63c00cb341f7bcc7da8d62109539',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'New prohibited use for code run with Run code or written through '
@@ -57,9 +78,25 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'Anthropic\'s skills, documents and code results not checked by '
       + 'Besidka, and the AI mark on documents. Body still includes the '
       + '2026-12-artifacts changes, effective 2026-12-19.'
-      + ' Latest edit is spelling only (British variants changed to '
-      + 'American English), with no change of meaning, so it adds no '
-      + 'new classification.',
+      + ' CONNECTORS (C-10, BES-257): the Connectors section and edits to '
+      + 'the key, sensitive-information, other-people\'s-data and liability '
+      + 'sections (new duties for the account a user gives a connector, a '
+      + 'call the user approved is the user\'s action, and more not-liable '
+      + 'items) are judged MATERIAL and are NOT described by the notice id '
+      + 'on this record, which predates them. No notice exists for '
+      + 'connectors: announcing them is the owner\'s decision in '
+      + '/admin/legal. PHASE 4 LEGAL BATCH (2026-11-16): a new Skills '
+      + 'section (right to use what you create, paste or import, no review '
+      + 'by Besidka, scripts under the provider\'s terms, private skills, '
+      + 'the power to disable a skill with a statement of reasons, '
+      + 'reporting), a What you may not do item, skills in the Your content '
+      + 'license and a skill check under Content moderation. Judged '
+      + 'MATERIAL (new obligations on users) and NOT described by the '
+      + 'notice id on this record. Owner decision of 2026-11-16: updated '
+      + 'without notice emails, no LEGAL_NOTICES entry and no consent '
+      + 'version bump. Latest earlier edit is spelling only (British '
+      + 'variants changed to American English), with no change of meaning, '
+      + 'so it adds no new classification.',
   },
   'cookie-policy': {
     hash: '23698e9dfcd63b36e96015181acd14ee63db8d28cf75e09ea09993897450f58c',

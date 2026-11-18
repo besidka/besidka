@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.10, 2026-11-12 (Office attachments, BES-370: data-flow row 16); 1.9, 2026-11-11 (documents and provider code execution: new section 3.14, data-flow steps 15 to 19, `create_document` in section 3.11 and risk row 37, risk rows 61 to 72, section 6 items 24 to 27, DPF re-check in item 5; 1.8, 2026-11-08: artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.12, 2026-11-16 (Phase 4 legal batch: new section 3.16 skills; section 3.7a skill screening and the eighth role `skillSelection`; section 3.15 item (i); data-flow row 5a and rows 25 to 29; risk rows 88 to 96; section 6 items 34 to 36 and an update to item 33); 1.11, 2026-11-15 (connectors, C-10: new section 3.15, data-flow steps 20 to 24, section 4 rows, risk rows 73 to 87, section 6 items 28 to 33, section 7 question); 1.10, 2026-11-12 (Office attachments, BES-370: data-flow row 16); 1.9, 2026-11-11 (documents and provider code execution: new section 3.14, data-flow steps 15 to 19, `create_document` in section 3.11 and risk row 37, risk rows 61 to 72, section 6 items 24 to 27, DPF re-check in item 5; 1.8, 2026-11-08: artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -372,13 +372,16 @@ removed.
 
 - **Purpose.** Catch special-category data and never-store values the rules
   in 3.7 miss, and reject entries a model wrote that are not supported by the
-  user's own text (the memory check). The same key also powers six more
+  user's own text (the memory check). The same key also powers seven more
   assistive checks, listed in the table below.
 - **When.** Only for a user who saved a TypeSafe AI key (Profile → API Keys
   → Smart checks). Saving the key is the opt-in; deleting it stops every
   check. Each check also has its own toggle in a "TypeSafe AI checks" section
   on that tab. All are on after the key is saved; a role is on unless the
-  user switched it off. Only on paths already behind the consent gate.
+  user switched it off. The exception is `skillSelection` (S-14), which is
+  off until the user switches it on, also when the settings are `null`
+  (`JEV_OPT_IN_ROLE_IDS`), because it spends the key on ordinary sends. Only on
+  paths already behind the consent gate.
 - **How (memory check).** `server/utils/memory/jev-check.ts`. The rules in
   3.7 run first. Only entries they allow are sent, with never-store values
   removed, plus, for model-written entries, a short excerpt of the user's
@@ -386,11 +389,13 @@ removed.
   only add a refusal. Model pinned to `jev-1.14.0`; threshold 0.5.
 - **Shared client.** All roles call one client in `server/utils/jev/`. The
   per-role setting is `user_settings.typesafe_roles` (nullable JSON, null =
-  all on). Timeouts: 800 ms on the send path, 2.5 s in the background, 1.5 s
+  all on except `skillSelection`). Timeouts: 800 ms on the send path, 2.5 s in the background, 1.5 s
   for the share check. Role ids (`JEV_ROLE_IDS` in
   `shared/utils/jev-policy.ts`): `memoryChecks`, `autoWebSearch`,
   `extractionPrefilter`, `injectionScreening`, `rerank`, `sharePiiCheck`,
-  `pastChatRetrieval`; the table below has one row for each.
+  `pastChatRetrieval`, `skillSelection`; the table below has one row for
+  each. Skill screening (SS-8) is not a role of its own: it runs under
+  `injectionScreening` and its toggle.
   Thresholds come from a synthetic eval run on 2026-10-26 and are re-tuned on
   real traffic.
 - **Recipient.** TypeSafe AI, Inc., United States, independent controller
@@ -409,12 +414,19 @@ removed.
   table: `memoryChecks` falls back to the gate alone, `autoWebSearch` and
   `pastChatRetrieval` fall toward searching, `extractionPrefilter` toward
   generating memory, `rerank` keeps the original order, `injectionScreening`
-  treats undecided text as unscreened, and `sharePiiCheck` only warns.
+  treats undecided text as unscreened (for a skill, the review lists the
+  parts not checked), `sharePiiCheck` only warns, and `skillSelection` changes
+  nothing, so the model picks from the catalog as without the key.
 - **Retention at Besidka.** The prompts are not stored. Two KV markers exist:
   the re-screening queue entry of `injectionScreening` (user, project and item
   ids, plus an attempt counter; 14 days) and the Auto web search first-message
   marker (`auto-web-search-first-message:<chat>:<message>`, holds the outcome
-  only; 1 day).
+  only; 1 day). For skills: the chunk score cache (scores under a SHA-256 of
+  the chunk, no text, per user, 30 days), the import-stage result (no text,
+  the stage's remaining hour) and the marks of a stored version (line ranges
+  and scores, no text, naming file paths; no expiry: normally deleted with
+  the version, best effort, and always by prefix in the account purge, which
+  fails and stays retryable if that delete fails).
 - **Data in logs.** Counts, scores, statuses and latency under
   `attributes.<role>Jev` (the memory check keeps `memoryJev`), never text.
 
@@ -423,9 +435,10 @@ removed.
 | `memoryChecks` | Second opinion before a memory entry is saved | Each entry the rules allowed | Entry text with never-store values removed, plus a short redacted source excerpt | Rules alone; add-only, so it can never allow what the rules refused |
 | `autoWebSearch` | Decide whether a web search is needed | Only in the Auto web search mode, each message, unless a URL, a domain or a recency phrase ("today", "latest") already decides it without a Jev call | The message and the last three turns, with never-store values removed | Search as usual |
 | `extractionPrefilter` | Skip the memory model when nothing is worth remembering (saves the user's cost) | Before memory is generated from a chat: opt-in extraction, backfill from past chats, project Refresh. Never for extract-now or import | Chat text with never-store values removed, in chunks of up to about 8,000 tokens | Unsure or unavailable: generate memory as usual |
-| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results (title and snippet) fetched through Besidka | That text in chunks of up to about 2,000 tokens, with never-store values removed | Text used unscreened: search results are kept; a project file or note is stored ready and queued in KV (ids only, no text, kept 14 days, at most 5 failed attempts) and screened again by the hourly sweep, only while the user's consent is current and the key and check are still on; a flag holds a file for review or leaves a result out of context and never deletes anything |
+| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results (title and snippet) fetched through Besidka; skills (SS-8, BES-390), automatically when an import, update or needs-review screen opens, never from the pick list, MCP writes, the editor, an in-app save or a restore | That text in chunks of up to about 2,000 tokens, with never-store values removed. For a skill: the description, `SKILL.md`, references, other text, scripts and license files in that order, at most 12 calls a request and 48 a review, five constant questions per chunk, skill text only in the state key `text`; add-only marks, no "clean" verdict | Text used unscreened: search results are kept; a project file or note is stored ready and queued in KV (ids only, no text, kept 14 days, at most 5 failed attempts) and screened again by the hourly sweep, only while the user's consent is current and the key and check are still on; a flag holds a file for review or leaves a result out of context and never deletes anything |
 | `rerank` | Order search candidates by relevance and leave out clearly irrelevant ones while enough relevant ones remain | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search, with never-store values removed | Original order |
 | `sharePiiCheck` | Warn about personal data before publishing | When the share window opens or its files toggle changes, before a public share link is created; only with current legal consent | The chat text being shared, with never-store values, emails and phone numbers removed, in chunks of up to about 25,000 tokens | Generic reminder next to the built-in detector warnings; never blocks sharing |
+| `skillSelection` | Pick at most one of the user's own Auto skills for a message (S-14, BES-380), the only way an Auto skill reaches a model without tool calling | Opt-in, off by default. Only with the `skills` flag, when the user did not attach or type a skill, not on a resume, and only when a local BM25 prefilter over the names and descriptions of the user's Auto skills finds a candidate (at most three); otherwise no call | The message (never-store redacted, at most 4,000 characters) and each candidate's name and description (300 characters, never-store redacted) in state keys `skill_<i>`, never in a question. Rides in the Auto web search call when that call is made, else one call of its own; at most one call per send | Nothing changes; the pick applies to that send only and is never stored as an active skill |
 | `pastChatRetrieval` | Pre-search past chats for sends where the chat search tools are not registered (models without tool calling) | Each such message, only while "Search and reference chats" is on, unless a listed phrase ("last time", "we discussed") already starts the search without a Jev call | The message and the last three turns, with never-store values removed | No key or role off: no pre-search. Jev unsure or unavailable: the search runs anyway, so a failed call sends nothing extra to TypeSafe AI |
 
 ### 3.8 Consent gate, version 2026-11-a
@@ -562,7 +575,7 @@ removed.
 | 3 | Worker | Provider or gateway | Message, history, memory index, excerpts, knowledge | User's own key; transfer notice and consent where needed |
 | 4 | Worker | Search provider | Query the model writes | Only if the user turned search on, user's own key |
 | 5 | Worker | Memory model | New chat text (opt-in) | Never-store redaction, then gate on output |
-| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge and Brave or Exa results for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
+| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge, Brave or Exa results and the text of a skill under review for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval; the message and up to three skill names and descriptions for skill selection (opt-in) | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
 | 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge, files, memory and settings the user approved; for write scopes, new values (names, instructions, notes, text files, memory entries, settings) and which items to move or delete | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
 | 8 | Worker | Workers Analytics Engine | `feature_exposure`, flag, variant, reason for hash-based decisions | No bucket, path or user id (C1). Pseudonymous while a cohort is tiny |
@@ -577,6 +590,16 @@ removed.
 | 17 | AI client (pulls) | Worker (MCP `create_document` under `files:write`; built, D-5) | Content the client supplies, rendered into a private file | Same scope and approval screen as row 10a, no provider key, no AI assertion unless the client declares `aiGenerated`, per-user rate limits and quota |
 | 18 | Worker | Anthropic, OpenAI or Google (planned, D-7) | With "Run code" on: the message's attachments (uploaded to the provider's sandbox for the turn, up to 10 files and 20 MB), the model's code and the files the code creates; Google inline | The user's own key, off per message, one-time confirmation, direct providers only, no sandbox network, deletion after the turn, price note |
 | 19 | Provider sandbox | Worker, then R2 and `files` (planned, D-7) | Output files the container made, downloaded with the user's key and stored as the user's files | Type allowlist, size caps, magic bytes, `validate()` for Office and PDF, image marking, visible AI label |
+| 20 | Worker | Remote MCP server the user added (planned screen, built server path, section 3.15) | The tool call the model wrote (arguments can hold any chat content) and the user's access token or header. Never a Besidka token or an API key | Per-connector consent (Art. 49(1)(a) and 9(2)(a)) enforced on the server, approval policy, `safeFetch`, caps; the server is an independent controller the user chose |
+| 21 | Remote MCP server | Worker, then the chat in D1 | The result text, stored as a tool part, framed as untrusted data | Result and call caps, memory write lock, never fed to memory, search or shares |
+| 22 | Worker | The chat's provider or gateway | The result, as part of the history | The user's own key and the existing provider consent; no new recipient |
+| 23 | Worker | D1, KV (connector tables) | Encrypted credentials, tool settings, consent columns, tool-call log (HMAC, no content); pending approval (exact arguments, 24 hours) in KV | Encryption as for keys, ownership in SQL, 90-day prune, explicit purge on account deletion |
+| 24 | Worker (cron) | D1 `mcp_registry_servers`, from the registry host | Registry names (maintainer usernames), titles, descriptions, remote addresses | No user data sent; local search for signed-in users; erasure list of hashes |
+| 25 | Worker | The chat's provider or gateway (built on `feat/connectors-page`, C-15) | With every send of an account with Auto connectors: one catalog line per Auto connector (key, user-visible title, host, tool count; no server-written text). For connectors that are opened, Always on or switched on in the chat: server-written tool names and descriptions, and the definitions of loaded tools | The user's own key and the existing provider consent; no new recipient; catalog capped at 6 KiB and sanitized; `use_connector` records connector taint |
+| 26 | Worker | Servers listed in the connector directory (built on `feat/connectors-page`, C-14) | Anonymous icon fetches and, when a user opens an entry's details, MCP `initialize` and `tools/list` without credentials | No user data, token or cookie; `safeFetch`; results cached in KV for all users (icon 7 days, probe 1 day); rate limits per user and per host |
+| 27 | Worker | The chat's provider or gateway (built, section 3.16) | The skill catalog (names and descriptions of enabled, model-invocable skills) on each send; the text of an activated, attached, invoked, pinned or selected skill; other skill files the model reads | The user's own key and the existing provider consent; no new recipient; untrusted framing, memory write lock, writes ask while a skill is active |
+| 28 | Worker | GitHub (`api.github.com`, `codeload.github.com`; built, section 3.16) | The repository address, ref and path the user gave, on import and in the daily update check | Allowlisted hosts only, no redirect followed, no account or chat data, no Besidka-wide token |
+| 29 | Worker | The user's Anthropic workspace (built, flag `skills.scripts`, section 3.16) | The files of a skill the user allowed scripts for (renamed when the name holds `claude` or `anthropic`), then attached to the code execution container | Disclosure dialog, Labs opt-in, per-chat consent (Allow once or in this chat), direct Anthropic with Run code only, deletion on toggle-off, skill delete and account purge (best effort) |
 
 ### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- built
 
@@ -1193,6 +1216,193 @@ code, with the provider pages re-read on the day and the date recorded here.
   a leading apostrophe is not reliable after Excel re-saves the file), are
   open for D-2 and D-4 **[U]**.
 
+### 3.15 Connectors (user-chosen remote MCP servers) -- built to C-8, connect screen planned
+
+Phase 4a of the agentic capabilities program (parent BES-229, tickets C-1 to
+C-13). Compliance pre-check: `docs/legal/prechecks/connectors.md` (C-12,
+BES-311); its questions are cited as Q1 to Q14. Design and as-built notes:
+`docs/connectors.md`. This section is the connectors half of the C-10 record
+(BES-257). Connectors are the **opposite direction** of section 3.11: a
+connected app reaches Besidka, a connector is a service Besidka reaches for
+the user. The flag `connectors` stays at stage `internal` (admin and grant
+only) and must not move past it before this section is merged, the connect
+screen (C-7) exists, the Privacy Policy and Terms text is live and the owner has
+decided how to announce it (section 6, item 33).
+
+- **(a) Purpose.** Let the model in a chat use tools on remote MCP servers the
+  user adds: four text presets (GitHub, Notion, Linear, Atlassian), any
+  Streamable HTTP server by address, or an entry found in the registry copy
+  (row 10c of the Art. 30 record). Besidka's Worker is the MCP client. It signs
+  in on the user's behalf (OAuth with PKCE and a client metadata document, a
+  dynamic registration fallback, or a pasted header or key; GitHub is
+  token-only in v1), lists the server's tools and offers them to the chat's
+  model. Besidka never sends a Besidka token or an API key of the user to a
+  connector.
+- **(b) Flow of data.**
+  1. *Add* makes no network request: only a syntax check and a row that is
+     switched off and signed out. A connector added by a connected app (C-9)
+     is created the same way, takes no credentials and cannot be switched on
+     by the app.
+  2. *Connect* (in the app only): discovery (a request with no chat content),
+     the consent screen (C-7, planned), then sign-in. The browser visits the
+     server's own sign-in page only for OAuth.
+  3. *A send:* the model writes the tool call, and its arguments can hold
+     anything from the chat. The Worker checks consent, the tool's definition
+     hash and the approval policy, then sends the call with the user's access
+     token or key. The server sees a Cloudflare address.
+  4. *The result* comes back as text, is framed to the model as untrusted data
+     and is stored in the chat message as a tool part. It then goes on to the
+     chat's provider or gateway with the rest of the history (the recipient of
+     rows 3 and 4; no new recipient). It never becomes a memory entry, never
+     enters chat search and is not part of a share (tool parts are dropped).
+  5. *Besidka's own tools* (BES-394, the Labs flag `besidka-tools`; the chat
+     exposure PR #919 is not merged) return data built from the user's own
+     account to the chat's model. Same rule: the result goes to the provider
+     of that chat and to nobody else, so it adds no recipient. Their
+     permissions and approvals use the same policy.
+- **(c) Data stored.** See row 10b of the Art. 30 record: connector rows with
+  an encrypted URL, encrypted credentials, tool settings with definition
+  hashes, per-chat settings and grants, the consent columns, the tool-call log
+  (HMAC of the arguments, sizes, outcomes; no arguments or results), pending
+  approvals in KV for 24 hours (the exact arguments of a call waiting for an
+  answer), a cached icon for up to 7 days and an encrypted OAuth state for 10
+  minutes. The ticket's working assumption that "no content of tool calls is
+  stored beyond the chat message" is true of the database and the log, but not
+  of the 24-hour KV record of a pending call.
+- **(d) Roles.** Each remote server and its company is an independent
+  controller chosen and instructed by the user, like the AI provider the user
+  chooses. Besidka transmits on the user's instruction and is the exporter for
+  Chapter V. The registry operator receives no user data.
+- **(e) Basis and consent.** Art. 6(1)(b), at the user's request for each
+  connector (section 6, item 29). Art. 9(2)(a): a separate consent per
+  connector, bound to the origin, in the same tick as Art. 49(1)(a) for the
+  transfer, naming the host (and the issuer host when different), asked again
+  when the origin, the issuer or `CONNECTOR_CONSENT_VERSION` (`2026-11-a`)
+  changes. The sign-up consent (`2026-11-a`) is unchanged and does not cover
+  connectors. The server enforces the consent before any authenticated
+  request (error `CONNECTOR_CONSENT_REQUIRED`) and withdrawal switches the
+  connector off. **The consent step is decided: yes, a per-connector consent.**
+  The ticket asked whether user initiation alone suffices. It does not
+  (pre-check, "The user's-own-act alternative": EDPB 05/2021 footnote 15 and
+  Example 4; a processor sending on instruction is itself an exporter), so no
+  follow-up note for C-7 is needed beyond its existing acceptance criteria.
+- **(f) Third parties.** Tool arguments and results can name other people. The
+  user's Art. 9(2)(a) consent covers the user's own data only, and the screen
+  and the policy say so. Besidka's basis for their data is Art. 6(1)(f)
+  (storing in the user's own chat what the user brought in); no Art. 9(2)
+  condition covers their special categories, which is stated openly as an
+  accepted residual. Informing those people is impossible or
+  disproportionate (Art. 14(5)(b), an exemption from informing, not a basis): Besidka does not read results and cannot
+  know whose data they hold; the household exemption is **not** relied on,
+  because it covers the user, not the operator (Recital 18, as in section 2 of
+  the Art. 30 record). The Privacy Policy section is the notice.
+- **(g) Registry copy.** Maintainer usernames inside registry names, kept as
+  described in row 10c (risk row 80).
+- **(h) Status.** Built: tables and store (C-2), the URL validator and
+  `safeFetch` (C-3), OAuth and encrypted tokens (C-4), connector tools in the
+  send (C-5), approvals, resume and remembered grants (C-6), the registry copy
+  (C-8), the 90-day audit prune, icons (BES-395). Built on a branch and not
+  merged: the MCP management tools (C-9, PR #920, scopes `connectors:read` and
+  `connectors:write`). Planned: the Connectors page, consent screen and tool
+  review (C-7), the OpenAI-run path (C-11, off by default, `connectors.native`
+  unavailable), and the Anthropic path (not built in v1, NO-GO). Read every
+  UI measure below as `planned` until C-7 ships.
+- **(i) Update 2026-11-16 (Phase 4 legal batch).** Built on the umbrella
+  branch `feat/connectors-page` (PR #923, not merged): the Connectors page,
+  consent screen and tool review (C-7), per-tool modes Always allow, Needs
+  approval and Blocked with defaults by kind (C-6, `docs/connectors.md`
+  section 7.11), the directory with featured entries, icons and anonymous
+  tool probes (C-14, sections 10.2 and 10.3), the tool index and connector
+  modes Manual, Auto (the default, also for connectors added before modes)
+  and Always on (C-15, sections 6.2 and 6.3). What this changes here:
+  - *Which chats.* An Auto connector can be used in any chat without the
+    per-chat switch: the model sees a catalog line and opens it with
+    `use_connector`. An off switch in a chat always wins. The consent screen
+    shows the mode buttons, so the user chooses the scope at the same time
+    as consenting; the consent wording itself (pinned by
+    `CONNECTOR_CONSENT_TEXT_SHA256`) does not name the modes.
+  - *What the provider receives.* Data-flow row 25: catalog lines on every
+    send (no server-written text since the #943 security review) and the
+    server-written tool text of connectors in use. The same recipient as
+    row 4, so no new recipient, but server-written text now reaches the
+    prompt of chats the user never switched the connector on in, once the
+    model opens it (risk row 88).
+  - *What is stored.* The 30-day tool snapshot in KV
+    (`connectors:catalog:<id>`, no chat content), the mode column and the
+    per-chat off row.
+  - *Directory.* Data-flow row 26: anonymous requests to third-party
+    servers that carry no user data (risk row 89).
+  - *Approvals.* Within one send, any connector call after content from
+    another source asks whatever its mode; content from the tool's own
+    connector is not foreign (own-source exemption, `docs/connectors.md`
+    section 7.11), so a write set to Always allow or granted in the chat runs
+    unasked when the send read only that connector. The body of an imported
+    skill taints the send; the skills catalog alone does not (commit
+    5a84b94d on `feat/connectors-page`). A plain read defaults to Always
+    allow and runs unmarked; a run under an explicit grant is marked.
+    Open-world reads now ask until set to Always allow.
+
+### 3.16 Skills and commands -- built behind `skills` (`internal`); scripts behind `skills.scripts`
+
+Phase 4c of the agentic capabilities program (BES-231). Compliance pre-check:
+`docs/legal/prechecks/skills.md` (S-8, BES-315) and its addendum of
+2026-11-13. Design and as-built notes: `docs/skills.md`. Art. 30 row 10d.
+The legal ticket S-7 (BES-294) never landed as its own PR; this section is
+the skills half of the Phase 4 legal batch (PR #922, 2026-11-16).
+
+- **(a) Purpose.** Let the user's chosen model follow instructions the user
+  wrote or imported (Agent Skills format), and let the user run a skill as a
+  `/` command.
+- **(b) Flow of data.**
+  1. *Create or import.* The editor and templates (class `authored`, saved
+     switched on), an archive, pasted text, a GitHub link, or MCP
+     (`skills:write`, saved switched off and `needs-review`). An import is
+     staged for one hour, reviewed and committed switched off. A rule
+     scanner and the license classifier run in the Worker with no model call.
+  2. *GitHub.* Data-flow row 28: the ref lookup at `api.github.com` and the
+     zip at `codeload.github.com`, plus a daily update check for GitHub
+     skills; a newer version waits as a pending version for review.
+  3. *Optional TypeSafe AI screening* (SS-8, SS-9): section 3.7a,
+     `injectionScreening`, when a review screen opens.
+  4. *A send.* Data-flow row 27: the catalog of model-invocable skills, then
+     the text of a skill the model activates, the user attaches or invokes,
+     the project pins as Always load (S-15), or `skillSelection` picks
+     (section 3.7a). Skill text is framed as untrusted; while a skill is
+     in a send the memory write lock is preset, and while the body of an
+     imported skill is in the send every connector call asks, even when set
+     to Always allow (the catalog alone does not taint, commit 5a84b94d).
+  5. *Scripts* (S-5). Data-flow row 29: the skill's files go to the user's
+     own Anthropic workspace, only after a disclosure dialog, the Labs
+     opt-in and a per-chat consent through the C-6 policy (rule 10, Allow
+     once or in this chat, bound to the hash of the skill set).
+- **(c) Data stored.** Art. 30 row 10d: skills, up to 20 versions, files in
+  R2 by content hash, per-chat and per-project settings, provenance, license
+  details, finding counts, the Anthropic copy's ids, KV staging and update
+  state, the TypeSafe AI caches of section 3.7a.
+- **(d) Roles.** The chat's provider or gateway receives skill text as part
+  of the request (row 4, no new recipient). Anthropic holds the uploaded
+  copy in the user's own workspace, under the user's agreement (independent
+  controller, as in row 4). GitHub receives only the address the user typed,
+  from Besidka's server. TypeSafe AI as in section 3.7a.
+- **(e) Basis.** Art. 6(1)(b) at the user's request; Art. 9(2)(a) through the
+  chat consent for special categories in skill text; Art. 6(1)(f) for third
+  parties named in skill files, with Art. 14(5)(b) as the exemption from
+  informing them (the same reading as connectors, section 3.15 (f)).
+- **(f) Never public.** No share, public route, sitemap, markdown twin or
+  agent-discovery file carries a skill; `filterPublicParts` drops skill
+  activation and invocation parts. Sharing by link (S-13) is not built and
+  needs its own addendum, rows and notice.
+- **(g) Project skills (S-15).** A project pins up to 20 skills, 3 of them
+  Always load. Same text, same provider, same purpose as project
+  instructions: no new category or recipient. `set_project_skills` sits
+  under `skills:write`; a pin loads only an enabled, ready skill.
+- **(h) Terms of Use.** The pre-check's items are written in the same batch:
+  a "Skills" section (the right-to-use promise for "create, paste or
+  import", no review by Besidka, scripts under the provider's terms, private
+  skills, the disable power with a statement of reasons, reporting), a "What
+  you may not do" item, skills in the "Your content" license and a skill
+  check under "Content moderation". See section 6, item 36.
+
 ## 4. Necessity and proportionality
 
 **Purposes and bases.**
@@ -1224,6 +1434,9 @@ code, with the provider pages re-read on the day and the date recorded here.
 | Artifact viewer storage and AI calls on the viewer's key | Contract, Art. 6(1)(b), at the viewer's request; explicit consent, Art. 9(2)(a), **open** until the consent text names them (section 6, item 20); for the bridge, Art. 49(1)(a) per provider as for chats |
 | Artifact reports, takedowns, preservation and notices to authorities | Legal obligation, Art. 6(1)(c), where EU or Polish law requires action (TCO orders and Art. 6 preservation; DSA Art. 18 if the DSA applies); otherwise legitimate interests, Art. 6(1)(f) |
 | Frame navigation tripwire, report rate limits, Turnstile on the report form | Legitimate interests, Art. 6(1)(f): protecting visitors and the service |
+| Adding a connector and giving it the tool calls the user approved (section 3.15) | Contract, Art. 6(1)(b), at the user's request for each connector (section 6, item 29); special categories, explicit consent, Art. 9(2)(a), per connector; the transfer, explicit consent, Art. 49(1)(a), per connector |
+| Connector tool-call log (hashes and sizes, 90 days) | Legitimate interests, Art. 6(1)(f): investigating a stolen session or an abusive call (no content, so the intrusion is small) |
+| Registry copy | Legitimate interests, Art. 6(1)(f); Art. 14(5)(b) for the maintainers |
 
 **Why this is necessary.** Besidka cannot store and forward a chat while leaving
 out the parts that happen to be health or belief. That would mean reading every
@@ -1410,6 +1623,30 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 70 | Document content appears in renderer logs or error messages | Low | Medium | No spec text, title or asset bytes in Workers Logs (a test, D-3); `attributes.documents` and `attributes.codeExecution` hold formats, counts, bytes, durations and error codes only, never a title, spec text, code, output or file name; validator codes are stable strings with JSON paths, no values | planned (D-3) | Low; Workers Logs retention not checked **[U]** |
 | 71 | A document with wrong content or empty formula cells is used without checking | High | Medium | Card and preview labels ("Preview from the document outline; download for exact layout"); the renderer does not write cached formula values, so non-recalculating viewers show empty cells; Terms wording that Besidka does not review generated documents or code results and that the user checks them (notice `2026-12-code-and-documents`, effective 2026-12-19, section 6, item 26) | behavior built (D-2); Terms wording in this change, effective 2026-12-19 | Medium |
 | 72 | A D1 restore brings back `documents` rows whose file or spec object was deleted, or documents whose chat was deleted | Low | Medium | D-4 adds the table to `docs/d1-restore-reconciliation.md`; deleted objects are gone from R2, so reads fail closed; a sweep removes rows with no file and no chat | planned (D-4) | Low |
+| 73 | Exfiltration after prompt injection: text in a tool result (a ticket, a web page, a Notion page) steers the model to send chat or connected-service data out through a write tool of the same or another connector, or to change data in a service | Medium | High | Every result framed to the model as data, not instructions; a tool the server labels read-only may run unasked, every other tool asks, with the real arguments shown (C-5, C-6); extra asks after any untrusted output in the send and when a second connector is called (F1, F2); an always-ask tier (the server's `destructiveHint`, and a name heuristic for delete, share, publish and similar) that no grant lifts; grants bound to the tool's definition hash; attachments count as untrusted for approvals; memory write lock after a result; per-send call, result and time caps; shares and branches drop tool parts. Injection screening is not applied to connector results in v1 (section 6, item 30) | built | Medium (approvals depend on the user reading the arguments) |
+| 74 | Personal data is sent to a connector server in an unknown country with no adequacy decision and no safeguard Besidka can offer, on a consent that cannot name the country and covers transfers that repeat | Medium | High | Per-connector explicit consent (Art. 49(1)(a)) naming the host and the issuer host, asked again when the origin, issuer or consent version changes, enforced on the server before any authenticated request; the server sees a Cloudflare address, not the user's; no Besidka token or provider key is ever sent; the Privacy Policy section and Transfers paragraph say the question is not settled; no chat content and no token is sent until the user adds, signs in, consents and switches the connector on (one probe with neither runs when the user presses Connect) | server gate built, screen planned (C-7) | Medium to high, accepted and disclosed (section 6, item 28) |
+| 75 | Tool arguments and results hold other people's data, including special categories, that the user's consent cannot cover and that those people are not told about | Medium | High | The Privacy Policy and the consent screen say so in plain words, and the Terms add a duty for other people's data; Art. 14(5)(b) reasoning recorded in section 3.15 (f); results are not read by Besidka and never feed memory, search or shares; approvals let the user refuse a call (per-tool switches arrive with C-7); deleting the chat deletes the stored result. The basis for third parties' data is Art. 6(1)(f), with no Art. 9(2) condition for their special categories, an accepted residual stated in the Privacy Policy; the policy gives a route to write to the privacy address | built (the screen text and per-tool switches are planned) | Medium (chats and results cannot be filtered) |
+| 76 | Connector credentials are stolen at rest (a D1 read together with the encryption key, or a leaked key alone) or from a log, and used against the user's accounts in other services | Low | High | Access and refresh tokens, header values, client registrations and the connector URL are AES-256-GCM encrypted columns (as risk row 56, with the same key handling: `docs/legal/breach-runbook.md`, section 2.5); a header value, a URL query or a token is never logged or returned; credentials are deleted on disconnect, connector delete and account deletion, with a best-effort revocation at the server first; atomic refresh writes. The OAuth callback URL (one-time code and state) is recorded by Cloudflare's own Workers logs, but the code is single use and bound to a verifier that never leaves the Worker | built | Low to medium (a leaked encryption key exposes every connector token, as for BYOK keys) |
+| 77 | A lookalike or malicious server: the user adds an address that imitates a known service, or a server answers with harmful text | Medium | High | The host is shown in plain text on the consent screen (planned) and the consent is bound to the origin; a redirect to another origin stops and needs new consent; presets give no trust to a typed address; registry results are labeled as not reviewed by Besidka; a connector added by a connected app (C-9, row 82) starts off and signed out and its client is named (planned notice); results are untrusted data (row 73) | server gate built, host display planned | Medium (a convincing address still works on a careless user) |
+| 78 | Tool rug pull: a server changes a tool's description or schema after the user reviewed it, to steer the model or to do more | Medium | High | A definition hash per tool, taken at the first listing (trust on first use: no user review exists before C-7); a new or changed tool is hidden from the model and the connector is marked drifted until the user can accept the change (C-7, planned); "always" and "in this chat" grants are bound to the hash and no longer apply after a change; the hash covers what the model sees; a replayed approval is re-checked against the live definition | built (the review and accept screen is planned, C-7; until then a drifted tool stays hidden) | Low |
+| 79 | SSRF: a connector address, a redirect, an icon address or an OAuth endpoint makes the Worker reach Cloudflare or internal resources | Low | High | An address validator at add time and `safeFetch` on every connector, OAuth, icon and registry request: public internet only, no silent cross-origin redirect, no interpolation in addresses or headers, size and time caps; icons only as raster images checked by magic bytes, served from a same-origin route with a sandboxing CSP. The Workers limits (DNS rebinding cannot be fully closed in the runtime) are in `docs/connectors.md`, section 4.5 | built | Low to medium (the Workers residual in section 4.5) |
+| 80 | Registry personal data: maintainers' usernames inside registry names are copied into the database without their knowledge | Low | Low | Only name, title, a 300-character description, the remote address and status are kept; no repository, website, icon or contact field; only signed-in users search it; removal on request through the privacy mailbox, kept out by a hash of the name; replaced hourly and in full daily; the Privacy Policy paragraph is the Art. 14(5)(b) measure | built | Low |
+| 81 | The tool-call log becomes a record of activity that is kept too long or reveals content | Low | Medium | An HMAC keyed from `NUXT_ENCRYPTION_KEY` replaces the arguments (short arguments cannot be recovered from a plain hash); no results, URLs with queries, headers or tokens; 90 days with an hourly prune in batches; kept when a connector or chat is deleted so a stolen session cannot erase the trail, and deleted with the account; Axiom gets counts and ids only. The 90 days after a connector delete await the owner's confirmation (section 6, item 31) | built | Low |
+| 82 | A connected app, or an agent steered by text it reads, adds connectors, widens what a connector may do, or deletes them | Medium | Medium | Separate scopes `connectors:read` and `connectors:write` (a new name, so no existing approval holds it; write unticked by default); an added connector is switched off, signed out, has no credentials, triggers no request, and at most five can wait; only the user can sign in and switch on, in the app after the consent screen; the tools never see credentials; `update_connector_tools` can only turn tools off or back to ask; delete needs a confirmation flag and revokes tokens first; the connector shows who added it (planned) | built on the C-9 branch (PR #920, not merged) | Low |
+| 83 | A provider-run connector path (OpenAI `type: "mcp"` or Anthropic `mcp_servers`) sends the connector token and results to an extra recipient and bypasses Besidka's approval and audit | Low | High | Not built: the Anthropic path is NO-GO for v1 (beta, not covered by zero data retention, token handling unverified); the OpenAI path is behind `connectors.native` (unavailable, off by default), needs a per-connector opt-in that names OpenAI as an extra recipient, and audit and approval parity first. Enabling either needs a new review of this section and the Privacy Policy | not built | Low (nothing ships) |
+| 84 | Consent fatigue: the user ticks one box that covers a transfer and sensitive data without reading it, for several connectors | Medium | Medium | One screen per connector in plain words, a real unticked checkbox, the host in plain text, bound to the origin, withdrawable per connector, versioned and recorded, asked again on change; the single tick for two named parts is a pre-check choice (owner item 1) | server gate built, screen planned | Medium |
+| 85 | A D1 restore brings back revoked connector credentials, withdrawn consent, removed grants and re-enabled connectors | Medium | High | `docs/d1-restore-reconciliation.md`, "Connectors": wipe `connector_credentials`, set every connector to disabled and needs-auth, reset grants, replay withdrawals and deletes from the Axiom `connectors` and `legalConsent` lines; KV approvals expire in 24 hours | built (a documented runbook) | Low once followed |
+| 86 | Standing grants ("Allow in this chat", "Always allow") let a write run in a later message although an earlier message read untrusted text that is still in the history | Medium | Medium | Grants are bound to the definition hash and never lift the untrusted-output, cross-connector or always-ask rules inside one send, except the own-source exemption (content from the tool's own connector is not foreign, so a granted write runs after reading only that connector, `docs/connectors.md` section 7.11); a run under a grant shows as "Ran without asking" with a Manage link; the chat panel lists and resets grants; the confirmation text states the residual; taint is not carried across sends by design (the owner asked for that behavior) | built | Medium, accepted (section 6, item 32) |
+| 87 | Besidka's own tools in a chat (BES-394) return the user's own chats, files or memory to the model, which may be steered to change or share them | Low | Medium | Same provider and recipient as the chat (no new recipient); a Labs opt-in, a permission per tool (blocked, ask or allow; deleting, sharing and rewriting tools can never be "allow") and the same approval policy as connectors; the chat exposure PR #919 is not merged | planned | Low |
+| 88 | An Auto connector is used in a chat the user never switched it on in, so server-written tool text and tool calls reach a chat the user did not expect | Medium | Medium | Auto is shown and chosen on the consent screen and in the picker; an off switch in the chat always wins; the catalog line carries no server-written text; `use_connector` records connector taint, so later reads on another connector and every write ask; tools whose hash differs from the reviewed baseline are hidden or refused | built on `feat/connectors-page` | Medium (the consent wording does not name the modes) |
+| 89 | Directory browsing makes Besidka's server contact third-party servers (icons, anonymous MCP probes), which could be abused for SSRF or to track users | Low | Low | Only a directory id reaches the route, the stored address is used; `safeFetch`, magic-byte, size and SVG allowlist checks; no user data, token or cookie; results cached for all users so one user's browsing is not visible per request; per-user and per-host rate limits | built on `feat/connectors-page` | Low |
+| 90 | A malicious skill steers the model to exfiltrate data or act | Medium | High | Imports, updates and MCP writes saved switched off for review; rule findings and the optional TypeSafe AI marks on the review screen; untrusted framing; memory write lock while skill text is in the send; every connector call asks while an imported skill's body is in the send, even when set to Always allow; the C-6 policy | built | Medium |
+| 91 | Hidden instructions or padding in skill files escape review | Medium | Medium | Plain-text viewer, findings for invisible characters, homoglyphs and long lines, optional add-only Jev marks with the parts not checked listed; no "clean" verdict | built | Medium (scanner bypasses are known) |
+| 92 | Skill scripts run in the user's Anthropic workspace and the copy is visible to the whole workspace, not zero-data-retention, and kept until deleted | Medium | Medium | Anthropic only; disclosure dialog with these facts; Labs opt-in; per-chat consent bound to the skill set; deletion on toggle-off, skill delete (refused while the provider delete fails) and account purge; key removal lists live copies | built (not checked with a real key) | Medium (a failed purge leaves the copy in the user's workspace) |
+| 93 | An import breaches a license or copyright | Medium | Medium | License classifier on the license file at the pinned commit; restricted licenses refused; an extra "I have the right to use this skill" tick for skills with no license; private storage only | built | Medium (classification is heuristic) |
+| 94 | Skill selection sends the user's message and skill descriptions to TypeSafe AI on ordinary sends | Low | Medium | Opt-in role, off by default including `null` settings; a local prefilter so most messages send nothing; never-store redaction; at most one call, merged with Auto web search when that runs; fails to no change | built | Low |
+| 95 | Skill text sent to TypeSafe AI for screening holds secrets or third-party data | Low | Medium | Runs only with the user's key and the screening toggle on; never-store redaction before chunking, hashing or caching; the cache keeps scores only; marks hold no text | built | Low |
+| 96 | A D1 restore brings back a deleted or switched-off skill, switched on, or a stale Anthropic copy reference | Medium | Medium | `docs/d1-restore-reconciliation.md`, "Skills": switch restored skills off, replay deletes from Axiom, mark rows with missing blobs `broken` | built (runbook) | Low |
 
 ## 6. Residual risks
 
@@ -1657,6 +1894,72 @@ beta on the same account, treat row 54 as high and review this DPIA first.
     provider-made PDFs are only as safe as `stampDocument`'s rewrite. None of
     these is solved by this record. Decision: accept for the `internal` stage
     and re-assess before a flag reaches `beta`.
+28. **Chapter V for connectors, and consent for transfers that repeat.**
+    Besidka's server sends each call, so Besidka is the exporter (EDPB
+    05/2021, footnote 15 and Example 4; the user's-own-act argument does not
+    hold for outbound calls, pre-check Q2). The only tool is an explicit consent
+    under Art. 49(1)(a) per connector. The EDPB reads derogations restrictively
+    (Guidelines 2/2018) and doubts consent for transfers that repeat, and the
+    country is not known, so the screen can name the host but not the country.
+    Options in pre-check owner item 1: (a) accept and disclose, as for DeepSeek,
+    Moonshot AI, Qwen and connected apps; (b) presets only in v1; (c) block
+    connectors for EEA users. Decision: (a), recommended by the pre-check and
+    consistent with the 2026-10-26 transfer-consent decision, **owner to
+    accept**; counsel question open.
+29. **Basis and joint-controller risk.** Art. 6(1)(b) for an optional feature
+    carries the same weakness as item 13. Separately, a regulator could treat
+    Besidka and the server as joint controllers for the transmission itself
+    (CJEU C-40/17, Fashion ID, by analogy), the same weakness as item 8.
+    Decision: ship on 6(1)(b) with a consent-grade screen, state the
+    independent-controller position in the Privacy Policy, ask counsel.
+30. **No injection screening of connector results in v1.** The TypeSafe AI
+    screening role covers Brave and Exa results and project files; it is not
+    applied to connector results. The approval policy (rows 73 and 86) is the
+    measure. Revisit when a connector result can feed a no-approval path.
+31. **Tool-call log kept 90 days after a connector delete.** The pre-check asks
+    the owner to confirm 90 days, kept after delete (alternatives: 12 months or
+    delete with the connector). Built as 90 days kept, deleted with the account.
+    **Owner to confirm.**
+32. **Cross-send grants.** A grant runs its tool in a later message even if an
+    earlier message read untrusted text that is still in the history. Accepted
+    on the owner's request; stated in the confirmation text (row 86).
+33. **Materiality and announcement.** Merging the text publishes it: the pages
+    are live from the next deploy and content import, before any notice.
+    The Privacy Policy and Terms changes for
+    connectors are judged **material** under the WP260 checklist (a new
+    purpose, a new recipient category in unknown countries, a new transfer, new
+    Terms duties): `docs/legal.md`, "2026-11-15 connectors". They are **not**
+    announced. No `LEGAL_NOTICES` entry exists for them and the recorded notice
+    on the revision record is the earlier `2026-12-code-and-documents`, which
+    does not describe connectors. Announcing is the owner's decision, made in
+    `/admin/legal`, and the pre-check asks that it not coincide with the active
+    `2026-11-legal-notices` banner before 2026-12-18. `CURRENT_CONSENT_VERSION`
+    is unchanged; `CONNECTOR_CONSENT_VERSION` is separate. The connectors flag
+    stays at `internal` until the notice takes effect.
+    **Update 2026-11-16 (owner decision):** the Phase 4 legal texts
+    (connectors and skills) are updated without notice emails. No
+    `LEGAL_NOTICES` entry is added and no consent version is bumped. The
+    WP260 result (material, item 36 and `docs/legal.md`) is recorded and not
+    acted on. Whether the `connectors` and `skills` flags may leave
+    `internal` without a notice is the owner's decision.
+34. **Server-written text in every chat through Auto connectors.** Once the
+    model opens an Auto connector, its tool names and descriptions reach the
+    provider of a chat the user may never have meant to use it in (risk row
+    88). The catalog itself carries none, and the off switch wins, but the
+    connector consent wording predates modes and does not name them.
+35. **Skill copies outside Besidka's reach.** A failed account purge, or a
+    removed Anthropic key, leaves a skill copy in the user's own Anthropic
+    workspace; Besidka cannot delete it then and the Privacy Policy tells the
+    user to use the Anthropic Console. The upload path is not yet checked
+    with a real key (owner key capped until 2026-12-01).
+36. **Skills in the Terms of Use, and materiality.** The pre-check's Terms
+    items (the right-to-use promise, the disable power with a statement of
+    reasons, skills as reportable content, the run-code rules for scripts)
+    are written in this batch and are new user duties, so the Terms change is
+    material too. The Privacy Policy changes for skills are material under
+    WP260 (a new purpose with S-5, new recipients GitHub and the user's
+    Anthropic workspace, new retention) and the eighth TypeSafe AI role is a
+    new purpose; see `docs/legal.md`, "2026-11-16 Phase 4 legal batch".
 
 ## 7. Consultation
 
@@ -1677,7 +1980,10 @@ beta on the same account, treat row 54 as high and review this DPIA first.
   free, non-gainful service a `usługodawca` and so within the Polish DSA and
   TCO penalty rules; who receives a DSA Art. 18 notice in Poland; and does a
   user-published, child-aimed artifact make Besidka a service "directed to
-  children"?
+  children"? For connectors (section 3.15): is a per-connector Art. 49(1)(a)
+  consent acceptable for ongoing transfers to servers in unknown countries,
+  and is Art. 14(5)(b) enough for other people's data that comes back in tool
+  results?
 - **DPO.** None. Not required for one person with no systematic large-scale
   monitoring.
 - **Processors.** Cloudflare and Axiom DPAs. Keep dated copies in a private
@@ -1690,7 +1996,7 @@ beta on the same account, treat row 54 as high and review this DPIA first.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 27] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 33] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**
@@ -1699,6 +2005,9 @@ beta on the same account, treat row 54 as high and review this DPIA first.
   region changes;
 - code execution is offered for another provider or any gateway (section
   3.14);
+- a connector preset or a provider-run connector path (C-11) is added, the
+  consent screen text changes, or the `connectors` flag moves past `internal`
+  (section 3.15);
 - the consent text, version or flow changes;
 - the classifier categories or the never-store list change;
 - the retention rules, storage locations or processors change;
@@ -1779,8 +2088,10 @@ Primary text and guidance:
 
 Not re-read when this was drafted, so check before relying on the detail: the
 two Court of Justice judgments (paragraph numbers in particular), WP248 and
-WP251 (taken from earlier research), and the EDPB guidelines on Art. 49
-derogations (the link returned 404). The DPF list was read on 2026-10-26.
+WP251 (taken from earlier research). The EDPB guidelines on Art. 49
+derogations (2/2018) were unreadable on 2026-10-26 and were read on
+2026-11-08 (pp. 4, 5, 7 and 8) for `docs/legal/prechecks/connectors.md`. The DPF
+list was read on 2026-10-26.
 
 Repository documents:
 
@@ -1794,6 +2105,10 @@ Repository documents:
   (on `feat/documents-spec-package`, PR #833, not merged), provider pages read
   on 2026-11-07 (listed in the Art. 30 record, section 8), Commission
   Communication C(2026) 7702 (5.11.2026), DPF list searched on 2026-11-11.
+- `docs/legal/prechecks/connectors.md` (C-12), `docs/connectors.md` (as built
+  to C-8, the audit prune and BES-395), EDPB Guidelines 2/2018 on Art. 49
+  derogations:
+  https://www.edpb.europa.eu/system/files/documents/files/file1/edpb_guidelines_2_2018_derogations_en.pdf
 - `docs/mcp-server.md`, `server/db/schemas/oauth.ts` and the Better Auth
   `@better-auth/mcp` and `@better-auth/oauth-provider` packages (flow, token
   lifetimes, the one cookie it sets), read 2026-10-29.

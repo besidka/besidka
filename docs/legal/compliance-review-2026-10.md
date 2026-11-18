@@ -246,6 +246,11 @@
   ust. 2) if it applies. The Terms keep the voluntary wording and claim no
   exemption.
 
+**Connectors (added 2026-11-15, C-10, BES-257).** No connector-specific DSA duty
+was found. Nothing a connector holds is hosted for the public, the registry copy
+is shown only to the signed-in user, and a connector result is not a share.
+Nothing changes in this section.
+
 ### 3.2 AI Act Article 50
 
 - **Timing.** Art. 50 applies from 2 August 2026. Art. 50(2) (machine-readable
@@ -421,6 +426,11 @@
 - **Sources.** Commission guidelines on Art. 50:
   https://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems.
   Code of Practice: https://digital-strategy.ec.europa.eu/en/policies/code-practice-ai-generated-content.
+
+**Connectors (added 2026-11-15, C-10, BES-257).** No connector-specific Art. 50
+duty was found. A tool result is not generated media, and whether the Art.
+50(2) marking reaches model text that a connector writes into a third-party
+service is covered by this section and is not changed here (unverified).
 
 ### 3.3 Terrorist Content Online Regulation (EU) 2021/784
 

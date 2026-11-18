@@ -471,3 +471,51 @@ runs in parallel with the stack. Add these to the input list above.
    `authored`). Imports, updates, MCP writes and share copies stay disabled
    until the user enables them in the app.
 3. The runtime (S-3 and S-12) ships before C-6, with the interim rule above.
+
+## Addendum 2026-11-16: what the Phase 4 legal batch wrote
+
+> Engineer-drafted, not lawyer-reviewed. It records what PR #922 did with the
+> S-7 input list above and the 2026-11-13 addendum. It does not re-run the
+> sources.
+
+- **S-7 (BES-294) never landed as its own PR.** The Privacy Policy section
+  "Skills", Art. 30 row 10d (not 10b: connectors took 10b and 10c) and DPIA
+  section 3.16 were written in the Phase 4 legal batch, together with the work
+  merged since: TypeSafe AI skill screening under `injectionScreening` (SS-8,
+  SS-9), the eighth TypeSafe AI role `skillSelection` (S-14, opt-in, off by
+  default), the copy in the user's Anthropic workspace for scripts (S-5) and
+  project skills (S-15).
+- **S-15 adds no data category and no recipient.** A pin sends the same skill
+  text to the same provider as an attachment or project instructions. It adds
+  the `project_skills` table (retention row in the policy) and a connected-app
+  power: `set_project_skills` under `skills:write`, and the pins in
+  `get_project` with `skills:read`. The policy's scope list now says so.
+- **The S-14 message is redacted.** `buildSendPathJevState` removes
+  never-store values from the message and caps it at 4,000 characters, the
+  same path as Auto web search; skill names and descriptions are redacted in
+  `toSkillStateLine`.
+- **Terms of Use: written** (a "Skills" section with the right-to-use
+  promise, no review, scripts, privacy, the disable power and reporting; a
+  "What you may not do" item; the "Your content" license; a skill check under
+  "Content moderation").
+- **Decision: third parties in skills rest on Art. 6(1)(f), with Art.
+  14(5)(b) as the exemption from informing them.** Authors of imported
+  skills (named in the skill or its GitHub address) and people named in
+  skill files are not the user. Besidka stores and forwards what the user
+  brought in, does not read skills and cannot know whom they name, so
+  telling each person is impossible or disproportionate. The Privacy Policy
+  paragraph "Other people in a skill" is the notice, with a route to the
+  privacy mailbox. Same reading as connector results and registry
+  maintainers (`docs/legal/prechecks/connectors.md`).
+- **The daily update check rests on Art. 6(1)(f)**, not the contract: it runs
+  for skills on a branch or release tag, without a request each time, and
+  never for a commit-pinned skill.
+- **Not written:** the breach-runbook rows of `docs/skills.md` section 13
+  and the DSA sentence in `compliance-review-2026-10.md`. They are open items for the owner
+  (`docs/legal.md`, "2026-11-16 Phase 4 legal batch").
+- **Notice: superseded by the owner decision of 2026-11-16.** The texts are
+  updated without notice emails; no `LEGAL_NOTICES` entry and no consent
+  version bump. The materiality result (material) is recorded in
+  `docs/legal.md` and in the pull request, not acted on. The recommendation
+  above ("one entry at the point `skills` leaves `internal`") is the owner's to
+  revisit.
