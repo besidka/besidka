@@ -101,7 +101,9 @@ test('an allowed call resumes the same reply with the answer', async ({ browser 
   await expect(page.getByTestId('reasoning-approval-step-title'))
     .toHaveText('linear wants to run create_issue')
   await expect(page.getByTestId('reasoning-approval-step-reason'))
-    .toHaveText('Runs only after you allow it')
+    .toHaveText(
+      'Asks before each use. Change it in the connector\'s tool settings.',
+    )
   await expect(page.getByTestId('reasoning-approval-step-allow-chat'))
     .toBeVisible()
   await expect(page.getByTestId('reasoning-approval-step-allow-always'))

@@ -130,6 +130,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/StepsSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Segmented.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Reveal.spec.ts',
@@ -179,6 +180,8 @@ export function getAffectedTests(changedFiles) {
   ]
   const storageQuotaTests = [
     'tests/unit/server/utils/storage/usage.spec.ts',
+    'tests/unit/server/utils/files/connector-images.spec.ts',
+    'tests/unit/server/mcp/tools/delete-connector-images.spec.ts',
     'tests/unit/server/utils/storage/errors.spec.ts',
     'tests/unit/server/utils/storage/guard.spec.ts',
     'tests/integration/api/storage.spec.ts',
@@ -586,7 +589,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Search/Modal.spec.ts',
   ]
   const besidkaToolsChatTests = [
+    'tests/unit/server/utils/ai/tool-index-prefetch.spec.ts',
     'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/unit/server/utils/ai/tool-index.spec.ts',
     'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
     'tests/integration/api/chats-besidka-tools.spec.ts',
     'tests/integration/api/besidka-tools-permissions.spec.ts',
@@ -968,6 +973,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/google.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
     'tests/unit/utils/providers/anthropic.spec.ts',
+    'tests/unit/server/utils/ai/anthropic-thinking-binding.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
     'tests/unit/utils/reasoning-levels.spec.ts',
     'tests/unit/providers/reasoning-control-state.spec.ts',
@@ -1243,6 +1249,7 @@ export function getAffectedTests(changedFiles) {
   const featureLabsTests = [
     'tests/integration/api/profiles-features.spec.ts',
     'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/composables/feature-opt-in.spec.ts',
     'tests/unit/utils/labs.spec.ts',
     'tests/unit/server/utils/features/opt-ins.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
@@ -1589,6 +1596,7 @@ export function getAffectedTests(changedFiles) {
 
   const connectorsSafeFetchTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/server/utils/connectors/add.spec.ts',
     'tests/unit/server/utils/net/safe-url.spec.ts',
     'tests/unit/server/utils/net/safe-fetch.spec.ts',
     'tests/unit/server/utils/skills/import/github-safe-url-gate.spec.ts',
@@ -1599,6 +1607,7 @@ export function getAffectedTests(changedFiles) {
   const connectorsStorageTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
     'tests/unit/utils/connectors-slug.spec.ts',
+    'tests/unit/utils/connectors-connected.spec.ts',
     'tests/unit/utils/features/connectors-registry.spec.ts',
     'tests/unit/config/connectors-catalog.spec.ts',
     'tests/unit/scripts/check-connector-presets.spec.ts',
@@ -1616,11 +1625,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/registry-sync.spec.ts',
     'tests/integration/server/mcp-registry-sync-plugin.spec.ts',
     'tests/integration/api/connectors-registry.spec.ts',
+    'tests/integration/api/connectors-registry-icon.spec.ts',
+    'tests/integration/api/admin-connectors-registry.spec.ts',
+    'tests/unit/server/utils/connectors/registry-sync-now.spec.ts',
+    'tests/unit/utils/connectors-publisher.spec.ts',
+    'tests/unit/utils/connectors-directory.spec.ts',
+    'tests/unit/server/utils/connectors/registry-probe.spec.ts',
+    'tests/integration/api/connectors-registry-directory.spec.ts',
     'tests/unit/config/wrangler-registry-cron.spec.ts',
     'tests/unit/server/utils/net/safe-fetch.spec.ts',
   ]
 
   const connectorsOAuthTests = [
+    'tests/unit/server/utils/connectors/add.spec.ts',
     'tests/unit/server/utils/connectors/credentials.spec.ts',
     'tests/unit/server/utils/connectors/oauth-client.spec.ts',
     'tests/unit/server/utils/connectors/oauth-metadata.spec.ts',
@@ -1635,13 +1652,31 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const connectorsChatToolsTests = [
+    'tests/unit/server/utils/ai/tool-index-prefetch.spec.ts',
+    'tests/unit/server/utils/ai/anthropic-thinking-binding.spec.ts',
     'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/ai/tool-index.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/integration/api/connectors-page.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
     'tests/unit/server/utils/connectors/tool-definitions.spec.ts',
+    'tests/unit/server/utils/connectors/tool-images.spec.ts',
+    'tests/unit/server/utils/connectors/tool-images-providers.spec.ts',
+    'tests/unit/server/utils/connectors/image-saver.spec.ts',
+    'tests/unit/server/utils/connectors/image-parts-stream.spec.ts',
+    'tests/unit/server/utils/connectors/kept-images.spec.ts',
+    'tests/unit/server/utils/files/connector-images.spec.ts',
+    'tests/unit/utils/connector-image-parts.spec.ts',
+    'tests/integration/server/chat-deletion-cleanup.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
     'tests/unit/server/utils/connectors/mcp-client.spec.ts',
     'tests/unit/server/utils/connectors/audit.spec.ts',
     'tests/unit/server/utils/connectors/call-limits.spec.ts',
     'tests/unit/server/utils/connectors/chat-selection.spec.ts',
     'tests/unit/server/utils/connectors/persist.spec.ts',
+    'tests/unit/server/utils/connectors/call-errors.spec.ts',
+    'tests/unit/utils/connectors-errors.spec.ts',
     'tests/unit/server/utils/connectors/context-isolation.spec.ts',
     'tests/unit/server/utils/connectors/persistence-pipeline.spec.ts',
     'tests/unit/server/utils/chats/share-used-connector.spec.ts',
@@ -1659,18 +1694,63 @@ export function getAffectedTests(changedFiles) {
 
   const connectorsChatToolsUiTests = [
     'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/utils/connector-mention.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorSuggestion.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ConnectorThumbnail.spec.ts',
+    'tests/unit/utils/connector-image-parts.spec.ts',
+    'tests/unit/utils/connectors-errors.spec.ts',
     'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
     'tests/unit/components/Chat/ConnectorsNotice.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/utils/connectors-parts.spec.ts',
     'tests/unit/utils/connector-step.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
+  ]
+
+  const connectorsPageTests = [
+    'tests/unit/utils/connectors-auth.spec.ts',
+    'tests/unit/server/utils/connectors/header-auth.spec.ts',
+    'tests/integration/api/connectors-page.spec.ts',
+    'tests/integration/api/connectors-chat-selection.spec.ts',
+    'tests/unit/utils/connectors-messages.spec.ts',
+    'tests/unit/utils/connectors-consent-text.spec.ts',
+    'tests/unit/composables/connectors.spec.ts',
+    'tests/unit/utils/connectors-connected.spec.ts',
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/pages/chats/connectors/index.spec.ts',
+    'tests/unit/pages/profile/connectors.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/components/Profile/Connectors/AddDialog.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/Directory.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/DirectoryCard.spec.ts',
+    'tests/unit/components/Profile/Connectors/DirectoryDetailPanel.spec.ts',
+    'tests/unit/composables/connector-directory.spec.ts',
+    'tests/unit/components/Profile/Connectors/Avatar.spec.ts',
+    'tests/unit/components/Profile/Connectors/BesidkaRow.spec.ts',
+    'tests/unit/composables/feature-opt-in.spec.ts',
+    'tests/unit/components/Profile/Connectors/PresetCard.spec.ts',
+    'tests/unit/utils/connector-brand-icons.spec.ts',
+    'tests/unit/utils/connectors-publisher.spec.ts',
+    'tests/unit/components/Profile/Connectors/ConnectDialog.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
+
+  const toolPermissionsUiTests = [
+    'tests/unit/components/ui/ToolPermissions.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/utils/tool-permissions.spec.ts',
+    'tests/unit/utils/besidka-tool-permissions.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
   ]
 
   const toolApprovalPolicyTests = [
@@ -1734,9 +1814,13 @@ export function getAffectedTests(changedFiles) {
 
   const connectorIconTests = [
     'tests/unit/server/utils/connectors/icon.spec.ts',
+    'tests/unit/server/utils/connectors/svg-icon.spec.ts',
     'tests/unit/server/utils/connectors/send-tools.spec.ts',
     'tests/unit/server/utils/net/safe-fetch.spec.ts',
     'tests/integration/api/connectors-icon.spec.ts',
+    'tests/integration/api/connectors-registry-icon.spec.ts',
+    'tests/unit/server/utils/connectors/cleanup.spec.ts',
+    'tests/unit/server/utils/connectors/icon-rate-limit.spec.ts',
   ]
 
   const toolApprovalSpikeTests = [
@@ -1745,6 +1829,7 @@ export function getAffectedTests(changedFiles) {
 
   const toolApprovalContinuationTests = [
     'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/connectors/kept-images.spec.ts',
     'tests/unit/server/utils/tool-approval/send.spec.ts',
     'tests/integration/api/chats-tool-approval-continuation.spec.ts',
     'tests/integration/api/chats-tool-approval-request.spec.ts',
@@ -2410,6 +2495,9 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/Chat/ImagePreview.client.spec.ts',
         'tests/unit/composables/image-zoom.spec.ts',
+        'tests/unit/components/Chat/Reasoning/ConnectorThumbnail.spec.ts',
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/unit/components/Chat/Files.spec.ts',
       ],
     },
     {
@@ -2697,7 +2785,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy|grants)\.ts|app\/components\/Chat\/ContextPanelApprovals\.vue|app\/components\/Profile\/BesidkaTools\/Permissions\.vue|app\/composables\/tool-approval-grants\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep|\/ApprovalDetails)?\.vue|server\/utils\/memory\/extract-input\.ts|shared\/utils\/tool-approval-parts\.ts|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy|tool-index)\.ts|server\/utils\/ai\/tool-index(-prefetch)?\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy|grants)\.ts|app\/components\/Chat\/ContextPanelApprovals\.vue|app\/components\/Profile\/BesidkaTools\/Permissions\.vue|app\/composables\/tool-approval-grants\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep|\/ApprovalDetails)?\.vue|server\/utils\/memory\/extract-input\.ts|shared\/utils\/tool-approval-parts\.ts|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
       tests: besidkaToolsChatTests,
     },
     {
@@ -3222,6 +3310,21 @@ export function getAffectedTests(changedFiles) {
         /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
       tests: [
         'tests/e2e/search/keyboard-inset.spec.ts',
+        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^app\/components\/ChatInput\/(CommandPicker|ConnectorSuggestion|ToolApprovalChip)\.vue$/,
+      tests: [
+        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^app\/components\/(Chat\/Scroll\.client|ChatInput\.client|ChatInput\/ToolsMenu\.client|ChatInput\/ModelsTrigger|Ui\/Bubble)\.vue$/,
+      tests: [
+        'tests/e2e/chat/composer-menus-layer.spec.ts',
       ],
     },
     {
@@ -3428,12 +3531,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-catalog\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/registry-(entry|sync|search)\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-(catalog|directory)\.ts|shared\/utils\/connectors-directory\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(registry-(entry|sync|search|sync-now|icon|probe)|directory-index|add|icon|icon-response|svg-icon)\.ts|server\/api\/v1\/admin\/connectors\/.*\.ts|shared\/utils\/connectors-publisher\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
       tests: connectorsRegistryTests,
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-slug)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-slug|connectors-connected)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
       tests: connectorsStorageTests,
     },
     {
@@ -3443,7 +3546,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/index\.get\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|connector-image-parts|tool-index)\.ts|server\/utils\/files\/(connector-images|chat-deletion-cleanup|source-filter)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.get\.ts|server\/utils\/ai\/(tool-index(-prefetch)?|anthropic-thinking-binding)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|connector-images|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
       tests: connectorsChatToolsTests,
     },
     {
@@ -3478,8 +3581,23 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|connector-image-parts)\.ts|app\/components\/Chat\/Reasoning\/ConnectorThumbnail\.vue|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles|connector-mention)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client|ConnectorSuggestion)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
+      tests: toolPermissionsUiTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/connectors\/(tool-review|page|errors|store)\.ts$/,
+      tests: ['tests/unit/server/utils/connectors/tool-review.spec.ts'],
+    },
+    {
+      pattern:
+        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy|connectors-connected|connectors-auth)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body|header-auth)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory|feature-opt-in)\.ts|app\/utils\/(connector-brand-icons|besidka-tool-permissions)\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
+      tests: connectorsPageTests,
     },
     {
       pattern:
@@ -3523,7 +3641,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/user-keys\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
+        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/(user-keys|feature-opt-in)\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
       tests: featureLabsTests,
     },
     {
@@ -3590,7 +3708,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/connectors\/(icon|send-tools)\.ts|server\/api\/v1\/connectors\/\[id\]\/icon\.get\.ts|server\/api\/v1\/connectors\/delete\/bulk\.post\.ts|server\/utils\/net\/safe-fetch\.ts|shared\/utils\/connectors-policy\.ts|tests\/setup\/helpers\/(connector-icon-kv|mock-mcp-server)\.ts)$/,
+        /^(server\/utils\/connectors\/(icon|icon-response|icon-rate-limit|route|svg-icon|registry-icon|send-tools)\.ts|server\/api\/v1\/connectors\/(\[id\]|registry)\/icon\.get\.ts|server\/api\/v1\/connectors\/delete\/bulk\.post\.ts|server\/utils\/net\/safe-fetch\.ts|shared\/utils\/connectors-policy\.ts|tests\/setup\/helpers\/(connector-icon-kv|mock-mcp-server)\.ts)$/,
       tests: connectorIconTests,
     },
     {
@@ -3683,6 +3801,11 @@ export function getAffectedTests(changedFiles) {
         ...chatTestEndpointTests,
         'tests/e2e/shared/context-menu-clipping.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/storage\/connector-images\/delete\.post\.ts|server\/utils\/files\/connector-images\.ts|server\/(mcp\/tools|utils\/besidka-tools\/tools)\/delete-connector-images\.ts|app\/pages\/profile\/storage\.vue)$/,
+      tests: [...storageQuotaTests, ...storagePageTests],
     },
     {
       pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,
@@ -4108,7 +4231,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/components\/ChatInput\/ToolsMenu\/(ReasoningSection|Segmented|ToggleRow)\.vue$/,
+        /^app\/components\/ChatInput\/ToolsMenu\/(ReasoningSection|StepsSection|Segmented|ToggleRow)\.vue$/,
       tests: [
         ...profileSettingsTests,
         ...chatInputToolsTests,

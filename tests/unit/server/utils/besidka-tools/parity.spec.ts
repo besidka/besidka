@@ -62,6 +62,7 @@ const EXPECTED_EXPOSURE = {
     'create_artifact',
     'create_document',
     'create_skill',
+    'delete_connector_images',
     'delete_connectors',
     'delete_memory',
     'delete_skills',

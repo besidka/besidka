@@ -1,5 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import ConnectorStep from '../../../../../app/components/Chat/Reasoning/ConnectorStep.vue'
 
@@ -17,6 +17,7 @@ function createData(
     outcome: 'ok',
     isFramed: true,
     input: { query: 'roadmap' },
+    error: null,
     ...overrides,
   }
 }
@@ -106,5 +107,48 @@ describe('Chat/Reasoning/ConnectorStep', () => {
     expect(denied.get('[data-testid="reasoning-connector-step-title"]')
       .classes()).toContain('text-error/80')
     expect(denied.attributes('data-state')).toBe('denied')
+  })
+
+  it('shows the reason and a copyable reference under a failed call', async () => {
+    const writeText = vi.fn(async () => {})
+
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+    const wrapper = await mountStep(
+      createData({
+        outcome: 'error',
+        isFramed: false,
+        error: {
+          category: 'auth',
+          reference: '7KQ2-M9XD',
+          reason: 'the service rejected the credentials',
+        },
+      }),
+      { title: 'Could not use Notion · search' },
+    )
+
+    expect(wrapper.get('[data-testid="reasoning-connector-step-reason-text"]')
+      .text()).toBe('The service rejected the credentials.')
+    expect(wrapper.get('[data-testid="reasoning-connector-step-reference"]')
+      .text()).toBe('Reference 7KQ2-M9XD')
+
+    await wrapper.get('[data-testid="reasoning-connector-step-copy-reference"]')
+      .trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('7KQ2-M9XD')
+    vi.unstubAllGlobals()
+  })
+
+  it('shows no extra line for a legacy failure or a successful call', async () => {
+    const legacy = await mountStep(
+      createData({ outcome: 'error', isFramed: false }),
+      { title: 'Could not use Notion · search' },
+    )
+    const ok = await mountStep(createData())
+
+    expect(legacy.find('[data-testid="reasoning-connector-step-reason"]')
+      .exists()).toBe(false)
+    expect(ok.find('[data-testid="reasoning-connector-step-reason"]')
+      .exists()).toBe(false)
   })
 })

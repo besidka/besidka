@@ -28,6 +28,7 @@ const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
 const skillsActive = ref<boolean>(false)
 const besidkaToolsActive = ref<boolean>(false)
+const connectorsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -54,7 +55,9 @@ mockNuxtImport('useFeature', () => {
         ? skillsActive.value
         : key === 'besidka-tools'
           ? besidkaToolsActive.value
-          : artifactsActive.value
+          : key === 'connectors'
+            ? connectorsActive.value
+            : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -136,6 +139,7 @@ describe('Search/Modal.client', () => {
     documentsActive.value = false
     skillsActive.value = false
     besidkaToolsActive.value = false
+    connectorsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -392,6 +396,21 @@ describe('Search/Modal.client', () => {
       .toHaveBeenCalledWith('/profile/labs?panel=besidka-tool-permissions')
   })
 
+  it('sends the Besidka tool permissions row to the Connectors page when connectors are on', async () => {
+    besidkaToolsActive.value = true
+    connectorsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    await wrapper.find('#search-option-besidka-tool-permissions')
+      .trigger('click')
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/chats/connectors?panel=besidka-tool-permissions')
+  })
+
   it('omits the Besidka tool permissions row without the besidka-tools feature', async () => {
     artifactsActive.value = true
     useSearchModal().isModalOpen.value = true
@@ -401,6 +420,40 @@ describe('Search/Modal.client', () => {
 
     expect(wrapper.find('#search-option-besidka-tool-permissions').exists())
       .toBe(false)
+  })
+
+  it('adds the Connectors row to the Chat group right after Skills only with the connectors feature', async () => {
+    connectorsActive.value = true
+    skillsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-connectors'))
+      .toBe(ids.indexOf('search-option-skills') + 1)
+    expect(ids.indexOf('search-option-connectors'))
+      .toBeLessThan(ids.indexOf('search-option-storage'))
+    expect(wrapper.get('#search-option-connectors').text())
+      .toBe('Connectors')
+    expect(wrapper.get('#search-option-connectors .iconify').classes())
+      .toContain('i-lucide:cable')
+
+    await wrapper.find('#search-option-connectors').trigger('click')
+
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/connectors')
+  })
+
+  it('omits the Connectors row without the connectors feature', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-connectors').exists()).toBe(false)
   })
 
   it('shows the Admin rows in their own group, before Interface, only to admins', async () => {
@@ -1274,6 +1327,145 @@ describe('Search/Modal.client', () => {
           .toBe(true)
       },
     )
+  })
+
+  describe('recent chats skeleton', () => {
+    type HistoryResponse = ReturnType<typeof createHistoryResponse>
+
+    function deferHistory() {
+      let resolve!: (response: HistoryResponse) => void
+      let reject!: (reason: Error) => void
+
+      mocks.fetchMock.mockImplementation(() => {
+        return new Promise<HistoryResponse>((resolvePromise, rejectPromise) => {
+          resolve = resolvePromise
+          reject = rejectPromise
+        })
+      })
+
+      return {
+        resolve: (response: HistoryResponse) => resolve(response),
+        reject: (reason: Error) => reject(reason),
+      }
+    }
+
+    async function waitForCollapse() {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300)
+      })
+      await nextTick()
+    }
+
+    it('reserves three skeleton rows under the Recent heading while the '
+      + 'chats load, outside the keyboard options', async () => {
+      useSearchModal().isModalOpen.value = true
+      deferHistory()
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const skeleton = wrapper.find('[data-testid="search-recent-skeleton"]')
+
+      expect(skeleton.exists()).toBe(true)
+      expect(skeleton.find('[aria-hidden="true"]').exists()).toBe(true)
+      expect(skeleton.text()).toContain('Recent')
+      expect(skeleton.findAll('.skeleton.skeleton--default')).toHaveLength(3)
+      expect(skeleton.findAll('[role="option"]')).toHaveLength(0)
+
+      const optionIds = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(optionIds[0]).toBe('search-option-history')
+    })
+
+    it('replaces the skeleton with the recent rows once loaded', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const history = deferHistory()
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      history.resolve(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+      await waitForRecentChatsFetch()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+      expect(wrapper.find('#search-option-recent-recent-1').exists())
+        .toBe(true)
+    })
+
+    it('collapses the skeleton, then removes it, when there are no recent '
+      + 'chats', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const history = deferHistory()
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      history.resolve(createHistoryResponse())
+      await waitForRecentChatsFetch()
+
+      const collapsing = wrapper.find('[data-testid="search-recent-skeleton"]')
+
+      expect(collapsing.exists()).toBe(true)
+      expect(collapsing.classes()).toContain('grid-rows-[0fr]')
+      expect(collapsing.classes()).toContain('opacity-0')
+
+      await waitForCollapse()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+    })
+
+    it('drops the skeleton when the request fails', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const history = deferHistory()
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      history.reject(new Error('network error'))
+      await waitForRecentChatsFetch()
+      await waitForCollapse()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+    })
+
+    it('shows the cached rows, not a skeleton, when reopened', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      deferHistory()
+      useSearchModal().isModalOpen.value = false
+      await nextTick()
+      useSearchModal().isModalOpen.value = true
+      await nextTick()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+      expect(wrapper.find('#search-option-recent-recent-1').exists())
+        .toBe(true)
+    })
+
+    it('shows no skeleton when signed out', async () => {
+      loggedIn.value = false
+      useSearchModal().isModalOpen.value = true
+      deferHistory()
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      expect(wrapper.find('[data-testid="search-recent-skeleton"]').exists())
+        .toBe(false)
+    })
   })
 
   describe('pin toggle', () => {

@@ -165,6 +165,18 @@
       "hasSummary": true
     },
     {
+      "name": "delete_connector_images",
+      "mcpScope": "data:delete",
+      "access": "delete",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "chat": {
+        "excluded": "Deleting every connector image is a Storage page action, not something a chat model should start."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "delete_connectors",
       "mcpScope": "connectors:write",
       "access": "write",

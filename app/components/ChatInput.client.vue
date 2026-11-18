@@ -1,6 +1,7 @@
 <template>
   <div
     ref="chatInputRef"
+    data-testid="chat-input"
     class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
@@ -31,18 +32,33 @@
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="isChatScrollButtonVisible" />
-    <ChatInputCommandPicker
-      ref="commandPicker"
-      :is-open="commands.isOpen.value"
-      :matches="commands.matches.value"
-      :active-index="commands.activeIndex.value"
-      :has-no-commands="commands.hasNoCommands.value"
-      @pick="commands.pick"
-    />
-    <ChatInputToolApprovalChip />
+    <div
+      v-show="visible && !anyMessagesSelected"
+      class="absolute bottom-full left-0 right-0 flex flex-col"
+      data-testid="chat-input-overlays"
+    >
+      <ChatInputCommandPicker
+        ref="commandPicker"
+        :is-open="commands.isOpen.value"
+        :matches="commands.matches.value"
+        :active-index="commands.activeIndex.value"
+        :has-no-commands="commands.hasNoCommands.value"
+        @pick="commands.pick"
+      />
+      <ChatInputToolApprovalChip />
+      <ChatInputConnectorSuggestion
+        v-if="connectorSuggestion"
+        :title="connectorSuggestion.title"
+        :is-at-limit="composerConnectors.isAtLimit.value
+          && connectorSuggestion.toolMode === 'manual'"
+        :is-saving="composerConnectors.isSaving.value"
+        @turn-on="turnOnSuggestedConnector"
+        @dismiss="dismissSuggestedConnector"
+      />
+    </div>
     <div class="flex justify-center w-full px-2">
       <UiBubble
-        class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
+        class="relative z-20 grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
       >
         <div
           class="p-1 pb-0 bg-transparent"
@@ -216,12 +232,17 @@
       v-if="isConnectorPickerMounted && isConnectorsEnabled"
       v-model:open="isConnectorPickerOpen"
       :items="composerConnectors.items.value"
+      :disabled-items="composerConnectors.disabledItems.value"
       :selected-ids="composerConnectors.selectedIds.value"
+      :off-ids="composerConnectors.offIds.value"
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
-      :are-connectors-available="composerConnectors.isFeatureActive.value"
+      :is-loaded="composerConnectors.isLoaded.value"
+      :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
+      @enable="composerConnectors.enable"
+      @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
     />
     <LazyChatInputSkillPicker
@@ -795,8 +816,12 @@ function focusMessageAtEnd() {
   element.setSelectionRange(element.value.length, element.value.length)
 }
 
+const prefilledTexts = shallowRef<string[]>([])
+
 async function prefillMessage(text: string) {
   const draft = message.value.trimEnd()
+
+  prefilledTexts.value = [...prefilledTexts.value, text]
 
   message.value = draft ? `${draft}\n\n${text}` : text
   await nextTick()
@@ -973,16 +998,70 @@ const besidkaPickerRow = computed(() => {
   }
 })
 
+const connectorsRegistryFeature = useFeature('connectors.registry')
+const lastSentConnectorText = shallowRef<string>('')
+const dismissedConnectorIds = shallowRef<ReadonlySet<string>>(new Set())
+
 const isConnectorsEnabled = computed<boolean>(() => {
-  return (
-    composerConnectors.isVisible.value
-    || composerBesidkaTools.isAvailable.value
-  )
-  && isToolCallingSupported.value
-  && !isDeepResearchModel.value
-  && !isImageGenerationEnabled.value
-  && !isImageGenerationRequired.value
+  return composerConnectors.isVisible.value
+    && isToolCallingSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
 })
+
+watch(message, (text) => {
+  if (!text.trim() && prefilledTexts.value.length > 0) {
+    prefilledTexts.value = []
+  }
+})
+
+const connectorSuggestion = computed(() => {
+  if (
+    !isConnectorsEnabled.value
+    || !composerConnectors.isLoaded.value
+    || !composerConnectors.isSelectionKnown.value
+    || prefilledTexts.value.length > 0
+  ) {
+    return null
+  }
+
+  return findMentionedConnector({
+    text: message.value.trim() || lastSentConnectorText.value,
+    candidates: composerConnectors.items.value,
+    selectedIds: composerConnectors.availableIds.value,
+    dismissedIds: dismissedConnectorIds.value,
+  })
+})
+
+watch(() => route.path, () => {
+  lastSentConnectorText.value = ''
+  dismissedConnectorIds.value = new Set()
+  prefilledTexts.value = []
+})
+
+async function turnOnSuggestedConnector() {
+  const suggestion = connectorSuggestion.value
+
+  if (!suggestion) {
+    return
+  }
+
+  await composerConnectors.toggle(suggestion.id)
+}
+
+function dismissSuggestedConnector() {
+  const suggestion = connectorSuggestion.value
+
+  if (!suggestion) {
+    return
+  }
+
+  dismissedConnectorIds.value = new Set([
+    ...dismissedConnectorIds.value,
+    suggestion.id,
+  ])
+}
 
 const commands = useComposerCommands({
   textarea,
@@ -1678,6 +1757,11 @@ async function sendMessage() {
     return
   }
 
+  lastSentConnectorText.value = prefilledTexts.value.length > 0
+    ? ''
+    : commands.stripFromText(message.value)
+  prefilledTexts.value = []
+
   const text = joinMessageWithPastedTexts(
     commands.stripFromText(message.value),
     pastedTexts.value,
@@ -1740,6 +1824,7 @@ function openConnectorPicker() {
 
   isConnectorPickerMounted.value = true
   isConnectorPickerOpen.value = true
+  composerConnectors.refresh()
 }
 
 watch(isConnectorsEnabled, (isEnabled) => {

@@ -1,4 +1,5 @@
 import { createError } from 'evlog'
+import type { AnthropicLanguageModelOptions } from '@ai-sdk/anthropic'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
@@ -13,6 +14,59 @@ import {
 export const ANTHROPIC_AUTOMATIC_CACHE_CONTROL = {
   type: 'ephemeral',
 } as const
+
+export type AnthropicThinkingOption = NonNullable<
+  AnthropicLanguageModelOptions['thinking']
+>
+
+export const ANTHROPIC_PRESERVED_THINKING_MODEL_IDS: readonly string[] = [
+  'claude-fable-5-2',
+  'claude-mythos-5-2',
+  'claude-fable-5-1',
+  'claude-mythos-5-1',
+  'claude-opus-5-5',
+  'claude-sonnet-5-5',
+  'claude-haiku-5-5',
+]
+
+const DROP_MISMATCHED_THINKING_BLOCKS = {
+  prefixMismatchBehavior: 'drop_block',
+} as const
+
+/**
+ * The `thinking` option that makes Anthropic drop a thinking block whose
+ * prefix (`system`, `tools`, earlier messages) changed since the block was
+ * produced, instead of failing the request with "The block is bound to a
+ * different conversation". Only the models with preserved thinking run that
+ * prefix check. An explicit `thinking` replaces the one the provider derives
+ * from `reasoning`, so the derived adaptive object is spelled out in full.
+ * With reasoning off the provider sends no `thinking`, and these models then
+ * think adaptively by default, so the binding goes with a bare `adaptive`
+ * type: the API requires `type` next to `block_binding` and rejects the
+ * binding with `disabled` or `between_tools`. See
+ * docs/providers/anthropic.md, "Thinking blocks and the prefix check".
+ */
+export function getAnthropicThinkingBinding(
+  modelId: string,
+  reasoningLevel: ReasoningLevel,
+): AnthropicThinkingOption | undefined {
+  if (!ANTHROPIC_PRESERVED_THINKING_MODEL_IDS.includes(modelId)) {
+    return undefined
+  }
+
+  if (reasoningLevel === 'off') {
+    return {
+      type: 'adaptive',
+      blockBinding: DROP_MISMATCHED_THINKING_BLOCKS,
+    }
+  }
+
+  return {
+    type: 'adaptive',
+    display: 'summarized',
+    blockBinding: DROP_MISMATCHED_THINKING_BLOCKS,
+  }
+}
 
 export async function useAnthropic(
   userId: string,
@@ -118,5 +172,9 @@ export async function useAnthropic(
     tools: getTools(),
     providerOptions: getProviderOptions(),
     reasoning: toReasoningEffort(reasoningLevel),
+    thinkingBinding: getAnthropicThinkingBinding(
+      controllerModelId,
+      reasoningLevel,
+    ),
   }
 }

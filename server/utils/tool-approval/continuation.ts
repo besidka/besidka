@@ -28,6 +28,10 @@ import {
   upsertConnectorToolSettings,
 } from '~~/server/utils/connectors/store'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { isFramedConnectorOutput } from '#shared/utils/connectors-parts'
+import {
+  toReplayedConnectorImageText,
+} from '~~/server/utils/connectors/image-placeholders'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   claimApproval,
@@ -52,6 +56,7 @@ import type {
 } from '~~/server/utils/tool-approval/kv'
 import {
   clampRemember,
+  isAlwaysAskTier,
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
@@ -620,6 +625,31 @@ function isModelContextPart(part: unknown): boolean {
 }
 
 /**
+ * A finished connector call as the model sees it again on a continuation:
+ * a kept image whose line index is in `shownAgain` for the call goes to the
+ * model again (`server/utils/connectors/kept-images.ts`) and its line says
+ * so; every other "shown to the model" line says the image is no longer
+ * available.
+ */
+function withReplayedConnectorImages(
+  part: unknown,
+  shownAgain: ReadonlyMap<string, ReadonlySet<number>> | undefined,
+): unknown {
+  if (!isToolPart(part) || !isFramedConnectorOutput(part.output)) {
+    return part
+  }
+
+  const shownAgainIndexes = typeof part.toolCallId === 'string'
+    ? shownAgain?.get(part.toolCallId)
+    : undefined
+
+  return {
+    ...part,
+    output: toReplayedConnectorImageText(part.output, shownAgainIndexes),
+  }
+}
+
+/**
  * The paused assistant message twice, with every answered call in
  * `approval-responded`:
  *
@@ -631,7 +661,10 @@ function isModelContextPart(part: unknown): boolean {
  *   reasoning keep their stored provider metadata (Anthropic thinking
  *   signatures, Gemini thought signatures) in their original order, step
  *   boundaries stay, and parts the model never needs (data, sources, files,
- *   unfinished calls) are dropped.
+ *   unfinished calls) are dropped. A connector image line that said "shown
+ *   to the model" now says the image is no longer available, or, for a
+ *   kept image in `shownAgain` (per tool call id, the indexes among the
+ *   call's kept lines), that it is shown to the model again.
  * - `storedMessage` keeps the stored parts as they are, with the answered
  *   calls moved to `approval-responded` and no input or signature added, so
  *   it can seed `readUIMessageStream` and be written back to D1.
@@ -640,6 +673,7 @@ export function buildResumedAssistantMessages(input: {
   messageId: string
   parts: readonly unknown[]
   decisions: readonly ContinuationDecision[]
+  shownAgain?: ReadonlyMap<string, ReadonlySet<number>>
 }): { modelMessage: UIMessage, storedMessage: UIMessage } {
   const decisionsByApprovalId = new Map(input.decisions.map((decision) => {
     return [decision.approvalId, decision]
@@ -655,7 +689,7 @@ export function buildResumedAssistantMessages(input: {
       storedParts.push(part)
 
       if (isModelContextPart(part)) {
-        modelParts.push(part)
+        modelParts.push(withReplayedConnectorImages(part, input.shownAgain))
       }
 
       continue
@@ -816,8 +850,9 @@ async function applyBesidkaRememberGrant(input: {
  * "in this chat" maps the exposed tool name to its definition hash in the
  * connector's chat settings, "always" sets the connector tool setting to
  * `always` with the approved hash (only when that setting row exists). The
- * choice was already clamped to what the request offered: only a plain
- * write (reason `default`) offers more than `once`. The send and the replay
+ * choice was already clamped to what the request offered: only reason
+ * `default` offers more than `once`, and a tool in the always-ask tier is
+ * never granted even if a choice slipped through. The send and the replay
  * read back exactly these two values (`getConnectorTools`). For a Besidka
  * tool, "in this chat" stores the registry hash in the chat's
  * `besidka_chat_settings.alwaysAllowTools`, and "always" sets the tool's
@@ -836,11 +871,17 @@ export async function applyRememberGrants(input: {
     const hash = entry?.descriptor.definitionHash
     const connector = entry?.connector
 
-    if (!decision.approved || decision.remember === 'once' || !hash) {
+    if (
+      !decision.approved
+      || decision.remember === 'once'
+      || !hash
+      || !entry
+      || isAlwaysAskTier(entry.descriptor)
+    ) {
       continue
     }
 
-    if (entry?.descriptor.consentGate === true) {
+    if (entry.descriptor.consentGate === true) {
       if (
         decision.remember !== 'chat'
         || decision.record.definitionHash !== hash
@@ -867,7 +908,7 @@ export async function applyRememberGrants(input: {
       continue
     }
 
-    if (entry?.descriptor.family === 'besidka') {
+    if (entry.descriptor.family === 'besidka') {
       try {
         await applyBesidkaRememberGrant({
           db: input.db,
@@ -928,7 +969,7 @@ export async function applyRememberGrants(input: {
         return setting.toolName === connector.remoteToolName
       })
 
-      if (!current) {
+      if (!current || current.definitionHash !== hash) {
         continue
       }
 

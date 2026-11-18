@@ -11,6 +11,7 @@ import {
   parseAuthorizationServerMetadata,
   parseBearerChallenge,
   resourceCoversUrl,
+  verifyConnectorCredentialHeader,
 } from '~~/server/utils/connectors/oauth-metadata'
 
 async function failureOf(promise: Promise<unknown>) {
@@ -173,6 +174,30 @@ describe('connector OAuth metadata', () => {
         .toEqual({ authType: 'header' })
     })
 
+    it('reports header auth without metadata requests when OAuth is not allowed', async () => {
+      const server = createMockAuthServer()
+
+      vi.stubGlobal('fetch', server.fetch)
+
+      expect(await discoverConnectorAuth(
+        MCP_SERVER_URL,
+        undefined,
+        { allowOAuth: false },
+      )).toEqual({ authType: 'header' })
+      expect(server.requestsTo(PRM_URL)).toHaveLength(0)
+      expect(server.requestsTo(MCP_SERVER_URL)).toHaveLength(1)
+    })
+
+    it('still reports no auth when OAuth is not allowed and the probe is 2xx', async () => {
+      vi.stubGlobal('fetch', createMockAuthServer({ probeStatus: 200 }).fetch)
+
+      expect(await discoverConnectorAuth(
+        MCP_SERVER_URL,
+        undefined,
+        { allowOAuth: false },
+      )).toEqual({ authType: 'none' })
+    })
+
     it('fails on any other status', async () => {
       vi.stubGlobal('fetch', createMockAuthServer({ probeStatus: 500 }).fetch)
 
@@ -212,6 +237,56 @@ describe('connector OAuth metadata', () => {
       expect(probe!.headers.has('authorization')).toBe(false)
       expect(probe!.headers.has('cookie')).toBe(false)
       expect(JSON.parse(probe!.body).method).toBe('initialize')
+    })
+  })
+
+  describe('verifyConnectorCredentialHeader', () => {
+    const header = { name: 'Authorization', value: 'Bearer ghp_secret' }
+
+    function answerWith(status: number) {
+      const fetchSpy = vi.fn(async () => new Response('{}', { status }))
+
+      vi.stubGlobal('fetch', fetchSpy)
+
+      return fetchSpy
+    }
+
+    it('sends the one initialize request with the header to the server',
+      async () => {
+        const fetchSpy = answerWith(200)
+
+        await verifyConnectorCredentialHeader(MCP_SERVER_URL, header)
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+        const [url, init] = fetchSpy.mock.calls[0] as unknown as [
+          string,
+          RequestInit,
+        ]
+        const sent = new Headers(init.headers)
+
+        expect(String(url)).toBe(MCP_SERVER_URL)
+        expect(sent.get('authorization')).toBe('Bearer ghp_secret')
+        expect(JSON.parse(String(init.body)).method).toBe('initialize')
+      })
+
+    it('names a rejected key for a 400, 401 or 403', async () => {
+      for (const status of [400, 401, 403]) {
+        answerWith(status)
+
+        expect((await failureOf(
+          verifyConnectorCredentialHeader(MCP_SERVER_URL, header),
+        )).code).toBe('CONNECTOR_CREDENTIALS_REJECTED')
+      }
+    })
+
+    it('says the server did not answer as an MCP server for any other '
+      + 'status', async () => {
+      answerWith(404)
+
+      expect((await failureOf(
+        verifyConnectorCredentialHeader(MCP_SERVER_URL, header),
+      )).code).toBe('CONNECTOR_DISCOVERY_FAILED')
     })
   })
 })

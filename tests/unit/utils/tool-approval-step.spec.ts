@@ -268,6 +268,11 @@ describe('approval copy', () => {
       .toBe('Uploads the skill to your Anthropic workspace')
     expect(getApprovalReasonText('default', ''))
       .toBe('Runs only after you allow it')
+    expect(getApprovalReasonText('default', '', 'mcp__notion__notion-search'))
+      .toBe('Asks before each use. Change it in the connector\'s tool '
+        + 'settings.')
+    expect(getApprovalReasonText('default', '', 'besidka__list_files'))
+      .toBe('Asks before each use. Change it in Tool permissions in Labs.')
   })
 
   it('titles a Besidka step with its server-written summary', () => {

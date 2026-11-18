@@ -201,8 +201,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
-- `docs/storage.md` - The one storage allowance (BES-393): the six categories
-  (AI images, uploads, generated files, artifacts, project knowledge, skills)
+- `docs/storage.md` - The one storage allowance (BES-393): the seven
+  categories (AI images, uploads, generated files, connector images,
+  artifacts, project knowledge, skills)
   and how
   each is told apart from existing `files` columns with no migration, what is
   not counted, the single usage number (`userStorageUsedBytesSql`, shared with
@@ -286,6 +287,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/ui/semantic-colors.md` - The daisyUI semantic color pairs and their
+  measured contrast (light `success-content` was emerald-950 on emerald-700 at
+  2.8:1, fixed once in `main.css`), the rule to never patch a solid success,
+  warning or error element per component, and why `btn-soft` alone renders
+  solid on a button with `aria-checked` (the `btn-soft-selected` utility)
 - `docs/ui/side-panel.md` - The shared right side panel (`UiSidePanel`,
   `useSidePanel()`): one surface for every "view a result" screen, docked at
   lg with the nav pill on the seam, overlay at md, full-screen bottom sheet
@@ -765,7 +771,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  57 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  58 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -796,7 +802,28 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
   and the ticket changes it imposes on C-2 to C-11; section 7.10 for the
   reasoning step icons (one registry, connector icons only through the
-  owner-only KV-backed route, never a remote image)
+  owner-only KV-backed route, never a remote image); section 10.2 for the
+  directory (Browse and search over the registry mirror, the Featured
+  presets), icons on directory cards through the Besidka registry icon
+  route (registry `icons`, favicon, page `<link rel=icon>`, SVG allowlist) and
+  the admin-only "Sync now"; section 10.3 for directory v2 (Yours and
+  Discover tabs, the curated Top list in `config/connectors-directory.ts` and
+  how to edit it, New, keyword categories, the quality filter, ranked search,
+  the Featured and Community marks, the verified presets for services the registry lacks, the detail view with its anonymous tool probe, the
+  KV directory index, and icons for every connector); section 6.2 for the tool index (C-15): the
+  `tool_index__load` tool over `prepareStep` `activeTools`, the per-connector
+  mode (`connectors.tool_mode`: `manual`, `auto` or `always-on`, null is
+  Auto through `CONNECTOR_UNSET_TOOL_MODE`; Off is `enabled`), the room kept
+  for loading, the prompt-cache effect, and the "Turn it on?" chip triggered
+  only by the user's own text; section 6.3 for Auto connectors in every
+  chat: the per-chat plan (an off always wins), the 30-day tool-definition
+  snapshot with no connection at send start, warm-ups, the live hash check
+  on first call, the `<connector_catalog>` block and `use_connector`; section
+  6.5 for images in tool results (shown to the model in the same send and
+  kept with the chat as hidden `connector` files: the `data-connector-image`
+  part, dedupe per chat, the step thumbnails, deletion with the chat or from
+  the Storage page; the direct Anthropic and OpenAI allowlist, caps,
+  continuation placeholder)
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link
@@ -826,9 +853,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the Search row, why MCP has no tool for it, and the chat exposure (L9): the
   four-part gate, `besidka__` tools from the registry, the current-chat
   guard, no scopes for handlers, the mode-by-taint table (Besidka reads
-  ignore Besidka taint), the 24-tool budget with the Labs line instead of a
-  chat notice, the per-chat Besidka row in the connector picker, the
-  approval step and Besidka grants in the chat panel
+  ignore Besidka taint), the 24 tools offered up front with the rest in the
+  tool index (C-15: loaded on demand, never cut, no notice or Labs line),
+  the per-chat Besidka row in the connector picker, the approval step and
+  Besidka grants in the chat panel
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the

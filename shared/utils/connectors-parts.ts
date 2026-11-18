@@ -2,6 +2,10 @@ import {
   CONNECTOR_RESULT_TAG,
   CONNECTOR_TOOL_NAME_PREFIX,
 } from '#shared/utils/connectors-policy'
+import { parseConnectorCallErrorText } from '#shared/utils/connectors-errors'
+import type {
+  ParsedConnectorCallError,
+} from '#shared/utils/connectors-errors'
 import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 
 export const CONNECTORS_NOTICE_PART_TYPE = 'data-connectors-notice'
@@ -32,6 +36,7 @@ const LIMIT_TEXTS: readonly string[] = [
   CONNECTOR_RATE_LIMIT_TEXT,
 ]
 const TOOL_NAME_SEPARATOR = '__'
+const STATIC_TOOL_PART_PREFIX = 'tool-'
 const FRAMED_OUTPUT_PREFIX = `<${CONNECTOR_RESULT_TAG}`
 const RUNNING_STATES = new Set<string>(['input-streaming', 'input-available'])
 const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
@@ -51,6 +56,7 @@ export interface ConnectorToolCallModel {
   outcome: ConnectorToolOutcome | null
   isFramed: boolean
   input: unknown
+  error: ParsedConnectorCallError | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,6 +88,24 @@ export function parseConnectorToolName(
   }
 
   return { slug: remainder.slice(0, separatorIndex), tool }
+}
+
+/**
+ * The exposed tool name of a tool part, whether it is a `dynamic-tool` part
+ * or a static `tool-<name>` part, or null for any other part.
+ */
+export function getConnectorToolPartName(part: unknown): string | null {
+  if (!isRecord(part) || typeof part.type !== 'string') {
+    return null
+  }
+
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string' ? part.toolName : null
+  }
+
+  return part.type.startsWith(STATIC_TOOL_PART_PREFIX)
+    ? part.type.slice(STATIC_TOOL_PART_PREFIX.length)
+    : null
 }
 
 export function isFramedConnectorOutput(output: unknown): boolean {
@@ -118,15 +142,13 @@ export function isConnectorLimitRefusal(output: unknown): boolean {
 export function getConnectorToolCall(
   part: unknown,
 ): ConnectorToolCallModel | null {
-  if (
-    !isRecord(part)
-    || part.type !== 'dynamic-tool'
-    || typeof part.toolName !== 'string'
-  ) {
+  const toolName = getConnectorToolPartName(part)
+
+  if (!isRecord(part) || toolName === null) {
     return null
   }
 
-  const parsed = parseConnectorToolName(part.toolName)
+  const parsed = parseConnectorToolName(toolName)
 
   if (!parsed) {
     return null
@@ -156,6 +178,9 @@ export function getConnectorToolCall(
     outcome,
     isFramed: isFramedConnectorOutput(part.output),
     input: part.input,
+    error: outcome === 'error'
+      ? parseConnectorCallErrorText(part.errorText)
+      : null,
   }
 }
 

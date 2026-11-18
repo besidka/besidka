@@ -189,6 +189,24 @@ reasoning streams; dismisses on text, a tool part, or an error; stays up
 across an `output-error` tool part specifically, since a failed attempt
 still visually replaces the skeleton with the error card).
 
+## Composer overlays stay out of the measured height
+
+`chat-input:height` reports the height of the composer root
+(`data-testid="chat-input"`), and the spacer clears exactly that much. Anything
+that appears above the input box, such as the connector suggestion chip
+("Linear is off in this chat. Turn it on?"), the "N actions waiting for
+approval" pill and the `/` command picker, therefore must not take space in
+that root. They live in one wrapper (`data-testid="chat-input-overlays"`,
+`absolute bottom-full`) so they grow upward over the messages, follow the
+composer when the keyboard lifts it, and never change the reported height.
+Before this, the chip and the pill sat in the root's flow and added 50 to 60
+px to the height, which inflated `inputHeight` for the spacer formulas.
+The wrapper is hidden with the composer (`!visible` and selection mode),
+because it no longer travels with the root's `translate-y-full`. Parts of the
+box itself (attachment tiles, pasted text chips, the textarea) stay in flow and
+are counted on purpose. Covered by
+`tests/e2e/chat/composer-overlays-spacer.spec.ts`.
+
 ## Runtime hook contract (event bus)
 
 Defined in `app/types/runtime-hooks.d.ts`.

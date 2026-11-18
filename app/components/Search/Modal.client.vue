@@ -31,6 +31,31 @@
           data-testid="search-modal-results"
           class="flex-1 min-h-0 overflow-y-auto -mx-1.5 px-1.5"
         >
+          <div
+            v-if="isRecentSkeletonShown"
+            class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+            :class="isRecentLoading
+              ? 'grid-rows-[1fr] opacity-100'
+              : 'grid-rows-[0fr] opacity-0'"
+            data-testid="search-recent-skeleton"
+          >
+            <div
+              class="min-h-0 overflow-hidden"
+              aria-hidden="true"
+            >
+              <div class="px-3 pt-3 pb-1 text-xs font-semibold uppercase text-base-content/70">
+                Recent
+              </div>
+              <div
+                v-for="skeletonIndex in RECENT_CHATS_LIMIT"
+                :key="skeletonIndex"
+                class="h-13.5 py-1"
+              >
+                <div class="skeleton skeleton--default size-full rounded-box" />
+              </div>
+            </div>
+          </div>
+
           <template
             v-for="group in groups"
             :key="group.id"
@@ -100,7 +125,7 @@
 import type { HistoryChat } from '#shared/types/history.d'
 import { parseError } from 'evlog'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
-import { BESIDKA_TOOL_PERMISSIONS_LABS_PATH } from '~/utils/besidka-tool-permissions'
+import { getBesidkaToolPermissionsPath } from '~/utils/besidka-tool-permissions'
 
 interface SearchInputInstance {
   inputRef: HTMLInputElement | null
@@ -134,6 +159,7 @@ const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
 const skillsFeature = useFeature('skills')
 const besidkaToolsFeature = useFeature('besidka-tools')
+const connectorsFeature = useFeature('connectors')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -151,21 +177,31 @@ const list = useTemplateRef<HTMLElement>('list')
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 
 const RECENT_CHATS_LIMIT = 3
+const RECENT_SKELETON_COLLAPSE_MS = 220
 
 const query = shallowRef<string>('')
 const results = shallowRef<HistoryChat[]>([])
 const recentChats = shallowRef<HistoryChat[]>([])
 const isSearching = shallowRef<boolean>(false)
+const hasLoadedRecentChats = shallowRef<boolean>(false)
+const isRecentLoading = shallowRef<boolean>(false)
+const isRecentCollapsing = shallowRef<boolean>(false)
 const activeIndex = shallowRef<number>(0)
 const pendingPinChatId = shallowRef<string | null>(null)
 
 let requestId = 0
 let recentChatsRequestId = 0
+let collapseTimer: ReturnType<typeof setTimeout> | undefined
 
 const trimmedQuery = computed<string>(() => query.value.trim())
 
 const hasSearchQuery = computed<boolean>(() => {
   return trimmedQuery.value.length >= MIN_SEARCH_LENGTH
+})
+
+const isRecentSkeletonShown = computed<boolean>(() => {
+  return !hasSearchQuery.value
+    && (isRecentLoading.value || isRecentCollapsing.value)
 })
 
 const themeIconName = computed<string>(() => {
@@ -285,7 +321,9 @@ function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
           id: 'search-option-besidka-tool-permissions',
           iconName: 'lucide:wrench',
           label: 'Besidka tool permissions',
-          run: () => goTo(BESIDKA_TOOL_PERMISSIONS_LABS_PATH),
+          run: () => goTo(
+            getBesidkaToolPermissionsPath(connectorsFeature.value.active),
+          ),
         }]
         : []),
     ],
@@ -411,6 +449,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
             iconName: 'lucide:sparkles',
             label: 'Skills',
             run: () => goTo('/chats/skills'),
+          }]
+          : []),
+        ...(connectorsFeature.value.active
+          ? [{
+            id: 'search-option-connectors',
+            iconName: 'lucide:cable',
+            label: 'Connectors',
+            run: () => goTo('/chats/connectors'),
           }]
           : []),
       ],
@@ -600,6 +646,21 @@ const runSearch = useDebounceFn(async () => {
   isSearching.value = false
 }, SEARCH_DEBOUNCE_MS)
 
+function finishRecentLoading() {
+  hasLoadedRecentChats.value = true
+  isRecentLoading.value = false
+
+  if (recentChats.value.length) {
+    return
+  }
+
+  isRecentCollapsing.value = true
+  clearTimeout(collapseTimer)
+  collapseTimer = setTimeout(() => {
+    isRecentCollapsing.value = false
+  }, RECENT_SKELETON_COLLAPSE_MS)
+}
+
 async function fetchRecentChats() {
   recentChatsRequestId += 1
 
@@ -625,6 +686,8 @@ async function fetchRecentChats() {
       return
     }
   }
+
+  finishRecentLoading()
 }
 
 function replaceChat(
@@ -724,6 +787,9 @@ watch(loggedIn, (isLoggedIn) => {
 
   recentChatsRequestId += 1
   recentChats.value = []
+  hasLoadedRecentChats.value = false
+  isRecentLoading.value = false
+  isRecentCollapsing.value = false
 })
 
 watch(activeDescendantId, () => {
@@ -753,6 +819,8 @@ watch([isModalOpen, modal], ([open, dialog]) => {
   focusSearchInput()
 
   if (!hasSearchQuery.value) {
+    isRecentLoading.value = loggedIn.value && !hasLoadedRecentChats.value
+
     setTimeout(() => {
       fetchRecentChats()
     })
@@ -798,6 +866,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(collapseTimer)
   document.removeEventListener('keydown', onGlobalKeydown)
   requestId += 1
   recentChatsRequestId += 1

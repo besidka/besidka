@@ -16,6 +16,10 @@ import {
   SAFE_FETCH_DEFAULT_MAX_BYTES,
   SAFE_FETCH_DEFAULT_TIMEOUT_MS,
   SAFE_FETCH_MAX_REDIRECTS,
+  CONNECTOR_IMAGE_MEDIA_TYPES,
+  CONNECTOR_IMAGE_PROVIDERS,
+  canForwardConnectorImages,
+  isConnectorImageMediaType,
 } from '#shared/utils/connectors-policy'
 
 describe('connectors policy', () => {
@@ -63,5 +67,62 @@ describe('connectors policy', () => {
     }
 
     expect(CONNECTOR_REJECTED_HEADER_NAMES).toContain('mcp-session-id')
+  })
+})
+
+describe('canForwardConnectorImages', () => {
+  const imageModel = ['text', 'image']
+
+  it('allows only direct Anthropic and OpenAI models that take images', () => {
+    expect(canForwardConnectorImages({
+      providerId: 'anthropic',
+      inputModalities: imageModel,
+    })).toBe(true)
+    expect(canForwardConnectorImages({
+      providerId: 'openai',
+      inputModalities: imageModel,
+    })).toBe(true)
+  })
+
+  it('keeps the placeholder for gateways, other providers and text models',
+    () => {
+      for (const gatewayId of ['openrouter', 'vercel', 'cloudflare']) {
+        expect(canForwardConnectorImages({
+          gatewayId,
+          providerId: 'anthropic',
+          inputModalities: imageModel,
+        })).toBe(false)
+      }
+
+      for (const providerId of [
+        'google',
+        'xai',
+        'deepseek',
+        'moonshotai',
+        'alibaba',
+      ]) {
+        expect(canForwardConnectorImages({
+          providerId,
+          inputModalities: imageModel,
+        })).toBe(false)
+      }
+
+      expect(canForwardConnectorImages({
+        providerId: 'openai',
+        inputModalities: ['text'],
+      })).toBe(false)
+      expect(canForwardConnectorImages({ providerId: 'openai' })).toBe(false)
+      expect(canForwardConnectorImages({})).toBe(false)
+    })
+
+  it('lists exactly four raster image types and never SVG', () => {
+    expect(CONNECTOR_IMAGE_MEDIA_TYPES).toEqual([
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+    ])
+    expect(isConnectorImageMediaType('image/svg+xml')).toBe(false)
+    expect(CONNECTOR_IMAGE_PROVIDERS).toEqual(['anthropic', 'openai'])
   })
 })

@@ -14,12 +14,12 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 
 function setReasoningUserSetting(
-  reasoningExpanded: boolean,
-  reasoningAutoHide: boolean,
+  stepsExpanded: boolean,
+  stepsAutoHide: boolean,
 ) {
   mocks.useUserSetting.mockReturnValue({
-    reasoningExpanded: shallowRef<boolean>(reasoningExpanded),
-    reasoningAutoHide: shallowRef<boolean>(reasoningAutoHide),
+    stepsExpanded: shallowRef<boolean>(stepsExpanded),
+    stepsAutoHide: shallowRef<boolean>(stepsAutoHide),
   })
 }
 
@@ -512,7 +512,7 @@ describe('Chat/Reasoning', () => {
     expect(isMainExpanded(wrapper)).toBe(false)
   })
 
-  it('never auto-collapses or suppresses re-expansion when reasoningAutoHide is off',
+  it('never auto-collapses or suppresses re-expansion when stepsAutoHide is off',
     async () => {
       setReasoningUserSetting(true, false)
 
@@ -1241,9 +1241,9 @@ describe('Chat/Reasoning', () => {
     }
 
     async function mountStreamingTurn(
-      reasoningExpandedSetting: boolean,
+      stepsExpandedSetting: boolean,
     ): Promise<VueWrapper> {
-      setReasoningUserSetting(reasoningExpandedSetting, true)
+      setReasoningUserSetting(stepsExpandedSetting, true)
 
       const firstStreamingParts = [
         { ...firstReasoning, state: 'streaming' },
@@ -1292,8 +1292,8 @@ describe('Chat/Reasoning', () => {
       ['on', true],
     ])(
       'lets the user collapse the expanded block once the next step starts, with the expanded-by-default setting %s',
-      async (_label, reasoningExpandedSetting) => {
-        const wrapper = await mountStreamingTurn(reasoningExpandedSetting)
+      async (_label, stepsExpandedSetting) => {
+        const wrapper = await mountStreamingTurn(stepsExpandedSetting)
 
         expect(isMainExpanded(wrapper)).toBe(true)
 

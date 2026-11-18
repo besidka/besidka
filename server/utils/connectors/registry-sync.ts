@@ -23,6 +23,7 @@ import type {
   RegistryServerRow,
   RegistrySkipReason,
 } from '~~/server/utils/connectors/registry-entry'
+import { invalidateDirectoryIndex } from '~~/server/utils/connectors/directory-index'
 
 export const REGISTRY_UPDATED_SINCE_KEY = 'connectors:registry:updated-since'
 export const REGISTRY_FULL_PASS_KEY = 'connectors:registry:full-pass'
@@ -54,6 +55,7 @@ export interface RegistrySyncInput {
   fetchImpl?: typeof fetch
   logger?: LoggerLike
   clock?: () => number
+  maxPages?: number
 }
 
 export interface RegistrySyncResult {
@@ -364,7 +366,9 @@ export async function syncMcpRegistry(
     const startedAtDate = new Date(progress.startedAt)
     const runStartedAt = clock()
 
-    for (let page = 0; page < REGISTRY_PAGES_PER_RUN; page++) {
+    const maxPages = input.maxPages ?? REGISTRY_PAGES_PER_RUN
+
+    for (let page = 0; page < maxPages; page++) {
       if (page > 0 && clock() - runStartedAt >= REGISTRY_RUN_BUDGET_MS) {
         break
       }
@@ -473,6 +477,10 @@ export async function syncMcpRegistry(
     return result
   } finally {
     await persistProgress(kv, progress, discardProgress, result)
+
+    if (result.upserted + result.deleted + result.swept > 0) {
+      await invalidateDirectoryIndex(kv)
+    }
   }
 }
 

@@ -258,8 +258,6 @@ export async function prepareSkillScriptsForSend(input: {
       summary: buildSkillScriptsApprovalSummary(skillNames),
       taint: null,
       readSource: null,
-      alwaysGrant: null,
-      alwaysGrantWhenTainted: false,
       connector: null,
     })
   }

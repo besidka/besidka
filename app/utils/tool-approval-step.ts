@@ -382,6 +382,7 @@ export function getApprovalSourceLabel(
 export function getApprovalReasonText(
   reason: ToolApprovalReason,
   sourceLabel: string,
+  toolName = '',
 ): string {
   if (reason === 'untrusted-output') {
     return sourceLabel
@@ -399,6 +400,14 @@ export function getApprovalReasonText(
 
   if (reason === 'consent') {
     return 'Uploads the skill to your Anthropic workspace'
+  }
+
+  if (isBesidkaChatToolName(toolName)) {
+    return 'Asks before each use. Change it in Tool permissions in Labs.'
+  }
+
+  if (parseConnectorToolName(toolName)) {
+    return 'Asks before each use. Change it in the connector\'s tool settings.'
   }
 
   return 'Runs only after you allow it'

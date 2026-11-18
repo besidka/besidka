@@ -10,6 +10,7 @@ import { isDocumentToolName } from '~~/server/utils/documents/message-parts'
 import { isSkillToolName } from '#shared/utils/skills/runtime'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -45,6 +46,7 @@ export interface ToolLoopBudget {
   skillSteps?: number
   connectorSteps?: number
   besidkaSteps?: number
+  toolIndexSteps?: number
   guard?: UntrustedContentGuard
 }
 
@@ -100,6 +102,7 @@ function isWebFollowUpToolName(toolName: string): boolean {
     && !isSkillToolName(toolName)
     && !isConnectorToolName(toolName)
     && !isBesidkaChatToolName(toolName)
+    && !isToolIndexLoadToolName(toolName)
 }
 
 function isUntrustedToolResultPart(part: unknown): boolean {
@@ -232,7 +235,8 @@ function createToolLoopPrepareStep(
  * project-knowledge tool is registered, `skillSteps` more when a skill
  * tool is registered, and `connectorSteps` more when a connector tool
  * (`mcp__<slug>__<tool>`) is registered, and `besidkaSteps` more when a
- * Besidka tool (`besidka__<name>`) is registered, so no lookup family ever
+ * Besidka tool (`besidka__<name>`) is registered, and `toolIndexSteps` more
+ * when the tool index load tool is registered, so no lookup family ever
  * eats another family's rounds.
  * When the follow-up tools grant no steps at all (lookup tools with a
  * non-positive allowance), the cap falls back to
@@ -268,17 +272,20 @@ export function resolveToolLoop(
   const hasSkillTool = followUpToolNames.some(isSkillToolName)
   const hasConnectorTool = followUpToolNames.some(isConnectorToolName)
   const hasBesidkaTool = followUpToolNames.some(isBesidkaChatToolName)
+  const hasToolIndexTool = followUpToolNames.some(isToolIndexLoadToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
   const knowledgeSteps = Math.max(0, budget?.knowledgeSteps ?? 0)
   const skillSteps = Math.max(0, budget?.skillSteps ?? 0)
   const connectorSteps = Math.max(0, budget?.connectorSteps ?? 0)
   const besidkaSteps = Math.max(0, budget?.besidkaSteps ?? 0)
+  const toolIndexSteps = Math.max(0, budget?.toolIndexSteps ?? 0)
   const toolSteps = (hasWebFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)
     + (hasKnowledgeTool ? knowledgeSteps : 0)
     + (hasSkillTool ? skillSteps : 0)
     + (hasConnectorTool ? connectorSteps : 0)
     + (hasBesidkaTool ? besidkaSteps : 0)
+    + (hasToolIndexTool ? toolIndexSteps : 0)
   const maxSteps = (toolSteps || TOOL_LOOP_MAX_TOOL_STEPS) + 1
 
   return {

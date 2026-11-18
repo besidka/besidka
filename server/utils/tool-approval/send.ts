@@ -38,6 +38,7 @@ import type {
   ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
 import { isSkillToolName } from '#shared/utils/skills/runtime'
+import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
 import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
 import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
@@ -54,7 +55,6 @@ import type { ToolApprovalPendingSnapshot } from '~~/server/utils/tool-approval/
 import {
   connectorDestructiveHint,
   hasAlwaysAskToolName,
-  isTaintedForBesidka,
   resolveToolApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type {
@@ -99,13 +99,11 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
 /**
  * Everything the send knows about one tool the model can call, keyed by the
  * name the model sees. `taint` and `readSource` are what a call that runs
- * adds to the send's approval state. `alwaysGrant` is a grant the send
- * applies without the user setting one (see `buildConnectorApprovalEntry`);
- * it holds after untrusted content only when `alwaysGrantWhenTainted` is set.
- * `userGrants` are the grants the user gave ("Always allow", "Allow in this
- * chat"), each carrying the definition hash it was given for, so a changed
- * tool no longer matches; the policy never lets them lift a prompt caused
- * by untrusted output, a source switch or the always-ask tier.
+ * adds to the send's approval state. `userGrants` are the grants the user
+ * gave ("Always allow", "Allow in this chat"), each carrying the definition
+ * hash it was given for, so a changed tool no longer matches; for a write
+ * the policy never lets them lift a prompt caused by outside content, a
+ * source switch or the always-ask tier.
  * `permissionMode` is the user's mode for a Besidka tool (Blocked, Needs
  * approval, Always allow); every other tool is decided as `ask`.
  * `summarize` writes the summary of one call from its input (a Besidka
@@ -128,8 +126,6 @@ export interface SendToolEntry {
   permissionMode?: ToolPermissionMode
   taint: ToolApprovalTaintKind | null
   readSource: string | null
-  alwaysGrant: ToolApprovalGrant | null
-  alwaysGrantWhenTainted: boolean
   userGrants?: SendToolUserGrants
   connector: {
     id: string
@@ -138,9 +134,16 @@ export interface SendToolEntry {
   } | null
 }
 
+/**
+ * `isAlwaysDefault` marks an `always` grant that is only the tool's default
+ * (a plain connector read the user never set a mode for): it runs the call
+ * like Always allow but writes no "Ran without asking" marker, as the C-5
+ * read-only grant did.
+ */
 export interface SendToolUserGrants {
   always: ToolApprovalGrant | null
   chat: ToolApprovalGrant | null
+  isAlwaysDefault?: boolean
 }
 
 /**
@@ -198,6 +201,7 @@ export interface SendToolApproval {
   ) => PendingToolApprovalDecision | undefined
   getGrantScope: (toolCallId: string) => ToolGrantScope | null
   listWithheldProviderTools: (tools: ToolSet | undefined) => string[]
+  recordConnectorOpened: (connectorId: string) => void
 }
 
 interface NativeToolClass {
@@ -315,8 +319,6 @@ function buildUndescribedBesidkaEntry(toolName: string): SendToolEntry {
     permissionMode: 'blocked',
     taint: 'besidka',
     readSource: TOOL_APPROVAL_BESIDKA_READ_SOURCE,
-    alwaysGrant: null,
-    alwaysGrantWhenTainted: false,
     connector: null,
   }
 }
@@ -377,7 +379,7 @@ export function classifyNativeTool(toolName: string): NativeToolClass {
     return { ...NATIVE_READ, taint: 'skill' }
   }
 
-  if (toolName === 'generate_image') {
+  if (toolName === 'generate_image' || isToolIndexLoadToolName(toolName)) {
     return NATIVE_READ
   }
 
@@ -405,8 +407,6 @@ export function buildNativeApprovalEntry(toolName: string): SendToolEntry {
     readSource: nativeClass.readsPrivateData
       ? TOOL_APPROVAL_BESIDKA_READ_SOURCE
       : null,
-    alwaysGrant: null,
-    alwaysGrantWhenTainted: false,
     connector: null,
   }
 }
@@ -415,17 +415,12 @@ export function buildNativeApprovalEntry(toolName: string): SendToolEntry {
  * The entry of one exposed connector tool. The policy name is the exposed
  * name (`mcp__<slug>__<tool>`), because that is the name the SDK signs; the
  * remote name stays on the entry for the audit row, and the summary names
- * the exposed name, never text the remote server chose. A tool the server
- * marks read-only and not destructive gets a grant bound to its connector,
- * name and definition hash, so it keeps running without a request as it did
- * in C-5 (rule 6), while F2 (rule 3) still asks for it after another source
- * was read. The grant holds after untrusted content only when the server
- * also marks the tool `openWorldHint: false`; otherwise the call asks
- * `untrusted-output`, because an open-world read can carry data out. This
- * stands in for the per-tool review of C-7. A tool marked both read-only and
- * destructive counts as destructive, and so does a tool whose remote name or
- * title names a delete or share action (`hasAlwaysAskToolName`), whatever
- * its annotations say. `grantHashes` are the hashes the user's
+ * the exposed name, never text the remote server chose. A tool is a read
+ * only when the server marks it read-only and not destructive and its remote
+ * name or title names no delete or share action (`hasAlwaysAskToolName`);
+ * the name check and a destructive mark win over `readOnlyHint`, because the
+ * annotations are the server's own claim. A read asks before each use until
+ * the user sets it to Always allow. `grantHashes` are the hashes the user's
  * own grants were given for; each becomes a grant bound to this connector
  * and exposed name, so it matches only while the tool is unchanged.
  */
@@ -437,8 +432,9 @@ export function buildConnectorApprovalEntry(input: {
   remoteToolName: string
   remoteToolTitle?: string
   definitionHash: string
-  annotations: DestructiveHintAnnotations & { openWorldHint?: boolean | null }
+  annotations: DestructiveHintAnnotations
   grantHashes?: ConnectorGrantHashes
+  isAlwaysDefault?: boolean
 }): SendToolEntry {
   const { annotations } = input
   const hasAlwaysAskName = hasAlwaysAskToolName(
@@ -454,14 +450,14 @@ export function buildConnectorApprovalEntry(input: {
       }
       : null
   }
-  const isAutoRunnable = annotations.readOnlyHint === true
+  const isRead = annotations.readOnlyHint === true
     && annotations.destructiveHint !== true
     && !hasAlwaysAskName
 
   return {
     descriptor: {
       family: 'connector',
-      access: isAutoRunnable ? 'read' : 'write',
+      access: isRead ? 'read' : 'write',
       toolName: input.exposedName,
       connectorId: input.connectorId,
       definitionHash: input.definitionHash,
@@ -473,17 +469,10 @@ export function buildConnectorApprovalEntry(input: {
     ),
     taint: 'connector',
     readSource: connectorReadSource(input.connectorId),
-    alwaysGrant: isAutoRunnable
-      ? {
-        definitionHash: input.definitionHash,
-        connectorId: input.connectorId,
-        toolName: input.exposedName,
-      }
-      : null,
-    alwaysGrantWhenTainted: annotations.openWorldHint === false,
     userGrants: {
       always: toGrant(input.grantHashes?.always),
       chat: toGrant(input.grantHashes?.chat),
+      ...(input.isAlwaysDefault ? { isAlwaysDefault: true } : {}),
     },
     connector: {
       id: input.connectorId,
@@ -495,29 +484,21 @@ export function buildConnectorApprovalEntry(input: {
 
 /**
  * Which of the user's own grants let a call run without asking: `chat` for
- * rule 7, `always` for rule 6 when the grant passed in was the user's (not
- * the send's own read-only grant). Null when no user grant decided it.
+ * rule 7, `always` for rule 6 (a connector "always" grant or a Besidka tool
+ * set to Always allow). Null when no grant decided it.
  */
 function userGrantScopeOf(
   decision: ToolApprovalDecision,
-  autoGrant: ToolApprovalGrant | null,
 ): ToolGrantScope | null {
   if (decision.rule === 7) {
     return 'chat'
   }
 
-  return decision.rule === 6 && !autoGrant ? 'always' : null
+  return decision.rule === 6 ? 'always' : null
 }
 
 function denied(reason: ToolApprovalDenialReason): ToolApprovalStatus {
   return { type: 'denied', reason }
-}
-
-const UNTRUSTED_OUTPUT_DECISION: ToolApprovalDecision = {
-  status: { type: 'user-approval', reason: 'untrusted-output' },
-  reason: 'untrusted-output',
-  rememberOptions: ['once'],
-  rule: 2,
 }
 
 interface ClearedCall {
@@ -539,8 +520,11 @@ function toInputJson(input: unknown): string {
  * name and canonical input and used up by the first `execute` that checks
  * it (connector tools and the native writes `guardNativeWrites` wraps refuse
  * any call that is not cleared), and the taint and read source its
- * result brings are recorded right away, so a later call in the same step
- * is decided with them (a connector read next to an artifact write asks).
+ * result brings are recorded in the live state right away, for the turn
+ * record and the next step. Every call of one step is judged against the
+ * state at the start of that step (`decisionStateFor`), because none of
+ * them can see a sibling's result; only a provider-run call counts within
+ * its step.
  * A call that needs approval is kept by its tool call id until the stream
  * pairs it with the SDK's approval id. A call the user approved is marked
  * with `markApprovedByUser` (the continuation, L5, does this before the SDK
@@ -583,13 +567,62 @@ export function createSendToolApproval(input: {
   const pendingDecisions = new Map<string, PendingToolApprovalDecision>()
   const grantedCalls = new Map<string, ToolGrantScope>()
 
-  function recordRun(entry: SendToolEntry): void {
+  let stepMessages: unknown
+  let stepState: ApprovalState | null = null
+
+  /**
+   * The state the calls of the current model step are judged against: the
+   * send's taint and read sources as they stood when the step began. The
+   * SDK hands every call of one step the same `messages` array and runs the
+   * step's own calls only after it decided all of them, so no call can see
+   * a sibling's result. A call that arrives without `messages` is judged
+   * against the live state.
+   */
+  function decisionStateFor(messages: unknown): ApprovalState {
+    if (messages === undefined || messages !== stepMessages || !stepState) {
+      stepMessages = messages
+      stepState = {
+        taint: new Set(state.taint),
+        readSources: new Set(state.readSources),
+        toolReadSources: state.toolReadSources,
+        counters: state.counters,
+      }
+    }
+
+    return stepState
+  }
+
+  function recordInto(target: ApprovalState, entry: SendToolEntry): void {
+    if (entry.taint) {
+      recordTaint(target, entry.taint)
+    }
+
+    if (entry.readSource) {
+      recordRead(target, entry.readSource)
+    }
+  }
+
+  /**
+   * Records what a call that runs brings into the live state, which the
+   * turn record, the egress guard and the next step read. A provider-run
+   * call is also recorded into the current step's state: the provider ran
+   * it while the model was still writing, so later calls of the same step
+   * may already hold its result.
+   */
+  function recordRun(
+    entry: SendToolEntry,
+    options: { isSeenInStep?: boolean } = {},
+  ): void {
     if (entry.taint) {
       recordTaint(state, entry.taint)
     }
 
     if (entry.readSource) {
       recordToolRead(state, entry.readSource)
+    }
+
+    if (options.isSeenInStep && stepState) {
+      recordInto(stepState, entry)
     }
 
     if (entry.descriptor.family === 'connector') {
@@ -602,10 +635,11 @@ export function createSendToolApproval(input: {
   }
 
   function toolApproval(
-    options: { toolCall: ToolApprovalCall },
+    options: { toolCall: ToolApprovalCall, messages?: unknown },
   ): ToolApprovalStatus {
     const { toolCall } = options
     const entry = entries.get(toolCall.toolName)
+    const decisionState = decisionStateFor(options.messages)
 
     if (!entry) {
       return denied('missing-tool')
@@ -618,7 +652,7 @@ export function createSendToolApproval(input: {
     }
 
     if (toolCall.providerExecuted === true) {
-      recordRun(entry)
+      recordRun(entry, { isSeenInStep: true })
 
       return 'not-applicable'
     }
@@ -636,29 +670,17 @@ export function createSendToolApproval(input: {
       return 'not-applicable'
     }
 
-    const isGrantUsable = state.taint.size === 0
-      || entry.alwaysGrantWhenTainted
-      || (
-        entry.descriptor.family === 'besidka'
-        && !isTaintedForBesidka(entry.descriptor, state)
-      )
-    const areUserGrantsUsable = entry.descriptor.access !== 'read'
-      || isGrantUsable
-    const userGrants = areUserGrantsUsable ? entry.userGrants : undefined
-    const autoGrant = isGrantUsable ? entry.alwaysGrant : null
-    const resolved = resolveToolApproval({
+    const decision = resolveToolApproval({
       descriptor: entry.descriptor,
-      state,
+      state: decisionState,
       permissionMode: entry.permissionMode ?? 'ask',
-      alwaysGrant: autoGrant ?? userGrants?.always ?? null,
-      chatGrant: userGrants?.chat ?? null,
+      alwaysGrant: entry.userGrants?.always ?? null,
+      chatGrant: entry.userGrants?.chat ?? null,
     })
-    const grantScope = userGrantScopeOf(resolved, autoGrant)
-    const decision = entry.alwaysGrant
-      && !isGrantUsable
-      && resolved.reason === 'default'
-      ? UNTRUSTED_OUTPUT_DECISION
-      : resolved
+    const grantScope = decision.rule === 6
+      && entry.userGrants?.isAlwaysDefault
+      ? null
+      : userGrantScopeOf(decision)
 
     if (decision.status.type === 'denied') {
       return denied(decision.status.reason)
@@ -896,6 +918,10 @@ export function createSendToolApproval(input: {
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
     getGrantScope: toolCallId => grantedCalls.get(toolCallId) ?? null,
     listWithheldProviderTools,
+    recordConnectorOpened: (connectorId) => {
+      recordTaint(state, 'connector')
+      recordToolRead(state, connectorReadSource(connectorId))
+    },
   }
 }
 

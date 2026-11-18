@@ -1,6 +1,7 @@
 import { createMCPClient } from '@ai-sdk/mcp'
 import type { MCPClient } from '@ai-sdk/mcp'
 import {
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
   CONNECTOR_CLOSE_TIMEOUT_MS,
   CONNECTOR_CONNECT_TIMEOUT_MS,
   CONNECTOR_PARALLEL_CONNECTS,
@@ -86,6 +87,52 @@ export function createConcurrencyLimiter(
   }
 }
 
+function scopeNetLogger(
+  logger?: LoggerLike,
+  logsHost: boolean = true,
+): LoggerLike | undefined {
+  if (!logger) {
+    return undefined
+  }
+
+  return {
+    set(data) {
+      const net = (data.attributes as { net?: Record<string, unknown> }
+        | undefined)?.net
+
+      if (!net) {
+        return
+      }
+
+      const { host, ...withoutHost } = net
+
+      logger.set({
+        attributes: {
+          connectors: {
+            net: logsHost ? { ...withoutHost, host } : withoutHost,
+          },
+        },
+      })
+    },
+  }
+}
+
+function isToolCallRequest(init?: RequestInit): boolean {
+  if (typeof init?.body !== 'string') {
+    return false
+  }
+
+  try {
+    const message: unknown = JSON.parse(init.body)
+
+    return typeof message === 'object'
+      && message !== null
+      && (message as { method?: unknown }).method === 'tools/call'
+  } catch {
+    return false
+  }
+}
+
 /**
  * The `fetch` of one connector's MCP transport. Every request goes through
  * `safeFetch` with purpose `mcp` (https only, no private names, same-origin
@@ -95,20 +142,32 @@ export function createConcurrencyLimiter(
  * (the transport reads it as "no stream offered") and never leaves the
  * Worker, which keeps a send from holding one connection per connector open.
  * The legacy SSE transport needs its one `GET` stream, so it gets a session
- * deadline and size cap instead.
+ * deadline and size cap instead. With `largeCallResponses` (a send that
+ * forwards images to its model), a `tools/call` response on streamable HTTP
+ * may be up to `CONNECTOR_CALL_RESPONSE_MAX_BYTES` (8 MiB); every other
+ * request, and every request of a send without images, keeps the 1 MiB
+ * `mcp` default. The body is counted as it streams and cut at the cap.
  */
 export function createConnectorTransportFetch(
   transport: ConnectorTransport,
   createFetch: typeof createSafeFetch = createSafeFetch,
+  logger?: LoggerLike,
+  logsHost: boolean = true,
+  largeCallResponses: boolean = false,
 ): typeof fetch {
+  const netLogger = scopeNetLogger(logger, logsHost)
+
   if (transport === 'sse') {
     return createFetch('mcp', {
       timeoutMs: CONNECTOR_SSE_SESSION_TIMEOUT_MS,
       maxResponseBytes: CONNECTOR_SSE_SESSION_MAX_BYTES,
+      ...(netLogger ? { logger: netLogger } : {}),
     })
   }
 
-  const safeFetch = createFetch('mcp')
+  const safeFetch = netLogger
+    ? createFetch('mcp', { logger: netLogger })
+    : createFetch('mcp')
 
   return ((input: string | URL | Request, init?: RequestInit) => {
     const method = (init?.method ?? 'GET').toUpperCase()
@@ -117,6 +176,13 @@ export function createConnectorTransportFetch(
       return Promise.resolve(
         new Response(null, { status: HTTP_METHOD_NOT_ALLOWED }),
       )
+    }
+
+    if (largeCallResponses && isToolCallRequest(init)) {
+      return safeFetch(input, {
+        ...init,
+        maxResponseBytes: CONNECTOR_CALL_RESPONSE_MAX_BYTES,
+      } as RequestInit)
     }
 
     return safeFetch(input, init)
@@ -193,12 +259,17 @@ export function createConnectorClientHandle(input: {
   resolveAuth: ConnectorAuthResolver
   limiter: ConcurrencyLimiter
   logger?: LoggerLike
+  logsHost?: boolean
+  largeCallResponses?: boolean
   dependencies?: ConnectorClientDependencies
 }): ConnectorClientHandle {
   const createClient = input.dependencies?.createClient ?? createMCPClient
   const transportFetch = createConnectorTransportFetch(
     input.transport,
     input.dependencies?.createFetch,
+    input.logger,
+    input.logsHost,
+    input.largeCallResponses,
   )
   let clientPromise: Promise<ConnectorClient> | null = null
   let isClosed = false

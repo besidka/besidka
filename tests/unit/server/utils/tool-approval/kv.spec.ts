@@ -80,7 +80,6 @@ function pendingRecord(
       model: 'claude-haiku-4-5',
       gateway: null,
       reasoning: 'off',
-      toolNames: ['mcp__notion__create_page'],
       connectorIds: ['conn1'],
     },
     ...overrides,
@@ -226,6 +225,35 @@ describe('pending approval records', () => {
     expect(await getToolApproval(kv as never, APPROVAL_ID)).toEqual(record)
   })
 
+  it('reads back a record of a send that offered hundreds of tools',
+    async () => {
+      const kv = createFakeKv()
+      const record = pendingRecord({
+        snapshot: {
+          ...pendingRecord().snapshot,
+          toolNames: Array.from({ length: 372 }, (_value, index) => {
+            return `mcp__github__tool_${index}`
+          }),
+        } as ToolApprovalPendingRecord['snapshot'],
+      })
+
+      await putToolApproval(kv as never, APPROVAL_ID, record)
+
+      expect(await getToolApproval(kv as never, APPROVAL_ID))
+        .toMatchObject({ toolCallId: record.toolCallId })
+    })
+
+  it('refuses to write a record it could not read back', async () => {
+    const kv = createFakeKv()
+
+    await expect(putToolApproval(
+      kv as never,
+      APPROVAL_ID,
+      pendingRecord({ summary: 'x'.repeat(5000) }),
+    )).rejects.toMatchObject({ status: 500 })
+    expect(kv.put).not.toHaveBeenCalled()
+  })
+
   it('deletes only its own key', async () => {
     const kv = createFakeKv()
 
@@ -355,6 +383,24 @@ describe('turn records', () => {
 
     expect(await getToolApprovalTurn(kv as never, record.messagePublicId))
       .toBeNull()
+  })
+
+  it('refuses to write more than ten pending ids', async () => {
+    const kv = createFakeKv()
+    const record = {
+      ...turnRecord(),
+      pendingApprovalIds: Array.from(
+        { length: 11 },
+        (_value, index) => `approval_${index}xx`,
+      ),
+    }
+
+    await expect(putToolApprovalTurn(
+      kv as never,
+      record.messagePublicId,
+      record,
+    )).rejects.toMatchObject({ status: 500 })
+    expect(kv.put).not.toHaveBeenCalled()
   })
 
   it('deletes the turn record', async () => {

@@ -18,7 +18,20 @@
       </span>
     </div>
     <div
-      v-if="state.isDeepResearchModel && state.research && hasTopGroup"
+      v-if="state.isDeepResearchModel && state.research"
+      class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
+    />
+    <ChatInputToolsMenuSection
+      id="steps"
+      title="Steps"
+      :icon="STEPS_SECTION_ICON"
+      :is-highlighted="highlightedSection === 'steps'"
+    >
+      <ChatInputToolsMenuStepsSection />
+    </ChatInputToolsMenuSection>
+    <div
+      v-if="hasDividerAfterSteps"
       class="h-px mx-2 my-1 bg-base-content/10"
       data-testid="tools-menu-divider"
     />
@@ -196,7 +209,7 @@
         label="Connectors"
         hint="Let the model use your tools"
         icon="lucide:cable"
-        :badge="state.connectors.selectedIds.length || undefined"
+        :badge="connectorsBadge"
         data-testid="tools-action-connectors"
         @click="emit('open-connectors-picker')"
       />
@@ -255,11 +268,22 @@ const isReasoningSectionVisible = computed<boolean>(() => {
     && props.state.reasoning.mode !== 'none'
 })
 
+const connectorsBadge = computed<number | undefined>(() => {
+  return countSelectedConnectors(props.state.connectors) || undefined
+})
+
 const isAddSectionVisible = computed<boolean>(() => {
   return props.state.files.visible
     || props.state.skills?.visible === true
     || props.state.connectors?.visible === true
     || props.state.project.visible
+})
+
+const hasDividerAfterSteps = computed<boolean>(() => {
+  return hasTopGroup.value
+    || isReasoningSectionVisible.value
+    || props.state.webSearch.visible
+    || isAddSectionVisible.value
 })
 
 const hasDividerAfterTopGroup = computed<boolean>(() => {

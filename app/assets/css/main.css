@@ -43,7 +43,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-info: var(--color-sky-700);
   --color-info-content: var(--color-sky-100);
   --color-success: var(--color-emerald-700);
-  --color-success-content: var(--color-emerald-950);
+  --color-success-content: var(--color-emerald-50);
   --color-input-success: var(--color-emerald-600);
   --color-warning: var(--color-amber-700);
   --color-warning-content: var(--color-amber-100);
@@ -731,6 +731,20 @@ html body[data-studio-active][data-expand-sidebar]::before {
 
 .link-accent {
   color: var(--color-accent-text);
+}
+
+@utility btn-soft-selected {
+  --btn-bg: color-mix(
+    in oklab,
+    var(--btn-color, var(--color-base-content)) 16%,
+    var(--btn-soft-bg, var(--color-base-100))
+  );
+  --btn-border: color-mix(
+    in oklab,
+    var(--btn-color, var(--color-base-content)) 28%,
+    var(--btn-soft-bg, var(--color-base-100))
+  );
+  color: var(--btn-rest-fg, var(--btn-color, var(--color-base-content)));
 }
 
 @utility btn-ghost-legacy {

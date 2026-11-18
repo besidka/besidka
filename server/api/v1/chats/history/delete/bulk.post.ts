@@ -5,8 +5,11 @@ import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
   cleanupFilesOrphanedByChatDeletion,
+  deleteConnectorImagesOfDeletedChats,
   findChatsOriginFiles,
+  withoutConnectorImageFiles,
 } from '~~/server/utils/files/chat-deletion-cleanup'
+import { findChatsConnectorImageFiles } from '~~/server/utils/files/connector-images'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
@@ -69,9 +72,14 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  const originFiles = await findChatsOriginFiles(
+  const connectorImageFiles = await findChatsConnectorImageFiles(
+    db,
     chats.map(chat => chat.id),
     userId,
+  )
+  const originFiles = withoutConnectorImageFiles(
+    await findChatsOriginFiles(chats.map(chat => chat.id), userId),
+    connectorImageFiles,
   )
 
   await detachChatsFromMemory({
@@ -127,6 +135,13 @@ export default defineEventHandler(async (event) => {
       },
     })
   }
+
+  await deleteConnectorImagesOfDeletedChats(
+    db,
+    userId,
+    connectorImageFiles,
+    logger,
+  )
 
   await cleanupDocumentsForDeletedChats(db, {
     userId,

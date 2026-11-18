@@ -4,7 +4,28 @@ import {
 } from '#shared/utils/connectors-policy'
 
 const FALLBACK_SLUG = 'connector'
-const SHORT_LABEL_MAX_LENGTH = 3
+const COUNTRY_CODE_LENGTH = 2
+const SECOND_LEVEL_LABELS: ReadonlySet<string> = new Set([
+  'co',
+  'com',
+  'org',
+  'net',
+  'gov',
+  'edu',
+  'ac',
+  'or',
+  'ne',
+  'go',
+])
+const GENERIC_LABELS: ReadonlySet<string> = new Set([
+  'mcp',
+  'api',
+  'www',
+  'app',
+  'server',
+  'remote',
+  'gateway',
+])
 
 function sanitizeSlug(value: string): string {
   return value
@@ -22,30 +43,51 @@ export function isValidConnectorSlug(value: string): boolean {
 }
 
 /**
- * Base slug for a connector host: the second-to-last label, or the
- * third-to-last when the second-to-last has three characters or fewer and
- * another label exists (`mcp.example.co.uk` gives `example`).
+ * Base slug for a connector host: the label closest to the public suffix
+ * that is not a generic service label (`mcp.exa.ai` gives `exa`,
+ * `mcp.example.co.uk` gives `example`). A host made only of generic labels
+ * keeps its own last label.
  */
 export function deriveConnectorSlugBase(hostname: string): string {
   const labels = hostname.toLowerCase().split('.').filter(Boolean)
-  const secondToLast = labels.at(-2)
-  const thirdToLast = labels.at(-3)
-  let label = secondToLast ?? labels[0] ?? ''
-
-  if (
-    secondToLast !== undefined
-    && secondToLast.length <= SHORT_LABEL_MAX_LENGTH
-    && thirdToLast !== undefined
-  ) {
-    label = thirdToLast
-  }
-
+  const suffixLength = labels.length >= 3
+    && SECOND_LEVEL_LABELS.has(labels.at(-2)!)
+    && labels.at(-1)!.length === COUNTRY_CODE_LENGTH
+    ? 2
+    : 1
+  const nameLabels = labels.length > suffixLength
+    ? labels.slice(0, labels.length - suffixLength)
+    : labels
+  const specific = nameLabels.filter(label => !GENERIC_LABELS.has(label))
+  const label = specific.at(-1) ?? nameLabels.at(-1) ?? ''
   const slug = truncateSlug(
     sanitizeSlug(label),
     CONNECTOR_SLUG_MAX_LENGTH,
   )
 
   return slug || FALLBACK_SLUG
+}
+
+/**
+ * Base slug for a title a person or a catalog chose, or null when the title
+ * is empty after cleaning or looks like a host name, so the caller falls
+ * through to the next source.
+ */
+export function deriveConnectorSlugBaseFromTitle(
+  title: string | null | undefined,
+): string | null {
+  const trimmed = (title ?? '').trim()
+
+  if (!trimmed || (trimmed.includes('.') && !/\s/.test(trimmed))) {
+    return null
+  }
+
+  const slug = truncateSlug(
+    sanitizeSlug(trimmed),
+    CONNECTOR_SLUG_MAX_LENGTH,
+  )
+
+  return slug || null
 }
 
 /**

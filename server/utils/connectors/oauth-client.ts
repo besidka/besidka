@@ -17,6 +17,8 @@ const RANDOM_BYTES = 32
 const TOKEN_MAX_LENGTH = 16 * 1024
 const CLIENT_ID_MAX_LENGTH = 2048
 const NO_REDIRECTS = 0
+const REGISTRATION_ERROR_PATTERN = /^[a-z_]{1,64}$/
+const REDIRECT_NOT_ALLOWED_ERROR = 'invalid_redirect_uri'
 const TOKEN_ENDPOINT_AUTH_METHODS: readonly ConnectorTokenEndpointAuthMethod[]
   = ['none', 'client_secret_post', 'client_secret_basic']
 
@@ -114,6 +116,38 @@ function isAuthMethod(
 }
 
 /**
+ * Only the RFC 7591 error code, and only when it is a plain token, is
+ * logged or mapped: the description is attacker-controlled text and never
+ * leaves this function.
+ */
+function registrationFailure(
+  status: number,
+  body: JsonObject | null,
+  logger?: LoggerLike,
+) {
+  const errorCode = typeof body?.error === 'string'
+    && REGISTRATION_ERROR_PATTERN.test(body.error)
+    ? body.error
+    : 'unparsable'
+
+  logger?.set({
+    attributes: {
+      connectors: {
+        step: 'oauth-registration-refused',
+        status,
+        error: errorCode,
+      },
+    },
+  })
+
+  return createConnectorError(
+    errorCode === REDIRECT_NOT_ALLOWED_ERROR
+      ? 'CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED'
+      : 'CONNECTOR_OAUTH_REGISTRATION_FAILED',
+  )
+}
+
+/**
  * RFC 7591 dynamic client registration with the same metadata as the CIMD
  * document, asking for a public client. A server that answers with a
  * secret and `client_secret_basic` or `client_secret_post` is honored; the
@@ -148,7 +182,7 @@ export async function registerDynamicClient(input: {
   const body = await readJsonObject(response)
 
   if (!response.ok || !body) {
-    throw createConnectorError('CONNECTOR_OAUTH_REGISTRATION_FAILED')
+    throw registrationFailure(response.status, body, input.logger)
   }
 
   const clientId = body.client_id

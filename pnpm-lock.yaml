@@ -444,6 +444,9 @@ importers:
       '@fontsource/nunito':
         specifier: ^5.3.0
         version: 5.3.0
+      '@iconify-json/streamline-logos':
+        specifier: ^1.2.0
+        version: 1.2.0
       '@iconify-json/thesvg':
         specifier: ^1.2.11
         version: 1.2.11
@@ -2179,6 +2182,9 @@ packages:
 
   '@iconify-json/lucide@1.2.145':
     resolution: {integrity: sha512-eYBZipY6g4bbJNyKBAEq1wBy3mJ2jKtI4O2K30ArO2lMpVDOEuQfu5aDZhiimj1+Q/mIrn3ZxnDeX1BbILxkwQ==}
+
+  '@iconify-json/streamline-logos@1.2.0':
+    resolution: {integrity: sha512-eEMC8BvJTCUiR/xdAjKuJwRGnKV5v9Prp2wgONFLKILq1om/5Pz+EUsFXVqYSVeIAUfguaB2tjy1wM7wJbs0IQ==}
 
   '@iconify-json/thesvg@1.2.11':
     resolution: {integrity: sha512-8EzFRS5xPg23lVrdOXOIKdrkapaXF/E3SJLJZdba7WbywbDm/yRNInXdHPyuBJOLEoHM9hEIn1EFwKsxvzE1OA==}
@@ -12948,6 +12954,10 @@ snapshots:
   '@humanwhocodes/retry@0.4.3': {}
 
   '@iconify-json/lucide@1.2.145':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/streamline-logos@1.2.0':
     dependencies:
       '@iconify/types': 2.0.0
 

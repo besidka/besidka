@@ -279,7 +279,7 @@
             class="mt-2 border-t border-base-300 pt-2"
           >
             <NuxtLink
-              to="/profile/connectors"
+              :to="manageConnectorsLink"
               class="chat-context-row min-h-11 text-sm"
               data-testid="chat-context-manage-connectors"
               @click="close"
@@ -462,6 +462,17 @@ const hasManageConnectorsLink = computed<boolean>(() => {
     && data.value.used.some((item) => {
       return item.kind === 'connector'
     })
+})
+
+const manageConnectorsLink = computed<string>(() => {
+  const connectorIds = new Set((data.value?.used ?? [])
+    .filter(item => item.kind === 'connector' && item.meta?.connectorId)
+    .map(item => item.meta!.connectorId!))
+  const [connectorId] = connectorIds
+
+  return connectorIds.size === 1 && connectorId
+    ? `/chats/connectors?connector=${encodeURIComponent(connectorId)}`
+    : '/chats/connectors'
 })
 
 const visibleGroups = computed<ContextGroup[]>(() => {

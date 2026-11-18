@@ -15,14 +15,14 @@ default shows as a tile at the start of the attachments row.
 | Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue`, `InlineButton.vue` |
 | Animated show/hide wrapper | `ToolsMenu/Reveal.vue` |
 | Reveal guard and focus rescue | `app/composables/reveal-guard.ts`, `app/composables/tools-menu-focus-rescue.ts` |
-| Web search and reasoning sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` |
+| Web search, reasoning and steps sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` (the level control and its default caption only), `ToolsMenu/StepsSection.vue` (Show steps expanded and Auto-hide when done) |
 | A setting tile | `app/components/ChatInput/SettingTile.vue` |
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
 | "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
 | "Add skill" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/SkillPicker.client.vue` (below, `docs/skills.md` section 10.5) |
 | Types | `app/types/chat-input-tools.d.ts` |
-| Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
+| Reasoning and steps icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `STEPS_SECTION_ICON`, `STEPS_EXPANDED_ICON`, `STEPS_AUTO_HIDE_ICON`) |
 
 `ChatInput.client.vue` builds one `ChatInputToolsState` object. The menu and
 the tile builder only read it; every change goes back through ChatInput's
@@ -53,12 +53,12 @@ and project pickers (`sheet-safe-padding`) and the text file sheet.
 The menu opens above the composer (a popover above "+", a bottom sheet below
 md), so the rows nearest the trigger are the cheapest to reach. The order is
 therefore, top to bottom: the deep-research note (research models only),
-**Use memory**, Create image and Run code (the rarely used toggles), then
+**Steps** (always shown, see "Steps section"), **Use memory**, Create image and Run code (the rarely used toggles), then
 **Reasoning**, **Web search**, and the **Add** section last (Attach files, Add
 from library, Generated images, Add artifact, Add skill, Project). It used to
 run the other way, with Add on top and memory at the bottom, which put the
 rows people use on every message farthest from the thumb. Dividers separate
-the groups (memory/image/code, Reasoning, Web search, Add) and render only
+the groups (Steps, memory/image/code, Reasoning, Web search, Add) and render only
 when something visible sits on the other side, so a missing group never
 leaves a double divider.
 
@@ -238,8 +238,9 @@ resolves to the product default, Off.
 - The Reasoning section offers "Save X as default" as an inline link in a
   fixed-height caption under the level segments (see "Reasoning caption").
   Saving calls `setDefaultReasoningLevel(level)` and the tile disappears.
-- "Show steps expanded" and "Auto-hide when done" are hidden until they can
-  act (see "Hidden rows and animated reveals").
+- "Auto-hide when done" is hidden until it can act (see "Hidden rows and
+  animated reveals"). "Show steps expanded" is not in the Reasoning section any
+  more (see "Steps section").
 - The web search selection does not need the same guard (checked
   2026-10-27). `webSearchProviderOptions` is rebuilt as a new but equal array
   on every preference-storage write, and the tools watcher re-filters
@@ -250,6 +251,36 @@ resolves to the product default, Off.
   saved Brave or Exa choice). The ChatInput unit tests rebuild equal options
   in the same flush as a preference write and as a provider pick, and both
   keep the selection.
+
+## Steps section
+
+The collapsible block in an assistant message started as "reasoning steps" and
+now lists every progress step: reasoning, web searches, skills, connector calls
+and Besidka tools. It shows even when reasoning is Off, so its two settings no
+longer live in the Reasoning section, where they were hidden with reasoning
+Off. They have their own **Steps** section (`ToolsMenu/StepsSection.vue`),
+directly above Use memory and always rendered, whatever the model and the
+reasoning level:
+
+- **Show steps expanded** is always visible.
+- **Auto-hide when done** reveals (the same `Reveal` animation) only while
+  Show steps expanded is on, because collapsing a block that was never opened
+  does nothing.
+- `/profile/preferences` has a matching **Steps** card, apart from the
+  Reasoning card. There Auto-hide is always enabled, and its description says
+  it applies when steps are shown expanded.
+
+Naming: the code calls these `stepsExpanded` and `stepsAutoHide`
+(`useUserSetting()`, `setStepsExpanded`, `setStepsAutoHide`, the Drizzle
+properties of `user_settings`). The SQL columns are still `reasoning_expanded`
+and `reasoning_auto_hide`: the schema names them explicitly, `db:generate`
+produces nothing for the rename, and renaming a column would rebuild
+`user_settings` (see the D1 migration safety section of `CLAUDE.md`). The
+public HTTP fields (`reasoningExpanded`, `reasoningAutoHide` on
+`/api/v1/profiles/settings`), the MCP `get_settings` and `update_settings`
+fields and the local storage keys (`settings_reasoning_expanded`,
+`settings_reasoning_auto_hide`, listed in the Cookie Policy) keep their names
+for compatibility; the server and `useUserSetting` map between them.
 
 ## Design: controls appear only when they can act
 
@@ -281,8 +312,7 @@ mitigated by the 160 ms animation and the 400 ms reveal guard.
 |---|---|
 | Exa depth | Exa is the selected provider |
 | Web search Auto | Auto is available and a provider is selected (search is not Off) |
-| Show steps expanded | reasoning is not Off |
-| Auto-hide when done | reasoning is not Off and steps are expanded |
+| Auto-hide when done | steps are expanded (the reasoning level does not matter) |
 
 The popover (above "+") and the mobile sheet are bottom-anchored, so any row
 that is inserted pushes everything above it, including the control just
@@ -384,8 +414,8 @@ later open are not guarded either.
   name), `providerId` or `iconComponent` (a component name such as
   `SvgoThinkLow`); the icon inherits the segment's text color, so it follows
   the checked, hover and disabled states with no extra rules.
-- Every titled section header has an icon left of the title: Add
-  `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the
+- Every titled section header has an icon left of the title: Steps
+  `lucide:list-checks`, Add `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the
   icon the High level uses; it is an SVGO component, so `Section` takes both
   `icon` for an Iconify name and `iconComponent`). Only the allowed icon
   prefixes of `docs/nuxt-icon-collections.md` are used. The header is one
@@ -432,8 +462,8 @@ later open are not guarded either.
 - Reasoning level segments carry the per-level think icons
   (`SvgoThinkOff|Low|Medium|High`; a toggle-mode model gets Off and the one
   level's icon on "On").
-- The groups are separated by one divider each (memory and the other toggles,
-  Reasoning, Web search, then Add; see "Row order"). A divider renders only
+- The groups are separated by one divider each (Steps, memory and the other
+  toggles, Reasoning, Web search, then Add; see "Row order"). A divider renders only
   when something above it and something below it is visible, so a missing
   group never leaves a double divider.
 
@@ -489,23 +519,94 @@ or without a command.
 ## Connectors row (connectors layer C-5)
 
 The Add section has one more row, "Connectors" (`tools-action-connectors`,
-after "Add skill"), shown only when the `connectors` flag is on, the user has
-at least one connector that is on and connected (or drifted), the model can
-call tools, and the send is not a deep research or image generation send. The
-badge is the number of connectors on in this chat. It emits
-`open-connectors-picker`, which opens `ChatInput/ConnectorPicker.client.vue`:
-a dialog with a toggle per connector (title, host as plain text, a `badge
-badge-soft` when it is `drifted`), at most five on, and a "Manage connectors"
-link to `/profile/connectors`. Connectors are never listed inline in the menu.
+after "Add skill"), shown whenever the `connectors` flag is on, the model can
+call tools, and the send is not a deep research or image generation send. It
+does not need an existing connector, so an account with none can still reach
+it to add one (BES-249). The badge is the number of Manual connectors turned on
+in this chat, the same number as the "Connectors" tile
+(`countSelectedConnectors` in `app/utils/chat-input-tiles.ts`, one helper for
+both). Besidka, Auto and Always on connectors never count, and with zero there
+is no badge. It emits `open-connectors-picker`, which
+opens `ChatInput/ConnectorPicker.client.vue`: a dialog with, from the top,
+"Browse connectors" (only with the `connectors.registry` flag, opens the
+Discover tab of `/chats/connectors?tab=discover`) and
+"Manage connectors" (`/chats/connectors`), the Besidka row when that feature
+is active, a toggle per connector (title, host as plain text, a `badge
+badge-soft` when it is `drifted`), at most five on, and the limit hint ("A
+message can use up to 5 connectors, Auto ones included": that is
+`CONNECTORS_PER_SEND`. Manual connectors that are on in the chat and Always on
+connectors fill it first, and the Auto connectors the model opens during the
+send (`use_connector`) share what is left, `docs/connectors.md` section 6.3).
+With no
+connector it shows "No connectors yet" and a primary "Add a connector" link
+(`/chats/connectors?add=presets`); a skeleton shows until the list has
+loaded. Connectors are never listed inline in the menu.
+
+**Connected connectors that are off (BES-249).** The picker lists every
+connected (`ready` or `drifted`) connector, also one whose "Use in chats" is
+off on `/chats/connectors`; without that the user had to leave the chat to
+turn a new connector on. Those rows sit in a "Not turned on" group under the
+enabled ones (`connector-picker-disabled-group`, `useComposerConnectors().
+disabledItems`; `items` is unchanged, so the tile, the cap, the suggestion
+chip and the bulk buttons only ever see enabled connectors). Each shows the
+host and the mode (`connector-picker-mode-<slug>`); the heading says it is off.
+The row has a toggle when the connector can be enabled under the same rules
+as the detail panel and the `PATCH /api/v1/connectors/[id]` route: status
+`ready`, a current consent and a reviewed tool list (`getConnectorEnableBlock`,
+`tools.isBaselined`). Otherwise it has a link to
+`/chats/connectors?connector=<id>` that closes the picker: "Review tools" for
+a changed or never reviewed list, "Connect" for a consent or sign-in that is
+not current. Turning the toggle on enables the connector for the account (not
+only this chat), awaits the list refresh, and then, for a Manual connector
+with room under the five-per-send cap, also selects it for this chat; Auto
+and Always on connectors are available as soon as they are enabled. A
+refusal from the route is shown as an error toast and the list is reloaded.
+Switching it off afterwards in the picker is per chat only; turning the
+connector off for the account stays on the Connectors page. The list is
+reloaded every time the picker opens (`openConnectorPicker` in
+`ChatInput.client.vue`), keeping the cached rows on screen, so a connector
+added or changed in another tab shows up without a page reload.
 
 The choice is per chat. On an existing chat each toggle saves at once through
 `PUT /api/v1/chats/[slug]/connectors` and rolls back on failure; on
 `/chats/new` it is held in client state and handed to the new chat's slug
 before navigation. The send body carries `connectorIds` (only while the flag
 is on and the choice is known), which the server stores as the chat's choice.
-The tile "N connectors" shows while any is on, and its remove button turns
-them all off. Hiding the row (image mode, a model without tool calling) does
+The tile "Connectors" shows while any is on: with exactly one on its value is
+that connector's title (cut by the tile's own truncation), with two or more it
+is the count; Besidka tools never count toward it. Its remove button turns
+them all off. With two or more selectable connectors the picker also has
+"Turn all on" and "Turn all off" (`planTurnAllOn` in
+`app/composables/composer-connectors.ts`): all on keeps what is already on,
+then adds the rest in list order up to the five-per-send cap, and a notice
+("5 of 7 are on. At most 5 can be on at once.") says so when some stayed off;
+each button is disabled when it cannot change anything or while a save is
+running. Hiding the row (image mode, a model without tool calling) does
 not clear the choice. See `docs/connectors.md` section 6.1.
+
+### Tool mode and the "Turn it on?" chip (C-15)
+
+Each connector row in the picker shows its tool mode after the host
+("mcp.notion.com · Auto" or "· Always on", `connector-picker-mode-<slug>`).
+The mode is set on `/chats/connectors`, never in the picker: Auto lists the
+connector's tools in the tool index for the model to load, Always on sends
+them with every message as far as they fit (`docs/connectors.md` section
+6.2).
+
+Above the composer, next to the approval chip, `ChatInput/ConnectorSuggestion`
+asks "Notion is off in this chat. Turn it on?" with Turn on and Not now when
+the text the user is typing, or the message they just sent, names a connector
+that is on in the app but off in this chat (`findMentionedConnector` in
+`app/utils/connector-mention.ts`: whole words, the title of at least 3
+characters, the host or its main label). It waits until the library and the
+chat's stored choice have loaded, and shows only while the Connectors row
+could show. Turn on calls the picker's own toggle, so the per-chat save and
+the five-connector cap apply (at the cap the button is disabled with a hint).
+Not now hides it for the page in component state; there is no storage key and
+no Cookie Policy row. Model output and tool results never trigger it, and
+neither does prefilled text: while the message holds a `chat-input:prefill`
+text (an artifact error, an earlier prompt), the chip stays hidden, even
+after edits, until the message is cleared or sent.
 
 ## Add key links in Web search
 

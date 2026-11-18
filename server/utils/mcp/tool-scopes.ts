@@ -33,6 +33,7 @@ export const MCP_PRIVATE_TOOL_SCOPES = {
   create_document: 'files:write',
   rename_file: 'files:write',
   delete_files: 'data:delete',
+  delete_connector_images: 'data:delete',
   list_memory: 'memory:read',
   add_memory: 'memory:write',
   update_memory: 'memory:write',

@@ -86,7 +86,7 @@ const skillsCategory: StorageCategoryDefinition = {
 
 /**
  * Every kind of data that counts against the one storage allowance. The
- * three file categories partition `files` by `source` and `type`, so their
+ * four file categories partition `files` by `source` and `type`, so their
  * sum equals the sum of `files.size`. A new feature adds one entry here and
  * one id to `StorageCategoryId`; the total, the quota guards and the
  * breakdown all derive from this list.
@@ -98,6 +98,7 @@ export const STORAGE_CATEGORIES: readonly StorageCategoryDefinition[] = [
     schema.files.type,
     'image/%',
   ))),
+  filesCategory('connectorImages', eq(schema.files.source, 'connector')),
   artifactsCategory,
   knowledgeCategory,
   skillsCategory,

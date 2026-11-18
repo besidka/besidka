@@ -284,8 +284,7 @@ export async function prepareSkillsForSend(input: {
     invocationBlock: invocationResult?.block ?? null,
     holdsSkillText: active !== null
       || projectSkills.block !== null
-      || invocationResult !== null
-      || catalogHoldsImportedText,
+      || invocationResult !== null,
     scriptCandidateSkillIds: [...new Set([
       ...toolSkills.map(skill => skill.id),
       ...(active?.activeSkillIds ?? []),

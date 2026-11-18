@@ -8,6 +8,7 @@ import { CHAT_CONTEXT_MAX_ITEMS_PER_GROUP } from '#shared/utils/chat-context'
 import type {
   ChatContextAccumulator,
   ChatContextArtifact,
+  ChatContextConnector,
   ChatContextMessage,
   ChatContextScope,
   ChatContextSection,
@@ -86,7 +87,7 @@ export function buildChatContext(
     sections?: readonly ChatContextSection[]
     truncated?: boolean
     artifacts?: ReadonlyMap<string, ChatContextArtifact>
-    connectors?: ReadonlyMap<string, string> | null
+    connectors?: ReadonlyMap<string, ChatContextConnector> | null
   },
 ): ChatContextItems {
   const sections = (options.sections ?? CHAT_CONTEXT_SECTIONS)

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as schema from '~~/server/db/schema'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
 import {
   createMemoryExtractionTestDb,
@@ -196,21 +197,66 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect((await failureOf(request(connectorId))).status).toBe(401)
   })
 
-  it('does not fetch for a connector without current consent or not connected', async () => {
+  it('does not fetch for a connector whose consent was withdrawn', async () => {
     const withdrawn = await addConnector({
       consentWithdrawnAt: new Date(Date.now() + 1000),
     })
+    const response = await request(withdrawn)
+
+    expect(response.status).toBe(404)
+    expect(response.headers.get('cache-control')).toBe('private, max-age=3600')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('serves an icon before the connector is connected, from the host only', async () => {
     const needsAuth = await addConnector({ status: 'needs-auth' })
     const unconsented = await addConnector({ consentedAt: null })
 
-    for (const connectorId of [withdrawn, needsAuth, unconsented]) {
-      const response = await request(connectorId)
-
-      expect(response.status).toBe(404)
-      expect(response.headers.get('cache-control')).toBe('private, max-age=3600')
+    for (const connectorId of [needsAuth, unconsented]) {
+      expect((await request(connectorId)).status).toBe(200)
     }
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    const urls = fetchMock.mock.calls.map((call) => {
+      return String((call as unknown[])[0] instanceof Request
+        ? ((call as unknown[])[0] as Request).url
+        : (call as unknown[])[0])
+    })
+
+    expect(urls.every(url => url.startsWith('https://mcp.notion.com/')))
+      .toBe(true)
+    expect(urls.join(' ')).not.toContain('top-secret')
+  })
+
+  it('uses the registry icons when the address is a directory entry', async () => {
+    const connectorId = await addConnector({ status: 'needs-auth' })
+
+    await testDb.db.insert(schema.mcpRegistryServers).values({
+      id: 'com.notion/mcp@1.0.0',
+      name: 'com.notion/mcp',
+      title: null,
+      description: 'Official Notion MCP server',
+      remoteUrl: 'https://mcp.notion.com/mcp?key=top-secret',
+      remoteType: 'streamable-http',
+      headerNames: [],
+      status: 'active',
+      registryUpdatedAt: new Date(0),
+      syncedAt: new Date(0),
+    })
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = input instanceof Request ? input.url : String(input)
+
+      if (url.includes('registry.modelcontextprotocol.io')) {
+        return Response.json({
+          server: { icons: [{ src: 'https://static.notion.so/logo.png' }] },
+        })
+      }
+
+      return url === 'https://static.notion.so/logo.png'
+        ? new Response(PNG_BYTES)
+        : new Response('missing', { status: 404 })
+    })
+
+    expect((await request(connectorId)).status).toBe(200)
   })
 
   it('answers a short 404 while another request is fetching', async () => {
@@ -227,10 +273,10 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('limits the icon route to 120 requests a minute per user', async () => {
+  it('limits the icon route to 300 requests a minute per user', async () => {
     const connectorId = await addConnector()
 
-    for (let index = 0; index < 120; index += 1) {
+    for (let index = 0; index < 300; index += 1) {
       expect((await request(connectorId)).status).toBe(200)
     }
 
@@ -241,7 +287,7 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
 
   describe('cleanup', () => {
     async function seedIconKeys(connectorId: string) {
-      await kv.put(`connectors:icon:${connectorId}`, 'x')
+      await kv.put(`connectors:icon:v2:${connectorId}`, 'x')
       await kv.put(`connectors:icon-sources:${connectorId}`, 'x')
     }
 
@@ -290,8 +336,10 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect(response.status).toBe(404)
     expect(response.headers.get('cache-control')).toBe('private, max-age=3600')
 
+    const callsAfterFirst = fetchMock.mock.calls.length
+
     await request(connectorId)
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterFirst)
   })
 })

@@ -372,7 +372,7 @@ describe('private MCP connector tools', () => {
           host: 'mcp.example.com',
           status: 'needs-auth',
           enabled: false,
-          manageUrl: 'https://besidka.com/profile/connectors',
+          manageUrl: 'https://besidka.com/chats/connectors',
         })
         expect(JSON.stringify(result)).not.toContain('top-secret-key')
         expect(fetchSpy).not.toHaveBeenCalled()
@@ -625,6 +625,10 @@ describe('private MCP connector tools', () => {
       await expect(updateMcpConnectorTools(context(), {
         id: connector.id,
         tools: [{ name: 'search' }],
+      })).rejects.toMatchObject({ status: 400 })
+      await expect(updateMcpConnectorTools(context(), {
+        id: connector.id,
+        tools: [{ name: 'create', mode: 'allow' } as never],
       })).rejects.toMatchObject({ status: 400 })
 
       const settings = await listConnectorToolSettings(

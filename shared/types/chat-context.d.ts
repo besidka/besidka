@@ -36,6 +36,7 @@ export interface ChatContextItemMeta {
   documentFormat?: DocumentFormat
   tool?: string
   outcome?: ChatContextConnectorOutcome
+  connectorId?: string
 }
 
 export interface ChatContextItem {

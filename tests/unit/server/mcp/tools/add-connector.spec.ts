@@ -98,7 +98,7 @@ describe('add_connector tool', () => {
       host: 'mcp.example.com',
       status: 'needs-auth',
       enabled: false,
-      manageUrl: 'https://besidka.com/profile/connectors',
+      manageUrl: 'https://besidka.com/chats/connectors',
     })
   })
 
@@ -149,7 +149,7 @@ describe('add_connector tool', () => {
         host: 'mcp.example.com',
         status: 'needs-auth',
         enabled: false,
-        manageUrl: 'https://besidka.com/profile/connectors',
+        manageUrl: 'https://besidka.com/chats/connectors',
       })
       expect(mocks.logger.set).toHaveBeenCalledWith({
         mcp: {

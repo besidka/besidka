@@ -598,6 +598,34 @@
     {
       "annotations": {
         "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Permanently delete every image your connectors returned in chats (for example screenshots) that Besidka kept with those chats. They are not in your file library and count toward your storage. The chats stay; their steps show the images as deleted. Up to 270 images are deleted per call: when hasMore is true, call again. Requires signing in (data:delete).",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be true. Only set it after the user agreed to delete every connector image",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "delete_connector_images",
+      "public": false,
+      "requiredScopes": [
+        "data:delete"
+      ],
+      "title": "Delete connector images"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false

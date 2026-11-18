@@ -683,7 +683,6 @@ dark (WCAG ratio computed from Tailwind's OKLCH values).
 | Theme | Token | App value | Artifact value | Why |
 | --- | --- | --- | --- | --- |
 | light | `secondary` / content | white / stone-800 | stone-500 / white (4.8:1, 4.8:1) | white on a white page was 1.0:1 |
-| light | `success-content` | emerald-950 | white (5.4:1) | dark green on dark green was 2.8:1 |
 | dark | `primary` / content | stone-800 / stone-100 | stone-100 / stone-800 (13.9:1) | equal to the page |
 | dark | `secondary` / content | stone-100 / stone-800 | stone-400 / stone-950 (7.6:1, 5.9:1) | was identical to the inverted primary (BES-337) |
 | dark | `neutral` / content | stone-800 / stone-100 | stone-500 / white (4.8:1, 3.2:1) | equal to the page, then 1.5:1 as stone-700 |

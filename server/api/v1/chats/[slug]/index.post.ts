@@ -5,6 +5,7 @@ import type {
   UIMessageChunk,
   LanguageModelUsage,
   ModelMessage,
+  ToolSet,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { GatewayProvider } from '@ai-sdk/gateway'
@@ -343,25 +344,51 @@ import {
   resolveSkillSelection,
 } from '~~/server/utils/skills/jev/selection'
 import {
+  CONNECTORS_PER_SEND,
   CONNECTORS_PER_USER,
+  canForwardConnectorImages,
+  resolveConnectorToolMode,
+  CONNECTOR_SSE_PER_SEND,
   CONNECTOR_STEPS_PER_TURN,
   CONNECTOR_TOOLS_PER_REQUEST,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
 import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import {
+  isToolIndexLoadToolName,
+  TOOL_INDEX_CATALOG_STEPS,
+  TOOL_INDEX_LOAD_STEPS,
+  TOOL_INDEX_RESERVED_BYTES,
+  TOOL_INDEX_RESERVED_TOOLS,
+} from '#shared/utils/tool-index'
+import {
+  createToolIndex,
+  fitUpFrontTools,
+  keepsFixedToolList,
+  selectFixedToolListEntries,
+} from '~~/server/utils/ai/tool-index'
+import { matchToolIndexEntries } from '~~/server/utils/ai/tool-index-prefetch'
+import type { ToolIndex } from '~~/server/utils/ai/tool-index'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
 import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
+import {
+  hasSignedAnthropicReasoning,
+  withAnthropicThinkingBinding,
+} from '~~/server/utils/ai/anthropic-thinking-binding'
+import type {
+  AnthropicThinkingOption,
+} from '~~/server/utils/providers/anthropic'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
   auditConnectorCall,
   createConnectorArgsHasher,
 } from '~~/server/utils/connectors/audit'
 import {
-  listChatConnectorIds,
+  listChatConnectorStates,
   persistChatConnectorSelection,
-  resolveConnectorSelection,
+  planSendConnectors,
 } from '~~/server/utils/connectors/chat-selection'
 import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
 import {
@@ -370,6 +397,19 @@ import {
   getConnectorTools,
 } from '~~/server/utils/connectors/send-tools'
 import type { ConnectorToolsRun } from '~~/server/utils/connectors/send-tools'
+import {
+  createConnectorImageSaver,
+  linkConnectorImagesToMessage,
+} from '~~/server/utils/connectors/image-saver'
+import { collectConnectorImageFileIds } from '#shared/utils/connector-image-parts'
+import type { ConnectorImageSaver } from '~~/server/utils/connectors/image-saver'
+import {
+  attachKeptConnectorImages,
+  keptConnectorImageLineIndexes,
+  loadKeptConnectorImages,
+} from '~~/server/utils/connectors/kept-images'
+import type { KeptConnectorImages } from '~~/server/utils/connectors/kept-images'
+import { withConnectorImageParts } from '~~/server/utils/connectors/image-parts-stream'
 import {
   listConnectors,
   settleConnectorToolCall,
@@ -445,6 +485,8 @@ const chatSendBodySchema = z.object({
     .default(DEFAULT_EXA_SEARCH_LEVEL),
   webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
   connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
+    .optional(),
+  offConnectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
     .optional(),
   besidkaToolsEnabled: z.boolean().optional(),
   messages: z.array(incomingUserMessageSchema).length(1),
@@ -1255,6 +1297,7 @@ export default defineEventHandler(async (event) => {
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
+  let anthropicThinkingBinding: AnthropicThinkingOption | undefined
   const providerOptions: SharedV2ProviderOptions = {}
   let generatedImage: {
     modelId: string
@@ -1391,6 +1434,7 @@ export default defineEventHandler(async (event) => {
             tools: anthropicTools,
             providerOptions: anthropicProviderOptions,
             reasoning: anthropicReasoning,
+            thinkingBinding,
           } = await useAnthropic(
             session.user.id,
             model.id,
@@ -1401,6 +1445,7 @@ export default defineEventHandler(async (event) => {
           instance = anthropicInstance
           parsedTools = anthropicTools
           reasoningEffort = anthropicReasoning
+          anthropicThinkingBinding = thinkingBinding
           Object.assign(providerOptions, {
             anthropic: anthropicProviderOptions,
           })
@@ -2096,7 +2141,20 @@ export default defineEventHandler(async (event) => {
     useRuntimeConfig().encryptionKey,
   )
   let connectorsRun: ConnectorToolsRun | null = null
+  let connectorImageSaver: ConnectorImageSaver | null = null
+  let keptConnectorImages: KeptConnectorImages | null = null
+  const forwardsConnectorImages = canForwardConnectorImages({
+    gatewayId,
+    providerId: provider?.id,
+    inputModalities: model ? getModelInputModalities(model) : null,
+  })
   let besidkaToolsRun: PreparedBesidkaChatTools | null = null
+  let toolIndex: ToolIndex | null
+  const toolIndexReserve = {
+    tools: TOOL_INDEX_RESERVED_TOOLS + 1,
+    bytes: TOOL_INDEX_RESERVED_BYTES,
+  }
+  const nativeToolCount = Object.keys(parsedTools.tools ?? {}).length
   let toolApprovalSecret: string | undefined
   let resumeDecisions: ContinuationDecision[] = []
   let resumedStoredMessage: UIMessage | null = null
@@ -2118,7 +2176,8 @@ export default defineEventHandler(async (event) => {
         chatPublicId: chat.id,
         chatSlug: params.data.slug,
         requestedEnabled: isResume ? undefined : sendBody.besidkaToolsEnabled,
-        existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+        existingToolCount: nativeToolCount,
+        reserve: toolIndexReserve,
         consumeClearedCall: toolApprovalSend.consumeClearedCall,
         guard: chatSearchBudget,
         logger: aiLogger,
@@ -2133,84 +2192,207 @@ export default defineEventHandler(async (event) => {
     }
 
     if (sendFeatures.isFeatureActive('connectors')) {
-      const requestedConnectorIds = sendBody.connectorIds
-        ?? await listChatConnectorIds(db, userId, chat.id)
+      const storedStates = await listChatConnectorStates(db, userId, chat.id)
+      const userConnectors = await listConnectors(db, userId)
+      const knownConnectorIds = new Set(userConnectors.map((connector) => {
+        return connector.id
+      }))
 
-      if (requestedConnectorIds.length > 0 || sendBody.connectorIds) {
-        const userConnectors = await listConnectors(db, userId)
-        const selection = resolveConnectorSelection(
-          userConnectors,
-          requestedConnectorIds,
-        )
+      if (resume && forwardsConnectorImages) {
+        keptConnectorImages = await loadKeptConnectorImages({
+          db,
+          userId,
+          chatPublicId: chat.id,
+          parts: resume.assistant.parts,
+          connectorTitles: new Map(userConnectors.map((connector) => {
+            return [connector.slug, connector.title]
+          })),
+          logger: aiLogger,
+        })
+      }
+      const offConnectorIds = (!isResume && sendBody.offConnectorIds)
+        ? sendBody.offConnectorIds.filter((connectorId) => {
+          return knownConnectorIds.has(connectorId)
+        })
+        : storedStates.offIds
+      const onConnectorIds = sendBody.connectorIds ?? storedStates.onIds
+      const plan = planSendConnectors({
+        connectors: userConnectors,
+        onIds: onConnectorIds,
+        offIds: offConnectorIds,
+      })
+      const selection = plan.live
 
-        if (sendBody.connectorIds && !isResume) {
-          try {
-            await persistChatConnectorSelection(db, {
-              userId,
-              chatPublicId: chat.id,
-              selectedIds: selection.selected.map(connector => connector.id),
-            })
-          } catch (exception) {
-            aiLogger.set({
-              attributes: {
-                connectors: {
-                  selectionPersist: 'failed',
-                  error: exceptionMessage(exception),
-                },
-              },
-            })
-          }
-        }
-
-        if (selection.selected.length > 0 && !toolCallingAllowed) {
-          connectorNotices.push('Connectors are off for this message.')
-        }
-
-        if (selection.selected.length > 0 && toolCallingAllowed) {
-          for (const connector of selection.overCap) {
-            connectorNotices.push(
-              `${connector.title} was left out: a message can use at most 5 connectors.`,
-            )
-          }
-
-          for (const connector of selection.skipped) {
-            connectorNotices.push(
-              `${connector.title} is switched off or not connected, so its tools were not used.`,
-            )
-          }
-
-          connectorsRun = await getConnectorTools({
-            db,
-            kv: useKV(),
+      if (sendBody.connectorIds && !isResume) {
+        try {
+          await persistChatConnectorSelection(db, {
             userId,
             chatPublicId: chat.id,
-            connectors: selection.selected,
-            existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
-            existingDefinitionBytes: besidkaToolsRun?.definitionBytes ?? 0,
-            hashArgs: hashConnectorArgs,
-            ...(toolApprovalsActive
-              ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
-              : {}),
-            ...(resume
-              ? {
-                approvedAuditRow: (toolCallId: string | undefined) => {
-                  return approvedAuditRows.get(toolCallId ?? '') ?? null
-                },
-                callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
-              }
-              : {}),
-            guard: chatSearchBudget,
+            selectedIds: selection.selected
+              .filter(connector => onConnectorIds.includes(connector.id))
+              .map(connector => connector.id),
+            connectors: userConnectors,
+            ...(sendBody.offConnectorIds ? { offIds: offConnectorIds } : {}),
+          })
+        } catch (exception) {
+          aiLogger.set({
+            attributes: {
+              connectors: {
+                selectionPersist: 'failed',
+                error: exceptionMessage(exception),
+              },
+            },
+          })
+        }
+      }
+
+      const hasConnectors = selection.selected.length > 0
+        || plan.catalog.length > 0
+
+      if (selection.selected.length > 0 && !toolCallingAllowed) {
+        connectorNotices.push('Connectors are off for this message.')
+      }
+
+      if (hasConnectors && toolCallingAllowed) {
+        for (const connector of selection.overCap) {
+          connectorNotices.push(
+            `${connector.title} was left out: a message can use at most 5 connectors.`,
+          )
+        }
+
+        for (const connector of plan.requestedSkipped) {
+          connectorNotices.push(
+            `${connector.title} is switched off or not connected, so its tools were not used.`,
+          )
+        }
+
+        connectorImageSaver = forwardsConnectorImages
+          ? createConnectorImageSaver({
+            db,
+            userId,
+            chatPublicId: chat.id,
             logger: aiLogger,
           })
-          connectorNotices.push(...connectorsRun.notices)
-
-          if (Object.keys(connectorsRun.tools).length > 0) {
-            parsedTools = {
-              ...parsedTools,
-              tools: { ...parsedTools.tools, ...connectorsRun.tools },
+          : null
+        connectorsRun = await getConnectorTools({
+          db,
+          kv: useKV(),
+          userId,
+          chatPublicId: chat.id,
+          connectors: selection.selected,
+          catalogConnectors: plan.catalog,
+          optionalConnectorIds: new Set(selection.selected
+            .filter((connector) => {
+              return resolveConnectorToolMode(connector.toolMode)
+                === 'always-on'
+            })
+            .map(connector => connector.id)),
+          existingToolCount: nativeToolCount,
+          reserve: toolIndexReserve,
+          hashArgs: hashConnectorArgs,
+          ...(toolApprovalsActive
+            ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
+            : {}),
+          ...(resume
+            ? {
+              approvedAuditRow: (toolCallId: string | undefined) => {
+                return approvedAuditRows.get(toolCallId ?? '') ?? null
+              },
+              callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
             }
+            : {}),
+          forwardImages: forwardsConnectorImages,
+          ...(keptConnectorImages
+            ? { reservedImages: keptConnectorImages.usage }
+            : {}),
+          ...(connectorImageSaver ? { imageSaver: connectorImageSaver } : {}),
+          guard: chatSearchBudget,
+          logger: aiLogger,
+          requestId: getRequestId(event),
+        })
+        connectorNotices.push(...connectorsRun.notices)
+
+        if (Object.keys(connectorsRun.tools).length > 0) {
+          parsedTools = {
+            ...parsedTools,
+            tools: { ...parsedTools.tools, ...connectorsRun.tools },
           }
         }
+      }
+    }
+
+    besidkaToolsRun = fitBesidkaUpFrontTools({
+      besidka: besidkaToolsRun,
+      connectors: connectorsRun,
+      nativeToolCount,
+      reserve: toolIndexReserve,
+    })
+    const fixedToolList = keepsFixedToolList({ gatewayId, modelProviderId })
+      ? selectFixedToolListEntries({
+        entries: [
+          ...besidkaToolsRun?.indexEntries ?? [],
+          ...connectorsRun?.indexEntries ?? [],
+        ],
+        room: toolIndexRoom({
+          besidka: besidkaToolsRun,
+          connectors: connectorsRun,
+          nativeToolCount,
+          loaderToolCount: 0,
+        }),
+      })
+      : null
+
+    if (fixedToolList) {
+      aiLogger.set({
+        attributes: {
+          toolIndex: {
+            fixedList: true,
+            fixedKept: fixedToolList.kept.length,
+            fixedDropped: fixedToolList.dropped.length,
+          },
+        },
+      })
+    }
+
+    toolIndex = fixedToolList
+      ? null
+      : attachToolIndex({
+        besidka: besidkaToolsRun,
+        connectors: connectorsRun,
+        nativeToolCount,
+        onConnectorOpened: (connectorId) => {
+          connectorsRun?.recordOpened(connectorId)
+
+          if (chatSearchBudget) {
+            chatSearchBudget.untrustedResultSeen = true
+          }
+
+          if (toolApprovalsActive) {
+            toolApprovalSend.recordConnectorOpened(connectorId)
+          }
+        },
+        logger: aiLogger,
+      })
+
+    if (toolIndex && !isResume && userMessageText) {
+      prefetchToolIndexEntries(toolIndex, userMessageText, aiLogger)
+    }
+
+    if (toolIndex) {
+      parsedTools = {
+        ...parsedTools,
+        tools: { ...parsedTools.tools, ...toolIndex.tools },
+      }
+    } else {
+      parsedTools = {
+        ...parsedTools,
+        tools: withoutDeferredTools(
+          parsedTools.tools,
+          fixedToolList?.dropped ?? [
+            ...besidkaToolsRun?.indexEntries ?? [],
+            ...connectorsRun?.indexEntries ?? [],
+          ],
+        ),
       }
     }
 
@@ -2247,6 +2429,8 @@ export default defineEventHandler(async (event) => {
     }
 
     if (resume) {
+      toolIndex?.replay(resume.assistant.parts)
+
       const besidkaToolNames = resume.loaded.answers
         .filter(answer => answer.record.family === 'besidka')
         .map(answer => answer.record.toolName)
@@ -2266,6 +2450,9 @@ export default defineEventHandler(async (event) => {
         messageId: resume.owner.messagePublicId,
         parts: resume.assistant.parts,
         decisions: resumeDecisions,
+        ...(keptConnectorImages
+          ? { shownAgain: keptConnectorImageLineIndexes(keptConnectorImages) }
+          : {}),
       })
       const resumeHistory = buildKnowledgeAwareMessagesForModel({
         messagesForAI,
@@ -2282,6 +2469,14 @@ export default defineEventHandler(async (event) => {
         ...resumeHistory,
         resumedMessages.modelMessage,
       ])
+
+      if (keptConnectorImages) {
+        resumeModelMessages = attachKeptConnectorImages(
+          resumeModelMessages,
+          keptConnectorImages,
+        )
+      }
+
       assertEndsWithApprovalResponse(resumeModelMessages)
     }
   } catch (exception) {
@@ -2320,16 +2515,29 @@ export default defineEventHandler(async (event) => {
       ? CONNECTOR_STEPS_PER_TURN
       : 0,
     besidkaSteps: hasBesidkaTools ? TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN : 0,
+    toolIndexSteps: toolIndex
+      ? TOOL_INDEX_LOAD_STEPS
+      + (connectorsRun?.catalog.length ? TOOL_INDEX_CATALOG_STEPS : 0)
+      : 0,
     guard: chatSearchBudget,
   })
-  const containerToolLoopOptions = toolLoop
+  const forwardedToolLoopOptions = toolLoop
     && codeExecutionSession?.provider === 'anthropic'
     ? withAnthropicContainerForwarding(toolLoop.options)
     : toolLoop?.options
+  const containerToolLoopOptions = toolIndex && forwardedToolLoopOptions
+    ? {
+      ...forwardedToolLoopOptions,
+      prepareStep: toolIndex.withActivation({
+        base: forwardedToolLoopOptions.prepareStep,
+        toolNames: Object.keys(parsedTools.tools ?? {}),
+      }),
+    }
+    : forwardedToolLoopOptions
   const guardsProviderTools = toolApprovalsActive
     && !isAnthropicRoute
     && hasGuardedProviderTool(toolApprovalSend, parsedTools.tools)
-  const toolLoopOptions = guardsProviderTools
+  const guardedToolLoopOptions = guardsProviderTools
     ? {
       ...containerToolLoopOptions,
       prepareStep: withProviderToolEgressGuard({
@@ -2340,6 +2548,37 @@ export default defineEventHandler(async (event) => {
       }),
     }
     : containerToolLoopOptions
+  const resumeReplaysChangedTools = (toolIndex?.loadedNames().length ?? 0) > 0
+    || (toolIndex?.openedConnectors().length ?? 0) > 0
+  const bindThinkingFromStart = isResume
+    && !!anthropicThinkingBinding
+    && (!!reasoningEffort || resumeReplaysChangedTools)
+  const toolLoopOptions = anthropicThinkingBinding && guardedToolLoopOptions
+    ? {
+      ...guardedToolLoopOptions,
+      prepareStep: withAnthropicThinkingBinding({
+        base: guardedToolLoopOptions.prepareStep,
+        thinking: anthropicThinkingBinding,
+        toolNames: Object.keys(parsedTools.tools ?? {}),
+        bindFromStart: bindThinkingFromStart,
+        logger,
+      }),
+    }
+    : guardedToolLoopOptions
+
+  if (
+    bindThinkingFromStart
+    && !toolLoopOptions
+    && anthropicThinkingBinding
+    && hasSignedAnthropicReasoning(resumeModelMessages)
+  ) {
+    Object.assign(providerOptions, {
+      anthropic: {
+        ...providerOptions.anthropic,
+        thinking: anthropicThinkingBinding,
+      },
+    })
+  }
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
@@ -2353,7 +2592,9 @@ export default defineEventHandler(async (event) => {
   }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
-      return !isSkillToolName(toolName) && !isApprovalGatedToolName(toolName)
+      return !isSkillToolName(toolName)
+        && !isToolIndexLoadToolName(toolName)
+        && !isApprovalGatedToolName(toolName)
     }),
   )
   const persistenceFollowUpToolNames = new Set([
@@ -2753,6 +2994,7 @@ export default defineEventHandler(async (event) => {
               documentsContextLine,
               skillsInstructionBlock,
               connectorsInstructionBlock,
+              toolIndexBlock: toolIndex?.instructions ?? null,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -2984,11 +3226,17 @@ export default defineEventHandler(async (event) => {
         const toolApprovalCollector = createToolApprovalStreamCollector(
           toolApprovalSend,
         )
+        const approvalUiMessageStream = toolApprovalsActive
+          ? toolApprovalCollector.apply(uiMessageStream)
+          : uiMessageStream
         const correctedUiMessageStream = emitSourcesForExternalSearchResults(
           insertParagraphBreakAfterNonTextGap(
-            toolApprovalsActive
-              ? toolApprovalCollector.apply(uiMessageStream)
-              : uiMessageStream,
+            connectorImageSaver
+              ? withConnectorImageParts(
+                approvalUiMessageStream,
+                connectorImageSaver,
+              ) as typeof approvalUiMessageStream
+              : approvalUiMessageStream,
           ),
         )
 
@@ -3165,7 +3413,6 @@ export default defineEventHandler(async (event) => {
               model: modelId,
               gateway: gatewayId ?? null,
               reasoning: reasoningLevel,
-              toolNames: Object.keys(parsedTools.tools ?? {}),
               connectorIds: connectorsRun?.connectorIds ?? [],
             },
             hashArgs: hashConnectorArgs,
@@ -3372,15 +3619,200 @@ interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
 }
 
 /**
+ * How many more tools and definition bytes a step may carry once the native
+ * tools, every tool offered up front and the index's own tools
+ * (`loaderToolCount`) are counted.
+ */
+function toolIndexRoom(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  loaderToolCount: number
+}): { tools: number, bytes: number } {
+  const upFrontCount = (input.besidka?.upFrontNames.length ?? 0)
+    + (input.connectors?.upFrontNames.length ?? 0)
+
+  return {
+    tools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - upFrontCount - input.loaderToolCount,
+    bytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
+      - (input.besidka?.definitionBytes ?? 0)
+      - (input.connectors?.definitionBytes ?? 0),
+  }
+}
+
+/**
+ * The tool index of a send (`server/utils/ai/tool-index.ts`): the Besidka
+ * and connector tools that were not offered up front, with the room a step
+ * has left for loading them once every up-front tool and the load tool are
+ * counted (40 tools, 32 KiB of Besidka and connector definitions). Null when
+ * nothing is deferred or no room is left.
+ */
+function attachToolIndex(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  onConnectorOpened?: (connectorId: string) => void
+  logger: { set: (data: Record<string, unknown>) => void }
+}): ToolIndex | null {
+  const entries = [
+    ...input.besidka?.indexEntries ?? [],
+    ...input.connectors?.indexEntries ?? [],
+  ]
+  const upFrontNames = [
+    ...input.besidka?.upFrontNames ?? [],
+    ...input.connectors?.upFrontNames ?? [],
+  ]
+  const catalogConnectors = input.connectors?.catalog ?? []
+  const room = toolIndexRoom({
+    besidka: input.besidka,
+    connectors: input.connectors,
+    nativeToolCount: input.nativeToolCount,
+    loaderToolCount: catalogConnectors.length > 0 ? 2 : 1,
+  })
+  const liveConnectorCount = input.connectors?.connectorIds.length ?? 0
+  const toolIndex = createToolIndex({
+    entries,
+    room,
+    upFrontNames: new Set(upFrontNames),
+    ...(catalogConnectors.length > 0
+      ? {
+        catalog: {
+          connectors: catalogConnectors,
+          maxOpen: Math.max(0, CONNECTORS_PER_SEND - liveConnectorCount),
+          maxOpenLegacySse: Math.max(
+            0,
+            CONNECTOR_SSE_PER_SEND
+            - (input.connectors?.liveLegacySseCount ?? 0),
+          ),
+          onOpen: (connector) => {
+            input.onConnectorOpened?.(connector.connectorId)
+          },
+        },
+      }
+      : {}),
+    logger: input.logger,
+  })
+
+  if (entries.length > 0 || catalogConnectors.length > 0) {
+    input.logger.set({
+      attributes: {
+        toolIndex: {
+          entries: entries.length,
+          catalogConnectors: catalogConnectors.length,
+          roomTools: room.tools,
+          roomBytes: room.bytes,
+          ...(toolIndex ? {} : { noRoom: true }),
+        },
+      },
+    })
+  }
+
+  return toolIndex
+}
+
+/**
+ * Loads the index entries the user's own latest message most likely needs
+ * (`matchToolIndexEntries`: an action verb and a thing, in several
+ * languages) before the first step, so a model that never calls
+ * `tool_index__load` still has them. They go through the same load, caps and
+ * approval path as a load the model makes.
+ */
+function prefetchToolIndexEntries(
+  toolIndex: ToolIndex,
+  userText: string,
+  logger: { set: (data: Record<string, unknown>) => void },
+): void {
+  const names = matchToolIndexEntries(userText, toolIndex.entries)
+
+  if (names.length === 0) {
+    return
+  }
+
+  const result = toolIndex.load(names)
+
+  logger.set({
+    attributes: {
+      toolIndex: {
+        prefetched: result.loaded.length,
+        prefetchRefused: result.tooLarge.length,
+      },
+    },
+  })
+}
+
+/**
+ * Gives an Always on connector's up-front tools priority over Besidka's:
+ * both were sized against the same room (40 tools and 32 KiB minus the
+ * native tools and the index reserve), so when together they do not fit,
+ * Besidka's last up-front tools move to the tool index, where they stay
+ * reachable.
+ */
+function fitBesidkaUpFrontTools(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  reserve: { tools: number, bytes: number }
+}): PreparedBesidkaChatTools | null {
+  const { besidka, connectors } = input
+
+  if (!besidka || !connectors || connectors.upFrontNames.length === 0) {
+    return besidka
+  }
+
+  const { upFront, demoted } = fitUpFrontTools({
+    keptTools: connectors.upFrontNames.length,
+    keptBytes: connectors.definitionBytes,
+    demotable: besidka.upFrontEntries,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - input.reserve.tools,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES - input.reserve.bytes,
+  })
+
+  if (demoted.length === 0) {
+    return besidka
+  }
+
+  return {
+    ...besidka,
+    upFrontNames: upFront.map(entry => entry.name),
+    upFrontEntries: upFront,
+    indexEntries: [...demoted, ...besidka.indexEntries],
+    definitionBytes: upFront.reduce((total, entry) => {
+      return total + entry.bytes
+    }, 0),
+  }
+}
+
+/**
+ * Removes the deferred tools from a send that has no room for the tool
+ * index, so a tool meant to wait for a load is never offered up front.
+ */
+function withoutDeferredTools(
+  tools: ToolSet | undefined,
+  entries: ReadonlyArray<{ name: string }>,
+): ToolSet | undefined {
+  if (!tools || entries.length === 0) {
+    return tools
+  }
+
+  const deferredNames = new Set(entries.map(entry => entry.name))
+
+  return Object.fromEntries(Object.entries(tools).filter(([toolName]) => {
+    return !deferredNames.has(toolName)
+  }))
+}
+
+/**
  * The Besidka tools of a send, loaded only once the gate passed (the
  * `besidka-tools` opt-in flag, `tool-approvals` and a tool-capable model):
  * the chat's Besidka row decides whether there are any (on by default; a
  * new chat's first send may carry the choice made before it had a slug,
  * which is stored here), then the user's mode for every tool is resolved in
- * one read before a tool is offered, and the tools are built within the
- * room the native tools left (at most 24, 40 tools and 32 KiB in all). A
- * tool that did not fit is only logged: the Labs permissions panel tells the
- * user when more tools are allowed than a message offers.
+ * one read before a tool is offered. The tools offered up front fit in the
+ * room the native tools and `reserve` (the room kept for the tool index)
+ * left: at most 24, 40 tools and 32 KiB in all. Every other tool that is
+ * not Blocked goes to the tool index, so none is out of reach.
  */
 async function prepareBesidkaChatTools(input: {
   db: ReturnType<typeof useDb>
@@ -3389,6 +3821,7 @@ async function prepareBesidkaChatTools(input: {
   chatSlug: string
   requestedEnabled: boolean | undefined
   existingToolCount: number
+  reserve: { tools: number, bytes: number }
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   guard: UntrustedContentGuard | undefined
   logger: { set: (data: Record<string, unknown>) => void }
@@ -3433,7 +3866,9 @@ async function prepareBesidkaChatTools(input: {
       tools: {},
       approvalEntries: new Map(),
       definitionBytes: 0,
-      leftOutCount: 0,
+      upFrontNames: [],
+      upFrontEntries: [],
+      indexEntries: [],
       instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
     }
   }
@@ -3455,8 +3890,9 @@ async function prepareBesidkaChatTools(input: {
     currentChatSlug: input.chatSlug,
     modes,
     chatGrants: settings.alwaysAllowTools,
-    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
-    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount
+      - input.reserve.tools,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES - input.reserve.bytes,
     consumeClearedCall: input.consumeClearedCall,
     limitCalls: adapter.createBesidkaCallLimiter(useKV()),
     ...(input.guard ? { guard: input.guard } : {}),
@@ -5267,6 +5703,16 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
+    const connectorImageFileIds = collectConnectorImageFileIds(finalParts)
+
+    if (assistantMessage && connectorImageFileIds.length > 0) {
+      await linkConnectorImagesToMessage(input.db, {
+        userId: input.userId,
+        messagePublicId: input.publicId,
+        fileIds: connectorImageFileIds,
+      }, input.logger)
+    }
+
     if (assistantMessage && generatedFileIds.length > 0) {
       let filesLinked = false
 
@@ -5491,6 +5937,7 @@ function buildChatInstructions(input: {
   documentsContextLine?: string | null
   skillsInstructionBlock?: string | null
   connectorsInstructionBlock?: string | null
+  toolIndexBlock?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -5508,12 +5955,14 @@ function buildChatInstructions(input: {
     documentsContextLine,
     skillsInstructionBlock,
     connectorsInstructionBlock,
+    toolIndexBlock,
     codeExecutionInputNames,
     now = new Date(),
   } = input
   const instructions = [
     memoryInstructions,
     projectSystemPrompt,
+    toolIndexBlock,
     knowledgeSystemBlock,
   ]
 

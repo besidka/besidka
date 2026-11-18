@@ -1037,8 +1037,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
 
-  function getConnectorIdsField(): { connectorIds?: string[] } {
-    const { chatKey, ids, isKnown } = connectorSelection.value
+  function getConnectorIdsField(): {
+    connectorIds?: string[]
+    offConnectorIds?: string[]
+  } {
+    const { chatKey, ids, offIds, isKnown } = connectorSelection.value
 
     if (
       !connectorsFeature.value.active
@@ -1048,7 +1051,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return {}
     }
 
-    return { connectorIds: ids }
+    return { connectorIds: ids, offConnectorIds: offIds }
   }
 
   function getBesidkaToolsField(): { besidkaToolsEnabled?: boolean } {

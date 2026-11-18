@@ -27,10 +27,23 @@
         class="collapse-title flex items-center gap-1 px-0 py-1.5 min-h-0"
         @click.prevent="toggleMain"
       >
-        <component
+        <span
+          aria-hidden="true"
+          :data-kind="headerStepIcon ? headerStepIcon.kind : 'thinking'"
+          data-testid="reasoning-header-icon"
+          class="inline-flex size-4 shrink-0 items-center justify-center"
+        >
+          <ChatReasoningStepIcon
+            v-if="headerStepIcon"
+            :icon="headerStepIcon"
+            class="size-4!"
+          />
+          <component
             :is="reasoningIcon"
+            v-else
             class="size-4 text-base-content/80"
           />
+        </span>
         <span
           :title="isHiddenReasoningSummary ? HIDDEN_REASONING_TITLE : undefined"
           :data-testid="
@@ -74,8 +87,21 @@
         </span>
         <Icon
           name="lucide:chevron-right"
-          class="size-4 text-base-content/60 transition-transform group-open:rotate-90"
+          class="size-4 shrink-0 text-base-content/60 transition-transform group-open:rotate-90"
         />
+        <span
+          v-if="headerImages.length > 0 && !isMainExpanded"
+          class="-my-1 ml-auto flex h-6 shrink-0 items-center gap-1 pl-2"
+          data-testid="reasoning-header-images"
+        >
+          <ChatReasoningConnectorThumbnail
+            :image="headerImages[0]!.image"
+            :alt="headerImages[0]!.alt"
+            size="sm"
+            :gallery="headerImages"
+            :stack-label="headerStackLabel"
+          />
+        </span>
       </summary>
       <div
         :id="`reasoning-${message.id}-content`"
@@ -186,6 +212,8 @@
                 :data="step.connector"
                 :title="step.title"
                 :pending="step.pending"
+                :images="step.connectorImages ?? []"
+                :connector-title="step.connectorTitle ?? ''"
               />
               <details
                 v-else
@@ -286,6 +314,8 @@ import type { SearchStepData } from '~/types/search-step.d'
 import type { SkillStepModel } from '~/utils/skill-step'
 import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import type { ConnectorImagePartData } from '#shared/utils/connector-image-parts'
+import { getConnectorImagesForToolCall } from '#shared/utils/connector-image-parts'
 import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
@@ -306,6 +336,8 @@ import {
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
 import {
+  getConnectorImageAlt,
+  getConnectorImageStackLabel,
   getConnectorStepTitle,
   isConnectorStepFailed,
 } from '~/utils/connector-step'
@@ -376,6 +408,14 @@ interface ReasoningStep {
   approval?: ReasoningApprovalStep | null
   approvalOutcome?: string
   grantMarker?: string
+  connectorTitle?: string
+  connectorImages?: ConnectorImagePartData[]
+}
+
+interface HeaderConnectorImage {
+  image: ConnectorImagePartData
+  alt: string
+  title: string
 }
 
 interface MessageApprovalEntry {
@@ -536,7 +576,11 @@ function buildApprovalStep(
     connectorName: connectorSlug
       ? titlesBySlug.value.get(connectorSlug) || connectorSlug
       : '',
-    reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
+    reasonText: getApprovalReasonText(
+      entry.model.reason,
+      sourceLabel,
+      entry.model.toolName,
+    ),
     summaryLine: getApprovalStepSummaryLine(entry.model),
     progress: isLastAwaiting && entry.state !== 'sending'
       ? formatApprovalProgress(answeredCount, awaiting.length)
@@ -686,6 +730,14 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         memory: null,
         skill: null,
         connector: connectorCall,
+        connectorTitle: titlesBySlug.value.get(connectorCall.slug)
+          || connectorCall.slug,
+        connectorImages: props.isShared
+          ? []
+          : getConnectorImagesForToolCall(
+            props.message.parts,
+            (part as { toolCallId?: string }).toolCallId,
+          ),
         approvalOutcome,
         grantMarker: getGrantMarkerText(
           props.message.parts,
@@ -778,10 +830,11 @@ const hiddenReasoningTokens = computed<number>(() => {
 })
 
 const streamingTitle = shallowRef<string>('')
+const streamingTitleIcon = shallowRef<ReasoningStepIcon | null>(null)
 const streamingTitleUpdateTimer = shallowRef<
   ReturnType<typeof setTimeout> | null
 >(null)
-const latestStreamingTitleCandidate = computed<string>(() => {
+const latestPendingToolStep = computed<ReasoningStep | null>(() => {
   const pendingToolStep = reasoningSteps.value
     .filter((step) => {
       return step.kind === 'tool' && step.pending
@@ -789,12 +842,22 @@ const latestStreamingTitleCandidate = computed<string>(() => {
     .at(-1)
 
   if (pendingToolStep && !isReasoningTextStreaming.value) {
-    return pendingToolStep.title
+    return pendingToolStep
+  }
+
+  return null
+})
+const latestStreamingTitleCandidate = computed<string>(() => {
+  if (latestPendingToolStep.value) {
+    return latestPendingToolStep.value.title
   }
 
   return extractLastCompleteReasoningTitle(
     reasoningParts.value.at(-1)?.text || '',
   )
+})
+const latestStreamingIconCandidate = computed<ReasoningStepIcon | null>(() => {
+  return latestPendingToolStep.value?.icon ?? null
 })
 
 const isHiddenReasoningSummary = computed<boolean>(() => {
@@ -821,11 +884,40 @@ const activeStreamingTitle = computed<string>(() => {
   return streamingTitle.value
 })
 
+const headerImages = computed<HeaderConnectorImage[]>(() => {
+  return reasoningSteps.value.flatMap((step) => {
+    const title = step.connectorTitle ?? ''
+    const alt = getConnectorImageAlt(title)
+
+    return (step.connectorImages ?? [])
+      .filter(image => !image.deleted)
+      .map(image => ({ image, alt, title }))
+  })
+})
+
+const headerStackLabel = computed<string>(() => {
+  const count = headerImages.value.length
+  const titles = new Set(headerImages.value.map(entry => entry.title))
+
+  return getConnectorImageStackLabel(
+    count,
+    titles.size === 1 ? [...titles][0] : undefined,
+  )
+})
+
+const headerStepIcon = computed<ReasoningStepIcon | null>(() => {
+  if (!isThinkingStreaming.value || !activeStreamingTitle.value.length) {
+    return null
+  }
+
+  return streamingTitleIcon.value
+})
+
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
 const {
-  reasoningExpanded: isReasoningExpanded,
-  reasoningAutoHide,
+  stepsExpanded: isStepsExpanded,
+  stepsAutoHide,
 } = useUserSetting()
 
 const isMainExpanded = shallowRef<boolean>(false)
@@ -860,7 +952,7 @@ watch(
     isThinkingStreaming,
     () => reasoningSteps.value.at(-1)?.id,
     latestExpandableStepId,
-    isReasoningExpanded,
+    isStepsExpanded,
     isStreamingExpandOverride,
   ],
   ([
@@ -895,7 +987,7 @@ watch(hasTextPart, (textStarted, hadText) => {
     return
   }
 
-  if (!reasoningAutoHide.value) {
+  if (!stepsAutoHide.value) {
     return
   }
 
@@ -990,22 +1082,34 @@ watch(isThinkingStreaming, (streaming, wasStreaming) => {
 })
 
 watch(
-  [isThinkingStreaming, latestStreamingTitleCandidate],
-  ([streaming, candidateTitle]) => {
+  [
+    isThinkingStreaming,
+    latestStreamingTitleCandidate,
+    latestStreamingIconCandidate,
+  ],
+  ([streaming, candidateTitle, candidateIcon]) => {
     if (!streaming) {
       streamingTitle.value = ''
+      streamingTitleIcon.value = null
       clearStreamingTitleTimer()
 
       return
     }
 
-    if (!candidateTitle || candidateTitle === streamingTitle.value) {
+    if (
+      !candidateTitle
+      || (
+        candidateTitle === streamingTitle.value
+        && isSameStepIcon(candidateIcon, streamingTitleIcon.value)
+      )
+    ) {
       return
     }
 
     clearStreamingTitleTimer()
     streamingTitleUpdateTimer.value = setTimeout(() => {
       streamingTitle.value = candidateTitle
+      streamingTitleIcon.value = candidateIcon
       streamingTitleUpdateTimer.value = null
     }, 250)
   },
@@ -1038,6 +1142,13 @@ watch(
     flush: 'post',
   },
 )
+
+function isSameStepIcon(
+  first: ReasoningStepIcon | null,
+  second: ReasoningStepIcon | null,
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second)
+}
 
 function clearStreamingTitleTimer() {
   if (!streamingTitleUpdateTimer.value) {

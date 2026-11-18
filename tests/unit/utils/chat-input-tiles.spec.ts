@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatInputToolsState } from '~/types/chat-input-tools'
 import {
   buildChatInputTiles,
+  countSelectedConnectors,
   getChatInputTileToneClass,
   getReasoningLevelLabel,
   getWebSearchValueLabel,
@@ -619,6 +620,9 @@ describe('buildChatInputTiles connectors tile', () => {
       title: 'Notion',
       host: 'mcp.notion.com',
       status: 'ready' as const,
+      toolMode: 'manual' as const,
+      presetId: null,
+      isIconAvailable: false,
     },
     {
       id: 'c2',
@@ -626,6 +630,9 @@ describe('buildChatInputTiles connectors tile', () => {
       title: 'Linear',
       host: 'mcp.linear.app',
       status: 'ready' as const,
+      toolMode: 'manual' as const,
+      presetId: null,
+      isIconAvailable: false,
     },
   ]
 
@@ -645,7 +652,7 @@ describe('buildChatInputTiles connectors tile', () => {
     expect(tileIds(createState())).toEqual([])
   })
 
-  it('adds one removable tile for a single connector', () => {
+  it('adds one removable tile named after a single connector', () => {
     const [tile] = buildChatInputTiles(withConnectors(['c1']))
 
     expect(tile).toMatchObject({
@@ -653,8 +660,8 @@ describe('buildChatInputTiles connectors tile', () => {
       section: 'connectors',
       icon: { kind: 'icon', name: 'lucide:cable' },
       caption: 'Connectors',
-      value: '1',
-      chipLabel: '1 connector',
+      value: 'Notion',
+      chipLabel: 'Notion',
       removeLabel: 'Turn off connectors',
       isNeutral: false,
       isLocked: false,
@@ -664,14 +671,24 @@ describe('buildChatInputTiles connectors tile', () => {
   it('counts the connectors that are on', () => {
     const [tile] = buildChatInputTiles(withConnectors(['c1', 'c2']))
 
+    expect(tile?.value).toBe('2')
     expect(tile?.chipLabel).toBe('2 connectors')
     expect(tile?.ariaLabel).toContain('2 connectors')
   })
 
+  it('names the single connector in the accessible label', () => {
+    const [tile] = buildChatInputTiles(withConnectors(['c2']))
+
+    expect(tile?.value).toBe('Linear')
+    expect(tile?.ariaLabel).toBe(
+      'Connector Linear is on for this chat. Open to change.',
+    )
+  })
+
   it('ignores selected ids that are no longer selectable', () => {
     expect(tileIds(withConnectors(['gone']))).toEqual([])
-    expect(buildChatInputTiles(withConnectors(['c1', 'gone']))[0]?.chipLabel)
-      .toBe('1 connector')
+    expect(buildChatInputTiles(withConnectors(['c1', 'gone']))[0]?.value)
+      .toBe('Notion')
   })
 
   it('adds nothing while the row is hidden', () => {
@@ -703,5 +720,62 @@ describe('buildChatInputTiles connectors tile', () => {
     } as StateOverrides)
 
     expect(tileIds(state)).toEqual(['memory', 'connectors', 'skill'])
+  })
+})
+
+describe('countSelectedConnectors', () => {
+  const manual = {
+    id: 'm1',
+    slug: 'notion',
+    title: 'Notion',
+    host: 'mcp.notion.com',
+    status: 'ready' as const,
+    toolMode: 'manual' as const,
+    presetId: null,
+    isIconAvailable: false,
+  }
+  const auto = { ...manual, id: 'a1', slug: 'linear', toolMode: 'auto' as const }
+  const alwaysOn = {
+    ...manual,
+    id: 'o1',
+    slug: 'github',
+    toolMode: 'always-on' as const,
+  }
+
+  function connectorsOf(selectedIds: string[]) {
+    return {
+      visible: true,
+      items: [manual, auto, alwaysOn],
+      selectedIds,
+    }
+  }
+
+  it('counts a Manual connector that is on', () => {
+    expect(countSelectedConnectors(connectorsOf(['m1']))).toBe(1)
+  })
+
+  it('does not count Auto or Always on connectors', () => {
+    expect(countSelectedConnectors(connectorsOf(['m1', 'a1', 'o1']))).toBe(1)
+    expect(countSelectedConnectors(connectorsOf(['a1', 'o1']))).toBe(0)
+  })
+
+  it('does not count ids that are not in the list', () => {
+    expect(countSelectedConnectors(connectorsOf(['gone']))).toBe(0)
+  })
+
+  it('is zero with nothing on or without a connectors state', () => {
+    expect(countSelectedConnectors(connectorsOf([]))).toBe(0)
+    expect(countSelectedConnectors(undefined)).toBe(0)
+  })
+
+  it('agrees with the connectors tile for the same state', () => {
+    const state = createState({
+      connectors: connectorsOf(['m1', 'a1']),
+    } as Partial<ChatInputToolsState>)
+    const [tile] = buildChatInputTiles(state)
+
+    expect(tile?.id).toBe('connectors')
+    expect(tile?.ariaLabel).toContain('Notion')
+    expect(countSelectedConnectors(state.connectors)).toBe(1)
   })
 })

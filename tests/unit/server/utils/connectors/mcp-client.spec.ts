@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
   CONNECTOR_SSE_SESSION_MAX_BYTES,
   CONNECTOR_SSE_SESSION_TIMEOUT_MS,
 } from '#shared/utils/connectors-policy'
@@ -41,6 +42,57 @@ describe('connector transport fetch', () => {
     expect(safeFetch).toHaveBeenCalledTimes(2)
   })
 
+  async function sentInits(largeCallResponses: boolean) {
+    const safeFetch = vi.fn(async () => new Response('ok'))
+    const createFetch = vi.fn(() => safeFetch as unknown as typeof fetch)
+    const transportFetch = createConnectorTransportFetch(
+      'streamable-http',
+      createFetch,
+      undefined,
+      true,
+      largeCallResponses,
+    )
+    const message = (method: string) => {
+      return JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} })
+    }
+
+    await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: message('tools/call'),
+    })
+    await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: message('tools/list'),
+    })
+    await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: 'not json',
+    })
+
+    return safeFetch.mock.calls.map((call) => {
+      return (call as unknown as [string, Record<string, unknown>])[1]
+    })
+  }
+
+  it('raises the body cap to 8 MiB for tools/call of an image send only',
+    async () => {
+      const inits = await sentInits(true)
+
+      expect(inits[0]?.maxResponseBytes)
+        .toBe(CONNECTOR_CALL_RESPONSE_MAX_BYTES)
+      expect(inits[1]).not.toHaveProperty('maxResponseBytes')
+      expect(inits[2]).not.toHaveProperty('maxResponseBytes')
+    })
+
+  it('keeps the 1 MiB default for every request of a send without images',
+    async () => {
+      const inits = await sentInits(false)
+
+      for (const init of inits) {
+        expect(init).not.toHaveProperty('maxResponseBytes')
+      }
+    })
+
   it('gives the legacy SSE transport a session deadline and size cap',
     () => {
       const createFetch = vi.fn(() => vi.fn() as unknown as typeof fetch)
@@ -52,6 +104,70 @@ describe('connector transport fetch', () => {
         maxResponseBytes: CONNECTOR_SSE_SESSION_MAX_BYTES,
       })
     })
+})
+
+describe('connector transport fetch logging', () => {
+  it('scopes the safe-fetch net record under the connectors attributes', () => {
+    const createFetch = vi.fn(() => vi.fn() as unknown as typeof fetch)
+    const logged: unknown[] = []
+
+    createConnectorTransportFetch(
+      'streamable-http',
+      createFetch,
+      { set: (values: unknown) => logged.push(values) } as never,
+    )
+
+    const options = (createFetch.mock.calls[0] as unknown as [
+      string,
+      { logger: { set: (data: Record<string, unknown>) => void } },
+    ])[1]
+
+    options.logger.set({ attributes: { net: { status: 429 } } })
+    options.logger.set({ other: true })
+
+    expect(logged).toEqual([
+      { attributes: { connectors: { net: { status: 429 } } } },
+    ])
+  })
+})
+
+describe('connector transport fetch host logging', () => {
+  function netLogger(logsHost: boolean) {
+    const createFetch = vi.fn(() => vi.fn() as unknown as typeof fetch)
+    const logged: unknown[] = []
+
+    createConnectorTransportFetch(
+      'streamable-http',
+      createFetch,
+      { set: (values: unknown) => logged.push(values) } as never,
+      logsHost,
+    )
+
+    const options = (createFetch.mock.calls[0] as unknown as [
+      string,
+      { logger: { set: (data: Record<string, unknown>) => void } },
+    ])[1]
+
+    options.logger.set({
+      attributes: { net: { host: 'mcp.private.example', status: 502 } },
+    })
+
+    return logged
+  }
+
+  it('drops the host for a custom connector and keeps the status', () => {
+    expect(netLogger(false)).toEqual([
+      { attributes: { connectors: { net: { status: 502 } } } },
+    ])
+  })
+
+  it('keeps the host for a preset connector', () => {
+    expect(netLogger(true)).toEqual([{
+      attributes: {
+        connectors: { net: { host: 'mcp.private.example', status: 502 } },
+      },
+    }])
+  })
 })
 
 describe('concurrency limiter', () => {

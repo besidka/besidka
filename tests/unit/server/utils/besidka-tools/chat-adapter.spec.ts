@@ -27,6 +27,7 @@ const {
   previewBesidkaToolCall,
   selectBesidkaChatTools,
   targetsCurrentChat,
+  toBesidkaChatToolName,
   toChatToolResult,
 } = await import('~~/server/utils/besidka-tools/chat-adapter')
 const { listChatExposedBesidkaTools } = await import(
@@ -192,6 +193,23 @@ describe('selectBesidkaChatTools', () => {
   })
 })
 
+describe('Besidka tiers and the always-ask name list', () => {
+  it('keeps every exposed tool named like a delete, share or send in the '
+    + 'ask-every-time tier', async () => {
+    const { hasAlwaysAskToolName } = await import(
+      '~~/server/utils/tool-approval/policy'
+    )
+    const misfiled = listChatExposedBesidkaTools()
+      .filter((besidkaTool) => {
+        return hasAlwaysAskToolName(besidkaTool.name)
+          && besidkaTool.chat.tier !== 'ask-every-time'
+      })
+      .map(besidkaTool => besidkaTool.name)
+
+    expect(misfiled).toEqual([])
+  })
+})
+
 describe('Besidka tool descriptors', () => {
   it('takes the access from the registry tier, not the annotations', () => {
     expect(besidkaToolAccess(exposedTool('list_projects'))).toBe('read')
@@ -248,6 +266,27 @@ describe('Besidka tool descriptors', () => {
 })
 
 describe('buildBesidkaChatTools', () => {
+  it('never offers delete_connector_images to a chat model, even when '
+    + 'every mode allows it', async () => {
+    const { run } = await build({
+      modes: new Map([
+        ...modesWith({}, 'always'),
+        ['delete_connector_images', 'always'],
+      ]),
+    })
+    const exposedNames = listChatExposedBesidkaTools().map((besidkaTool) => {
+      return besidkaTool.name
+    })
+
+    expect(exposedNames).not.toContain('delete_connector_images')
+    expect(Object.keys(run.tools)).not.toContain(
+      toBesidkaChatToolName('delete_connector_images'),
+    )
+    expect(Object.keys(run.tools).some((name) => {
+      return name.includes('connector_images')
+    })).toBe(false)
+  })
+
   beforeEach(() => {
     mocks.listMcpProjects.mockReset()
   })
@@ -258,7 +297,10 @@ describe('buildBesidkaChatTools', () => {
         modes: modesWith({ list_files: 'blocked', list_projects: 'allow' }),
       })
 
-      expect(Object.keys(run.tools)).toHaveLength(BESIDKA_CHAT_TOOLS_MAX)
+      const exposedCount = listChatExposedBesidkaTools().length - 1
+
+      expect(Object.keys(run.tools)).toHaveLength(exposedCount)
+      expect(run.upFrontNames).toHaveLength(BESIDKA_CHAT_TOOLS_MAX)
       expect(Object.keys(run.tools).every((name) => {
         return name.startsWith('besidka__')
       })).toBe(true)
@@ -278,7 +320,31 @@ describe('buildBesidkaChatTools', () => {
           definitionHash: expect.stringMatching(/^[0-9a-f]{64}$/),
         },
       })
-      expect(run.leftOutCount).toBeGreaterThan(0)
+      expect(run.indexEntries.length).toBe(
+        exposedCount - BESIDKA_CHAT_TOOLS_MAX,
+      )
+      expect(run.indexEntries.every((entry) => {
+        return entry.sourceKey === 'besidka'
+          && !run.upFrontNames.includes(entry.name)
+          && Object.hasOwn(run.tools, entry.name)
+          && run.approvalEntries.has(entry.name)
+      })).toBe(true)
+      expect(run.indexEntries.map(entry => entry.name))
+        .not.toContain('besidka__list_files')
+    })
+
+  it('defers delete_files to the index instead of dropping it past the cap',
+    async () => {
+      const { run } = await build({ modes: modesWith(), maxTools: 5 })
+
+      expect(run.upFrontNames).toHaveLength(5)
+      expect(run.upFrontNames).not.toContain('besidka__delete_files')
+      expect(run.tools.besidka__delete_files).toBeDefined()
+      expect(run.indexEntries.find((entry) => {
+        return entry.name === 'besidka__delete_files'
+      })).toMatchObject({ toolClass: 'always-ask' })
+      expect(run.approvalEntries.get('besidka__delete_files')?.descriptor)
+        .toMatchObject({ access: 'delete', destructiveHint: true })
     })
 
   it('marks the ask-every-time tier destructive and summarizes per call',
@@ -454,7 +520,7 @@ describe('Besidka tools in the send policy', () => {
     expect(approval.state.counters.builtInCalls).toBe(2)
   })
 
-  it('asks before an Always allow write after a Besidka read', async () => {
+  it('runs an Always allow write after a Besidka read', async () => {
     const approval = await createApproval(modesWith({
       list_projects: 'allow',
       rename_file: 'allow',
@@ -465,13 +531,29 @@ describe('Besidka tools in the send policy', () => {
     expect(decide(approval, 'c2', 'besidka__rename_file', {
       fileId: 'f1',
       name: 'x.txt',
-    })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-    expect(approval.getPendingDecision('c2')?.decision.rememberOptions)
-      .toEqual(['once'])
+    })).toBe('not-applicable')
   })
 
   it.each(['web', 'knowledge', 'file', 'skill', 'connector'] as const)(
-    'asks before an Always allow read after %s taint',
+    'asks before an Always allow write after %s taint',
+    async (kind) => {
+      const approval = await createApproval(modesWith({
+        rename_file: 'allow',
+      }))
+
+      approval.state.taint.add(kind)
+
+      expect(decide(approval, 'c1', 'besidka__rename_file', {
+        fileId: 'f1',
+        name: 'x.txt',
+      })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
+        .toEqual(['once'])
+    },
+  )
+
+  it.each(['web', 'knowledge', 'file', 'skill', 'connector'] as const)(
+    'runs an Always allow read after %s taint',
     async (kind) => {
       const approval = await createApproval(modesWith({
         list_projects: 'allow',
@@ -480,9 +562,21 @@ describe('Besidka tools in the send policy', () => {
       approval.state.taint.add(kind)
 
       expect(decide(approval, 'c1', 'besidka__list_projects'))
-        .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+        .toBe('not-applicable')
     },
   )
+
+  it('asks default with every answer for a Needs approval read after taint',
+    async () => {
+      const approval = await createApproval(modesWith({}))
+
+      approval.state.taint.add('skill')
+
+      expect(decide(approval, 'c1', 'besidka__list_projects'))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+      expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
+        .toEqual(['once', 'chat', 'always'])
+    })
 
   it('runs a read granted in this chat after a Besidka read', async () => {
     const hash = await hashBesidkaChatTool(exposedTool('list_files'))
@@ -771,22 +865,23 @@ describe('audit fixes', () => {
       })
 
       const { run } = await build({
-        modes: modesWith({ list_projects: 'allow', rename_file: 'allow' }),
+        modes: modesWith({ list_projects: 'allow' }),
       })
       const approval = createSendToolApproval({ state })
 
       approval.registerTools(run.tools, run.approvalEntries)
 
+      expect([...state.taint]).toEqual(['besidka'])
       expect(approval.toolApproval({
         toolCall: { toolCallId: 'c1', toolName: 'besidka__list_projects', input: {} },
       })).toBe('not-applicable')
       expect(approval.toolApproval({
         toolCall: {
           toolCallId: 'c2',
-          toolName: 'besidka__rename_file',
-          input: { fileId: 'f1', name: 'x.txt' },
+          toolName: 'besidka__delete_chats',
+          input: { slugs: [OTHER_SLUG] },
         },
-      })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      })).toEqual({ type: 'user-approval', reason: 'always-ask' })
       expect(hasBesidkaToolResult([{
         type: 'tool-besidka__list_files',
         state: 'approval-requested',
@@ -827,4 +922,75 @@ describe('audit fixes', () => {
         .toThrow(WEB_SEARCH_AFTER_PRIVATE_READ_TEXT)
       expect(search).toHaveBeenCalledTimes(1)
     })
+})
+
+describe('Besidka tools loaded from the tool index', () => {
+  async function setUp(modes = modesWith()) {
+    const { run } = await build({ modes, maxTools: 5 })
+    const { createToolIndex } = await import('~~/server/utils/ai/tool-index')
+    const toolIndex = createToolIndex({
+      entries: run.indexEntries,
+      room: { tools: 10, bytes: UNLIMITED_BYTES },
+      upFrontNames: new Set(run.upFrontNames),
+    })!
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools(
+      { ...run.tools, ...toolIndex.tools } as never,
+      run.approvalEntries,
+    )
+
+    return { run, toolIndex, approval }
+  }
+
+  it('runs the load tool as a read without asking', async () => {
+    const { approval } = await setUp()
+
+    expect(approval.toolApproval({
+      toolCall: {
+        toolCallId: 'load-1',
+        toolName: 'tool_index__load',
+        input: { names: ['besidka__delete_files'] },
+      },
+    })).toBe('not-applicable')
+  })
+
+  it('asks for a loaded delete exactly as for one offered up front',
+    async () => {
+      const { toolIndex, approval } = await setUp()
+      const result = toolIndex.load(['besidka__delete_files'])
+
+      expect(result.loaded).toEqual(['besidka__delete_files'])
+      expect(approval.toolApproval({
+        toolCall: {
+          toolCallId: 'c1',
+          toolName: 'besidka__delete_files',
+          input: { fileIds: ['file-1'] },
+        },
+      })).toEqual({ type: 'user-approval', reason: 'always-ask' })
+      expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
+        .toEqual(['once'])
+    })
+
+  it('keeps the definition hash and mode on a loaded tool', async () => {
+    const { run } = await setUp()
+    const name = run.indexEntries[0]!.name
+    const registryName = name.replace(/^besidka__/, '')
+
+    expect(run.approvalEntries.get(name)?.descriptor.definitionHash)
+      .toBe(await hashBesidkaChatTool(exposedTool(registryName)))
+  })
+
+  it('never lists or loads a Blocked tool', async () => {
+    const { run, toolIndex } = await setUp(
+      modesWith({ delete_files: 'blocked' }),
+    )
+
+    expect(run.indexEntries.map(entry => entry.name))
+      .not.toContain('besidka__delete_files')
+    expect(toolIndex.load(['besidka__delete_files']).unknown)
+      .toEqual(['besidka__delete_files'])
+    expect(run.approvalEntries.get('besidka__delete_files')?.permissionMode)
+      .toBe('blocked')
+  })
 })

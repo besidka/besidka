@@ -28,7 +28,7 @@ permission and cannot be set.
 | --- | --- | --- |
 | `read` | Read-only | 11 |
 | `write` | Write | 8 |
-| `ask-every-time` | Ask every time | 13 |
+| `ask-every-time` | Always asks | 13 |
 
 A permission is one of three modes (`TOOL_PERMISSION_MODES`):
 
@@ -109,21 +109,55 @@ replay reads it as missing.
 
 ## Labs and the panel
 
-- **Labs** (`/profile/labs`): under the `besidka-tools` row, once the opt-in
-  is on, a "Tool permissions" button opens the panel. There is no new page,
-  so no profile tab (CLAUDE.md, "Profile pages navigation").
+- **Connectors page** (`/chats/connectors`, "Yours"): the main entry point. A
+  pinned first row "Besidka" (`ProfileConnectorsBesidkaRow`, Besidka logo, the
+  Labs description "Let the model use your Besidka data and tools in chats,
+  with your permission for each tool.") shows whenever the user has
+  access to the `besidka-tools` flag (`useFeature('besidka-tools').enabled`),
+  before or after the opt-in. It is composed in the browser only: it is not a
+  row of `connectors`, not in `GET /api/v1/connectors`, `list_connectors`, the
+  "N of 20" count, the catalog or the Discover "Added" state. Its switch is the
+  Labs opt-in itself: it calls `useFeatureOptIn().setFeatureOptIn`
+  (`app/composables/feature-opt-in.ts`), the writer the Labs page uses, which
+  posts `{ optedIn }` to `/api/v1/profiles/features/besidka-tools/opt-in` and
+  refreshes the client features. When that refresh does not show the new
+  state (`refreshFeatures` swallows a failed `GET /api/v1/features`), the page
+  shows an error toast and announces nothing. Turning the opt-in off closes the
+  open permissions panel. There is no second flag or setting. With the
+  opt-in on, the name opens the Tool permissions panel; with it off the name is
+  plain text. The row has no delete, no Manual/Auto/Always on mode, no consent
+  block and no "Not connected" status. `?panel=besidka-tool-permissions` on
+  `/chats/connectors` opens the panel (only while the opt-in is on) and is then
+  removed from the URL.
+- **Labs** (`/profile/labs`): keeps the `besidka-tools` switch. Once the
+  opt-in is on, its "Tool permissions" button goes to
+  `/chats/connectors?panel=besidka-tool-permissions`. An account without the
+  `connectors` flag has no such page, so there the button still opens the panel
+  in place. A link to the old `/profile/labs?panel=besidka-tool-permissions`
+  forwards to the Connectors page (or opens the panel in place without the
+  `connectors` flag). There is no new page, so no profile tab (CLAUDE.md,
+  "Profile pages navigation").
 - **Panel**: `app/components/Profile/BesidkaTools/Permissions.vue` in the
   shared `UiSidePanel` (`docs/ui/side-panel.md`; a bottom sheet below `md`).
-  Three groups: Read-only, Write, Ask every time. Each group has a select
-  (Blocked, Needs approval, Always allow; Custom appears, disabled, when the
-  tools of a group differ; no Always allow for Ask every time) and each tool
-  its own select with a plain-language title. Every change saves at once with
-  an optimistic update (`app/composables/besidka-tool-permissions.ts`); the
-  server's list replaces the local one, and a failure drops the optimistic
-  value and shows a toast from `parseError`.
+  It renders the shared `ui/ToolPermissions.vue`, the same component as the
+  connector detail panel (`docs/connectors.md` section 7.11): three
+  collapsible groups, Read-only, Write and a locked Always asks (collapsed by
+  default above 6 tools, a count badge), each with a select (Blocked, Needs
+  approval, Always allow; Custom appears, disabled, when the tools of a
+  group differ; no Always allow for Always asks), and per tool a radio
+  group of three icon buttons (check Always allow, hand Needs approval,
+  circle-slash Blocked) with tooltips on hover and keyboard focus. Always
+  allow stays focusable but `aria-disabled` on the Always asks tools, and
+  its tooltip says why. A group choice saves with `{ tier, mode }`, a tool
+  with `{ tool, mode }`. Every change saves at once with an optimistic update
+  (`app/composables/besidka-tool-permissions.ts`); the server's list
+  replaces the local one, and a failure drops the optimistic value and
+  shows a toast from `parseError`.
 - **Search popup**: with the flag on, Settings gets a "Besidka tool
-  permissions" row after Labs. It opens `/profile/labs?panel=besidka-tool-permissions`,
-  and Labs opens the panel, then clears the query.
+  permissions" row after Labs. It opens
+  `/chats/connectors?panel=besidka-tool-permissions` (or the Labs link when the
+  `connectors` flag is off, `getBesidkaToolPermissionsPath`), and the page opens
+  the panel, then clears the query.
 
 ## MCP
 
@@ -192,20 +226,29 @@ read tier is `read`, write tier is `write`, and the ask-every-time tier keeps
 its `delete` or `instructions` access (`write` otherwise) and is marked
 destructive. The entry carries the user's mode, so:
 
+Owner decision, 2026-11-15 (`docs/connectors.md` section 7.11). A call is
+judged against the taint the send held when its model step began, so calls
+of one step never see each other's results:
+
 | Mode | Untainted send | After earlier Besidka results only | After web, knowledge, file, skill, connector or shared-branch content |
 | --- | --- | --- | --- |
 | Blocked | not offered; denied if called or replayed | same | same |
-| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | read: asks `default`; write: asks `untrusted-output` (Allow once, Deny) | asks `untrusted-output` |
-| Always allow | runs, marked "Ran without asking (Always allowed)" | read: runs; write: asks `untrusted-output` | asks `untrusted-output` |
+| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | read and write: asks `default` | read: asks `default`; write: asks `untrusted-output` (Allow once, Deny) |
+| Always allow | runs, marked "Ran without asking (Always allowed)" | read and write: run | read: runs; write: asks `untrusted-output` |
+
+The reason line of a Needs approval request says "Asks before each use.
+Change it in Tool permissions in Labs."
 
 The ask-every-time tier always asks `always-ask` with Allow once and Deny
 only, whatever the mode. Every Besidka result taints the send with `besidka`
-and records the `besidka` read source. A Besidka read does not count that
-taint (`isTaintedForBesidka` in `server/utils/tool-approval/policy.ts`, rule
-4): the user's own data feeding another read of it carries nothing out, so
-an Always allow or "in this chat" read keeps running. A Besidka write, and
-every Besidka call after any other taint kind, asks. A later connector call
-asks `cross-source`, and the provider's web
+and records the `besidka` read source. A Besidka read set to Always allow
+(or granted in this chat) runs after any taint: a read cannot carry data
+out by itself, and every write after outside content still asks. A Besidka
+write does not count `besidka` taint as outside content
+(`hasForeignTaint` in `server/utils/tool-approval/policy.ts`), but asks after
+any other taint kind or a connector read. A later connector call, read or
+write, asks (`untrusted-output`), since its arguments would carry the data
+to the connector's server; a read offers every answer. The provider's web
 search, grounding and URL context are withheld from later steps (the L5
 egress guard; it is not applied on Anthropic routes, as for connectors). The
 web searches Besidka runs itself (Brave, Exa, any function tool the send
@@ -213,9 +256,13 @@ classifies as a web read) are withheld the same way, and their `execute`
 refuses with "Web search is off for the rest of this message because it read
 the user's private data." on every route, Anthropic included, once a tool
 call of the turn read a connector or Besidka data. A send whose chat already
-holds a Besidka result (`hasBesidkaToolResult`) starts with `besidka` taint,
-so Besidka writes and the ask-every-time tier ask while reads keep their
-relaxed rule. Memory extraction skips an assistant turn that used a
+holds a Besidka result (`hasBesidkaToolResult`) starts with `besidka` taint;
+that taint alone no longer makes a Besidka read or write ask, and the
+ask-every-time tier asks anyway. Preset taint is the usual reason a fresh
+message asked before an Always allow read before 2026-11-15: the skills
+catalog with an imported skill (`skill`), past-chat excerpts or project
+knowledge (`knowledge`), a requested web search (`web`) or an attachment
+(`file`). Memory extraction skips an assistant turn that used a
 `besidka__` tool, like a connector turn. A
 Besidka call past 12 per user turn is denied `over-cap`, on the first request
 and on replay. A `besidka__` tool name with no entry is Blocked, never a
@@ -235,17 +282,36 @@ description, input schema, access and tier) in
 permission to Always allow. A tool that changed asks again, and the replay
 denies a call whose hash drifted.
 
-### Budget
+### Budget and the tool index (C-15)
 
-Native tools first, then up to 24 Besidka tools (`BESIDKA_CHAT_TOOLS_MAX` in
-`shared/utils/besidka-tool-permissions.ts`; Always allow first, then read,
-write and ask every time, then by name), then connectors in what is left of
-the existing 40 tools and 32 KiB of definitions (Besidka definitions count
-against the connector bytes). With the default modes the 24 reach the
-ask-every-time tier. A Besidka tool that did not fit is only logged, never
-named in the chat; the Labs "Tool permissions" panel shows "Only 24 Besidka
-tools are offered per message; block the ones you don't need" while more
-than 24 tools are not Blocked. Connector notices are unchanged.
+Native tools first, then up to 24 Besidka tools up front
+(`BESIDKA_CHAT_TOOLS_MAX` in `shared/utils/besidka-tool-permissions.ts`;
+Always allow first, then read, write and ask every time, then by name), then
+connectors, all within the existing 40 tools and 32 KiB of definitions
+(Besidka definitions count against the connector bytes) minus the room kept
+for loading (`TOOL_INDEX_RESERVED_TOOLS` 10 plus the load tool,
+`TOOL_INDEX_RESERVED_BYTES` 12 KiB, `shared/utils/tool-index.ts`). When an
+Always on connector's up-front tools and Besidka's do not fit together, the
+connector wins and Besidka's last up-front tools move to the index.
+
+No Besidka tool is cut any more. Every tool that is not Blocked is built with
+its approval entry; the ones that do not fit up front (with the default modes,
+part of the ask-every-time tier, such as `delete_files`) go to the tool
+index and reach the model through `tool_index__load`, exactly like an Auto
+connector's tools (`docs/connectors.md` section 6.2). A loaded tool keeps its
+mode, tier, taint rule, definition hash and chat grant, so a loaded delete
+still asks Allow once or Deny. A Blocked tool is never built and never
+listed, so a load of it answers "not available". The chat shows no notice,
+and the Labs panel no longer warns that only 24 tools are offered.
+
+Owner report (2026-11-15, preview pr-923): "delete kyiv-chestnut-leaf.jpg"
+was answered with "no tool to delete files", because `delete_files` was the
+25th tool. With the index the model loads it and the user is asked.
+Models that do not call the load tool on their own (GPT-5.4 mini) are helped
+by a firm rule at the top of the index and by a prefetch from the user's own
+message: "Видали файл …" loads `besidka__delete_files` before the first step,
+and the call still asks Allow once or Deny (`docs/connectors.md` section 6.2,
+item 10).
 
 ### Per-chat row
 
@@ -272,6 +338,6 @@ step titled "Besidka: list projects".
 The chat panel's Approvals section (`listChatToolApprovalGrants`) lists the
 Besidka grants too: "Allow in this chat" grants whose registry hash still
 matches, and, while the chat's Besidka row is on, every tool set to Always
-allow. A Besidka Always allow row links to the Labs permissions panel
-("Manage") instead of a Remove button; "Reset approvals in this chat" clears
+allow. A Besidka Always allow row links to the permissions panel on the Connectors page (Labs when
+the `connectors` flag is off) ("Manage") instead of a Remove button; "Reset approvals in this chat" clears
 the Besidka chat grants with the connector ones.

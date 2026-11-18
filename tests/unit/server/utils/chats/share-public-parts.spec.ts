@@ -333,3 +333,53 @@ describe('grant marker parts in shares and branches', () => {
     })).toBe(false)
   })
 })
+
+describe('connector image parts in shares and branches', () => {
+  const imageParts = [
+    { type: 'step-start' },
+    {
+      type: 'dynamic-tool',
+      toolName: 'mcp__doop__get_frame_screenshot',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { frameId: 'f1' },
+      output: '[image/png, 75 B: shown to the model, kept with this chat]',
+    },
+    {
+      type: 'data-connector-image',
+      id: 'connector-image-call-1-0',
+      data: {
+        toolCallId: 'call-1',
+        fileId: 'file-1',
+        url: '/files/connector-abc.png',
+        mediaType: 'image/png',
+        width: 8,
+        height: 8,
+        size: 75,
+        name: 'doop-get_frame_screenshot.png',
+      },
+    },
+    { type: 'text', text: 'The frame looks right.' },
+  ] as UIMessage['parts']
+
+  it('leaves the connector image out of a public share', () => {
+    const [message] = filterPublicParts([{ parts: imageParts }] as Array<{
+      parts: UIMessage['parts']
+    }>)
+
+    expect(message?.parts).toEqual([
+      { type: 'step-start' },
+      { type: 'text', text: 'The frame looks right.' },
+    ])
+    expect(JSON.stringify(message)).not.toContain('connector-abc.png')
+  })
+
+  it('leaves the connector image out of a branch with its step', () => {
+    const branched = stripToolPartsFromBranchedMessage(imageParts)
+
+    expect(branched.some((part) => {
+      return part.type === 'data-connector-image'
+        || part.type === 'dynamic-tool'
+    })).toBe(false)
+  })
+})
