@@ -133,36 +133,92 @@ describe('resolveConnectorTarget', () => {
     }
 
     expect(slugBaseOf({
-      url: 'https://mcp.exa.ai/mcp',
+      url: 'https://mcp.tracker.example.com/mcp',
       source: { via: 'app' },
-    })).toBe('exa')
+    })).toBe('example')
     expect(slugBaseOf({
-      url: 'https://mcp.exa.ai/mcp',
-      title: 'Exa Search',
+      url: 'https://mcp.tracker.example.com/mcp',
+      title: 'Tracker Search',
       source: { via: 'app' },
-    })).toBe('exa-search')
+    })).toBe('tracker-search')
     expect(slugBaseOf({
       source: {
         via: 'registry',
-        entry: { remoteUrl: 'https://mcp.exa.ai/mcp', title: 'Exa' },
+        entry: {
+          remoteUrl: 'https://mcp.tracker.example.com/mcp',
+          title: 'Tracker',
+        },
       },
-    })).toBe('exa')
+    })).toBe('tracker')
     expect(slugBaseOf({
       source: {
         via: 'registry',
-        entry: { remoteUrl: 'https://mcp.exa.ai/mcp', title: null },
+        entry: {
+          remoteUrl: 'https://mcp.tracker.example.com/mcp',
+          title: null,
+        },
       },
-    })).toBe('exa')
+    })).toBe('example')
     expect(slugBaseOf({
       presetId: 'github',
       title: 'Whatever',
       source: { via: 'app' },
     })).toBe('github')
     expect(slugBaseOf({
-      url: 'https://mcp.exa.ai/mcp',
-      title: 'mcp.exa.ai',
+      url: 'https://mcp.tracker.example.com/mcp',
+      title: 'mcp.tracker.example.com',
       source: { via: 'app' },
-    })).toBe('exa')
+    })).toBe('example')
+  })
+
+  it('never lets a title or a host take a preset or curated slug', () => {
+    type TargetInput = Parameters<typeof resolveConnectorTarget>[0]
+    const slugBaseOf = (input: TargetInput) => {
+      return resolveConnectorTarget(input).slugBase
+    }
+
+    expect(slugBaseOf({
+      source: {
+        via: 'registry',
+        entry: {
+          name: 'com.evil/linear',
+          remoteUrl: 'https://mcp.evil.example/mcp',
+          title: 'Linear',
+        },
+      },
+    })).toBe('evil')
+    expect(slugBaseOf({
+      url: 'https://mcp.evil.example/mcp',
+      title: 'Notion',
+      source: { via: 'app' },
+    })).toBe('evil')
+    expect(slugBaseOf({
+      url: 'https://mcp.notion.so/mcp',
+      title: 'Notion',
+      source: { via: 'app' },
+    })).toBe('notion-2')
+    expect(slugBaseOf({
+      url: 'https://mcp.evil.example/mcp',
+      title: 'figma',
+      source: { via: 'app' },
+    })).toBe('evil')
+    expect(slugBaseOf({
+      url: 'https://mcp.exa.ai/mcp',
+      source: { via: 'app' },
+    })).toBe('exa-2')
+  })
+
+  it('gives the curated entry its own id', () => {
+    expect(resolveConnectorTarget({
+      source: {
+        via: 'registry',
+        entry: {
+          name: 'com.figma.mcp/mcp',
+          remoteUrl: 'https://mcp.figma.com/mcp',
+          title: 'Figma',
+        },
+      },
+    }).slugBase).toBe('figma')
   })
 
   it('refuses an unknown preset and a missing address', () => {

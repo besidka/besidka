@@ -86,18 +86,32 @@ export function createConcurrencyLimiter(
   }
 }
 
-function scopeNetLogger(logger?: LoggerLike): LoggerLike | undefined {
+function scopeNetLogger(
+  logger?: LoggerLike,
+  logsHost: boolean = true,
+): LoggerLike | undefined {
   if (!logger) {
     return undefined
   }
 
   return {
     set(data) {
-      const net = (data.attributes as { net?: unknown } | undefined)?.net
+      const net = (data.attributes as { net?: Record<string, unknown> }
+        | undefined)?.net
 
-      if (net) {
-        logger.set({ attributes: { connectors: { net } } })
+      if (!net) {
+        return
       }
+
+      const { host, ...withoutHost } = net
+
+      logger.set({
+        attributes: {
+          connectors: {
+            net: logsHost ? { ...withoutHost, host } : withoutHost,
+          },
+        },
+      })
     },
   }
 }
@@ -117,8 +131,9 @@ export function createConnectorTransportFetch(
   transport: ConnectorTransport,
   createFetch: typeof createSafeFetch = createSafeFetch,
   logger?: LoggerLike,
+  logsHost: boolean = true,
 ): typeof fetch {
-  const netLogger = scopeNetLogger(logger)
+  const netLogger = scopeNetLogger(logger, logsHost)
 
   if (transport === 'sse') {
     return createFetch('mcp', {
@@ -215,6 +230,7 @@ export function createConnectorClientHandle(input: {
   resolveAuth: ConnectorAuthResolver
   limiter: ConcurrencyLimiter
   logger?: LoggerLike
+  logsHost?: boolean
   dependencies?: ConnectorClientDependencies
 }): ConnectorClientHandle {
   const createClient = input.dependencies?.createClient ?? createMCPClient
@@ -222,6 +238,7 @@ export function createConnectorClientHandle(input: {
     input.transport,
     input.dependencies?.createFetch,
     input.logger,
+    input.logsHost,
   )
   let clientPromise: Promise<ConnectorClient> | null = null
   let isClosed = false

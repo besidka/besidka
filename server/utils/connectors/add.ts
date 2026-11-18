@@ -8,10 +8,14 @@ import {
 import type { ConnectorCreatedVia } from '#shared/utils/connectors-policy'
 import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import {
+  allocateConnectorSlug,
   deriveConnectorSlugBase,
   deriveConnectorSlugBaseFromTitle,
 } from '#shared/utils/connectors-slug'
-import { findConnectorPreset } from '~~/config/connectors-catalog'
+import {
+  CONNECTOR_PRESETS,
+  findConnectorPreset,
+} from '~~/config/connectors-catalog'
 import * as schema from '~~/server/db/schema'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
 import { createConnector } from '~~/server/utils/connectors/store'
@@ -19,6 +23,23 @@ import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 
 type DbClient = ReturnType<typeof useDb>
+
+const RESERVED_SLUGS: ReadonlySet<string> = new Set([
+  ...CONNECTOR_PRESETS.map(preset => preset.id),
+  ...(CURATED_CONNECTORS as readonly CuratedConnector[]).flatMap((curated) => {
+    return [
+      curated.id,
+      curated.presetId,
+      deriveConnectorSlugBaseFromTitle(curated.title),
+    ].filter((slug): slug is string => !!slug)
+  }),
+])
+
+function unreservedSlugBase(candidate: string | null): string | null {
+  return candidate !== null && !RESERVED_SLUGS.has(candidate)
+    ? candidate
+    : null
+}
 
 export interface ConnectorTargetInput {
   url?: string
@@ -44,6 +65,7 @@ export interface ResolvedConnectorTarget {
 }
 
 export interface RegistryEntryAddress {
+  name?: string
   remoteUrl: string
   title: string | null
 }
@@ -115,7 +137,11 @@ export async function findActiveRegistryEntry(
   const curated = (CURATED_CONNECTORS as readonly CuratedConnector[])
     .find(item => item.registryName === entry.name)
 
-  return { remoteUrl: entry.remoteUrl, title: curated?.title ?? entry.title }
+  return {
+    name: entry.name,
+    remoteUrl: entry.remoteUrl,
+    title: curated?.title ?? entry.title,
+  }
 }
 
 /**
@@ -170,10 +196,20 @@ export function resolveConnectorTarget(
   )
   const title = typedTitle || preset?.title || registryTitle
     || parsed.url.hostname
+  const ownCurated = registryEntry?.name
+    ? CURATED_CONNECTORS.find((curated) => {
+      return 'registryName' in curated
+        && curated.registryName === registryEntry.name
+    })
+    : undefined
   const slugBase = preset?.id
-    ?? deriveConnectorSlugBaseFromTitle(registryTitle)
-    ?? deriveConnectorSlugBaseFromTitle(typedTitle)
-    ?? deriveConnectorSlugBase(parsed.url.hostname)
+    ?? ownCurated?.id
+    ?? unreservedSlugBase(deriveConnectorSlugBaseFromTitle(registryTitle))
+    ?? unreservedSlugBase(deriveConnectorSlugBaseFromTitle(typedTitle))
+    ?? allocateConnectorSlug(
+      deriveConnectorSlugBase(parsed.url.hostname),
+      RESERVED_SLUGS,
+    )
 
   return {
     url: parsed.url.toString(),

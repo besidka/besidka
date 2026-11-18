@@ -1489,12 +1489,21 @@ reason and "Reference XXXX-XXXX" with a copy button. Old messages show none.
 
 **Logs** (never the remote text to the model or the UI):
 
-- `attributes.connectors.callError[]` (up to 10): `connectorId`, `tool`,
-  `category`, `step` (`verify` for the live hash check, `call` for the call),
-  `httpStatus`, `errorName`, `message` (redacted of the connector's secrets,
-  one line, 300 characters), `reference`, `requestId`.
+- `attributes.connectors.callError[]` (up to 10): `connectorId`, `tool`
+  (only for a connector with a `presetId`; a custom connector's call error has
+  no tool name), `category`, `step` (`verify` for the live hash check, `call`
+  for the call), `httpStatus`, `errorName` (control characters removed, 64
+  characters), `message`, `reference` and `requestId` (control characters
+  removed, 64 characters). The `message` is the remote error text after four
+  steps: the connector's access token, header value, refresh token and client
+  secret are redacted; so are the path, the query and each query value of its
+  address, in plain and URL-encoded form; every `http(s)://` address is
+  replaced by `[url]`; then it is flattened to one line and cut to 300
+  characters. A server that echoes the request address therefore cannot put a
+  key from it in the log.
 - `attributes.connectors.net`: the last `safe-fetch` record of the send
-  (host, status, redirects, bytes), scoped away from `attributes.net`.
+  (status, redirects, bytes, `rejected`), scoped away from `attributes.net`.
+  The `host` is kept only for a preset connector and dropped for a custom one.
 - `attributes.connectors.calls[]` (up to 20), for a future Axiom "Connectors"
   dashboard: `directoryId` (the preset id, else `custom`), `tool` (only when the
   `directoryId` is not `custom`), `outcome` (`ok`, `error`, `timeout`,
@@ -2530,7 +2539,7 @@ to the public id on the way out (`encodePublicId`) and decodes it on the way in
 | --- | --- | --- |
 | `id` | integer, autoincrement | exposed as a public id by the store |
 | `user_id` | integer, not null | |
-| `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). A directory entry uses its title, then a title the user typed (never one that looks like a host name), then the registrable-domain label that is not generic (`mcp`, `api`, `www`, `app`, `server`, `remote`, `gateway`): `mcp.exa.ai` gives `exa`, `mcp.example.co.uk` gives `example`, cut to 16. Existing rows keep their slug. On collision `-2`, `-3` |
+| `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). A preset uses its id and a directory entry whose registry name is a curated one uses the curated id. Otherwise a directory entry uses its title, then a title the user typed (never one that looks like a host name), then the registrable-domain label that is not generic (`mcp`, `api`, `www`, `app`, `server`, `remote`, `gateway`): `mcp.exa.ai` gives `exa`, `mcp.example.co.uk` gives `example`, cut to 16. A title never takes a preset id, a curated id or a curated title (so an entry titled "Linear" does not become `linear`), and a host label that is one of those gets `-2`, so `mcp.exa.ai` typed by hand is `exa-2` while the curated Exa entry is `exa`. Existing rows keep their slug. On collision `-2`, `-3` |
 | `title` | text | user-editable, at most 80 characters |
 | `origin` | text | `https://host[:port]`, plain, for display and consent. Derived from the URL inside `createConnector`, never taken from the caller |
 | `url_encrypted` | text | full canonical URL, encrypted (paths and queries can carry secrets) |

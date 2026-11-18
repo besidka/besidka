@@ -3,7 +3,9 @@ import { MCPClientError, UnauthorizedError } from '@ai-sdk/mcp'
 import { createError } from 'evlog'
 import {
   classifyConnectorCallError,
+  collectUrlRedactions,
   redactLoggedMessage,
+  sanitizeLoggedIdentifier,
 } from '~~/server/utils/connectors/call-errors'
 
 function codedError(code: string, status: number) {
@@ -115,5 +117,69 @@ describe('redactLoggedMessage', () => {
     expect(message).toContain('[redacted]')
     expect(message).not.toContain('\n')
     expect(message.length).toBeLessThanOrEqual(300)
+  })
+})
+
+describe('redactLoggedMessage addresses', () => {
+  it('never logs a key echoed in a 4xx body that quotes the address', () => {
+    const redactions = collectUrlRedactions(
+      'https://mcp.example.com/mcp/team-9xk2?key=abc123secret&mode=full',
+    )
+    const message = redactLoggedMessage(
+      'HTTP 400: bad request to https://x/mcp?key=abc123secret and '
+      + 'key=abc123secret path /mcp/team-9xk2 encoded '
+      + `${encodeURIComponent('/mcp/team-9xk2?key=abc123secret')}`,
+      redactions,
+    )
+
+    expect(message).not.toContain('abc123secret')
+    expect(message).not.toContain('team-9xk2')
+    expect(message).not.toContain('https://')
+    expect(message).toContain('[url]')
+  })
+
+  it('replaces any address with [url], even one that is not the connector', () => {
+    expect(redactLoggedMessage(
+      'see http://evil.test/a?b=c and https://other.test/x.',
+      [],
+    )).toBe('see [url] and [url]')
+  })
+
+  it('redacts a refresh token and a client secret passed as secrets', () => {
+    expect(redactLoggedMessage(
+      'bad refresh-token-0000 or client-secret-1111',
+      ['refresh-token-0000', 'client-secret-1111'],
+    )).toBe('bad [redacted] or [redacted]')
+  })
+})
+
+describe('collectUrlRedactions', () => {
+  it('keeps the origin and a bare slash out of the redactions', () => {
+    expect(collectUrlRedactions('https://mcp.example.com/')).toEqual([])
+    expect(collectUrlRedactions('not a url')).toEqual([])
+  })
+
+  it('collects the path, the query and each query value', () => {
+    const redactions = collectUrlRedactions(
+      'https://mcp.example.com/mcp/secret-path?key=abc123secret',
+    )
+
+    expect(redactions).toEqual(expect.arrayContaining([
+      '/mcp/secret-path',
+      'key=abc123secret',
+      'abc123secret',
+    ]))
+    expect(redactions.some(value => value.includes('mcp.example.com')))
+      .toBe(false)
+  })
+})
+
+describe('sanitizeLoggedIdentifier', () => {
+  it('strips control characters and cuts to 64 characters', () => {
+    const value = sanitizeLoggedIdentifier(`a\u0000b\nc${'x'.repeat(100)}`)
+
+    expect(value.startsWith('abc')).toBe(true)
+    expect(value).not.toMatch(/\p{Cc}/u)
+    expect(value).toHaveLength(64)
   })
 })
