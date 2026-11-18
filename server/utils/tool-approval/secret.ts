@@ -4,7 +4,7 @@ import { bytesToHex, deriveHkdfBytes } from '~~/server/utils/hkdf'
 
 interface CachedSecret {
   encryptionKey: string
-  secret: Promise<string>
+  secret: string
 }
 
 let cachedSecret: CachedSecret | null = null
@@ -27,9 +27,9 @@ export async function deriveToolApprovalSecret(
 /**
  * Reads the encryption key from the runtime config and derives the approval
  * secret once per key. Throws when the key is missing: without a secret the
- * SDK would run a tampered but schema-valid tool input as sent. A derivation
- * that rejects is dropped from the cache, so the next call tries again
- * instead of failing for the life of the isolate.
+ * SDK would run a tampered but schema-valid tool input as sent. Only a derived
+ * secret is cached, never the pending derivation, so no request awaits a
+ * promise that another request started and may not live to settle.
  */
 export async function useToolApprovalSecret(): Promise<string> {
   const encryptionKey = String(useRuntimeConfig().encryptionKey ?? '')
@@ -42,22 +42,13 @@ export async function useToolApprovalSecret(): Promise<string> {
     })
   }
 
-  if (cachedSecret?.encryptionKey !== encryptionKey) {
-    cachedSecret = {
-      encryptionKey,
-      secret: deriveToolApprovalSecret(encryptionKey),
-    }
+  if (cachedSecret?.encryptionKey === encryptionKey) {
+    return cachedSecret.secret
   }
 
-  const cached = cachedSecret
+  const secret = await deriveToolApprovalSecret(encryptionKey)
 
-  try {
-    return await cached.secret
-  } catch (exception) {
-    if (cachedSecret === cached) {
-      cachedSecret = null
-    }
+  cachedSecret = { encryptionKey, secret }
 
-    throw exception
-  }
+  return secret
 }
