@@ -68,6 +68,7 @@ import {
   isSecureBaseUrl,
 } from './auth-hosts'
 import { createSettledInstanceCache } from '~~/server/utils/auth-instance'
+import { buildAuthRateLimitCustomRules } from '~~/server/utils/auth-rate-limit'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -415,10 +416,11 @@ function createAuth() {
       enabled: isRateLimitEnabled,
       window: authRateLimitDefaults.window,
       max: authRateLimitDefaults.max,
-      customRules: authRateLimitRules,
+      customRules: buildAuthRateLimitCustomRules(),
       customStorage: createAuthRateLimitStorage(
         kv,
         `${dataKey}:rate-limit`,
+        { denyOnKvError: true },
       ),
     },
     advanced: {

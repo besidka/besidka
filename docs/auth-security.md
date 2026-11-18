@@ -168,7 +168,22 @@ abuse containment instead of raw burst suppression.
 | `/oauth2/consent` | 60s | 20 |
 | `/oauth2/revoke` | 60s | 120 |
 | `/oauth2/introspect` | 60s | 120 |
+| `/get-session` | not limited | — |
+| `/.well-known/**` | not limited | — |
 | everything else (default) | 60s | 60 |
+
+`/get-session` and the public discovery documents under `/.well-known/` are
+exempt (`authRateLimitExemptPaths`, passed to Better Auth as `false` by
+`buildAuthRateLimitCustomRules()`, the documented way to switch a path off:
+<https://better-auth.com/docs/concepts/rate-limit>). `/get-session` reads the
+caller's own session and answers nothing a guess could learn from, yet every
+page load calls it, so under the 60-per-60s default it cost one KV write per
+call and was the main source of KV's per-key 429s (see
+[Rate-limit storage failures](#rate-limit-storage-failures)). The
+`/.well-known/**` documents are static public metadata that MCP clients fetch
+from shared egress IPs; the WAF rate-limit rule still covers them. `**` is
+needed because Better Auth's `*` stops at a `/`, and the protected resource
+document also lives at `/.well-known/oauth-protected-resource/mcp`.
 
 The `/oauth2/*` rows are explained in
 [OAuth authorization server (MCP)](#oauth-authorization-server-mcp).
@@ -273,6 +288,12 @@ catalog rule above:
 | `POST /api/v1/profiles/keys/exa` | 60s | 10 |
 | `DELETE /api/v1/profiles/keys/exa` | 60s | 10 |
 
+Since the 2026-11-18 rate-limit storage fix, `GET` and `HEAD` on these routes
+are counted in isolate memory (`consumeMemoryRateLimit()`), not KV, with the
+same windows and maxes. A read returns only `hasKey` or a list of providers,
+so per-isolate counting is enough, and a page load no longer costs a KV
+write. `POST` and `DELETE` still count in KV.
+
 The summary route is read-mostly and fetched from chat pages, so it gets a
 much looser 300-per-60s row (raised from 30 in `749473d`). Every gateway
 `GET` is read-mostly, user-initiated, and low-frequency — a single DB lookup
@@ -340,6 +361,41 @@ improvement over the previous `get`/`set`-only implementation (which had
 the same gap, plus the TTL bug above) — not a hard guarantee. A truly
 atomic implementation would need Durable Objects or D1, which is out of
 scope for this PR.
+
+## Rate-limit storage failures
+
+Cloudflare KV accepts about one write per second to the same key and answers
+`KV PUT failed: 429 Too Many Requests` beyond that. Every rate-limited
+request writes its bucket key, so two requests for one key in the same
+second made the second write fail, and the error reached the route as a 500.
+In the 24 hours before the fix, production logged about 160 of these 500s on
+`GET /api/auth/get-session` alone, plus more on `GET /api/v1/profiles/keys`.
+
+The rule since then:
+
+- **A KV error never allows the request.** A brute-force burst is exactly
+  what makes one key take more than one write per second, so letting an
+  uncounted attempt through would switch the limit off when it matters most.
+  Better Auth's storage and the key routes create the storage with
+  `createAuthRateLimitStorage(kv, prefix, { denyOnKvError: true })`: a failed
+  KV read or write logs `attributes.rateLimit` (`keyPrefix`, `kvReadFailed`,
+  `kvWriteFailed`, `denied`, `error`; never the bucket key, which holds the
+  client IP) and answers 429 with a one-second retry (`X-Retry-After: 1` from
+  Better Auth, `Retry-After: 1` from the key routes). This covers sign-in,
+  sign-up, password reset, 2FA, passkeys and every other row in the table.
+- **Low-risk reads do not write KV at all.** `/get-session` and
+  `/.well-known/**` are exempt from Better Auth's limiter, and key-route
+  reads count in isolate memory.
+- **Why not leave it to Better Auth.** Its rate-limit page documents
+  `customStorage.consume` as one check-and-increment step but says nothing
+  about a storage that throws
+  (<https://better-auth.com/docs/concepts/rate-limit>). In 1.7.14 the error
+  propagates out of `onRequestRateLimit` and the router answers 500, which is
+  what production showed, so the decision is made in our storage.
+- **Other callers keep their own policy.** Without `denyOnKvError` the KV
+  error still propagates, as before, so features that already decide what a
+  KV failure means (the artifact bridge, viewer storage, documents, reports)
+  are unchanged.
 
 ## Auth instance init on Workers
 

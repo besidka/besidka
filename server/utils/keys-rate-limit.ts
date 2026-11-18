@@ -1,20 +1,47 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
-import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
+import {
+  consumeMemoryRateLimit,
+  createAuthRateLimitStorage,
+} from '~~/server/utils/auth-rate-limit'
 
 interface KeysRateLimitRule {
   window: number
   max: number
 }
 
+const READ_METHODS = new Set(['GET', 'HEAD'])
+
+function isReadRequest(event: RequestEvent): boolean {
+  const method = event.req?.method
+
+  return typeof method === 'string' && READ_METHODS.has(method.toUpperCase())
+}
+
+async function consumeKeysRateLimit(
+  event: RequestEvent,
+  userId: string,
+  keyPrefix: string,
+  rule: KeysRateLimitRule,
+) {
+  if (isReadRequest(event)) {
+    return consumeMemoryRateLimit(`${keyPrefix}:${userId}`, rule)
+  }
+
+  return await createAuthRateLimitStorage(useKV(), keyPrefix, {
+    denyOnKvError: true,
+  }).consume(userId, rule)
+}
+
 /**
- * Shared rate-limit enforcement for the `/api/v1/profiles/keys/*` routes,
- * reusing the KV-backed `createAuthRateLimitStorage()` factory. Each call
- * site passes its own `keyPrefix` so every route/provider/method
+ * Shared rate-limit enforcement for the `/api/v1/profiles/keys/*` routes.
+ * Each call site passes its own `keyPrefix` so every route/provider/method
  * combination gets an independent bucket keyed by `session.user.id` — a
  * card's POST-then-refresh-GET flow, or two independent routes each firing
  * a GET on page load, must never share a bucket with each other or
- * false-429 normal usage.
+ * false-429 normal usage. Reads are counted in isolate memory so a page load
+ * never costs a KV write; mutations use the KV-backed
+ * `createAuthRateLimitStorage()` and answer 429 when KV refuses a write.
  */
 export async function enforceKeysRateLimit(
   event: RequestEvent,
@@ -22,8 +49,7 @@ export async function enforceKeysRateLimit(
   keyPrefix: string,
   rule: KeysRateLimitRule,
 ): Promise<void> {
-  const storage = createAuthRateLimitStorage(useKV(), keyPrefix)
-  const result = await storage.consume(userId, rule)
+  const result = await consumeKeysRateLimit(event, userId, keyPrefix, rule)
 
   if (result.allowed) {
     return
