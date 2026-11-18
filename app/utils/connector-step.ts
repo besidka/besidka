@@ -72,3 +72,12 @@ export function formatConnectorArguments(input: unknown): string {
 export function getConnectorImageAlt(connectorTitle: string): string {
   return `Screenshot from ${connectorTitle}`
 }
+
+export function getConnectorImageStackLabel(
+  count: number,
+  connectorTitle?: string,
+): string {
+  return connectorTitle
+    ? `Open ${count} screenshots from ${connectorTitle}`
+    : `Open ${count} screenshots`
+}

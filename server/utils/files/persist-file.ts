@@ -28,6 +28,11 @@ export interface PersistFileInput {
   fileData: Uint8Array
   quotaSizeBytes?: number
   source?: FileSource
+  /**
+   * A deterministic R2 key instead of a random one. When the row insert
+   * fails because another row already has this key, the object is left in
+   * place for that row and a `storage_key_taken` error is thrown.
+   */
   storageKey?: string
   originMessageId?: number | null
   originProvider?: string | null
@@ -53,6 +58,31 @@ export type PersistedFile = Pick<
 >>
 
 const MAX_LOGGED_EXTENSION_LENGTH = 16
+
+export const STORAGE_KEY_TAKEN_CODE = 'storage_key_taken'
+
+export function isStorageKeyTakenError(exception: unknown): boolean {
+  return typeof exception === 'object'
+    && exception !== null
+    && (exception as { code?: unknown }).code === STORAGE_KEY_TAKEN_CODE
+}
+
+async function hasRowForStorageKey(
+  db: ReturnType<typeof useDb>,
+  storageKey: string,
+): Promise<boolean> {
+  try {
+    const row = await db
+      .select({ id: schema.files.id })
+      .from(schema.files)
+      .where(eq(schema.files.storageKey, storageKey))
+      .get()
+
+    return !!row
+  } catch {
+    return false
+  }
+}
 
 /**
  * File names are user text, so the logs get only the extension and the name
@@ -189,6 +219,15 @@ export async function persistFile(
         },
       },
     })
+
+    if (input.storageKey && await hasRowForStorageKey(db, response.key)) {
+      throw createError({
+        message: 'A file with this storage key already exists',
+        status: 409,
+        code: STORAGE_KEY_TAKEN_CODE,
+        why: 'Another request saved the same object first; its row owns it.',
+      })
+    }
 
     try {
       await useFileStorage().delete(response.key)

@@ -122,6 +122,9 @@ vi.mock('evlog', () => ({
 
 vi.mock('~~/server/utils/files/persist-file', () => ({
   persistFile: mocks.persistFile,
+  isStorageKeyTakenError: (exception: { code?: string }) => {
+    return exception?.code === 'storage_key_taken'
+  },
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
@@ -446,6 +449,10 @@ async function runSend(input: {
   const created = createDb()
 
   vi.stubGlobal('useDb', () => created.db)
+  vi.stubGlobal('useFileStorage', () => ({
+    head: async () => ({ key: 'present' }),
+    put: async () => ({ key: 'restored' }),
+  }))
 
   const result = await handler({
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
@@ -764,6 +771,7 @@ describe('connector tools in the chat send', () => {
           fileName: 'linear-list_issues.png',
           mediaType: 'image/png',
           source: 'connector',
+          originProvider: 'chat:chat-1',
         })
         expect(persisted.storageKey).toMatch(/^connector-[0-9a-f]{64}\.png$/)
         expect(Buffer.from(persisted.fileData).toString('base64'))

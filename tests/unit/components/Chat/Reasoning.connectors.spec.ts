@@ -199,73 +199,100 @@ describe('Chat/Reasoning connector images', () => {
       })
   })
 
-  it('shows up to three thumbnails and the rest as +N in the header',
-    async () => {
-      const wrapper = await mountMessage([
-        connectorCall(),
-        connectorImage('call-1', 0),
-        connectorImage('call-1', 1),
-        connectorCall({ toolCallId: 'call-2' }),
-        connectorImage('call-2', 0),
-        connectorImage('call-2', 1),
-        connectorImage('call-2', 2, true),
-      ])
-      const header = wrapper.get('[data-testid="reasoning-header-images"]')
-      const thumbnails = header.findAll(
-        '[data-testid="reasoning-connector-image"]',
-      )
+  it('collapses the message images into one daisyUI stack with +N in the '
+    + 'header', async () => {
+    const wrapper = await mountMessage([
+      connectorCall(),
+      connectorImage('call-1', 0),
+      connectorImage('call-1', 1),
+      connectorCall({ toolCallId: 'call-2' }),
+      connectorImage('call-2', 0),
+      connectorImage('call-2', 1),
+      connectorImage('call-2', 2, true),
+    ])
+    const header = wrapper.get('[data-testid="reasoning-header-images"]')
+    const stack = header.get('[data-testid="reasoning-connector-image-stack"]')
 
-      expect(thumbnails).toHaveLength(3)
-      expect(thumbnails[0]!.get('img').attributes('alt'))
-        .toBe('Screenshot from Notion')
-      expect(header.get('[data-testid="reasoning-header-images-more"]').text())
-        .toBe('+1')
-      expect(header.get(
-        '[data-testid="reasoning-header-images-more-phone"]',
-      ).text()).toBe('+2')
-      expect(header.find('[data-testid="reasoning-connector-image-deleted"]')
-        .exists()).toBe(false)
-    })
+    expect(stack.element.tagName).toBe('BUTTON')
+    expect(stack.classes()).toEqual(expect.arrayContaining([
+      'stack',
+      'stack-end',
+      'h-6',
+    ]))
+    expect(stack.attributes('aria-label'))
+      .toBe('Open 4 screenshots from Notion')
+    expect(stack.findAll('img')).toHaveLength(3)
+    expect(header.get('[data-testid="reasoning-connector-image-more"]')
+      .classes()).toEqual(expect.arrayContaining(['badge', 'badge-soft']))
+    expect(header.get('[data-testid="reasoning-connector-image-more"]').text())
+      .toBe('+1')
+    expect(header.find('[data-testid="reasoning-connector-image-deleted"]')
+      .exists()).toBe(false)
+  })
+
+  it('keeps a single image as a plain thumbnail in the header', async () => {
+    const wrapper = await mountMessage([
+      connectorCall(),
+      connectorImage('call-1', 0),
+    ])
+    const header = wrapper.get('[data-testid="reasoning-header-images"]')
+
+    expect(header.find('[data-testid="reasoning-connector-image-stack"]')
+      .exists()).toBe(false)
+    expect(header.get('[data-testid="reasoning-connector-image"] img')
+      .attributes('alt')).toBe('Screenshot from Notion')
+  })
 
   it('opens the image without toggling the steps', async () => {
     const wrapper = await mountMessage([
       connectorCall(),
       connectorImage('call-1', 0),
+      connectorImage('call-1', 1),
     ])
     const details = wrapper.get('details')
 
     await wrapper.get('[data-testid="reasoning-header-images"] '
-      + '[data-testid="reasoning-connector-image"]').trigger('click')
+      + '[data-testid="reasoning-connector-image-stack"]').trigger('click')
 
     expect(details.attributes('open')).toBeUndefined()
     expect(wrapper.find('[data-testid="reasoning-header-images"]').exists())
       .toBe(true)
   })
 
-  it('shows one thumbnail per step row and a deleted tile when it is gone',
-    async () => {
-      const wrapper = await mountMessage([
-        connectorCall(),
-        connectorImage('call-1', 0),
-        connectorImage('call-1', 1),
-        connectorCall({ toolCallId: 'call-2' }),
-        connectorImage('call-2', 0, true),
-      ])
-      const steps = wrapper.findAll('[data-testid="reasoning-connector-step"]')
+  it('stacks a call with several images and shows a deleted tile when it '
+    + 'is gone', async () => {
+    const wrapper = await mountMessage([
+      connectorCall(),
+      connectorImage('call-1', 0),
+      connectorImage('call-1', 1),
+      connectorCall({ toolCallId: 'call-2' }),
+      connectorImage('call-2', 0, true),
+      connectorCall({ toolCallId: 'call-3' }),
+      connectorImage('call-3', 0),
+    ])
+    const steps = wrapper.findAll('[data-testid="reasoning-connector-step"]')
+    const stack = steps[0]!.get(
+      '[data-testid="reasoning-connector-image-stack"]',
+    )
 
-      expect(steps[0]!.findAll('[data-testid="reasoning-connector-image"]'))
-        .toHaveLength(1)
-      expect(steps[0]!.get('[data-testid="reasoning-connector-image-more"]')
-        .text()).toBe('+1')
-      expect(steps[1]!.find('[data-testid="reasoning-connector-image"]')
-        .exists()).toBe(false)
-      expect(steps[1]!.find(
-        '[data-testid="reasoning-connector-image-deleted"]',
-      ).exists()).toBe(true)
-    })
+    expect(stack.attributes('aria-label'))
+      .toBe('Open 2 screenshots from Notion')
+    expect(stack.findAll('img')).toHaveLength(2)
+    expect(steps[0]!.find('[data-testid="reasoning-connector-image-more"]')
+      .exists()).toBe(false)
+    expect(steps[1]!.find('[data-testid="reasoning-connector-image"]')
+      .exists()).toBe(false)
+    expect(steps[1]!.find(
+      '[data-testid="reasoning-connector-image-deleted"]',
+    ).exists()).toBe(true)
+    expect(steps[2]!.find('[data-testid="reasoning-connector-image-stack"]')
+      .exists()).toBe(false)
+    expect(steps[2]!.find('[data-testid="reasoning-connector-image"]')
+      .exists()).toBe(true)
+  })
 
-  it('opens a header image among every image of the message and a row '
-    + 'image among the images of its call', async () => {
+  it('opens the header stack on its top image among every image of the '
+    + 'message, and a row stack among the images of its call', async () => {
     const parts = [
       connectorCall(),
       connectorImage('call-1', 0),
@@ -275,17 +302,17 @@ describe('Chat/Reasoning connector images', () => {
     ]
     const wrapper = await mountMessage(parts, { stubTeleport: true })
 
-    await wrapper.findAll('[data-testid="reasoning-header-images"] '
-      + '[data-testid="reasoning-connector-image"]')[2]!.trigger('click')
+    await wrapper.get('[data-testid="reasoning-header-images"] '
+      + '[data-testid="reasoning-connector-image-stack"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="image-preview-position"]').text())
-      .toBe('3 of 3')
+      .toBe('1 of 3')
 
     const expanded = await mountMessage(parts, { stubTeleport: true })
 
     await expanded.findAll('[data-testid="reasoning-connector-step"]')[0]!
-      .get('[data-testid="reasoning-connector-image"]').trigger('click')
+      .get('[data-testid="reasoning-connector-image-stack"]').trigger('click')
     await flushPromises()
 
     expect(expanded.get('[data-testid="image-preview-position"]').text())

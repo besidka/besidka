@@ -181,7 +181,7 @@ useSeoMeta({
 const SKELETON_DELAY_MS = 300
 const SKELETON_ROWS = 5
 const FILE_MANAGER_TARGET_PATH = '/chats/new'
-const CONNECTOR_IMAGE_DELETE_MAX_ROUNDS = 10
+const CONNECTOR_IMAGE_DELETE_MAX_ROUNDS = 100
 
 const { data: stats, status, error, refresh } = await useLazyFetch(
   '/api/v1/storage',

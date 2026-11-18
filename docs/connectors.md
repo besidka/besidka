@@ -1696,6 +1696,18 @@ text is built and before `close()` clears the bytes:
   (`doop-get_frame_screenshot.png`, then `-2`, `-3`), never from the result.
 - Any failure (storage full, R2, D1) never fails the call: the model still
   gets the image and the line says it was not kept.
+- Two sends of the same chat that save the same image at once (two tabs)
+  race on the unique storage key. `persistFile` with a deterministic
+  `storageKey` checks, when its insert fails, whether another row owns the
+  key; then it keeps the object (the bytes are identical) and throws
+  `storage_key_taken`, and the saver reuses that row instead of deleting
+  the object the other row points at.
+- A reused row is checked with an R2 `head`; if its object is missing, the
+  saver puts the bytes back under the same key before reusing it.
+- Each send has its own image budget (20 images, 12 MB), and so does every
+  approval continuation, because each is its own send. The total stays
+  bounded by the storage allowance (every save goes through its guard) and
+  by the 12 connector calls per user turn, which approval rounds share.
 
 Each kept image becomes one `data-connector-image` part
 (`shared/utils/connector-image-parts.ts`) `{ toolCallId, fileId, url,
@@ -1717,20 +1729,31 @@ is dropped by `filterPublicParts`, and only `file` parts give a share a
 `chat_share_files` grant, so no grant is created. Branches drop the part with
 its `dynamic-tool` step (there is no step left to hang it on).
 
-**Deletion.** A chat takes its connector images with it: `deleteChat` and
-the bulk delete find them through the chat's `data-connector-image` parts
-(`findChatsConnectorImageFiles`, so an unlinked row goes too), take them out
-of the origin-file reference check and delete them
-(`deleteConnectorImagesOfDeletedChats`: R2 batch delete per 90, then the
-rows, then the storage cache). Deleting one message checks its origin files
+**Deletion.** A chat takes its connector images with it. There is no chat
+column and no migration, so the saver writes `chat:<chat public id>` into
+`files.origin_provider` (unused by connector rows otherwise; every other
+reader of that column filters on `source = 'assistant'`,
+`toConnectorImageChatMarker`). `deleteChat` and the bulk delete find every
+connector row of the chat by that marker (`findChatsConnectorImageFiles`),
+so rows saved in a send whose reply was never stored (an abort, an error,
+a killed invocation) go too, take them out of the origin-file reference
+check and delete them (`deleteConnectorImagesOfDeletedChats`: per batch of
+90, the rows first, then one R2 batch delete, then the storage cache; a row
+delete that fails keeps its objects, an R2 failure after the rows are gone
+only leaves unreachable objects and is logged). No per-file KV cache is
+invalidated: connector images are never a `file` part, so the model-file
+cache never holds them. Until the chat is deleted, such unlinked rows count
+in storage and show in no step; Storage "Delete all" and the retention
+sweep also remove them. Deleting one message checks its origin files
 and every connector image its parts show (a reused image's origin may be an
 earlier message, `findConnectorImageFilesForParts`) with the usual reference
 check, which now also reads `data-connector-image` parts, so an image a
 later step still shows survives and one nothing shows any more is deleted. The account purge deletes every
 `files` row and object regardless of source. The Storage page row
 "Connector images" has its own **Delete all** (confirm dialog, `POST
-/api/v1/storage/connector-images/delete`, at most 20 batches of 90 per call
-with `hasMore`, the page calls again up to 10 times), and MCP has
+/api/v1/storage/connector-images/delete`, at most 3 batches of 90 per call
+so one invocation stays far under the Workers subrequest limit, with
+`hasMore`, the page calls again up to 100 times), and MCP has
 `delete_connector_images` (`data:delete`, `confirm: true`, not offered to
 chat models). Files expire with the user's retention policy like every
 other file (`file-retention-cleanup`).
@@ -1742,21 +1765,27 @@ missing ones in the payload only, so the step shows a muted "deleted" tile
 instead of requesting each image; a thumbnail that fails to load shows "Not
 found".
 
-**UI.** The collapsed steps header shows up to three thumbnails (two below
-`sm`) and `+N` at its right edge in a fixed 24 px slot; deleted images are
-not counted there. Expanded, each connector step row shows one 32 px
-thumbnail at its right edge with `+N` over it when the call kept more. A
-click opens the shared image viewer (`ChatImagePreview`, with Download)
-without toggling the steps (`ConnectorThumbnail.vue`, `.stop.prevent`), on
-the clicked image, with previous and next buttons, an "N of M" counter and
+**UI.** Several images collapse into one pile with daisyUI's `stack`
+component (`stack stack-end`, sized with `h-*`/`w-*` as its docs say, no
+custom stacking CSS): the top three images are layered and a `badge
+badge-soft badge-xs` shows `+N` for the rest. The collapsed steps header
+shows one such stack of every kept image of the message (24 px high in the
+fixed 24 px slot, so nothing shifts; it is one small pile at 375 px too);
+deleted images are not counted there. Expanded, a step row whose call kept
+two or more images shows a 32 px stack at its right edge; one image stays a
+plain thumbnail. The stack is one focusable button labeled "Open 5
+screenshots from Doop" (the layer images have empty alt text). A click
+opens the shared image viewer (`ChatImagePreview`, with Download) on the top
+image without toggling the steps (`ConnectorThumbnail.vue`,
+`.stop.prevent`), with previous and next buttons, an "N of M" counter and
 the left and right arrow keys (the viewer's optional `position` prop and
 `navigate` event; one image shows no navigation). From a step row the
 viewer moves through the kept images of that call, from the header through
 every kept image of the message, so every kept image can be opened. Deleted
 images are skipped. `delete_connector_images` is excluded from chat models
 (`chat.excluded`; `chat-adapter.spec.ts` checks it is never in the chat tool
-set). Alt
-text: "Screenshot from <connector title>". A shared chat shows none.
+set). Alt text of a plain thumbnail: "Screenshot from <connector title>". A
+shared chat shows none.
 
 **Logs.** `attributes.connectors.calls[]` gains `imagesForwarded`,
 `imagesSaved` and `imagesDropped` (a count per reason); a failed save adds
@@ -1766,9 +1795,9 @@ never logged.
 **Costs and risks.** An image is billed as input tokens on the user's key,
 and again on every later step of the same send. A kept image counts against
 the storage allowance. Rows saved in a send whose reply is never stored (an
-abort before persistence) have no origin and no part pointing at them, so a
-chat deletion cannot find them; they stay counted until the Storage page
-"Delete all" or the retention sweep removes them. The structural check does
+abort before persistence) have no origin and no part pointing at them: they
+show in no step and stay counted until the chat is deleted (the chat marker
+finds them), Storage "Delete all" or the retention sweep. The structural check does
 not decode pixels, so an image that is corrupt inside its compressed data may
 still make the provider reject the whole request. Redaction of the
 connector's secrets applies to the text only.

@@ -3,6 +3,18 @@ import { extractLocalFileStorageKey } from '#shared/utils/files'
 
 export const CONNECTOR_IMAGE_PART_TYPE = 'data-connector-image'
 
+const CHAT_MARKER_PREFIX = 'chat:'
+
+/**
+ * Connector image files have no chat column, so `files.origin_provider`
+ * (unused by them otherwise) holds `chat:<chat public id>`: a chat deletion
+ * finds every connector image of the chat with it, even one whose reply was
+ * never stored. No reader of that column looks at `source = 'connector'`.
+ */
+export function toConnectorImageChatMarker(chatPublicId: string): string {
+  return `${CHAT_MARKER_PREFIX}${chatPublicId}`
+}
+
 /**
  * Written by the server for each image a connector call returned that was
  * shown to the model and kept with the chat, so the connector step can show

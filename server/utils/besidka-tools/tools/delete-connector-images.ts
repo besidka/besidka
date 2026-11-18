@@ -18,7 +18,7 @@ export const deleteConnectorImagesBesidkaTool = defineBesidkaTool({
   description: 'Permanently delete every image your connectors returned in '
     + 'chats (for example screenshots) that Besidka kept with those chats. '
     + 'They are not in your file library and count toward your storage. '
-    + 'The chats stay; their steps show the images as deleted. Up to 1800 '
+    + 'The chats stay; their steps show the images as deleted. Up to 270 '
     + 'images are deleted per call: when hasMore is true, call again. '
     + 'Requires signing in (data:delete).',
   inputSchema,

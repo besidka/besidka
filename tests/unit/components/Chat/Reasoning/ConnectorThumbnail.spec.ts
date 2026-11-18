@@ -88,7 +88,7 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
       .toBe(false)
   })
 
-  it('opens the clicked image of a gallery and moves through the rest',
+  it('opens a stack on its top image and moves through the rest',
     async () => {
       const first = imageOf({ fileId: 'a', url: '/files/connector-a.png' })
       const gone = imageOf({ fileId: 'b', deleted: true })
@@ -113,7 +113,7 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
         },
       })
 
-      await wrapper.get('[data-testid="reasoning-connector-image"]')
+      await wrapper.get('[data-testid="reasoning-connector-image-stack"]')
         .trigger('click')
       await flushPromises()
 
@@ -181,10 +181,52 @@ describe('Chat/Reasoning/ConnectorThumbnail', () => {
         .text()).toContain('Image not found')
     })
 
-  it('shows how many more images the step has', async () => {
-    const wrapper = await mountThumbnail(imageOf(), 2)
+  it('collapses several images into one focusable daisyUI stack',
+    async () => {
+      const gallery = ['a', 'b', 'c', 'd', 'e'].map((fileId) => {
+        return {
+          image: imageOf({ fileId, url: `/files/connector-${fileId}.png` }),
+          alt: 'Screenshot from Doop',
+        }
+      })
+      const wrapper = await mountSuspended(ConnectorThumbnail, {
+        props: {
+          image: gallery[0]!.image,
+          alt: 'Screenshot from Doop',
+          gallery,
+          stackLabel: 'Open 5 screenshots from Doop',
+        },
+        global: {
+          stubs: { LazyChatImagePreview: LazyImagePreview, teleport: true },
+        },
+      })
+      const stack = wrapper.get(
+        '[data-testid="reasoning-connector-image-stack"]',
+      )
 
-    expect(wrapper.get('[data-testid="reasoning-connector-image-more"]')
-      .text()).toBe('+2')
-  })
+      expect(stack.element.tagName).toBe('BUTTON')
+      expect(stack.attributes('aria-label'))
+        .toBe('Open 5 screenshots from Doop')
+      expect(stack.classes()).toEqual(expect.arrayContaining([
+        'stack',
+        'stack-end',
+        'rounded-box',
+      ]))
+      expect(stack.findAll('img').map(image => image.attributes('src')))
+        .toEqual([
+          expect.stringContaining('connector-a.png'),
+          expect.stringContaining('connector-b.png'),
+          expect.stringContaining('connector-c.png'),
+        ])
+      expect(wrapper.get('[data-testid="reasoning-connector-image-more"]')
+        .text()).toBe('+2')
+
+      await stack.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="image-preview-position"]').text())
+        .toBe('1 of 5')
+      expect(wrapper.get('[data-testid="image-preview-image"]')
+        .attributes('src')).toContain('connector-a.png')
+    })
 })

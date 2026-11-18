@@ -1,21 +1,20 @@
 import type { UIMessage } from 'ai'
-import { and, eq, inArray, like } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import {
-  CONNECTOR_IMAGE_PART_TYPE,
   collectConnectorImageFileIds,
   isConnectorImageDataPart,
+  toConnectorImageChatMarker,
 } from '#shared/utils/connector-image-parts'
 import { withDerivedKeys } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
 
 export const CONNECTOR_IMAGE_DELETE_BATCH_SIZE = 90
-export const CONNECTOR_IMAGE_DELETE_MAX_BATCHES = 20
+export const CONNECTOR_IMAGE_DELETE_MAX_BATCHES = 3
 
 export interface ConnectorImageFile {
   id: string
@@ -82,37 +81,37 @@ export async function findConnectorImageFilesForParts(
 }
 
 /**
- * Every connector image the messages of these chats show, found through
- * their `data-connector-image` parts, so a chat takes its connector images
- * with it even when a row was never linked to its origin message. Must run
- * before the chats are deleted.
+ * Every connector image of these chats, by the chat marker in
+ * `files.origin_provider` (`toConnectorImageChatMarker`), so a chat takes
+ * all of them with it, including rows whose reply was never stored.
  */
 export async function findChatsConnectorImageFiles(
   db: DbClient,
   chatIds: readonly string[],
   userId: number,
 ): Promise<ConnectorImageFile[]> {
-  const fileIds = new Set<string>()
+  const files: ConnectorImageFile[] = []
 
   for (const chunk of chunkArray(chatIds, CONNECTOR_IMAGE_DELETE_BATCH_SIZE)) {
-    const messages = await db
-      .select({ parts: schema.messages.parts })
-      .from(schema.messages)
+    const rows = await db
+      .select({
+        id: schema.files.id,
+        storageKey: schema.files.storageKey,
+      })
+      .from(schema.files)
       .where(and(
-        inArray(schema.messages.chatId, chunk),
-        like(schema.messages.parts, `%${CONNECTOR_IMAGE_PART_TYPE}%`),
+        eq(schema.files.userId, userId),
+        eq(schema.files.source, 'connector'),
+        inArray(
+          schema.files.originProvider,
+          chunk.map(toConnectorImageChatMarker),
+        ),
       ))
 
-    for (const message of messages) {
-      for (const fileId of collectConnectorImageFileIds(message.parts)) {
-        fileIds.add(fileId)
-      }
-    }
+    files.push(...rows)
   }
 
-  return fileIds.size > 0
-    ? await findConnectorFilesByIds(db, userId, [...fileIds])
-    : []
+  return files
 }
 
 /**
@@ -180,10 +179,12 @@ export async function markDeletedConnectorImages<
 }
 
 /**
- * Deletes connector image files: R2 objects in one batch delete per 90
- * files, then their rows, batch by batch, then the storage cache. A batch
- * whose R2 delete fails keeps its rows, so nothing is counted that cannot be
- * deleted again.
+ * Deletes connector image files batch by batch: the rows first, then the R2
+ * objects in one batch delete per 90, then the storage cache. A batch whose
+ * row delete fails keeps its objects, so no row is left without its object;
+ * an R2 failure after the rows are gone only leaves objects nothing points
+ * at, which is logged. No per-file KV cache is invalidated: connector images
+ * are never a `file` part, so the model-file cache never holds them.
  */
 export async function deleteConnectorImageFiles(
   db: DbClient,
@@ -196,34 +197,39 @@ export async function deleteConnectorImageFiles(
   let failed = 0
 
   for (const chunk of chunkArray(files, CONNECTOR_IMAGE_DELETE_BATCH_SIZE)) {
-    const storageKeys = chunk.map(file => file.storageKey)
-
     try {
-      await storage.delete(withDerivedKeys(storageKeys))
+      await db
+        .delete(schema.files)
+        .where(and(
+          eq(schema.files.userId, userId),
+          eq(schema.files.source, 'connector'),
+          inArray(schema.files.id, chunk.map(file => file.id)),
+        ))
     } catch (exception) {
       failed += chunk.length
       logger.set({
         attributes: {
-          connectorImagesDelete: { error: exceptionMessage(exception) },
+          connectorImagesDelete: { rowError: exceptionMessage(exception) },
         },
       })
 
       continue
     }
 
-    for (const storageKey of storageKeys) {
-      await invalidateFileCache(storageKey, logger)
-    }
-
-    await db
-      .delete(schema.files)
-      .where(and(
-        eq(schema.files.userId, userId),
-        eq(schema.files.source, 'connector'),
-        inArray(schema.files.id, chunk.map(file => file.id)),
-      ))
-
     deleted += chunk.length
+
+    try {
+      await storage.delete(withDerivedKeys(chunk.map(file => file.storageKey)))
+    } catch (exception) {
+      logger.set({
+        attributes: {
+          connectorImagesDelete: {
+            orphanedObjects: chunk.length,
+            objectError: exceptionMessage(exception),
+          },
+        },
+      })
+    }
   }
 
   if (deleted > 0) {

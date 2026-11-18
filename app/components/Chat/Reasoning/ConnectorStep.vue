@@ -69,8 +69,8 @@
       v-if="shownImage"
       :image="shownImage"
       :alt="imageAlt"
-      :extra-count="images.length - 1"
       :gallery="imageGallery"
+      :stack-label="stackLabel"
     />
   </div>
 </template>
@@ -81,6 +81,7 @@ import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import {
   formatConnectorArguments,
   getConnectorImageAlt,
+  getConnectorImageStackLabel,
 } from '~/utils/connector-step'
 import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 
@@ -105,6 +106,13 @@ const shownImage = computed<ConnectorImagePartData | null>(() => {
 
 const imageAlt = computed<string>(() => {
   return getConnectorImageAlt(props.connectorTitle || props.data.slug)
+})
+
+const stackLabel = computed<string>(() => {
+  return getConnectorImageStackLabel(
+    props.images.filter(image => !image.deleted).length,
+    props.connectorTitle || props.data.slug,
+  )
 })
 
 const imageGallery = computed(() => {

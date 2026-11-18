@@ -50,6 +50,10 @@ describe('connector image saver', () => {
   let fileSequence: number
   const logger = { set: vi.fn() }
   const persist = vi.fn()
+  const storage = {
+    head: vi.fn(),
+    put: vi.fn(),
+  }
 
   beforeEach(async () => {
     testDb = createMemoryExtractionTestDb()
@@ -57,6 +61,8 @@ describe('connector image saver', () => {
     fileSequence = 0
     logger.set.mockClear()
     persist.mockReset()
+    storage.head.mockReset().mockResolvedValue({ key: 'present' })
+    storage.put.mockReset().mockResolvedValue({ key: 'restored' })
     persist.mockImplementation(async (input: {
       storageKey: string
       fileName: string
@@ -87,6 +93,7 @@ describe('connector image saver', () => {
       chatPublicId: CHAT_ID,
       logger,
       persist,
+      storage: storage as never,
     })
   }
 
@@ -108,6 +115,7 @@ describe('connector image saver', () => {
         fileName: 'doop-get_frame_screenshot.png',
         mediaType: 'image/png',
         source: 'connector',
+        originProvider: `chat:${CHAT_ID}`,
         logger,
       })
       expect(Buffer.from(firstCall.fileData).toString('base64'))
@@ -179,11 +187,83 @@ describe('connector image saver', () => {
       images: [RED_PNG],
     })).toEqual(['saved'])
     expect(persist).not.toHaveBeenCalled()
+    expect(storage.head).toHaveBeenCalledWith(storageKey)
+    expect(storage.put).not.toHaveBeenCalled()
     expect(saver.partsFor('call-1')[0]).toMatchObject({
       fileId: row!.id,
       url: `/files/${storageKey}`,
       name: 'renamed.png',
     })
+  })
+
+  it('puts the bytes back when a reused row lost its object', async () => {
+    const storageKey = await buildConnectorImageStorageKey({
+      userId,
+      chatPublicId: CHAT_ID,
+      contentHash: await sha256Hex(Buffer.from(RED_PNG_BASE64, 'base64')),
+      mediaType: 'image/png',
+    })
+
+    await testDb.db.insert(schema.files).values({
+      userId,
+      storageKey,
+      name: 'doop-get_frame_screenshot.png',
+      size: RED_PNG_BYTES,
+      type: 'image/png',
+      source: 'connector',
+    })
+    storage.head.mockResolvedValue(null)
+
+    const saver = createSaver()
+
+    expect(await saver.save({
+      toolCallId: 'call-1',
+      connectorSlug: 'doop',
+      toolName: 'get_frame_screenshot',
+      images: [RED_PNG],
+    })).toEqual(['saved'])
+    expect(persist).not.toHaveBeenCalled()
+    expect(storage.put).toHaveBeenCalledWith(
+      storageKey,
+      expect.any(Uint8Array),
+      expect.objectContaining({
+        httpMetadata: { contentType: 'image/png' },
+      }),
+    )
+    expect(Buffer.from(storage.put.mock.calls[0]![1]).toString('base64'))
+      .toBe(RED_PNG_BASE64)
+  })
+
+  it('reuses the row a concurrent send inserted first', async () => {
+    persist.mockImplementation(async (input: { storageKey: string }) => {
+      await testDb.db.insert(schema.files).values({
+        userId,
+        storageKey: input.storageKey,
+        name: 'from-the-other-send.png',
+        size: RED_PNG_BYTES,
+        type: 'image/png',
+        source: 'connector',
+      })
+
+      throw Object.assign(new Error('taken'), { code: 'storage_key_taken' })
+    })
+
+    const saver = createSaver()
+
+    expect(await saver.save({
+      toolCallId: 'call-1',
+      connectorSlug: 'doop',
+      toolName: 'get_frame_screenshot',
+      images: [RED_PNG],
+    })).toEqual(['saved'])
+    expect(saver.partsFor('call-1')[0]).toMatchObject({
+      name: 'from-the-other-send.png',
+    })
+    expect(logger.set).not.toHaveBeenCalledWith(expect.objectContaining({
+      attributes: { connectors: expect.objectContaining({
+        imageSaveError: expect.anything(),
+      }) },
+    }))
   })
 
   it('keys the same bytes differently in another chat', async () => {

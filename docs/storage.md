@@ -120,7 +120,8 @@ images, uploads and generated files, `/chats/artifacts` when the `artifacts`
 feature is on, `/chats/projects`, `/chats/skills` when the `skills` feature is
 on). The "Connector images" row has no Manage action: it has **Delete all**
 (a confirm dialog, then `POST /api/v1/storage/connector-images/delete`,
-called again while it answers `hasMore`, at most 10 times, then a refresh),
+called again while it answers `hasMore`, at most 100 times, then a refresh;
+one call deletes at most 3 batches of 90),
 because those images are in no file list. The rest: a skeleton after 300 ms,
 an error state with
 Retry and an empty state. Labels, icons and links live in

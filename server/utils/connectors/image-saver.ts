@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { ConnectorImagePartData } from '#shared/utils/connector-image-parts'
+import { toConnectorImageChatMarker } from '#shared/utils/connector-image-parts'
 import { getPreferredFileExtension } from '#shared/utils/files'
 import * as schema from '~~/server/db/schema'
 import { readConnectorIconDimensions } from '~~/server/utils/connectors/icon'
@@ -11,7 +12,10 @@ import {
 import type { ConnectorForwardedImage } from '~~/server/utils/connectors/tool-images'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { persistFile } from '~~/server/utils/files/persist-file'
+import {
+  isStorageKeyTakenError,
+  persistFile,
+} from '~~/server/utils/files/persist-file'
 import { isStorageFullError } from '~~/server/utils/storage/errors'
 
 type DbClient = ReturnType<typeof useDb>
@@ -43,6 +47,7 @@ export interface CreateConnectorImageSaverInput {
   chatPublicId: string
   logger: LoggerLike
   persist?: typeof persistFile
+  storage?: Pick<ReturnType<typeof useFileStorage>, 'head' | 'put'>
 }
 
 interface StoredImage {
@@ -119,12 +124,16 @@ export async function buildConnectorImageStorageKey(input: {
  * Saves the images a connector call showed to the model as the user's files
  * (`files.source = 'connector'`), for one send. Saves run one at a time
  * (one limiter slot), so the R2 puts are sequential and the lookup before
- * each insert cannot race. An image already saved in this chat (same bytes)
- * reuses its file row instead of a second copy. A full storage or any other
- * failure never throws: that image gets `storage-full` or `not-saved` and
- * the call goes on. No AI provenance mark is added, because a connector
- * image is not AI-generated, and `originMessageId` is set when the reply is
- * stored (`linkConnectorImagesToMessage`). The saved image metadata stays
+ * each insert cannot race within the send. An image already saved in this
+ * chat (same bytes) reuses its file row instead of a second copy; a reused
+ * row whose R2 object is gone gets the bytes back, and a concurrent send
+ * that inserted the same key first is reused instead of failing. A full
+ * storage or any other failure never throws: that image gets
+ * `storage-full` or `not-saved` and the call goes on. No AI provenance mark
+ * is added, because a connector image is not AI-generated. The chat marker
+ * goes into `origin_provider` (`toConnectorImageChatMarker`), and
+ * `originMessageId` is set when the reply is stored
+ * (`linkConnectorImagesToMessage`). The saved image metadata stays
  * readable after the send's images are cleared, for the stream parts.
  */
 export function createConnectorImageSaver(
@@ -135,13 +144,9 @@ export function createConnectorImageSaver(
   const partsByCallId = new Map<string, ConnectorImagePartData[]>()
   const storedByKey = new Map<string, StoredImage>()
 
-  async function findStored(storageKey: string): Promise<StoredImage | null> {
-    const known = storedByKey.get(storageKey)
-
-    if (known) {
-      return known
-    }
-
+  async function findStoredRow(
+    storageKey: string,
+  ): Promise<StoredImage | null> {
     const row = await input.db
       .select({
         id: schema.files.id,
@@ -155,20 +160,91 @@ export function createConnectorImageSaver(
       ))
       .get()
 
-    if (!row) {
+    return row
+      ? {
+        fileId: row.id,
+        url: `/files/${storageKey}`,
+        size: row.size,
+        name: row.name,
+      }
+      : null
+  }
+
+  async function ensureObject(
+    storageKey: string,
+    image: ConnectorForwardedImage,
+    bytes: Uint8Array<ArrayBuffer>,
+    name: string,
+  ): Promise<void> {
+    const storage = input.storage ?? useFileStorage()
+
+    if (await storage.head(storageKey)) {
+      return
+    }
+
+    await storage.put(storageKey, bytes, {
+      httpMetadata: { contentType: image.mediaType },
+      customMetadata: { name },
+    })
+    input.logger.set({
+      attributes: { connectors: { imageObjectRestored: true } },
+    })
+  }
+
+  async function reuse(
+    storageKey: string,
+    image: ConnectorForwardedImage,
+    bytes: Uint8Array<ArrayBuffer>,
+  ): Promise<StoredImage | null> {
+    const known = storedByKey.get(storageKey)
+
+    if (known) {
+      return known
+    }
+
+    const stored = await findStoredRow(storageKey)
+
+    if (!stored) {
       return null
     }
 
-    const stored = {
-      fileId: row.id,
-      url: `/files/${storageKey}`,
-      size: row.size,
-      name: row.name,
-    }
-
+    await ensureObject(storageKey, image, bytes, stored.name)
     storedByKey.set(storageKey, stored)
 
     return stored
+  }
+
+  async function persistNew(
+    storageKey: string,
+    image: ConnectorForwardedImage,
+    bytes: Uint8Array<ArrayBuffer>,
+    name: string,
+  ): Promise<StoredImage | null> {
+    try {
+      const persisted = await persist({
+        userId: input.userId,
+        fileName: name,
+        mediaType: image.mediaType,
+        fileData: bytes,
+        source: 'connector',
+        storageKey,
+        originProvider: toConnectorImageChatMarker(input.chatPublicId),
+        logger: input.logger,
+      })
+
+      return {
+        fileId: persisted.id,
+        url: `/files/${persisted.storageKey}`,
+        size: persisted.size,
+        name: persisted.name,
+      }
+    } catch (exception) {
+      if (!isStorageKeyTakenError(exception)) {
+        throw exception
+      }
+
+      return await reuse(storageKey, image, bytes)
+    }
   }
 
   async function saveOne(
@@ -193,31 +269,11 @@ export function createConnectorImageSaver(
       contentHash: await sha256Hex(bytes),
       mediaType: image.mediaType,
     })
-    const existing = await findStored(storageKey)
+    const stored = await reuse(storageKey, image, bytes)
+      ?? await persistNew(storageKey, image, bytes, name)
 
-    if (existing) {
-      return {
-        status: 'saved',
-        stored: existing,
-        width: dimensions.width,
-        height: dimensions.height,
-      }
-    }
-
-    const persisted = await persist({
-      userId: input.userId,
-      fileName: name,
-      mediaType: image.mediaType,
-      fileData: bytes,
-      source: 'connector',
-      storageKey,
-      logger: input.logger,
-    })
-    const stored = {
-      fileId: persisted.id,
-      url: `/files/${persisted.storageKey}`,
-      size: persisted.size,
-      name: persisted.name,
+    if (!stored) {
+      return { status: 'not-saved' }
     }
 
     storedByKey.set(storageKey, stored)

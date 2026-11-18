@@ -94,33 +94,13 @@
           class="-my-1 ml-auto flex h-6 shrink-0 items-center gap-1 pl-2"
           data-testid="reasoning-header-images"
         >
-          <span
-            v-for="(entry, index) in headerImages.slice(0, HEADER_IMAGES_MAX)"
-            :key="`${entry.image.toolCallId}:${entry.image.fileId}:${index}`"
-            class="flex"
-            :class="{ 'max-sm:hidden': index >= HEADER_IMAGES_MAX_PHONE }"
-          >
-            <ChatReasoningConnectorThumbnail
-              :image="entry.image"
-              :alt="entry.alt"
-              size="sm"
-              :gallery="headerImages"
-            />
-          </span>
-          <span
-            v-if="headerImages.length > HEADER_IMAGES_MAX_PHONE"
-            class="text-xs text-base-content/60 sm:hidden"
-            data-testid="reasoning-header-images-more-phone"
-          >
-            +{{ headerImages.length - HEADER_IMAGES_MAX_PHONE }}
-          </span>
-          <span
-            v-if="headerImages.length > HEADER_IMAGES_MAX"
-            class="text-xs text-base-content/60 max-sm:hidden"
-            data-testid="reasoning-header-images-more"
-          >
-            +{{ headerImages.length - HEADER_IMAGES_MAX }}
-          </span>
+          <ChatReasoningConnectorThumbnail
+            :image="headerImages[0]!.image"
+            :alt="headerImages[0]!.alt"
+            size="sm"
+            :gallery="headerImages"
+            :stack-label="headerStackLabel"
+          />
         </span>
       </summary>
       <div
@@ -357,6 +337,7 @@ import {
 } from '~/utils/tool-approval-step'
 import {
   getConnectorImageAlt,
+  getConnectorImageStackLabel,
   getConnectorStepTitle,
   isConnectorStepFailed,
 } from '~/utils/connector-step'
@@ -372,8 +353,6 @@ import type {
 } from '~/utils/reasoning-step-icons'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
-const HEADER_IMAGES_MAX = 3
-const HEADER_IMAGES_MAX_PHONE = 2
 const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
   + 'the reasoning text is not available for this response. Reasoning '
   + 'tokens are billed as output tokens.'
@@ -436,6 +415,7 @@ interface ReasoningStep {
 interface HeaderConnectorImage {
   image: ConnectorImagePartData
   alt: string
+  title: string
 }
 
 interface MessageApprovalEntry {
@@ -906,12 +886,23 @@ const activeStreamingTitle = computed<string>(() => {
 
 const headerImages = computed<HeaderConnectorImage[]>(() => {
   return reasoningSteps.value.flatMap((step) => {
-    const alt = getConnectorImageAlt(step.connectorTitle ?? '')
+    const title = step.connectorTitle ?? ''
+    const alt = getConnectorImageAlt(title)
 
     return (step.connectorImages ?? [])
       .filter(image => !image.deleted)
-      .map(image => ({ image, alt }))
+      .map(image => ({ image, alt, title }))
   })
+})
+
+const headerStackLabel = computed<string>(() => {
+  const count = headerImages.value.length
+  const titles = new Set(headerImages.value.map(entry => entry.title))
+
+  return getConnectorImageStackLabel(
+    count,
+    titles.size === 1 ? [...titles][0] : undefined,
+  )
 })
 
 const headerStepIcon = computed<ReasoningStepIcon | null>(() => {

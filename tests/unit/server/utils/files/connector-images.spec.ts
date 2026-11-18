@@ -65,6 +65,7 @@ describe('connector image files', () => {
     owner: number,
     storageKey: string,
     source: 'upload' | 'assistant' | 'connector' = 'connector',
+    chatPublicId?: string,
   ): Promise<string> {
     const [row] = await testDb.db.insert(schema.files).values({
       userId: owner,
@@ -73,6 +74,7 @@ describe('connector image files', () => {
       size: 75,
       type: 'image/png',
       source,
+      originProvider: chatPublicId ? `chat:${chatPublicId}` : null,
     }).returning({ id: schema.files.id })
 
     return row!.id
@@ -107,20 +109,32 @@ describe('connector image files', () => {
     testDb.close()
   })
 
-  it('finds the connector images a chat shows, only the owner\'s', async () => {
+  it('finds every connector image of a chat by its marker, even one no '
+    + 'stored message shows', async () => {
     const chat = await seedChat(testDb.db, userId)
-    const ownImage = await insertFile(userId, 'connector-own.png')
-    const otherImage = await insertFile(otherUserId, 'connector-other.png')
-    const upload = await insertFile(userId, 'upload.png', 'upload')
+    const otherChat = await seedChat(testDb.db, userId)
+    const shown = await insertFile(userId, 'connector-own.png', 'connector', chat.id)
+    const unlinked = await insertFile(
+      userId,
+      'connector-unlinked.png',
+      'connector',
+      chat.id,
+    )
 
+    await insertFile(userId, 'connector-other.png', 'connector', otherChat.id)
+    await insertFile(otherUserId, 'connector-x.png', 'connector', chat.id)
+    await insertFile(userId, 'generated.png', 'assistant', chat.id)
     await seedMessage(testDb.db, chat.id, 'assistant', [
-      imagePart(ownImage, 'connector-own.png'),
-      imagePart(otherImage, 'connector-other.png', 'call-2'),
-      imagePart(upload, 'upload.png', 'call-3'),
+      imagePart(shown, 'connector-own.png'),
     ], minutesBefore(10))
 
-    expect(await findChatsConnectorImageFiles(testDb.db, [chat.id], userId))
-      .toEqual([{ id: ownImage, storageKey: 'connector-own.png' }])
+    const files = await findChatsConnectorImageFiles(
+      testDb.db,
+      [chat.id],
+      userId,
+    )
+
+    expect(files.map(file => file.id).sort()).toEqual([shown, unlinked].sort())
   })
 
   it('reports and marks the images whose file is gone in one pass',
@@ -165,15 +179,57 @@ describe('connector image files', () => {
       expect(await fileExists(others)).toBe(true)
     })
 
-  it('keeps the rows when the R2 delete fails', async () => {
-    const image = await insertFile(userId, 'connector-1.png')
+  it('deletes the rows before the objects and logs objects R2 kept',
+    async () => {
+      const image = await insertFile(userId, 'connector-1.png')
 
-    storageDelete.mockRejectedValue(new Error('R2 down'))
+      storageDelete.mockRejectedValue(new Error('R2 down'))
 
-    expect(await deleteConnectorImageFiles(testDb.db, userId, [
-      { id: image, storageKey: 'connector-1.png' },
+      expect(await deleteConnectorImageFiles(testDb.db, userId, [
+        { id: image, storageKey: 'connector-1.png' },
+      ], logger)).toEqual({ deleted: 1, failed: 0 })
+      expect(await fileExists(image)).toBe(false)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          connectorImagesDelete: {
+            orphanedObjects: 1,
+            objectError: 'R2 down',
+          },
+        },
+      })
+    })
+
+  it('keeps the objects when the row delete fails', async () => {
+    const failingDb = {
+      delete: () => ({
+        where: async () => {
+          throw new Error('D1 down')
+        },
+      }),
+    }
+
+    expect(await deleteConnectorImageFiles(failingDb as never, userId, [
+      { id: 'file-1', storageKey: 'connector-1.png' },
     ], logger)).toEqual({ deleted: 0, failed: 1 })
-    expect(await fileExists(image)).toBe(true)
+    expect(storageDelete).not.toHaveBeenCalled()
+  })
+
+  it('deletes at most three batches of 90 per call', async () => {
+    const insert = testDb.sqlite.prepare(`
+      insert into files (user_id, storage_key, name, size, type, source,
+        created_at, updated_at)
+      values (?, ?, ?, 75, 'image/png', 'connector', 1, 1)
+    `)
+
+    for (let index = 0; index < 300; index++) {
+      insert.run(userId, `connector-${index}.png`, `image-${index}.png`)
+    }
+
+    expect(await deleteAllConnectorImages(testDb.db, userId, logger))
+      .toEqual({ deleted: 270, failed: 0, hasMore: true })
+    expect(storageDelete).toHaveBeenCalledTimes(3)
+    expect(await deleteAllConnectorImages(testDb.db, userId, logger))
+      .toEqual({ deleted: 30, failed: 0, hasMore: false })
   })
 
   it('links only connector images that have no origin yet', async () => {
