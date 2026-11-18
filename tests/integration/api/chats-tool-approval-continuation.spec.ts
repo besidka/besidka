@@ -3,7 +3,10 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
-import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_CONSENT_VERSION,
+  CONNECTOR_IMAGE_MAX_BYTES,
+} from '#shared/utils/connectors-policy'
 import {
   keyProviderIdForGateway,
   readOpenRouterCost,
@@ -15,6 +18,10 @@ import {
   createMockMcpServer,
 } from '../../setup/helpers/mock-mcp-server'
 import type { MockMcpServer } from '../../setup/helpers/mock-mcp-server'
+import { RED_PNG_BASE64 } from '../../setup/helpers/connector-images'
+import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
+import { buildConnectorImageLine } from '../../../server/utils/connectors/image-placeholders'
+import { frameUntrustedResult } from '../../../server/utils/connectors/tool-definitions'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -46,6 +53,9 @@ const mocks = vi.hoisted(() => ({
   listMcpProjects: null as null | ((...args: unknown[]) => unknown),
   grantCalls: [] as Array<unknown[]>,
   scriptsRun: null as null | Record<string, any>,
+  keptFiles: [] as Array<{ id: string, storageKey: string, size: number }>,
+  keptFinderCalls: [] as Array<Record<string, any>>,
+  r2Objects: new Map<string, Uint8Array>(),
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -181,6 +191,24 @@ vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
       return true
     },
     touchClaim: async () => true,
+  }
+})
+
+vi.mock('~~/server/utils/files/connector-images', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/files/connector-images')
+  >()
+
+  return {
+    ...actual,
+    findChatConnectorImageFilesByIds: async (
+      _db: unknown,
+      input: { fileIds: readonly string[] },
+    ) => {
+      mocks.keptFinderCalls.push(input)
+
+      return mocks.keptFiles.filter(file => input.fileIds.includes(file.id))
+    },
   }
 })
 
@@ -617,6 +645,13 @@ async function request(input: {
     tools: mocks.providerTools,
     providerOptions: {},
   })))
+  vi.stubGlobal('useAnthropic', vi.fn(async () => ({
+    instance: model,
+    tools: mocks.providerTools,
+    providerOptions: {},
+    reasoning: undefined,
+    thinkingBinding: null,
+  })))
   vi.stubGlobal('fetch', createMockMcpFetch(input.servers))
 
   const handler = (await import(
@@ -782,6 +817,9 @@ describe('tool approval continuation', () => {
     mocks.besidkaModes = new Map()
     mocks.grantCalls = []
     mocks.scriptsRun = null
+    mocks.keptFiles = []
+    mocks.keptFinderCalls = []
+    mocks.r2Objects = new Map()
     mocks.listMcpProjects = vi.fn(async () => ({
       projects: [{ id: 'prj_1', name: 'Launch' }],
       nextCursor: null,
@@ -1694,6 +1732,204 @@ describe('tool approval continuation', () => {
 
     expect(linear.callCount('tools/call')).toBe(1)
     expect(toolNames).not.toContain('web_search')
+  })
+
+  describe('kept connector images', () => {
+    const LIST_ISSUES = 'mcp__linear__list_issues'
+    const PNG_BYTES = Buffer.from(RED_PNG_BASE64, 'base64')
+    const KEPT_LINE = buildConnectorImageLine(
+      { mediaType: 'image/png', bytes: PNG_BYTES.length },
+      'saved',
+    )
+
+    beforeEach(() => {
+      vi.stubGlobal('useFileStorage', () => ({
+        get: async (key: string) => {
+          const bytes = mocks.r2Objects.get(key)
+
+          return bytes
+            ? { arrayBuffer: async () => bytes.slice().buffer }
+            : null
+        },
+      }))
+    })
+
+    function useAnthropicImageModel() {
+      vi.stubGlobal('useChatProvider', vi.fn(() => ({
+        provider: { id: 'anthropic' },
+        model: {
+          id: 'claude-opus-5-5',
+          name: 'Claude Opus 5.5',
+          tools: [],
+          toolCall: true,
+          modalities: { input: ['text', 'image'], output: ['text'] },
+        },
+      })))
+    }
+
+    function keepImage(fileId: string, size = PNG_BYTES.length) {
+      const storageKey = `connector-${fileId}.png`
+
+      mocks.keptFiles.push({ id: fileId, storageKey, size })
+      mocks.r2Objects.set(storageKey, new Uint8Array(PNG_BYTES))
+    }
+
+    function screenshotParts(toolCallId: string, fileId: string) {
+      return [
+        { type: 'step-start' },
+        {
+          type: 'dynamic-tool',
+          toolName: LIST_ISSUES,
+          toolCallId,
+          state: 'output-available',
+          input: {},
+          output: frameUntrustedResult({
+            slug: 'linear',
+            toolName: 'list_issues',
+            text: `Screenshot\n${KEPT_LINE}`,
+          }).text,
+        },
+        {
+          type: CONNECTOR_IMAGE_PART_TYPE,
+          id: `connector-image-${toolCallId}-0`,
+          data: {
+            toolCallId,
+            fileId,
+            url: `/files/connector-${fileId}.png`,
+            mediaType: 'image/png',
+            width: 8,
+            height: 8,
+            size: PNG_BYTES.length,
+            name: 'linear-list_issues.png',
+          },
+        },
+      ]
+    }
+
+    async function pauseAfterScreenshots(count = 2) {
+      const paused = await pauseCreateIssue()
+      const assistant = mocks.chatMessages.find((message) => {
+        return message.id === 'row-assistant'
+      })!
+
+      assistant.parts = [
+        ...Array.from({ length: count }, (_value, index) => {
+          return screenshotParts(`shot-${index + 1}`, `file-${index + 1}`)
+        }).flat(),
+        ...assistant.parts,
+      ]
+
+      return paused
+    }
+
+    function screenshotResults(doStream: ReturnType<typeof vi.fn>) {
+      const prompt = (doStream.mock.calls[0]?.[0] as any)?.prompt ?? []
+
+      return prompt
+        .filter((message: any) => message.role === 'tool')
+        .flatMap((message: any) => message.content)
+        .filter((part: any) => {
+          return part.type === 'tool-result'
+            && String(part.toolCallId).startsWith('shot-')
+        })
+    }
+
+    it('shows both kept screenshots to Claude again after the approval',
+      async () => {
+        useAnthropicImageModel()
+        keepImage('file-1')
+        keepImage('file-2')
+
+        const paused = await pauseAfterScreenshots()
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Both frames look right.')])
+        const results = screenshotResults(doStream)
+
+        expect(mocks.keptFinderCalls).toEqual([
+          expect.objectContaining({
+            userId: 1,
+            chatPublicId: CHAT_PUBLIC_ID,
+            fileIds: ['file-1', 'file-2'],
+          }),
+        ])
+        expect(results.map((result: any) => result.toolCallId))
+          .toEqual(['shot-1', 'shot-2'])
+
+        for (const result of results) {
+          const output = JSON.stringify(result.output)
+
+          expect(result.output.type).toBe('content')
+          expect(output).toContain(RED_PNG_BASE64)
+          expect(output).toContain('shown to the model again')
+          expect(output).toContain('from the connector \\"Linear\\"')
+          expect(output).not.toContain('no longer available')
+        }
+
+        const stored = JSON.stringify(mocks.updates.at(-1)!.parts)
+
+        expect(stored).not.toContain('shown to the model again')
+        expect(stored).not.toContain(RED_PNG_BASE64)
+      })
+
+    it('leaves the screenshots as text when the model cannot see images',
+      async () => {
+        keepImage('file-1')
+        keepImage('file-2')
+
+        const paused = await pauseAfterScreenshots()
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Done.')])
+        const results = screenshotResults(doStream)
+
+        expect(mocks.keptFinderCalls).toEqual([])
+        expect(results).toHaveLength(2)
+
+        for (const result of results) {
+          const output = JSON.stringify(result.output)
+
+          expect(result.output.type).toBe('text')
+          expect(output).not.toContain(RED_PNG_BASE64)
+          expect(output).toContain('kept with this chat, no longer available')
+        }
+      })
+
+    it('keeps a deleted screenshot as text and shows the other one again',
+      async () => {
+        useAnthropicImageModel()
+        keepImage('file-2')
+
+        const paused = await pauseAfterScreenshots()
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Done.')])
+        const [first, second] = screenshotResults(doStream)
+
+        expect(first.output.type).toBe('text')
+        expect(JSON.stringify(first.output))
+          .toContain('kept with this chat, no longer available')
+        expect(second.output.type).toBe('content')
+        expect(JSON.stringify(second.output)).toContain(RED_PNG_BASE64)
+      })
+
+    it('leaves the oldest screenshot as text when the send budget is full',
+      async () => {
+        useAnthropicImageModel()
+
+        for (let index = 1; index <= 4; index++) {
+          keepImage(`file-${index}`, CONNECTOR_IMAGE_MAX_BYTES)
+        }
+
+        const paused = await pauseAfterScreenshots(4)
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Done.')])
+        const results = screenshotResults(doStream)
+
+        expect(results.map((result: any) => result.output.type))
+          .toEqual(['text', 'content', 'content', 'content'])
+      })
   })
 
   describe('Besidka tools', () => {

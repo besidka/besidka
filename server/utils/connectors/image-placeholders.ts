@@ -17,6 +17,8 @@ const SHOWN_SUFFIXES: Record<ConnectorImageSaveStatus, string> = {
 const GONE_SUFFIX = `no longer available; ${GONE_MARKER}`
 const SAVED_GONE_SUFFIX = 'kept with this chat, no longer available to the '
   + `model; ${GONE_MARKER}`
+const SHOWN_AGAIN_SUFFIX = `kept with this chat, ${SHOWN_MARKER} again`
+const NO_SHOWN_AGAIN_INDEXES: ReadonlySet<number> = new Set()
 
 function escapeRegExp(value: string): string {
   return value.replace(REGEX_SPECIAL_CHARACTERS, '\\$&')
@@ -41,6 +43,7 @@ const LOOKALIKE_PATTERN = new RegExp(
     ...Object.values(SHOWN_SUFFIXES),
     GONE_SUFFIX,
     SAVED_GONE_SUFFIX,
+    SHOWN_AGAIN_SUFFIX,
   ])})\\])`,
   'g',
 )
@@ -80,8 +83,8 @@ export function buildConnectorImageLine(
  * Rewrites text a connector wrote that looks like an image placeholder, so
  * `[image/png, 1 KB: shown to the model, kept with this chat]` from the
  * server becomes `[text from the connector: image/png, 1 KB: shown to the
- * model, kept with this chat]`. Every variant Besidka writes, and both
- * replay wordings, are covered. Only Besidka writes the real line, and only
+ * model, kept with this chat]`. Every variant Besidka writes, and every
+ * replay wording, is covered. Only Besidka writes the real line, and only
  * the real line is rewritten on a replay.
  */
 export function neutralizeConnectorImagePlaceholders(text: string): string {
@@ -93,25 +96,52 @@ export function neutralizeConnectorImagePlaceholders(text: string): string {
 }
 
 /**
- * Rewrites every "shown to the model" image line in a stored tool output to
- * say the image is no longer available to the model, keeping "kept with
- * this chat" for an image that was kept. Used where an earlier result is
- * replayed to a model without its bytes; any value that is not a string is
- * returned as it is.
+ * How many "shown to the model, kept with this chat" lines a stored tool
+ * output holds. The Nth of them stands for the Nth saved image of the call
+ * (`data-connector-image` part), because only Besidka writes the real line.
  */
-export function toReplayedConnectorImageText<Value>(value: Value): Value {
+export function countKeptConnectorImageLines(value: unknown): number {
+  if (typeof value !== 'string' || !value.includes(SHOWN_MARKER)) {
+    return 0
+  }
+
+  return [...value.matchAll(SHOWN_LINE_PATTERN)].filter((match) => {
+    return match[3] === SHOWN_SUFFIXES.saved
+  }).length
+}
+
+/**
+ * Rewrites every "shown to the model" image line in a stored tool output for
+ * a replay to a model. A kept image whose index among the kept lines is in
+ * `shownAgainIndexes` goes to the model again with the replay and says so
+ * (`kept with this chat, shown to the model again`); every other line says
+ * the image is no longer available, keeping "kept with this chat" for an
+ * image that was kept. Any value that is not a string is returned as it is.
+ */
+export function toReplayedConnectorImageText<Value>(
+  value: Value,
+  shownAgainIndexes: ReadonlySet<number> = NO_SHOWN_AGAIN_INDEXES,
+): Value {
   if (typeof value !== 'string' || !value.includes(SHOWN_MARKER)) {
     return value
   }
 
+  let keptIndex = 0
+
   return value.replace(
     SHOWN_LINE_PATTERN,
     (_line, mediaType, size, suffix) => {
-      const goneSuffix = suffix === SHOWN_SUFFIXES.saved
-        ? SAVED_GONE_SUFFIX
-        : GONE_SUFFIX
+      if (suffix !== SHOWN_SUFFIXES.saved) {
+        return `[${mediaType}, ${size}: ${GONE_SUFFIX}]`
+      }
 
-      return `[${mediaType}, ${size}: ${goneSuffix}]`
+      const replayedSuffix = shownAgainIndexes.has(keptIndex)
+        ? SHOWN_AGAIN_SUFFIX
+        : SAVED_GONE_SUFFIX
+
+      keptIndex += 1
+
+      return `[${mediaType}, ${size}: ${replayedSuffix}]`
     },
   ) as Value
 }

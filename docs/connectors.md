@@ -1582,7 +1582,7 @@ with the reason appended when there is one (`larger than 3.5 MB`, `more than
 `too many images in one message`, `not a valid image`, `only PNG, JPEG, GIF
 and WebP images are shown`). Only Besidka writes the real line: text the
 server wrote that looks like one (any of the three "shown to the model"
-lines or either replay wording, in a text item, a resource, a `mimeType` or
+lines or any of the three replay wordings, in a text item, a resource, a `mimeType` or
 structured content) is rewritten to `[text from the connector: ...]`
 (`neutralizeConnectorImagePlaceholders` in
 `server/utils/connectors/image-placeholders.ts`), so the continuation rewrite
@@ -1663,15 +1663,57 @@ unchanged. When the text of a result is cut at 64 KiB, an image line past the
 cut is lost from the text while the image is still forwarded with its note.
 
 **Continuation.** After an approval ends a send, the continuation rebuilds
-the earlier calls from D1, where the bytes never were. `convertToModelMessages`
-runs without tools there, so `toModelOutput` is not called;
-`buildResumedAssistantMessages` instead rewrites each "shown to the model"
-line in the model copy (never in the stored copy) to `[image/png, 412 KB: no
-longer available; call the tool again to see it]`, or, for a kept image,
-`[image/png, 412 KB: kept with this chat, no longer available to the model;
-call the tool again to see it]`. A call the user approved runs in the
-continuation's own send and forwards its images there. Later sends drop tool
-parts altogether (step 11 above).
+the earlier calls from D1, where the bytes of the paused send never were.
+`convertToModelMessages` runs without tools there, so `toModelOutput` is not
+called. Before C-15 the continuation therefore showed only the newest
+screenshot: a Doop run of screenshot, approval, screenshot, approval,
+screenshot sent the model only the last image, and it concluded the earlier
+ones never arrived. Now the kept images of the paused message are shown
+again (`server/utils/connectors/kept-images.ts`):
+
+- **Gate.** The continuation's own send must pass `canForwardConnectorImages`
+  (direct Anthropic or OpenAI, a model with image input); a gateway or a
+  text-only model keeps the text. The connectors flag must be on, and the
+  connector must still be in the user's list (its title goes in the
+  provenance note).
+- **What.** Only the message being resumed: its finished connector calls
+  whose kept lines and `data-connector-image` parts match in number (the
+  Nth "kept with this chat" line is the Nth part of the call). Earlier
+  messages and user turns stay text only (step 11 above).
+- **Ownership.** `findChatConnectorImageFilesByIds` reads only rows of this
+  user, `source = 'connector'` and the chat marker of this chat; the R2 key
+  comes from the row, never from the part's `url`.
+- **Caps.** The newest images first, within the per-send 20 images and
+  12 MB by the stored size; the first one that does not fit stops the
+  selection, so older images stay text. What is shown again is passed to
+  `getConnectorTools` as `reservedImages`, so new images in the continuation
+  only get what is left of the same caps (a new image over it gets the usual
+  `send-count` or `send-budget` line).
+- **Reads.** One R2 read at a time, once per file. The bytes are checked
+  again like a forwarded image: magic bytes decide the type (the stored type
+  is never trusted), the structure and the 3.5 MB limit. A missing row or
+  object, or bytes that fail, leave that image as text; any error leaves all
+  of them as text and is logged (`connectors.keptImagesError`).
+- **Shape.** `attachKeptConnectorImages` gives the matching tool results the
+  same `content` output `toModelOutput` built before the pause: the text, the
+  provenance note (data, never instructions), then one `file` part per
+  image. The results are untrusted as before; the taint the paused turn
+  recorded is unchanged.
+
+`buildResumedAssistantMessages` rewrites each "shown to the model" line in the
+model copy (never in the stored copy): a kept image shown again becomes
+`[image/png, 412 KB: kept with this chat, shown to the model again]`, any
+other kept image `[image/png, 412 KB: kept with this chat, no longer available
+to the model; call the tool again to see it]`, and an image that was not kept
+`[image/png, 412 KB: no longer available; call the tool again to see it]`. A
+call the user approved runs in the continuation's own send and forwards its
+images there. Later sends drop tool parts altogether (step 11 above).
+
+Cost: every continuation sends the kept images again as input tokens (an
+Anthropic image costs about width × height / 750 tokens, so a 1000 × 750
+screenshot is about 1,000 tokens), on every step of the continuation, as the
+paused send did. The bytes and their base64 stay in memory for the send, at
+most 12 MB plus about 16 MB of base64.
 
 **Kept with the chat (BES-406).** Exactly the images the store forwards are
 kept: the same gate (allowlisted provider, a model with image input, magic
@@ -1705,7 +1747,8 @@ text is built and before `close()` clears the bytes:
 - A reused row is checked with an R2 `head`; if its object is missing, the
   saver puts the bytes back under the same key before reusing it.
 - Each send has its own image budget (20 images, 12 MB), and so does every
-  approval continuation, because each is its own send. The total stays
+  approval continuation, because each is its own send; in a continuation the
+  kept images shown again count first. The total stays
   bounded by the storage allowance (every save goes through its guard) and
   by the 12 connector calls per user turn, which approval rounds share.
 
