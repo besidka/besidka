@@ -405,6 +405,85 @@ describe('buildResumedAssistantMessages', () => {
   })
 })
 
+describe('buildResumedAssistantMessages connector images', () => {
+  const shownLine = '[image/png, 412 KB: shown to the model, not saved]'
+  const goneLine = '[image/png, 412 KB: no longer available; call the tool '
+    + 'again to see it]'
+  const framedOutput = '<untrusted_tool_result connector="doop" '
+    + `tool="get_frame_screenshot">\nFrame A\n${shownLine}\n`
+    + '</untrusted_tool_result>'
+
+  function resumed(output: unknown) {
+    const [decision] = decideContinuation({
+      answers: [{
+        response: { approvalId: 'approval-1', approved: true, remember: 'once' },
+        record: pendingRecord(),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+
+    return buildResumedAssistantMessages({
+      messageId: 'assistant-1',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'dynamic-tool',
+          toolName: 'mcp__doop__get_frame_screenshot',
+          toolCallId: 'call-0',
+          state: 'output-available',
+          input: {},
+          output,
+        },
+        {
+          type: 'dynamic-tool',
+          toolName: TOOL_NAME,
+          toolCallId: 'call-1',
+          state: 'approval-requested',
+          input: { title: 'redacted' },
+          approval: { id: 'approval-1' },
+        },
+      ],
+      decisions: [decision!],
+    })
+  }
+
+  it('tells the model a forwarded image is gone and keeps D1 as stored',
+    async () => {
+      const { modelMessage, storedMessage } = resumed(framedOutput)
+      const modelTool = modelMessage.parts[1] as { output: string }
+      const storedTool = storedMessage.parts[1] as { output: string }
+
+      expect(modelTool.output).toContain(goneLine)
+      expect(modelTool.output).not.toContain(shownLine)
+      expect(modelTool.output).toContain('Frame A')
+      expect(storedTool.output).toBe(framedOutput)
+
+      const modelMessages = await convertToModelMessages([
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Go' }] },
+        modelMessage,
+      ] as UIMessage[])
+
+      expect(JSON.stringify(modelMessages)).toContain(goneLine)
+      expect(() => assertEndsWithApprovalResponse(modelMessages))
+        .not.toThrow()
+    })
+
+  it('never throws on outputs that are not framed text', () => {
+    const outputs = [undefined, null, 42, { text: shownLine }, shownLine]
+
+    for (const output of outputs) {
+      expect(() => resumed(output)).not.toThrow()
+    }
+
+    const unframed = resumed(shownLine).modelMessage.parts[1] as {
+      output: string
+    }
+
+    expect(unframed.output).toBe(shownLine)
+  })
+})
+
 describe('buildResumedAssistantMessages provider metadata', () => {
   it('keeps thinking and thought signatures on the resumed turn', async () => {
     const [decision] = decideContinuation({

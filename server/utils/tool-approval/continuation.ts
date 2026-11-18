@@ -28,6 +28,10 @@ import {
   upsertConnectorToolSettings,
 } from '~~/server/utils/connectors/store'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { isFramedConnectorOutput } from '#shared/utils/connectors-parts'
+import {
+  toReplayedConnectorImageText,
+} from '~~/server/utils/connectors/tool-images'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   claimApproval,
@@ -621,6 +625,19 @@ function isModelContextPart(part: unknown): boolean {
 }
 
 /**
+ * A finished connector call as the model sees it again on a continuation:
+ * the bytes of any image it forwarded lived only in the paused send, so
+ * each "shown to the model" line says the image is no longer available.
+ */
+function withReplayedConnectorImages(part: unknown): unknown {
+  if (!isToolPart(part) || !isFramedConnectorOutput(part.output)) {
+    return part
+  }
+
+  return { ...part, output: toReplayedConnectorImageText(part.output) }
+}
+
+/**
  * The paused assistant message twice, with every answered call in
  * `approval-responded`:
  *
@@ -632,7 +649,8 @@ function isModelContextPart(part: unknown): boolean {
  *   reasoning keep their stored provider metadata (Anthropic thinking
  *   signatures, Gemini thought signatures) in their original order, step
  *   boundaries stay, and parts the model never needs (data, sources, files,
- *   unfinished calls) are dropped.
+ *   unfinished calls) are dropped. A connector image line that said "shown
+ *   to the model" now says the image is no longer available.
  * - `storedMessage` keeps the stored parts as they are, with the answered
  *   calls moved to `approval-responded` and no input or signature added, so
  *   it can seed `readUIMessageStream` and be written back to D1.
@@ -656,7 +674,7 @@ export function buildResumedAssistantMessages(input: {
       storedParts.push(part)
 
       if (isModelContextPart(part)) {
-        modelParts.push(part)
+        modelParts.push(withReplayedConnectorImages(part))
       }
 
       continue

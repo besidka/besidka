@@ -165,6 +165,14 @@ the registry search.
     country unknown, no safeguard offered, Art. 49(1)(a), Besidka is the
     exporter, reference EDPB 2/2018 and 05/2021, counsel question open.
   - Row 15 (logging): `attributes.connectors` counts and ids only.
+- **Images in tool results (C-15, BES-405, 2026-11-18), for the #922
+  re-sync.** A connector result may now include images. On a direct Anthropic
+  or OpenAI send with a model that takes images, the image bytes go to that
+  model provider with the call's text, in the same send only; Besidka does not
+  store them (the chat keeps a one-line placeholder) and does not log them.
+  The flow "results on to the chat's provider" below therefore also covers
+  images; the records and public texts are not changed here
+  (`docs/connectors.md` section 6.5).
 - **DPIA rows.** New section 3.12 (purpose, flow, data, status `planned`).
   Data-flow table: Worker to remote server (tool arguments, token); remote
   server to Worker (results, stored in the chat); results on to the chat's

@@ -41,6 +41,10 @@ import type {
   MockMcpServerOptions,
   MockMcpTool,
 } from '../../../../setup/helpers/mock-mcp-server'
+import {
+  RED_PNG_BASE64,
+  mcpImage,
+} from '../../../../setup/helpers/connector-images'
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
@@ -180,6 +184,7 @@ describe('getConnectorTools', () => {
     catalogSlugs?: string[]
     optionalSlugs?: string[]
     wrapFetch?: (base: typeof fetch) => typeof fetch
+    forwardImages?: boolean
   }) {
     const baseFetch = createMockMcpFetch(options.servers) as typeof fetch
 
@@ -233,6 +238,7 @@ describe('getConnectorTools', () => {
           },
         }),
       guard: options.guard,
+      ...(options.forwardImages ? { forwardImages: true } : {}),
       logger: { set: (values: unknown) => logged.push(values) },
       dependencies: {
         limitCalls: options.limitCalls ?? allowCalls,
@@ -836,6 +842,111 @@ describe('getConnectorTools', () => {
       expect(output).toContain('chart below\n[image omitted: image/png]')
       expect(output).not.toContain('AAAA')
     })
+  })
+
+  describe('images', () => {
+    const SHOWN_LINE = '[image/png, 75 B: shown to the model, not saved]'
+
+    async function imageRun(forwardImages: boolean) {
+      const alpha = server('mcp.alpha.example.com', {
+        respond: () => ({
+          content: [
+            { type: 'text', text: 'frame A' },
+            mcpImage(RED_PNG_BASE64),
+          ],
+        }),
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      if ((await listConnectors(testDb.db, userId)).length === 0) {
+        await addConnector(seeds[0]!)
+      }
+
+      return await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        forwardImages,
+      })
+    }
+
+    async function modelOutput(
+      tools: Record<string, any>,
+      output: unknown,
+      toolCallId = 'call-1',
+    ) {
+      return await tools.mcp__alpha__list_issues.toModelOutput({
+        toolCallId,
+        input: {},
+        output,
+      })
+    }
+
+    it('keeps the bytes out of the text and gives them to the model',
+      async () => {
+        const { tools } = await imageRun(true)
+        const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+        expect(output).toContain(`frame A\n${SHOWN_LINE}`)
+        expect(output).not.toContain(RED_PNG_BASE64)
+
+        const forModel = await modelOutput(tools, output)
+
+        expect(forModel.type).toBe('content')
+        expect(forModel.value[0]).toEqual({ type: 'text', text: output })
+        expect(forModel.value[1].text).toContain(
+          'from the connector "alpha", tool "list_issues"',
+        )
+        expect(forModel.value[2]).toEqual({
+          type: 'file',
+          mediaType: 'image/png',
+          data: { type: 'data', data: RED_PNG_BASE64 },
+        })
+        expect(await modelOutput(tools, output)).toEqual(forModel)
+        expect(loggedConnectorValues('calls')).toContainEqual(
+          expect.objectContaining({ outcome: 'ok', imagesForwarded: 1 }),
+        )
+        expect(JSON.stringify(logged)).not.toContain(RED_PNG_BASE64)
+      })
+
+    it('sends only text when the send cannot show images', async () => {
+      const { tools } = await imageRun(false)
+      const output: string = await execute(tools, 'mcp__alpha__list_issues')
+
+      expect(output).toContain('frame A\n[image omitted: image/png]')
+      expect(await modelOutput(tools, output))
+        .toEqual({ type: 'text', value: output })
+      expect(loggedConnectorValues('calls')).toContainEqual(
+        expect.objectContaining({
+          outcome: 'ok',
+          imagesDropped: { 'not-supported': 1 },
+        }),
+      )
+    })
+
+    it('never shares images between sends and drops them on close',
+      async () => {
+        const first = await imageRun(true)
+        const output: string = await execute(
+          first.tools,
+          'mcp__alpha__list_issues',
+        )
+        const second = await imageRun(true)
+
+        expect(await modelOutput(second.tools, output))
+          .toEqual({ type: 'text', value: output })
+        expect((await modelOutput(first.tools, output)).type).toBe('content')
+        expect(await modelOutput(first.tools, output, 'call-2'))
+          .toEqual({ type: 'text', value: output })
+
+        await first.close()
+
+        expect(await modelOutput(first.tools, output))
+          .toEqual({ type: 'text', value: output })
+      })
   })
 
   describe('caps', () => {

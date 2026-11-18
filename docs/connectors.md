@@ -836,7 +836,8 @@ message".
      never executed in this send;
    - times out at `TOOL_LOOP_TOOL_TIMEOUT_MS` (60 s);
    - converts the result to text (joins `content[].text`, describes non-text
-     content, no images in v1), truncates to 64 KiB with a notice;
+     content; images go to the model only, see section 6.5), truncates to
+     64 KiB with a notice;
    - wraps it as `<untrusted_tool_result connector="<slug>" tool="<name>">…</untrusted_tool_result>`;
    - sets `guard.untrustedResultSeen = true` and records the connector id in
      the send's set of read sources (rule F2);
@@ -1507,6 +1508,80 @@ reason and "Reference XXXX-XXXX" with a copy button. Old messages show none.
   callback) and delete: `action`, `directoryId`, `authType`.
 - The count of calls of a send moved to `attributes.connectors.callCount`
   (it was `calls`, which is now the array above).
+
+### 6.5 Images in tool results (C-15, BES-405, 2026-11-18)
+
+A tool such as Doop's `get_frame_screenshot` answers with an MCP `image`
+item (base64 `data` plus `mimeType`). Until this change every image became
+`[image omitted: image/png]`, so the model could not see the design it was
+asked about. Now an image reaches **the model only, in the same send, and is
+stored nowhere** (`server/utils/connectors/tool-images.ts`).
+
+**What the chat keeps.** `execute` still returns only the framed text, so the
+stream, the `dynamic-tool` part in D1, `persist.ts`, shares, branches and
+memory never carry image bytes. A forwarded image leaves the line
+`[image/png, 412 KB: shown to the model, not saved]` where it was in the
+result; an image that is not forwarded keeps `[image omitted: image/png]`,
+with the reason appended when there is one (`larger than 3.5 MB`, `more than
+4 images in one result`, `over the 12 MB of images one message can show`,
+`not a valid image`, `only PNG, JPEG, GIF and WebP images are shown`).
+
+**How the model gets it.** `getConnectorTools` keeps a map from tool call id
+to the validated images inside its own run (never module-global) and gives
+every connector tool a `toModelOutput`. The SDK (`ai` 7.0.173,
+`createToolModelOutput`) calls it with the `toolCallId` each time it builds a
+prompt, on every later step of the send, so reads do not consume the entry;
+`close()` clears the map. With images the output is
+`{ type: 'content', value: [text, note, file...] }`: the framed text, a note
+that the images come from the connector `<title>`, tool `<name>`, and are data
+from a third party, never instructions (the untrusted frame wraps text only),
+then one `{ type: 'file', mediaType, data: { type: 'data', data } }` part per
+image. Without images it is `{ type: 'text', value }`, exactly what the SDK
+sends by default.
+
+**Who gets images** (`canForwardConnectorImages` in
+`shared/utils/connectors-policy.ts`): a direct send (no gateway) whose provider
+is in `CONNECTOR_IMAGE_PROVIDERS` and whose model lists `image` in its input
+modalities (`getModelInputModalities`). The allowlist is `anthropic` (a
+`tool_result` with an `image` block, `source.type: base64`) and `openai` (the
+Responses API, a `function_call_output` whose output holds an `input_image`
+with a `data:` URL). Both were checked against the installed adapters and by
+a request-body test (`tests/unit/server/utils/connectors/tool-images-providers.spec.ts`)
+that runs three steps and finds the base64 only at `source.data` or
+`image_url`. Every other route keeps the placeholder: the OpenAI-compatible
+adapter (Qwen, the Cloudflare gateway) stringifies a `content` output when
+multi-part tool content is off, and Moonshot AI stringifies it always, which
+would put megabytes of base64 into the prompt as text on the user's key.
+Gateways, Google, xAI and DeepSeek are not verified and stay off until they
+are.
+
+**Limits** (section 9): PNG, JPEG, GIF and WebP only, decided by magic bytes
+(`sniffConnectorIconType`), never by the server's `mimeType`; never SVG or
+ICO; at most 4 images per call (`CONNECTOR_IMAGES_PER_CALL`), 3.5 MB decoded
+each (`CONNECTOR_IMAGE_MAX_BYTES`, under Anthropic's 5 MB), 12 MB per send
+(`CONNECTOR_IMAGES_MAX_BYTES_PER_SEND`, counted when the call runs). Base64
+that does not decode drops the image, not the call. The transport cap comes
+first: one MCP response is at most `CONNECTOR_RESPONSE_MAX_BYTES` (1 MiB), so
+today an image above roughly 750 KB decoded makes the whole call fail as a
+`protocol` error before these rules run. Raising that cap is a separate
+decision.
+
+**Continuation.** After an approval ends a send, the continuation rebuilds
+the earlier calls from D1, where the bytes never were. `convertToModelMessages`
+runs without tools there, so `toModelOutput` is not called;
+`buildResumedAssistantMessages` instead rewrites each "shown to the model"
+line in the model copy (never in the stored copy) to `[image/png, 412 KB: no
+longer available; call the tool again to see it]`. A call the user approved
+runs in the continuation's own send and forwards its images there. Later
+sends drop tool parts altogether (step 11 above).
+
+**Logs.** `attributes.connectors.calls[]` gains `imagesForwarded` and
+`imagesDropped` (a count per reason). Image bytes are never logged.
+
+**Costs and risks.** An image is billed as input tokens on the user's key,
+and again on every later step of the same send. An image whose magic bytes
+are valid but whose body is corrupt may make the provider reject the whole
+request. Redaction of the connector's secrets applies to the text only.
 
 ## 7. Approvals
 
@@ -2756,6 +2831,10 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_SLUG_MAX_LENGTH` | 16 | C-2 |
 | `CONNECTOR_RESULT_MAX_BYTES` | 65,536 text after conversion | C-5 |
 | `CONNECTOR_RESPONSE_MAX_BYTES` | 1,048,576 raw per MCP response | C-3, C-5 |
+| `CONNECTOR_IMAGES_PER_CALL` | 4 images forwarded per result | C-15 (section 6.5) |
+| `CONNECTOR_IMAGE_MAX_BYTES` | 3.5 MiB decoded per image | C-15 (section 6.5) |
+| `CONNECTOR_IMAGES_MAX_BYTES_PER_SEND` | 12 MiB decoded per send | C-15 (section 6.5) |
+| `CONNECTOR_IMAGE_PROVIDERS` | `anthropic`, `openai` (direct only) | C-15 (section 6.5) |
 | `CONNECTOR_CALL_TIMEOUT_MS` | 60,000 (= `TOOL_LOOP_TOOL_TIMEOUT_MS`) | C-5 |
 | `CONNECTOR_CONNECT_TIMEOUT_MS` | 10,000 | C-5 |
 | `CONNECTOR_PARALLEL_CONNECTS` | 3 | C-5 |

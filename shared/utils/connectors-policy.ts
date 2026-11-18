@@ -241,3 +241,49 @@ export const CONNECTOR_SSE_SESSION_MAX_BYTES = 8 * MEBIBYTE
 export const CONNECTOR_RATE_LIMIT_WINDOW_SECONDS = 60
 export const CONNECTOR_AUDIT_ARGS_HKDF_INFO = 'besidka/connector-audit-args/v1'
 export const CONNECTOR_SELECTION_WRITES_PER_MINUTE = 60
+export const CONNECTOR_IMAGE_MEDIA_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+] as const
+export const CONNECTOR_IMAGES_PER_CALL = 4
+export const CONNECTOR_IMAGE_MAX_BYTES = 3.5 * MEBIBYTE
+export const CONNECTOR_IMAGES_MAX_BYTES_PER_SEND = 12 * MEBIBYTE
+
+/**
+ * Direct providers whose adapter sends an image inside a tool result as an
+ * image block (Anthropic `tool_result` image, OpenAI Responses
+ * `function_call_output` `input_image`). Other adapters, and every gateway,
+ * may turn the same output into text, which would put the base64 into the
+ * prompt, so their sends keep the text placeholder.
+ */
+export const CONNECTOR_IMAGE_PROVIDERS: readonly string[] = [
+  'anthropic',
+  'openai',
+]
+
+export type ConnectorImageMediaType
+  = typeof CONNECTOR_IMAGE_MEDIA_TYPES[number]
+
+export function isConnectorImageMediaType(
+  value: unknown,
+): value is ConnectorImageMediaType {
+  return CONNECTOR_IMAGE_MEDIA_TYPES.some(mediaType => mediaType === value)
+}
+
+/**
+ * Whether a send may show images from connector results to its model: only
+ * on a direct (not gateway) allowlisted provider whose model takes image
+ * input.
+ */
+export function canForwardConnectorImages(input: {
+  gatewayId?: string | null
+  providerId?: string | null
+  inputModalities?: readonly string[] | null
+}): boolean {
+  return !input.gatewayId
+    && !!input.providerId
+    && CONNECTOR_IMAGE_PROVIDERS.includes(input.providerId)
+    && !!input.inputModalities?.includes('image')
+}

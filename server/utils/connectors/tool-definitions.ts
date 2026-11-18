@@ -289,7 +289,29 @@ function limitField(value: unknown): string {
   return typeof value === 'string' ? value.slice(0, MAX_TEXT_FIELD_LENGTH) : ''
 }
 
-function describeContentItem(item: unknown): string | null {
+/**
+ * The line that stands in for an image or audio item Besidka does not pass
+ * on: `[image omitted: image/png]`, with the reason appended when there is
+ * one (`[image omitted: image/png, larger than 3.5 MB]`).
+ */
+export function describeOmittedMedia(
+  item: Record<string, unknown>,
+  reason?: string,
+): string {
+  const details = [
+    typeof item.mimeType === 'string' ? limitField(item.mimeType) : '',
+    reason ?? '',
+  ].filter(Boolean)
+
+  return `[${limitField(item.type)} omitted${
+    details.length > 0 ? `: ${details.join(', ')}` : ''
+  }]`
+}
+
+function describeContentItem(
+  item: unknown,
+  imageLine?: string,
+): string | null {
   if (!isRecord(item) || typeof item.type !== 'string') {
     return null
   }
@@ -298,12 +320,12 @@ function describeContentItem(item: unknown): string | null {
     return typeof item.text === 'string' ? item.text : null
   }
 
+  if (item.type === 'image' && imageLine !== undefined) {
+    return imageLine
+  }
+
   if (item.type === 'image' || item.type === 'audio') {
-    return `[${item.type} omitted${
-      typeof item.mimeType === 'string'
-        ? `: ${limitField(item.mimeType)}`
-        : ''
-    }]`
+    return describeOmittedMedia(item)
   }
 
   if (item.type === 'resource' && isRecord(item.resource)) {
@@ -325,14 +347,30 @@ function describeContentItem(item: unknown): string | null {
 
 /**
  * The result of a `tools/call` as plain text: text items joined, every other
- * kind described in one line and never forwarded (no images in v1). When the
- * server sent only `structuredContent`, that JSON is the text.
+ * kind described in one line. `imageLines` holds the line for each `image`
+ * item in order (`server/utils/connectors/tool-images.ts`), and an image
+ * without one is described as omitted; the bytes are never part of the
+ * text. When the server sent only `structuredContent`, that JSON is the
+ * text.
  */
-export function callToolResultToText(result: CallToolResult): string {
+export function callToolResultToText(
+  result: CallToolResult,
+  imageLines: readonly string[] = [],
+): string {
   const content = (result as { content?: unknown }).content
+  let imageIndex = 0
   const lines = Array.isArray(content)
     ? content
-      .map(describeContentItem)
+      .map((item) => {
+        const isImage = isRecord(item) && item.type === 'image'
+        const imageLine = isImage ? imageLines[imageIndex] : undefined
+
+        if (isImage) {
+          imageIndex += 1
+        }
+
+        return describeContentItem(item, imageLine)
+      })
       .filter((line): line is string => line !== null)
     : []
 
