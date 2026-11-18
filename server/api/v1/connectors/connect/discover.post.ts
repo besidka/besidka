@@ -88,5 +88,6 @@ export default defineEventHandler(async (event) => {
     issuerDiffers: issuerHost !== null && issuerHost !== target.host,
     notice: preset?.notice ?? null,
     headerName: preset?.headerName ?? null,
+    headerNames: target.headerNames,
   }
 })

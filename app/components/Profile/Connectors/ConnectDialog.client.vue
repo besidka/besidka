@@ -179,7 +179,43 @@
         <p class="text-sm">
           {{ headerIntro }}
         </p>
-        <div class="grid gap-1">
+        <section
+          class="grid gap-2"
+          aria-labelledby="connector-header-kind-heading"
+          data-testid="connector-header-kind"
+        >
+          <h3
+            id="connector-header-kind-heading"
+            class="text-sm font-medium"
+          >
+            How to send it
+          </h3>
+          <div
+            class="join w-full"
+            role="radiogroup"
+            aria-labelledby="connector-header-kind-heading"
+          >
+            <input
+              v-for="kind in CONNECTOR_HEADER_AUTH_KINDS"
+              :key="kind"
+              v-model="headerAuthKind"
+              type="radio"
+              name="connector-header-kind"
+              class="join-item btn btn-sm min-h-11 flex-1 sm:min-h-8"
+              :class="{
+                [SELECTED_MODE_CLASS]: headerAuthKind === kind,
+              }"
+              :value="kind"
+              :aria-label="HEADER_AUTH_KIND_LABELS[kind]"
+              :disabled="isBusy"
+              :data-testid="`connector-header-kind-${kind}`"
+            >
+          </div>
+        </section>
+        <div
+          v-if="headerAuthKind === 'header'"
+          class="grid gap-1"
+        >
           <label
             for="connector-header-name"
             class="text-sm font-medium"
@@ -204,7 +240,7 @@
             for="connector-header-value"
             class="text-sm font-medium"
           >
-            Value
+            {{ headerAuthKind === 'bearer' ? 'API key or token' : 'Value' }}
           </label>
           <input
             id="connector-header-value"
@@ -212,9 +248,7 @@
             type="password"
             autocomplete="off"
             class="input w-full"
-            :placeholder="headerName.toLowerCase() === 'authorization'
-              ? 'Bearer your-token'
-              : ''"
+            :placeholder="headerValuePlaceholder"
             :aria-invalid="!!headerError"
             :aria-describedby="headerError
               ? 'connector-header-error'
@@ -231,14 +265,19 @@
           >
             {{ headerError }}
           </p>
-          <p
-            v-else
-            id="connector-header-help"
-            class="text-xs text-base-content/70"
-          >
-            Stored encrypted and sent only to {{ discovery.host }}. Besidka
-            never shows it again.
-          </p>
+          <template v-else>
+            <p
+              id="connector-header-help"
+              class="text-xs text-base-content/70"
+              data-testid="connector-header-hint"
+            >
+              {{ headerHint }}
+            </p>
+            <p class="text-xs text-base-content/70">
+              Stored encrypted and sent only to {{ discovery.host }}. Besidka
+              never shows it again.
+            </p>
+          </template>
         </div>
       </form>
 
@@ -302,7 +341,7 @@
         type="submit"
         form="connector-connect-header-form"
         class="btn btn-primary min-h-11 sm:min-h-8"
-        :disabled="isBusy || !headerName.trim() || !headerValue"
+        :disabled="isBusy || !isHeaderFormComplete"
         data-testid="connector-header-save"
       >
         Save and connect
@@ -320,6 +359,15 @@ import {
   CONNECTOR_TOOL_MODE_LABELS,
   CONNECTOR_TOOL_MODES,
 } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_BEARER_HEADER_NAME,
+  CONNECTOR_HEADER_AUTH_KINDS,
+  resolveHeaderAuthDefault,
+} from '#shared/utils/connectors-auth'
+import type {
+  ConnectorHeaderAuthInput,
+  ConnectorHeaderAuthKind,
+} from '#shared/utils/connectors-auth'
 import type {
   ConnectorAuthType,
   ConnectorToolMode,
@@ -328,6 +376,17 @@ import { findConnectorPreset } from '~~/config/connectors-catalog'
 
 const SELECTED_MODE_CLASS = 'btn-soft btn-soft-selected font-semibold '
   + '[--btn-color:var(--color-base-content)]'
+
+const HEADER_AUTH_KIND_LABELS: Record<ConnectorHeaderAuthKind, string> = {
+  bearer: 'API key or token',
+  header: 'Custom header',
+}
+
+const BEARER_HINT = 'Besidka sends it as Authorization: Bearer followed by '
+  + 'your key. A leading "Bearer " in what you paste is removed.'
+
+const CUSTOM_HEADER_HINT = 'Sent exactly as typed. For Authorization, '
+  + 'include the scheme, for example Bearer <token>.'
 
 type ConnectStep = 'discovering' | 'consent' | 'auth' | 'failed'
 
@@ -338,6 +397,7 @@ interface Discovery {
   notice: string | null
   title: string | null
   presetId: string | null
+  headerNames: string[]
 }
 
 const props = defineProps<{
@@ -365,7 +425,8 @@ const errorDetail = shallowRef<string>('')
 const errorCode = shallowRef<string>('')
 const errorLink = shallowRef<string>('')
 const liveMessage = shallowRef<string>('')
-const headerName = shallowRef<string>('Authorization')
+const headerAuthKind = shallowRef<ConnectorHeaderAuthKind>('bearer')
+const headerName = shallowRef<string>(CONNECTOR_BEARER_HEADER_NAME)
 const headerValue = shallowRef<string>('')
 const headerError = shallowRef<string>('')
 
@@ -429,6 +490,28 @@ const dialogTitle = computed<string>(() => {
     : `Connect ${current.title}`
 })
 
+const isHeaderFormComplete = computed<boolean>(() => {
+  if (headerAuthKind.value === 'bearer') {
+    return !!headerValue.value.trim()
+  }
+
+  return !!headerName.value.trim() && !!headerValue.value
+})
+
+const headerHint = computed<string>(() => {
+  return headerAuthKind.value === 'bearer' ? BEARER_HINT : CUSTOM_HEADER_HINT
+})
+
+const headerValuePlaceholder = computed<string>(() => {
+  if (headerAuthKind.value === 'bearer') {
+    return 'Paste the key'
+  }
+
+  return headerName.value.trim().toLowerCase() === 'authorization'
+    ? 'Bearer your-token'
+    : ''
+})
+
 const headerIntro = computed<string>(() => {
   if (preset.value?.id === 'github') {
     return 'Paste a fine-grained personal access token with the fewest '
@@ -469,9 +552,37 @@ function isConsentCurrentFor(found: Discovery): boolean {
     || current.consent.issuerHost === found.issuerHost
 }
 
+function applyHeaderAuthDefault() {
+  const declaredNames = preset.value?.headerName
+    ? [preset.value.headerName]
+    : discovery.value?.headerNames ?? []
+  const fallback = resolveHeaderAuthDefault(declaredNames)
+
+  headerAuthKind.value = fallback.kind
+  headerName.value = fallback.name
+  headerValue.value = ''
+}
+
+function headerAuthInput(): ConnectorHeaderAuthInput {
+  if (headerAuthKind.value === 'bearer') {
+    return { kind: 'bearer', token: headerValue.value }
+  }
+
+  return {
+    kind: 'header',
+    name: headerName.value.trim(),
+    value: headerValue.value,
+  }
+}
+
+watch(headerAuthKind, () => {
+  headerValue.value = ''
+  headerError.value = ''
+})
+
 function useTokenInstead() {
   authKind.value = 'header'
-  headerName.value = preset.value?.headerName ?? 'Authorization'
+  applyHeaderAuthDefault()
   errorCode.value = ''
   step.value = 'auth'
   liveMessage.value = 'Enter the key to finish connecting'
@@ -494,7 +605,7 @@ function consentBody(found: Discovery) {
 
 async function createConnector(
   found: Discovery,
-  header?: { name: string, value: string },
+  auth?: ConnectorHeaderAuthInput,
 ) {
   const result = await $fetch('/api/v1/connectors', {
     method: 'POST',
@@ -502,7 +613,7 @@ async function createConnector(
       ...props.draft,
       toolMode: selectedToolMode.value,
       consent: consentBody(found),
-      ...(header ? { header } : {}),
+      ...(auth ? { auth } : {}),
     },
   })
 
@@ -523,7 +634,7 @@ async function enterAuthStep(found: Discovery) {
   }
 
   authKind.value = found.authType
-  headerName.value = preset.value?.headerName ?? 'Authorization'
+  applyHeaderAuthDefault()
   step.value = 'auth'
   liveMessage.value = found.authType === 'oauth'
     ? 'Sign in to finish connecting'
@@ -543,6 +654,7 @@ async function discoverDraft(draft: ConnectorDraft): Promise<Discovery> {
     notice: result.notice,
     title: result.title,
     presetId: result.presetId,
+    headerNames: result.headerNames,
   }
 }
 
@@ -559,6 +671,7 @@ async function discoverExisting(connectorId: string): Promise<Discovery> {
     notice: result.notice,
     title: null,
     presetId: null,
+    headerNames: [],
   }
 }
 
@@ -687,10 +800,7 @@ async function saveHeader() {
 
   try {
     if (props.draft && discovery.value) {
-      await createConnector(discovery.value, {
-        name: headerName.value.trim(),
-        value: headerValue.value,
-      })
+      await createConnector(discovery.value, headerAuthInput())
       headerValue.value = ''
 
       return
@@ -698,10 +808,7 @@ async function saveHeader() {
 
     await $fetch(`/api/v1/connectors/${props.connectorId}/credentials`, {
       method: 'POST',
-      body: {
-        headerName: headerName.value.trim(),
-        headerValue: headerValue.value,
-      },
+      body: { auth: headerAuthInput() },
     })
     headerValue.value = ''
     await finish(props.connectorId!)
