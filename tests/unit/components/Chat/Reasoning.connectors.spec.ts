@@ -1,9 +1,23 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
 import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
+
+vi.mock('@panzoom/panzoom', () => {
+  return {
+    default: vi.fn(() => {
+      return {
+        destroy: vi.fn(),
+        getScale: vi.fn(() => 1),
+        reset: vi.fn(),
+        resetStyle: vi.fn(),
+        zoomToPoint: vi.fn(),
+      }
+    }),
+  }
+})
 
 const cachedConnectors = ref<unknown>({
   connectors: [{ slug: 'notion', title: 'Notion' }],
@@ -156,6 +170,17 @@ function connectorImage(toolCallId: string, index: number, deleted = false) {
 }
 
 describe('Chat/Reasoning connector images', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+      .mockImplementation(function (this: HTMLDialogElement) {
+        this.setAttribute('open', '')
+      })
+    vi.spyOn(HTMLDialogElement.prototype, 'close')
+      .mockImplementation(function (this: HTMLDialogElement) {
+        this.removeAttribute('open')
+      })
+  })
+
   it('shows up to three thumbnails and the rest as +N in the header',
     async () => {
       const wrapper = await mountMessage([
