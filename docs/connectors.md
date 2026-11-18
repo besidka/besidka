@@ -876,7 +876,8 @@ message".
      never executed in this send;
    - times out at `TOOL_LOOP_TOOL_TIMEOUT_MS` (60 s);
    - converts the result to text (joins `content[].text`, describes non-text
-     content; images go to the model only, see section 6.5), truncates to
+     content; images go to the model and are kept with the chat, never in
+     the text, see section 6.5), truncates to
      64 KiB with a notice;
    - wraps it as `<untrusted_tool_result connector="<slug>" tool="<name>">…</untrusted_tool_result>`;
    - sets `guard.untrustedResultSeen = true` and records the connector id in
@@ -1558,26 +1559,31 @@ reason and "Reference XXXX-XXXX" with a copy button. Old messages show none.
 - The count of calls of a send moved to `attributes.connectors.callCount`
   (it was `calls`, which is now the array above).
 
-### 6.5 Images in tool results (C-15, BES-405, 2026-11-18)
+### 6.5 Images in tool results (C-15, BES-405 and BES-406, 2026-11-18)
 
 A tool such as Doop's `get_frame_screenshot` answers with an MCP `image`
-item (base64 `data` plus `mimeType`). Until this change every image became
+item (base64 `data` plus `mimeType`). Until BES-405 every image became
 `[image omitted: image/png]`, so the model could not see the design it was
-asked about. Now an image reaches **the model only, in the same send, and is
-stored nowhere** (`server/utils/connectors/tool-images.ts`).
+asked about. Now an image reaches **the model in the same send**
+(`server/utils/connectors/tool-images.ts`) and, since BES-406, **is kept with
+the chat** so the user can open it from the step (see "Kept with the chat"
+below). Later sends still never give the image to a model.
 
 **What the chat keeps.** `execute` still returns only the framed text, so the
 stream, the `dynamic-tool` part in D1, `persist.ts`, shares, branches and
 memory never carry image bytes. A forwarded image leaves the line
-`[image/png, 412 KB: shown to the model, not saved]` where it was in the
-result; an image that is not forwarded keeps `[image omitted: image/png]`,
+`[image/png, 412 KB: shown to the model, kept with this chat]` where it was
+in the result, or `[...: shown to the model, not kept (storage full)]` or
+`[...: shown to the model, not kept]` when keeping it failed (the save runs
+before the text is built, so the line is final); an image that is not
+forwarded keeps `[image omitted: image/png]`,
 with the reason appended when there is one (`larger than 3.5 MB`, `more than
 4 images in one result`, `over the 12 MB of images one message can show`,
 `too many images in one message`, `not a valid image`, `only PNG, JPEG, GIF
 and WebP images are shown`). Only Besidka writes the real line: text the
-server wrote that looks like one (`[...: shown to the model, not saved]` or
-the replay wording, in a text item, a resource, a `mimeType` or structured
-content) is rewritten to `[text from the connector: ...]`
+server wrote that looks like one (any of the three "shown to the model"
+lines or either replay wording, in a text item, a resource, a `mimeType` or
+structured content) is rewritten to `[text from the connector: ...]`
 (`neutralizeConnectorImagePlaceholders` in
 `server/utils/connectors/image-placeholders.ts`), so the continuation rewrite
 below never touches it.
@@ -1661,15 +1667,98 @@ the earlier calls from D1, where the bytes never were. `convertToModelMessages`
 runs without tools there, so `toModelOutput` is not called;
 `buildResumedAssistantMessages` instead rewrites each "shown to the model"
 line in the model copy (never in the stored copy) to `[image/png, 412 KB: no
-longer available; call the tool again to see it]`. A call the user approved
-runs in the continuation's own send and forwards its images there. Later
-sends drop tool parts altogether (step 11 above).
+longer available; call the tool again to see it]`, or, for a kept image,
+`[image/png, 412 KB: kept with this chat, no longer available to the model;
+call the tool again to see it]`. A call the user approved runs in the
+continuation's own send and forwards its images there. Later sends drop tool
+parts altogether (step 11 above).
 
-**Logs.** `attributes.connectors.calls[]` gains `imagesForwarded` and
-`imagesDropped` (a count per reason). Image bytes are never logged.
+**Kept with the chat (BES-406).** Exactly the images the store forwards are
+kept: the same gate (allowlisted provider, a model with image input, magic
+bytes PNG, JPEG, GIF or WebP, the structural check, the caps). An image that
+is not forwarded is not kept either. `createConnectorImageSaver`
+(`server/utils/connectors/image-saver.ts`, created by the send route only
+when `canForwardConnectorImages` is true) runs inside the call, before the
+text is built and before `close()` clears the bytes:
+
+- It writes a `files` row with `source = 'connector'` through `persistFile`,
+  so the storage allowance and its guard apply (a full storage gives `not
+  kept (storage full)`). No AI provenance mark is added: the image is not
+  AI-generated. `originProvider` and `originModel` stay null, so no AI badge.
+- One limiter slot: the R2 puts are sequential and the lookup before each
+  insert cannot race.
+- Dedupe per chat without a hash column: the R2 key is
+  `connector-<sha256(userId:chatPublicId:sha256(bytes))>.<ext>`. Before a put
+  the saver looks the key up for the user (and in its own per-send map), so a
+  model that screenshots the same frame again reuses the first file. The same
+  bytes in another chat get another key.
+- The file name comes from the connector slug and the tool name only
+  (`doop-get_frame_screenshot.png`, then `-2`, `-3`), never from the result.
+- Any failure (storage full, R2, D1) never fails the call: the model still
+  gets the image and the line says it was not kept.
+
+Each kept image becomes one `data-connector-image` part
+(`shared/utils/connector-image-parts.ts`) `{ toolCallId, fileId, url,
+mediaType, width, height, size, name }` with id
+`connector-image-<toolCallId>-<index>`. `withConnectorImageParts`
+(`image-parts-stream.ts`) enqueues the parts right after the call's
+`tool-output-available` chunk, before the stream is split, so the client
+shows them live and the stored message keeps them. When the reply is stored,
+`linkConnectorImagesToMessage` sets `files.origin_message_id` on rows that
+have none yet (a reused image keeps its first origin).
+
+**Hidden from file lists.** `getFilesSourceCondition`
+(`server/utils/files/source-filter.ts`) excludes `source = 'connector'` for
+every source, so the file manager, the library and generated-image pickers,
+project knowledge pickers and MCP `list_files` never show them, and the MCP
+`list_files` schema is unchanged. The owner-only `/files/<key>` route and the
+delete routes work by id as for any file. A share never shows them: the part
+is dropped by `filterPublicParts`, and only `file` parts give a share a
+`chat_share_files` grant, so no grant is created. Branches drop the part with
+its `dynamic-tool` step (there is no step left to hang it on).
+
+**Deletion.** A chat takes its connector images with it: `deleteChat` and
+the bulk delete find them through the chat's `data-connector-image` parts
+(`findChatsConnectorImageFiles`, so an unlinked row goes too), take them out
+of the origin-file reference check and delete them
+(`deleteConnectorImagesOfDeletedChats`: R2 batch delete per 90, then the
+rows, then the storage cache). Deleting one message keeps the usual
+reference check, which now also reads `data-connector-image` parts, so an
+image a later step still shows survives. The account purge deletes every
+`files` row and object regardless of source. The Storage page row
+"Connector images" has its own **Delete all** (confirm dialog, `POST
+/api/v1/storage/connector-images/delete`, at most 20 batches of 90 per call
+with `hasMore`, the page calls again up to 10 times), and MCP has
+`delete_connector_images` (`data:delete`, `confirm: true`, not offered to
+chat models). Files expire with the user's retention policy like every
+other file (`file-retention-cleanup`).
+
+**After deletion.** The part is a weak reference. `GET
+/api/v1/chats/[slug]` checks which referenced files still exist in one query
+per 90 ids (`markDeletedConnectorImages`) and sets `deleted: true` on the
+missing ones in the payload only, so the step shows a muted "deleted" tile
+instead of requesting each image; a thumbnail that fails to load shows "Not
+found".
+
+**UI.** The collapsed steps header shows up to three thumbnails (two below
+`sm`) and `+N` at its right edge in a fixed 24 px slot; deleted images are
+not counted there. Expanded, each connector step row shows one 32 px
+thumbnail at its right edge with `+N` over it when the call kept more. A
+click opens the shared image viewer (`ChatImagePreview`, with Download)
+without toggling the steps (`ConnectorThumbnail.vue`, `.stop.prevent`). Alt
+text: "Screenshot from <connector title>". A shared chat shows none.
+
+**Logs.** `attributes.connectors.calls[]` gains `imagesForwarded`,
+`imagesSaved` and `imagesDropped` (a count per reason); a failed save adds
+`attributes.connectors.imageSaveError` (the message only). Image bytes are
+never logged.
 
 **Costs and risks.** An image is billed as input tokens on the user's key,
-and again on every later step of the same send. The structural check does
+and again on every later step of the same send. A kept image counts against
+the storage allowance. Rows saved in a send whose reply is never stored (an
+abort before persistence) have no origin and no part pointing at them, so a
+chat deletion cannot find them; they stay counted until the Storage page
+"Delete all" or the retention sweep removes them. The structural check does
 not decode pixels, so an image that is corrupt inside its compressed data may
 still make the provider reject the whole request. Redaction of the
 connector's secrets applies to the text only.

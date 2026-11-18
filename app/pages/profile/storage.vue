@@ -130,7 +130,18 @@
               </p>
             </div>
             <UiButton
-              v-if="category.canManage"
+              v-if="category.canDelete"
+              text="Delete all"
+              size="sm"
+              mode="error"
+              outline
+              normal-case
+              :disabled="isDeletingConnectorImages"
+              :data-testid="`storage-delete-${category.id}`"
+              @click="deleteConnectorImages"
+            />
+            <UiButton
+              v-else-if="category.canManage"
               :to="category.to"
               text="Manage"
               size="sm"
@@ -152,6 +163,7 @@
 </template>
 <script setup lang="ts">
 import type { FileSourceFilter } from '~/types/file-manager'
+import { parseError } from 'evlog'
 import { formatFileSize } from '#shared/utils/files'
 
 definePageMeta({
@@ -169,6 +181,7 @@ useSeoMeta({
 const SKELETON_DELAY_MS = 300
 const SKELETON_ROWS = 5
 const FILE_MANAGER_TARGET_PATH = '/chats/new'
+const CONNECTOR_IMAGE_DELETE_MAX_ROUNDS = 10
 
 const { data: stats, status, error, refresh } = await useLazyFetch(
   '/api/v1/storage',
@@ -179,6 +192,7 @@ const skillsFeature = useFeature('skills')
 const { requestOpen } = useFilesModalHandoff()
 
 const isSkeletonVisible = shallowRef<boolean>(false)
+const isDeletingConnectorImages = shallowRef<boolean>(false)
 
 const hasError = computed<boolean>(() => {
   return !stats.value && (status.value === 'error' || !!error.value)
@@ -236,6 +250,60 @@ const isEmpty = computed<boolean>(() => {
   })
 })
 
+async function deleteConnectorImages() {
+  if (isDeletingConnectorImages.value) {
+    return
+  }
+
+  const confirmation = await useConfirm({
+    text: 'Delete all connector images?',
+    subtitle: 'Every image your connectors returned in chats is deleted for '
+      + 'good. The chats stay, and their steps show the images as deleted.',
+    alert: true,
+    actions: ['Delete all'],
+  })
+
+  if (!confirmation) {
+    return
+  }
+
+  isDeletingConnectorImages.value = true
+
+  try {
+    let deleted = 0
+    let hasMore = true
+
+    for (
+      let round = 0;
+      hasMore && round < CONNECTOR_IMAGE_DELETE_MAX_ROUNDS;
+      round++
+    ) {
+      const result = await $fetch('/api/v1/storage/connector-images/delete', {
+        method: 'POST',
+      })
+
+      deleted += result.deleted
+      hasMore = result.hasMore && result.deleted > 0
+    }
+
+    useSuccessMessage(
+      deleted === 1
+        ? 'Deleted 1 connector image'
+        : `Deleted ${deleted} connector images`,
+    )
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Connector images were not deleted',
+      parsedException.why,
+    )
+  } finally {
+    isDeletingConnectorImages.value = false
+    await refresh()
+  }
+}
+
 async function openFileManager(source: FileSourceFilter) {
   requestOpen('select', FILE_MANAGER_TARGET_PATH, source)
 
@@ -253,6 +321,7 @@ const categories = computed(() => {
     let to: string | undefined
     let onManage: (() => Promise<void>) | undefined
     let canManage = hasData
+    const canDelete = hasData && meta.action === 'connector-images-delete'
 
     if (meta.action === 'files-assistant') {
       onManage = () => openFileManager('assistant')
@@ -274,6 +343,7 @@ const categories = computed(() => {
       size: formatFileSize(row.bytes),
       countText: formatStorageCount(row.id, row.count),
       canManage,
+      canDelete,
       to,
       onManage,
     }

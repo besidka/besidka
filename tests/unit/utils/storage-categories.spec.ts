@@ -14,6 +14,7 @@ describe('storage categories', () => {
       ['aiImages', 'AI images', 'lucide:images'],
       ['uploads', 'Uploaded files', 'lucide:paperclip'],
       ['generatedFiles', 'Generated files', 'lucide:file-text'],
+      ['connectorImages', 'Connector images', 'lucide:plug'],
       ['artifacts', 'Artifacts', 'lucide:app-window'],
       ['knowledge', 'Project knowledge', 'lucide:book-open'],
       ['skills', 'Skills', 'lucide:sparkles'],

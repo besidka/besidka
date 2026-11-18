@@ -4,9 +4,12 @@ import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   cleanupFilesOrphanedByChatDeletion,
+  deleteConnectorImagesOfDeletedChats,
   findChatOriginFiles,
   findMessageOriginFiles,
+  withoutConnectorImageFiles,
 } from '~~/server/utils/files/chat-deletion-cleanup'
+import { findChatsConnectorImageFiles } from '~~/server/utils/files/connector-images'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
@@ -231,7 +234,15 @@ export async function deleteChat(
   chat: OwnedChatRef,
   logger: LoggerLike,
 ): Promise<void> {
-  const originFiles = await findChatOriginFiles(chat.id, userId)
+  const connectorImageFiles = await findChatsConnectorImageFiles(
+    db,
+    [chat.id],
+    userId,
+  )
+  const originFiles = withoutConnectorImageFiles(
+    await findChatOriginFiles(chat.id, userId),
+    connectorImageFiles,
+  )
 
   await detachChatsFromMemory({
     db,
@@ -278,6 +289,13 @@ export async function deleteChat(
       },
     })
   }
+
+  await deleteConnectorImagesOfDeletedChats(
+    db,
+    userId,
+    connectorImageFiles,
+    logger,
+  )
 
   await cleanupDocumentsForDeletedChats(db, {
     userId,

@@ -398,6 +398,13 @@ import {
 } from '~~/server/utils/connectors/send-tools'
 import type { ConnectorToolsRun } from '~~/server/utils/connectors/send-tools'
 import {
+  createConnectorImageSaver,
+  linkConnectorImagesToMessage,
+} from '~~/server/utils/connectors/image-saver'
+import { collectConnectorImageFileIds } from '#shared/utils/connector-image-parts'
+import type { ConnectorImageSaver } from '~~/server/utils/connectors/image-saver'
+import { withConnectorImageParts } from '~~/server/utils/connectors/image-parts-stream'
+import {
   listConnectors,
   settleConnectorToolCall,
 } from '~~/server/utils/connectors/store'
@@ -2128,6 +2135,7 @@ export default defineEventHandler(async (event) => {
     useRuntimeConfig().encryptionKey,
   )
   let connectorsRun: ConnectorToolsRun | null = null
+  let connectorImageSaver: ConnectorImageSaver | null = null
   let besidkaToolsRun: PreparedBesidkaChatTools | null = null
   let toolIndex: ToolIndex | null
   const toolIndexReserve = {
@@ -2233,6 +2241,20 @@ export default defineEventHandler(async (event) => {
           )
         }
 
+        const forwardsConnectorImages = canForwardConnectorImages({
+          gatewayId,
+          providerId: provider?.id,
+          inputModalities: model ? getModelInputModalities(model) : null,
+        })
+
+        connectorImageSaver = forwardsConnectorImages
+          ? createConnectorImageSaver({
+            db,
+            userId,
+            chatPublicId: chat.id,
+            logger: aiLogger,
+          })
+          : null
         connectorsRun = await getConnectorTools({
           db,
           kv: useKV(),
@@ -2260,11 +2282,8 @@ export default defineEventHandler(async (event) => {
               callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
             }
             : {}),
-          forwardImages: canForwardConnectorImages({
-            gatewayId,
-            providerId: provider?.id,
-            inputModalities: model ? getModelInputModalities(model) : null,
-          }),
+          forwardImages: forwardsConnectorImages,
+          ...(connectorImageSaver ? { imageSaver: connectorImageSaver } : {}),
           guard: chatSearchBudget,
           logger: aiLogger,
           requestId: getRequestId(event),
@@ -3174,11 +3193,17 @@ export default defineEventHandler(async (event) => {
         const toolApprovalCollector = createToolApprovalStreamCollector(
           toolApprovalSend,
         )
+        const approvalUiMessageStream = toolApprovalsActive
+          ? toolApprovalCollector.apply(uiMessageStream)
+          : uiMessageStream
         const correctedUiMessageStream = emitSourcesForExternalSearchResults(
           insertParagraphBreakAfterNonTextGap(
-            toolApprovalsActive
-              ? toolApprovalCollector.apply(uiMessageStream)
-              : uiMessageStream,
+            connectorImageSaver
+              ? withConnectorImageParts(
+                approvalUiMessageStream,
+                connectorImageSaver,
+              ) as typeof approvalUiMessageStream
+              : approvalUiMessageStream,
           ),
         )
 
@@ -5643,6 +5668,16 @@ async function persistAssistantMessageFromStream(input: {
         documentIds,
         logger: input.logger,
       })
+    }
+
+    const connectorImageFileIds = collectConnectorImageFileIds(finalParts)
+
+    if (assistantMessage && connectorImageFileIds.length > 0) {
+      await linkConnectorImagesToMessage(input.db, {
+        userId: input.userId,
+        messagePublicId: input.publicId,
+        fileIds: connectorImageFileIds,
+      }, input.logger)
     }
 
     if (assistantMessage && generatedFileIds.length > 0) {

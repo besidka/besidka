@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   navigateTo: vi.fn(),
   requestOpen: vi.fn(),
+  confirm: vi.fn(),
+  fetch: vi.fn(),
+  success: vi.fn(),
+  error: vi.fn(),
   artifactsActive: { value: true },
   skillsActive: { value: true },
 }))
@@ -23,6 +27,10 @@ mockNuxtImport('useFeature', () => {
     return { enabled: active, active }
   })
 })
+mockNuxtImport('useConfirm', () => mocks.confirm)
+mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useSuccessMessage', () => mocks.success)
+mockNuxtImport('useErrorMessage', () => mocks.error)
 mockNuxtImport('useFilesModalHandoff', () => {
   return () => ({ requestOpen: mocks.requestOpen })
 })
@@ -42,6 +50,7 @@ function createStats(overrides: Record<string, unknown> = {}) {
         { id: 'aiImages', bytes: 3 * MEGABYTE, count: 4 },
         { id: 'uploads', bytes: 5 * MEGABYTE, count: 1 },
         { id: 'generatedFiles', bytes: 0, count: 0 },
+        { id: 'connectorImages', bytes: MEGABYTE, count: 3 },
         { id: 'artifacts', bytes: 2 * MEGABYTE, count: 3 },
         { id: 'knowledge', bytes: 2 * MEGABYTE, count: 9 },
         { id: 'skills', bytes: MEGABYTE, count: 2 },
@@ -78,12 +87,64 @@ describe('profile storage page', () => {
     mocks.refresh.mockReset().mockResolvedValue(undefined)
     mocks.navigateTo.mockReset().mockResolvedValue(undefined)
     mocks.requestOpen.mockReset()
+    mocks.confirm.mockReset()
+    mocks.fetch.mockReset()
+    mocks.success.mockReset()
+    mocks.error.mockReset()
     mocks.artifactsActive.value = true
     mocks.skillsActive.value = true
   })
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('deletes connector images from their row instead of managing them',
+    async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Delete all', index: 0 })
+      mocks.fetch
+        .mockResolvedValueOnce({ deleted: 1800, failed: 0, hasMore: true })
+        .mockResolvedValueOnce({ deleted: 3, failed: 0, hasMore: false })
+
+      const wrapper = await mountPage()
+      const row = wrapper.get('[data-testid="storage-category-connectorImages"]')
+
+      expect(row.text()).toContain('Connector images')
+      expect(row.find('[data-testid="storage-manage-connectorImages"]')
+        .exists()).toBe(false)
+
+      await row.get('[data-testid="storage-delete-connectorImages"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(mocks.success).toHaveBeenCalledWith(
+          'Deleted 1803 connector images',
+        )
+      })
+
+      expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
+        alert: true,
+        actions: ['Delete all'],
+      }))
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/storage/connector-images/delete',
+        { method: 'POST' },
+      )
+      expect(mocks.refresh).toHaveBeenCalled()
+    })
+
+  it('deletes nothing when the confirmation is declined', async () => {
+    mocks.confirm.mockResolvedValue(null)
+
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="storage-delete-connectorImages"]')
+      .trigger('click')
+    await vi.waitFor(() => {
+      expect(mocks.confirm).toHaveBeenCalled()
+    })
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
   })
 
   it('reads the storage API with a lazy fetch', async () => {

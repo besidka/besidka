@@ -136,3 +136,111 @@ describe('Chat/Reasoning connector step', () => {
       .toBe(false)
   })
 })
+
+function connectorImage(toolCallId: string, index: number, deleted = false) {
+  return {
+    type: 'data-connector-image',
+    id: `connector-image-${toolCallId}-${index}`,
+    data: {
+      toolCallId,
+      fileId: `file-${toolCallId}-${index}`,
+      url: `/files/connector-${toolCallId}-${index}.png`,
+      mediaType: 'image/png',
+      width: 8,
+      height: 8,
+      size: 75,
+      name: 'notion-search.png',
+      ...(deleted ? { deleted: true } : {}),
+    },
+  }
+}
+
+describe('Chat/Reasoning connector images', () => {
+  it('shows up to three thumbnails and the rest as +N in the header',
+    async () => {
+      const wrapper = await mountMessage([
+        connectorCall(),
+        connectorImage('call-1', 0),
+        connectorImage('call-1', 1),
+        connectorCall({ toolCallId: 'call-2' }),
+        connectorImage('call-2', 0),
+        connectorImage('call-2', 1),
+        connectorImage('call-2', 2, true),
+      ])
+      const header = wrapper.get('[data-testid="reasoning-header-images"]')
+      const thumbnails = header.findAll(
+        '[data-testid="reasoning-connector-image"]',
+      )
+
+      expect(thumbnails).toHaveLength(3)
+      expect(thumbnails[0]!.get('img').attributes('alt'))
+        .toBe('Screenshot from Notion')
+      expect(header.get('[data-testid="reasoning-header-images-more"]').text())
+        .toBe('+1')
+      expect(header.get(
+        '[data-testid="reasoning-header-images-more-phone"]',
+      ).text()).toBe('+2')
+      expect(header.find('[data-testid="reasoning-connector-image-deleted"]')
+        .exists()).toBe(false)
+    })
+
+  it('opens the image without toggling the steps', async () => {
+    const wrapper = await mountMessage([
+      connectorCall(),
+      connectorImage('call-1', 0),
+    ])
+    const details = wrapper.get('details')
+
+    await wrapper.get('[data-testid="reasoning-header-images"] '
+      + '[data-testid="reasoning-connector-image"]').trigger('click')
+
+    expect(details.attributes('open')).toBeUndefined()
+    expect(wrapper.find('[data-testid="reasoning-header-images"]').exists())
+      .toBe(true)
+  })
+
+  it('shows one thumbnail per step row and a deleted tile when it is gone',
+    async () => {
+      const wrapper = await mountMessage([
+        connectorCall(),
+        connectorImage('call-1', 0),
+        connectorImage('call-1', 1),
+        connectorCall({ toolCallId: 'call-2' }),
+        connectorImage('call-2', 0, true),
+      ])
+      const steps = wrapper.findAll('[data-testid="reasoning-connector-step"]')
+
+      expect(steps[0]!.findAll('[data-testid="reasoning-connector-image"]'))
+        .toHaveLength(1)
+      expect(steps[0]!.get('[data-testid="reasoning-connector-image-more"]')
+        .text()).toBe('+1')
+      expect(steps[1]!.find('[data-testid="reasoning-connector-image"]')
+        .exists()).toBe(false)
+      expect(steps[1]!.find(
+        '[data-testid="reasoning-connector-image-deleted"]',
+      ).exists()).toBe(true)
+    })
+
+  it('shows no images in a shared chat', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: {
+          id: 'msg-shared',
+          role: 'assistant',
+          parts: [connectorCall(), connectorImage('call-1', 0)],
+        } as UIMessage,
+        status: 'ready',
+        reasoningLevel: 'off',
+        turnStartedAt: 0,
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
+        isShared: true,
+      },
+      global: { stubs: { MDCCached: true } },
+    })
+
+    expect(wrapper.find('[data-testid="reasoning-connector-image"]').exists())
+      .toBe(false)
+  })
+})

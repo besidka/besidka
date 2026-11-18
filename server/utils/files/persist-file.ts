@@ -28,6 +28,7 @@ export interface PersistFileInput {
   fileData: Uint8Array
   quotaSizeBytes?: number
   source?: FileSource
+  storageKey?: string
   originMessageId?: number | null
   originProvider?: string | null
   originModel?: string | null
@@ -105,7 +106,7 @@ export async function persistFile(
 
   try {
     response = await useFileStorage().put(
-      `${crypto.randomUUID()}.${fileExtension}`,
+      input.storageKey ?? `${crypto.randomUUID()}.${fileExtension}`,
       input.fileData,
       {
         httpMetadata: {

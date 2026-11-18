@@ -180,6 +180,8 @@ export function getAffectedTests(changedFiles) {
   ]
   const storageQuotaTests = [
     'tests/unit/server/utils/storage/usage.spec.ts',
+    'tests/unit/server/utils/files/connector-images.spec.ts',
+    'tests/unit/server/mcp/tools/delete-connector-images.spec.ts',
     'tests/unit/server/utils/storage/errors.spec.ts',
     'tests/unit/server/utils/storage/guard.spec.ts',
     'tests/integration/api/storage.spec.ts',
@@ -1654,6 +1656,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/tool-definitions.spec.ts',
     'tests/unit/server/utils/connectors/tool-images.spec.ts',
     'tests/unit/server/utils/connectors/tool-images-providers.spec.ts',
+    'tests/unit/server/utils/connectors/image-saver.spec.ts',
+    'tests/unit/server/utils/connectors/image-parts-stream.spec.ts',
+    'tests/unit/server/utils/files/connector-images.spec.ts',
+    'tests/unit/utils/connector-image-parts.spec.ts',
+    'tests/integration/server/chat-deletion-cleanup.spec.ts',
     'tests/unit/server/utils/tool-approval/continuation.spec.ts',
     'tests/unit/server/utils/connectors/mcp-client.spec.ts',
     'tests/unit/server/utils/connectors/audit.spec.ts',
@@ -1688,6 +1695,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ConnectorThumbnail.spec.ts',
+    'tests/unit/utils/connector-image-parts.spec.ts',
     'tests/unit/utils/connectors-errors.spec.ts',
     'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
     'tests/unit/components/Chat/ConnectorsNotice.spec.ts',
@@ -3521,7 +3530,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|tool-index)\.ts|server\/utils\/ai\/(tool-index(-prefetch)?|anthropic-thinking-binding)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|connector-images|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|connector-image-parts|tool-index)\.ts|server\/utils\/files\/(connector-images|chat-deletion-cleanup|source-filter)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.get\.ts|server\/utils\/ai\/(tool-index(-prefetch)?|anthropic-thinking-binding)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|connector-images|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
       tests: connectorsChatToolsTests,
     },
     {
@@ -3556,7 +3565,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles|connector-mention)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client|ConnectorSuggestion)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|connector-image-parts)\.ts|app\/components\/Chat\/Reasoning\/ConnectorThumbnail\.vue|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles|connector-mention)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client|ConnectorSuggestion)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
     },
     {
@@ -3775,6 +3784,11 @@ export function getAffectedTests(changedFiles) {
         ...chatTestEndpointTests,
         'tests/e2e/shared/context-menu-clipping.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/storage\/connector-images\/delete\.post\.ts|server\/utils\/files\/connector-images\.ts|server\/(mcp\/tools|utils\/besidka-tools\/tools)\/delete-connector-images\.ts|app\/pages\/profile\/storage\.vue)$/,
+      tests: [...storageQuotaTests, ...storagePageTests],
     },
     {
       pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,

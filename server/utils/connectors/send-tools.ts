@@ -2,6 +2,7 @@ import type { KVNamespace } from '@cloudflare/workers-types'
 import { detectToolDrift, dynamicTool, jsonSchema } from 'ai'
 import type { ToolSet } from 'ai'
 import { createError } from 'evlog'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   CONNECTOR_CALL_TIMEOUT_MS,
   CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
@@ -118,12 +119,17 @@ import {
 import { recordDeclaredConnectorIcons } from '~~/server/utils/connectors/icon'
 import {
   buildConnectorModelOutput,
+  applyConnectorImageSaveStatuses,
   collectConnectorImages,
   createConnectorImageStore,
 } from '~~/server/utils/connectors/tool-images'
 import type {
+  ConnectorImageCollection,
   ConnectorImageDropReason,
 } from '~~/server/utils/connectors/tool-images'
+import type {
+  ConnectorImageSaver,
+} from '~~/server/utils/connectors/image-saver'
 import type { ConnectorToolDefinition } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
@@ -217,6 +223,7 @@ export interface GetConnectorToolsInput {
   ) => { auditCallId: number, approval: ConnectorAuditApproval } | null
   callsUsedThisTurn?: number
   forwardImages?: boolean
+  imageSaver?: ConnectorImageSaver
   guard?: UntrustedContentGuard
   logger: LoggerLike
   requestId?: string
@@ -653,10 +660,13 @@ async function syncDriftStatus(
  * out throws an error with a sentence Besidka wrote, so the persisted tool
  * part is an error.
  * With `forwardImages` (`canForwardConnectorImages`), valid images in a
- * result go to the model only, through the tool's `toModelOutput`, from a
- * map of this run keyed by tool call id and cleared on `close`; the text the
- * chat shows and stores keeps a placeholder line instead
- * (`server/utils/connectors/tool-images.ts`). Such a send lets a
+ * result go to the model through the tool's `toModelOutput`, from a map of
+ * this run keyed by tool call id and cleared on `close`; the text the chat
+ * shows and stores keeps a placeholder line instead
+ * (`server/utils/connectors/tool-images.ts`). With `imageSaver`, the same
+ * images are saved to the user's files before the text is built, and the
+ * line says whether each one was saved; a failed save never fails the
+ * call (`server/utils/connectors/image-saver.ts`). Such a send lets a
  * `tools/call` response grow to 8 MiB, so at most two of its calls receive
  * and parse a response at once (`CONNECTOR_IMAGE_CALLS_IN_FLIGHT`), which
  * bounds the large bodies in memory to 16 MiB.
@@ -1334,6 +1344,7 @@ export async function getConnectorTools(
       startedAt: number
       category?: ConnectorCallErrorCategory
       imagesForwarded?: number
+      imagesSaved?: number
       imagesDropped?: Partial<Record<ConnectorImageDropReason, number>>
     }) {
       if (callRecordCount >= CONNECTOR_CALL_LOG_MAX) {
@@ -1356,6 +1367,9 @@ export async function getConnectorTools(
               ...(call.category ? { category: call.category } : {}),
               ...(call.imagesForwarded
                 ? { imagesForwarded: call.imagesForwarded }
+                : {}),
+              ...(call.imagesSaved
+                ? { imagesSaved: call.imagesSaved }
                 : {}),
               ...(call.imagesDropped
                 && Object.keys(call.imagesDropped).length > 0
@@ -1436,6 +1450,38 @@ export async function getConnectorTools(
         why: 'The connected service did not return a result.',
         fix: 'Answer without it and tell the user to check the connector.',
       })
+    }
+
+    async function saveForwardedImages(
+      candidate: Candidate,
+      toolCallId: string | undefined,
+      images: ConnectorImageCollection,
+    ): Promise<{ lines: string[], saved: number }> {
+      if (!input.imageSaver || !toolCallId || images.images.length === 0) {
+        return { lines: images.lines, saved: 0 }
+      }
+
+      try {
+        const statuses = await input.imageSaver.save({
+          toolCallId,
+          connectorSlug: candidate.connector.slug,
+          toolName: candidate.definition.name,
+          images: images.images,
+        })
+
+        return {
+          lines: applyConnectorImageSaveStatuses(images, statuses),
+          saved: statuses.filter(status => status === 'saved').length,
+        }
+      } catch (exception) {
+        logger.set({
+          attributes: {
+            connectors: { imageSaveError: exceptionMessage(exception) },
+          },
+        })
+
+        return { lines: images.lines, saved: 0 }
+      }
     }
 
     async function executeCall(
@@ -1571,13 +1617,16 @@ export async function getConnectorTools(
           imageStore.add(toolCallId, images.images)
         }
 
+        const saved = await saveForwardedImages(candidate, toolCallId, images)
+
         return {
           images,
+          imagesSaved: saved.saved,
           framed: frameUntrustedResult({
             slug: candidate.connector.slug,
             toolName: candidate.definition.name,
             text: redactSecrets(
-              callToolResultToText(result, images.lines),
+              callToolResultToText(result, saved.lines),
               [...candidate.secrets],
             ),
           }),
@@ -1588,7 +1637,7 @@ export async function getConnectorTools(
       }
 
       try {
-        const { images, framed, outcome } = input.forwardImages
+        const { images, imagesSaved, framed, outcome } = input.forwardImages
           ? await imageCallLimiter.run(callRemote)
           : await callRemote()
 
@@ -1605,6 +1654,7 @@ export async function getConnectorTools(
           outcome,
           startedAt,
           imagesForwarded: images.images.length,
+          imagesSaved,
           imagesDropped: images.dropped,
         })
 

@@ -880,7 +880,7 @@ describe('getConnectorTools', () => {
   })
 
   describe('images', () => {
-    const SHOWN_LINE = '[image/png, 75 B: shown to the model, not saved]'
+    const SHOWN_LINE = '[image/png, 75 B: shown to the model, not kept]'
 
     async function imageRun(forwardImages: boolean) {
       const alpha = server('mcp.alpha.example.com', {
@@ -1006,7 +1006,7 @@ describe('getConnectorTools', () => {
         const output: string = await execute(tools, 'mcp__alpha__list_issues')
 
         expect(output)
-          .toContain('[image/png, 1.5 MB: shown to the model, not saved]')
+          .toContain('[image/png, 1.5 MB: shown to the model, not kept]')
         expect((await modelOutput(tools, output)).value.at(-1)).toMatchObject({
           type: 'file',
           data: { type: 'data', data: base64 },
@@ -1070,7 +1070,7 @@ describe('getConnectorTools', () => {
 
       expect(outputs).toHaveLength(6)
       expect(outputs.every((output: string) => {
-        return output.includes('shown to the model, not saved')
+        return output.includes('shown to the model, not kept')
       })).toBe(true)
       expect(maxInFlight).toBe(2)
       expect(inFlight).toBe(0)

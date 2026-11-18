@@ -201,8 +201,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
-- `docs/storage.md` - The one storage allowance (BES-393): the six categories
-  (AI images, uploads, generated files, artifacts, project knowledge, skills)
+- `docs/storage.md` - The one storage allowance (BES-393): the seven
+  categories (AI images, uploads, generated files, connector images,
+  artifacts, project knowledge, skills)
   and how
   each is told apart from existing `files` columns with no migration, what is
   not counted, the single usage number (`userStorageUsedBytesSql`, shared with
@@ -766,7 +767,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  57 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  58 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -814,8 +815,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   chat: the per-chat plan (an off always wins), the 30-day tool-definition
   snapshot with no connection at send start, warm-ups, the live hash check
   on first call, the `<connector_catalog>` block and `use_connector`; section
-  6.5 for images in tool results (model only, same send, never stored; the
-  direct Anthropic and OpenAI allowlist, caps, continuation placeholder)
+  6.5 for images in tool results (shown to the model in the same send and
+  kept with the chat as hidden `connector` files: the `data-connector-image`
+  part, dedupe per chat, the step thumbnails, deletion with the chat or from
+  the Storage page; the direct Anthropic and OpenAI allowlist, caps,
+  continuation placeholder)
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link

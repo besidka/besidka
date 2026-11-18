@@ -7,7 +7,7 @@ and the Storage page (`/profile/storage`) shows what fills it. BES-393.
 
 ## What counts
 
-Six categories, defined once in `server/utils/storage/categories.ts`
+Seven categories, defined once in `server/utils/storage/categories.ts`
 (`STORAGE_CATEGORIES`). Each gives a bytes expression and a count expression
 for a user; the total is their sum.
 
@@ -16,12 +16,19 @@ for a user; the total is their sum.
 | `aiImages` | Images the models generated | `files.source = 'assistant'` and `files.type like 'image/%'` |
 | `uploads` | Files the user uploaded or created through MCP | `files.source = 'upload'` |
 | `generatedFiles` | Rendered documents, code-execution output and other generated files | `files.source = 'assistant'` and `files.type not like 'image/%'` |
+| `connectorImages` | Images connectors returned in chats and Besidka kept with those chats (C-15, BES-406) | `files.source = 'connector'` |
 | `artifacts` | Every stored version of every artifact | `sum(artifacts.total_bytes)`, counting rows with `current_version > 0` (a pending header from an interrupted write has `0` bytes and no version) |
 | `knowledge` | Text extracted from project files and notes | `sum(project_knowledge_items.text_bytes)` |
 | `skills` | Every stored version of every skill | The bytes of unique blobs: `skill_files` rows deduplicated by `(skill_id, blob_sha256)`, so a blob counts once per skill however many versions hold it (the way R2 stores it). The count is the number of `skills` rows (`userSkillsBytesSql` and `userSkillsCountSql` in `skills/usage.ts`) |
 
-The three file categories partition `files` by `source` and `type`, so their
-sum equals `sum(files.size)`. No column was added for this.
+The four file categories partition `files` by `source` and `type`, so their
+sum equals `sum(files.size)`. No column was added for this: `connector` is a
+new value of the app-level `source` enum on the existing text column, which
+needed no migration (`db:generate` reports no schema change).
+
+Connector images are hidden from every file list (`getFilesSourceCondition`
+excludes `source = 'connector'`), so the Storage page is the only place that
+shows them outside their chat; see `docs/connectors.md` section 6.5.
 
 ### What is not counted
 
@@ -111,7 +118,11 @@ without `breakdown` (written before this shipped) is treated as a miss.
 size, count and a Manage action (the file manager on the right source for AI
 images, uploads and generated files, `/chats/artifacts` when the `artifacts`
 feature is on, `/chats/projects`, `/chats/skills` when the `skills` feature is
-on), a skeleton after 300 ms, an error state with
+on). The "Connector images" row has no Manage action: it has **Delete all**
+(a confirm dialog, then `POST /api/v1/storage/connector-images/delete`,
+called again while it answers `hasMore`, at most 10 times, then a refresh),
+because those images are in no file list. The rest: a skeleton after 300 ms,
+an error state with
 Retry and an empty state. Labels, icons and links live in
 `app/utils/storage-categories.ts`. The page has a tab in
 `app/layouts/profile.vue` and the `search-option-storage` row in the Search
@@ -121,7 +132,8 @@ modal; it is deliberately not in the sidebar user dropdown.
 
 `get_settings` (`settings:read`, since 3.2.0) returns a `storage` block:
 `usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count`, with
-`skills` among them). See
+`skills` and `connectorImages` among them). `delete_connector_images`
+(`data:delete`, since 5.2.0) deletes the connector images. See
 `docs/mcp-server.md`.
 
 ## Adding a category

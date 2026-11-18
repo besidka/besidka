@@ -93,7 +93,7 @@ never data.
 | `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`) |
 | `skills:read` | `list_skills`, `get_skill` |
 | `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`), `set_project_skills` (5.1.0, replaces the skills pinned to a project; destructive because omitted pins are removed; never changes a skill) |
-| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_connector_images` (5.2.0), `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
 The first per-user surface had 32 tools (the artifact tools and
@@ -156,7 +156,7 @@ do and removes no user content. `update_skill` is on the list because it
 switches the skill off and stages a replacement of its files; `rename_skill`
 is not, because it writes a new version and keeps the old ones.
 
-Since 5.1.0 the surface has 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
+Since 5.2.0 the surface has 58 private tools: `delete_connector_images` (C-15) deletes every image connectors returned in chats, under the existing `data:delete` scope with `confirm: true`; those images are in no file list, so `list_files` does not show them. Since 5.1.0 the surface had 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
 `skills:read` and `skills:write` scopes were added to the
 50 of 4.0.0 (see [The skills scopes](#the-skills-scopes)).
 
@@ -373,8 +373,9 @@ for `projects:write` or `memory:write` earlier would silently gain deletion
 if the delete tools stayed behind those scopes. Every deletion therefore sits
 behind its own scope, `data:delete` ("Delete your data" on the consent page):
 `delete_chats`, `delete_chat_message`, `delete_project`,
-`delete_project_knowledge_items`, `delete_files`, `delete_memory`,
-`reset_memory` and `delete_artifacts`. `revoke_chat_shares` and
+`delete_project_knowledge_items`, `delete_files`,
+`delete_connector_images`, `delete_memory`, `reset_memory` and
+`delete_artifacts`. `revoke_chat_shares` and
 `revoke_artifact_shares` stay on `chats:write` and `artifacts:write` because
 the chats and artifacts survive them. `data:delete` is a write scope (`MCP_WRITE_SCOPES`,
 `isMcpWriteScope`), so it is unticked by default, shows the warning style, and
@@ -1105,6 +1106,7 @@ text only and capped.
 | `create_document` | `files:write` | no | Render a PDF, Word, PowerPoint or Excel file from a spec the client supplies and save it as a private library file (`source: assistant`). Input: `format`, `title`, `spec` (a JSON object, not a string; `format` and `title` are filled from the arguments, `specVersion` defaults to 1), optional `fileName` and `aiGenerated`. Returns `documentId`, `file` (`id`, `name`, `size`, `type`, `expiresAt`), `format` and `stats`. Since 3.1.0 | `createMcpDocument` (`server/utils/mcp/private/documents.ts`): `checkDocumentSpecInput`, `renderDocument` through `DOC_RENDERER`, `createDocument`, `claimDocumentRender`, `finalizeRenderedDocument`. Serialized spec up to 200,000 characters; 10 renders a minute and 100 a day per user (`MCP_DOCUMENT_RENDER_MINUTE_LIMIT`, `MCP_DOCUMENT_RENDER_DAILY_LIMIT`) on top of the write limit |
 | `rename_file` | `files:write` | yes | Change a file's name; the old name is not kept | `assertFileNameCharacters`. 255 characters |
 | `delete_files` | `data:delete` | yes | Hard delete files; the extracted text of files that are project knowledge is removed with them. Skipped ids are reported with a reason (`not_found`, `storage_error`, `error`) | `deleteOwnedFiles` (per file, not a batched R2 delete: each file is removed and caught on its own, so a failure keeps what was already deleted), `isFileLinkedToKnowledgeSql`. Up to 100 ids |
+| `delete_connector_images` | `data:delete` | yes | Delete every image connectors returned in chats (`files.source = 'connector'`, hidden from every file list). Needs `confirm: true`; up to 20 batches of 90 per call, `hasMore` asks for another call | `deleteAllConnectorImages` (R2 batch delete per 90, then the rows, then the storage cache). Not offered to chat models |
 | `list_memory` | `memory:read` | no | Account memory, one project's with `projectId`, or both with `scope: all` | `listMemoryEntries`. The entry caps (30 account, 15 per project, 4 KiB body) |
 | `add_memory` | `memory:write` | no | Create an entry (`category`, `title`, `description`, `body`, optional `projectId`) | `createMemoryEntry`. `MEMORY_LIMITS` |
 | `update_memory` | `memory:write` | yes | Change category, title, description or body | `updateMemoryEntry`. `MEMORY_LIMITS` |

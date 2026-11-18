@@ -68,3 +68,7 @@ export function formatConnectorArguments(input: unknown): string {
     ? `${text.slice(0, ARGUMENTS_MAX_LENGTH)}…`
     : text
 }
+
+export function getConnectorImageAlt(connectorTitle: string): string {
+  return `Screenshot from ${connectorTitle}`
+}

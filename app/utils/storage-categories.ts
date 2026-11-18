@@ -3,6 +3,7 @@ import type { StorageCategoryId } from '#shared/types/files.d'
 export type StorageCategoryAction
   = | 'files-assistant'
     | 'files-upload'
+    | 'connector-images-delete'
     | 'artifacts'
     | 'projects'
     | 'skills'
@@ -43,6 +44,15 @@ export const STORAGE_CATEGORY_META: Record<
     plural: 'files',
     hint: 'Documents and other files the models created',
     action: 'files-assistant',
+  },
+  connectorImages: {
+    label: 'Connector images',
+    icon: 'lucide:plug',
+    singular: 'image',
+    plural: 'images',
+    hint: 'Screenshots and other images your connectors returned, kept '
+      + 'with their chats',
+    action: 'connector-images-delete',
   },
   artifacts: {
     label: 'Artifacts',

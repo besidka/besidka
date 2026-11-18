@@ -138,6 +138,7 @@ describe('storage API', () => {
           { id: 'aiImages', bytes: 1_000, count: 1 },
           { id: 'uploads', bytes: 2_000, count: 1 },
           { id: 'generatedFiles', bytes: 3_000, count: 1 },
+          { id: 'connectorImages', bytes: 0, count: 0 },
           { id: 'artifacts', bytes: 4_000, count: 1 },
           { id: 'knowledge', bytes: 500, count: 1 },
           { id: 'skills', bytes: 700, count: 1 },
@@ -169,7 +170,7 @@ describe('storage API', () => {
     const handler = await importHandler()
     const stats = await handler({})
 
-    expect(stats.breakdown.categories).toHaveLength(6)
+    expect(stats.breakdown.categories).toHaveLength(7)
     expect(mocks.kvPut).toHaveBeenCalledTimes(1)
   })
 

@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => {
     calls: [] as string[],
     findChatOriginFiles: vi.fn(),
     findMessageOriginFiles: vi.fn(),
+    findChatsConnectorImageFiles: vi.fn(),
+    deleteConnectorImagesOfDeletedChats: vi.fn(),
     cleanupFilesOrphanedByChatDeletion: vi.fn(),
     cleanupDocumentsForDeletedChats: vi.fn(),
     cleanupDocumentsForDeletedMessage: vi.fn(),
@@ -25,8 +27,24 @@ vi.mock('~~/server/utils/files/chat-deletion-cleanup', () => {
   return {
     findChatOriginFiles: mocks.findChatOriginFiles,
     findMessageOriginFiles: mocks.findMessageOriginFiles,
+    deleteConnectorImagesOfDeletedChats:
+      mocks.deleteConnectorImagesOfDeletedChats,
+    withoutConnectorImageFiles: (
+      originFiles: Array<{ id: string }>,
+      connectorImageFiles: Array<{ id: string }>,
+    ) => {
+      const ids = new Set(connectorImageFiles.map(file => file.id))
+
+      return originFiles.filter(file => !ids.has(file.id))
+    },
     cleanupFilesOrphanedByChatDeletion:
       mocks.cleanupFilesOrphanedByChatDeletion,
+  }
+})
+
+vi.mock('~~/server/utils/files/connector-images', () => {
+  return {
+    findChatsConnectorImageFiles: mocks.findChatsConnectorImageFiles,
   }
 })
 
@@ -168,6 +186,10 @@ describe('chat lifecycle', () => {
     mocks.logger.set.mockReset()
     mocks.findChatOriginFiles.mockResolvedValue([])
     mocks.findMessageOriginFiles.mockResolvedValue([])
+    mocks.findChatsConnectorImageFiles.mockResolvedValue([])
+    mocks.deleteConnectorImagesOfDeletedChats.mockImplementation(async () => {
+      mocks.calls.push('connector-image-cleanup')
+    })
     mocks.cleanupFilesOrphanedByChatDeletion.mockResolvedValue({})
     mocks.cleanupDocumentsForDeletedChats.mockImplementation(async () => {
       mocks.calls.push('document-cleanup')
@@ -484,6 +506,7 @@ describe('chat lifecycle', () => {
           'delete-row',
           'refresh',
           'stale',
+          'connector-image-cleanup',
           'document-cleanup',
           'skill-cleanup',
           'connector-cleanup',
@@ -514,6 +537,33 @@ describe('chat lifecycle', () => {
         expect(mocks.cleanupFilesOrphanedByChatDeletion)
           .toHaveBeenCalledWith(originFiles, USER_ID, mocks.logger)
       })
+
+    it('deletes the chat\'s connector images instead of keeping them as '
+      + 'origin files', async () => {
+      const { db } = createDb()
+      const connectorImage = { id: 'img1', storageKey: 'connector-a.png' }
+      const generatedImage = { id: 'f1', storageKey: 'k1' }
+
+      mocks.findChatOriginFiles.mockResolvedValue([
+        generatedImage,
+        connectorImage,
+      ])
+      mocks.findChatsConnectorImageFiles.mockResolvedValue([connectorImage])
+
+      await deleteChat(
+        db,
+        USER_ID,
+        { id: 'c1', projectId: null },
+        mocks.logger,
+      )
+
+      expect(mocks.findChatsConnectorImageFiles)
+        .toHaveBeenCalledWith(db, ['c1'], USER_ID)
+      expect(mocks.cleanupFilesOrphanedByChatDeletion)
+        .toHaveBeenCalledWith([generatedImage], USER_ID, mocks.logger)
+      expect(mocks.deleteConnectorImagesOfDeletedChats)
+        .toHaveBeenCalledWith(db, USER_ID, [connectorImage], mocks.logger)
+    })
 
     it('still succeeds when the orphaned file cleanup fails', async () => {
       const { db } = createDb()
