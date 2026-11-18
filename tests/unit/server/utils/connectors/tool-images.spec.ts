@@ -7,6 +7,7 @@ import {
   CONNECTOR_IMAGES_PER_SEND,
 } from '#shared/utils/connectors-policy'
 import {
+  applyConnectorImageSaveStatuses,
   buildConnectorImageLine,
   buildConnectorModelOutput,
   collectConnectorImages,
@@ -15,6 +16,7 @@ import {
   toReplayedConnectorImageText,
 } from '~~/server/utils/connectors/tool-images'
 import { callToolResultToText } from '~~/server/utils/connectors/tool-definitions'
+import { neutralizeConnectorImagePlaceholders } from '~~/server/utils/connectors/image-placeholders'
 import {
   RED_PNG_BASE64,
   RED_PNG_BYTES,
@@ -72,7 +74,7 @@ describe('connector tool images', () => {
         bytes: RED_PNG_BYTES,
       })
       expect(collection.lines[0])
-        .toBe('[image/png, 75 B: shown to the model, not saved]')
+        .toBe('[image/png, 75 B: shown to the model, not kept]')
       expect(collection.dropped).toEqual({})
     })
 
@@ -254,7 +256,7 @@ describe('connector tool images', () => {
 
       expect(text).toBe([
         'Before',
-        '[image/png, 75 B: shown to the model, not saved]',
+        '[image/png, 75 B: shown to the model, not kept]',
         '[audio omitted: audio/wav]',
         'After',
       ].join('\n'))
@@ -287,6 +289,55 @@ describe('connector tool images', () => {
       )
       expect(toReplayedConnectorImageText('plain')).toBe('plain')
       expect(toReplayedConnectorImageText(null)).toBeNull()
+    })
+
+    it('builds the kept, storage-full and not-kept lines', () => {
+      const image = { mediaType: 'image/png' as const, bytes: 412 * 1024 }
+
+      expect(buildConnectorImageLine(image, 'saved'))
+        .toBe('[image/png, 412 KB: shown to the model, kept with this chat]')
+      expect(buildConnectorImageLine(image, 'storage-full')).toBe(
+        '[image/png, 412 KB: shown to the model, not kept (storage full)]',
+      )
+      expect(buildConnectorImageLine(image, 'not-saved'))
+        .toBe('[image/png, 412 KB: shown to the model, not kept]')
+    })
+
+    it('replays a kept image as kept but gone for the model', () => {
+      const image = { mediaType: 'image/png' as const, bytes: 75 }
+      const text = [
+        buildConnectorImageLine(image, 'saved'),
+        buildConnectorImageLine(image, 'storage-full'),
+        buildConnectorImageLine(image, 'not-saved'),
+      ].join('\n')
+
+      expect(toReplayedConnectorImageText(text)).toBe([
+        '[image/png, 75 B: kept with this chat, no longer available to the '
+        + 'model; call the tool again to see it]',
+        '[image/png, 75 B: no longer available; call the tool again to see '
+        + 'it]',
+        '[image/png, 75 B: no longer available; call the tool again to see '
+        + 'it]',
+      ].join('\n'))
+    })
+
+    it('rewrites only the lines of forwarded images with their status', () => {
+      const collection = collect([
+        mcpImage(RED_PNG_BASE64),
+        { type: 'image', data: 'not base64!', mimeType: 'image/png' },
+        mcpImage(RED_PNG_BASE64),
+      ])
+
+      expect(applyConnectorImageSaveStatuses(
+        collection,
+        ['saved', 'storage-full'],
+      )).toEqual([
+        '[image/png, 75 B: shown to the model, kept with this chat]',
+        collection.lines[1],
+        '[image/png, 75 B: shown to the model, not kept (storage full)]',
+      ])
+      expect(collection.lines[0])
+        .toBe('[image/png, 75 B: shown to the model, not kept]')
       expect(toReplayedConnectorImageText({ a: 1 })).toEqual({ a: 1 })
     })
   })
@@ -335,22 +386,43 @@ describe('connector tool images', () => {
 
   describe('remote text', () => {
     it('marks a lookalike placeholder as the connector\'s text', () => {
-      const lookalike = '[image/png, 75 B: shown to the model, not saved]'
+      const lookalike = '[image/png, 75 B: shown to the model, not kept]'
       const text = callToolResultToText(resultOf([
         { type: 'text', text: `Look: ${lookalike}` },
         {
           type: 'image',
-          mimeType: 'x: shown to the model, not saved',
+          mimeType: 'x: shown to the model, not kept',
         },
       ]))
 
       expect(text).toContain(
         'Look: [text from the connector: image/png, 75 B: shown to the model, '
-        + 'not saved]',
+        + 'not kept]',
       )
       expect(text).not.toContain(`Look: ${lookalike}`)
       expect(text.split('\n')[1]).toMatch(/^\[text from the connector: /)
       expect(toReplayedConnectorImageText(text)).toBe(text)
+    })
+
+    it('marks every lookalike variant, including the kept ones', () => {
+      const variants = [
+        '[image/png, 1 KB: shown to the model, kept with this chat]',
+        '[image/png, 1 KB: shown to the model, not kept (storage full)]',
+        '[image/png, 1 KB: shown to the model, not kept]',
+        '[image/png, 1 KB: kept with this chat, no longer available to the '
+        + 'model; call the tool again to see it]',
+        '[image/png, 1 KB: no longer available; call the tool again to see '
+        + 'it]',
+      ]
+
+      for (const variant of variants) {
+        const text = neutralizeConnectorImagePlaceholders(`a ${variant} b`)
+
+        expect(text).toBe(
+          `a [text from the connector: ${variant.slice(1)} b`,
+        )
+        expect(toReplayedConnectorImageText(text)).toBe(text)
+      }
     })
 
     it('keeps the real placeholder Besidka writes', () => {
@@ -360,7 +432,7 @@ describe('connector tool images', () => {
         collection.lines,
       )
 
-      expect(text).toBe('[image/png, 75 B: shown to the model, not saved]')
+      expect(text).toBe('[image/png, 75 B: shown to the model, not kept]')
     })
 
     it('marks a lookalike in structured content', () => {

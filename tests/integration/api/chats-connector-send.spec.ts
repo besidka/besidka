@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   flags: new Set<string>(),
   codeExecutionActive: false,
   codeExecutionCleanup: vi.fn(async () => undefined),
+  persistFile: vi.fn(),
+  existingFile: null as Record<string, any> | null,
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -115,6 +117,13 @@ vi.mock('evlog', () => ({
     Object.assign(exception, input)
 
     return exception
+  },
+}))
+
+vi.mock('~~/server/utils/files/persist-file', () => ({
+  persistFile: mocks.persistFile,
+  isStorageKeyTakenError: (exception: { code?: string }) => {
+    return exception?.code === 'storage_key_taken'
   },
 }))
 
@@ -319,8 +328,14 @@ function createDb() {
       },
       insert: vi.fn(() => ({ values: insertValues })),
       update: vi.fn(() => ({ set: updateSet })),
+      select: vi.fn(() => ({
+        from: () => ({
+          where: () => ({ get: async () => mocks.existingFile ?? undefined }),
+        }),
+      })),
     },
     insertValues,
+    updateSet,
   }
 }
 
@@ -434,6 +449,10 @@ async function runSend(input: {
   const created = createDb()
 
   vi.stubGlobal('useDb', () => created.db)
+  vi.stubGlobal('useFileStorage', () => ({
+    head: async () => ({ key: 'present' }),
+    put: async () => ({ key: 'restored' }),
+  }))
 
   const result = await handler({
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
@@ -459,7 +478,7 @@ async function runSend(input: {
     return value.role === 'assistant'
   })?.[0]
 
-  return { doStream, assistantInsert, mcpFetch }
+  return { doStream, assistantInsert, mcpFetch, updateSet: created.updateSet }
 }
 
 function readUserText(callOptions: any): string {
@@ -524,6 +543,16 @@ describe('connector tools in the chat send', () => {
     mocks.writers = []
     mocks.flags = new Set(['connectors'])
     mocks.codeExecutionActive = false
+    mocks.existingFile = null
+    mocks.persistFile.mockImplementation(async (input: any) => ({
+      id: 'file-public-1',
+      storageKey: input.storageKey,
+      name: input.fileName,
+      size: input.fileData.byteLength,
+      type: input.mediaType,
+      source: input.source,
+      expiresAt: null,
+    }))
     Object.assign(mocks.store, {
       connectors: [],
       credentials: null,
@@ -657,7 +686,8 @@ describe('connector tools in the chat send', () => {
   })
 
   describe('images in a tool result', () => {
-    const SHOWN_LINE = '[image/png, 75 B: shown to the model, not saved]'
+    const SHOWN_LINE = '[image/png, 75 B: shown to the model, kept with this '
+      + 'chat]'
 
     function imageServer() {
       return createMockMcpServer({
@@ -714,9 +744,120 @@ describe('connector tools in the chat send', () => {
       expect(JSON.stringify(mocks.aiLoggerSet.mock.calls))
         .not.toContain(RED_PNG_BASE64)
       expect(connectorLogs()).toContainEqual(expect.objectContaining({
-        calls: [expect.objectContaining({ imagesForwarded: 1 })],
+        calls: [expect.objectContaining({
+          imagesForwarded: 1,
+          imagesSaved: 1,
+        })],
       }))
     })
+
+    it('keeps the image with the chat and shows it on the step',
+      async () => {
+        stubChatProvider(true, ['text', 'image'])
+
+        const { assistantInsert, updateSet } = await runSend({
+          server: imageServer(),
+          connectorIds: [CONNECTOR_ID],
+          steps: [
+            toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+            textChunks('It is red.'),
+          ],
+        })
+        const persisted = mocks.persistFile.mock.calls[0]?.[0]
+
+        expect(mocks.persistFile).toHaveBeenCalledOnce()
+        expect(persisted).toMatchObject({
+          userId: 1,
+          fileName: 'linear-list_issues.png',
+          mediaType: 'image/png',
+          source: 'connector',
+          originProvider: 'chat:chat-1',
+        })
+        expect(persisted.storageKey).toMatch(/^connector-[0-9a-f]{64}\.png$/)
+        expect(Buffer.from(persisted.fileData).toString('base64'))
+          .toBe(RED_PNG_BASE64)
+
+        const imagePart = {
+          type: 'data-connector-image',
+          id: 'connector-image-call-1-0',
+          data: {
+            toolCallId: 'call-1',
+            fileId: 'file-public-1',
+            url: `/files/${persisted.storageKey}`,
+            mediaType: 'image/png',
+            width: 8,
+            height: 8,
+            size: 75,
+            name: 'linear-list_issues.png',
+          },
+        }
+
+        expect(await readMergedChunks()).toContainEqual(imagePart)
+        expect(assistantInsert?.parts).toContainEqual(imagePart)
+        expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+          originMessageId: expect.anything(),
+        }))
+      })
+
+    it('reuses the file when the chat already kept the same frame',
+      async () => {
+        stubChatProvider(true, ['text', 'image'])
+        mocks.existingFile = {
+          id: 'file-earlier',
+          size: 75,
+          name: 'linear-list_issues.png',
+        }
+
+        const { assistantInsert } = await runSend({
+          server: imageServer(),
+          connectorIds: [CONNECTOR_ID],
+          steps: [
+            toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+            textChunks('Same frame.'),
+          ],
+        })
+
+        expect(mocks.persistFile).not.toHaveBeenCalled()
+        expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+          type: 'data-connector-image',
+          data: expect.objectContaining({ fileId: 'file-earlier' }),
+        }))
+      })
+
+    it('still shows the image to the model when the storage is full',
+      async () => {
+        stubChatProvider(true, ['text', 'image'])
+        mocks.persistFile.mockRejectedValue(Object.assign(
+          new Error('Storage is full'),
+          { status: 413, code: 'storage_full' },
+        ))
+
+        const { doStream, assistantInsert } = await runSend({
+          server: imageServer(),
+          connectorIds: [CONNECTOR_ID],
+          steps: [
+            toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+            textChunks('It is red.'),
+          ],
+        })
+        const [output] = readToolResultOutputs(doStream.mock.calls[1]?.[0])
+        const fullLine = '[image/png, 75 B: shown to the model, not kept '
+          + '(storage full)]'
+
+        expect(output.type).toBe('content')
+        expect(output.value[0].text).toContain(fullLine)
+        expect(output.value.at(-1)).toMatchObject({ type: 'file' })
+
+        const part = (assistantInsert?.parts ?? []).find((candidate: any) => {
+          return candidate.type === 'dynamic-tool'
+        })
+
+        expect(part.state).toBe('output-available')
+        expect(part.output).toContain(fullLine)
+        expect(assistantInsert?.parts.some((candidate: any) => {
+          return candidate.type === 'data-connector-image'
+        })).toBe(false)
+      })
 
     it('sends only the placeholder text to a model without image input',
       async () => {
@@ -733,6 +874,7 @@ describe('connector tools in the chat send', () => {
 
         expect(output.type).toBe('text')
         expect(output.value).toContain('[image omitted: image/png]')
+        expect(mocks.persistFile).not.toHaveBeenCalled()
         expect(JSON.stringify(secondPrompt)).not.toContain(RED_PNG_BASE64)
         expect(JSON.stringify(assistantInsert)).not.toContain(RED_PNG_BASE64)
       })

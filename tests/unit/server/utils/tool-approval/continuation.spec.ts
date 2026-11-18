@@ -406,7 +406,7 @@ describe('buildResumedAssistantMessages', () => {
 })
 
 describe('buildResumedAssistantMessages connector images', () => {
-  const shownLine = '[image/png, 412 KB: shown to the model, not saved]'
+  const shownLine = '[image/png, 412 KB: shown to the model, not kept]'
   const goneLine = '[image/png, 412 KB: no longer available; call the tool '
     + 'again to see it]'
   const framedOutput = '<untrusted_tool_result connector="doop" '

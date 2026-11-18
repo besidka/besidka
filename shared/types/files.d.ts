@@ -41,6 +41,7 @@ export type StorageCategoryId
   = | 'aiImages'
     | 'uploads'
     | 'generatedFiles'
+    | 'connectorImages'
     | 'artifacts'
     | 'knowledge'
     | 'skills'

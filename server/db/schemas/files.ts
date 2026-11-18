@@ -16,7 +16,7 @@ export const files = snakeCase.table(
     name: text().notNull(),
     size: integer({ mode: 'number' }).notNull(),
     type: text().notNull(),
-    source: text({ enum: ['upload', 'assistant'] })
+    source: text({ enum: ['upload', 'assistant', 'connector'] })
       .notNull()
       .default('upload'),
     expiresAt: integer({ mode: 'timestamp' }),

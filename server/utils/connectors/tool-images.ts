@@ -17,6 +17,9 @@ import {
   buildConnectorImageLine,
   formatImageSize,
 } from '~~/server/utils/connectors/image-placeholders'
+import type {
+  ConnectorImageSaveStatus,
+} from '~~/server/utils/connectors/image-placeholders'
 import { describeOmittedMedia } from '~~/server/utils/connectors/tool-definitions'
 
 export {
@@ -65,6 +68,7 @@ export interface ConnectorForwardedImage {
 export interface ConnectorImageCollection {
   lines: string[]
   images: ConnectorForwardedImage[]
+  imageLineIndexes: number[]
   bytes: number
   dropped: Partial<Record<ConnectorImageDropReason, number>>
 }
@@ -97,7 +101,7 @@ function decodedLengthOf(base64: string): number {
   return (base64.length / BASE64_GROUP_LENGTH) * BASE64_GROUP_BYTES - padding
 }
 
-function decodeBase64(base64: string): Uint8Array | null {
+function decodeBase64(base64: string): Uint8Array<ArrayBuffer> | null {
   try {
     const binary = atob(base64)
     const bytes = new Uint8Array(binary.length)
@@ -110,6 +114,16 @@ function decodeBase64(base64: string): Uint8Array | null {
   } catch {
     return null
   }
+}
+
+/**
+ * The bytes of a forwarded image. Its base64 was already checked, so this
+ * only returns null if decoding fails anyway.
+ */
+export function decodeConnectorImage(
+  image: ConnectorForwardedImage,
+): Uint8Array<ArrayBuffer> | null {
+  return decodeBase64(image.data)
 }
 
 function decodeHead(base64: string, byteCount: number): Uint8Array | null {
@@ -247,7 +261,8 @@ function viewOf(base64: string, length: number): ImageView | null {
  * the type are checked from the string length and its first bytes, before
  * anything larger is decoded, and the forwarded image keeps the server's
  * string without a copy. Every other image gets the "omitted" line with the
- * reason. Nothing here is logged or stored.
+ * reason. Nothing here is logged or stored; saving is the job of
+ * `server/utils/connectors/image-saver.ts`.
  */
 export function collectConnectorImages(
   result: CallToolResult,
@@ -262,6 +277,7 @@ export function collectConnectorImages(
   const collection: ConnectorImageCollection = {
     lines: [],
     images: [],
+    imageLineIndexes: [],
     bytes: 0,
     dropped: {},
   }
@@ -349,10 +365,36 @@ export function collectConnectorImages(
 
     collection.images.push(image)
     collection.bytes += bytes
+    collection.imageLineIndexes.push(collection.lines.length)
     collection.lines.push(buildConnectorImageLine(image))
   }
 
   return collection
+}
+
+/**
+ * Rewrites the placeholder line of each forwarded image with whether it was
+ * saved (`statuses` is in the order of `collection.images`). Lines of images
+ * that were not forwarded are left as they are.
+ */
+export function applyConnectorImageSaveStatuses(
+  collection: ConnectorImageCollection,
+  statuses: readonly ConnectorImageSaveStatus[],
+): string[] {
+  const lines = [...collection.lines]
+
+  collection.images.forEach((image, imageIndex) => {
+    const lineIndex = collection.imageLineIndexes[imageIndex]
+    const status = statuses[imageIndex]
+
+    if (lineIndex === undefined || !status) {
+      return
+    }
+
+    lines[lineIndex] = buildConnectorImageLine(image, status)
+  })
+
+  return lines
 }
 
 function toProvenanceField(value: string): string {

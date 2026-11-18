@@ -1,4 +1,4 @@
-import { and, eq, inArray, like } from 'drizzle-orm'
+import { and, eq, inArray, like, ne } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { DOCUMENT_MEDIA_TYPES } from '#shared/utils/documents'
 import {
@@ -16,7 +16,14 @@ export const filesSourceFilters = [
 
 export type FilesSourceFilter = typeof filesSourceFilters[number]
 
-export function getFilesSourceCondition(source: FilesSourceFilter) {
+/**
+ * Images connectors returned in chats (`source = 'connector'`) belong to
+ * their chat: no file list shows them, for every source. They still count
+ * toward storage and are deleted from the Storage page or with their chat.
+ */
+const isListedFile = ne(schema.files.source, 'connector')
+
+function getSourceOnlyCondition(source: FilesSourceFilter) {
   const isNotLinked = isFileNotLinkedToKnowledgeSql(schema.files.id)
 
   switch (source) {
@@ -30,6 +37,10 @@ export function getFilesSourceCondition(source: FilesSourceFilter) {
     default:
       return isNotLinked
   }
+}
+
+export function getFilesSourceCondition(source: FilesSourceFilter) {
+  return and(isListedFile, getSourceOnlyCondition(source))
 }
 
 export const filesKindFilters = ['image', 'document'] as const

@@ -19,6 +19,7 @@ import { deleteArtifactsBesidkaTool } from '~~/server/utils/besidka-tools/tools/
 import { deleteChatMessageBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-chat-message'
 import { deleteChatsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-chats'
 import { deleteConnectorsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-connectors'
+import { deleteConnectorImagesBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-connector-images'
 import { deleteFilesBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-files'
 import { deleteMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-memory'
 import { deleteProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-project'
@@ -78,6 +79,7 @@ export const BESIDKA_TOOLS = {
   delete_chat_message: deleteChatMessageBesidkaTool,
   delete_chats: deleteChatsBesidkaTool,
   delete_connectors: deleteConnectorsBesidkaTool,
+  delete_connector_images: deleteConnectorImagesBesidkaTool,
   delete_files: deleteFilesBesidkaTool,
   delete_memory: deleteMemoryBesidkaTool,
   delete_project: deleteProjectBesidkaTool,

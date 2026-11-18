@@ -35,7 +35,7 @@ describe('storage usage', () => {
   function insertFile(
     owner: number,
     size: number,
-    source: 'upload' | 'assistant',
+    source: 'upload' | 'assistant' | 'connector',
     type: string,
   ): void {
     fileSequence += 1
@@ -133,6 +133,7 @@ describe('storage usage', () => {
       { id: 'aiImages', bytes: 0, count: 0 },
       { id: 'uploads', bytes: 0, count: 0 },
       { id: 'generatedFiles', bytes: 0, count: 0 },
+      { id: 'connectorImages', bytes: 0, count: 0 },
       { id: 'artifacts', bytes: 0, count: 0 },
       { id: 'knowledge', bytes: 0, count: 0 },
       { id: 'skills', bytes: 0, count: 0 },
@@ -162,6 +163,27 @@ describe('storage usage', () => {
       count: 2,
     })
   })
+
+  it('counts connector images in their own category and the total',
+    async () => {
+      insertFile(userId, 100, 'assistant', 'image/png')
+      insertFile(userId, 2_000, 'connector', 'image/png')
+      insertFile(userId, 3_000, 'connector', 'image/webp')
+      insertFile(otherUserId, 9_000, 'connector', 'image/png')
+
+      const breakdown = await getUserStorageBreakdown(userId)
+
+      expect(categoryOf(breakdown, 'connectorImages')).toMatchObject({
+        bytes: 5_000,
+        count: 2,
+      })
+      expect(categoryOf(breakdown, 'aiImages')).toMatchObject({
+        bytes: 100,
+        count: 1,
+      })
+      expect(breakdown.totalBytes).toBe(5_100)
+      expect(await getUserStorageUsageBytes(userId)).toBe(5_100)
+    })
 
   it('counts artifact bytes and skips pending artifact headers', async () => {
     insertArtifact(userId, 4_000)

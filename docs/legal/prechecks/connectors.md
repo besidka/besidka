@@ -173,6 +173,23 @@ the registry search.
   The flow "results on to the chat's provider" below therefore also covers
   images; the records and public texts are not changed here
   (`docs/connectors.md` section 6.5).
+- **Images kept with the chat (C-15, BES-406, 2026-11-18), for the #922
+  re-sync.** This replaces "Besidka does not store them" above. The same
+  images (only those already forwarded to the model) are now stored on the
+  user's behalf as private files of the chat (`files.source = 'connector'`,
+  R2 plus a D1 row with the file name built from the connector slug and
+  tool name, size and dimensions). They may show third parties' data (for
+  example a screenshot of a design that names colleagues), so the records
+  need: the third-party-content note of risk row (3) now also covering stored
+  images; storage location and retention the same as other chat files (the
+  user's retention policy, deleted with the chat, with the account purge,
+  from the Storage page "Delete all" or MCP `delete_connector_images`);
+  counted in the storage allowance. They are hidden from file lists, never in
+  a public share (no share file grant, the part is dropped), never in a
+  branch, never given to a model again after the send, and no AI provenance
+  mark is added because they are not AI-generated. No Privacy Policy, Terms,
+  `LEGAL_NOTICES` or consent version change was made; the owner decides
+  whether the Privacy Policy wording on chat content needs an update.
 - **DPIA rows.** New section 3.12 (purpose, flow, data, status `planned`).
   Data-flow table: Worker to remote server (tool arguments, token); remote
   server to Worker (results, stored in the chat); results on to the chat's

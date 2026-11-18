@@ -87,8 +87,21 @@
         </span>
         <Icon
           name="lucide:chevron-right"
-          class="size-4 text-base-content/60 transition-transform group-open:rotate-90"
+          class="size-4 shrink-0 text-base-content/60 transition-transform group-open:rotate-90"
         />
+        <span
+          v-if="headerImages.length > 0 && !isMainExpanded"
+          class="-my-1 ml-auto flex h-6 shrink-0 items-center gap-1 pl-2"
+          data-testid="reasoning-header-images"
+        >
+          <ChatReasoningConnectorThumbnail
+            :image="headerImages[0]!.image"
+            :alt="headerImages[0]!.alt"
+            size="sm"
+            :gallery="headerImages"
+            :stack-label="headerStackLabel"
+          />
+        </span>
       </summary>
       <div
         :id="`reasoning-${message.id}-content`"
@@ -199,6 +212,8 @@
                 :data="step.connector"
                 :title="step.title"
                 :pending="step.pending"
+                :images="step.connectorImages ?? []"
+                :connector-title="step.connectorTitle ?? ''"
               />
               <details
                 v-else
@@ -299,6 +314,8 @@ import type { SearchStepData } from '~/types/search-step.d'
 import type { SkillStepModel } from '~/utils/skill-step'
 import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import type { ConnectorImagePartData } from '#shared/utils/connector-image-parts'
+import { getConnectorImagesForToolCall } from '#shared/utils/connector-image-parts'
 import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
@@ -319,6 +336,8 @@ import {
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
 import {
+  getConnectorImageAlt,
+  getConnectorImageStackLabel,
   getConnectorStepTitle,
   isConnectorStepFailed,
 } from '~/utils/connector-step'
@@ -389,6 +408,14 @@ interface ReasoningStep {
   approval?: ReasoningApprovalStep | null
   approvalOutcome?: string
   grantMarker?: string
+  connectorTitle?: string
+  connectorImages?: ConnectorImagePartData[]
+}
+
+interface HeaderConnectorImage {
+  image: ConnectorImagePartData
+  alt: string
+  title: string
 }
 
 interface MessageApprovalEntry {
@@ -703,6 +730,14 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         memory: null,
         skill: null,
         connector: connectorCall,
+        connectorTitle: titlesBySlug.value.get(connectorCall.slug)
+          || connectorCall.slug,
+        connectorImages: props.isShared
+          ? []
+          : getConnectorImagesForToolCall(
+            props.message.parts,
+            (part as { toolCallId?: string }).toolCallId,
+          ),
         approvalOutcome,
         grantMarker: getGrantMarkerText(
           props.message.parts,
@@ -847,6 +882,27 @@ const activeStreamingTitle = computed<string>(() => {
   }
 
   return streamingTitle.value
+})
+
+const headerImages = computed<HeaderConnectorImage[]>(() => {
+  return reasoningSteps.value.flatMap((step) => {
+    const title = step.connectorTitle ?? ''
+    const alt = getConnectorImageAlt(title)
+
+    return (step.connectorImages ?? [])
+      .filter(image => !image.deleted)
+      .map(image => ({ image, alt, title }))
+  })
+})
+
+const headerStackLabel = computed<string>(() => {
+  const count = headerImages.value.length
+  const titles = new Set(headerImages.value.map(entry => entry.title))
+
+  return getConnectorImageStackLabel(
+    count,
+    titles.size === 1 ? [...titles][0] : undefined,
+  )
 })
 
 const headerStepIcon = computed<ReasoningStepIcon | null>(() => {
