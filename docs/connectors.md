@@ -1710,9 +1710,9 @@ call the user approved runs in the continuation's own send and forwards its
 images there. Later sends drop tool parts altogether (step 11 above).
 
 Cost: every continuation sends the kept images again as input tokens (an
-Anthropic image costs about width × height / 750 tokens, so a 1000 × 750
-screenshot is about 1,000 tokens), on every step of the continuation, as the
-paused send did. The bytes and their base64 stay in memory for the send, at
+image costs tokens that grow with its pixel size, so a full screenshot is
+in the order of a thousand tokens or more), on every step of the
+continuation, as the paused send did. The bytes and their base64 stay in memory for the send, at
 most 12 MB plus about 16 MB of base64.
 
 **Kept with the chat (BES-406).** Exactly the images the store forwards are
