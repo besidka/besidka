@@ -7,7 +7,10 @@ import {
 } from '#shared/utils/connectors-policy'
 import type { ConnectorCreatedVia } from '#shared/utils/connectors-policy'
 import { sanitizeConnectorText } from '#shared/utils/connectors-text'
-import { deriveConnectorSlugBase } from '#shared/utils/connectors-slug'
+import {
+  deriveConnectorSlugBase,
+  deriveConnectorSlugBaseFromTitle,
+} from '#shared/utils/connectors-slug'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 import * as schema from '~~/server/db/schema'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
@@ -157,20 +160,27 @@ export function resolveConnectorTarget(
     throw invalidAddress()
   }
 
-  const title = sanitizeConnectorText(
+  const typedTitle = sanitizeConnectorText(
     input.title ?? '',
     CONNECTOR_TITLE_MAX_LENGTH,
-  ) || preset?.title || sanitizeConnectorText(
+  )
+  const registryTitle = sanitizeConnectorText(
     registryEntry?.title ?? '',
     CONNECTOR_TITLE_MAX_LENGTH,
-  ) || parsed.url.hostname
+  )
+  const title = typedTitle || preset?.title || registryTitle
+    || parsed.url.hostname
+  const slugBase = preset?.id
+    ?? deriveConnectorSlugBaseFromTitle(registryTitle)
+    ?? deriveConnectorSlugBaseFromTitle(typedTitle)
+    ?? deriveConnectorSlugBase(parsed.url.hostname)
 
   return {
     url: parsed.url.toString(),
     host: parsed.url.host,
     title,
     presetId: preset?.id ?? null,
-    slugBase: preset?.id ?? deriveConnectorSlugBase(parsed.url.hostname),
+    slugBase,
     allowOAuth: !preset || preset.auth.includes('oauth'),
     createdVia: resolveCreatedVia(input, preset !== null),
     createdByClientId: input.source.via === 'mcp'

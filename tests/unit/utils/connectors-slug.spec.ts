@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   allocateConnectorSlug,
   deriveConnectorSlugBase,
+  deriveConnectorSlugBaseFromTitle,
   isValidConnectorSlug,
 } from '#shared/utils/connectors-slug'
 
@@ -12,7 +13,12 @@ describe('deriveConnectorSlugBase', () => {
     ['api.githubcopilot.com', 'githubcopilot'],
     ['mcp.example.co.uk', 'example'],
     ['example.com', 'example'],
-    ['mcp.abc.com', 'mcp'],
+    ['mcp.abc.com', 'abc'],
+    ['mcp.exa.ai', 'exa'],
+    ['api.exa.ai', 'exa'],
+    ['remote.gateway.example.org', 'example'],
+    ['app.com', 'app'],
+    ['mcp.example.com.au', 'example'],
     ['xn--bcher-kva.example', 'xn--bcher-kva'],
     ['api.a-very-long-company-name.com', 'a-very-long-comp'],
   ])('derives %s as %s', (hostname, expected) => {
@@ -76,4 +82,27 @@ describe('isValidConnectorSlug', () => {
       expect(isValidConnectorSlug(slug)).toBe(false)
     },
   )
+})
+
+describe('deriveConnectorSlugBaseFromTitle', () => {
+  it.each([
+    ['Exa', 'exa'],
+    ['Exa Search', 'exa-search'],
+    ['  Notion  ', 'notion'],
+    ['A very long connector title here', 'a-very-long-conn'],
+  ])('derives %s as %s', (title, expected) => {
+    expect(deriveConnectorSlugBaseFromTitle(title)).toBe(expected)
+  })
+
+  it.each([
+    [''],
+    ['   '],
+    [null],
+    [undefined],
+    ['mcp.exa.ai'],
+    ['!!!'],
+    ['Бесідка'],
+  ])('falls through for %s', (title) => {
+    expect(deriveConnectorSlugBaseFromTitle(title)).toBeNull()
+  })
 })

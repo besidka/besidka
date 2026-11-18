@@ -1655,6 +1655,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/call-limits.spec.ts',
     'tests/unit/server/utils/connectors/chat-selection.spec.ts',
     'tests/unit/server/utils/connectors/persist.spec.ts',
+    'tests/unit/server/utils/connectors/call-errors.spec.ts',
+    'tests/unit/utils/connectors-errors.spec.ts',
     'tests/unit/server/utils/connectors/context-isolation.spec.ts',
     'tests/unit/server/utils/connectors/persistence-pipeline.spec.ts',
     'tests/unit/server/utils/chats/share-used-connector.spec.ts',
@@ -1681,6 +1683,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/utils/connectors-errors.spec.ts',
     'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
     'tests/unit/components/Chat/ConnectorsNotice.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
@@ -3502,7 +3505,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts|tool-index)\.ts|server\/utils\/ai\/(tool-index(-prefetch)?|anthropic-thinking-binding)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|tool-index)\.ts|server\/utils\/ai\/(tool-index(-prefetch)?|anthropic-thinking-binding)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/(index\.get|\[id\]\/index\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
       tests: connectorsChatToolsTests,
     },
     {
@@ -3537,7 +3540,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles|connector-mention)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client|ConnectorSuggestion)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles|connector-mention)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client|ConnectorSuggestion)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
     },
     {

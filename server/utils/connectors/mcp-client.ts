@@ -86,6 +86,22 @@ export function createConcurrencyLimiter(
   }
 }
 
+function scopeNetLogger(logger?: LoggerLike): LoggerLike | undefined {
+  if (!logger) {
+    return undefined
+  }
+
+  return {
+    set(data) {
+      const net = (data.attributes as { net?: unknown } | undefined)?.net
+
+      if (net) {
+        logger.set({ attributes: { connectors: { net } } })
+      }
+    },
+  }
+}
+
 /**
  * The `fetch` of one connector's MCP transport. Every request goes through
  * `safeFetch` with purpose `mcp` (https only, no private names, same-origin
@@ -100,15 +116,21 @@ export function createConcurrencyLimiter(
 export function createConnectorTransportFetch(
   transport: ConnectorTransport,
   createFetch: typeof createSafeFetch = createSafeFetch,
+  logger?: LoggerLike,
 ): typeof fetch {
+  const netLogger = scopeNetLogger(logger)
+
   if (transport === 'sse') {
     return createFetch('mcp', {
       timeoutMs: CONNECTOR_SSE_SESSION_TIMEOUT_MS,
       maxResponseBytes: CONNECTOR_SSE_SESSION_MAX_BYTES,
+      ...(netLogger ? { logger: netLogger } : {}),
     })
   }
 
-  const safeFetch = createFetch('mcp')
+  const safeFetch = netLogger
+    ? createFetch('mcp', { logger: netLogger })
+    : createFetch('mcp')
 
   return ((input: string | URL | Request, init?: RequestInit) => {
     const method = (init?.method ?? 'GET').toUpperCase()
@@ -199,6 +221,7 @@ export function createConnectorClientHandle(input: {
   const transportFetch = createConnectorTransportFetch(
     input.transport,
     input.dependencies?.createFetch,
+    input.logger,
   )
   let clientPromise: Promise<ConnectorClient> | null = null
   let isClosed = false

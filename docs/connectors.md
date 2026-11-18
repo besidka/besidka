@@ -954,11 +954,12 @@ Choices that differ from or add to section 6, 10 and 14:
   A refused call answers with a sentence Besidka wrote. A call that fails or
   times out throws an error whose message is a sentence Besidka wrote (never
   upstream text), so the AI SDK ends the part in the `output-error` state: the
-  model sees the sentence and the step shows "Failed". A result the server
+  model sees the sentence and the step shows "Failed". The sentence carries a
+  category and a support reference (section 6.4). A result the server
   flagged `isError` is not a failure of the call: it stays framed untrusted
   output. Persisted `dynamic-tool` parts are redacted and capped again by
-  `redactConnectorToolPartsForPersistence`, and an error text is replaced by a
-  fixed sentence.
+  `redactConnectorToolPartsForPersistence`, and an error text is rebuilt from its
+  category and reference, or replaced by a fixed sentence.
 - **Limits.** 12 calls per send, 60 a minute per user and 30 a minute per
   user and connector (KV, fail closed), 60 s per call, 10 s per connect, at
   most three connectors prepared at once and at most three tool calls running
@@ -1438,6 +1439,74 @@ Auto: the connector may be used in any chat when the model decides; its
 name, host and tool count go to the model provider with every message; its
 tool names and definitions only once the model opens it. Listed in
 the PR body for the end-of-phase legal batch.
+
+### 6.4 Call failures (C-15, 2026-11-18)
+
+A failed connector tool call used to show only "Could not use <connector> ·
+<tool>", and the exception was swallowed without a log. Every failure now
+has a category, a support reference and a log record.
+
+**Categories** (`shared/utils/connectors-errors.ts`, classifier in
+`server/utils/connectors/call-errors.ts`). The classifier reads the string
+`code` of the error or its causes first (the `safe-fetch-*` and `CONNECTOR_*`
+codes and the system network codes), then the OAuth error names, then the
+HTTP status of `MCPClientError.statusCode`, then its JSON-RPC `code`, then the
+error name and message. Only an error that carries no string code contributes
+a status, so Besidka's own `createError` status is never reported as the
+remote one.
+
+| Category | When | Sentence after "The connector tool call failed:" |
+| --- | --- | --- |
+| `auth` | HTTP 401 or 403, `UnauthorizedError`, a refused sign-in, a JSON-RPC auth error | the service rejected the credentials |
+| `timeout` | the 60 s deadline, `safe-fetch-timeout`, an SDK "timed out" | the service did not answer in time |
+| `unreachable` | network, DNS, TLS, connection closed, an address the SSRF guard blocked, a refused redirect | the service could not be reached |
+| `server-error` | HTTP 5xx | the service reported a server error |
+| `rate-limited` | HTTP 429 | the service is limiting requests, so try again later |
+| `protocol` | an unexpected answer, a JSON-RPC error, a parse or validation error, another 4xx, an oversized answer | the service sent an answer that could not be used |
+| `tool-changed` | the live definition hash check found a changed tool (still a returned denial, audit outcome `denied`) | the tool changed since it was reviewed |
+| `unknown` | anything else | the reason is not known |
+
+**Reference.** `XXXX-XXXX` (Crockford base32 without `I`, `L`, `O` and `U`),
+a hash of the send's request id (`getRequestId`, the `cf-ray` or
+`x-request-id` header, passed in as `requestId`) and the tool call id, or a
+random value when neither exists (local development). It is short enough to
+read aloud and is logged next to the request id, so support finds the call by
+the reference alone.
+
+**Text.** The model, the step, the persisted message and the stream all carry
+one sentence: `The connector tool call failed: <sentence> (<category>).
+Reference: <ref>.` The model instructions ask it to tell the user the reason
+in plain words and quote the reference. `redactConnectorToolPartsForPersistence`
+keeps that sentence only after parsing a category and a reference out of it
+and rebuilding the text from those two fields (the stream wraps it in JSON,
+which the shared parser unwraps); anything else becomes the legacy fixed
+sentence, which shows no extra line. Static `tool-mcp__...` parts, which the
+SDK produces when a tool was not in the tool set of a request, are handled the
+same way as `dynamic-tool` parts.
+
+**UI.** `ChatReasoningConnectorStep` shows one muted line under the title: the
+reason and "Reference XXXX-XXXX" with a copy button. Old messages show none.
+
+**Logs** (never the remote text to the model or the UI):
+
+- `attributes.connectors.callError[]` (up to 10): `connectorId`, `tool`,
+  `category`, `step` (`verify` for the live hash check, `call` for the call),
+  `httpStatus`, `errorName`, `message` (redacted of the connector's secrets,
+  one line, 300 characters), `reference`, `requestId`.
+- `attributes.connectors.net`: the last `safe-fetch` record of the send
+  (host, status, redirects, bytes), scoped away from `attributes.net`.
+- `attributes.connectors.calls[]` (up to 20), for a future Axiom "Connectors"
+  dashboard: `directoryId` (the preset id, else `custom`), `tool` (only when the
+  `directoryId` is not `custom`), `outcome` (`ok`, `error`, `timeout`,
+  `denied`, `tool-changed`), `category` (on failure) and `durationMs`. A
+  custom connector's URL, host and title are never in it. A result the
+  server flagged `isError` is `error` without a category. A connector added
+  from the registry directory without a preset is `custom`, because the row
+  keeps only `presetId`.
+- `attributes.connectors.lifecycle[]` on create (the add route and the OAuth
+  callback) and delete: `action`, `directoryId`, `authType`.
+- The count of calls of a send moved to `attributes.connectors.callCount`
+  (it was `calls`, which is now the array above).
 
 ## 7. Approvals
 
@@ -2461,7 +2530,7 @@ to the public id on the way out (`encodePublicId`) and decodes it on the way in
 | --- | --- | --- |
 | `id` | integer, autoincrement | exposed as a public id by the store |
 | `user_id` | integer, not null | |
-| `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). Other hosts use the second-to-last label (`mcp.example.com` gives `example`), or the third-to-last when the second-to-last has 3 characters or fewer and another label exists (`mcp.example.co.uk` gives `example`), cut to 16. On collision `-2`, `-3` |
+| `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). A directory entry uses its title, then a title the user typed (never one that looks like a host name), then the registrable-domain label that is not generic (`mcp`, `api`, `www`, `app`, `server`, `remote`, `gateway`): `mcp.exa.ai` gives `exa`, `mcp.example.co.uk` gives `example`, cut to 16. Existing rows keep their slug. On collision `-2`, `-3` |
 | `title` | text | user-editable, at most 80 characters |
 | `origin` | text | `https://host[:port]`, plain, for display and consent. Derived from the URL inside `createConnector`, never taken from the caller |
 | `url_encrypted` | text | full canonical URL, encrypted (paths and queries can carry secrets) |

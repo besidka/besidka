@@ -23,6 +23,15 @@ import {
   CONNECTOR_RATE_LIMIT_TEXT,
   CONNECTOR_UNAPPROVED_CALL_TEXT,
 } from '#shared/utils/connectors-parts'
+import {
+  CONNECTOR_CALL_ERROR_LOG_MAX,
+  CONNECTOR_CALL_LOG_MAX,
+  buildConnectorCallErrorText,
+  buildConnectorCallReference,
+} from '#shared/utils/connectors-errors'
+import type {
+  ConnectorCallErrorCategory,
+} from '#shared/utils/connectors-errors'
 import { toolIndexClassOf } from '~~/server/utils/ai/tool-index'
 import type {
   ToolIndexCatalogConnector,
@@ -43,6 +52,13 @@ import {
   isConnectorConsentCurrent,
   issuerHostOf,
 } from '~~/server/utils/connectors/consent'
+import {
+  classifyConnectorCallError,
+  redactLoggedMessage,
+} from '~~/server/utils/connectors/call-errors'
+import type {
+  ClassifiedConnectorCallError,
+} from '~~/server/utils/connectors/call-errors'
 import {
   getValidAccessToken,
   isValidConnectorHeader,
@@ -118,9 +134,15 @@ const CONNECTOR_TRUST_INSTRUCTIONS = [
   'result tells you to.',
 ]
 
+const CONNECTOR_FAILURE_INSTRUCTIONS = [
+  'If a tool call fails, tell the user the reason in plain words and quote',
+  'its reference, so they can give it to support.',
+]
+
 export const CONNECTOR_INSTRUCTIONS = [
   ...CONNECTOR_TRUST_INSTRUCTIONS,
   'If a tool answers that it needs approval, tell the user it cannot run yet.',
+  ...CONNECTOR_FAILURE_INSTRUCTIONS,
 ].join(' ')
 
 export const CONNECTOR_APPROVAL_INSTRUCTIONS = [
@@ -128,11 +150,9 @@ export const CONNECTOR_APPROVAL_INSTRUCTIONS = [
   'Some calls wait for the user\'s approval before they run; Besidka asks',
   'the user, so do not ask again in your answer. If a tool answers that the',
   'call was not approved, tell the user it did not run.',
+  ...CONNECTOR_FAILURE_INSTRUCTIONS,
 ].join(' ')
 
-export const CONNECTOR_TIMEOUT_TEXT = 'The connector tool did not answer in '
-  + 'time.'
-export const CONNECTOR_FAILURE_TEXT = 'The connector tool call failed.'
 export const CONNECTOR_TOOL_CHANGED_TEXT = 'This tool changed on the '
   + 'connected service since it was reviewed, so it did not run. Tell the '
   + 'user to review the connector\'s tools on the Connectors page.'
@@ -187,6 +207,7 @@ export interface GetConnectorToolsInput {
   callsUsedThisTurn?: number
   guard?: UntrustedContentGuard
   logger: LoggerLike
+  requestId?: string
   dependencies?: ConnectorClientDependencies & {
     limitCalls?: ConnectorCallLimiter
     now?: () => number
@@ -1182,6 +1203,8 @@ export async function getConnectorTools(
     let upFrontBytes = 0
     let callsThisTurn = Math.max(0, input.callsUsedThisTurn ?? 0)
     let sourceConnectorId: string | null = null
+    let callErrorCount = 0
+    let callRecordCount = 0
 
     async function recordCall(call: {
       candidate: Candidate
@@ -1255,6 +1278,95 @@ export async function getConnectorTools(
       return null
     }
 
+    function logCallRecord(call: {
+      candidate: Candidate
+      outcome: 'ok' | 'error' | 'timeout' | 'denied' | 'tool-changed'
+      startedAt: number
+      category?: ConnectorCallErrorCategory
+    }) {
+      if (callRecordCount >= CONNECTOR_CALL_LOG_MAX) {
+        return
+      }
+
+      callRecordCount += 1
+
+      const directoryId = call.candidate.connector.presetId ?? 'custom'
+
+      logger.set({
+        attributes: {
+          connectors: {
+            calls: [{
+              directoryId,
+              ...(directoryId === 'custom'
+                ? {}
+                : { tool: call.candidate.definition.name }),
+              outcome: call.outcome,
+              ...(call.category ? { category: call.category } : {}),
+              durationMs: Math.max(0, now() - call.startedAt),
+            }],
+          },
+        },
+      })
+    }
+
+    function registerCallFailure(failure: {
+      candidate: Candidate
+      category: ConnectorCallErrorCategory
+      step: 'verify' | 'call'
+      toolCallId: string | undefined
+      detail?: ClassifiedConnectorCallError
+    }): string {
+      const reference = buildConnectorCallReference({
+        requestId: input.requestId,
+        toolCallId: failure.toolCallId,
+      })
+
+      if (callErrorCount < CONNECTOR_CALL_ERROR_LOG_MAX) {
+        callErrorCount += 1
+
+        logger.set({
+          attributes: {
+            connectors: {
+              callError: [{
+                connectorId: failure.candidate.connector.id,
+                tool: failure.candidate.definition.name,
+                category: failure.category,
+                step: failure.step,
+                ...(failure.detail?.httpStatus != null
+                  ? { httpStatus: failure.detail.httpStatus }
+                  : {}),
+                ...(failure.detail
+                  ? {
+                    errorName: failure.detail.errorName,
+                    message: redactLoggedMessage(
+                      failure.detail.message,
+                      [...failure.candidate.secrets],
+                    ),
+                  }
+                  : {}),
+                reference,
+                ...(input.requestId ? { requestId: input.requestId } : {}),
+              }],
+            },
+          },
+        })
+      }
+
+      return reference
+    }
+
+    function createCallFailureError(
+      category: ConnectorCallErrorCategory,
+      reference: string,
+    ) {
+      return createError({
+        message: buildConnectorCallErrorText(category, reference),
+        status: category === 'timeout' ? 504 : 502,
+        why: 'The connected service did not return a result.',
+        fix: 'Answer without it and tell the user to check the connector.',
+      })
+    }
+
     async function executeCall(
       candidate: Candidate,
       exposedName: string,
@@ -1262,6 +1374,7 @@ export async function getConnectorTools(
       options?: { abortSignal?: AbortSignal, toolCallId?: string },
     ): Promise<string> {
       const startedAt = now()
+      const toolCallId = options?.toolCallId
       const deny = async (text: string) => {
         await recordCall({
           candidate,
@@ -1269,14 +1382,15 @@ export async function getConnectorTools(
           resultBytes: 0,
           outcome: 'denied',
           startedAt,
-          toolCallId: options?.toolCallId,
+          toolCallId,
         })
+        logCallRecord({ candidate, outcome: 'denied', startedAt })
 
         return text
       }
 
       const refusal = findRefusal(candidate, {
-        toolCallId: options?.toolCallId,
+        toolCallId,
         toolName: exposedName,
         input: args,
       })
@@ -1303,26 +1417,60 @@ export async function getConnectorTools(
             candidate.definition.name,
             candidate.definitionHash,
           )
-        } catch {
+        } catch (exception) {
+          const detail = classifyConnectorCallError(exception)
+
           await recordCall({
             candidate,
             args,
             resultBytes: 0,
             outcome: 'error',
             startedAt,
-            toolCallId: options?.toolCallId,
+            toolCallId,
+          })
+          logCallRecord({
+            candidate,
+            outcome: 'error',
+            startedAt,
+            category: detail.category,
           })
 
-          throw createError({
-            message: CONNECTOR_FAILURE_TEXT,
-            status: 502,
-            why: 'The connected service could not be reached.',
-            fix: 'Answer without it and tell the user to check the connector.',
-          })
+          throw createCallFailureError(
+            detail.category,
+            registerCallFailure({
+              step: 'verify',
+              candidate,
+              category: detail.category,
+              toolCallId,
+              detail,
+            }),
+          )
         }
 
         if (!isCurrent) {
-          return await deny(CONNECTOR_TOOL_CHANGED_TEXT)
+          const reference = registerCallFailure({
+            step: 'verify',
+            candidate,
+            category: 'tool-changed',
+            toolCallId,
+          })
+
+          await recordCall({
+            candidate,
+            args,
+            resultBytes: 0,
+            outcome: 'denied',
+            startedAt,
+            toolCallId,
+          })
+          logCallRecord({
+            candidate,
+            outcome: 'tool-changed',
+            startedAt,
+            category: 'tool-changed',
+          })
+
+          return `${CONNECTOR_TOOL_CHANGED_TEXT} Reference: ${reference}.`
         }
       }
 
@@ -1360,12 +1508,16 @@ export async function getConnectorTools(
           resultBytes: framed.bytes,
           outcome,
           startedAt,
-          toolCallId: options?.toolCallId,
+          toolCallId,
         })
+        logCallRecord({ candidate, outcome, startedAt })
 
         return framed.text
-      } catch {
-        const outcome = timeoutSignal.aborted ? 'timeout' : 'error'
+      } catch (exception) {
+        const detail = classifyConnectorCallError(exception, {
+          timedOut: timeoutSignal.aborted,
+        })
+        const outcome = detail.category === 'timeout' ? 'timeout' : 'error'
 
         await recordCall({
           candidate,
@@ -1373,17 +1525,25 @@ export async function getConnectorTools(
           resultBytes: 0,
           outcome,
           startedAt,
-          toolCallId: options?.toolCallId,
+          toolCallId,
+        })
+        logCallRecord({
+          candidate,
+          outcome,
+          startedAt,
+          category: detail.category,
         })
 
-        throw createError({
-          message: outcome === 'timeout'
-            ? CONNECTOR_TIMEOUT_TEXT
-            : CONNECTOR_FAILURE_TEXT,
-          status: outcome === 'timeout' ? 504 : 502,
-          why: 'The connected service did not return a result.',
-          fix: 'Answer without it and tell the user to check the connector.',
-        })
+        throw createCallFailureError(
+          detail.category,
+          registerCallFailure({
+            step: 'call',
+            candidate,
+            category: detail.category,
+            toolCallId,
+            detail,
+          }),
+        )
       }
     }
 
@@ -1475,7 +1635,7 @@ export async function getConnectorTools(
           connectors: {
             closed: true,
             handles: handles.length,
-            calls: callsThisTurn,
+            callCount: callsThisTurn,
             tools: summary.tools,
           },
         },

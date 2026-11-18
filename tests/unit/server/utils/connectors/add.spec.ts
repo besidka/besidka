@@ -125,6 +125,46 @@ describe('resolveConnectorTarget', () => {
       })
     })
 
+  it('derives the slug base from the directory title, the typed title, '
+    + 'then the registrable domain', () => {
+    type TargetInput = Parameters<typeof resolveConnectorTarget>[0]
+    const slugBaseOf = (input: TargetInput) => {
+      return resolveConnectorTarget(input).slugBase
+    }
+
+    expect(slugBaseOf({
+      url: 'https://mcp.exa.ai/mcp',
+      source: { via: 'app' },
+    })).toBe('exa')
+    expect(slugBaseOf({
+      url: 'https://mcp.exa.ai/mcp',
+      title: 'Exa Search',
+      source: { via: 'app' },
+    })).toBe('exa-search')
+    expect(slugBaseOf({
+      source: {
+        via: 'registry',
+        entry: { remoteUrl: 'https://mcp.exa.ai/mcp', title: 'Exa' },
+      },
+    })).toBe('exa')
+    expect(slugBaseOf({
+      source: {
+        via: 'registry',
+        entry: { remoteUrl: 'https://mcp.exa.ai/mcp', title: null },
+      },
+    })).toBe('exa')
+    expect(slugBaseOf({
+      presetId: 'github',
+      title: 'Whatever',
+      source: { via: 'app' },
+    })).toBe('github')
+    expect(slugBaseOf({
+      url: 'https://mcp.exa.ai/mcp',
+      title: 'mcp.exa.ai',
+      source: { via: 'app' },
+    })).toBe('exa')
+  })
+
   it('refuses an unknown preset and a missing address', () => {
     expect(() => resolveConnectorTarget({
       presetId: 'nope',

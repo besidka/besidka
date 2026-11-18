@@ -54,6 +54,31 @@ describe('connector transport fetch', () => {
     })
 })
 
+describe('connector transport fetch logging', () => {
+  it('scopes the safe-fetch net record under the connectors attributes', () => {
+    const createFetch = vi.fn(() => vi.fn() as unknown as typeof fetch)
+    const logged: unknown[] = []
+
+    createConnectorTransportFetch(
+      'streamable-http',
+      createFetch,
+      { set: (values: unknown) => logged.push(values) } as never,
+    )
+
+    const options = (createFetch.mock.calls[0] as unknown as [
+      string,
+      { logger: { set: (data: Record<string, unknown>) => void } },
+    ])[1]
+
+    options.logger.set({ attributes: { net: { status: 429 } } })
+    options.logger.set({ other: true })
+
+    expect(logged).toEqual([
+      { attributes: { connectors: { net: { status: 429 } } } },
+    ])
+  })
+})
+
 describe('concurrency limiter', () => {
   it('runs at most the given number of tasks at once', async () => {
     const limiter = createConcurrencyLimiter(3)

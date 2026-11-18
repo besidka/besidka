@@ -158,6 +158,11 @@ export default defineEventHandler(async (event) => {
         step: 'create',
         authType: connector.authType ?? 'none',
         stored: true,
+        lifecycle: [{
+          action: 'create',
+          directoryId: target.presetId ?? 'custom',
+          authType: connector.authType ?? 'none',
+        }],
       },
       legalConsent: {
         action: 'connector-granted',

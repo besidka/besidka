@@ -2261,6 +2261,7 @@ export default defineEventHandler(async (event) => {
             : {}),
           guard: chatSearchBudget,
           logger: aiLogger,
+          requestId: getRequestId(event),
         })
         connectorNotices.push(...connectorsRun.notices)
 
