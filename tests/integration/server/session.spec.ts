@@ -80,4 +80,47 @@ describe('useUserSession', () => {
       },
     })
   })
+
+  it('drops a poisoned auth instance and resolves the session on a fresh one',
+    async () => {
+      const resolvedSession = {
+        user: { id: 'user-3' },
+        session: { id: 'session-3' },
+      }
+      const poisonedGetSession = vi.fn().mockRejectedValue(new Error(
+        'This promise was created by a request that has since ended, so it '
+        + 'can never settle.',
+      ))
+      const freshGetSession = vi.fn().mockResolvedValue(resolvedSession)
+      let currentGetSession = poisonedGetSession
+
+      vi.stubGlobal('useServerAuth', vi.fn(() => ({
+        api: { getSession: currentGetSession },
+      })))
+      vi.stubGlobal('dropServerAuth', vi.fn(() => {
+        currentGetSession = freshGetSession
+      }))
+      vi.stubGlobal('useEvent', () => ({ context: {} }))
+
+      const useUserSession = await getUseUserSession()
+      const session = await useUserSession()
+
+      expect(session).toBe(resolvedSession)
+      expect(poisonedGetSession).toHaveBeenCalledTimes(1)
+      expect(freshGetSession).toHaveBeenCalledTimes(1)
+    })
+
+  it('rethrows other session errors without dropping the auth instance',
+    async () => {
+      const dropServerAuth = vi.fn()
+
+      mocks.getSession.mockRejectedValue(new Error('D1 unavailable'))
+      vi.stubGlobal('dropServerAuth', dropServerAuth)
+      vi.stubGlobal('useEvent', () => ({ context: {} }))
+
+      const useUserSession = await getUseUserSession()
+
+      await expect(useUserSession()).rejects.toThrow('D1 unavailable')
+      expect(dropServerAuth).not.toHaveBeenCalled()
+    })
 })

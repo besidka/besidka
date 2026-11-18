@@ -1137,6 +1137,11 @@ $fetch('/api/v1/files/delete/bulk', { method: 'POST', body: { ids } })
 
 - Prefer sequential operations for per-item R2/KV calls.
 - Use batch APIs when available (for example, R2 batch delete where applicable).
+- Never cache an unsettled promise across requests on Workers: a promise
+  that waits on I/O belongs to the request that started it and never settles
+  once that request ends. Cache only the settled value, and let each request
+  await its own init until one is ready (see `docs/auth-security.md`, "Auth
+  instance init on Workers").
 
 ## File Management
 

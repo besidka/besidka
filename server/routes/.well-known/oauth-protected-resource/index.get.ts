@@ -1,10 +1,13 @@
 import { defineEventHandler } from 'nuxt/server'
+import { retryOnEndedRequestPromise } from '~~/server/utils/auth-instance'
 import { withOriginResource } from '~~/server/utils/oauth/protected-resource-metadata'
 
 const DEFAULT_SITE_URL = 'https://besidka.com'
 
 export default defineEventHandler(async (event) => {
-  const response = await useServerAuth().handler(event.req)
+  const response = await retryOnEndedRequestPromise(() => {
+    return useServerAuth().handler(event.req)
+  }, () => dropServerAuth(), () => !event.req.bodyUsed)
   const contentType = response.headers.get('content-type') || ''
 
   if (response.status !== 200 || !contentType.includes('application/json')) {

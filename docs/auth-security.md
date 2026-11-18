@@ -341,6 +341,55 @@ the same gap, plus the TTL bug above) — not a hard guarantee. A truly
 atomic implementation would need Durable Objects or D1, which is out of
 scope for this PR.
 
+## Auth instance init on Workers
+
+The Better Auth instance starts an asynchronous init (`auth.$context`, then
+the Drizzle adapter's schema check) when it is built. It used to be built
+once into a module-level variable by whichever request first called
+`useServerAuth()`, and every later request awaited that same promise. On
+Workers a promise that waits on I/O belongs to the request that started it.
+When that request ends first, the promise never settles, and every other
+request that awaits it fails with "This promise was created by a request
+that has since ended, so it can never settle" until the isolate is evicted.
+The `evlog-auth` middleware made this likely: it built the instance on every
+request, including paths it then skipped without awaiting anything, such as
+`/api/_nuxt_icon/**`. Production showed it as clusters of 500s on every route
+that reads the session (`get-session`, features, settings, keys, connectors,
+`/.well-known/oauth-*`, once a chat send), about 100 a day.
+
+The init does real request-bound I/O. In Better Auth 1.7.14 the `mcp`
+plugin adds the `/mcp` resource to the OAuth provider's `resources`, and the
+provider's plugin `init` seeds it with a D1 `findOne` (`seedResourcesOnce` in
+`@better-auth/oauth-provider`). Better Auth's own Cloudflare guide states
+the constraint: "Workers don't allow I/O across requests"
+(<https://better-auth.com/docs/guides/cloudflare>). Neither that guide nor
+the options reference (<https://better-auth.com/docs/reference/options>) says
+whether to build the instance per request or once per isolate, so the rule
+below is ours.
+
+This root cause matches the stack (`run` in `toAuthEndpoints` awaiting the
+context, under `useUserSession`) but was not reproduced locally. The
+confirmation is the Workers Observability count of that message (about 100 a
+day before the fix) after the deploy.
+
+The rule now (`server/utils/auth-instance.ts`):
+
+- Only a **settled** instance is shared across requests. Until one exists,
+  each request builds its own (memoized for that request) and the first one
+  whose init and schema check settle is published. A request that dies
+  mid-init leaves nothing behind.
+- The middleware passes evlog a resolver that calls `useServerAuth()` per
+  request instead of capturing one instance, so skipped paths never build
+  the instance.
+- `useUserSession()`, the middleware and the routes that hand requests to
+  `auth.handler()` retry once after that error, through
+  `retryOnEndedRequestPromise()`, which drops the cached instance first and
+  logs `attributes.authInit`. `handler()` retries only while the request
+  body is unread.
+
+`useToolApprovalSecret()` had the same shape (a module-level pending HKDF
+promise) and now caches only the derived string.
+
 ## Rate limiting is explicit; password reset revokes sessions
 
 `server/utils/auth.ts` sets `rateLimit.enabled` explicitly to

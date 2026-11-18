@@ -92,18 +92,24 @@ describe('useToolApprovalSecret', () => {
       .toBe(await deriveToolApprovalSecret('key-retry'))
   })
 
-  it('shares one derivation between concurrent calls', async () => {
-    config.encryptionKey = 'key-concurrent'
-    vi.mocked(deriveHkdfBytes).mockClear()
+  it('never shares a pending derivation between concurrent calls',
+    async () => {
+      config.encryptionKey = 'key-concurrent'
+      vi.mocked(deriveHkdfBytes).mockClear()
 
-    const [first, second] = await Promise.all([
-      useToolApprovalSecret(),
-      useToolApprovalSecret(),
-    ])
+      const [first, second] = await Promise.all([
+        useToolApprovalSecret(),
+        useToolApprovalSecret(),
+      ])
 
-    expect(first).toBe(second)
-    expect(vi.mocked(deriveHkdfBytes)).toHaveBeenCalledTimes(1)
-  })
+      expect(first).toBe(second)
+      expect(vi.mocked(deriveHkdfBytes)).toHaveBeenCalledTimes(2)
+
+      vi.mocked(deriveHkdfBytes).mockClear()
+
+      expect(await useToolApprovalSecret()).toBe(first)
+      expect(vi.mocked(deriveHkdfBytes)).not.toHaveBeenCalled()
+    })
 
   it('does not let a late rejection clear a newer key\'s cache', async () => {
     let rejectOld: (reason: Error) => void = () => {}
