@@ -270,8 +270,8 @@ global rule fixes all of them instead of each component lifting itself.
   like the rest of the app (they were `modal-middle`, which centered the box
   in the visible area and looked detached on a phone). Their box carries the
   `sheet-safe-padding` utility from `main.css`: below `sm` it pads the bottom
-  by `max(1rem + --sab, env(safe-area-inset-bottom))`, and by `1rem` while
-  `html[data-keyboard-open]`. That keyboard-open value matches the
+  by `--sheet-bottom-padding` (the safe-area inset plus `1.5rem`, or `2rem`
+  in the installed PWA), and by `1rem` while `html[data-keyboard-open]`. That keyboard-open value matches the
   closed-keyboard spacing because the sheet floats above the keyboard with
   rounded bottom corners. The text file and model picker sheets still set
   `0.375rem` from JS: their bottom edge is a textarea or a model list, not a

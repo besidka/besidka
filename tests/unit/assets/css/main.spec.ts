@@ -31,6 +31,31 @@ function getDeclarations(selector: string): string {
   return rulePattern.exec(stylesheet)?.[1] ?? ''
 }
 
+describe('sheet bottom padding', () => {
+  it('adds more than the safe area, and more again in the installed app', () => {
+    const rootDeclarations = [...stylesheet.matchAll(
+      /--sheet-bottom-padding:\s*([^;]+);/g,
+    )].map((match) => {
+      return match[1]!.trim()
+    })
+
+    expect(rootDeclarations).toEqual([
+      'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+      'calc(env(safe-area-inset-bottom, 0px) + 2rem)',
+    ])
+    expect(stylesheet).toMatch(
+      /@media \(display-mode: standalone\)\s*\{\s*--sheet-bottom-padding/,
+    )
+  })
+
+  it('feeds the sheet-safe-padding utility below sm', () => {
+    const utility = /@utility sheet-safe-padding\s*\{([\s\S]*?)\n\}/
+      .exec(stylesheet)?.[1]
+
+    expect(utility).toContain('padding-bottom: var(--sheet-bottom-padding)')
+  })
+})
+
 describe('side panel seam transition', () => {
   it('declares one duration that matches the scroll-anchor hold', () => {
     const durations = [...stylesheet.matchAll(
