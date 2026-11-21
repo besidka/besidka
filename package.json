@@ -137,7 +137,7 @@
 		"minisearch": "^7.2.0",
 		"nuxt": "^4.6.4",
 		"nuxt-agent-discovery": "^0.8.2",
-		"nuxt-email-renderer": "^2.11.1",
+		"nuxt-email-renderer": "^2.11.2",
 		"nuxt-llms": "^0.3.2",
 		"nuxt-studio": "1.7.0",
 		"nuxt-svgo": "^5.3.2",
