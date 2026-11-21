@@ -7,7 +7,7 @@
     <pre
       tabindex="0"
       :aria-label="label"
-      class="m-0 max-h-72 overflow-auto rounded-field border border-base-300 bg-base-100 p-2 font-mono text-xs leading-relaxed whitespace-pre"
+      class="m-0 max-h-72 overflow-auto rounded-box border border-base-300 bg-base-100 p-2 font-mono text-xs leading-relaxed whitespace-pre"
       :class="tone === 'error' ? 'text-error' : 'text-base-content'"
     ><code>{{ text || emptyText }}</code></pre>
     <p

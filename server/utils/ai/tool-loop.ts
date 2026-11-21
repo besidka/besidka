@@ -48,6 +48,7 @@ export interface ToolLoopBudget {
   besidkaSteps?: number
   toolIndexSteps?: number
   guard?: UntrustedContentGuard
+  finalStepInstructions?: () => string | undefined
 }
 
 export interface ResolvedToolLoop {
@@ -136,12 +137,13 @@ function stepHasUntrustedToolResult(step: unknown): boolean {
 
 function buildToolLoopFinalStepInstructions(
   instructions: Instructions | undefined,
+  finalStepInstructions: string = TOOL_LOOP_FINAL_STEP_INSTRUCTIONS,
 ): string {
   if (typeof instructions !== 'string' || !instructions) {
-    return TOOL_LOOP_FINAL_STEP_INSTRUCTIONS
+    return finalStepInstructions
   }
 
-  return `${instructions}\n\n${TOOL_LOOP_FINAL_STEP_INSTRUCTIONS}`
+  return `${instructions}\n\n${finalStepInstructions}`
 }
 
 function isAnthropicGatewayModelId(modelId: string): boolean {
@@ -176,10 +178,16 @@ function isAnthropicGatewayModelId(modelId: string): boolean {
  * memory tool. The flag is never reset and the declared tools are left
  * untouched, so the memory write tools can refuse the rest of the request
  * without churning the provider's prompt cache.
+ *
+ * `finalStepInstructions`, read when the last step starts, replaces the
+ * default "answer now" text: a send that ran connector or Besidka tools and
+ * may continue in another round asks for a short progress note instead
+ * (`server/utils/ai/tool-rounds.ts`); undefined keeps the default.
  */
 function createToolLoopPrepareStep(
   maxSteps: number,
   guard: UntrustedContentGuard | undefined,
+  finalStepInstructions?: () => string | undefined,
 ): PrepareStepFunction<ToolSet> {
   return ({ steps, stepNumber, model, instructions }) => {
     if (guard && !guard.untrustedResultSeen && Array.isArray(steps)) {
@@ -190,7 +198,10 @@ function createToolLoopPrepareStep(
       return undefined
     }
 
-    const finalInstructions = buildToolLoopFinalStepInstructions(instructions)
+    const finalInstructions = buildToolLoopFinalStepInstructions(
+      instructions,
+      finalStepInstructions?.(),
+    )
 
     if (typeof model === 'string') {
       return { toolChoice: 'none' as const, instructions: finalInstructions }
@@ -295,7 +306,11 @@ export function resolveToolLoop(
         totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
         toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
       },
-      prepareStep: createToolLoopPrepareStep(maxSteps, budget?.guard),
+      prepareStep: createToolLoopPrepareStep(
+        maxSteps,
+        budget?.guard,
+        budget?.finalStepInstructions,
+      ),
     },
     maxSteps,
   }

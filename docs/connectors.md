@@ -179,12 +179,12 @@ Worker's network position), and the integrity of what the model reads.
 | T6 | Spoofed host lookalike (`notlon.so`, `mcp.linear.app.evil.com`, IDN homograph) presented as a known service | Phishing link, malicious registry entry | The consent screen and every card show the punycode host in plain text; presets match by exact URL only, so a typed host never inherits preset trust; registry rows labeled "Not reviewed by Besidka"; no logos that could lend credibility (amended by BES-398: a card now shows an icon that the entry's own registry record or its host supplies, so an icon is as spoofable as the name and never a trust mark; there is no verified badge, "by <publisher>" is only the registry namespace, and the host stays in plain text on every card) | C-7, C-8, C-14 |
 | T7 | Tool rug pull: a tool's description or schema changes after approval to steer the model | Malicious or compromised server | Per-tool definition hash (section 8) computed on every `tools/list`; changed or added tools hidden until reviewed in the drift dialog; "Always allow" is bound to the hash and falls away on change; annotations are part of the hash because `fingerprintTools` omits them | C-2, C-5, C-6, C-7 |
 | T8 | Prompt injection through tool results | Content in a third-party system (an issue body, a Notion page) | Results wrapped as `<untrusted_tool_result connector="<slug>" tool="<name>">` with a system rule that the content is data; `UntrustedContentGuard` (`server/utils/ai/tool-loop.ts`) set after any connector result; write calls after untrusted content always ask (section 7); memory write lock extended; results never reach memory extraction or chat search. TypeSafe AI screening is **not** applied to connector results in v1 (pre-check Q13: private third-party data needs its own consent) | C-5, C-6 |
-| T9 | Cross-connector exfiltration: a result from connector A makes the model send A's data to connector B | Injected content | Any call to a connector other than the ones whose results the send has already read asks, read-only or not, "always" or not (section 7, rule F2) | C-6 |
-| T10 | Exfiltration through write tools of the same connector | Injected content | Write tools ask after untrusted content even when set to "Always allow" (rule F1); the approval step shows the real arguments | C-6 |
+| T9 | Cross-connector exfiltration: a result from connector A makes the model send A's data to connector B | Injected content | A call to a connector other than the ones whose results the send has already read asks (rule F2), unless the tool has a grant: the user's own (Always allow, Allow in this chat) or the default Always allow of a plain read, which the owner decision lists explicitly. **Accepted risk, owner decision 2026-11-20: cross-connector exfiltration through always-allowed tools.** Such a tool runs after another connector's output, so injected content can move data into it, or into a plain read's arguments, without a prompt; the definition hash still binds every grant, the default Always allow never reaches a tool that deletes or shares, and every run under the user's own grant is marked "Ran without asking" (section 7.12) | C-6 |
+| T10 | Exfiltration through write tools of the same connector | Injected content | Write tools ask after untrusted content (rule F1) unless the user set them to Always allow or allowed them in the chat (same accepted risk as T9, section 7.12); the approval step shows the real arguments | C-6 |
 | T11 | Credential theft through a stolen Besidka session | Session thief | Connecting, enabling, "Always allow" and the consent are app-only actions behind the session; MCP can only reduce; audit rows survive connector deletion for 90 days, so a thief cannot erase the trail; the breach runbook gains a connector-credential containment row (C-10) | C-4, C-9, C-10 |
 | T12 | CIMD tampering: a changed `redirect_uris` in Besidka's Client ID Metadata Document captures authorization codes | Attacker with deploy access, or a host-header trick | Document built from configuration only (section 5.3), never from the request except an allowlisted preview host; one exact `redirect_uri`; no secrets in it; `client_id` never changed as a fix (remote caches hold it for hours); breach runbook row | C-4, C-10 |
-| T13 | Token bloat and denial of service: huge tool lists, descriptions or results exhaust the context window, CPU or memory | Malicious server | Limits in section 9: 5 connectors and 40 tools per send, 32 KiB of descriptions plus input schemas, 1 KiB per description, 8 KiB per input schema, 8 s to connect and list, 2 SSE connectors, 64 KiB per result, 1 MiB raw response cap, 60 s per call, 12 calls per turn | C-5 |
-| T14 | Slow server holds the generation lease | Malicious or slow server | Per-call timeout 60 s (`TOOL_LOOP_TOOL_TIMEOUT_MS`) keeps the 120 s generation lease heartbeating; connect timeout 10 s; at most 3 parallel connects | C-5 |
+| T13 | Token bloat and denial of service: huge tool lists, descriptions or results exhaust the context window, CPU or memory | Malicious server | Limits in section 9: 5 connectors and 40 tools per send, 32 KiB of descriptions plus input schemas, 1 KiB per description, 8 KiB per input schema, 8 s to connect and list, 2 SSE connectors, 64 KiB per result, 1 MiB raw response cap, 60 s per call, 50 calls per message (12 before 2026-11-20), stored outputs of one reply capped to 900 KiB (section 6.6) | C-5 |
+| T14 | Slow server holds the generation lease | Malicious or slow server | Per-call timeout 60 s (`TOOL_LOOP_TOOL_TIMEOUT_MS`) keeps the 120 s generation lease heartbeating; connect timeout 10 s; at most 3 parallel connects; a call stuck before its remote request settles as a timeout when the tool signal aborts, and an SSE answer is closed right after its JSON-RPC response, so a server that keeps it open no longer holds a Worker connection (section 6.6) | C-5 |
 | T15 | Encryption-key loss or rotation | Operator | Rotating `NUXT_ENCRYPTION_KEY` without re-encryption makes every stored connector credential undecryptable. Procedure: wipe `connector_credentials`, set every connector to `needs-auth`, users reconnect. Self-hosters must back up the key | C-4 |
 | T16 | D1 restore revives revoked credentials or deleted connectors | Operator restore | `docs/d1-restore-reconciliation.md` entry: after a restore, delete all `connector_credentials` rows and set connectors to `needs-auth`; replay connector deletions from Axiom `attributes.connectors` | C-2 |
 | T17 | MCP-added malicious connector | Injected agent with `connectors:write` | Created disabled, no credentials, no network call; the card says "Added by <client>, not by you in the app"; at most 5 disabled MCP-added connectors per user | C-9 |
@@ -277,7 +277,12 @@ server side in `server/utils/connectors/header-auth.ts`):
   is read as no key by servers such as Exa (`mcp.exa.ai` takes `Authorization:
   Bearer <key>` or `x-api-key: <key>`, and treats a bare value as anonymous),
   and the old free name and value pair gave no hint that the scheme was part
-  of the value.
+  of the value. The input has the same Paste button as the provider key
+  inputs: the shared `UiFormPasteButton` (`app/components/ui/Form/PasteButton.vue`)
+  reads the clipboard with `useClipboardWithPaste()` and emits the text, and
+  `ProviderKeyCard.vue`, `CloudflareGateway.vue` and `ConnectDialog.client.vue`
+  all use it, so they stay identical. The Custom header value has it too; the
+  header name and the server address are not secrets and have none.
 - **Custom header**: a name and a full value, sent exactly as typed (the name
   is trimmed). The hint reads "Sent exactly as typed. For Authorization,
   include the scheme, for example Bearer <token>." The name rules above apply.
@@ -1851,11 +1856,181 @@ not decode pixels, so an image that is corrupt inside its compressed data may
 still make the provider reject the whole request. Redaction of the
 connector's secrets applies to the text only.
 
+### 6.6 Runtime: pacing, stalls and long tasks (2026-11-20)
+
+The owner's battle test after #923 (chats `01M7TMNG0PB7MKVR61YSRZ4SBR` and
+its branch, DeepSeek V4 Pro with Doop, Linear and Cloudflare) found three
+runtime faults. Axiom `besidka-prod`, 14 days: 51 DeepSeek sends, 6 without
+an `AI stream completed` event, all `deepseek-v4-pro` on 2026-11-19 evening;
+one kept the generation guard alive for over 2 minutes with nothing
+streamed. Another chat that evening ran exactly five approval rounds per
+message and then ended without a pause, which is the rounds cap.
+
+- **"over-cap" was a raw code.** The send's `toolApproval` returned
+  `{ type: 'denied', reason: 'over-cap' }`, and the AI SDK hands that reason
+  to the model as the `execution-denied` output, so the model read the bare
+  code and slowed down instead of stopping. Every refusal now names its
+  limit and the next step (`server/utils/tool-approval/denial-texts.ts`,
+  `SEND_TOOL_DENIAL_TEXT`): connector calls per message, Besidka calls per
+  message, more than 10 calls waiting for approval in one step ("make it
+  again after the user answers the others"), an input too large to hold for
+  approval, and the fifth approval round. The continuation's
+  `TOOL_APPROVAL_DENIAL_TEXT['over-cap']` says the same. The wide event gets
+  `attributes.toolApproval.sendDenied` (counts per kind).
+- **Caps (owner-visible change).** `CONNECTOR_STEPS_PER_TURN` 4 → 12 tool
+  steps per send, `CONNECTOR_CALLS_PER_TURN` and
+  `TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN` 12 → 50 per message. The rounds
+  cap stays 5; section 7.12 removes most rounds, because a granted call no
+  longer asks after another source.
+- **Per-minute limits pace instead of refusing.** The KV limiter
+  (`server/utils/connectors/call-limits.ts`) counts one call at a time per
+  send: KV takes about one write a second per key, and parallel calls of one
+  step wrote the same two keys at once, so KV refused the writes and the old
+  `catch { return false }` turned that into "too many calls". It now returns
+  `allowed`, `limited` (scope and `retryAfterSeconds`) or `kv-error`. Over a
+  limit that frees up within 20 s (`CONNECTOR_CALL_PACING_MAX_WAIT_MS`) the
+  call waits and counts again; otherwise the model gets
+  `buildConnectorRateLimitText(seconds)` ("Wait about N seconds before you
+  call this connector again, or continue without it"). A KV failure is
+  retried once after 1.1 s (KV's write rate per key), then logged as
+  `attributes.connectors.callLimit.kvError` and the call runs: the
+  per-message cap and three calls in flight still bound the send. The
+  Besidka limiter (`createBesidkaCallLimiter`) counts one at a time, retries
+  a KV failure once and still fails closed. Back-to-back writes of one send
+  can still exceed KV's rate in a burst; counting in memory per send with a
+  throttled flush is the follow-up if the retry is not enough.
+- **A stuck call cannot hold the loop.** The AI SDK's `toolMs` only aborts
+  the signal it passes to `execute`; it still awaits the promise. Connector
+  `execute` is raced against that signal (`settleOnAbort`), so a call stuck
+  in the concurrency queue, a KV count or a verify settles as a timeout
+  error the model can act on, and the call checks the signal again before
+  it uses its clearance, after a pause and after a verify, so a call the
+  model was already told about never runs later.
+- **SSE answers end at their response.** `@ai-sdk/mcp` reads a POST's SSE
+  answer until the server closes it, and a server that kept it open held one
+  of the Worker's six simultaneous connections for the 60 s deadline, per
+  call. `closeAfterJsonRpcResponse` (`server/utils/connectors/mcp-client.ts`)
+  passes every byte up to the event that carries the JSON-RPC response to
+  that request id, then closes the stream and cancels the request.
+- **Stored outputs fit the row guard.** With 50 calls a reply could hold
+  about 3 MiB of connector outputs, and the 1.5 MB guard in
+  `stripUndeliveredInlineDataParts` would replace the whole reply. Stored
+  outputs share `CONNECTOR_PERSISTED_OUTPUTS_MAX_BYTES` (900 KiB) equally
+  once they exceed it (at least 1 KiB each, so ten rounds of 50 calls still
+  fit, marked "[Shortened when the reply was saved.]"), and the guard now
+  runs after the redactions. Long reasoning in many rounds can still reach
+  the guard on its own (known gap). The
+  model already used the full output during the send.
+- **A stalled provider ends visibly.** DeepSeek answers a queued request
+  with SSE `: keep-alive` comments only and closes it after 10 minutes if
+  inference never started (DeepSeek "Rate Limit & Isolation" docs). The AI
+  SDK drops comments, so Besidka waited up to the 540 s total limit, and a
+  timeout ended the stream with an `abort` chunk: the client treated it like
+  a Stop, persistence skipped the reply, no error showed. Now direct DeepSeek
+  streams get `firstChunkMs` 120 s and `chunkMs` 90 s
+  (`server/utils/ai/stream-stall.ts`), and every server-side `abort` (the
+  route wires no client-disconnect signal, so it is always a timeout) becomes
+  an `error` chunk: `provider-queued` ("The provider queued this request and
+  did not start it", fix "retry later or pick another model") for the first
+  chunk, `provider-stalled` for the chunk timeout, and
+  `generation-time-limit` ("This reply reached its time limit", fix "Send
+  continue to go on from what is saved") for the 540 s total limit. The
+  partial reply is stored with the error. Other providers keep no output timeout, because
+  hidden reasoning can be silent for minutes.
+- **Heartbeat.** While a send's `execute` runs, the route writes a transient
+  `data-heartbeat` chunk (`{ at }`, never stored) every 15 s
+  (`shared/utils/chat-stream-heartbeat.ts`), so the client can tell a slow
+  step or tool from a dead stream (the steps UI ends a stream after 45 s of
+  silence).
+- **Instruction line.** The connector instructions add: call connector
+  tools one at a time or a few at once, Besidka runs at most three at once,
+  and follow a tool's limit text instead of retrying at once. It
+  complements the executor changes above; it is not the fix.
+
+**Long connector tasks (rounds).** One send is bounded by its steps, its
+calls and the 540 s total limit, and the Worker dies when the PWA closes.
+A task that needs more (drawing a design in Doop: dozens to hundreds of
+calls) now runs in rounds that continue the same reply:
+
+- When a send that ran connector or Besidka tools stops on its step budget
+  (the forced last step was reached) or on the per-message call cap, with no
+  error and no approval pause, its last, tool-free step writes a short
+  neutral progress note (`TOOL_ROUND_PROGRESS_INSTRUCTIONS`, chosen when the
+  step starts and only when the send ran a connector or Besidka call; the
+  last round asks for a summary and "send continue" instead), and the route
+  writes a
+  `data-tool-budget` part before `finish`
+  (`server/utils/ai/tool-rounds.ts`): `{ round, maxRounds, reason: 'steps'
+  | 'calls', model, gateway, reasoning, connectorIds }`. It is stored with
+  the reply, dropped from shares and branches, and never reaches the model.
+- The client sends `{ continue: { messageId, round } }`
+  (`toolRoundContinuationBodySchema`, round 2 to 10) by itself through the
+  AI SDK's `sendAutomaticallyWhen`, once per round, only after a successful
+  response, never after Stop or an error, and only while the tab is visible
+  (a hidden tab keeps the round for when it is visible again, or for a click
+  on Continue). `Chat/ToolRounds.vue` shows "Working through a long task ·
+  round N of 10" while a round runs, "Paused after round N of 10" with
+  Continue when the task waits for the user, and at the limit "This task
+  used all 10 rounds one message can run" with Continue, which sends
+  "Continue" as a new message.
+- The server (`prepareToolRoundContinuation`) checks the `tool-approvals`
+  flag (404 when off), the answer rate limit (one unit), that the message is
+  the chat's last and an assistant message (409 `TOOL_APPROVAL_STALE`
+  otherwise), the generation lease (pending answer), the round's claim (a
+  round that already started once answers 409 `TOOL_ROUND_STALE` "This
+  round was interrupted": a round runs at most once, its claim
+  `round-<messageId>-<round>` in `tool_approval_claims` is taken right
+  before the stream, and a duplicate request loses it), and that the reply
+  ends
+  with a budget part below `TOOL_ROUNDS_PER_MESSAGE` whose next round is the
+  requested one and nothing waits for approval (409 `TOOL_ROUND_STALE`).
+  Model, gateway, reasoning and connectors come from the stored budget part,
+  the tools from the stored user message, never from the body. The round
+  runs on the approval continuation's plumbing with no answers: same
+  assistant message id, update with the shrink guard, summed usage,
+  generation lease on the assistant id. The model prompt is the history, the
+  stored reply, and one extra user turn `TOOL_ROUND_CONTINUE_PROMPT`
+  ("Continue the task from where you stopped"), which is neither stored nor
+  shown. Each round starts a fresh approval state (its own call budget) with
+  `connector` and `besidka` taint when the reply holds their results, plus
+  the preset taint of a new send (`presetApprovalTaint`).
+- Cost: each round is a normal send on the user's key and is recorded like
+  one; the reply's usage sums its rounds.
+- Known gaps: a `data-generation-pending` answer to a round request goes
+  through the generic pending retry, which resends the user message and
+  replays the stored reply instead of the round; a reload of a chat whose
+  reply ends with a budget part shows Continue and never continues by
+  itself.
+
+**Long-running connector tasks in the background (not built).** Rounds
+still need the page open: the Worker that runs a send dies with the client
+connection (`docs/chats/stuck-generation-guard.md`). A task that should keep
+working while the phone is closed and push when done, like deep research,
+needs a durable runner:
+
+- **Options.** A Workflows instance per task (one step per round,
+  `retries.limit: 0` on spending steps, as the agentic roadmap plans for the
+  orchestrator Worker), or a Durable Object per chat that runs rounds,
+  buffers chunks for a reconnecting client and holds the generation lease.
+  Either one calls the provider and the MCP servers on the user's stored
+  keys and connector credentials outside a request.
+- **Generation guard.** The lease would move from the request to the runner;
+  the client polls or subscribes, and a send to the same chat answers
+  "generation in progress" until the runner ends.
+- **Approvals.** A round that needs approval pauses the runner and sends a
+  push; the answer resumes it. Grants (section 7.12) decide how often that
+  happens.
+- **Cost and safety.** A per-task cap on rounds and spend the user sets, a
+  Stop that reaches the runner, push only for the end and for approvals, and
+  a legal check (processing without the user present; the DPIA row for
+  connectors) before it ships.
+
 ## 7. Approvals
 
 ### 7.1 Decision order
 
-> **Superseded in part by section 7.11 (owner decision, 2026-11-15).** A
+> **Superseded in part by sections 7.11 (owner decision, 2026-11-15)
+> and 7.12 (owner decision, 2026-11-20).** A
 > tool's own source no longer counts as untrusted, Besidka reads skip F1, Always allow can be set on the Connectors page, and every
 > call of one model step is judged against the state at the start of that
 > step. Read section 7.11 for the rules as built.
@@ -2362,8 +2537,9 @@ Where this differs from sections 7.2 and 7.6:
 
 The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
 
-- **Where.** `Chat/Reasoning/ApprovalStep.vue` is a step in the
-  `ChatReasoning` chain, built from the tool part and the
+- **Where.** Superseded on 2026-11-20 by section 7.8.1: the prompt now sits
+  in a bubble under the message. `Chat/Reasoning/ApprovalStep.vue` was a
+  step in the `ChatReasoning` chain, built from the tool part and the
   `data-tool-approval` part with the same tool call id
   (`app/utils/tool-approval-step.ts`). Only behind the `tool-approvals`
   flag (client `useFeature`) and only where the chat page provides the
@@ -2390,8 +2566,9 @@ The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
 - **Buttons.** `btn-sm`, stacked full width below `md`: Allow once
   (`btn-primary`), Allow in this chat and Always allow (`btn-soft`) only
   when the call's `rememberOptions` holds them, Deny (`btn-ghost`). The
-  client builds no matrix of its own. Always allow asks for an inline
-  confirmation first (section 7.9). Enter on the focused step
+  client builds no matrix of its own. Always allow answers with one
+  click (the inline confirmation of section 7.9 was removed on
+  2026-11-20; its tooltip says what it does). Enter on the focused step
   (not on a button inside it, not repeated, not during IME composition)
   means Allow once, only when Allow once is offered; Esc collapses the
   arguments. "View details" opens `UiSidePanel` (bottom sheet below `md`)
@@ -2436,8 +2613,9 @@ The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
   composer, inside its fixed container, so it lifts with the keyboard and
   counts toward the composer height: "1 action waiting for approval"
   (pluralized). It takes no space when nothing waits. While the composer is
-  collapsed on scroll, the chip is what the peek shows. A click expands the reasoning
-  block, scrolls the first waiting step to the center and focuses it.
+  collapsed on scroll, the chip is what the peek shows. A click scrolls the
+  first waiting call in the approval bubble (7.8.1) to the center and
+  focuses it.
   Its polite live region stays mounted while the flag is on and says
   "Action waiting for approval"; nothing moves focus when an approval
   arrives. The focused step draws a plain `focus:` outline, because focus
@@ -2457,6 +2635,73 @@ The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
   continuation against a live connector, and screen reader output were not
   checked. The approval state survives no reload: after a reload, an
   answered but unsent call reads as interrupted.
+
+### 7.8.1 The approval bubble (2026-11-20)
+
+The owner reported that the prompt was easy to miss: it sat inside the
+reasoning steps, which are collapsed by default and auto-hide when the
+answer starts. The prompt now renders outside the steps, as a temporary
+assistant bubble under the message (like Claude desktop):
+
+- **Where.** `Chat/ToolApprovalBubble.vue`, a `ChatMessage` with the
+  assistant role right after the last assistant message in
+  `pages/chats/[slug].vue`. It lists every call of that message that waits
+  for an answer (pending, answered, sending) and, on the last message, a
+  call whose answer failed in this tab (expired or interrupted, with Ask
+  again). It disappears once every call is settled: an approved call
+  becomes the regular connector or tool step with "Allowed · 14:05", a
+  denied one a "Denied" step.
+- **One source of truth.** `useMessageApprovals`
+  (`app/composables/message-approvals.ts`) builds the approval state of a
+  message once and both the bubble and the steps read it. Only the bubble
+  renders the answer buttons (`ApprovalStep` with `variant="bubble"`,
+  the default): Allow once, Allow in this chat and Always allow exactly as
+  the call's `rememberOptions` lists them, and Deny. The tool call itself
+  stays a reasoning step (tool use is a reasoning step, never a reply card);
+  in the steps, `variant="step"` shows only the title and one line:
+  "Waiting for your approval below the message" with a Review link
+  (`focusApproval(<its approval id>)`), "Answered. Waiting for the other
+  answers.", "Sending your answer…" (the step bullet is the only spinner)
+  or "Could not finish. See below the message.". Denied and expired calls
+  of earlier messages keep the full step. The two variants use different
+  element ids (`tool-approval-<variant>-<approval id>-title`), since both
+  can be on the page at once.
+- **Heading.** "Waiting for your approval", "2 actions waiting for your
+  approval", then "Sending your answer" or "Sending your answers" while the
+  answers go out, and "This approval could not finish" for a failed
+  answer. The bubble blurs with the other messages while a message is
+  selected (`any-selected`).
+- **No auto-open.** A new waiting call no longer opens the collapsed steps;
+  the bubble, the composer chip and the live region announce it.
+- **Focus and keyboard.** The chip (`focusFirstPending`) and the Review
+  link (`focusApproval`) send a focus request that the bubble answers: it
+  scrolls the call to the center and focuses it. The focused call is a
+  `role="group"` with Enter as Allow once and Esc closing the arguments.
+- **Always allow is one click (2026-11-20).** The owner removed the second
+  confirmation ("we don't treat users as idiots"): Always allow answers
+  at once. Its `title` says what it does in one sentence
+  (`getAlwaysAllowHint`): "Runs without asking in every chat until the
+  tool changes. Remove it in the chat panel." (Besidka tools: "Runs
+  without asking in every chat. Change it in Tool permissions.").
+- **Scroll (2026-11-20).** When the reply pauses, the chat scroll spacer
+  places it like any finished turn and then brings the bubble into view
+  above the composer (`revealApprovalBubble`, see
+  `docs/chat-scroll-spacer.md`, "Approval pauses and continuations"). The
+  answer's continuation is placed like a new send. The "N actions waiting
+  for approval" pill hides while the bubble is on screen
+  (`useToolApprovalBubbleInView`), so it never covers the reply; it shows
+  again only when the user scrolls the bubble away.
+- **Radius.** Large blocks (the call root and its focus outline, the
+  arguments `<pre>`, the "Text to save" preview, the
+  View details `<pre>` blocks) use `rounded-box`, not the pill radius
+  `rounded-field`. The inline "Sending your answer…" loader takes the text
+  color; only the loader in a step's timeline circle is accent.
+- **Tests.** `tests/unit/components/Chat/ToolApprovalBubble.spec.ts`,
+  `tests/unit/composables/message-approvals.spec.ts`, the compact steps in
+  `tests/unit/components/Chat/Reasoning.approvals.spec.ts` and the e2e
+  `tests/e2e/chat/tool-approval.spec.ts`.
+- **Not verified.** The iOS PWA (scrolling the bubble into view above the
+  keyboard, VoiceOver reading the group) needs a check on a preview.
 
 ### 7.9 As built: remembered approvals (C-6 grants layer, 2026-11-15)
 
@@ -2497,12 +2742,9 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
 - **Forged answers.** `decideContinuation` clamps the remember choice to the
   options the pending record stored, so a `chat` or `always` answer to a
   once-only request is stored as `once`.
-- **Confirmation.** Always allow opens an inline confirmation inside the
-  step (no modal): "Always allow <tool> from <Connector>? Besidka will run
-  it without asking in every chat until the tool changes. You can remove
-  this in the chat panel." Focus moves to its Always allow button; Cancel or
-  Esc closes it and returns focus to the step. Enter on the step still means
-  Allow once.
+- **Confirmation (removed 2026-11-20).** Always allow used to open an
+  inline confirmation inside the step. It now answers with one click, and
+  the button's tooltip carries the short explanation (section 7.8.1).
 - **Context panel.** An owned chat with the flag on shows an Approvals
   section under the context groups (`Chat/ContextPanelApprovals.vue`,
   `useChatToolApprovalGrants()`): every "in this chat" grant of this chat
@@ -2536,8 +2778,7 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
     sends, so a grant runs its tool in a later message even when an earlier
     message read untrusted content that is still in the history. This is
     the Claude-like behavior the owner asked for; no per-chat taint flag is
-    stored. The Always allow confirmation and the "Allow in this chat"
-    tooltip say so in plain words.
+    stored. The "Allow in this chat" tooltip says so in plain words.
   - *Visible runs (M1).* A call that ran under a grant gets a
     `data-tool-grant` part (`toolCallId`, `toolName`, `scope`), written
     after its output. The reasoning step shows "Ran without asking (Always
@@ -2656,6 +2897,11 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 
 ### 7.11 As built: Always allow and grouped permissions (C-6, 2026-11-15)
+
+> **Superseded in part by section 7.12 (owner decision, 2026-11-20).** A
+> grant of the user's now runs before rules 2, 3 and 5, the always-ask tier
+> can be set to Always allow, and every connector or Besidka prompt offers
+> all three answers.
 
 Owner feedback on the #923 preview: a Notion search asked "Because this
 message read content from outside Besidka" next to another Notion read, and
@@ -2834,6 +3080,68 @@ changes sections 7.1 to 7.9:
   `tests/unit/utils/tool-permissions.spec.ts`, the panel specs, and the
   integration specs `connectors-page`, `chats-tool-approval-request`,
   `chats-tool-approval-continuation` and `chats-besidka-tools`.
+
+### 7.12 As built: the user's grant wins (owner decision, 2026-11-20)
+
+The owner did not accept being asked about a connector they had set to
+Always allow: in the battle test every Linear, Doop and Cloudflare call
+after the first foreign read asked "Because this message read content from
+outside Besidka" (rule 2) or about a different connector (rule 3). The
+decision, modeled on Claude's connector settings page, replaces the order of
+section 7.11 for connector and Besidka tools:
+
+- **Order.** Blocked and invalid input deny (rule 0), the consent gate
+  decides next (rule 10), native tools keep rules 1, 2 and 8. For connector
+  and Besidka tools a matching grant of the user's runs the call first:
+  Always allow (rule 6: a connector `always` grant bound to the definition
+  hash, the default Always allow of a plain read, a Besidka tool set to
+  Allow) or a chat grant (rule 7). Only then do foreign taint (rule 2;
+  Besidka reads still skip it), another source (rule 3) and the always-ask
+  tier (rule 5) ask, and otherwise rule 9 asks `default`
+  (`resolveToolApproval` in `server/utils/tool-approval/policy.ts`).
+- **The default never reaches destructive tools.** The default Always allow
+  of a plain read (`SendToolUserGrants.isAlwaysDefault`, passed to the policy
+  as `isAlwaysGrantDefault`) never lifts the always-ask tier; only the
+  user's own choice does. The default itself still applies only to plain
+  reads (`isConnectorToolDefaultAllowed`).
+- **The hash binding stays.** A grant matches only its connector, exposed
+  name and definition hash, so a changed tool asks again even under a group
+  Always allow (rug pull, T7).
+- **Prompts.** Every connector or Besidka prompt (`untrusted-output`,
+  `cross-source`, `always-ask`, `default`) offers Allow once, Allow in this
+  chat and Always allow; native prompts still offer Allow once only, and the
+  consent gate once and chat. `applyRememberGrants` writes a grant for the
+  always-ask tier too (never for a native tool).
+- **Connectors page.** Three groups stay: Read-only, Write, and Delete and
+  share (the always-ask tier, renamed from "Always asks"). Each group header
+  has a select (Blocked, Needs approval, Always allow; Custom when its tools
+  differ) that sets every tool's mode, with no new column. Always allow is
+  allowed on every reviewed tool: the lock, the "always asks" tooltip and the
+  route's refusal for the tier are gone; the route still refuses a tool that
+  is unknown, unreviewed or changed since its review
+  (`CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED`). The Delete and share group shows
+  one warning line: "Always allow lets the model delete or share data
+  without asking you." The tool badge reads "Deletes or shares".
+- **Besidka tools.** The ask-every-time tier ("Delete and share" in Labs)
+  takes every mode (`getAllowedBesidkaToolModes`), with the same warning
+  line; a stored Allow on it counts.
+- **MCP stays reduce-only.** `update_connector_tools` still accepts only
+  `enabled: false` and `approval: 'ask'` (section 11, `docs/mcp-server.md`
+  "What MCP does not do", items 8 and 9): an injected external agent must
+  not widen what a chat may run. No schema or version change. Orchestrator
+  decision 2026-11-20; the owner may reverse it.
+- **Accepted risk.** Cross-connector exfiltration through always-allowed
+  tools (T9, T10): content from one connector can steer a call to another
+  tool the user always allowed, and it runs without a prompt. Every such run
+  shows "Ran without asking" with Manage, and the chat panel lists the
+  grants. Legal documents and notices are not changed here.
+- **Tests.** `policy.spec.ts` ("is lifted by Allow, an always grant or a
+  chat grant", "never lifts the always-ask tier with a default grant"),
+  `send.spec.ts`, `continuation.spec.ts` ("grants a destructive tool bound to
+  the reviewed hash"), `tool-review.spec.ts`, the Labs and connector panel
+  specs, and the integration specs `chats-tool-approval-request`,
+  `chats-tool-approval-continuation`, `chats-besidka-tools`,
+  `connectors-page` and `besidka-tools-permissions`.
 
 ## 8. Data model
 
@@ -3121,10 +3429,14 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_LIST_TIMEOUT_MS` | 8,000 per `tools/list` request | C-5 |
 | `CONNECTOR_PREPARE_DEADLINE_MS` | 8,000 for the connect and list phase of all connectors in one send | C-5 |
 | `CONNECTOR_SSE_PER_SEND` | 2 connectors on the legacy SSE transport | C-5 |
-| `CONNECTOR_STEPS_PER_TURN` | 4 | C-5 |
-| `CONNECTOR_CALLS_PER_TURN` | 12 | C-5 |
+| `CONNECTOR_STEPS_PER_TURN` | 12 tool steps per send (4 before 2026-11-20) | C-5, section 6.6 |
+| `CONNECTOR_CALLS_PER_TURN` and `TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN` | 50 per message, across its approval rounds (12 before 2026-11-20) | C-5, C-6, section 6.6 |
 | `CONNECTOR_CALLS_PER_MINUTE` | 60 per user, all connectors | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE_PER_CONNECTOR` | 30 per user per connector | C-5 |
+| `CONNECTOR_CALL_PACING_MAX_WAIT_MS` | 20,000: a call over a per-minute limit that frees up within this waits instead of being refused | section 6.6 |
+| `CONNECTOR_PERSISTED_OUTPUTS_MAX_BYTES` | 921,600 (900 KiB) of connector outputs stored per reply, shared equally once exceeded (at least 4 KiB each) | section 6.6 |
+| `TOOL_ROUNDS_PER_MESSAGE` | 10 rounds of one long tool task per user message | section 6.6 |
+| `DEEPSEEK_FIRST_CHUNK_TIMEOUT_MS` / `DEEPSEEK_CHUNK_TIMEOUT_MS` | 120,000 / 90,000 for direct DeepSeek streams | section 6.6 |
 | `CONNECTOR_ICON_MAX_BYTES` | 32,768 per icon (the `favicon` safe-fetch purpose cap) | BES-395 |
 | `CONNECTOR_ICON_TIMEOUT_MS` | 5,000 per icon request | BES-395 |
 | `CONNECTOR_ICON_TTL_SECONDS` | 7 days; a miss `CONNECTOR_ICON_MISS_TTL_SECONDS`, 1 day | BES-395 |

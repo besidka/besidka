@@ -8,7 +8,7 @@
       {{ liveText }}
     </p>
     <div
-      v-if="pendingCount > 0"
+      v-if="pendingCount > 0 && !isBubbleInView"
       class="flex px-4 pb-2"
     >
       <button
@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 const controller = useToolApprovalController()
+const isBubbleInView = useToolApprovalBubbleInView()
 
 const pendingCount = computed<number>(() => {
   return controller?.pendingApprovalIds.value.length ?? 0

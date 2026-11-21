@@ -23,6 +23,9 @@ export type ChatErrorCode
     | 'research-start-failed'
     | 'clarification-failed'
     | 'assistant-empty-answer'
+    | 'provider-queued'
+    | 'provider-stalled'
+    | 'generation-time-limit'
     | 'unknown'
 
 export type ChatToolCallErrorKind

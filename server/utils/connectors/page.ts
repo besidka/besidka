@@ -12,7 +12,6 @@ import {
   listConnectors,
 } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
-import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -39,7 +38,6 @@ export function isAlwaysGrantActive(setting: {
 }): boolean {
   return setting.approval === 'always'
     && setting.approvedDefinitionHash === setting.definitionHash
-    && !hasAlwaysAskToolName(setting.toolName)
 }
 
 /**

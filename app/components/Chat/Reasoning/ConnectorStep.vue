@@ -60,7 +60,7 @@
           Arguments
         </summary>
         <pre
-          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-2 text-xs"
+          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-2 text-xs"
           data-testid="reasoning-connector-step-arguments-text"
         >{{ argumentsText }}</pre>
       </details>
@@ -120,8 +120,6 @@ const imageGallery = computed(() => {
 })
 
 const COPIED_RESET_MS = 2000
-
-useConnectorLibrary()
 
 const isReferenceCopied = shallowRef<boolean>(false)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null

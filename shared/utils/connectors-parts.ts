@@ -20,11 +20,27 @@ export const CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT = 'This tool belongs to a '
 export const CONNECTOR_UNAPPROVED_CALL_TEXT = 'This tool call was not '
   + 'approved, so it did not run.'
 
-export const CONNECTOR_CALL_LIMIT_TEXT = 'Connector call limit for this '
-  + 'message reached. Answer with what you already have.'
+const CONNECTOR_CALL_LIMIT_PREFIX = 'Connector call limit for this '
+  + 'message reached.'
+
+export const CONNECTOR_CALL_LIMIT_TEXT = `${CONNECTOR_CALL_LIMIT_PREFIX} `
+  + 'Stop calling tools now. Briefly say what is done and what is left, so '
+  + 'the work can continue in the next message.'
 
 export const CONNECTOR_RATE_LIMIT_TEXT = 'This connector received too many '
-  + 'calls in the last minute. Try again later.'
+  + 'calls in the last minute.'
+
+/**
+ * The refusal of a call over the per-minute connector limit, with how long
+ * to wait, so the model can pace itself instead of giving up.
+ */
+export function buildConnectorRateLimitText(retryAfterSeconds: number): string {
+  const seconds = Math.max(1, Math.ceil(retryAfterSeconds))
+
+  return `${CONNECTOR_RATE_LIMIT_TEXT} This call did not run. Wait about `
+    + `${seconds} seconds before you call this connector again, or continue `
+    + 'without it.'
+}
 
 const DENIAL_TEXTS: readonly string[] = [
   CONNECTOR_APPROVAL_DENIAL_TEXT,
@@ -32,7 +48,7 @@ const DENIAL_TEXTS: readonly string[] = [
   CONNECTOR_UNAPPROVED_CALL_TEXT,
 ]
 const LIMIT_TEXTS: readonly string[] = [
-  CONNECTOR_CALL_LIMIT_TEXT,
+  CONNECTOR_CALL_LIMIT_PREFIX,
   CONNECTOR_RATE_LIMIT_TEXT,
 ]
 const TOOL_NAME_SEPARATOR = '__'

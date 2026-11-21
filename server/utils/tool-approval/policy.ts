@@ -59,8 +59,9 @@ export interface DestructiveHintAnnotations {
 /**
  * The `destructiveHint` for a connector tool descriptor: true only when the
  * server declares `destructiveHint: true`, which puts the tool in the
- * always-ask tier (Allow once, Deny). A tool that is not marked read-only
- * and not marked destructive is a plain write: it still asks (reason
+ * always-ask tier (it asks until the user allows it). A tool that is not
+ * marked read-only and not marked destructive is a plain write: it still
+ * asks (reason
  * `default`) and may be remembered in the chat or always. A server's
  * `destructiveHint: false` never skips the prompt; it is treated exactly
  * like a missing hint (docs/connectors.md section 7.1).
@@ -139,12 +140,19 @@ export type ToolApprovalOutcome
     | { type: 'user-approval', reason: ToolApprovalReason }
     | { type: 'denied', reason: ToolApprovalDenialReason }
 
+/**
+ * `isAlwaysGrantDefault` marks an `alwaysGrant` that is only the tool's
+ * default (a plain connector read the user never set a mode for). A default
+ * grant lets a call run like Always allow, but never lifts the always-ask
+ * tier: only the user's own choice does.
+ */
 export interface ResolveToolApprovalInput {
   descriptor: ToolApprovalDescriptor
   state: ApprovalState
   permissionMode: ToolPermissionMode
   chatGrant?: ToolApprovalGrant | null
   alwaysGrant?: ToolApprovalGrant | null
+  isAlwaysGrantDefault?: boolean
 }
 
 export interface ToolApprovalDecision {
@@ -182,16 +190,20 @@ const UNTRUSTED_NATIVE_WRITE_TAINT: readonly ToolApprovalTaintKind[] = [
   'skill',
 ]
 
+const ALL_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'chat', 'always']
+
 const REMEMBER_OPTIONS_BY_REASON: Record<
   ToolApprovalReason,
   ToolApprovalRemember[]
 > = {
-  'untrusted-output': ['once'],
-  'cross-source': ['once'],
-  'always-ask': ['once'],
+  'untrusted-output': ALL_REMEMBER_OPTIONS,
+  'cross-source': ALL_REMEMBER_OPTIONS,
+  'always-ask': ALL_REMEMBER_OPTIONS,
   'consent': ['once', 'chat'],
-  'default': ['once', 'chat', 'always'],
+  'default': ALL_REMEMBER_OPTIONS,
 }
+
+const NATIVE_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once']
 
 function allowed(rule: ToolApprovalRule): ToolApprovalDecision {
   return {
@@ -365,8 +377,9 @@ function grantMatches(
  * Whether a tool is in the always-ask tier: a delete, an instructions write
  * or a destructive tool (a server `destructiveHint: true`, a connector tool
  * whose name names a delete or share action, the Besidka ask-every-time
- * tier). Such a tool asks Allow once or Deny every time, and no mode, grant
- * or answer can set it to Always allow.
+ * tier). Such a tool asks every time unless the user gave it a grant of
+ * their own (Always allow, Allow in this chat); the default Always allow of
+ * a plain read never reaches it (owner decision, 2026-11-20).
  */
 export function isAlwaysAskTier(descriptor: ToolApprovalDescriptor): boolean {
   return descriptor.access === 'delete'
@@ -383,11 +396,11 @@ function resolveNativeApproval(
   }
 
   if (isTaintedFor(descriptor, state)) {
-    return ask(2, 'untrusted-output')
+    return ask(2, 'untrusted-output', NATIVE_REMEMBER_OPTIONS)
   }
 
   if (isAlwaysAskTier(descriptor)) {
-    return ask(5, 'always-ask')
+    return ask(5, 'always-ask', NATIVE_REMEMBER_OPTIONS)
   }
 
   return allowed(8)
@@ -412,36 +425,39 @@ function resolveNativeApproval(
  *    unclassified tools included, counts every taint kind.
  * 8. Otherwise a native write runs.
  *
- * Connector and Besidka reads (not in the always-ask tier), owner decisions
- * of 2026-11-15:
+ * Connector and Besidka tools (owner decision of 2026-11-20, which replaces
+ * the order of 2026-11-15; modeled on Claude's connector settings):
  *
- * 2, 3. A connector read after content from outside its own connector asks
- *    `untrusted-output` (foreign taint) or `cross-source` (another source
- *    read), whatever its mode, because its arguments go to the connector's
- *    server; it offers every answer, so the user can still set a mode.
- *    A Besidka read skips both: its arguments stay inside Besidka.
- * 6. Always allow (a Besidka tool set to Allow, or a connector "always"
- *    grant whose connector id, tool name and definition hash match, the
- *    default of a plain connector read included): no approval.
+ * 6. Always allow: a Besidka tool set to Allow, or a connector "always"
+ *    grant whose connector id, tool name and definition hash match (the
+ *    default of a plain connector read included): no approval. A default
+ *    grant (`isAlwaysGrantDefault`) never lifts the always-ask tier; only
+ *    the user's own choice does.
  * 7. Chat grant that matches the same way: no approval.
- * 9. Otherwise ask `default`, with every answer offered.
  *
- * Connector and Besidka writes, and the always-ask tier:
+ * An explicit grant wins over every rule below, so a tool the user allowed
+ * runs after untrusted content, after another source and in the always-ask
+ * tier. Accepted risk: cross-connector exfiltration through tools the user
+ * always allowed. A changed definition still asks again, because a grant
+ * matches only its hash.
  *
  * 2. Content from outside the tool's own source (`hasForeignTaint`): ask
- *    `untrusted-output`.
+ *    `untrusted-output`. A Besidka read skips it: its arguments stay inside
+ *    Besidka.
  * 3. A connector call after reading another source (F2): ask
  *    `cross-source`.
  * 5. Always-ask tier: ask `always-ask`.
- * 6. Always allow, 7. chat grant, matched as for reads: no approval.
  * 9. Otherwise ask `default`.
+ *
+ * Every prompt of a connector or Besidka tool offers Allow once, Allow in
+ * this chat and Always allow; native prompts offer Allow once only.
+ *
  * 10. A consent gate (`consentGate`) is decided right after rule 0, before
  *    every other rule: a chat grant that matches its definition hash lets it
  *    run, anything else asks `consent` (`once` or `chat`), whatever the
  *    taint.
  *
- * Grants and Always allow never lift rules 2, 3 and 5 for a write, and a
- * missing hash on either side never matches a grant.
+ * A missing hash on either side never matches a grant.
  */
 export function resolveToolApproval(
   input: ResolveToolApprovalInput,
@@ -470,36 +486,27 @@ export function resolveToolApproval(
   }
 
   const isAlwaysAsk = isAlwaysAskTier(descriptor)
-  const isAlwaysAllowed = !isAlwaysAsk && (
-    (descriptor.family === 'besidka' && input.permissionMode === 'allow')
-    || grantMatches(input.alwaysGrant, descriptor)
+  const isDefaultGrantOnAlwaysAsk = isAlwaysAsk
+    && input.isAlwaysGrantDefault === true
+  const isAlwaysAllowed = (
+    descriptor.family === 'besidka' && input.permissionMode === 'allow'
+  ) || (
+    !isDefaultGrantOnAlwaysAsk && grantMatches(input.alwaysGrant, descriptor)
   )
-  const isChatAllowed = !isAlwaysAsk
-    && grantMatches(input.chatGrant, descriptor)
 
-  if (descriptor.access === 'read' && !isAlwaysAsk) {
-    if (descriptor.family === 'connector') {
-      if (hasForeignTaint(descriptor, state)) {
-        return ask(2, 'untrusted-output', REMEMBER_OPTIONS_BY_REASON.default)
-      }
-
-      if (hasCrossSourceRead(descriptor, state)) {
-        return ask(3, 'cross-source', REMEMBER_OPTIONS_BY_REASON.default)
-      }
-    }
-
-    if (isAlwaysAllowed) {
-      return allowed(6)
-    }
-
-    if (isChatAllowed) {
-      return allowed(7)
-    }
-
-    return ask(9, 'default')
+  if (isAlwaysAllowed) {
+    return allowed(6)
   }
 
-  if (hasForeignTaint(descriptor, state)) {
+  if (grantMatches(input.chatGrant, descriptor)) {
+    return allowed(7)
+  }
+
+  const isBesidkaRead = descriptor.family === 'besidka'
+    && descriptor.access === 'read'
+    && !isAlwaysAsk
+
+  if (!isBesidkaRead && hasForeignTaint(descriptor, state)) {
     return ask(2, 'untrusted-output')
   }
 
@@ -509,14 +516,6 @@ export function resolveToolApproval(
 
   if (isAlwaysAsk) {
     return ask(5, 'always-ask')
-  }
-
-  if (isAlwaysAllowed) {
-    return allowed(6)
-  }
-
-  if (isChatAllowed) {
-    return allowed(7)
   }
 
   return ask(9, 'default')

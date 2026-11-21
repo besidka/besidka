@@ -1,5 +1,6 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { SupportedProviderId } from '#shared/types/providers.d'
+import { RetryError } from 'ai'
 
 const SUMMARY_MAX_LENGTH = 160
 const SERVER_ERROR_MIN_STATUS = 500
@@ -25,6 +26,27 @@ const PROVIDER_NAMES: Record<SupportedProviderId | GatewayId, string> = {
   vercel: 'Vercel AI Gateway',
   cloudflare: 'Cloudflare AI Gateway',
   openrouter: 'OpenRouter',
+}
+
+export interface ProviderErrorDetails {
+  status?: number
+  code?: string
+  attempts?: number
+}
+
+/**
+ * The SDK retries a 408, 409, 429 or 5xx twice and then throws a `RetryError`
+ * ("Failed after 3 attempts. Last error: ...") that has no status of its own;
+ * the provider's `APICallError`, with its status and body, is `lastError`.
+ */
+export function unwrapRetryError(error: unknown): unknown {
+  return RetryError.isInstance(error) ? error.lastError : error
+}
+
+export function getProviderDisplayName(
+  providerId: SupportedProviderId | GatewayId | undefined,
+): string | undefined {
+  return providerId ? PROVIDER_NAMES[providerId] : undefined
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -135,7 +157,7 @@ export function summarizeProviderError(
   error: unknown,
   providerId?: SupportedProviderId | GatewayId,
 ): string | undefined {
-  const record = asRecord(error)
+  const record = asRecord(unwrapRetryError(error))
 
   if (!record) {
     return undefined
@@ -153,8 +175,35 @@ export function summarizeProviderError(
   const message = sanitize(
     readText(providerError.message) ?? readText(record.message) ?? '',
   )
-  const name = providerId ? PROVIDER_NAMES[providerId] : 'The provider'
+  const name = getProviderDisplayName(providerId) ?? 'The provider'
   const head = `${name} returned ${status}${code ? ` ${code}` : ''}`
 
   return truncate(message ? `${head}: ${message}` : head)
+}
+
+/**
+ * The provider's HTTP status, its short error code (`RESOURCE_EXHAUSTED`,
+ * `insufficient_quota`) and the number of attempts the SDK made, for logs.
+ * Only numbers and identifier-shaped codes are read, never message text, so
+ * it is safe for any status, a 400 included.
+ */
+export function readProviderErrorDetails(error: unknown): ProviderErrorDetails {
+  const attempts = RetryError.isInstance(error)
+    ? error.errors.length
+    : undefined
+  const record = asRecord(unwrapRetryError(error))
+
+  if (!record) {
+    return attempts === undefined ? {} : { attempts }
+  }
+
+  const body = parseBody(record)
+  const status = readStatus(record)
+  const code = readErrorCode(asRecord(body.error) ?? body)
+
+  return {
+    ...(status === undefined ? {} : { status }),
+    ...(code ? { code } : {}),
+    ...(attempts === undefined ? {} : { attempts }),
+  }
 }

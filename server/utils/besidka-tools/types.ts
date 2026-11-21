@@ -26,6 +26,7 @@ export interface BesidkaToolContext {
   userId: number
   clientId: string
   scopes: readonly string[]
+  currentChatSlug?: string
   db: ReturnType<typeof useDb>
   logger: LoggerLike
   log: (fields: Record<string, BesidkaToolLogValue>) => void

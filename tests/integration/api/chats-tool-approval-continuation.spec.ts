@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { openai } from '@ai-sdk/openai'
@@ -48,6 +49,8 @@ const mocks = vi.hoisted(() => ({
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
   claims: new Map<string, Record<string, any>>(),
+  expiredClaimIds: [] as string[][],
+  stopMarkerSet: false,
   updates: [] as Array<Record<string, any>>,
   besidkaModes: new Map<string, string>(),
   listMcpProjects: null as null | ((...args: unknown[]) => unknown),
@@ -191,6 +194,16 @@ vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
       return true
     },
     touchClaim: async () => true,
+    expireUnfinishedClaims: async (
+      _db: unknown,
+      approvalIds: readonly string[],
+    ) => {
+      mocks.expiredClaimIds.push([...approvalIds])
+
+      return approvalIds.filter((approvalId) => {
+        return mocks.claims.get(approvalId)?.status === 'claimed'
+      }).length
+    },
   }
 })
 
@@ -564,6 +577,10 @@ function createKv() {
         throw new Error('KV unavailable')
       }
 
+      if (mocks.stopMarkerSet && key.startsWith('chat-generation-stop:')) {
+        return '1'
+      }
+
       return mocks.kv.get(key) ?? null
     }),
     put: vi.fn(async (key: string, value: string) => {
@@ -635,8 +652,9 @@ async function request(input: {
   body: Record<string, unknown>
   steps?: Array<Array<Record<string, unknown>>>
   servers: MockMcpServer[]
+  scripted?: ReturnType<typeof createScriptedModel>
 }): Promise<RequestResult> {
-  const { model, doStream } = createScriptedModel(
+  const { model, doStream } = input.scripted ?? createScriptedModel(
     input.steps ?? [textChunks('Unused.')],
   )
 
@@ -814,6 +832,8 @@ describe('tool approval continuation', () => {
     mocks.memoryWrites = []
     mocks.claims = new Map()
     mocks.updates = []
+    mocks.expiredClaimIds = []
+    mocks.stopMarkerSet = false
     mocks.besidkaModes = new Map()
     mocks.grantCalls = []
     mocks.scriptsRun = null
@@ -1158,6 +1178,33 @@ describe('tool approval continuation', () => {
     expect(mocks.store.settlements).toEqual([
       expect.objectContaining({ callId: 1, outcome: 'ok', approval: 'once' }),
     ])
+  })
+
+  it('ends the claim lease of a continuation the user stopped, and stores '
+    + 'nothing', async () => {
+    const paused = await pauseCreateIssue()
+    const [approvalId] = paused.approvalIds
+    const updatesBefore = mocks.updates.length
+
+    mocks.stopMarkerSet = true
+
+    await answer(paused, [{ approvalId, approved: true }], [
+      textChunks('Created the issue.'),
+    ])
+
+    expect(mocks.expiredClaimIds).toEqual([[approvalId]])
+    expect(mocks.updates).toHaveLength(updatesBefore)
+  })
+
+  it('keeps the claims of a continuation that was not stopped', async () => {
+    const paused = await pauseCreateIssue()
+    const [approvalId] = paused.approvalIds
+
+    await answer(paused, [{ approvalId, approved: true }], [
+      textChunks('Created the issue.'),
+    ])
+
+    expect(mocks.expiredClaimIds).toEqual([])
   })
 
   it('keeps a tool loaded before the pause offered after the approval',
@@ -1585,8 +1632,7 @@ describe('tool approval continuation', () => {
     expect(linear.callCount('tools/call')).toBe(1)
     expect(lastToolMessage(doStream).content[0].output).toEqual({
       type: 'execution-denied',
-      reason: 'This turn reached its limit of approved actions, so the action '
-        + 'did not run.',
+      reason: TOOL_APPROVAL_DENIAL_TEXT['over-cap'],
     })
   })
 
@@ -1681,7 +1727,7 @@ describe('tool approval continuation', () => {
     expect(mocks.claims.size).toBe(0)
   })
 
-  it('asks an Always allow connector read after a requested web search, '
+  it('asks a Needs approval connector read after a requested web search, '
     + 'then withholds web search once the approved read ran', async () => {
     mocks.providerTools = {
       tools: { web_search: openai.tools.webSearch() },
@@ -1705,8 +1751,7 @@ describe('tool approval continuation', () => {
 
     for (const setting of mocks.store.toolSettings) {
       if (setting.toolName === 'list_issues') {
-        setting.approval = 'always'
-        setting.approvedDefinitionHash = setting.definitionHash
+        setting.approval = 'needs-approval'
       }
     }
 
@@ -2038,5 +2083,305 @@ describe('tool approval continuation', () => {
       { approvalId: paused.approvalIds[0], approved: true },
     ])).rejects.toMatchObject({ status: 404 })
     expect(mocks.claims.size).toBe(0)
+  })
+
+  describe('long tool tasks (rounds)', () => {
+    const LIST_ISSUES = 'mcp__linear__list_issues'
+
+    function createWorkingModel() {
+      let callIndex = 0
+      const doStream = vi.fn(async (options: any) => {
+        callIndex += 1
+
+        const isForced = options?.toolChoice?.type === 'none'
+          || !options?.tools?.length
+        const chunks = isForced
+          ? textChunks('Listed some issues, more to go.')
+          : toolCallChunks(`call-${callIndex}`, LIST_ISSUES, {
+            page: callIndex,
+          })
+
+        return { stream: simulateReadableStream({ chunks: chunks as any }) }
+      })
+
+      return { model: new MockLanguageModelV4({ doStream }), doStream }
+    }
+
+    async function continueRound(
+      messageId: string,
+      round: number,
+      steps: Array<Array<Record<string, unknown>>> = [textChunks('Done.')],
+    ) {
+      return await request({
+        servers: [linear],
+        steps,
+        body: { continue: { messageId, round } },
+      })
+    }
+
+    it('ends a reply that ran out of steps with a budget part after a '
+      + 'progress note', async () => {
+      const scripted = createWorkingModel()
+      const { inserts } = await request({
+        servers: [linear],
+        scripted,
+        body: {
+          model: MODEL_ID,
+          tools: [],
+          reasoning: 'off',
+          connectorIds: ['conn-linear'],
+          messages: [{
+            id: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Go through every issue' }],
+          }],
+        },
+      })
+      const assistant = inserts.find(value => value.role === 'assistant')
+      const lastCall = scripted.doStream.mock.calls.at(-1)?.[0] as any
+      const system = JSON.stringify(lastCall?.prompt?.filter((message: any) => {
+        return message.role === 'system'
+      }))
+
+      expect(linear.callCount('tools/call')).toBeGreaterThan(1)
+      expect(system).toContain('The work continues right after this.')
+      expect(assistant?.parts.at(-1)).toEqual({
+        type: 'data-tool-budget',
+        id: 'tool-budget-1',
+        data: {
+          round: 1,
+          maxRounds: 10,
+          reason: 'steps',
+          model: MODEL_ID,
+          gateway: null,
+          reasoning: 'off',
+          connectorIds: ['conn-linear'],
+        },
+      })
+    })
+
+    it('writes no budget part for a reply that answered by itself',
+      async () => {
+        const { inserts } = await request({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-1', LIST_ISSUES, {}),
+            textChunks('One issue.'),
+          ],
+          body: {
+            model: MODEL_ID,
+            tools: [],
+            reasoning: 'off',
+            connectorIds: ['conn-linear'],
+            messages: [{
+              id: USER_MESSAGE_ID,
+              role: 'user',
+              parts: [{ type: 'text', text: 'List issues' }],
+            }],
+          },
+        })
+        const assistant = inserts.find(value => value.role === 'assistant')
+
+        expect(assistant?.parts.some((part: any) => {
+          return part.type === 'data-tool-budget'
+        })).toBe(false)
+      })
+
+    it('refuses a round that is not the next one, after a newer message, '
+      + 'at the round limit, and when the flag is off', async () => {
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Working.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: MODEL_ID,
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+
+      await expect(continueRound('assistant-1', 3))
+        .rejects.toMatchObject({ status: 409, code: 'TOOL_ROUND_STALE' })
+
+      const assistant = mocks.chatMessages[1]!
+
+      assistant.parts[1].data.round = 10
+
+      await expect(continueRound('assistant-1', 11))
+        .rejects.toMatchObject({ status: 400 })
+      await expect(continueRound('assistant-1', 10))
+        .rejects.toMatchObject({ status: 409, code: 'TOOL_ROUND_STALE' })
+
+      assistant.parts[1].data.round = 1
+      mocks.chatMessages.push({
+        id: 'row-user-2',
+        publicId: 'user-2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Newer' }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      })
+
+      await expect(continueRound('assistant-1', 2))
+        .rejects.toMatchObject({ status: 409 })
+
+      mocks.chatMessages.pop()
+      mocks.flags = new Set(['connectors'])
+
+      await expect(continueRound('assistant-1', 2))
+        .rejects.toMatchObject({ status: 404 })
+      expect(mocks.updates).toHaveLength(0)
+    })
+
+    it('runs the next round into the same reply with the continue prompt',
+      async () => {
+        mocks.chatMessages.push(
+          {
+            id: 'row-user',
+            publicId: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Go' }],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+          {
+            id: 'row-assistant',
+            publicId: 'assistant-1',
+            role: 'assistant',
+            parts: [
+              { type: 'step-start' },
+              { type: 'text', text: 'Working on it.' },
+              {
+                type: 'data-tool-budget',
+                id: 'tool-budget-1',
+                data: {
+                  round: 1,
+                  maxRounds: 10,
+                  reason: 'steps',
+                  model: MODEL_ID,
+                  gateway: null,
+                  reasoning: 'off',
+                  connectorIds: ['conn-linear'],
+                },
+              },
+            ],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+        )
+
+        const { doStream } = await continueRound('assistant-1', 2, [
+          textChunks('All issues listed.'),
+        ])
+        const prompt = (doStream.mock.calls[0]?.[0] as any)?.prompt ?? []
+        const lastMessage = prompt.at(-1)
+        const updated = mocks.updates.at(-1)!
+
+        expect(lastMessage).toMatchObject({ role: 'user' })
+        expect(JSON.stringify(lastMessage)).toContain('Continue the task')
+        expect(updated.parts.map((part: any) => part.type)).toEqual([
+          'step-start',
+          'text',
+          'data-tool-budget',
+          'step-start',
+          'text',
+        ])
+        expect(updated.parts.at(-1)).toMatchObject({
+          text: 'All issues listed.',
+        })
+        expect(mocks.claims.get('round-assistant-1-2')).toMatchObject({
+          messagePublicId: 'assistant-1',
+        })
+      })
+
+    it('never runs a round twice: a round that already started is '
+      + 'interrupted', async () => {
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Working.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: MODEL_ID,
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+      mocks.claims.set('round-assistant-1-2', {
+        approvalId: 'round-assistant-1-2',
+        userId: 1,
+        chatPublicId: CHAT_PUBLIC_ID,
+        messagePublicId: 'assistant-1',
+        status: 'claimed',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      await expect(continueRound('assistant-1', 2)).rejects.toMatchObject({
+        status: 409,
+        code: 'TOOL_ROUND_STALE',
+        message: 'This round was interrupted',
+      })
+      expect(mocks.updates).toHaveLength(0)
+    })
   })
 })

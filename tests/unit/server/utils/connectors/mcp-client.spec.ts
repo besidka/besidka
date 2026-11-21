@@ -5,9 +5,11 @@ import {
   CONNECTOR_SSE_SESSION_TIMEOUT_MS,
 } from '#shared/utils/connectors-policy'
 import {
+  closeAfterJsonRpcResponse,
   createConcurrencyLimiter,
   createConnectorClientHandle,
   createConnectorTransportFetch,
+  isSseResponseEvent,
 } from '~~/server/utils/connectors/mcp-client'
 import type { ConnectorClient } from '~~/server/utils/connectors/mcp-client'
 
@@ -104,6 +106,109 @@ describe('connector transport fetch', () => {
         maxResponseBytes: CONNECTOR_SSE_SESSION_MAX_BYTES,
       })
     })
+})
+
+describe('closeAfterJsonRpcResponse', () => {
+  const encoder = new TextEncoder()
+
+  function openStream(chunks: string[], keepsOpen = true) {
+    let canceled = false
+    const queue = [...chunks]
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const next = queue.shift()
+
+        if (next !== undefined) {
+          controller.enqueue(encoder.encode(next))
+
+          return
+        }
+
+        if (!keepsOpen) {
+          controller.close()
+        }
+      },
+      cancel() {
+        canceled = true
+      },
+    })
+
+    return {
+      response: new Response(body, {
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+      isCanceled: () => canceled,
+    }
+  }
+
+  it('recognizes the response event, also in a batch, and nothing else',
+    () => {
+      const response = JSON.stringify({ jsonrpc: '2.0', id: 7, result: {} })
+
+      expect(isSseResponseEvent(`event: message\ndata: ${response}`, 7))
+        .toBe(true)
+      expect(isSseResponseEvent(`data: [${response}]`, 7)).toBe(true)
+      expect(isSseResponseEvent(`data: ${response}`, 8)).toBe(false)
+      expect(isSseResponseEvent(`event: ping\ndata: ${response}`, 7))
+        .toBe(false)
+      expect(isSseResponseEvent(': keep-alive', 7)).toBe(false)
+      expect(isSseResponseEvent(
+        'data: {"jsonrpc":"2.0","method":"notifications/progress"}',
+        7,
+      )).toBe(false)
+    })
+
+  it('ends a stream the server keeps open once the response arrived',
+    async () => {
+      const response = JSON.stringify({ jsonrpc: '2.0', id: 3, result: {} })
+      const progress = JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+      })
+      const stream = openStream([
+        `data: ${progress}\n\n`,
+        `data: ${response.slice(0, 10)}`,
+        `${response.slice(10)}\n\n`,
+      ])
+      const closed = closeAfterJsonRpcResponse(stream.response, 3)
+      const text = await closed.text()
+
+      expect(text).toBe(`data: ${progress}\n\ndata: ${response}\n\n`)
+      expect(stream.isCanceled()).toBe(true)
+    })
+
+  it('finds a CRLF separator split across chunks', async () => {
+    const response = JSON.stringify({ jsonrpc: '2.0', id: 'a1', result: {} })
+    const stream = openStream([
+      `event: message\r\ndata: ${response}\r\n`,
+      '\r\n',
+      'data: never read\r\n\r\n',
+    ])
+    const text = await closeAfterJsonRpcResponse(stream.response, 'a1').text()
+
+    expect(text).toBe(`event: message\r\ndata: ${response}\r\n\r\n`)
+    expect(stream.isCanceled()).toBe(true)
+  })
+
+  it('leaves JSON answers and requests without an id alone', async () => {
+    const json = new Response('{}', {
+      headers: { 'content-type': 'application/json' },
+    })
+
+    expect(closeAfterJsonRpcResponse(json, 1)).toBe(json)
+
+    const safeFetch = vi.fn(async () => openStream(['data: x\n\n'], false).response)
+    const transportFetch = createConnectorTransportFetch(
+      'streamable-http',
+      vi.fn(() => safeFetch as unknown as typeof fetch),
+    )
+    const notification = await transportFetch('https://mcp.example.com/mcp', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/x' }),
+    })
+
+    expect(await notification.text()).toBe('data: x\n\n')
+  })
 })
 
 describe('connector transport fetch logging', () => {

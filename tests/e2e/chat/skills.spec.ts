@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { waitForHydration } from '../helpers/auth'
 import { createSkillByApi, openGrantedMember } from '../helpers/skills'
@@ -7,6 +8,23 @@ test.use({ storageState: { cookies: [], origins: [] } })
 test.describe.configure({ mode: 'serial', timeout: 90_000 })
 
 const STEP_CARD_TIMEOUT = 30_000
+
+/**
+ * Opens the reasoning box once the answer has started: the steps render
+ * only while it is open, and the start of the answer closes it.
+ */
+async function openReasoningSteps(page: Page) {
+  await expect(page.getByText('This is a short response'))
+    .toBeVisible({ timeout: STEP_CARD_TIMEOUT })
+
+  const reasoningBox = page
+    .locator('[data-testid="chat-messages-container"] details')
+    .first()
+
+  if (!await reasoningBox.evaluate(element => element.open)) {
+    await page.getByTestId('reasoning-header').first().click()
+  }
+}
 
 test('a member attaches a skill from + Add skill, reads it and opens it in the editor', async ({ browser }) => {
   const page = await openGrantedMember(browser, 'e2e-chat-skills')
@@ -130,11 +148,13 @@ test('a member runs a skill with /command: pick, highlight, tile, send without t
     + '&regenerate',
   )
   await waitForHydration(page)
+  await openReasoningSteps(page)
   await expect(page.getByTestId('reasoning-skill-step').first())
     .toBeAttached({ timeout: STEP_CARD_TIMEOUT })
 
   await page.reload()
   await waitForHydration(page)
+  await openReasoningSteps(page)
   await expect(page.getByTestId('reasoning-skill-step').first())
     .toBeAttached({ timeout: STEP_CARD_TIMEOUT })
 })
@@ -178,19 +198,9 @@ test('an answer shows the used skill as a reasoning step that opens the preview'
   const stepTitle = page.getByTestId('reasoning-skill-step-title')
 
   await expect(page.getByTestId('skill-step')).toHaveCount(0)
+  await openReasoningSteps(page)
   await expect(page.getByTestId('reasoning-skill-step').first())
     .toBeAttached({ timeout: STEP_CARD_TIMEOUT })
-
-  await expect(page.getByText('This is a short response'))
-    .toBeVisible({ timeout: STEP_CARD_TIMEOUT })
-
-  const reasoningBox = page
-    .locator('[data-testid="chat-messages-container"] details')
-    .first()
-
-  if (!await reasoningBox.evaluate(element => element.open)) {
-    await reasoningBox.locator('summary').first().click()
-  }
 
   await expect(stepTitle.first())
     .toContainText(`Applied skill · ${skillName}`, {

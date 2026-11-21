@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
 import { buildConnectorCallErrorText } from '#shared/utils/connectors-errors'
-import { CONNECTOR_RESULT_MAX_BYTES } from '#shared/utils/connectors-policy'
-import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
+import {
+  CONNECTOR_PERSISTED_OUTPUTS_MAX_BYTES,
+  CONNECTOR_RESULT_MAX_BYTES,
+} from '#shared/utils/connectors-policy'
+import {
+  PERSISTED_OUTPUT_SHORTENED_TEXT,
+  redactConnectorToolPartsForPersistence,
+} from '~~/server/utils/connectors/persist'
 
 function dynamicPart(overrides: Record<string, unknown>) {
   return {
@@ -107,4 +113,42 @@ describe('redactConnectorToolPartsForPersistence call errors', () => {
     expect(part!.errorText).toBe('The connector tool call failed.')
     expect(JSON.stringify(part)).not.toContain('token-secret-1234')
   })
+})
+
+describe('redactConnectorToolPartsForPersistence output budget', () => {
+  function bigPart(index: number, bytes: number) {
+    return {
+      type: 'dynamic-tool',
+      toolName: 'mcp__linear__list_issues',
+      toolCallId: `call-${index}`,
+      state: 'output-available',
+      input: {},
+      output: 'x'.repeat(bytes),
+    } as never
+  }
+
+  it('keeps every output whole while the reply fits the budget', () => {
+    const parts = [bigPart(0, 1000), bigPart(1, 2000)]
+    const persisted = redactConnectorToolPartsForPersistence(parts, [])
+
+    expect(persisted).toEqual(parts)
+  })
+
+  it('shares the budget equally once many large outputs would not fit',
+    () => {
+      const parts = Array.from({ length: 50 }, (_unused, index) => {
+        return bigPart(index, CONNECTOR_RESULT_MAX_BYTES)
+      })
+      const persisted = redactConnectorToolPartsForPersistence(parts, [])
+      const totalBytes = persisted.reduce((sum, part) => {
+        return sum + String((part as { output: string }).output).length
+      }, 0)
+
+      expect(totalBytes).toBeLessThanOrEqual(
+        CONNECTOR_PERSISTED_OUTPUTS_MAX_BYTES
+        + 50 * PERSISTED_OUTPUT_SHORTENED_TEXT.length,
+      )
+      expect((persisted[0] as { output: string }).output)
+        .toMatch(/\[Shortened when the reply was saved\.\]$/)
+    })
 })

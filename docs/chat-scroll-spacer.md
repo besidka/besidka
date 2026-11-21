@@ -1,6 +1,6 @@
 # Chat scroll and spacer behavior
 
-Last updated: October 31, 2026
+Last updated: November 20, 2026
 Scope: `app/composables/chat-scroll-spacer.ts`,
 `app/composables/chat-image-ui.ts`, and `app/components/ChatInput.client.vue`
 
@@ -23,7 +23,7 @@ reasons behind the safeguards that were added.
   - Measures message geometry
   - Computes scroll targets and spacer size
   - Handles hooks: `chat-input:height`, `chat:submit`, `chat:regenerate`,
-    `chat:scroll-to-bottom`
+    `chat:continue`, `chat:scroll-to-bottom`
 - `app/components/ChatInput.client.vue`
   - Detects chat input size using `useElementSize`
   - Emits `chat-input:height`
@@ -207,6 +207,58 @@ box itself (attachment tiles, pasted text chips, the textarea) stay in flow and
 are counted on purpose. Covered by
 `tests/e2e/chat/composer-overlays-spacer.spec.ts`.
 
+## Approval pauses and continuations
+
+A reply that needs a tool approval ends the request ("approval ends the
+send", `docs/connectors.md` section 7.2) and continues in the same
+assistant message after the answer. Until 2026-11-20 the spacer treated
+both halves wrong (reported from production on the iPhone PWA):
+
+- **The pause.** `adjustSpacerAfterResponse()` pinned the user message at
+  the top like any finished turn, so on a tall reply the approval bubble
+  under the message (`Chat/ToolApprovalBubble.vue`) sat below the fold and
+  only the "1 action waiting for approval" pill showed, over the reply's
+  text. A second pause in the same message (after a continuation) did not
+  even run the adjust, because the assistant message id was already in
+  `capturedAssistantMessages`.
+- **The continuation.** It has no new user message, so `chat:submit` and
+  the push never ran, and the message was already captured, so no adjust
+  ran when it finished: the view stayed wherever it was and the new text
+  grew under the composer.
+
+Now:
+
+- `useChat` calls the `chat:continue` hook from `prepareSendMessagesRequest`
+  for every request whose last message is the assistant's (answered
+  approvals, a resend of those answers, an automatic tool round). A normal
+  send and a regenerate end with a user message and never call it.
+- `pinUserMessageForContinuation()` handles the hook: it removes the
+  assistant message id from `capturedAssistantMessages`, measures the last
+  user message again (after a reload it was never captured, since only the
+  last message is measured), and places it like `pushUserMessageToTop()`:
+  scroll target `userTop - 12` (plus the tall-message offset), spacer
+  `max(target - messagesEnd.offsetTop + containerHeight, inputHeight + 12)`,
+  smooth scroll. When the continuation finishes, the regular capture runs
+  `adjustSpacerAfterResponse()`, so the final layout equals a plain send.
+- `adjustSpacerAfterResponse()` ends with `revealApprovalBubble()`: when the
+  container holds `.js-tool-approval-bubble`, it scrolls by the amount the
+  bubble's bottom sits below the composer's top (container bottom minus
+  `inputHeight`, the keyboard inset and 12px), never moving the bubble's
+  top above the container's top.
+- The pill hides while the bubble is on screen (`useToolApprovalBubbleInView`,
+  set by the bubble from scroll, resize and its own size), so it never
+  covers the reply; it shows only when the bubble is scrolled away, as a
+  way back to it.
+
+Covered by `tests/unit/composables/chat-scroll-spacer.spec.ts`
+("continuations and approval pauses") and
+`tests/e2e/chat/approval-scroll.spec.ts` (mobile 390x844 and desktop
+1280x800: the bubble is fully visible and the pill hidden after the pause,
+the pill appears when scrolled away and leads back, the continuation pins
+the user message, and the final layout matches a plain send of the same
+reply within 2px). The spec reuses `tests/e2e/helpers/composer-metrics.ts`
+with `composer-overlays-spacer.spec.ts`.
+
 ## Runtime hook contract (event bus)
 
 Defined in `app/types/runtime-hooks.d.ts`.
@@ -215,6 +267,7 @@ Relevant events:
 - `chat:rendered`
 - `chat:submit`
 - `chat:regenerate`
+- `chat:continue`
 - `chat:scroll-to-bottom`
 - `chat-input:height`
 - `chat-input:visibility-changed`

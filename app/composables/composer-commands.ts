@@ -1,14 +1,19 @@
+import { isBuiltinCommandName } from '#shared/utils/builtin-commands'
+import type { RegisteredBuiltinCommand } from '#shared/utils/builtin-commands'
 import {
   filterComposerCommands,
   findCommandToken,
   findCommandTrigger,
+  getComposerCommandKey,
   shouldBackspaceDeleteToken,
   stripCommandToken,
+  toComposerBuiltinCommand,
 } from '~/utils/composer-command'
 import type {
   CommandToken,
   CommandTrigger,
   ComposerCommand,
+  ComposerSkillCommand,
 } from '~/utils/composer-command'
 import { isImeEvent } from '~/composables/markdown-textarea'
 import type { TextSnapshot } from '~/composables/markdown-textarea'
@@ -21,13 +26,17 @@ interface ComposerCommandsOptions {
   text: Ref<string>
   items: MaybeRefOrGetter<ComposerSkillItem[]>
   isAvailable: MaybeRefOrGetter<boolean>
+  builtins?: MaybeRefOrGetter<readonly RegisteredBuiltinCommand[]>
   insertText: (text: string, snapshot?: TextSnapshot) => void
 }
 
 const LINE_BREAK_INPUT_TYPES = new Set(['insertLineBreak', 'insertParagraph'])
 
-export function toComposerCommand(item: ComposerSkillItem): ComposerCommand {
+export function toComposerCommand(
+  item: ComposerSkillItem,
+): ComposerSkillCommand {
   return {
+    kind: 'skill',
     skillId: item.id,
     command: item.command ?? '',
     name: item.name,
@@ -42,11 +51,17 @@ export function toComposerCommand(item: ComposerSkillItem): ComposerCommand {
  * the token that is highlighted and shown as a tile, Backspace over a token
  * and the stripping of the token at send. The picker never sends: while it is
  * open the keys that would send are taken. Everything here is gated on the
- * `skills.commands` flag and the model supporting skills (`isAvailable`), so
- * with the flag off nothing opens and nothing is highlighted.
+ * `skills.commands` flag. Skill commands also need the model to support
+ * skills (`isAvailable`); built-in commands (`builtins`, already filtered to
+ * the ones the user can run) are listed with them and marked Built-in. A
+ * skill that already holds the name of a built-in (it was created before the
+ * name was reserved) is not offered under it: the built-in wins, in the
+ * picker and for the typed token. With the flag off nothing opens and nothing
+ * is highlighted.
  */
 export function useComposerCommands(options: ComposerCommandsOptions) {
   const invocation = useComposerSkillInvocation()
+  const builtinCommand = useComposerBuiltinCommand()
   const commandsFeature = useFeature('skills.commands')
 
   const trigger = shallowRef<CommandTrigger | null>(null)
@@ -54,8 +69,17 @@ export function useComposerCommands(options: ComposerCommandsOptions) {
   const dismissedStart = shallowRef<number | null>(null)
   const isComposing = shallowRef<boolean>(false)
 
-  const isEnabled = computed<boolean>(() => {
+  const builtinCommands = computed<ComposerCommand[]>(() => {
+    return (toValue(options.builtins) ?? []).map(toComposerBuiltinCommand)
+  })
+
+  const isSkillCommandsEnabled = computed<boolean>(() => {
     return commandsFeature.value.active && toValue(options.isAvailable)
+  })
+
+  const isEnabled = computed<boolean>(() => {
+    return isSkillCommandsEnabled.value
+      || (commandsFeature.value.active && builtinCommands.value.length > 0)
   })
 
   const commands = computed<ComposerCommand[]>(() => {
@@ -63,11 +87,17 @@ export function useComposerCommands(options: ComposerCommandsOptions) {
       return []
     }
 
-    return toValue(options.items)
-      .filter((item) => {
-        return item.command !== null && item.mode !== 'off'
-      })
-      .map(toComposerCommand)
+    const skillCommands = isSkillCommandsEnabled.value
+      ? toValue(options.items)
+        .filter((item) => {
+          return item.command !== null
+            && item.mode !== 'off'
+            && !isBuiltinCommandName(item.command)
+        })
+        .map(toComposerCommand)
+      : []
+
+    return [...skillCommands, ...builtinCommands.value]
       .sort((first, second) => {
         return first.command.localeCompare(second.command)
       })
@@ -123,14 +153,21 @@ export function useComposerCommands(options: ComposerCommandsOptions) {
   })
 
   const activeToken = computed<CommandToken | null>(() => {
+    const command = tokenCommand.value
+
+    if (!token.value || !command) {
+      return null
+    }
+
+    if (command.kind === 'builtin') {
+      return builtinCommand.command.value === command.command
+        ? token.value
+        : null
+    }
+
     const current = invocation.invocation.value
 
-    if (
-      !token.value
-      || !tokenCommand.value
-      || current?.source !== 'text'
-      || current.skillId !== tokenCommand.value.skillId
-    ) {
+    if (current?.source !== 'text' || current.skillId !== command.skillId) {
       return null
     }
 
@@ -349,9 +386,18 @@ export function useComposerCommands(options: ComposerCommandsOptions) {
   }
 
   watch(
-    () => tokenCommand.value?.skillId ?? null,
+    () => tokenCommand.value ? getComposerCommandKey(tokenCommand.value) : null,
     () => {
       const command = tokenCommand.value
+
+      if (command?.kind === 'builtin') {
+        builtinCommand.set(command.command)
+        invocation.clear()
+
+        return
+      }
+
+      builtinCommand.clear()
 
       if (command) {
         const current = invocation.invocation.value

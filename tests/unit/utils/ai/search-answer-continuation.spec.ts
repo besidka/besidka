@@ -115,6 +115,7 @@ function createGuarantee(input: {
   settle?: () => Promise<any>
   settleUsage?: () => Promise<any>
   buildFinishMessageMetadata?: () => unknown
+  isRunStopped?: () => boolean | Promise<boolean>
 }) {
   const startContinuation = vi.fn(() => ({
     stream: input.continuationStream
@@ -133,6 +134,7 @@ function createGuarantee(input: {
     stream: createStream(input.chunks),
     followUpToolNames: new Set([SEARCH_TOOL_NAME]),
     forcedStepIndex: FORCED_STEP_INDEX,
+    isRunStopped: input.isRunStopped,
     startContinuation,
     buildFinishMessageMetadata,
   })
@@ -1386,6 +1388,24 @@ describe('hasVisibleTextAfterLastFollowUpTool', () => {
 })
 
 describe('withSearchAnswerGuarantee', () => {
+  it('runs no continuation for a run the user stopped', async () => {
+    const isRunStopped = vi.fn(async () => true)
+    const { guarantee, startContinuation } = createGuarantee({
+      chunks: [
+        ...createSearchStepChunks('call-1'),
+        { type: 'finish', finishReason: 'stop' },
+      ],
+      continuationChunks: createTextChunks('Should not stream'),
+      isRunStopped,
+    })
+
+    await readAll(guarantee.stream)
+
+    expect(isRunStopped).toHaveBeenCalledOnce()
+    expect(startContinuation).not.toHaveBeenCalled()
+    expect(guarantee.getOutcome().continuationRan).toBe(false)
+  })
+
   it('runs no continuation when the turn ends waiting for an approval',
     async () => {
       const finish: UIMessageChunk = {

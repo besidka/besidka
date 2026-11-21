@@ -207,7 +207,7 @@ describe('Profile/Keys/ProviderKeyCard', () => {
     const defaultFetch = mocks.fetch.getMockImplementation()!
 
     mocks.fetch.mockImplementation((url: string, options?: unknown) => {
-      if (url === '/api/v1/profiles/keys/anthropic/uploads') {
+      if (url === '/api/v1/profiles/keys/anthropic/skill-copies') {
         return Promise.resolve({
           skills: [
             { skillId: 'a', name: 'data-report' },

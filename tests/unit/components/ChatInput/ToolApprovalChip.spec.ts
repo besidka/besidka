@@ -2,7 +2,10 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 import { computed, nextTick, shallowRef } from 'vue'
 import type { ToolApprovalController } from '~/composables/tool-approvals'
-import { TOOL_APPROVAL_CONTROLLER_KEY } from '~/composables/tool-approvals'
+import {
+  TOOL_APPROVAL_CONTROLLER_KEY,
+  useToolApprovalBubbleInView,
+} from '~/composables/tool-approvals'
 import ToolApprovalChip from '../../../../app/components/ChatInput/ToolApprovalChip.vue'
 
 function createController(
@@ -26,6 +29,7 @@ function createController(
     change: vi.fn(),
     askAgain: vi.fn(async () => {}),
     focusFirstPending: vi.fn(),
+    focusApproval: vi.fn(),
   }
 }
 
@@ -54,6 +58,23 @@ describe('ChatInput/ToolApprovalChip', () => {
 
     expect(wrapper.get(CHIP).text()).toBe('3 actions waiting for approval')
   })
+
+  it('hides while the approval bubble is on screen, keeping the live region',
+    async () => {
+      const isBubbleInView = useToolApprovalBubbleInView()
+      const wrapper = await mountChip(createController(['approval-1']))
+
+      isBubbleInView.value = true
+      await nextTick()
+
+      expect(wrapper.find(CHIP).exists()).toBe(false)
+      expect(wrapper.get(LIVE).text()).toBe('Action waiting for approval')
+
+      isBubbleInView.value = false
+      await nextTick()
+
+      expect(wrapper.find(CHIP).exists()).toBe(true)
+    })
 
   it('focuses the first waiting step on click', async () => {
     const controller = createController(['approval-1'])

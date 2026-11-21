@@ -109,7 +109,7 @@ function besidkaCallParts(): UIMessage['parts'] {
         toolName: 'besidka__delete_chats',
         reason: 'always-ask',
         summary: `Delete 2 chats: ${BESIDKA_DRAFT_SLUGS.join(', ')}`,
-        rememberOptions: ['once'],
+        rememberOptions: ['once', 'chat', 'always'],
       },
     },
   ] as unknown as UIMessage['parts']
@@ -117,7 +117,8 @@ function besidkaCallParts(): UIMessage['parts'] {
 
 /**
  * The `besidka-tool-approval` test chat: a Besidka read that ran under
- * Always allow, then a Besidka delete waiting for Allow once or Deny.
+ * Always allow, then a Besidka delete waiting for an answer (every
+ * remember option since the owner decision of 2026-11-20).
  */
 export function buildTestBesidkaToolApprovalMessages(scenarioKey: string) {
   return [

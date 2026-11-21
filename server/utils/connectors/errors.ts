@@ -160,7 +160,7 @@ export const CONNECTOR_ERRORS = {
   CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED: {
     message: 'This tool cannot be set to Always allow',
     status: 400,
-    why: 'It deletes or shares data, or it changed since you reviewed it',
+    why: 'It changed since you reviewed it, or the service no longer lists it',
     fix: 'Keep it on Needs approval, or review the changed tools first',
   },
   CONNECTOR_TOOL_NOT_FOUND: {

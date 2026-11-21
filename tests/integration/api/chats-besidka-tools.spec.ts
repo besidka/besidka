@@ -606,6 +606,7 @@ describe('Besidka tools in the chat send', () => {
       'list_shared_chats', 'list_projects', 'get_project',
       'read_project_knowledge_item', 'list_files', 'read_file',
       'get_settings', 'list_my_features', 'list_artifacts', 'get_artifact',
+      'get_debug_info', 'get_chat_cost', 'get_usage_stats',
       'list_artifact_shares', 'update_chat', 'move_chats_to_project',
       'branch_chat', 'create_project', 'update_project',
       'update_project_knowledge_item', 'create_file', 'rename_file',
@@ -794,7 +795,7 @@ describe('Besidka tools in the chat send', () => {
       })
     })
 
-  it('asks Allow once or Deny only before a delete', async () => {
+  it('asks before a delete with every answer offered', async () => {
     setModes({ delete_chats: 'ask' })
 
     const { assistantInsert } = await runSend({
@@ -811,7 +812,7 @@ describe('Besidka tools in the chat send', () => {
         data: {
           reason: 'always-ask',
           summary: `Delete 1 chat: ${OTHER_SLUG}`,
-          rememberOptions: ['once'],
+          rememberOptions: ['once', 'chat', 'always'],
         },
       })
   })
@@ -860,9 +861,9 @@ describe('Besidka tools in the chat send', () => {
       })
     })
 
-  it('asks Allow once only before an Always allow write after web content '
-    + 'and an earlier Besidka answer', async () => {
-    setModes({ list_projects: 'allow', rename_file: 'allow' })
+  it('asks before a Needs approval write after web content and an earlier '
+    + 'Besidka answer, with every answer offered', async () => {
+    setModes({ list_projects: 'allow', rename_file: 'ask' })
     mocks.chatMessages = [{
       id: 'row-old',
       publicId: 'old-assistant',
@@ -901,9 +902,31 @@ describe('Besidka tools in the chat send', () => {
         data: {
           toolCallId: 'call-2',
           reason: 'untrusted-output',
-          rememberOptions: ['once'],
+          rememberOptions: ['once', 'chat', 'always'],
         },
       })
+  })
+
+  it('runs an Always allow write after web content (owner decision, '
+    + '2026-11-20)', async () => {
+    setModes({ list_projects: 'allow', rename_file: 'allow' })
+
+    const { assistantInsert } = await runSend({
+      tools: ['web_search'],
+      steps: [
+        toolCallChunks('call-1', 'besidka__list_projects', {}),
+        toolCallChunks('call-2', 'besidka__rename_file', {
+          fileId: 'f1',
+          name: 'notes.txt',
+        }),
+        textChunks('Renamed.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+    expect(findPart(parts, 'tool-besidka__rename_file')?.state)
+      .not.toBe('approval-requested')
   })
 
   it('offers 24 tools at most, read first, with no notice in the chat',
@@ -916,7 +939,8 @@ describe('Besidka tools in the chat send', () => {
       expect(names).toHaveLength(24)
       expect(names).toContain('besidka__rename_file')
       expect(names).toContain('besidka__list_projects')
-      expect(names).toContain('besidka__delete_chats')
+      expect(names).toContain('besidka__add_project_note')
+      expect(names).not.toContain('besidka__delete_chat_message')
       expect(noticeLines()).toEqual([])
     })
 
@@ -1002,7 +1026,10 @@ describe('Besidka tools in the chat send', () => {
       .toBeLessThan(system.indexOf('Tools whose names start with besidka__'))
     expect(findPart(assistantInsert?.parts ?? [], TOOL_APPROVAL_DATA_PART_TYPE))
       .toMatchObject({
-        data: { reason: 'always-ask', rememberOptions: ['once'] },
+        data: {
+          reason: 'always-ask',
+          rememberOptions: ['once', 'chat', 'always'],
+        },
       })
   })
 
@@ -1041,7 +1068,10 @@ describe('Besidka tools in the chat send', () => {
       .toContain('besidka__delete_files')
     expect(findPart(assistantInsert?.parts ?? [], TOOL_APPROVAL_DATA_PART_TYPE))
       .toMatchObject({
-        data: { reason: 'always-ask', rememberOptions: ['once'] },
+        data: {
+          reason: 'always-ask',
+          rememberOptions: ['once', 'chat', 'always'],
+        },
       })
     expect(noticeLines()).toEqual([])
   })

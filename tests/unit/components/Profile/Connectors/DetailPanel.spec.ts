@@ -143,28 +143,36 @@ describe('Profile/Connectors/DetailPanel', () => {
       .toContain('2 of 2 on')
   })
 
-  it('keeps the always-ask tier in a locked group without Always allow',
+  it('lets the delete and share group take Always allow, with a warning',
     async () => {
       const wrapper = await mountPanel()
       const group = wrapper.get(
-        '[data-testid="tool-permissions-group-always-asks"]',
+        '[data-testid="tool-permissions-group-delete-share"]',
       )
 
-      expect(group.text()).toContain('Always asks')
-      expect(group.get('[data-testid="tool-permissions-group-select-always-asks"]')
+      expect(group.text()).toContain('Delete and share')
+      expect(group.find('[data-testid="tool-permissions-group-warning-'
+        + 'delete-share"]').text()).toContain('without asking you')
+      expect(group.get('[data-testid="tool-permissions-group-select-'
+        + 'delete-share"]')
         .findAll('option')
         .map(option => option.text()))
-        .toEqual(['Blocked', 'Needs approval'])
+        .toEqual(['Blocked', 'Needs approval', 'Always allow'])
+      expect(wrapper.find('[data-testid="tool-permissions-group-warning-'
+        + 'write"]').exists()).toBe(false)
 
       const allow = toolRow(wrapper, 'delete_issue')
         .get('[data-testid="tool-permission-option-allow"]')
 
-      expect(allow.attributes('aria-disabled')).toBe('true')
+      expect(allow.attributes('aria-disabled')).toBe('false')
 
       await allow.trigger('click')
       await flushPromises()
 
-      expect(callsTo('/tools/settings')).toHaveLength(0)
+      expect(callsTo('/tools/settings')[0]?.[1]).toEqual({
+        method: 'POST',
+        body: { tools: [{ name: 'delete_issue', mode: 'allow' }] },
+      })
     })
 
   it('sets a group to Always allow for every tool that takes it',

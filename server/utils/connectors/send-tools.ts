@@ -4,6 +4,7 @@ import type { ToolSet } from 'ai'
 import { createError } from 'evlog'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
+  CONNECTOR_CALL_PACING_MAX_WAIT_MS,
   CONNECTOR_CALL_TIMEOUT_MS,
   CONNECTOR_IMAGE_CALLS_IN_FLIGHT,
   CONNECTOR_CALLS_PER_TURN,
@@ -22,8 +23,8 @@ import {
   CONNECTOR_APPROVAL_DENIAL_TEXT,
   CONNECTOR_CALL_LIMIT_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
-  CONNECTOR_RATE_LIMIT_TEXT,
   CONNECTOR_UNAPPROVED_CALL_TEXT,
+  buildConnectorRateLimitText,
 } from '#shared/utils/connectors-parts'
 import {
   CONNECTOR_CALL_ERROR_LOG_MAX,
@@ -157,10 +158,18 @@ const CONNECTOR_FAILURE_INSTRUCTIONS = [
   'its reference, so they can give it to support.',
 ]
 
+const CONNECTOR_PACING_INSTRUCTIONS = [
+  'Call connector tools one at a time, or a few at once when they do not',
+  'depend on each other; Besidka runs at most three at once. If a tool',
+  'answers that a limit was reached, follow what it says instead of',
+  'retrying at once.',
+]
+
 export const CONNECTOR_INSTRUCTIONS = [
   ...CONNECTOR_TRUST_INSTRUCTIONS,
   'If a tool answers that it needs approval, tell the user it cannot run yet.',
   ...CONNECTOR_FAILURE_INSTRUCTIONS,
+  ...CONNECTOR_PACING_INSTRUCTIONS,
 ].join(' ')
 
 export const CONNECTOR_APPROVAL_INSTRUCTIONS = [
@@ -169,6 +178,7 @@ export const CONNECTOR_APPROVAL_INSTRUCTIONS = [
   'the user, so do not ask again in your answer. If a tool answers that the',
   'call was not approved, tell the user it did not run.',
   ...CONNECTOR_FAILURE_INSTRUCTIONS,
+  ...CONNECTOR_PACING_INSTRUCTIONS,
 ].join(' ')
 
 export const CONNECTOR_TOOL_CHANGED_TEXT = 'This tool changed on the '
@@ -386,6 +396,90 @@ export function untilDeadline<Result>(
   signal: AbortSignal,
 ): Promise<Result> {
   return Promise.race([task, rejectWhenAborted(signal)])
+}
+
+/**
+ * Waits `delayMs`, or less when the signal aborts first. True when the wait
+ * ran out, false when it was aborted.
+ */
+function waitUnlessAborted(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) {
+    return Promise.resolve(false)
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve(true)
+    }, delayMs)
+
+    function onAbort() {
+      clearTimeout(timer)
+      resolve(false)
+    }
+
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/**
+ * Settles with `task`, or rejects with `onAbort()` as soon as the signal
+ * aborts. The AI SDK's tool timeout only aborts the signal it hands to
+ * `execute`; it still awaits the promise, so a call stuck before its remote
+ * request (a full concurrency queue, a slow KV count, a verify) would hold
+ * the whole tool loop. The task itself keeps its own deadlines.
+ */
+export function settleOnAbort<Result>(
+  task: Promise<Result>,
+  signal: AbortSignal | undefined,
+  onAbort: () => Error,
+): Promise<Result> {
+  if (!signal) {
+    return task
+  }
+
+  if (signal.aborted) {
+    task.catch(() => undefined)
+
+    return Promise.reject(onAbort())
+  }
+
+  return new Promise<Result>((resolve, reject) => {
+    function abort() {
+      task.catch(() => undefined)
+      reject(onAbort())
+    }
+
+    signal.addEventListener('abort', abort, { once: true })
+    task.then((result) => {
+      signal.removeEventListener('abort', abort)
+      resolve(result)
+    }, (exception) => {
+      signal.removeEventListener('abort', abort)
+      reject(exception)
+    })
+  })
+}
+
+/**
+ * Stops a call whose tool signal aborted while it waited (in the
+ * concurrency queue, a per-minute pause, a verify), before it uses its
+ * clearance, counts or connects. `settleOnAbort` already answered the model,
+ * so nothing is recorded for it.
+ */
+function throwIfCanceled(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) {
+    return
+  }
+
+  throw createError({
+    message: 'The connector call was canceled',
+    status: 499,
+    why: 'The tool timed out before the call started',
+  })
 }
 
 async function waitAtMost(
@@ -1310,10 +1404,101 @@ export async function getConnectorTools(
         args: unknown,
         options?: { abortSignal?: AbortSignal, toolCallId?: string },
       ) => {
-        return callLimiter.run(() => {
-          return executeCall(candidate, exposedName, args, options)
-        })
+        return settleOnAbort(
+          callLimiter.run(() => {
+            return executeCall(candidate, exposedName, args, options)
+          }),
+          options?.abortSignal,
+          () => {
+            logCallRecord({
+              candidate,
+              outcome: 'timeout',
+              startedAt: now(),
+              category: 'timeout',
+            })
+
+            return createCallFailureError('timeout', registerCallFailure({
+              step: 'call',
+              candidate,
+              category: 'timeout',
+              toolCallId: options?.toolCallId,
+            }))
+          },
+        )
       }
+    }
+
+    /**
+     * Counts the call against the per-minute limits. Over a limit that
+     * frees up within `CONNECTOR_CALL_PACING_MAX_WAIT_MS`, it waits and
+     * counts once more instead of refusing; otherwise it returns the
+     * refusal, which tells the model how long to wait. A KV failure is
+     * logged apart from a limit and lets the call run.
+     */
+    async function paceCall(
+      candidate: Candidate,
+      signal: AbortSignal | undefined,
+    ): Promise<string | null> {
+      const first = await limitCalls(userId, candidate.connector.id)
+
+      if (first.status === 'allowed') {
+        return null
+      }
+
+      if (first.status === 'kv-error') {
+        logger.set({
+          attributes: {
+            connectors: { callLimit: { kvError: first.error } },
+          },
+        })
+
+        return null
+      }
+
+      const waitMs = first.retryAfterSeconds * 1000
+
+      if (
+        waitMs > CONNECTOR_CALL_PACING_MAX_WAIT_MS
+        || !await waitUnlessAborted(waitMs, signal)
+      ) {
+        logger.set({
+          attributes: {
+            connectors: {
+              callLimit: {
+                limited: first.scope,
+                retryAfterSeconds: first.retryAfterSeconds,
+              },
+            },
+          },
+        })
+
+        return buildConnectorRateLimitText(first.retryAfterSeconds)
+      }
+
+      logger.set({
+        attributes: {
+          connectors: { callLimit: { paced: first.scope, waitedMs: waitMs } },
+        },
+      })
+
+      const second = await limitCalls(userId, candidate.connector.id)
+
+      if (second.status === 'limited') {
+        logger.set({
+          attributes: {
+            connectors: {
+              callLimit: {
+                limited: second.scope,
+                retryAfterSeconds: second.retryAfterSeconds,
+              },
+            },
+          },
+        })
+
+        return buildConnectorRateLimitText(second.retryAfterSeconds)
+      }
+
+      return null
     }
 
     function findRefusal(
@@ -1510,6 +1695,8 @@ export async function getConnectorTools(
         return text
       }
 
+      throwIfCanceled(options?.abortSignal)
+
       const refusal = findRefusal(candidate, {
         toolCallId,
         toolName: exposedName,
@@ -1526,9 +1713,13 @@ export async function getConnectorTools(
 
       callsThisTurn += 1
 
-      if (!await limitCalls(userId, candidate.connector.id)) {
-        return await deny(CONNECTOR_RATE_LIMIT_TEXT)
+      const paceRefusal = await paceCall(candidate, options?.abortSignal)
+
+      if (paceRefusal) {
+        return await deny(paceRefusal)
       }
+
+      throwIfCanceled(options?.abortSignal)
 
       if (candidate.verify) {
         let isCurrent: boolean
@@ -1593,6 +1784,8 @@ export async function getConnectorTools(
 
           return `${CONNECTOR_TOOL_CHANGED_TEXT} Reference: ${reference}.`
         }
+
+        throwIfCanceled(options?.abortSignal)
       }
 
       if (input.guard) {

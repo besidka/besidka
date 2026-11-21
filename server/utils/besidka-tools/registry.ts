@@ -27,10 +27,13 @@ import { deleteProjectKnowledgeItemsBesidkaTool } from '~~/server/utils/besidka-
 import { deleteSkillsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-skills'
 import { getArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-artifact'
 import { getChatBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-chat'
+import { getChatCostBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-chat-cost'
 import { getConnectorBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-connector'
+import { getDebugInfoBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-debug-info'
 import { getProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-project'
 import { getSettingsBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-settings'
 import { getSkillBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-skill'
+import { getUsageStatsBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-usage-stats'
 import { listArtifactSharesBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-artifact-shares'
 import { listArtifactsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-artifacts'
 import { listChatsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-chats'
@@ -87,10 +90,13 @@ export const BESIDKA_TOOLS = {
   delete_skills: deleteSkillsBesidkaTool,
   get_artifact: getArtifactBesidkaTool,
   get_chat: getChatBesidkaTool,
+  get_chat_cost: getChatCostBesidkaTool,
   get_connector: getConnectorBesidkaTool,
+  get_debug_info: getDebugInfoBesidkaTool,
   get_project: getProjectBesidkaTool,
   get_settings: getSettingsBesidkaTool,
   get_skill: getSkillBesidkaTool,
+  get_usage_stats: getUsageStatsBesidkaTool,
   list_artifact_shares: listArtifactSharesBesidkaTool,
   list_artifacts: listArtifactsBesidkaTool,
   list_chats: listChatsBesidkaTool,

@@ -173,6 +173,10 @@ nothing. This reverses an erasure the user asked for.
 Ledger: the deletion wide event sets `accountPurge.phase = 'completed'` with
 `accountPurge.userId` (`server/utils/account/purge-user-data.ts`).
 
+The purge also deletes the user's cached `/stats` numbers in KV
+(`usage-stats:<userId>:7d|30d|all`, `invalidateUsageStatsCache`, best effort:
+a failure is logged and the entries expire within the hour on their own).
+
 ## Shares
 
 Revoking a share deletes the `chat_shares` row (cascading

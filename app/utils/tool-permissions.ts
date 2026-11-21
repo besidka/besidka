@@ -14,7 +14,7 @@ export interface ToolPermissionGroup {
   id: string
   label: string
   description?: string
-  isLocked?: boolean
+  warning?: string
   tools: ToolPermissionItem[]
 }
 
@@ -86,7 +86,7 @@ export function getGroupSelectableModes(
 /**
  * What a group select applies: the mode for every tool of the group that
  * allows it and does not already have it. A tool that cannot take the mode
- * (Always allow on a tool that deletes or shares data) keeps its own.
+ * (Always allow on a tool that changed since it was reviewed) keeps its own.
  */
 export function getGroupModeChanges(
   tools: readonly ToolPermissionItem[],

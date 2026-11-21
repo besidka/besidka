@@ -26,7 +26,6 @@ import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
-import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -66,7 +65,6 @@ async function chatGrantItems(
     if (
       Object.hasOwn(alwaysAllowTools, exposedName)
       && alwaysAllowTools[exposedName] === setting.definitionHash
-      && !hasAlwaysAskToolName(setting.toolName)
     ) {
       items.push(grantItem('chat', connector, setting.toolName))
     }
@@ -83,7 +81,6 @@ function alwaysGrantItems(
     .filter((setting) => {
       return setting.approval === 'always'
         && setting.approvedDefinitionHash === setting.definitionHash
-        && !hasAlwaysAskToolName(setting.toolName)
     })
     .map(setting => grantItem('always', connector, setting.toolName))
 }
@@ -132,11 +129,9 @@ async function listBesidkaGrantItems(
     const chatHash = Object.hasOwn(settings.alwaysAllowTools, exposedName)
       ? settings.alwaysAllowTools[exposedName]
       : null
-    const isAskEveryTime = besidkaTool.chat.tier === 'ask-every-time'
 
     if (
       chatHash
-      && !isAskEveryTime
       && chatHash === await hashBesidkaChatTool(besidkaTool)
     ) {
       items.push(besidkaGrantItem('chat', besidkaTool.name))

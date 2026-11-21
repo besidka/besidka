@@ -26,6 +26,7 @@ import {
   isPersistedOversizedResponseFailureText,
 } from '#shared/utils/chat-failure-text'
 import { isOfficeMediaType } from '#shared/utils/office-files'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   CARRIED_FILES_MAX_BYTES,
@@ -83,6 +84,11 @@ export function sanitizeMessagesForModelContext(
   return buildModelContextMessages(messages, options).messages
 }
 
+/**
+ * The messages a model sees, text and carried files only. The messages of a
+ * built-in command (the user's `/cost` and the report Besidka wrote back)
+ * never reach a model, so a later turn cannot read a report as its own.
+ */
 export function buildModelContextMessages(
   messages: UIMessage[],
   options: ModelContextFileOptions = {},
@@ -97,6 +103,10 @@ export function buildModelContextMessages(
   for (const message of messages) {
     if (!Array.isArray(message.parts)) {
       sanitizedMessages.push(message)
+      continue
+    }
+
+    if (isBuiltinCommandMessage(message)) {
       continue
     }
 

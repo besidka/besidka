@@ -7,7 +7,8 @@
       {{ enabledCount }} of {{ tools.length }} on. A message can use up to
       {{ perMessageLimit }} tools from all connectors; read-only tools go
       first. Labels are as reported by the server. Needs approval asks before
-      each use; Always allow runs without asking.
+      each use; Always allow runs without asking, also after content from
+      another source. A tool that changes asks again.
     </p>
     <UiToolPermissions
       v-if="tools.length"
@@ -72,38 +73,41 @@ import type {
   ToolPermissionGroup,
 } from '~/utils/tool-permissions'
 
-type ConnectorToolGroupId = 'read' | 'write' | 'always-asks'
+type ConnectorToolGroupId = 'read' | 'write' | 'delete-share'
 
 const DESCRIPTION_PREVIEW_LENGTH = 140
 
 const ALL_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask', 'allow']
 
-const ALWAYS_ASK_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask']
+const UNREVIEWED_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask']
 
-const ALWAYS_ASK_HINT = 'this tool deletes or shares data, so it always asks'
+const UNREVIEWED_HINT = 'this tool changed, so review it before you '
+  + 'allow it'
 
 const GROUPS: ReadonlyArray<{
   id: ConnectorToolGroupId
   label: string
   description: string
+  warning?: string
 }> = [
   {
     id: 'read',
     label: 'Read-only',
-    description: 'Look things up. A plain read is Always allow by default; '
-      + 'it still asks after content from another source.',
+    description: 'Look things up. A plain read is Always allow by default.',
   },
   {
     id: 'write',
     label: 'Write',
-    description: 'Create or change data. Even with Always allow, they ask '
-      + 'after content from another source.',
+    description: 'Create or change data. They ask until you choose Always '
+      + 'allow.',
   },
   {
-    id: 'always-asks',
-    label: 'Always asks',
+    id: 'delete-share',
+    label: 'Delete and share',
     description: 'Delete or share data, by the server\'s label or the tool\'s '
-      + 'name. They ask before every use.',
+      + 'name. They ask until you choose Always allow.',
+    warning: 'Always allow lets the model delete or share data without '
+      + 'asking you.',
   },
 ]
 
@@ -130,8 +134,8 @@ const toolsByName = computed<Map<string, ConnectorReviewTool>>(() => {
 })
 
 function groupOf(tool: ConnectorReviewTool): ConnectorToolGroupId {
-  if (tool.alwaysAsk || !tool.canAlwaysAllow) {
-    return 'always-asks'
+  if (tool.alwaysAsk) {
+    return 'delete-share'
   }
 
   return tool.readOnly ? 'read' : 'write'
@@ -139,11 +143,8 @@ function groupOf(tool: ConnectorReviewTool): ConnectorToolGroupId {
 
 const groups = computed<ToolPermissionGroup[]>(() => {
   return GROUPS.map((group) => {
-    const isLocked = group.id === 'always-asks'
-
     return {
       ...group,
-      isLocked,
       tools: props.tools
         .filter(tool => groupOf(tool) === group.id)
         .map((tool) => {
@@ -151,8 +152,10 @@ const groups = computed<ToolPermissionGroup[]>(() => {
             name: tool.name,
             title: tool.title || tool.name,
             mode: tool.mode,
-            modes: isLocked ? ALWAYS_ASK_MODES : ALL_MODES,
-            ...(isLocked ? { unavailableHint: ALWAYS_ASK_HINT } : {}),
+            modes: tool.canAlwaysAllow ? ALL_MODES : UNREVIEWED_MODES,
+            ...(tool.canAlwaysAllow
+              ? {}
+              : { unavailableHint: UNREVIEWED_HINT }),
           }
         }),
     }

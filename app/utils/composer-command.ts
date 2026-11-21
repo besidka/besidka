@@ -1,15 +1,31 @@
+import type {
+  BuiltinCommandName,
+  RegisteredBuiltinCommand,
+} from '#shared/utils/builtin-commands'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import { advanceFence } from '~/composables/markdown-textarea'
 import type { OpenFence } from '~/composables/markdown-textarea'
 
-export interface ComposerCommand {
-  skillId: string
+interface ComposerCommandBase {
   command: string
   name: string
   description: string
+}
+
+export interface ComposerSkillCommand extends ComposerCommandBase {
+  kind: 'skill'
+  skillId: string
   version: number
   mode: SkillMode
 }
+
+export interface ComposerBuiltinCommand extends ComposerCommandBase {
+  kind: 'builtin'
+  command: BuiltinCommandName
+  argumentHint: string | null
+}
+
+export type ComposerCommand = ComposerSkillCommand | ComposerBuiltinCommand
 
 export interface CommandTrigger {
   start: number
@@ -217,4 +233,26 @@ export function shouldBackspaceDeleteToken(
   return token !== null
     && selectionStart === selectionEnd
     && selectionStart === token.end
+}
+
+export function toComposerBuiltinCommand(
+  command: RegisteredBuiltinCommand,
+): ComposerBuiltinCommand {
+  return {
+    kind: 'builtin',
+    command: command.name,
+    name: command.title,
+    description: command.description,
+    argumentHint: command.argumentHint,
+  }
+}
+
+/**
+ * A stable id for the command a token or a pick stands for: a skill command
+ * by its skill, a built-in by its name.
+ */
+export function getComposerCommandKey(command: ComposerCommand): string {
+  return command.kind === 'skill'
+    ? `skill:${command.skillId}`
+    : `builtin:${command.command}`
 }

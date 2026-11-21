@@ -1,6 +1,14 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, defineComponent, h, ref, shallowRef } from 'vue'
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue'
 import { useChatScrollSpacer } from '../../../app/composables/chat-scroll-spacer'
 
 type ChatSdk = Parameters<typeof useChatScrollSpacer>[0]['chatSdk']
@@ -185,5 +193,194 @@ describe('useChatScrollSpacer chat-input:height', () => {
 
       expect(spacer.element?.style.height).toBe(pinnedHeight)
       expect(scrollByOffsets).toEqual([KEYBOARD_INSET])
+    })
+})
+
+function defineBox(
+  element: HTMLElement,
+  box: { offsetTop?: number, offsetHeight?: number, clientHeight?: number },
+) {
+  for (const [key, value] of Object.entries(box)) {
+    Object.defineProperty(element, key, { configurable: true, value })
+  }
+}
+
+/**
+ * A paused reply: the last user message, the reply under it with the
+ * approval bubble at its end, and an 800px scroll container.
+ */
+function createContinuationHarness() {
+  const scrollTos: ScrollToOptions[] = []
+  const scrollBys: ScrollToOptions[] = []
+  const tick = shallowRef<number>(0)
+  const spacerHeights: number[] = []
+  const chatSdk = {
+    status: 'ready',
+    messages: [
+      { id: 'user-1', role: 'user', parts: [] },
+      { id: 'assistant-1', role: 'assistant', parts: [] },
+    ],
+  } as unknown as ChatSdk & { status: string }
+
+  const Harness = defineComponent({
+    setup() {
+      const scrollContainerRef = ref<HTMLElement | null>(null)
+      const messagesEndRef = ref<HTMLElement | null>(null)
+      const messagesDomRefs = shallowRef<HTMLDivElement[] | null>([])
+      const messageElements: Partial<
+        Record<'user' | 'assistant', HTMLDivElement>
+      > = {}
+      const { spacerHeight } = useChatScrollSpacer({
+        scrollContainerRef,
+        messagesDomRefs,
+        messagesEndRef,
+        chatSdk,
+      })
+
+      watch(spacerHeight, (height) => {
+        spacerHeights.push(height)
+      })
+
+      function setContainer(element: Element | null) {
+        if (!(element instanceof HTMLElement)) {
+          return
+        }
+
+        defineBox(element, { clientHeight: 800 })
+        element.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+        element.scrollTo = vi.fn((options: ScrollToOptions) => {
+          scrollTos.push(options)
+        }) as HTMLElement['scrollTo']
+        element.scrollBy = vi.fn((options: ScrollToOptions) => {
+          scrollBys.push(options)
+        }) as HTMLElement['scrollBy']
+        scrollContainerRef.value = element
+      }
+
+      function setMessage(
+        role: 'user' | 'assistant',
+        element: Element | null,
+      ) {
+        if (!(element instanceof HTMLDivElement)) {
+          return
+        }
+
+        defineBox(element, role === 'user'
+          ? { offsetTop: 100, offsetHeight: 60 }
+          : { offsetTop: 172, offsetHeight: 900 })
+
+        messageElements[role] = element
+
+        if (messageElements.user && messageElements.assistant) {
+          messagesDomRefs.value = [
+            messageElements.user,
+            messageElements.assistant,
+          ]
+        }
+      }
+
+      function setBubble(element: Element | null) {
+        if (element instanceof HTMLElement) {
+          element.getBoundingClientRect = () => {
+            return { top: 700, bottom: 1000 } as DOMRect
+          }
+        }
+      }
+
+      function setEnd(element: Element | null) {
+        if (element instanceof HTMLElement) {
+          defineBox(element, { offsetTop: 1100 })
+          messagesEndRef.value = element
+        }
+      }
+
+      return () => h('div', { 'ref': setContainer, 'data-tick': tick.value }, [
+        h('div', {
+          'ref': (element: Element | null) => setMessage('user', element),
+          'data-role': 'user',
+          'data-message-id': 'user-1',
+        }),
+        h('div', {
+          'ref': (element: Element | null) => setMessage('assistant', element),
+          'data-role': 'assistant',
+          'data-message-id': 'assistant-1',
+        }, [
+          h('section', {
+            ref: setBubble,
+            class: 'js-tool-approval-bubble',
+          }),
+        ]),
+        h('div', { ref: setEnd }),
+      ])
+    },
+  })
+
+  return { Harness, chatSdk, scrollTos, scrollBys, tick, spacerHeights }
+}
+
+describe('useChatScrollSpacer continuations and approval pauses', () => {
+  beforeEach(() => {
+    keyboardInset.value = 0
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('pins the last user message when a reply continues, then places and '
+    + 'reveals the paused reply like a finished send', async () => {
+    const {
+      Harness,
+      chatSdk,
+      scrollTos,
+      scrollBys,
+      tick,
+      spacerHeights,
+    } = createContinuationHarness()
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    scrollTos.length = 0
+    scrollBys.length = 0
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+
+    expect(scrollTos).toEqual([{ top: 88, behavior: 'smooth' }])
+    expect(spacerHeights.at(-1)).toBe(12)
+
+    chatSdk.status = 'ready'
+    tick.value += 1
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    await nextTick()
+
+    expect(scrollTos.slice(-2)).toEqual([
+      { top: 88, behavior: 'instant' },
+      { top: 212, behavior: 'smooth' },
+    ])
+    expect(scrollBys).toEqual([])
+  })
+
+  it('does not place a finished reply again without a continuation',
+    async () => {
+      const { Harness, chatSdk, scrollTos, tick } = createContinuationHarness()
+
+      await mountSuspended(Harness)
+      await useNuxtApp().callHook('chat:continue')
+      chatSdk.status = 'ready'
+      tick.value += 1
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+      const scrollCount = scrollTos.length
+
+      tick.value += 1
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+      expect(scrollTos).toHaveLength(scrollCount)
     })
 })

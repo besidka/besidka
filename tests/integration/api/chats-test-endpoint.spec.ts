@@ -175,7 +175,7 @@ describe('test chat endpoints', () => {
         type: 'data-tool-approval',
         data: expect.objectContaining({
           reason: 'always-ask',
-          rememberOptions: ['once'],
+          rememberOptions: ['once', 'chat', 'always'],
         }),
       }))
     })

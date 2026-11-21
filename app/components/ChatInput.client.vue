@@ -2,7 +2,7 @@
   <div
     ref="chatInputRef"
     data-testid="chat-input"
-    class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
+    class="js-chat-composer fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
@@ -862,10 +862,11 @@ const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
     || hasPastedTextContent(pastedTexts.value)
     || skillInvocation.invocation.value !== null
+    || builtinCommand.command.value !== null
 })
 
 const canShowRegenerate = computed<boolean>(() => {
-  return !!props.displayRegenerate && !hasMessage.value
+  return !!props.displayRegenerate && !props.displayStop && !hasMessage.value
 })
 
 const exaSearchLevel = computed<ExaSearchLevel>(() => {
@@ -973,6 +974,7 @@ const composerBesidkaTools = useComposerBesidkaTools(() => {
   return route.name === 'chats-slug' ? String(route.params.slug) : null
 })
 const skillInvocation = useComposerSkillInvocation()
+const builtinCommand = useComposerBuiltinCommand()
 const skillPreview = useSkillPreview()
 const commandPicker = useTemplateRef<{
   listId: string
@@ -1063,11 +1065,14 @@ function dismissSuggestedConnector() {
   ])
 }
 
+const availableBuiltinCommands = useAvailableBuiltinCommands()
+
 const commands = useComposerCommands({
   textarea,
   text: input,
   items: () => composerSkills.items.value,
   isAvailable: () => isSkillAttachEnabled.value,
+  builtins: () => availableBuiltinCommands.value,
   insertText: insertTextAtSelection,
 })
 
@@ -1707,6 +1712,10 @@ async function sendMessage() {
     return useWarningMessage('Please enter a message before sending.')
   }
 
+  if (builtinCommand.command.value !== null) {
+    return sendBuiltinCommand()
+  }
+
   if (isSelectedModelUnavailable.value) {
     return warnAboutUnavailableModel()
   }
@@ -1773,7 +1782,39 @@ async function sendMessage() {
   files.value = []
   attachedArtifacts.value = []
   skillInvocation.clear()
+  builtinCommand.clear()
   pastedTexts.value = []
+  nuxtApp.callHook('chat:submit', { text })
+}
+
+/**
+ * A built-in command (`/cost`, `/stats`, `/debug`) is answered by Besidka
+ * without a model, so none of the model checks apply: no key, no transfer
+ * consent, no file rules. Attachments are refused, because the command
+ * would drop them.
+ */
+function sendBuiltinCommand() {
+  const command = builtinCommand.command.value
+
+  if (
+    files.value.length > 0
+    || attachedArtifacts.value.length > 0
+    || hasPastedTextContent(pastedTexts.value)
+  ) {
+    return useWarningMessage(
+      `/${command} runs on its own. Remove the attachments first.`,
+    )
+  }
+
+  const text = commands.stripFromText(message.value)
+
+  lastSentConnectorText.value = ''
+  prefilledTexts.value = []
+  message.value = text
+  emit('submit')
+  message.value = ''
+  skillInvocation.clear()
+  builtinCommand.clear()
   nuxtApp.callHook('chat:submit', { text })
 }
 
@@ -1794,6 +1835,7 @@ function onSkillSelected(item: ComposerSkillItem) {
     return
   }
 
+  builtinCommand.clear()
   skillInvocation.set({
     skillId: item.id,
     name: item.name,
@@ -1812,6 +1854,7 @@ watch(isSkillAttachEnabled, (isEnabled) => {
 
 onUnmounted(() => {
   skillInvocation.clear()
+  builtinCommand.clear()
 })
 
 const isConnectorPickerMounted = shallowRef<boolean>(false)

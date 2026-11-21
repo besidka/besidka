@@ -817,8 +817,8 @@ describe('Connectors page routes', () => {
         .toEqual({ search: 'allow', list: 'ask', post: 'ask' })
     })
 
-    it('refuses Always allow for the always-ask tier and a drifted tool, '
-      + 'whatever the server labels say', async () => {
+    it('sets Always allow on the always-ask tier bound to the reviewed '
+      + 'hash, and refuses a drifted tool', async () => {
       const connectorId = await addConnector('linear')
 
       await serveTools(connectorId, [
@@ -828,17 +828,31 @@ describe('Connectors page routes', () => {
       ])
       await review(connectorId, (await listTools(connectorId)).reviewToken)
 
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: {
+          tools: [
+            { name: 'delete_page', mode: 'allow' },
+            { name: 'archive', mode: 'allow' },
+          ],
+        },
+      })
+
+      const rows = (await settingsOf(connectorId)).settings
+
       for (const name of ['delete_page', 'archive']) {
-        expect((await failureOf(call(settingsPath, {
-          params: { id: connectorId },
-          body: {
-            tools: [
-              { name: 'search', mode: 'allow' },
-              { name, mode: 'allow' },
-            ],
-          },
-        }))).code).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
+        const row = rows.find(setting => setting.toolName === name)!
+
+        expect(row, name).toMatchObject({ approval: 'always' })
+        expect(row.approvedDefinitionHash, name).toBe(row.definitionHash)
       }
+
+      expect(Object.fromEntries((await listTools(connectorId)).tools
+        .map(tool => [tool.name, [tool.alwaysAsk, tool.mode]])))
+        .toMatchObject({
+          delete_page: [true, 'allow'],
+          archive: [true, 'allow'],
+        })
 
       await serveTools(connectorId, [
         {
@@ -853,16 +867,17 @@ describe('Connectors page routes', () => {
         body: { tools: [{ name: 'search', mode: 'allow' }] },
       }))).code).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
       expect((await settingsOf(connectorId)).settings
-        .every(row => row.approval === 'ask')).toBe(true)
+        .find(row => row.toolName === 'search'))
+        .toMatchObject({ approval: 'ask' })
       expect((await failureOf(call(settingsPath, {
         params: { id: connectorId },
         body: { tools: [{ name: 'search', mode: 'allow', enabled: true }] },
       }))).status).toBe(400)
     })
 
-    it('refuses Always allow for send, post, forward and unshare tools '
-      + 'labeled read-only, and stores a legacy ask as Needs approval',
-    async () => {
+    it('keeps send, post, forward and unshare tools labeled read-only on '
+      + 'Needs approval by default, lets the user allow them, and stores a '
+      + 'legacy ask as Needs approval', async () => {
       const connectorId = await addConnector('mail')
       const names = ['send_email', 'sendMessage', 'post-comment',
         'forwardMessage', 'unshare_page']
@@ -875,18 +890,8 @@ describe('Connectors page routes', () => {
       ])
       await review(connectorId, (await listTools(connectorId)).reviewToken)
 
-      for (const name of names) {
-        expect((await failureOf(call(settingsPath, {
-          params: { id: connectorId },
-          body: { tools: [{ name, mode: 'allow' }] },
-        }))).code, name).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
-      }
-
-      const listing = await listTools(connectorId)
-
-      expect(Object.fromEntries(listing.tools.map((tool) => {
-        return [tool.name, [tool.alwaysAsk, tool.mode]]
-      }))).toEqual({
+      expect(Object.fromEntries((await listTools(connectorId)).tools
+        .map(tool => [tool.name, [tool.alwaysAsk, tool.mode]]))).toEqual({
         'send_email': [true, 'ask'],
         'sendMessage': [true, 'ask'],
         'post-comment': [true, 'ask'],
@@ -894,6 +899,15 @@ describe('Connectors page routes', () => {
         'unshare_page': [true, 'ask'],
         'search_posts': [false, 'allow'],
       })
+
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'send_email', mode: 'allow' }] },
+      })
+
+      expect((await settingsOf(connectorId)).settings
+        .find(row => row.toolName === 'send_email'))
+        .toMatchObject({ approval: 'always' })
 
       await call(settingsPath, {
         params: { id: connectorId },

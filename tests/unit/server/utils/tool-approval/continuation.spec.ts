@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { convertToModelMessages } from 'ai'
 import type { UIMessage } from 'ai'
 import {
-  TOOL_APPROVAL_DENIAL_TEXT,
   applyRememberGrants,
   assertEndsWithApprovalResponse,
   buildResumedAssistantMessages,
@@ -19,6 +18,8 @@ import type { ToolApprovalPendingRecord } from '~~/server/utils/tool-approval/kv
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { createApprovalState } from '~~/server/utils/tool-approval/state'
+import { TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
+import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 
 const claimMocks = vi.hoisted(() => ({
   markClaimDone: vi.fn(async () => true),
@@ -288,7 +289,7 @@ describe('decideContinuation', () => {
       denialReason: 'missing-tool',
     })
 
-    state.counters.connectorCalls = 11
+    state.counters.connectorCalls = TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN - 1
 
     const decisions = decideContinuation({
       answers: [answer, {
@@ -301,7 +302,8 @@ describe('decideContinuation', () => {
 
     expect(decisions.map(decision => decision.denialReason))
       .toEqual([null, 'over-cap'])
-    expect(state.counters.connectorCalls).toBe(11)
+    expect(state.counters.connectorCalls)
+      .toBe(TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN - 1)
   })
 
   it('carries the user note on a denial', () => {
@@ -790,45 +792,72 @@ describe('applyRememberGrants Always allow', () => {
     })
 
   it.each(['send_email', 'sendMessage', 'post-comment', 'forwardMessage',
-    'unshare_page'])('never grants Always allow to %s from a chat answer',
-    async (tool) => {
-      storeMocks.upsertConnectorToolSettings.mockClear()
-      storeMocks.listConnectorToolSettings.mockResolvedValue([{
-        ...setting(),
-        toolName: tool,
-      }])
+    'unshare_page'])('grants Always allow to %s from a chat answer (owner '
+      + 'decision, 2026-11-20)',
+  async (tool) => {
+    storeMocks.upsertConnectorToolSettings.mockClear()
+    storeMocks.listConnectorToolSettings.mockResolvedValue([{
+      ...setting(),
+      toolName: tool,
+    }])
 
-      await applyRememberGrants({
-        db: {} as never,
-        userId: 1,
-        chatPublicId: 'chat-1',
-        decisions: [{
-          approvalId: 'approval-1',
-          toolCallId: 'call-1',
-          toolName: `mcp__mail__${tool}`,
-          approved: true,
-          remember: 'always',
-        } as never],
-        entries: new Map<string, SendToolEntry>([[
-          `mcp__mail__${tool}`,
-          buildConnectorApprovalEntry({
-            exposedName: `mcp__mail__${tool}`,
-            connectorId: 'c1',
-            connectorTitle: 'Mail',
-            connectorHost: 'mcp.mail.example.com',
-            remoteToolName: tool,
-            definitionHash: HASH,
-            annotations: { readOnlyHint: true },
-          }),
-        ]]),
-        logger: { set: vi.fn() } as never,
-      })
-
-      expect(storeMocks.upsertConnectorToolSettings).not.toHaveBeenCalled()
-      storeMocks.listConnectorToolSettings.mockReset()
+    await applyRememberGrants({
+      db: {} as never,
+      userId: 1,
+      chatPublicId: 'chat-1',
+      decisions: [{
+        approvalId: 'approval-1',
+        toolCallId: 'call-1',
+        toolName: `mcp__mail__${tool}`,
+        approved: true,
+        remember: 'always',
+      } as never],
+      entries: new Map<string, SendToolEntry>([[
+        `mcp__mail__${tool}`,
+        buildConnectorApprovalEntry({
+          exposedName: `mcp__mail__${tool}`,
+          connectorId: 'c1',
+          connectorTitle: 'Mail',
+          connectorHost: 'mcp.mail.example.com',
+          remoteToolName: tool,
+          definitionHash: HASH,
+          annotations: { readOnlyHint: true },
+        }),
+      ]]),
+      logger: { set: vi.fn() } as never,
     })
 
-  it('never grants a destructive tool or a drifted definition', async () => {
+    expect(storeMocks.upsertConnectorToolSettings).toHaveBeenCalledWith(
+      {},
+      1,
+      'c1',
+      [expect.objectContaining({
+        toolName: tool,
+        approval: 'always',
+        approvedDefinitionHash: HASH,
+      })],
+    )
+    storeMocks.listConnectorToolSettings.mockReset()
+  })
+
+  it('grants a destructive tool bound to the reviewed hash', async () => {
+    storeMocks.upsertConnectorToolSettings.mockClear()
+    storeMocks.listConnectorToolSettings.mockResolvedValueOnce([setting()])
+
+    await apply(readEntries({ readOnlyHint: true, destructiveHint: true }))
+
+    expect(storeMocks.upsertConnectorToolSettings).toHaveBeenCalledWith(
+      {},
+      1,
+      'c1',
+      [expect.objectContaining({
+        approval: 'always',
+        approvedDefinitionHash: HASH,
+      })],
+    )
+  })
+
+  it('never grants a drifted definition', async () => {
     storeMocks.upsertConnectorToolSettings.mockClear()
     storeMocks.listConnectorToolSettings
       .mockResolvedValue([setting('c'.repeat(64))])

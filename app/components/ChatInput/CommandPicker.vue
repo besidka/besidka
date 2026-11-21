@@ -7,13 +7,13 @@
     <ul
       :id="listId"
       role="listbox"
-      aria-label="Skill commands"
+      aria-label="Commands"
       class="max-h-72 overflow-y-auto overscroll-contain rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
     >
       <li
         v-for="(command, index) in matches"
         :id="getOptionId(index)"
-        :key="command.skillId"
+        :key="getComposerCommandKey(command)"
         role="option"
         :aria-selected="index === activeIndex"
       >
@@ -26,14 +26,32 @@
           @mousedown.prevent
           @click="emit('pick', command)"
         >
-          <span class="shrink-0 font-semibold">/{{ command.command }}</span>
+          <span class="shrink-0 font-semibold">
+            /{{ command.command }}
+            <span
+              v-if="command.kind === 'builtin' && command.argumentHint"
+              class="font-normal text-base-content/60"
+            >
+              {{ command.argumentHint }}
+            </span>
+          </span>
           <span class="min-w-0 grow">
             <span class="block truncate text-sm">{{ command.name }}</span>
             <span class="block truncate text-xs text-base-content/70">
               {{ command.description }}
             </span>
           </span>
-          <span class="badge badge-soft badge-xs shrink-0">
+          <span
+            v-if="command.kind === 'builtin'"
+            class="badge badge-soft badge-accent badge-xs shrink-0"
+            :data-testid="`command-picker-builtin-${command.command}`"
+          >
+            Built-in
+          </span>
+          <span
+            v-else
+            class="badge badge-soft badge-xs shrink-0"
+          >
             {{ SKILL_MODE_LABELS[command.mode] }}
           </span>
         </button>
@@ -60,6 +78,7 @@
 
 <script setup lang="ts">
 import { SKILL_MODE_LABELS } from '#shared/utils/skills/mode'
+import { getComposerCommandKey } from '~/utils/composer-command'
 import type { ComposerCommand } from '~/utils/composer-command'
 
 const props = defineProps<{

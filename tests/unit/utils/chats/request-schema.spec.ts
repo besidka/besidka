@@ -480,4 +480,43 @@ describe('userMessagePartsSchema artifact attachments', () => {
       ]).success).toBe(false)
     })
   })
+
+  describe('built-in command', () => {
+    const text = { type: 'text', text: '7d' }
+    const command = {
+      type: 'data-command-invocation',
+      data: { command: 'stats' },
+    }
+
+    it('accepts a message that is only a command, or a command and text', () => {
+      expect(userMessagePartsSchema.safeParse([command]).success).toBe(true)
+      expect(userMessagePartsSchema.safeParse([text, command]).success)
+        .toBe(true)
+    })
+
+    it('refuses an unknown command and extra keys', () => {
+      expect(userMessagePartsSchema.safeParse([{
+        type: 'data-command-invocation',
+        data: { command: 'delete-everything' },
+      }]).success).toBe(false)
+      expect(userMessagePartsSchema.safeParse([{
+        ...command,
+        data: { command: 'stats', period: 'all' },
+      }]).success).toBe(false)
+    })
+
+    it('refuses two commands, or a command and a skill', () => {
+      expect(userMessagePartsSchema.safeParse([
+        command,
+        { type: 'data-command-invocation', data: { command: 'cost' } },
+      ]).success).toBe(false)
+      expect(userMessagePartsSchema.safeParse([
+        command,
+        {
+          type: 'data-skill-invocation',
+          data: { skillId: 'skl1', name: 'writing-style', version: 3 },
+        },
+      ]).success).toBe(false)
+    })
+  })
 })

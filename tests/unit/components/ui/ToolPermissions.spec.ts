@@ -31,8 +31,8 @@ function groups(): ToolPermissionGroup[] {
     },
     {
       id: 'always-asks',
-      label: 'Always asks',
-      isLocked: true,
+      label: 'Delete and share',
+      warning: 'Always allow lets the model delete data without asking you.',
       tools: [tool('delete_page', 'ask', ['blocked', 'ask'])],
     },
     { id: 'empty', label: 'Empty', tools: [] },
@@ -91,7 +91,16 @@ describe('Ui/ToolPermissions', () => {
         .element as HTMLSelectElement).value).toBe('ask')
     })
 
-  it('offers only the modes a locked group allows', async () => {
+  it('shows a group warning only where one is given', async () => {
+    const wrapper = await mountGroups()
+
+    expect(wrapper.get(testId('tool-permissions-group-warning-always-asks'))
+      .text()).toContain('without asking you')
+    expect(wrapper.find(testId('tool-permissions-group-warning-write'))
+      .exists()).toBe(false)
+  })
+
+  it('offers only the modes the group\'s tools allow', async () => {
     const wrapper = await mountGroups()
 
     expect(wrapper.get(testId('tool-permissions-group-select-always-asks'))

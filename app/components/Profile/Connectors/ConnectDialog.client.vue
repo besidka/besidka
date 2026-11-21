@@ -242,20 +242,27 @@
           >
             {{ headerAuthKind === 'bearer' ? 'API key or token' : 'Value' }}
           </label>
-          <input
-            id="connector-header-value"
-            v-model="headerValue"
-            type="password"
-            autocomplete="off"
-            class="input w-full"
-            :placeholder="headerValuePlaceholder"
-            :aria-invalid="!!headerError"
-            :aria-describedby="headerError
-              ? 'connector-header-error'
-              : 'connector-header-help'"
-            :disabled="isBusy"
-            data-testid="connector-header-value"
-          >
+          <label class="input w-full">
+            <input
+              id="connector-header-value"
+              v-model="headerValue"
+              type="password"
+              autocomplete="off"
+              class="grow"
+              :placeholder="headerValuePlaceholder"
+              :aria-invalid="!!headerError"
+              :aria-describedby="headerError
+                ? 'connector-header-error'
+                : 'connector-header-help'"
+              :disabled="isBusy"
+              data-testid="connector-header-value"
+            >
+            <UiFormPasteButton
+              :disabled="isBusy"
+              data-testid="connector-header-paste"
+              @paste="pasteHeaderValue"
+            />
+          </label>
           <p
             v-if="headerError"
             id="connector-header-error"
@@ -561,6 +568,11 @@ function applyHeaderAuthDefault() {
   headerAuthKind.value = fallback.kind
   headerName.value = fallback.name
   headerValue.value = ''
+}
+
+function pasteHeaderValue(text: string) {
+  headerValue.value = text
+  headerError.value = ''
 }
 
 function headerAuthInput(): ConnectorHeaderAuthInput {

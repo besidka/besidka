@@ -849,8 +849,8 @@ describe('tool approval requests in the chat send', () => {
       expect(linear.callCount('tools/call')).toBe(3)
     })
 
-  it('asks Allow once only before an Always allow write to a second '
-    + 'connector after the first one was read', async () => {
+  it('runs an Always allow write to a second connector after the first '
+    + 'one was read (owner decision, 2026-11-20)', async () => {
     seedConnector({
       id: 'conn-notion',
       slug: 'notion',
@@ -873,29 +873,15 @@ describe('tool approval requests in the chat send', () => {
       ],
     })
     const parts = assistantInsert?.parts ?? []
-    const pendingPart = parts.find((part: any) => {
-      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
-    })
 
     expect(linear.callCount('tools/call')).toBe(1)
-    expect(notion.callCount('tools/call')).toBe(0)
-    expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__create_page' })
-    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-      data: { reason: 'untrusted-output', rememberOptions: ['once'] },
-    })
-
-    const pending = readKvJson(`tool-approval:${pendingPart.approval.id}`)
-    const turn = readKvJson(`tool-approval:turn:${pending?.messagePublicId}`)
-
-    expect(turn?.state).toMatchObject({
-      taint: ['connector'],
-      readSources: ['connector:conn-linear'],
-      counters: { connectorCalls: 1 },
-    })
+    expect(notion.callCount('tools/call')).toBe(1)
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
-  it('asks before an Auto connector read that follows another '
-    + 'connector\'s output, with no chat selection', async () => {
+  it('runs an Auto connector read that follows another connector\'s '
+    + 'output on its default Always allow (owner decision, 2026-11-20)',
+  async () => {
     seedConnector({
       id: 'conn-notion',
       slug: 'notion',
@@ -919,31 +905,17 @@ describe('tool approval requests in the chat send', () => {
       ],
     })
     const parts = assistantInsert?.parts ?? []
-    const pendingPart = parts.find((part: any) => {
-      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
-    })
 
     expect(notion.callCount('tools/call')).toBe(1)
-    expect(linear.callCount('tools/call')).toBe(0)
+    expect(linear.callCount('tools/call')).toBe(1)
     expect(findPart(parts, 'tool-use_connector')).toMatchObject({
       state: 'output-available',
     })
-    expect(pendingPart).toMatchObject({ toolName: 'mcp__linear__list_issues' })
-    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-      data: { reason: 'untrusted-output' },
-    })
-
-    const pending = readKvJson(`tool-approval:${pendingPart.approval.id}`)
-
-    expect(pending).toMatchObject({
-      family: 'connector',
-      connectorId: 'conn-linear',
-      access: 'read',
-    })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
-  it('asks before the first use of an Auto connector read in a message '
-    + 'that requested web search', async () => {
+  it('runs the first use of an Auto connector read in a message that '
+    + 'requested web search (owner decision, 2026-11-20)', async () => {
     const autoLinear = mocks.store.connectors.find((connector) => {
       return connector.id === 'conn-linear'
     })!
@@ -960,19 +932,13 @@ describe('tool approval requests in the chat send', () => {
       ],
     })
     const parts = assistantInsert?.parts ?? []
-    const pendingPart = parts.find((part: any) => {
-      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
-    })
 
-    expect(linear.callCount('tools/call')).toBe(0)
-    expect(pendingPart).toMatchObject({ toolName: 'mcp__linear__list_issues' })
-    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-      data: { reason: 'untrusted-output' },
-    })
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
-  it('asks before another connector\'s read once an Auto connector was '
-    + 'opened, because its tool list is remote text', async () => {
+  it('runs another connector\'s read once an Auto connector was opened, on '
+    + 'its default Always allow (owner decision, 2026-11-20)', async () => {
     seedConnector({
       id: 'conn-notion',
       slug: 'notion',
@@ -995,13 +961,10 @@ describe('tool approval requests in the chat send', () => {
       ],
     })
     const parts = assistantInsert?.parts ?? []
-    const pendingPart = parts.find((part: any) => {
-      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
-    })
 
-    expect(notion.callCount('tools/call')).toBe(0)
+    expect(notion.callCount('tools/call')).toBe(1)
     expect(linear.callCount('tools/call')).toBe(0)
-    expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__list_pages' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
   it('runs an Auto connector read opened and then loaded by name without '
@@ -1055,8 +1018,8 @@ describe('tool approval requests in the chat send', () => {
     expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
-  it('asks before an Auto connector read in a send that holds an activated '
-    + 'imported skill\'s body', async () => {
+  it('runs an Auto connector read on its default Always allow in a send '
+    + 'that holds an activated imported skill\'s body', async () => {
     const autoLinear = mocks.store.connectors.find((connector) => {
       return connector.id === 'conn-linear'
     })!
@@ -1074,10 +1037,8 @@ describe('tool approval requests in the chat send', () => {
     })
     const parts = assistantInsert?.parts ?? []
 
-    expect(linear.callCount('tools/call')).toBe(0)
-    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-      data: { reason: 'untrusted-output' },
-    })
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
   it('runs an Auto connector read opened first, with nothing read before',

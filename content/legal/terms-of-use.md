@@ -1,7 +1,7 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-10-29
+updatedAt: 2026-11-20
 summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Artifact links make an AI-generated artifact openable by anyone who has the link; such pages are never indexed and say they are AI-generated and not reviewed by me, and an artifact must not phish, ask visitors for passwords, payment details, who they are or how to contact them, redirect them, try to spend their keys, target children or serve as website hosting. Anyone can report illegal content to me by email, or with the report form on an artifact, and a person will look at it; rights holders can send a copyright notice to the same address, and the same address takes removal orders for terrorist content. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
@@ -357,5 +357,7 @@ I would much rather sort a problem out by email first. Write to **:privacy-email
 One address covers everything in these terms — general questions, privacy and data protection requests, reports of illegal content, and inquiries from authorities:
 
 **:privacy-email-link{}**
+
+For help with the app itself, for example a reply that stops or a connector that does not work, write to **[support@besidka.com](mailto:support@besidka.com)**. You can paste the debug info Besidka gives you for a chat; the [Privacy Policy](/privacy-policy#support-requests) says what it holds and how I handle it.
 
 See also the [Privacy Policy](/privacy-policy) and the [Cookie Policy](/cookie-policy).

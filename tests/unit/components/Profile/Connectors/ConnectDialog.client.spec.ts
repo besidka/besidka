@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   success: vi.fn(),
   errorMessage: vi.fn(),
   assign: vi.fn(),
+  paste: vi.fn(async () => ''),
 }))
 
 const oauthActive = ref<boolean>(true)
@@ -30,6 +31,9 @@ const connector = ref<ConnectorPageItem | null>(createConnectorItem())
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('refreshConnectors', () => mocks.refreshConnectors)
+mockNuxtImport('useClipboardWithPaste', () => {
+  return () => ({ paste: mocks.paste })
+})
 mockNuxtImport('useSuccessMessage', () => mocks.success)
 mockNuxtImport('useErrorMessage', () => mocks.errorMessage)
 mockNuxtImport('useConnectorById', () => {
@@ -658,6 +662,34 @@ describe('Profile/Connectors/ConnectDialog', () => {
           expect(getByTestId('connector-header-hint').textContent)
             .toContain('Sent exactly as typed')
         })
+
+      it('fills the key from the clipboard with the Paste button',
+        async () => {
+          mocks.paste.mockResolvedValue('exa_from_clipboard')
+          await openKeyForm([])
+          await clickTestId('connector-header-paste')
+
+          expect(
+            (getByTestId('connector-header-value') as HTMLInputElement).value,
+          ).toBe('exa_from_clipboard')
+          expect(
+            (getByTestId('connector-header-save') as HTMLButtonElement)
+              .disabled,
+          ).toBe(false)
+          expect(getByTestId('connector-header-value')
+            .getAttribute('type')).toBe('password')
+        })
+
+      it('keeps a typed key when the clipboard gives no text', async () => {
+        mocks.paste.mockResolvedValue('')
+        await openKeyForm([])
+        await setTestIdValue('connector-header-value', 'typed_key')
+        await clickTestId('connector-header-paste')
+
+        expect(
+          (getByTestId('connector-header-value') as HTMLInputElement).value,
+        ).toBe('typed_key')
+      })
 
       it('sends a pasted key as a bearer token', async () => {
         await openKeyForm([])

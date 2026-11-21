@@ -142,10 +142,23 @@ function withoutShareLink(result: unknown): unknown {
   }
 }
 
+/**
+ * The debug info result as the chat model sees it: the report only, so the
+ * same ids are not sent twice into model context and the stored message.
+ */
+function reportOnly(result: unknown): unknown {
+  if (!isRecord(result)) {
+    return result
+  }
+
+  return { report: result.report }
+}
+
 const CHAT_RESULT_TRANSFORMS: Readonly<
   Record<string, (result: unknown) => unknown>
 > = {
   share_artifact: withoutShareLink,
+  get_debug_info: reportOnly,
 }
 
 /**
@@ -182,8 +195,8 @@ function jsonSchemaOf(besidkaTool: ChatExposedBesidkaTool): unknown {
  * its registry tier and never from its annotations: a read-tier tool is a
  * read, a write-tier tool a write, and an ask-every-time tool keeps its
  * delete or instructions access (a write otherwise). The descriptor marks
- * the ask-every-time tier destructive, so it always asks with Allow once and
- * Deny only.
+ * the ask-every-time tier destructive, so it asks every time unless the user
+ * set it to Always allow or allowed it in the chat.
  */
 export function besidkaToolAccess(
   besidkaTool: ChatExposedBesidkaTool,
@@ -280,12 +293,25 @@ export function selectBesidkaChatTools(input: {
   return { selected, blocked, leftOut, definitionBytes }
 }
 
+const KV_RETRY_DELAY_MS = 1_100
+
+/**
+ * The per-minute limit of Besidka tool calls, counted in KV and failing
+ * closed. The counts of one send are taken one at a time: parallel calls of
+ * one step wrote the same KV key at once, which KV refuses (about one write
+ * a second per key), so a refused write read as over the limit. A KV
+ * failure is retried once after a second before it refuses.
+ */
 export function createBesidkaCallLimiter(
   kv: Parameters<typeof createAuthRateLimitStorage>[0],
 ): BesidkaCallLimiter {
   const storage = createAuthRateLimitStorage(kv, RATE_LIMIT_KEY_PREFIX)
+  let queue: Promise<unknown> = Promise.resolve()
+  let lastConsumeFailed = false
 
-  return async (userId) => {
+  async function consume(userId: number): Promise<boolean> {
+    lastConsumeFailed = false
+
     try {
       const result = await storage.consume(String(userId), {
         window: RATE_LIMIT_WINDOW_SECONDS,
@@ -294,8 +320,32 @@ export function createBesidkaCallLimiter(
 
       return result.allowed
     } catch {
+      lastConsumeFailed = true
+
       return false
     }
+  }
+
+  async function consumeWithRetry(userId: number): Promise<boolean> {
+    if (await consume(userId)) {
+      return true
+    }
+
+    if (!lastConsumeFailed) {
+      return false
+    }
+
+    await new Promise(resolve => setTimeout(resolve, KV_RETRY_DELAY_MS))
+
+    return await consume(userId)
+  }
+
+  return (userId) => {
+    const result = queue.then(() => consumeWithRetry(userId))
+
+    queue = result
+
+    return result
   }
 }
 
@@ -580,6 +630,7 @@ export async function buildBesidkaChatTools(input: {
       userId,
       clientId: BESIDKA_CHAT_CLIENT_ID,
       scopes: [],
+      currentChatSlug: input.currentChatSlug,
       db,
       logger,
       log,

@@ -542,7 +542,9 @@ export function useComposerConnectors(
 
 /**
  * Display titles and ids for connector tool steps, by slug, read from the
- * cached list without fetching it (the step component loads it). A deleted
+ * cached list without fetching it (on the chat page the composer loads it
+ * through `useComposerConnectors`, the shared chat page calls
+ * `useConnectorLibrary` once; never each step or message). A deleted
  * connector has no entry, so callers fall back to the slug.
  */
 export function useConnectorTitles() {

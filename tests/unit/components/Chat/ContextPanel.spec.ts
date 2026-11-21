@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import {
   mockComponent,
   mockNuxtImport,
@@ -34,6 +34,14 @@ const memoryOverride = ref<boolean | null>(null)
 const pinSavingSlug = ref<string | null>(null)
 const toggleChatPin = vi.fn()
 const artifactsActive = ref<boolean>(false)
+const isCopyingDebugInfo = ref<boolean>(false)
+const debugInfoCopied = ref<boolean>(false)
+const debugInfoFallback = ref<string>('')
+const copyDebugInfo = vi.fn()
+const clearFallbackReport = vi.fn()
+const isStandalone = ref<boolean>(false)
+const urlCopied = ref<boolean>(false)
+const copyUrl = vi.fn()
 
 mockNuxtImport('useFeature', () => {
   return () => computed(() => {
@@ -78,6 +86,24 @@ mockNuxtImport('useChatShare', () => {
     sharedBranchTarget,
     isBranching,
     isModalOpen: isShareModalOpen,
+  })
+})
+
+mockNuxtImport('useStandaloneDisplay', () => {
+  return () => ({ isStandalone })
+})
+
+mockNuxtImport('useCurrentUrlCopy', () => {
+  return () => ({ copied: urlCopied, copyUrl })
+})
+
+mockNuxtImport('useChatDebugInfo', () => {
+  return () => ({
+    isCopying: isCopyingDebugInfo,
+    copied: debugInfoCopied,
+    fallbackReport: debugInfoFallback,
+    copyDebugInfo,
+    clearFallbackReport,
   })
 })
 
@@ -202,6 +228,15 @@ describe('Chat/ContextPanel', () => {
     setChatMemoryExcluded.mockResolvedValue(true)
     toggleChatPin.mockReset()
     toggleChatPin.mockResolvedValue(true)
+    isCopyingDebugInfo.value = false
+    debugInfoCopied.value = false
+    debugInfoFallback.value = ''
+    copyDebugInfo.mockReset()
+    clearFallbackReport.mockReset()
+    isStandalone.value = false
+    urlCopied.value = false
+    copyUrl.mockReset()
+    copyDebugInfo.mockResolvedValue(true)
     clearNuxtState('chat-context-collapsed-sections')
     useSidePanel().close()
     document.body.innerHTML = ''
@@ -518,6 +553,99 @@ describe('Chat/ContextPanel', () => {
 
       expect(wrapper.get(testId('chat-context-pin'))
         .attributes('disabled')).toBeDefined()
+    })
+
+    it('copies the debug info of the owned chat on click', async () => {
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+      const button = wrapper.get(testId('chat-context-debug-info'))
+
+      expect(button.text()).toContain('Copy debug info')
+
+      await button.trigger('click')
+
+      expect(copyDebugInfo).toHaveBeenCalledWith(CHAT_SLUG)
+    })
+
+    it('confirms the copy and disables the action while copying',
+      async () => {
+        data.value = ownedData()
+        debugInfoCopied.value = true
+        isCopyingDebugInfo.value = true
+
+        const wrapper = await mountPanel()
+        const button = wrapper.get(testId('chat-context-debug-info'))
+
+        expect(button.text()).toContain('Copied')
+        expect(button.attributes('disabled')).toBeDefined()
+      })
+
+    it('shows the report to select when copying did not work', async () => {
+      data.value = ownedData()
+      debugInfoFallback.value = 'Besidka debug info'
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get(testId('chat-context-debug-info-fallback'))
+        .element.value).toBe('Besidka debug info')
+    })
+
+    it('offers Copy URL only in an installed PWA', async () => {
+      data.value = ownedData()
+
+      const browserTab = await mountPanel()
+
+      expect(browserTab.find(testId('chat-context-copy-url')).exists())
+        .toBe(false)
+
+      isStandalone.value = true
+
+      const installed = await mountPanel()
+
+      await installed.get(testId('chat-context-copy-url')).trigger('click')
+
+      expect(copyUrl).toHaveBeenCalled()
+    })
+
+    it('hides the fallback report on request', async () => {
+      data.value = ownedData()
+      debugInfoFallback.value = 'Besidka debug info'
+
+      const wrapper = await mountPanel()
+
+      await wrapper.get(testId('chat-context-debug-info-hide'))
+        .trigger('click')
+
+      expect(clearFallbackReport).toHaveBeenCalled()
+    })
+
+    it('clears the fallback report when the chat changes', async () => {
+      data.value = ownedData()
+
+      await mountPanel()
+      routeSlug.value = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
+      await nextTick()
+
+      expect(clearFallbackReport).toHaveBeenCalled()
+    })
+
+    it('hides the fallback when there is nothing to show', async () => {
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find(testId('chat-context-debug-info-fallback')).exists())
+        .toBe(false)
+    })
+
+    it('offers no debug info on a shared chat', async () => {
+      data.value = sharedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find(testId('chat-context-debug-info')).exists())
+        .toBe(false)
     })
 
     it('offers to exclude an included chat from memory', async () => {

@@ -7,6 +7,7 @@ import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import type { ComposerSkillItem } from '../../../app/composables/composer-skills'
 import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
+import { useComposerBuiltinCommand } from '../../../app/composables/composer-builtin-command'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { usePastedTexts } from '../../../app/composables/pasted-texts'
@@ -420,6 +421,7 @@ describe('ChatInput.client', () => {
     artifactsFeature.value = { enabled: false, active: false, variant: null }
     composerSkillItems.value = []
     useComposerSkillInvocation().clear()
+    useComposerBuiltinCommand().clear()
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
@@ -1168,6 +1170,44 @@ describe('ChatInput.client', () => {
       expect(sendButton.attributes('disabled')).toBeUndefined()
     })
 
+    it('sends a built-in command without a key or a consent check', async () => {
+      useKeylessSelection()
+
+      const wrapper = await mountChatInput()
+
+      useComposerBuiltinCommand().set('cost')
+      await wrapper.get('textarea').setValue('/cost')
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+      expect(mocks.ensureSendConsent).not.toHaveBeenCalled()
+      expect(useComposerBuiltinCommand().command.value).toBeNull()
+    })
+
+    it('refuses a built-in command with attachments', async () => {
+      useKeylessSelection()
+
+      const wrapper = await mountChatInput({
+        files: [{
+          id: 'file-1',
+          name: 'notes.txt',
+          type: 'text/plain',
+          size: 10,
+          storageKey: 'files/notes.txt',
+        }],
+      })
+
+      useComposerBuiltinCommand().set('stats')
+      await wrapper.get('textarea').setValue('/stats')
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        '/stats runs on its own. Remove the attachments first.',
+      )
+    })
+
     it('warns instead of sending when the send button is pressed', async () => {
       useKeylessSelection()
 
@@ -1308,6 +1348,31 @@ describe('ChatInput.client', () => {
 
       expect(wrapper.get('[data-testid="regenerate"]').attributes('title'))
         .toBe('Regenerate')
+    })
+  })
+
+  describe('one composer action at a time', () => {
+    it('hides Retry while Stop shows for a reply that is waiting', async () => {
+      const wrapper = await mountChatInput({
+        messagesLength: 2,
+        displayStop: true,
+        displayRegenerate: true,
+      })
+
+      expect(wrapper.get('[data-testid="stop-generation"]').isVisible()).toBe(true)
+      expect(wrapper.get('[data-testid="regenerate"]').isVisible()).toBe(false)
+      expect(wrapper.get('[data-testid="send-message"]').isVisible()).toBe(false)
+    })
+
+    it('shows Retry alone once nothing is generating', async () => {
+      const wrapper = await mountChatInput({
+        messagesLength: 2,
+        displayStop: false,
+        displayRegenerate: true,
+      })
+
+      expect(wrapper.get('[data-testid="regenerate"]').isVisible()).toBe(true)
+      expect(wrapper.get('[data-testid="stop-generation"]').isVisible()).toBe(false)
     })
   })
 

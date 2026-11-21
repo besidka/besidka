@@ -116,6 +116,7 @@ const message = customRef<string>((track, trigger) => ({
 const files = ref<FileMetadata[]>([])
 const attachedArtifacts = ref<AttachedArtifact[]>([])
 const skillInvocation = useComposerSkillInvocation()
+const builtinCommand = useComposerBuiltinCommand()
 const savedWebSearchTool = prefStorage.getItem('settings_web_search_tool')
 const tools = shallowRef<Tools>(
   isWebSearchTool(savedWebSearchTool) ? [savedWebSearchTool] : [],
@@ -602,12 +603,14 @@ async function onSubmit() {
     ? { ...skillInvocation.invocation.value }
     : null
   const draftSkillPart = skillInvocation.part.value
+  const draftBuiltinPart = builtinCommand.part.value
   const draftBackup = useChatDraftBackup()
   const { model } = getModel(userModel.value)
 
   if (
     isDeepResearchModel(model)
     && !pendingClarification.value
+    && !draftBuiltinPart
     && draft.trim()
   ) {
     await requestResearchClarification(draft, draftFiles)
@@ -622,7 +625,7 @@ async function onSubmit() {
       method: 'put',
       body: {
         parts: [
-          ...(draft.trim() || !draftSkillPart
+          ...(draft.trim() || (!draftSkillPart && !draftBuiltinPart)
             ? [{
               type: 'text',
               text: draft,
@@ -640,6 +643,7 @@ async function onSubmit() {
           ),
           ...draftArtifacts.map(toArtifactAttachmentPart),
           ...(draftSkillPart ? [draftSkillPart] : []),
+          ...(draftBuiltinPart ? [draftBuiltinPart] : []),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         webSearchMode: resolveWebSearchMode(tools.value),
@@ -665,7 +669,9 @@ async function onSubmit() {
     // Back up the draft only on a real failure (a successful send never leaves
     // one behind) and restore the optimistically-cleared input and files.
     draftBackup.save(draft)
-    message.value = draft
+    message.value = draftBuiltinPart
+      ? `/${draftBuiltinPart.data.command} ${draft}`
+      : draft
     files.value = draftFiles
     attachedArtifacts.value = draftArtifacts
     skillInvocation.restore(draftSkillInvocation)

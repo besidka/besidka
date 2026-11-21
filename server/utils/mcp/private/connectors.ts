@@ -143,9 +143,9 @@ function createNotFoundError() {
  * per-tool `enabled` guard, which would hide the tools from anonymous
  * `tools/list`.
  */
-export async function assertMcpConnectorsAvailable(
+export async function isMcpConnectorsAvailable(
   context: Pick<McpConnectorContext, 'db' | 'kv' | 'userId' | 'logger'>,
-): Promise<void> {
+): Promise<boolean> {
   const [rules, userState] = await Promise.all([
     loadFeatureRules(context.kv, context.db, context.logger),
     loadUserFeatureState(context.db, context.userId),
@@ -156,7 +156,13 @@ export async function assertMcpConnectorsAvailable(
     config: getFeatureEvaluationConfig(),
   })
 
-  if (!isFeatureActive(CONNECTORS_FLAG, resolution, userState)) {
+  return isFeatureActive(CONNECTORS_FLAG, resolution, userState)
+}
+
+export async function assertMcpConnectorsAvailable(
+  context: Pick<McpConnectorContext, 'db' | 'kv' | 'userId' | 'logger'>,
+): Promise<void> {
+  if (!await isMcpConnectorsAvailable(context)) {
     throw createUnavailableError()
   }
 }

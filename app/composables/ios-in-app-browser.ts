@@ -13,15 +13,16 @@ export function isIosDevice(userAgent: string): boolean {
   return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
 }
 
+export function isNavigatorStandalone(): boolean {
+  return (navigator as StandaloneNavigator).standalone === true
+}
+
 export function isStandaloneDisplay(): boolean {
   const isDisplayModeStandalone = window
     .matchMedia('(display-mode: standalone)')
     .matches
 
-  const isNavigatorStandalone = (navigator as StandaloneNavigator)
-    .standalone === true
-
-  return isDisplayModeStandalone || isNavigatorStandalone
+  return isDisplayModeStandalone || isNavigatorStandalone()
 }
 
 export function isIosInAppBrowser(): boolean {

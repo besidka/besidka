@@ -114,7 +114,7 @@ describe('Profile/BesidkaTools/Permissions', () => {
         .toContain('Write')
       expect(wrapper.get(
         '[data-testid="tool-permissions-group-ask-every-time"]',
-      ).text()).toContain('Always asks')
+      ).text()).toContain('Delete and share')
       expect(toolRow(wrapper, 'list_files').text()).toContain('list files')
     })
 
@@ -135,7 +135,7 @@ describe('Profile/BesidkaTools/Permissions', () => {
     expect(wrapper.text()).not.toContain('offered per message')
   })
 
-  it('offers Always allow in Read-only and Write but not Always asks',
+  it('offers Always allow in every group, with a warning on Delete and share',
     async () => {
       const wrapper = await mountSuspended(Permissions)
       const optionsOf = (tier: string) => {
@@ -147,22 +147,23 @@ describe('Profile/BesidkaTools/Permissions', () => {
       expect(optionsOf('read'))
         .toEqual(['Blocked', 'Needs approval', 'Always allow'])
       expect(optionsOf('ask-every-time'))
-        .toEqual(['Blocked', 'Needs approval'])
+        .toEqual(['Blocked', 'Needs approval', 'Always allow'])
       expect(toolRow(wrapper, 'create_file')
         .get('[data-testid="tool-permission-option-allow"]')
         .attributes('aria-disabled')).toBe('false')
+      expect(wrapper.get(
+        '[data-testid="tool-permissions-group-warning-ask-every-time"]',
+      ).text()).toContain('without asking you')
 
-      const lockedAllow = toolRow(wrapper, 'delete_files')
+      const deleteAllow = toolRow(wrapper, 'delete_files')
         .get('[data-testid="tool-permission-option-allow"]')
 
-      expect(lockedAllow.attributes('aria-disabled')).toBe('true')
-      expect(lockedAllow.element.parentElement?.getAttribute('data-tip'))
-        .toContain('always asks')
+      expect(deleteAllow.attributes('aria-disabled')).toBe('false')
 
-      await lockedAllow.trigger('click')
+      await deleteAllow.trigger('click')
       await flushPromises()
 
-      expect(mocks.fetch).not.toHaveBeenCalled()
+      expect(mocks.fetch).toHaveBeenCalled()
     })
 
   it('shows the shared mode of a group, and Custom when it is mixed',

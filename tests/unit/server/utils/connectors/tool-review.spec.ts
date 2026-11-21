@@ -67,8 +67,8 @@ describe('resolveAlwaysAllowHashes', () => {
     })
   })
 
-  it('refuses send, post, forward, reply and unshare tools and keeps reads '
-    + 'named with plural nouns', () => {
+  it('accepts send, post, forward, reply and unshare tools (owner decision, '
+    + '2026-11-20)', () => {
     const names = ['send_email', 'sendMessage', 'post-comment',
       'forwardMessage', 'unshare_page', 'search_posts']
     const sendDefinitions = names.map((name) => {
@@ -81,18 +81,22 @@ describe('resolveAlwaysAllowHashes', () => {
       settings: names.map(name => setting(name)),
       toolNames: names,
     })).toEqual({
-      hashes: new Map([['search_posts', HASH]]),
-      refused: names.slice(0, 5),
+      hashes: new Map(names.map(name => [name, HASH])),
+      refused: [],
     })
   })
 
-  it('refuses the always-ask tier, whatever readOnlyHint says', () => {
-    expect(resolveAlwaysAllowHashes({
+  it('accepts the always-ask tier bound to the reviewed hash', () => {
+    const resolved = resolveAlwaysAllowHashes({
       definitions,
       hashes,
       settings,
       toolNames: ['purge', 'archive', 'file_access'],
-    }).refused).toEqual(['purge', 'archive', 'file_access'])
+    })
+
+    expect(resolved.refused).toEqual([])
+    expect([...resolved.hashes.keys()])
+      .toEqual(['purge', 'archive', 'file_access'])
   })
 
   it('refuses a drifted, unknown or unreviewed tool', () => {
@@ -179,9 +183,9 @@ describe('buildConnectorToolsReview modes', () => {
         canAlwaysAllow: true,
       })
       expect(byName.get('delete_page')).toMatchObject({
-        mode: 'ask',
+        mode: 'allow',
         alwaysAsk: true,
-        canAlwaysAllow: false,
+        canAlwaysAllow: true,
       })
       expect(byName.get('changed')).toMatchObject({
         change: 'changed',

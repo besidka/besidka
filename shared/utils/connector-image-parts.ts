@@ -94,6 +94,32 @@ export function getConnectorImagesForToolCall(
 }
 
 /**
+ * The saved images of every connector call of a message, keyed by tool call
+ * id, read in one pass over the parts.
+ */
+export function getConnectorImagesByToolCallId(
+  parts: readonly unknown[],
+): Map<string, ConnectorImagePartData[]> {
+  const imagesByToolCallId = new Map<string, ConnectorImagePartData[]>()
+
+  for (const part of parts) {
+    if (!isConnectorImageDataPart(part)) {
+      continue
+    }
+
+    const images = imagesByToolCallId.get(part.data.toolCallId)
+
+    if (images) {
+      images.push(part.data)
+    } else {
+      imagesByToolCallId.set(part.data.toolCallId, [part.data])
+    }
+  }
+
+  return imagesByToolCallId
+}
+
+/**
  * The public ids of every connector image file a message's parts point at.
  */
 export function collectConnectorImageFileIds(

@@ -1,7 +1,12 @@
 import type { Page, Route } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { waitForHydration } from '../helpers/auth'
 import { createSkillByApi, openGrantedMember } from '../helpers/skills'
+import type { ComposerMetrics } from '../helpers/composer-metrics'
+import {
+  openChatCase as openCase,
+  readComposerMetrics as readMetrics,
+  settleLayout as settle,
+} from '../helpers/composer-metrics'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -11,13 +16,6 @@ const MOBILE_VIEWPORT = { width: 430, height: 932 }
 const HEIGHT_TOLERANCE: number = 1
 const TOP_ALIGNMENT_MAX: number = 160
 const CONNECTOR_PROMPT: string = 'Ask Linear about the login bug.'
-
-interface ComposerMetrics {
-  composerHeight: number
-  spacerHeight: number
-  scrollHeight: number
-  lastUserTop: number
-}
 
 function buildConnector() {
   return {
@@ -104,44 +102,6 @@ async function openMobileMember(
   await interceptShortAnswer(page)
 
   return page
-}
-
-async function openCase(page: Page, url: string): Promise<void> {
-  await page.goto(url)
-  await waitForHydration(page)
-
-  await expect(page.getByTestId('chat-input-textarea')).toBeVisible()
-  await expect(page.getByTestId('chat-input')).toBeVisible()
-}
-
-async function readMetrics(page: Page): Promise<ComposerMetrics> {
-  return page.evaluate(() => {
-    const composer = document.querySelector(
-      '[data-testid="chat-input"]',
-    ) as HTMLElement
-    const messagesRoot = document.querySelector(
-      '[data-testid="chat-messages-container"]',
-    ) as HTMLElement
-    const scrollContainer = messagesRoot.parentElement as HTMLElement
-    const spacer = scrollContainer.lastElementChild as HTMLElement
-    const lastUser = Array.from(
-      document.querySelectorAll('[data-role="user"] .chat-bubble'),
-    ).at(-1) as HTMLElement | undefined
-    const containerTop = scrollContainer.getBoundingClientRect().top
-
-    return {
-      composerHeight: composer.offsetHeight,
-      spacerHeight: spacer.offsetHeight,
-      scrollHeight: scrollContainer.scrollHeight,
-      lastUserTop: lastUser
-        ? lastUser.getBoundingClientRect().top - containerTop
-        : -1,
-    }
-  })
-}
-
-async function settle(page: Page): Promise<void> {
-  await page.waitForTimeout(600)
 }
 
 async function expectComposerHeightUnchanged(
@@ -240,7 +200,7 @@ test('sending with the connector suggestion visible pins the message like a plai
   expect(afterDismiss.lastUserTop).toBe(withChip.lastUserTop)
 })
 
-test('the pending approval chip does not change the composer height', async ({
+test('the pending approval chip stays hidden while the bubble is on screen and never changes the composer height', async ({
   browser,
 }) => {
   const page = await openMobileMember(browser, 'e2e-overlay-approval', [
@@ -248,17 +208,13 @@ test('the pending approval chip does not change the composer height', async ({
   ])
 
   await openCase(page, '/chats/test?scenario=tool-approval')
-  await expect(page.getByTestId('tool-approval-chip')).toBeVisible()
+  await expect(page.getByTestId('tool-approval-bubble')).toBeVisible()
   await settle(page)
+  await expect(page.getByTestId('tool-approval-chip')).toHaveCount(0)
+  await expect(page.getByTestId('tool-approval-live-region'))
+    .toHaveText('Action waiting for approval')
 
-  const withChip = await readMetrics(page)
-  const chipBox = await page.getByTestId('tool-approval-chip').boundingBox()
-  const composerBox = await page.getByTestId('chat-input').boundingBox()
-
-  expect(chipBox).not.toBeNull()
-  expect(chipBox!.y + chipBox!.height)
-    .toBeLessThanOrEqual(composerBox!.y + HEIGHT_TOLERANCE)
-
+  const metrics = await readMetrics(page)
   const bubbleHeight = await page.evaluate(() => {
     const composer = document.querySelector(
       '[data-testid="chat-input"]',
@@ -268,7 +224,7 @@ test('the pending approval chip does not change the composer height', async ({
       .offsetHeight
   })
 
-  expect(Math.abs(withChip.composerHeight - bubbleHeight))
+  expect(Math.abs(metrics.composerHeight - bubbleHeight))
     .toBeLessThanOrEqual(HEIGHT_TOLERANCE)
 })
 

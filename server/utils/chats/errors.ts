@@ -13,7 +13,11 @@ import {
   NoSuchToolError,
   ToolChoiceViolationError,
 } from 'ai'
-import { summarizeProviderError } from '~~/server/utils/chats/provider-error-summary'
+import {
+  getProviderDisplayName,
+  summarizeProviderError,
+  unwrapRetryError,
+} from '~~/server/utils/chats/provider-error-summary'
 import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
 const chatErrorCodes: ChatErrorCode[] = [
@@ -38,6 +42,9 @@ const chatErrorCodes: ChatErrorCode[] = [
   'research-start-failed',
   'clarification-failed',
   'assistant-empty-answer',
+  'provider-queued',
+  'provider-stalled',
+  'generation-time-limit',
   'unknown',
 ]
 
@@ -76,18 +83,24 @@ export function normalizeChatError(
     }
   }
 
-  const providerStatus = getErrorStatus(input.error)
-  const providerRequestId = getProviderRequestId(input.error)
+  const providerError = unwrapRetryError(input.error)
+  const providerStatus = getErrorStatus(providerError)
+  const providerRequestId = getProviderRequestId(providerError)
   const requestId = input.event
     ? getRequestId(input.event)
     : undefined
-  const errorMessage = getErrorMessage(input.error)
+  const classifiedMessage = getErrorMessage(input.error)
+  const errorMessage = getErrorMessage(providerError) || classifiedMessage
   const status = input.status ?? providerStatus ?? 500
   const code = input.code || resolveChatErrorCode(
-    errorMessage,
+    classifiedMessage,
     providerStatus,
   )
+  const billingLimit = code === 'provider-quota-exceeded'
+    ? readBillingLimit(classifiedMessage)
+    : undefined
   const message = input.message
+    || getBillingLimitMessage(billingLimit, input.providerId)
     || getPreferredChatMessage({
       code,
       errorMessage,
@@ -101,15 +114,80 @@ export function normalizeChatError(
     why: dedupeChatErrorWhy(
       message,
       input.why
-      || getProviderSummary(code, input.error, input.providerId)
+      || getProviderSummary(code, providerError, input.providerId)
       || getDefaultChatWhy(code, errorMessage),
     ),
-    fix: input.fix || getDefaultChatFix(code, errorMessage),
+    fix: input.fix
+      || getBillingLimitFix(billingLimit, input.providerId)
+      || getDefaultChatFix(code, errorMessage),
     status,
     requestId,
     providerId: input.providerId,
     providerRequestId,
   }
+}
+
+type BillingLimit = 'spend-cap' | 'credit-balance'
+
+const SPEND_CAP_PATTERN = /\bspend(?:ing)? cap\b/i
+const CREDIT_BALANCE_PATTERN = /credit balance is too low/i
+const GOOGLE_SPEND_CAP_FIX = 'Raise or remove the monthly spend cap on the'
+  + ' Spend page in Google AI Studio (aistudio.google.com/spend). A billing'
+  + ' account cap resets on the 1st of the month.'
+
+/**
+ * A spend cap the user set (Google AI Studio's monthly spend cap: 429
+ * `RESOURCE_EXHAUSTED` "Your project has exceeded its monthly spending
+ * cap") or an empty prepaid balance (Anthropic: 400 "Your credit balance is
+ * too low to access the Anthropic API") is not a throttle or an outage:
+ * retrying cannot help until the user changes their billing.
+ */
+function readBillingLimit(
+  errorMessage: string | undefined,
+): BillingLimit | undefined {
+  if (!errorMessage) {
+    return undefined
+  }
+
+  if (SPEND_CAP_PATTERN.test(errorMessage)) {
+    return 'spend-cap'
+  }
+
+  return CREDIT_BALANCE_PATTERN.test(errorMessage)
+    ? 'credit-balance'
+    : undefined
+}
+
+function getBillingLimitMessage(
+  billingLimit: BillingLimit | undefined,
+  providerId: SupportedProviderId | GatewayId | undefined,
+): string | undefined {
+  const name = getProviderDisplayName(providerId) ?? 'provider'
+
+  if (billingLimit === 'spend-cap') {
+    return `Your ${name} API key reached its spend cap.`
+  }
+
+  return billingLimit === 'credit-balance'
+    ? `Your ${name} account is out of credits.`
+    : undefined
+}
+
+function getBillingLimitFix(
+  billingLimit: BillingLimit | undefined,
+  providerId: SupportedProviderId | GatewayId | undefined,
+): string | undefined {
+  if (billingLimit === 'spend-cap') {
+    return providerId === 'google'
+      ? GOOGLE_SPEND_CAP_FIX
+      : 'Raise the spend cap in your provider\'s billing settings, or switch'
+        + ' to a different saved key.'
+  }
+
+  return billingLimit === 'credit-balance'
+    ? 'Add credits in your provider\'s billing settings, or switch to a'
+    + ' different saved key.'
+    : undefined
 }
 
 const PROVIDER_SUMMARY_CODES: ReadonlySet<ChatErrorCode> = new Set([
@@ -501,6 +579,7 @@ function resolveChatErrorCode(
     status === 402
     || normalizedMessage.includes('quota')
     || normalizedMessage.includes('insufficient_quota')
+    || readBillingLimit(errorMessage)
   ) {
     return 'provider-quota-exceeded'
   }
@@ -575,6 +654,12 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
       return 'Could not prepare research questions.'
     case 'assistant-empty-answer':
       return 'The model finished searching but didn\'t write an answer.'
+    case 'provider-queued':
+      return 'The provider queued this request and did not start it.'
+    case 'provider-stalled':
+      return 'The model stopped responding.'
+    case 'generation-time-limit':
+      return 'This reply reached its time limit.'
     default:
       return 'The chat request failed.'
   }
@@ -619,6 +704,15 @@ function getDefaultChatWhy(
     case 'assistant-empty-answer':
       return 'The model completed its tool calls without producing a'
         + ' final response.'
+    case 'provider-queued':
+      return 'The provider kept the request waiting in its queue and sent'
+        + ' nothing back.'
+    case 'provider-stalled':
+      return 'The provider sent nothing for too long, so Besidka ended the'
+        + ' reply.'
+    case 'generation-time-limit':
+      return 'One reply may run for at most nine minutes, tool calls'
+        + ' included.'
     case 'unknown':
       return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
         ? errorMessage
@@ -662,6 +756,12 @@ function getDefaultChatFix(
       return 'Retry the request.'
     case 'assistant-empty-answer':
       return 'Try again or pick another model.'
+    case 'provider-queued':
+      return 'The provider is busy. Retry later or pick another model.'
+    case 'provider-stalled':
+      return 'Retry the message, or pick another model.'
+    case 'generation-time-limit':
+      return 'Send "continue" to go on from what is saved.'
     default:
       return errorMessage && looksLikeNoAvailableEndpointsError(errorMessage)
         ? 'Try a different model or provider.'
