@@ -23,10 +23,10 @@ Recorded on 2026-11-21 during the dependency batch on
 | `nuxt-studio` | 1.7.0 | >1.7.0 | 1.8.0 shipped an empty `studio.client.d.ts` (TS2306 dropped every `$plugin` injection type). 1.8.2 fixes that, but its `dist/module/module.mjs` imports `../../../dist/module/runtime/utils/media.js`, which resolves outside the package and loads only through Nuxt's jiti fallback (`NUXT_B8023`), and nuxt-content/nuxt-studio#597 (1.8.x external media loses its public URL) is open. Studio cannot be verified locally | A release that imports `media.js` from inside the package, #597 closed, and a Studio edit checked on a preview |
 | `vue-router` | 5.4.0 | >=5.5.0 | 5.5 persists scroll positions to `sessionStorage["vue-router:scroll"]` at module scope, keyed by history position plus the full path with its query string, with no opt-out. UTM parameters then land in browser storage, which breaks the URL-only attribution rule (`docs/analytics-utm.md`) and adds a storage entry the Cookie Policy does not list. `tests/e2e/attribution/utm-signup.spec.ts` fails on it. nuxt 4.6.4 itself pins 5.4.0. A workspace `overrides` entry keeps `@nuxtjs/i18n` from pulling a second copy | A vue-router option to turn the persistence off (or a key without the query), or a Nuxt release that moves to 5.5 and a decision on how to keep UTM out of storage; then drop the override too |
 | `@nuxtjs/color-mode` | 4.0.1 | >=4.1.0 | 4.1.0 writes `nuxt-color-mode` to localStorage in an idle callback after hydration (`onIdleAfterHydration`). `app/plugins/cookie-consent-gate.client.ts` purges the key once at startup, so the key is written for visitors who have not consented to preferences or rejected them. `tests/e2e/cookies/consent.spec.ts:240` and `:490` fail on a production build | The consent gate handles the deferred write (for example a storage option or hook that suppresses the write until consent), proven by the consent e2e spec on a production build |
-| `vitest`, `@vitest/ui`, `@vitest/coverage-v8` | 4.1.10 | major 5 | 436 of 1210 unit spec files fail: projects now inherit the root config and share one Vite server by default, so the Nuxt project transforms every SFC twice (`Identifier '__temp' has already been declared`, empty SFC descriptors). The 5.0 migration guide lists about 35 breaking changes (`clearMocks` on by default, unawaited assertions fail, top-level hoisted mocks, and more) | A dedicated migration PR: project config per the 5.0 guide, then the full unit, integration and cookie-consent suites |
+| `vitest`, `@vitest/ui`, `@vitest/coverage-v8` | 4.1.12 | major 5 | 436 of 1210 unit spec files fail: projects now inherit the root config and share one Vite server by default, so the Nuxt project transforms every SFC twice (`Identifier '__temp' has already been declared`, empty SFC descriptors). The 5.0 migration guide lists about 35 breaking changes (`clearMocks` on by default, unawaited assertions fail, top-level hoisted mocks, and more) | A dedicated migration PR: project config per the 5.0 guide, then the full unit, integration and cookie-consent suites |
 | `@stylistic/eslint-plugin` | 5.10.0 | major 6 | `@nuxt/eslint-config` 1.17.0 (the newest) depends on `@stylistic/eslint-plugin` ^5.10.0, and `eslint.config.js` registers the same `@stylistic` plugin name | A `@nuxt/eslint-config` release on stylistic 6 |
 | `msw` | 2.15.0 | major 3 | Its only user, `tests/setup/mocks/api.ts`, is imported by no spec and is outside typecheck, so no check would exercise an upgrade. It looks unused | Delete `msw` and the mock file, or start using them; either way the hold ends |
-| `nuxt-email-renderer` | 2.11.1 | major 4 | 4.0 changes the return shape of `renderEmailComponent` (always `{ html, text?, subject? }`) and rewrites the build pipeline that the `forceInlineVueI18nForEmailRenderer` module in `nuxt.config.ts` hooks into. Sending cannot be verified locally | A PR that adapts the callers and the vue-i18n inline module, then sends a real email from a preview |
+| `nuxt-email-renderer` | 2.11.2 | major 4 | 4.0 changes the return shape of `renderEmailComponent` (always `{ html, text?, subject? }`) and rewrites the build pipeline that the `forceInlineVueI18nForEmailRenderer` module in `nuxt.config.ts` hooks into. Sending cannot be verified locally | A PR that adapts the callers and the vue-i18n inline module, then sends a real email from a preview |
 | `@vite-pwa/nuxt` | 1.1.1 | major 2 | `pnpm run dev` disables the PWA module, so nothing local exercises the service worker, and the Safari service worker history (`docs/pwa-safari-dock-app-launch.md`) makes an unverified major risky | A PR with preview checks in Safari and the iOS home-screen PWA |
 | `typescript` | 6.x | major 7 | The native compiler port has no stable compiler API: vue-tsc has no TS7 support (vuejs/language-tools#5381) and typescript-eslint's peer range excludes it (typescript-eslint/typescript-eslint#12518). See PR #297 | vue-tsc and typescript-eslint support TS7 |
 | `@types/node` | 24.x | major 26 | Must match the Node 24 LTS runtime; `scripts/verify-node-types.mjs` fails the install on another major | The runtime moves to a newer Node LTS |
@@ -36,7 +36,7 @@ Recorded on 2026-11-21 during the dependency batch on
 Covers `vitest`, `@vitest/ui` and `@vitest/coverage-v8`, which move together
 in the root and in `modules/cookie-consent`.
 
-- **Held at:** 4.1.10.
+- **Held at:** 4.1.12.
 - **Blocked:** major 5 (5.1.1 at the time of the batch).
 - **Why:** with 5.1.1, 436 of 1210 unit spec files failed. Vitest 5 makes
   inline projects inherit the root config and share one Vite server by
@@ -87,7 +87,7 @@ in the root and in `modules/cookie-consent`.
 
 ## nuxt-email-renderer
 
-- **Held at:** 2.11.1.
+- **Held at:** 2.11.2.
 - **Blocked:** major 4 (4.1.0).
 - **Why:** 4.0 changes `renderEmailComponent` to always return
   `{ html, text?, subject? }` and rewrites the build pipeline (Nuxt 4.1

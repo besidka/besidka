@@ -39,7 +39,7 @@
     "happy-dom": "^21.0.4",
     "nuxt": "^4.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.12",
     "vitest-environment-nuxt": "^2.0.0",
     "vue": "3.6.0-rc.16"
   }
