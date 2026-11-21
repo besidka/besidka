@@ -15,14 +15,16 @@ export interface DiagramLimit {
   found?: number
 }
 
-const EDGE_LIMIT_PATTERN = /^Edge limit exceeded\. \d+ edges found/
+const EDGE_LIMIT_PATTERN
+  = /^Edge limit exceeded\. (?:\d+ edges found|The limit is \d+)/
 
 const SPLIT_ADVICE = 'Split it into smaller diagrams.'
 
 /**
- * Mermaid stops counting at the limit, so its own message always reports
- * `limit` edges found and the real total is unknown: only the text size is
- * measured before rendering and carries `found`.
+ * The renderer stops counting at the limit, so its edge message never carries
+ * the real total ("500 edges found, but the limit is 500" before pele 1.13,
+ * "The limit is 500." since): only the text size is measured before rendering
+ * and carries `found`.
  */
 export function detectMermaidLimit(
   message: string,

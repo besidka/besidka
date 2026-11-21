@@ -17,6 +17,13 @@ const DOM_SETUP_FILE = './tests/setup/vitest.setup.dom.ts'
 
 const NODE_SETUP_FILE = './tests/setup/vitest.setup.node.ts'
 
+const NUXT_CONTENT_SERVER_FETCH = fileURLToPath(
+  new URL(
+    './internal/server-fetch.legacy.js',
+    import.meta.resolve('@nuxt/content/server'),
+  ),
+)
+
 const BASE_EXCLUDE = [
   'tests/e2e/**/*',
   '**/node_modules/**',
@@ -49,6 +56,7 @@ const resolveNuxtConfig = defineVitestConfig({
       'cloudflare:workers': fileURLToPath(
         new URL('./tests/setup/mocks/cloudflare-workers.ts', import.meta.url),
       ),
+      '#content/server-fetch': NUXT_CONTENT_SERVER_FETCH,
     },
   },
   test: {

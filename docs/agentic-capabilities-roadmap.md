@@ -306,7 +306,12 @@ break. Account: the one `wrangler whoami` lists for this repo.
 - **Docs:** a CLAUDE.md "Project Docs" entry for each new doc, and an update
   to the status table in section 2. Docs mirror to Linear on merge
   (`scripts/linear-docs-sync.mjs`; a new file gets its Linear document and
-  map entry automatically).
+  map entry automatically). Linear rejects document content above 250,000
+  characters, so a doc longer than 240,000 characters syncs as
+  "<title> (part N of M)" documents split at its top-level headings, with an
+  array of part ids in `docs/.linear-docs.json` and every part linked from
+  the Docs index; `node scripts/linear-docs-sync.mjs --dry-run` prints the
+  plan without a key. Long docs need no manual splitting.
 - **Monorepo:** `pnpm-workspace.yaml` gains `packages/*` and `workers/*`.
   `.github/workflows/production.yml` gets a `deploy-satellites` job that
   runs before `deploy`. Satellite Workers deploy from `main` only, so their

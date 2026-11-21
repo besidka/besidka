@@ -2971,8 +2971,11 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/indexnow-submit.spec.ts'],
     },
     {
-      pattern: /^scripts\/(linear-request|linear-docs-sync)\.mjs$/,
-      tests: ['tests/unit/scripts/linear-request.spec.ts'],
+      pattern: /^scripts\/(linear-request|linear-docs-sync|linear-docs-split)\.mjs$/,
+      tests: [
+        'tests/unit/scripts/linear-request.spec.ts',
+        'tests/unit/scripts/linear-docs-split.spec.ts',
+      ],
     },
     {
       pattern: /^(scripts\/artifact-evals\.mjs|tests\/evals\/artifacts\/prompts\.json|tests\/e2e\/artifacts\/evals-render\.spec\.ts|playwright\.evals\.config\.ts)$/,

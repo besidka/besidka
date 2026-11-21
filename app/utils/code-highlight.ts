@@ -27,6 +27,8 @@ export const CODE_LANGUAGE_INJECTORS: Readonly<
   'html-derivative': ['angular-html', 'vue'],
   'javascript': ['ts-tags'],
   'jsx': ['ts-tags'],
+  'markdown': ['vue'],
+  'pug': ['vue'],
   'typescript': ['ts-tags'],
 }
 
