@@ -38,13 +38,6 @@
           >
             {{ group.tools.length }}
           </span>
-          <Icon
-            v-if="group.isLocked"
-            name="lucide:lock"
-            size="14"
-            class="shrink-0 text-base-content/60"
-            aria-hidden="true"
-          />
         </button>
         <select
           class="select select-sm w-full sm:w-44"
@@ -75,6 +68,19 @@
         class="-mt-1 px-4 pb-3 text-xs text-base-content/60"
       >
         {{ group.description }}
+      </p>
+      <p
+        v-if="group.warning"
+        class="-mt-2 flex items-start gap-1.5 px-4 pb-3 text-xs text-base-content/80"
+        :data-testid="`tool-permissions-group-warning-${group.id}`"
+      >
+        <Icon
+          name="lucide:triangle-alert"
+          size="14"
+          class="mt-px shrink-0 text-warning"
+          aria-hidden="true"
+        />
+        <span>{{ group.warning }}</span>
       </p>
       <ul
         v-show="group.isOpen"

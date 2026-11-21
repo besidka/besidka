@@ -37,6 +37,7 @@
         <ProfileSkillsCommandField
           v-model="commandInput"
           :server-error="commandError"
+          :used-commands="usedCommands"
           test-id="skill-setting-command"
         />
         <div
@@ -298,6 +299,7 @@ const scriptsDialog = useTemplateRef<{ open: () => void }>('scriptsDialog')
 const commandInput = shallowRef<string>(props.skill.command ?? '')
 const hint = shallowRef<string>(props.skill.argumentHint ?? '')
 const commandError = shallowRef<string>('')
+const usedCommands = useUsedSkillCommands(() => props.skill.id)
 
 const isBusy = computed<boolean>(() => {
   return actions.isBusy(props.skill.id)
@@ -320,7 +322,7 @@ const hasCommandInput = computed<boolean>(() => {
 })
 
 const commandProblem = computed<string>(() => {
-  return getSkillCommandProblem(commandInput.value)
+  return getSkillCommandProblem(commandInput.value, usedCommands.value)
 })
 
 const isCommandChanged = computed<boolean>(() => {

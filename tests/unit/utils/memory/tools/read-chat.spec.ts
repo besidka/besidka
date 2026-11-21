@@ -110,6 +110,32 @@ describe('readChat', () => {
     expect(result.nextAroundMessageId).toBeUndefined()
   })
 
+  it('leaves the messages of a built-in command out of the excerpt', async () => {
+    seedChat({ id: 1, userId: 1 })
+    seedMessage({ chatId: 1, text: 'How much did this cost?' })
+    seedMessage({
+      chatId: 1,
+      parts: [
+        { type: 'data-command-invocation', data: { command: 'cost' } },
+        { type: 'text', text: 'my note' },
+      ],
+    })
+    seedMessage({
+      chatId: 1,
+      role: 'assistant',
+      parts: [
+        { type: 'data-command-report', data: { command: 'cost' } },
+        { type: 'text', text: '```text\nSECRET REPORT\n```' },
+      ],
+    })
+
+    const result = await read({})
+
+    expect(result.messages.map(message => message.text)).toEqual([
+      '<chat_excerpt>How much did this cost?</chat_excerpt>',
+    ])
+  })
+
   it('rejects another user\'s chat with the same 404 as a missing chat', async () => {
     seedChat({ id: 1, userId: 2 })
     seedMessage({ chatId: 1, text: 'private' })

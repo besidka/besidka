@@ -287,7 +287,7 @@ consent page lets the user approve each scope separately.
 
 | Scope | Tools |
 | --- | --- |
-| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats` |
+| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats`, `get_debug_info`, `get_chat_cost`, `get_usage_stats` |
 | `chats:write` | `update_chat`, `move_chats_to_project`, `revoke_chat_shares`, `branch_chat` |
 | `projects:read` | `list_projects`, `get_project`, `read_project_knowledge_item` |
 | `projects:write` | `create_project`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_project`, `update_project_knowledge_item` |

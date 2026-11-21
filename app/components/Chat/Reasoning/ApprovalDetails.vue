@@ -25,7 +25,7 @@
         Text to save
       </h4>
       <p
-        class="overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-3 text-xs"
+        class="overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-3 text-xs"
         data-testid="tool-approval-details-preview"
       >{{ preview }}</p>
     </section>
@@ -50,7 +50,7 @@
       </h4>
       <pre
         v-if="argumentsText"
-        class="overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-3 text-xs"
+        class="overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-3 text-xs"
         data-testid="tool-approval-details-arguments"
       >{{ argumentsText }}</pre>
       <p

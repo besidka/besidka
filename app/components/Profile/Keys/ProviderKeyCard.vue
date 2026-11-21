@@ -31,18 +31,7 @@
             />
           </template>
           <template #labelAfter>
-            <UiButton
-              mode="default"
-              text="Paste"
-              icon-name="lucide:clipboard-paste"
-              :icon-size="16"
-              icon-only
-              circle
-              ghost
-              size="xs"
-              tooltip-position="left"
-              @click="pasteApiKey"
-            />
+            <UiFormPasteButton @paste="pasteApiKey" />
           </template>
           <template #noteAfter>
             <span class="block">
@@ -138,7 +127,6 @@ const form = ref<InstanceType<typeof UiForm> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
-const { paste } = useClipboardWithPaste()
 const {
   keyStatusForProvider,
   refresh: refreshUserKeys,
@@ -181,8 +169,8 @@ const placeholder = computed<string>(() => {
   return meta.value.keyPlaceholder || defaultKeyPlaceholder
 })
 
-async function pasteApiKey() {
-  apiKey.value = await paste()
+async function pasteApiKey(text: string) {
+  apiKey.value = text
   await nextTick()
   apiKeyInput.value?.dispatchChange()
 }
@@ -253,7 +241,7 @@ async function describeLiveUploads(): Promise<string> {
 
   try {
     const { skills } = await $fetch(
-      '/api/v1/profiles/keys/anthropic/uploads',
+      '/api/v1/profiles/keys/anthropic/skill-copies',
     )
 
     if (skills.length === 0) {

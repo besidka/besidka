@@ -56,10 +56,10 @@ import type {
 } from '~~/server/utils/tool-approval/kv'
 import {
   clampRemember,
-  isAlwaysAskTier,
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
+import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import { SKILL_SCRIPTS_GRANT_KEY } from '#shared/utils/skills/scripts'
 import { addBesidkaChatGrant } from '~~/server/utils/besidka-tools/chat-settings'
 import {
@@ -82,21 +82,6 @@ const MODEL_CONTEXT_TOOL_STATES = new Set<string>([
   'output-error',
   'output-denied',
 ])
-
-export const TOOL_APPROVAL_DENIAL_TEXT: Record<
-  ToolApprovalDenialReason,
-  string
-> = {
-  'blocked': 'This tool is blocked in the user\'s settings, so the action '
-    + 'did not run.',
-  'missing-tool': 'This tool is no longer available, so the action did not '
-    + 'run.',
-  'definition-drifted': 'This tool changed after the user was asked, so the '
-    + 'action did not run. Ask again if it is still needed.',
-  'over-cap': 'This turn reached its limit of approved actions, so the '
-    + 'action did not run.',
-  'invalid-input': 'Besidka could not check this action, so it did not run.',
-}
 
 export const TOOL_APPROVAL_USER_DENIAL_TEXT = 'The user declined this action.'
 
@@ -850,9 +835,10 @@ async function applyBesidkaRememberGrant(input: {
  * "in this chat" maps the exposed tool name to its definition hash in the
  * connector's chat settings, "always" sets the connector tool setting to
  * `always` with the approved hash (only when that setting row exists). The
- * choice was already clamped to what the request offered: only reason
- * `default` offers more than `once`, and a tool in the always-ask tier is
- * never granted even if a choice slipped through. The send and the replay
+ * choice was already clamped to what the request offered: every connector
+ * and Besidka prompt offers all three (the always-ask tier included since
+ * the owner decision of 2026-11-20), a native tool never gets a grant even
+ * if a choice slipped through. The send and the replay
  * read back exactly these two values (`getConnectorTools`). For a Besidka
  * tool, "in this chat" stores the registry hash in the chat's
  * `besidka_chat_settings.alwaysAllowTools`, and "always" sets the tool's
@@ -876,7 +862,10 @@ export async function applyRememberGrants(input: {
       || decision.remember === 'once'
       || !hash
       || !entry
-      || isAlwaysAskTier(entry.descriptor)
+      || (
+        entry.descriptor.family === 'native'
+        && entry.descriptor.consentGate !== true
+      )
     ) {
       continue
     }

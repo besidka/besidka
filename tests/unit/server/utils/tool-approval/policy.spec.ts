@@ -22,6 +22,7 @@ import {
 } from '~~/server/utils/tool-approval/state'
 import {
   TOOL_ACCESS_LEVELS,
+  TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_TAINT_KINDS,
   TOOL_FAMILIES,
@@ -224,11 +225,11 @@ describe('resolveToolApproval rules', () => {
             connectorReadSource(CONNECTOR_ID),
             otherSource,
           ]),
-          alwaysGrant: grant(),
         })
 
         expect(decision.rule, otherSource).toBe(2)
-        expect(decision.rememberOptions, otherSource).toEqual(['once'])
+        expect(decision.rememberOptions, otherSource)
+          .toEqual(['once', 'chat', 'always'])
       }
     })
 
@@ -252,7 +253,6 @@ describe('resolveToolApproval rules', () => {
     it('counts Besidka taint as foreign after a connector read', () => {
       const decision = decide(besidkaTool(), {
         state: stateWith(['besidka'], [connectorReadSource(CONNECTOR_ID)]),
-        permissionMode: 'allow',
       })
 
       expect(decision.rule).toBe(2)
@@ -358,12 +358,42 @@ describe('resolveToolApproval rules', () => {
       expect(decision.reason).toBe('untrusted-output')
     })
 
-    it('is not lifted by an always grant, a chat grant or Allow', () => {
-      const decision = decide(besidkaTool(), {
+    it('is lifted by Allow, an always grant or a chat grant (owner '
+      + 'decision, 2026-11-20)', () => {
+      const state = stateWith(['web', 'connector'], [
+        connectorReadSource(OTHER_CONNECTOR_ID),
+      ])
+
+      expect(decide(besidkaTool(), { state, permissionMode: 'allow' }).rule)
+        .toBe(6)
+      expect(decide(connectorTool(), { state, alwaysGrant: grant() }).rule)
+        .toBe(6)
+      expect(decide(connectorTool(), { state, chatGrant: grant() }).rule)
+        .toBe(7)
+    })
+
+    it('offers every answer for a connector or Besidka write', () => {
+      for (const descriptor of [connectorTool(), besidkaTool()]) {
+        const decision = decide(descriptor, { state: stateWith(['web']) })
+
+        expect(decision.rule, descriptor.family).toBe(2)
+        expect(decision.rememberOptions, descriptor.family)
+          .toEqual(['once', 'chat', 'always'])
+      }
+    })
+
+    it('offers only Allow once for a native write', () => {
+      const decision = decide(nativeTool(), { state: stateWith(['web']) })
+
+      expect(decision.rule).toBe(2)
+      expect(decision.rememberOptions).toEqual(['once'])
+    })
+
+    it('asks again under a grant after the definition changed', () => {
+      const decision = decide(connectorTool(), {
         state: stateWith(['web']),
-        permissionMode: 'allow',
-        alwaysGrant: grant({ definitionHash: HASH }),
-        chatGrant: grant({ definitionHash: HASH }),
+        alwaysGrant: grant({ definitionHash: OTHER_HASH }),
+        chatGrant: grant({ definitionHash: OTHER_HASH }),
       })
 
       expect(decision.rule).toBe(2)
@@ -434,14 +464,15 @@ describe('resolveToolApproval rules', () => {
       expect(decision.rule).toBe(3)
     })
 
-    it('is not lifted by an always grant or a chat grant', () => {
-      const decision = decide(connectorTool(), {
-        state: stateWith([], ['besidka']),
-        alwaysGrant: grant({ definitionHash: HASH }),
-        chatGrant: grant({ definitionHash: HASH }),
-      })
+    it('is lifted by an always grant or a chat grant', () => {
+      const state = stateWith([], ['besidka'])
 
-      expect(decision.rule).toBe(3)
+      expect(decide(connectorTool(), { state, alwaysGrant: grant() }).rule)
+        .toBe(6)
+      expect(decide(connectorTool(), { state, chatGrant: grant() }).rule)
+        .toBe(7)
+      expect(decide(connectorTool(), { state }).rememberOptions)
+        .toEqual(['once', 'chat', 'always'])
     })
 
     it('does not apply to Besidka tools', () => {
@@ -493,31 +524,46 @@ describe('resolveToolApproval rules', () => {
       'file',
       'besidka',
       'shared-branch',
-    ])('asks an Always allow connector read after %s taint with every answer',
-      (kind) => {
-        const decision = decide(connectorTool({ access: 'read' }), {
-          state: stateWith([kind]),
-          alwaysGrant: grant(),
-          chatGrant: grant(),
-        })
-
-        expect(decision.rule).toBe(2)
-        expect(decision.reason).toBe('untrusted-output')
-        expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
+    ])('runs an Always allow connector read after %s taint, and asks one '
+      + 'set to Needs approval with every answer', (kind) => {
+      const state = stateWith([kind])
+      const allowedRead = decide(connectorTool({ access: 'read' }), {
+        state,
+        alwaysGrant: grant(),
       })
+      const askedRead = decide(connectorTool({ access: 'read' }), { state })
 
-    it('asks an Always allow connector read after another source (F2)', () => {
+      expect(allowedRead.rule).toBe(6)
+      expect(askedRead.rule).toBe(2)
+      expect(askedRead.reason).toBe('untrusted-output')
+      expect(askedRead.rememberOptions).toEqual(['once', 'chat', 'always'])
+    })
+
+    it('runs an Always allow connector read after another source (F2)', () => {
       for (const otherSource of otherSources) {
-        const decision = decide(connectorTool({ access: 'read' }), {
-          state: stateWith([], [...ownSource, otherSource]),
+        const state = stateWith([], [...ownSource, otherSource])
+        const allowedRead = decide(connectorTool({ access: 'read' }), {
+          state,
           alwaysGrant: grant(),
         })
+        const askedRead = decide(connectorTool({ access: 'read' }), { state })
 
-        expect(decision.rule, otherSource).toBe(3)
-        expect(decision.reason, otherSource).toBe('cross-source')
-        expect(decision.rememberOptions, otherSource)
+        expect(allowedRead.rule, otherSource).toBe(6)
+        expect(askedRead.rule, otherSource).toBe(3)
+        expect(askedRead.reason, otherSource).toBe('cross-source')
+        expect(askedRead.rememberOptions, otherSource)
           .toEqual(['once', 'chat', 'always'])
       }
+    })
+
+    it('runs a read on its default grant after another source', () => {
+      const decision = decide(connectorTool({ access: 'read' }), {
+        state: stateWith(['web'], [connectorReadSource(OTHER_CONNECTOR_ID)]),
+        alwaysGrant: grant(),
+        isAlwaysGrantDefault: true,
+      })
+
+      expect(decision.rule).toBe(6)
     })
 
     it.each<ToolApprovalTaintKind>(TOOL_APPROVAL_TAINT_KINDS)(
@@ -551,14 +597,26 @@ describe('resolveToolApproval rules', () => {
       expect(decision.rule).toBe(9)
     })
 
-    it('ignores Always allow on a read in the always-ask tier', () => {
+    it('honors the user\'s Always allow on a read in the always-ask tier',
+      () => {
+        const descriptor = connectorTool({
+          access: 'read',
+          destructiveHint: true,
+        })
+
+        expect(decide(descriptor, { alwaysGrant: grant() }).rule).toBe(6)
+        expect(decide(descriptor).rule).toBe(5)
+        expect(decide(descriptor).rememberOptions)
+          .toEqual(['once', 'chat', 'always'])
+      })
+
+    it('never lifts the always-ask tier with a default grant', () => {
       const decision = decide(
         connectorTool({ access: 'read', destructiveHint: true }),
-        { alwaysGrant: grant(), chatGrant: grant() },
+        { alwaysGrant: grant(), isAlwaysGrantDefault: true },
       )
 
       expect(decision.rule).toBe(5)
-      expect(decision.rememberOptions).toEqual(['once'])
     })
   })
 
@@ -588,25 +646,36 @@ describe('resolveToolApproval rules', () => {
       })
     })
 
-    it('is not lifted by Allow, an always grant or a chat grant', () => {
-      const decision = decide(besidkaTool({ access: 'delete' }), {
-        permissionMode: 'allow',
-        alwaysGrant: grant({ definitionHash: HASH }),
-        chatGrant: grant({ definitionHash: HASH }),
+    it('is lifted by Allow, an always grant or a chat grant (owner '
+      + 'decision, 2026-11-20)', () => {
+      const deleteTool = besidkaTool({ access: 'delete' })
+      const destructive = connectorTool({ destructiveHint: true })
+
+      expect(decide(deleteTool, { permissionMode: 'allow' }).rule).toBe(6)
+      expect(decide(deleteTool, { chatGrant: grant() }).rule).toBe(7)
+      expect(decide(destructive, { alwaysGrant: grant() }).rule).toBe(6)
+      expect(decide(destructive, { chatGrant: grant() }).rule).toBe(7)
+    })
+
+    it('offers every answer for a connector or Besidka tool', () => {
+      expect(decide(besidkaTool({ access: 'delete' })).rememberOptions)
+        .toEqual(['once', 'chat', 'always'])
+      expect(decide(connectorTool({ destructiveHint: true })).rememberOptions)
+        .toEqual(['once', 'chat', 'always'])
+    })
+
+    it('offers only Allow once for a native tool', () => {
+      expect(decide(nativeTool({ access: 'delete' })).rememberOptions)
+        .toEqual(['once'])
+    })
+
+    it('asks again under a grant given for another definition', () => {
+      const decision = decide(connectorTool({ destructiveHint: true }), {
+        alwaysGrant: grant({ definitionHash: OTHER_HASH }),
+        chatGrant: grant({ definitionHash: OTHER_HASH }),
       })
 
       expect(decision.rule).toBe(5)
-    })
-
-    it('offers only Allow once and never honors a chat grant', () => {
-      const first = decide(besidkaTool({ access: 'delete' }))
-      const afterChatGrant = decide(besidkaTool({ access: 'delete' }), {
-        chatGrant: grant({ definitionHash: HASH }),
-      })
-
-      expect(first.rememberOptions).toEqual(['once'])
-      expect(afterChatGrant.rule).toBe(5)
-      expect(afterChatGrant.status.type).toBe('user-approval')
     })
 
     it('treats destructiveHint true as always-ask for every family', () => {
@@ -1109,15 +1178,15 @@ describe('connectorDestructiveHint', () => {
     const decision = decide(descriptor)
 
     expect(decision.rule).toBe(5)
-    expect(decision.rememberOptions).toEqual(['once'])
+    expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
   })
 })
 
 describe('button matrix', () => {
   it.each([
-    ['untrusted-output', ['once']],
-    ['cross-source', ['once']],
-    ['always-ask', ['once']],
+    ['untrusted-output', ['once', 'chat', 'always']],
+    ['cross-source', ['once', 'chat', 'always']],
+    ['always-ask', ['once', 'chat', 'always']],
     ['default', ['once', 'chat', 'always']],
   ])('offers %j remember options %j', (reason, options) => {
     const decisions = [
@@ -1141,28 +1210,30 @@ describe('button matrix', () => {
   })
 
   it('allows only the offered remember choices', () => {
+    const native = decide(nativeTool(), { state: stateWith(['web']) })
     const forced = decide(connectorTool(), { state: stateWith(['web']) })
     const always = decide(besidkaTool({ access: 'delete' }))
-    const defaulted = decide(connectorTool())
+    const consent = decide(nativeTool({ consentGate: true }))
 
-    expect(isRememberAllowed(forced, 'once')).toBe(true)
-    expect(isRememberAllowed(forced, 'chat')).toBe(false)
-    expect(isRememberAllowed(forced, 'always')).toBe(false)
-    expect(isRememberAllowed(always, 'chat')).toBe(false)
-    expect(isRememberAllowed(always, 'always')).toBe(false)
-    expect(isRememberAllowed(defaulted, 'always')).toBe(true)
+    expect(isRememberAllowed(native, 'once')).toBe(true)
+    expect(isRememberAllowed(native, 'chat')).toBe(false)
+    expect(isRememberAllowed(native, 'always')).toBe(false)
+    expect(isRememberAllowed(forced, 'always')).toBe(true)
+    expect(isRememberAllowed(always, 'chat')).toBe(true)
+    expect(isRememberAllowed(always, 'always')).toBe(true)
+    expect(isRememberAllowed(consent, 'always')).toBe(false)
   })
 
   it('downgrades a remember choice the matrix does not offer to once', () => {
+    const native = decide(nativeTool(), { state: stateWith(['web']) })
+    const consent = decide(nativeTool({ consentGate: true }))
     const forced = decide(connectorTool(), { state: stateWith(['web']) })
-    const always = decide(besidkaTool({ access: 'delete' }))
-    const defaulted = decide(connectorTool())
 
-    expect(clampRemember(forced, 'always')).toBe('once')
-    expect(clampRemember(forced, 'chat')).toBe('once')
-    expect(clampRemember(always, 'always')).toBe('once')
-    expect(clampRemember(always, 'chat')).toBe('once')
-    expect(clampRemember(defaulted, 'always')).toBe('always')
+    expect(clampRemember(native, 'always')).toBe('once')
+    expect(clampRemember(native, 'chat')).toBe('once')
+    expect(clampRemember(consent, 'always')).toBe('once')
+    expect(clampRemember(consent, 'chat')).toBe('chat')
+    expect(clampRemember(forced, 'always')).toBe('always')
   })
 
   it('does not share the options array between decisions', () => {
@@ -1341,7 +1412,11 @@ describe('resolveReplayApproval', () => {
   it('denies a connector call over the per-turn cap', () => {
     const state = createApprovalState()
 
-    incrementCounter(state, 'connectorCalls', 12)
+    incrementCounter(
+      state,
+      'connectorCalls',
+      TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
+    )
 
     expect(replay({ state }).denialReason).toBe('over-cap')
   })
@@ -1349,7 +1424,11 @@ describe('resolveReplayApproval', () => {
   it('allows a connector call just under the per-turn cap', () => {
     const state = createApprovalState()
 
-    incrementCounter(state, 'connectorCalls', 11)
+    incrementCounter(
+      state,
+      'connectorCalls',
+      TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN - 1,
+    )
 
     expect(replay({ state }).denialReason).toBeNull()
   })

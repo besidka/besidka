@@ -128,6 +128,7 @@
         v-if="commandsFeature.active"
         v-model="command"
         :server-error="commandError"
+        :used-commands="usedCommands"
         test-id="skill-create-command"
       />
 
@@ -222,6 +223,7 @@ const templateId = shallowRef<string>(SKILL_TEMPLATES[0]?.id ?? '')
 const isSubmitting = shallowRef<boolean>(false)
 const serverError = shallowRef<string>('')
 const commandError = shallowRef<string>('')
+const usedCommands = useUsedSkillCommands()
 
 const title = computed<string>(() => {
   return props.kind === 'template' ? 'New skill from a template' : 'New skill'
@@ -266,7 +268,7 @@ const nameError = computed<string>(() => {
 const hasCommandProblem = computed<boolean>(() => {
   return !!commandError.value || (
     commandsFeature.value.active
-    && !!getSkillCommandProblem(command.value)
+    && !!getSkillCommandProblem(command.value, usedCommands.value)
   )
 })
 
@@ -350,10 +352,9 @@ async function onSubmit() {
       ? `${parsedException.message}. ${parsedException.why}`
       : parsedException.message || 'The skill could not be created.'
 
-    if (
-      parsedException.code === 'command-taken'
-      || parsedException.code === 'reserved-name'
-    ) {
+    if (parsedException.code === 'command-taken') {
+      commandError.value = parsedException.message || reason
+    } else if (parsedException.code === 'reserved-name') {
       commandError.value = reason
     } else {
       serverError.value = reason

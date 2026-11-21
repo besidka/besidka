@@ -86,6 +86,7 @@ export function createChatContextTestDb(): ChatContextTestDb {
       title text DEFAULT '',
       project_id integer,
       memory_excluded integer,
+      branched_from_share_slug text,
       pinned_at integer,
       activity_at integer NOT NULL
     );

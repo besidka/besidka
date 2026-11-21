@@ -10,6 +10,27 @@ function testId(id: string) {
 }
 
 describe('Chat/SkillInvocation', () => {
+  it('shows a built-in command as a chip that opens nothing', async () => {
+    const wrapper = await mountSuspended(SkillInvocation, {
+      props: {
+        message: {
+          parts: [
+            { type: 'text', text: '7d' },
+            { type: 'data-command-invocation', data: { command: 'stats' } },
+          ],
+        },
+      },
+    })
+    const chip = wrapper.get(testId('builtin-command-chip'))
+
+    expect(chip.text()).toContain('Built-in')
+    expect(chip.text()).toContain('/stats')
+    expect(chip.element.tagName).toBe('SPAN')
+    expect(chip.attributes('title'))
+      .toBe('Your models, tokens, cost and active days')
+    expect(wrapper.find(testId('skill-invocation-chip')).exists()).toBe(false)
+  })
+
   it('shows the attached skill above the text of a sent message', async () => {
     const wrapper = await mountSuspended(SkillInvocation, {
       props: {

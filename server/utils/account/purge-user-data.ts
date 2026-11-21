@@ -18,6 +18,7 @@ import { purgeUserConnectors } from '~~/server/utils/connectors/cleanup'
 import { revokeAllUserConnectorTokens } from '~~/server/utils/connectors/revoke'
 import { purgeUserToolApprovals } from '~~/server/utils/tool-approval/cleanup'
 import { purgeUserLegalNoticeData } from '~~/server/utils/legal/purge'
+import { invalidateUsageStatsCache } from '~~/server/utils/usage/usage-stats'
 
 const r2BatchDeleteLimit = 1000
 
@@ -107,7 +108,8 @@ export interface PurgeUserDataResult {
  *     records in KV that the per-chat indexes of the user's 200 most
  *     recently updated chats list; any other approval key expires within
  *     24 hours,
- *   - KV cache entries holding file bytes and storage quota,
+ *   - KV cache entries holding file bytes, storage quota and the usage
+ *     stats of every period (`usage-stats:<userId>:<period>`),
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
  *     authenticated until its TTL expires,
@@ -332,6 +334,7 @@ export async function purgeUserData(
   }
 
   await invalidateStorageCache(userId, logger)
+  await invalidateUsageStatsCache(useKV(), userId, logger)
 
   const imageGenerationLocks = await db
     .delete(schema.imageGenerationLocks)

@@ -133,3 +133,14 @@ The production environment is **`env.production`** in `wrangler.jsonc`.
   canonical URLs match the post-redirect host. (`nuxt.config.ts` `site.url`
   already defaults to `https://besidka.com`; the env var is the runtime
   override.)
+- [x] **Support mailbox**: `support@besidka.com` exists in Cloudflare Email
+  Routing (a plain forward) and is the address the copyable debug report names.
+  `NUXT_PUBLIC_SUPPORT_EMAIL` is set to it in `wrangler.jsonc` (top level,
+  production and preview); keep it separate from `NUXT_PUBLIC_PRIVACY_EMAIL`,
+  the mailbox for GDPR requests.
+- [ ] **Support mailbox push alerts (optional)**: to get a phone push for
+  `support@`, point its routing rule to the `besidka-mail-alerts` Worker
+  (`docs/mail-alerts.md`, step 6); until then it stays a plain forward.
+- [ ] **Support mailbox in the legal texts**: whether the Privacy Policy, the
+  Terms or the Art. 30 record should mention this mailbox is an owner decision
+  (`content/legal/**` is owner-only).

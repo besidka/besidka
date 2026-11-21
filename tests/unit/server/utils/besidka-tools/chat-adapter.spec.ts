@@ -1,11 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { SEND_TOOL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
 import { BESIDKA_CHAT_TOOLS_MAX } from '#shared/utils/besidka-tool-permissions'
 import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 
 const mocks = vi.hoisted(() => ({
   listMcpProjects: vi.fn(),
+  getDebugInfo: vi.fn(),
 }))
+
+vi.mock('~~/server/utils/mcp/private/debug-info', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/mcp/private/debug-info')
+  >()
+
+  return { ...actual, getDebugInfo: mocks.getDebugInfo }
+})
 
 vi.mock('~~/server/utils/mcp/private/projects', async (importOriginal) => {
   const actual = await importOriginal<
@@ -155,7 +165,7 @@ describe('selectBesidkaChatTools', () => {
     })
 
     expect(selection.selected.map(candidate => candidate.tool.name))
-      .toEqual(['rename_file', 'get_artifact', 'get_project'])
+      .toEqual(['rename_file', 'get_artifact', 'get_chat_cost'])
   })
 
   it('stays within the tools left and the definition bytes', () => {
@@ -260,7 +270,9 @@ describe('Besidka tool descriptors', () => {
 
     expect(BESIDKA_CHAT_TOOLS_MAX).toBe(24)
     expect(names).toHaveLength(24)
-    expect(names).toContain('delete_chats')
+    expect(names).toContain('add_project_note')
+    expect(selection.leftOut.map(candidate => candidate.tool.name))
+      .toContain('delete_chat_message')
     expect(selection.definitionBytes).toBeLessThan(32 * 1024)
   })
 })
@@ -399,6 +411,33 @@ describe('buildBesidkaChatTools', () => {
       expect(guard.untrustedResultSeen).toBe(true)
     })
 
+  it('offers get_debug_info up front and reads the current chat by default',
+    async () => {
+      vi.stubGlobal('useKV', () => ({ marker: 'kv' }))
+      mocks.getDebugInfo.mockResolvedValue({
+        generatedAt: '2026-11-20T10:00:00.000Z',
+        app: { buildId: null, mcpServerVersion: '5.3.0' },
+        chat: null,
+        connectors: [],
+        connectorsNote: null,
+        features: [],
+        contact: 'Contact line.',
+      })
+
+      const { run } = await build()
+      const output = await execute(run, 'besidka__get_debug_info', {})
+
+      expect(run.upFrontNames).toContain('besidka__get_debug_info')
+      expect(mocks.getDebugInfo.mock.calls[0]?.[3]).toMatchObject({
+        slug: CURRENT_SLUG,
+        includeConnectors: false,
+        includeFeatures: true,
+      })
+      expect(output).toContain('tool="get_debug_info"')
+      expect(output).toContain('Besidka debug info')
+      expect(output).not.toContain('generatedAt')
+    })
+
   it('refuses a call the policy did not clear without running it',
     async () => {
       const { run } = await build({ consumeClearedCall: () => false })
@@ -535,20 +574,27 @@ describe('Besidka tools in the send policy', () => {
   })
 
   it.each(['web', 'knowledge', 'file', 'skill', 'connector'] as const)(
-    'asks before an Always allow write after %s taint',
+    'runs an Always allow write after %s taint and asks a Needs approval '
+    + 'one with every answer',
     async (kind) => {
-      const approval = await createApproval(modesWith({
+      const allowed = await createApproval(modesWith({
         rename_file: 'allow',
       }))
+      const approval = await createApproval(modesWith({}))
 
+      allowed.state.taint.add(kind)
       approval.state.taint.add(kind)
 
+      expect(decide(allowed, 'c1', 'besidka__rename_file', {
+        fileId: 'f1',
+        name: 'x.txt',
+      })).toBe('not-applicable')
       expect(decide(approval, 'c1', 'besidka__rename_file', {
         fileId: 'f1',
         name: 'x.txt',
       })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
       expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
-        .toEqual(['once'])
+        .toEqual(['once', 'chat', 'always'])
     },
   )
 
@@ -595,17 +641,21 @@ describe('Besidka tools in the send policy', () => {
     expect(approval.getGrantScope('c2')).toBe('chat')
   })
 
-  it('asks Allow once or Deny only for a delete, even with Always allow '
-    + 'stored', async () => {
-    const approval = await createApproval(modesWith({ delete_chats: 'allow' }))
+  it('runs a delete set to Always allow and asks one set to Needs approval '
+    + 'with every answer', async () => {
+    const allowed = await createApproval(modesWith({ delete_chats: 'allow' }))
+    const approval = await createApproval(modesWith({}))
 
-    expect(approval.entries.get('besidka__delete_chats')?.permissionMode)
+    expect(allowed.entries.get('besidka__delete_chats')?.permissionMode)
       .toBe('allow')
+    expect(decide(allowed, 'c1', 'besidka__delete_chats', {
+      slugs: [OTHER_SLUG],
+    })).toBe('not-applicable')
     expect(decide(approval, 'c1', 'besidka__delete_chats', {
       slugs: [OTHER_SLUG],
     })).toEqual({ type: 'user-approval', reason: 'always-ask' })
     expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
-      .toEqual(['once'])
+      .toEqual(['once', 'chat', 'always'])
     expect(approval.getPendingDecision('c1')?.summary)
       .toBe(`Delete 1 chat: ${OTHER_SLUG}`)
   })
@@ -618,9 +668,9 @@ describe('Besidka tools in the send policy', () => {
       )
 
       expect(decide(approval, 'c1', 'besidka__list_files'))
-        .toEqual({ type: 'denied', reason: 'blocked' })
+        .toEqual({ type: 'denied', reason: SEND_TOOL_DENIAL_TEXT.blocked })
       expect(decide(approval, 'c2', 'besidka__made_up'))
-        .toEqual({ type: 'denied', reason: 'blocked' })
+        .toEqual({ type: 'denied', reason: SEND_TOOL_DENIAL_TEXT.blocked })
       expect(approval.entries.get('besidka__made_up')?.descriptor.family)
         .toBe('besidka')
     })
@@ -634,7 +684,10 @@ describe('Besidka tools in the send policy', () => {
       approval.state.counters.builtInCalls = 12
 
       expect(decide(approval, 'c1', 'besidka__list_projects'))
-        .toEqual({ type: 'denied', reason: 'over-cap' })
+        .toEqual({
+          type: 'denied',
+          reason: SEND_TOOL_DENIAL_TEXT['built-in-calls'],
+        })
     })
 
   it('withholds provider web search after a Besidka read', async () => {
@@ -741,6 +794,15 @@ describe('audit fixes', () => {
     expect(toChatToolResult('list_projects', { projects: [] }))
       .toEqual({ projects: [] })
   })
+
+  it('sends the debug info report to a chat once, without the data copy',
+    () => {
+      expect(toChatToolResult('get_debug_info', {
+        report: 'Besidka debug info',
+        generatedAt: '2026-11-20T10:00:00.000Z',
+        chat: { slug: 'x' },
+      })).toEqual({ report: 'Besidka debug info' })
+    })
 
   it('compares the current chat slug in one case', () => {
     expect(targetsCurrentChat('delete_chats', {
@@ -969,7 +1031,7 @@ describe('Besidka tools loaded from the tool index', () => {
         },
       })).toEqual({ type: 'user-approval', reason: 'always-ask' })
       expect(approval.getPendingDecision('c1')?.decision.rememberOptions)
-        .toEqual(['once'])
+        .toEqual(['once', 'chat', 'always'])
     })
 
   it('keeps the definition hash and mode on a loaded tool', async () => {

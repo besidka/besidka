@@ -14,7 +14,7 @@ import {
 import {
   CONNECTOR_APPROVAL_DENIAL_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
-  CONNECTOR_UNAPPROVED_CALL_TEXT,
+  CONNECTOR_UNAPPROVED_CALL_TEXT, CONNECTOR_CALL_LIMIT_TEXT,
 } from '#shared/utils/connectors-parts'
 import {
   buildConnectorCallErrorText,
@@ -49,6 +49,7 @@ import {
   mcpImage,
   pngHeaderBytes,
 } from '../../../../setup/helpers/connector-images'
+import type { ConnectorCallLimiter } from '~~/server/utils/connectors/call-limits'
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
@@ -61,7 +62,11 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 const { createConnectorArgsHasher } = await import(
   '~~/server/utils/connectors/audit'
 )
-const { CONNECTOR_TOOL_CHANGED_TEXT, getConnectorTools } = await import(
+const {
+  CONNECTOR_TOOL_CHANGED_TEXT,
+  getConnectorTools,
+  settleOnAbort,
+} = await import(
   '~~/server/utils/connectors/send-tools'
 )
 const { writeCatalogSnapshot } = await import(
@@ -127,7 +132,7 @@ describe('getConnectorTools', () => {
   let logged: unknown[]
   let closers: Array<() => Promise<void>>
   const hashArgs = createConnectorArgsHasher('test-encryption-secret')
-  const allowCalls = vi.fn(async () => true)
+  const allowCalls = vi.fn(async () => ({ status: 'allowed' as const }))
 
   async function addConnector(seed: ConnectorSeed) {
     const connector = await createConnector(testDb.db, {
@@ -182,7 +187,7 @@ describe('getConnectorTools', () => {
     guard?: { untrustedResultSeen: boolean }
     isCallCleared?: (toolCallId: string | undefined) => boolean
     legacy?: boolean
-    limitCalls?: () => Promise<boolean>
+    limitCalls?: ConnectorCallLimiter
     prepareDeadlineMs?: number
     keepSeedOrder?: boolean
     catalogSlugs?: string[]
@@ -1411,7 +1416,7 @@ describe('getConnectorTools', () => {
       expect(new Set(names).size).toBe(3)
     })
 
-    it('counts calls per send and stops at 12', async () => {
+    it('counts calls per send and stops at the per-message cap', async () => {
       const alpha = server('mcp.alpha.example.com')
       const seeds: ConnectorSeed[] = [{
         slug: 'alpha',
@@ -1428,10 +1433,8 @@ describe('getConnectorTools', () => {
           .toContain('untrusted_tool_result')
       }
 
-      expect(await execute(tools, 'mcp__alpha__list_issues')).toBe(
-        'Connector call limit for this message reached. '
-        + 'Answer with what you already have.',
-      )
+      expect(await execute(tools, 'mcp__alpha__list_issues'))
+        .toBe(CONNECTOR_CALL_LIMIT_TEXT)
       expect(alpha.callCount('tools/call')).toBe(CONNECTOR_CALLS_PER_TURN)
     })
 
@@ -1489,14 +1492,125 @@ describe('getConnectorTools', () => {
       const { tools } = await run({
         connectorSeeds: seeds,
         servers: [alpha],
-        limitCalls: async () => false,
+        limitCalls: async () => ({
+          status: 'limited',
+          scope: 'connector',
+          retryAfterSeconds: 45,
+        }),
+      })
+
+      const output = await execute(tools, 'mcp__alpha__list_issues')
+
+      expect(output).toContain('too many calls')
+      expect(output).toContain('Wait about 45 seconds')
+      expect(alpha.callCount('tools/call')).toBe(0)
+      expect((await auditRows())[0]).toMatchObject({ outcome: 'denied' })
+      expect(JSON.stringify(logged)).toContain('"limited":"connector"')
+    })
+
+    it('waits for a short per-minute limit and then runs the call',
+      async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+        try {
+          const alpha = server('mcp.alpha.example.com')
+          const seeds: ConnectorSeed[] = [{
+            slug: 'alpha',
+            url: alpha.url,
+            auth: 'header',
+          }]
+          const limitCalls = vi.fn<ConnectorCallLimiter>()
+            .mockResolvedValueOnce({
+              status: 'limited',
+              scope: 'user',
+              retryAfterSeconds: 2,
+            })
+            .mockResolvedValue({ status: 'allowed' })
+
+          await addConnector(seeds[0]!)
+
+          const { tools } = await run({
+            connectorSeeds: seeds,
+            servers: [alpha],
+            limitCalls,
+          })
+          const pending = execute(tools, 'mcp__alpha__list_issues')
+
+          await vi.advanceTimersByTimeAsync(2_000)
+
+          expect(await pending).not.toContain('too many calls')
+          expect(limitCalls).toHaveBeenCalledTimes(2)
+          expect(alpha.callCount('tools/call')).toBe(1)
+          expect(JSON.stringify(logged)).toContain('"paced":"user"')
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+
+    it('logs a KV failure apart from a limit and runs the call', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        limitCalls: async () => ({ status: 'kv-error', error: 'KV 429' }),
       })
 
       expect(await execute(tools, 'mcp__alpha__list_issues'))
-        .toContain('too many calls')
-      expect(alpha.callCount('tools/call')).toBe(0)
-      expect((await auditRows())[0]).toMatchObject({ outcome: 'denied' })
+        .not.toContain('too many calls')
+      expect(alpha.callCount('tools/call')).toBe(1)
+      expect(JSON.stringify(logged)).toContain('"kvError":"KV 429"')
     })
+
+    it('never starts a call whose tool signal aborted before it ran',
+      async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'header',
+        }]
+        const controller = new AbortController()
+
+        await addConnector(seeds[0]!)
+
+        const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+        controller.abort()
+
+        await expect(tools.mcp__alpha__list_issues.execute({}, {
+          toolCallId: 'call-1',
+          messages: [],
+          abortSignal: controller.signal,
+        })).rejects.toThrow()
+        expect(alpha.callCount('tools/call')).toBe(0)
+        expect(await auditRows()).toHaveLength(0)
+      })
+
+    it('settles a call whose tool signal aborted while it still waits',
+      async () => {
+        const controller = new AbortController()
+        const never = new Promise<string>(() => undefined)
+        const settled = settleOnAbort(never, controller.signal, () => {
+          return new Error('timed out')
+        })
+
+        controller.abort()
+
+        await expect(settled).rejects.toThrow('timed out')
+        await expect(settleOnAbort(
+          Promise.resolve('ok'),
+          new AbortController().signal,
+          () => new Error('unused'),
+        )).resolves.toBe('ok')
+      })
   })
 
   describe('tool list cache and drift', () => {

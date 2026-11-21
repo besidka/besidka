@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineAsyncComponent, ref, shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { expandReasoningSteps } from './Reasoning/expand-steps'
 import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
 import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
 
@@ -59,9 +60,10 @@ async function mountMessage(
     status?: 'ready' | 'streaming'
     role?: UIMessage['role']
     stubTeleport?: boolean
+    expand?: boolean
   } = {},
 ) {
-  return await mountSuspended(Reasoning, {
+  const wrapper = await mountSuspended(Reasoning, {
     props: {
       message: {
         id: 'msg-connector',
@@ -89,6 +91,12 @@ async function mountMessage(
       },
     },
   })
+
+  if (options.expand ?? true) {
+    await expandReasoningSteps(wrapper)
+  }
+
+  return wrapper
 }
 
 function titleOf(wrapper: Awaited<ReturnType<typeof mountMessage>>): string {
@@ -209,7 +217,7 @@ describe('Chat/Reasoning connector images', () => {
       connectorImage('call-2', 0),
       connectorImage('call-2', 1),
       connectorImage('call-2', 2, true),
-    ])
+    ], { expand: false })
     const header = wrapper.get('[data-testid="reasoning-header-images"]')
     const stack = header.get('[data-testid="reasoning-connector-image-stack"]')
     const group = stack.get('.avatar-group')
@@ -235,7 +243,7 @@ describe('Chat/Reasoning connector images', () => {
     const wrapper = await mountMessage([
       connectorCall(),
       connectorImage('call-1', 0),
-    ])
+    ], { expand: false })
     const header = wrapper.get('[data-testid="reasoning-header-images"]')
 
     expect(header.find('[data-testid="reasoning-connector-image-stack"]')
@@ -249,7 +257,7 @@ describe('Chat/Reasoning connector images', () => {
       connectorCall(),
       connectorImage('call-1', 0),
       connectorImage('call-1', 1),
-    ])
+    ], { expand: false })
     const details = wrapper.get('details')
 
     await wrapper.get('[data-testid="reasoning-header-images"] '
@@ -301,7 +309,10 @@ describe('Chat/Reasoning connector images', () => {
       connectorCall({ toolCallId: 'call-2' }),
       connectorImage('call-2', 0),
     ]
-    const wrapper = await mountMessage(parts, { stubTeleport: true })
+    const wrapper = await mountMessage(parts, {
+      stubTeleport: true,
+      expand: false,
+    })
 
     await wrapper.get('[data-testid="reasoning-header-images"] '
       + '[data-testid="reasoning-connector-image-stack"]').trigger('click')

@@ -192,7 +192,8 @@ export async function loadConnectorToolDefinitions(input: {
 /**
  * Whether a tool is in the always-ask tier as listed: the server marks it
  * destructive, or its remote name or title names a delete or share action.
- * Such a tool can never be set to Always allow.
+ * Such a tool asks until the user sets it to Always allow; the default
+ * Always allow of a plain read never reaches it.
  */
 export function isConnectorToolAlwaysAsk(
   definition: ConnectorToolDefinition,
@@ -228,9 +229,10 @@ function toolModeOf(
 /**
  * The reviewed definition hash of each named tool that may be set to Always
  * allow, or the names that may not: a tool missing from the live list or the
- * baseline, a tool whose live definition differs from the reviewed one, and
- * a tool in the always-ask tier. Server labels never decide this alone: the
- * name heuristic and the destructive mark win over `readOnlyHint`.
+ * baseline, and a tool whose live definition differs from the reviewed one.
+ * The always-ask tier may be set to Always allow too (owner decision,
+ * 2026-11-20); the grant stays bound to the reviewed hash, so a changed
+ * tool asks again.
  */
 export function resolveAlwaysAllowHashes(input: {
   definitions: readonly ConnectorToolDefinition[]
@@ -257,7 +259,6 @@ export function resolveAlwaysAllowHashes(input: {
       || !setting
       || !liveHash
       || liveHash !== setting.definitionHash
-      || isConnectorToolAlwaysAsk(definition)
     ) {
       refused.push(toolName)
 
@@ -294,7 +295,7 @@ function toReviewTool(
     alwaysAllowed: change === 'none' && !!setting
       && isAlwaysGrantActive(setting),
     mode: toolModeOf(definition, change, enabled, setting),
-    canAlwaysAllow: change === 'none' && !alwaysAsk,
+    canAlwaysAllow: change === 'none',
   }
 }
 

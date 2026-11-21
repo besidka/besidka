@@ -9,6 +9,9 @@ import {
 export const MCP_PRIVATE_TOOL_SCOPES = {
   list_chats: 'chats:read',
   get_chat: 'chats:read',
+  get_chat_cost: 'chats:read',
+  get_debug_info: 'chats:read',
+  get_usage_stats: 'chats:read',
   list_shared_chats: 'chats:read',
   update_chat: 'chats:write',
   move_chats_to_project: 'chats:write',

@@ -165,6 +165,32 @@ export const LEGAL_NOTICES = [
       + 'Anthropic container data and OpenAI abuse logs.',
     ],
   },
+  {
+    id: '2026-11-support-requests',
+    documents: ['privacy-policy', 'terms-of-use'],
+    publishedAt: '2026-11-21T08:00:00Z',
+    sendFrom: '2026-11-21T11:00:00Z',
+    effectiveAt: '2026-12-25',
+    alreadyAvailable: true,
+    summary: [
+      'You can now write to support@besidka.com for help with the app. '
+      + 'Privacy requests and reports still go to the privacy address.',
+      'Besidka can give you debug info for a chat: ids, statuses, error '
+      + 'codes and counts, never your messages. If you paste it into a '
+      + 'support email, I use the ids to find what went wrong in my '
+      + 'database and logs, and I open the chat itself only if you ask me '
+      + 'to or agree.',
+      'Support emails are kept until the matter is closed and then for 12 '
+      + 'months. They are not deleted with your account; ask me to delete '
+      + 'them sooner.',
+      'Every email you send to a besidka.com address reaches my personal '
+      + 'Gmail mailbox through Cloudflare Email Routing. Google may process '
+      + 'it in the United States, under the EU–US Data Privacy Framework.',
+      'A connected AI app that may read your chats can now also read a '
+      + 'chat\'s debug details, its estimated cost and your usage '
+      + 'statistics (models, tokens, estimated spend, active days).',
+    ],
+  },
 ] as const satisfies readonly LegalNotice[]
 
 export function parseNoticeInstant(value: string): number {

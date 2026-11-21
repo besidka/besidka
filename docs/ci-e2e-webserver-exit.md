@@ -60,3 +60,50 @@ re-run, which is why the cause was never visible.
    runner (the `Logs were written to` path is authoritative) and update the
    artifact paths.
 5. Record the finding here and replace the "root cause unknown" status.
+
+## Vite dependency discovery (local `nuxt dev` e2e)
+
+This is a separate local-only flake, not the CI wrangler exit above.
+
+**Symptom.** On a cold `nuxt dev` (no `node_modules/.cache/vite/deps`), a
+Playwright run fails the first time and passes on the retry: a mocked reply
+vanishes, the composer is missing, or `create_document` never turns ready.
+The dev log shows `Vite discovered new dependencies at runtime` or `New
+dependencies found: ...`. Each discovery re-bundles the dependencies and
+Vite sends a full page reload to every open page, in the middle of a test.
+
+**Fix.** `vite.optimizeDeps.include` in `nuxt.config.ts` lists the
+dependencies in `devPrebundledDependencies`, so they are bundled at startup.
+Measured 2026-11-20 on a cold start (deps cache deleted, e2e env, own port):
+`composer-overlays-spacer`, `chat-input-markdown` and `create-document` pass
+on the first run, and a further run of the artifacts, search, shared,
+history, projects, settings, cookies, auth, attribution, push and admin
+specs logged no new discovery. It is dev only: `pnpm run build` passes and the
+server bundle is byte-identical with and without the list (14,762,720 bytes
+both ways, needs `NODE_OPTIONS=--max-old-space-size=8192` locally).
+
+**Entries.** Everything that is a direct dependency of the app is listed by
+name. The document libraries (`docx`, `pdf-lib`, `@pdf-lib/fontkit`,
+`pptxgenjs`, `write-excel-file/universal`) belong to the workspace package
+`@besidka/doc-renderer`, so the app root cannot resolve them by name (Nuxt
+warns `NUXT_B7002`); they use Vite's nested form,
+`'@besidka/doc-renderer > docx'`.
+
+**Refreshing the list.** After adding a dependency that a page imports
+lazily, or when the symptom comes back:
+
+1. Stop the dev server and delete `node_modules/.cache/vite/deps`.
+2. Start it with the e2e environment (`WEB_SERVER_ENV` in
+   `playwright.config.ts`, for example `PORT=3103` and `E2E_PORT=3103` for
+   Playwright, which reuses the running server locally).
+3. Run the specs and read the dev log for `Vite discovered new dependencies`
+   and `New dependencies found`.
+4. Add each name to `devPrebundledDependencies`. An entry that the app root
+   cannot resolve is warned about at startup (`NUXT_B7002`); use the
+   `'<workspace package> > <dependency>'` form for it.
+5. Repeat from a cold cache until a full run logs no discovery.
+
+Not covered by this: `tests/e2e/profile/preferences.spec.ts` ("hydrates the
+reasoning tabs when settings load before the layout") and
+`tests/e2e/cookies/consent.spec.ts:490` fail on a warm dev server too, so they
+are not discovery reloads; they were not compared with a baseline checkout.

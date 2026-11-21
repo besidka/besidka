@@ -3,6 +3,7 @@ export const MAIL_ALERT_MAILBOXES = [
   'abuse',
   'security',
   'contact',
+  'support',
   'mail-alerts-test',
 ] as const
 

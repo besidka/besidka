@@ -3,6 +3,7 @@ import {
   CONNECTOR_IMAGE_PART_TYPE,
   buildConnectorImagePartId,
   collectConnectorImageFileIds,
+  getConnectorImagesByToolCallId,
   getConnectorImagesForToolCall,
   isConnectorImageDataPart,
 } from '#shared/utils/connector-image-parts'
@@ -52,6 +53,24 @@ describe('connector image parts', () => {
     expect(getConnectorImagesForToolCall(parts, 'call-1')
       .map(image => image.fileId)).toEqual(['a', 'c'])
     expect(getConnectorImagesForToolCall(parts, undefined)).toEqual([])
+  })
+
+  it('groups the images of every call in one pass, in call order', () => {
+    const parts = [
+      imagePart('call-1', 'a'),
+      { type: 'text', text: 'between' },
+      imagePart('call-2', 'b'),
+      imagePart('call-1', 'c'),
+    ]
+    const imagesByToolCallId = getConnectorImagesByToolCallId(parts)
+
+    expect(imagesByToolCallId.get('call-1')?.map(image => image.fileId))
+      .toEqual(['a', 'c'])
+    expect(imagesByToolCallId.get('call-1'))
+      .toEqual(getConnectorImagesForToolCall(parts, 'call-1'))
+    expect(imagesByToolCallId.get('call-2')?.map(image => image.fileId))
+      .toEqual(['b'])
+    expect(imagesByToolCallId.has('call-3')).toBe(false)
   })
 
   it('collects each file id once', () => {

@@ -918,6 +918,32 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
+      "description": "What one chat cost on your own provider keys, estimated from public prices: per model the replies, uncached input, output, cache read and cache write tokens and the cost (a gateway reports one blended cost), the web search cost per search provider, the total and the time from the first to the last message. The same total as the chat panel. Returns the structured data and one plain-text report to show. The provider's bill is authoritative. Requires signing in (chats:read).",
+      "inputSchema": {
+        "properties": {
+          "slug": {
+            "description": "Chat slug from list_chats. Inside a Besidka chat it defaults to the current chat",
+            "format": "ulid",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_chat_cost",
+      "public": false,
+      "requiredScopes": [
+        "chats:read"
+      ],
+      "title": "Get chat cost"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Read one of your Besidka connectors: the summary of list_connectors plus its tools (name, whether it is on, its approval mode and whether the server marks it read-only) and how many times its tools were called in the last 30 days. Tool descriptions are not included. Never returns the full address, keys, tokens or call contents. Requires signing in (connectors:read).",
       "inputSchema": {
         "properties": {
@@ -938,6 +964,38 @@
         "connectors:read"
       ],
       "title": "Get a connector"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Collect what support or a developer needs to follow one chat: its slug and link, the newest messages as ids, role, time, model, provider, status, tool call counts and any stored failure notice with its reference, the connectors with host and mode (over MCP only, never in a chat), your experimental features, the app build and the server time. Returns the structured data and one plain-text report to copy. Never returns message text, tool input or output, keys, tokens, connector addresses beyond the host or share links. The connectors need the connectors:read scope and the features the settings:read scope. Requires signing in (chats:read).",
+      "inputSchema": {
+        "properties": {
+          "maxMessages": {
+            "description": "Newest messages to include, 1 to 20. Defaults to 10",
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "slug": {
+            "description": "Chat slug from list_chats. Inside a Besidka chat it defaults to the current chat. Leave it out for account-level information only",
+            "format": "ulid",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_debug_info",
+      "public": false,
+      "requiredScopes": [
+        "chats:read"
+      ],
+      "title": "Get debug info"
     },
     {
       "annotations": {
@@ -1085,6 +1143,35 @@
         "skills:read"
       ],
       "title": "Read a skill"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Your own Besidka usage for the last 7 or 30 days or all time: the favorite model by replies, tokens by kind, the estimated cost on your keys, chats, messages, active days, the most active day and the current and longest streak in UTC days. Counts chat replies only; copies a branch made are counted once. Counts of projects, artifacts, skills and connectors need the projects:read, artifacts:read, skills:read and connectors:read scopes. Returns the structured data and one plain-text report to show, refreshed at most every 15 minutes (an hour for all time). Requires signing in (chats:read).",
+      "inputSchema": {
+        "properties": {
+          "period": {
+            "description": "7d, 30d or all. Defaults to 30d",
+            "enum": [
+              "7d",
+              "30d",
+              "all"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_usage_stats",
+      "public": false,
+      "requiredScopes": [
+        "chats:read"
+      ],
+      "title": "Get usage stats"
     },
     {
       "annotations": {

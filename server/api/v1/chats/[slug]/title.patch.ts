@@ -1,6 +1,10 @@
 import { createError } from 'evlog'
 import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
+import {
+  findBuiltinCommandInvocation,
+  getBuiltinCommand,
+} from '#shared/utils/builtin-commands'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -98,6 +102,18 @@ export default defineEventHandler(async (event) => {
 
   if (!initialMessage) {
     return null
+  }
+
+  const initialCommand = findBuiltinCommandInvocation(initialMessage.parts)
+
+  if (initialCommand) {
+    const commandTitle = getBuiltinCommand(initialCommand.command).title
+
+    await db.update(schema.chats)
+      .set({ title: commandTitle })
+      .where(eq(schema.chats.id, chat.id))
+
+    return commandTitle
   }
 
   const initialText = getFirstTextPart(initialMessage.parts)

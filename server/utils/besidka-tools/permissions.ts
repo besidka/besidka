@@ -71,10 +71,8 @@ function isPermissionMode(value: string): value is ToolPermissionMode {
 }
 
 /**
- * The mode that applies to a tool given what is stored. A stored "allow" on
- * an ask-every-time tool (a row written before the tool moved tier, or one
- * brought back by a restore) counts as "ask": that tier never runs without a
- * fresh answer.
+ * The mode that applies to a tool given what is stored. A stored mode the
+ * tier does not take counts as "ask".
  */
 function effectiveMode(
   tier: BesidkaToolPermissionTier,
@@ -228,8 +226,8 @@ function resolveTargetTools(
 
 /**
  * Stores one mode for a tool or for every tool of a tier, upserting one row
- * per tool in a single batch. The mode must be one the tier allows: the
- * ask-every-time tier takes only Blocked and Needs approval. A tool that is
+ * per tool in a single batch. The mode must be one the tier allows (every
+ * tier takes all three since 2026-11-20). A tool that is
  * unknown, excluded from chats or named with the chat prefix is a 400.
  */
 export async function setBesidkaToolPermissions(

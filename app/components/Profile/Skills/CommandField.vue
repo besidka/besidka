@@ -46,9 +46,11 @@ const COMMAND_HELP
 const props = withDefaults(defineProps<{
   serverError?: string
   testId?: string
+  usedCommands?: ReadonlyMap<string, string>
 }>(), {
   serverError: '',
   testId: 'skill-command',
+  usedCommands: undefined,
 })
 
 const command = defineModel<string>({ required: true })
@@ -57,6 +59,7 @@ const inputId = useId()
 const helpId = useId()
 
 const problem = computed<string>(() => {
-  return props.serverError || getSkillCommandProblem(command.value)
+  return props.serverError
+    || getSkillCommandProblem(command.value, props.usedCommands)
 })
 </script>

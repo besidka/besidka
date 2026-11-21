@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 const scriptsEnabled = ref<boolean>(true)
 const scriptsActive = ref<boolean>(true)
+const commandsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
@@ -18,6 +19,14 @@ mockNuxtImport('useFeature', () => {
       return {
         enabled: scriptsEnabled.value,
         active: scriptsActive.value,
+        variant: null,
+      }
+    }
+
+    if (key === 'skills.commands') {
+      return {
+        enabled: commandsActive.value,
+        active: commandsActive.value,
         variant: null,
       }
     }
@@ -149,5 +158,64 @@ describe('Profile/Skills/Settings scripts', () => {
     expect(pending.find(testId('skill-setting-scripts-uploaded')).exists())
       .toBe(false)
     expect(pending.text()).toContain('Not uploaded yet')
+  })
+})
+
+describe('Profile/Skills/Settings command', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.innerHTML = ''
+    commandsActive.value = true
+  })
+
+  afterEach(() => {
+    commandsActive.value = false
+    delete useNuxtApp().payload.data['skills-library']
+  })
+
+  it('names the other skill that uses the command and blocks Save', async () => {
+    const skill = createSkillDetail({ command: null })
+
+    useNuxtApp().payload.data['skills-library'] = {
+      skills: [
+        { id: skill.id, name: skill.name, command: null },
+        { id: 'other-id', name: 'code-review', command: 'review' },
+      ],
+      counts: { sources: { all: 2, created: 2, imported: 0, apps: 0 } },
+    }
+
+    const wrapper = await mountSuspended(Settings, {
+      props: { skill },
+      attachTo: document.body,
+    })
+    const input = wrapper.get(testId('skill-setting-command'))
+
+    await input.setValue('/review')
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-setting-command-help')).text())
+      .toBe('The command /review is already used by the skill code-review')
+    expect((wrapper.get(testId('skill-setting-command-save'))
+      .element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('does not count the skill\'s own command as taken', async () => {
+    const skill = createSkillDetail({ command: 'mine' })
+
+    useNuxtApp().payload.data['skills-library'] = {
+      skills: [{ id: skill.id, name: skill.name, command: 'mine' }],
+      counts: { sources: { all: 1, created: 1, imported: 0, apps: 0 } },
+    }
+
+    const wrapper = await mountSuspended(Settings, {
+      props: { skill },
+      attachTo: document.body,
+    })
+
+    await wrapper.get(testId('skill-setting-command')).setValue('/Mine')
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-setting-command-help')).text())
+      .not.toContain('already used')
   })
 })

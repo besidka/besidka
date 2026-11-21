@@ -117,9 +117,11 @@ function scopeNetLogger(
   }
 }
 
-function isToolCallRequest(init?: RequestInit): boolean {
+type JsonRpcId = string | number
+
+function parseRequestBody(init?: RequestInit): Record<string, unknown> | null {
   if (typeof init?.body !== 'string') {
-    return false
+    return null
   }
 
   try {
@@ -127,10 +129,148 @@ function isToolCallRequest(init?: RequestInit): boolean {
 
     return typeof message === 'object'
       && message !== null
-      && (message as { method?: unknown }).method === 'tools/call'
+      && !Array.isArray(message)
+      ? message as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function isToolCallRequest(init?: RequestInit): boolean {
+  return parseRequestBody(init)?.method === 'tools/call'
+}
+
+function requestIdOf(init?: RequestInit): JsonRpcId | null {
+  const id = parseRequestBody(init)?.id
+
+  return typeof id === 'string' || typeof id === 'number' ? id : null
+}
+
+const SSE_EVENT_SEPARATOR = /\r?\n\r?\n/g
+const SSE_SEPARATOR_MAX_LENGTH = 4
+
+function isResponseMessage(message: unknown, requestId: JsonRpcId): boolean {
+  return typeof message === 'object'
+    && message !== null
+    && (message as { id?: unknown }).id === requestId
+    && ('result' in message || 'error' in message)
+}
+
+/**
+ * Whether one SSE event carries the JSON-RPC response to `requestId`: a
+ * `message` event (or one without a type) whose data is that response, alone
+ * or in a batch.
+ */
+export function isSseResponseEvent(
+  event: string,
+  requestId: JsonRpcId,
+): boolean {
+  const lines = event.split(/\r?\n/)
+  const eventType = lines.find(line => line.startsWith('event:'))
+    ?.slice('event:'.length)
+    .trim()
+
+  if (eventType && eventType !== 'message') {
+    return false
+  }
+
+  const data = lines
+    .filter(line => line.startsWith('data:'))
+    .map(line => line.slice('data:'.length).replace(/^ /, ''))
+    .join('\n')
+
+  if (!data) {
+    return false
+  }
+
+  try {
+    const message: unknown = JSON.parse(data)
+
+    return Array.isArray(message)
+      ? message.some(item => isResponseMessage(item, requestId))
+      : isResponseMessage(message, requestId)
   } catch {
     return false
   }
+}
+
+/**
+ * Ends an SSE answer to a POST once it carried the JSON-RPC response to that
+ * request. The MCP spec says a server should close the stream then, but
+ * `@ai-sdk/mcp` reads it until the server does, so a server that keeps it
+ * open held one of the Worker's six simultaneous connections until the
+ * 60-second deadline, per call. Every byte up to and including the
+ * response is passed on unchanged; the rest is dropped and the request is
+ * canceled, which frees the connection.
+ */
+export function closeAfterJsonRpcResponse(
+  response: Response,
+  requestId: JsonRpcId,
+): Response {
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (!response.body || !contentType.includes('text/event-stream')) {
+    return response
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const separatorPattern = new RegExp(SSE_EVENT_SEPARATOR)
+  let pending = ''
+
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        controller.close()
+
+        return
+      }
+
+      controller.enqueue(value)
+
+      const searchFrom = Math.max(
+        0,
+        pending.length - SSE_SEPARATOR_MAX_LENGTH + 1,
+      )
+
+      pending += decoder.decode(value, { stream: true })
+      separatorPattern.lastIndex = searchFrom
+
+      let eventStart = 0
+      let separator = separatorPattern.exec(pending)
+      let isAnswered = false
+
+      while (separator) {
+        const event = pending.slice(eventStart, separator.index)
+
+        if (isSseResponseEvent(event, requestId)) {
+          isAnswered = true
+        }
+
+        eventStart = separator.index + separator[0].length
+        separator = separatorPattern.exec(pending)
+      }
+
+      pending = pending.slice(eventStart)
+
+      if (isAnswered) {
+        controller.close()
+        await reader.cancel().catch(() => undefined)
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+    },
+  })
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  })
 }
 
 /**
@@ -146,7 +286,9 @@ function isToolCallRequest(init?: RequestInit): boolean {
  * forwards images to its model), a `tools/call` response on streamable HTTP
  * may be up to `CONNECTOR_CALL_RESPONSE_MAX_BYTES` (8 MiB); every other
  * request, and every request of a send without images, keeps the 1 MiB
- * `mcp` default. The body is counted as it streams and cut at the cap.
+ * `mcp` default. The body is counted as it streams and cut at the cap. An
+ * SSE answer to a POST ends right after the JSON-RPC response to it
+ * (`closeAfterJsonRpcResponse`).
  */
 export function createConnectorTransportFetch(
   transport: ConnectorTransport,
@@ -178,14 +320,21 @@ export function createConnectorTransportFetch(
       )
     }
 
-    if (largeCallResponses && isToolCallRequest(init)) {
-      return safeFetch(input, {
+    const requestId = method === 'POST' ? requestIdOf(init) : null
+    const sent = largeCallResponses && isToolCallRequest(init)
+      ? safeFetch(input, {
         ...init,
         maxResponseBytes: CONNECTOR_CALL_RESPONSE_MAX_BYTES,
       } as RequestInit)
+      : safeFetch(input, init)
+
+    if (requestId === null) {
+      return sent
     }
 
-    return safeFetch(input, init)
+    return sent.then((response) => {
+      return closeAfterJsonRpcResponse(response, requestId)
+    })
   }) as typeof fetch
 }
 

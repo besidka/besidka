@@ -55,8 +55,7 @@ export function createReviewTool(
   return {
     ...base,
     mode: overrides.mode ?? (base.enabled ? derivedMode : 'blocked'),
-    canAlwaysAllow: overrides.canAlwaysAllow
-      ?? (!base.alwaysAsk && base.change === 'none'),
+    canAlwaysAllow: overrides.canAlwaysAllow ?? base.change === 'none',
   }
 }
 

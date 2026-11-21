@@ -306,6 +306,40 @@ export function useSkillsFilters() {
 }
 
 /**
+ * The commands the user's other skills already use, mapped to the skill
+ * names, from the library list the Skills page already loaded. The Command
+ * fields read it to name a duplicate before the server is asked; the server
+ * checks again on every write.
+ */
+export function buildUsedSkillCommands(
+  skills: readonly Pick<SkillSummary, 'id' | 'name' | 'command'>[],
+  exceptSkillId?: string | null,
+): Map<string, string> {
+  const used = new Map<string, string>()
+
+  for (const skill of skills) {
+    if (skill.command && skill.id !== exceptSkillId) {
+      used.set(skill.command, skill.name)
+    }
+  }
+
+  return used
+}
+
+export function useUsedSkillCommands(
+  exceptSkillId?: MaybeRefOrGetter<string | null | undefined>,
+) {
+  const { data } = useNuxtData<SkillsListResponse>(SKILLS_LIBRARY_KEY)
+
+  return computed<Map<string, string>>(() => {
+    return buildUsedSkillCommands(
+      data.value?.skills ?? [],
+      toValue(exceptSkillId) ?? null,
+    )
+  })
+}
+
+/**
  * The user's skills: one `useLazyFetch` with a 300 ms skeleton delay, so a
  * fast response never flashes a skeleton. Counts come from the server.
  */

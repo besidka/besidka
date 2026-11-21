@@ -248,8 +248,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   client disconnect mid-stream kills the Worker invocation, and the
   generation-in-progress KV guard (once a fixed 660s TTL) held the chat ~11
   min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
-  Axiom investigation runbook, and unresolved options (waitUntil,
-  Queues/Workflows, Durable Objects) for surviving the disconnect itself
+  Axiom investigation runbook, unresolved options (waitUntil,
+  Queues/Workflows, Durable Objects) for surviving the disconnect itself,
+  and the client stall watchdog (relies on the send route's 15s
+  `data-heartbeat` from the connector-approvals branch; 45s of silence
+  after one aborts the stream and recovers it like a dropped connection)
 - `docs/chats/chat-input-tools-menu.md` - The chat input "+" tools menu
   (popover at md+, bottom sheet below) and the setting tiles in the
   attachments row: component map, tile rules and order, capability gating
@@ -611,7 +614,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   exiting mid-suite in ~4% of CI runs (empty `[ERROR]`, then
   `ERR_CONNECTION_REFUSED`): the signature, why the exit reason was
   invisible, the stdout piping and `wrangler-logs` artifact diagnostics, and
-  what to do on the next occurrence
+  what to do on the next occurrence; also the local cold-`nuxt dev` e2e flake
+  (Vite discovering dependencies at runtime reloads every page, mocked reply
+  vanishes), `devPrebundledDependencies` in `nuxt.config.ts` and how to
+  refresh it
 - `docs/ci-speed-audit.md` - Where CI time went, measured across 300 runs
   (serial E2E with `workers: 1`, one serial job, a dead Playwright cache on
   `main` from an unexpanded `~`, `main` re-testing what the PR already
@@ -771,7 +777,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  58 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  61 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -823,7 +829,18 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   kept with the chat as hidden `connector` files: the `data-connector-image`
   part, dedupe per chat, the step thumbnails, deletion with the chat or from
   the Storage page; the direct Anthropic and OpenAI allowlist, caps,
-  continuation placeholder)
+  continuation placeholder); section 6.6 for the runtime fixes of
+  2026-11-20 (model-readable cap refusals instead of `over-cap`, caps 12 to
+  50 calls and 4 to 12 steps, per-minute pacing and the KV one-write-a-second
+  trap, `settleOnAbort`, SSE answers closed at their response, the 900 KiB
+  stored-output budget, DeepSeek first-chunk and chunk timeouts with the
+  `provider-queued` and `provider-stalled` errors, the `data-heartbeat`
+  chunk) and long tasks in rounds (the `data-tool-budget` part, the
+  `{ continue }` body, 10 rounds per message, the background-runner design
+  not built); section 7.12 for the owner decision of 2026-11-20: the user's
+  grant wins over taint, another source and the always-ask tier, the
+  Delete and share group takes Always allow, MCP stays reduce-only, and the
+  accepted cross-connector exfiltration risk
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link
@@ -838,6 +855,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the data model, limits, the manager, editor and `/` picker, project
   skills that always load or are preferred in a project's chats (S-15,
   section 5.8), the optional TypeSafe AI skill selector (S-14, section 5.9),
+  the built-in commands `/cost`, `/stats` and `/debug` (section 5.6: a shared
+  registry, answered by the server with no model, key or spend, never sent to
+  a model or shown in a share; their names are reserved for skills) and
+  command uniqueness (one normalized form, "The command /x is already used
+  by the skill y"),
   MCP tools
   (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
@@ -845,8 +867,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   imposes on S-1 to S-14
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
-  Blocked, Needs approval, Always allow modes (the ask-every-time tier never
-  takes Always allow), `besidka_tool_permissions` with the default "ask" and no
+  Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
+  Always allow since 2026-11-20, with a warning line), `besidka_tool_permissions` with the default "ask" and no
   row, the `GET` and `PUT /api/v1/besidka-tools/permissions` routes and their
   guards, `resolveBesidkaPermissionMode` and the continuation replay seam that
   denies a tool blocked after approval, the Labs "Tool permissions" panel and
@@ -1013,6 +1035,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 **Database schema**: Defined in `server/db/schemas/*.ts`, exported from `server/db/schema.ts`. Uses snake_case column naming.
 
 **API routes**: Located in `server/api/v1/`. Chat endpoints stream AI responses.
+Never put `debug`, `login`, `.key`, `uploads`, `php`, `aws` or an unlisted
+`.well-known` in a route path: the production zone WAF rule "URL attackers"
+answers 403 before the app sees the request (a Cloudflare HTML block page, and
+preview hosts do not show it). `tests/unit/server/routes/waf-blocked-paths.spec.ts`
+fails on such a path; see `docs/agent-readiness.md`, owner runbook step 1.
 
 **API route file layout (consistency rule)**: When a resource has more than one
 route (a base route plus sub-actions), group them all under a directory named
@@ -1602,6 +1629,10 @@ try {
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
 **Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
+A new source file (component, composable, util, route) must be added to a pattern in that script in the same change.
+Map each file to every suite that covers its behavior, not only its mirror spec. A file that renders inside the chat page or changes its layout or scroll also maps to `tests/e2e/chat/scroll-spacer.spec.ts`, `tests/e2e/chat/composer-overlays-spacer.spec.ts` and `tests/unit/composables/chat-scroll-spacer.spec.ts`; a file that touches tool approvals also maps to the approval suites.
+Before finishing, run the script's `getAffectedTests([file])` for each new or changed source file and check that the resolved list contains those suites.
+Why: on 2026-11-20 the approval bubble shipped with its own specs registered, but its files did not trigger the scroll spacer suites, and a scroll regression reached production.
 
 ## iOS Simulator Testing
 

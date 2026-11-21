@@ -116,6 +116,41 @@ export async function markClaimFailed(
   return await finishClaim(db, approvalId, userId, 'failed')
 }
 
+/**
+ * Ends the lease of the claims a stopped continuation still holds, so a
+ * retry of the same answers is told at once that the call was interrupted
+ * (it may or may not have run, so it never runs again) instead of waiting
+ * up to the full lease as "still working". The pending approval records
+ * were deleted when the answers were claimed, so releasing the claims for a
+ * fresh run is not possible. Claims that already recorded a result are left
+ * alone. Returns how many claims it expired.
+ */
+export async function expireUnfinishedClaims(
+  db: DbClient,
+  approvalIds: readonly string[],
+  userId: number,
+  now: Date = new Date(),
+): Promise<number> {
+  if (approvalIds.length === 0) {
+    return 0
+  }
+
+  const expiredAt = new Date(
+    now.getTime()
+    - (TOOL_APPROVAL_CLAIM_LEASE_SECONDS + 1) * MILLISECONDS_PER_SECOND,
+  )
+  const updated = await db.update(schema.toolApprovalClaims)
+    .set({ updatedAt: expiredAt })
+    .where(and(
+      inArray(schema.toolApprovalClaims.approvalId, [...approvalIds]),
+      eq(schema.toolApprovalClaims.userId, userId),
+      eq(schema.toolApprovalClaims.status, 'claimed'),
+    ))
+    .returning({ approvalId: schema.toolApprovalClaims.approvalId })
+
+  return updated.length
+}
+
 export async function findClaim(
   db: DbClient,
   approvalId: string,

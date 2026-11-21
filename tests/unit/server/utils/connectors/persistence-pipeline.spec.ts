@@ -32,9 +32,9 @@ async function persistPipeline(parts: unknown[], secrets: string[] = []) {
     logger,
   })
 
-  return redactConnectorToolPartsForPersistence(
-    stripUndeliveredInlineDataParts(normalized, logger),
-    secrets,
+  return stripUndeliveredInlineDataParts(
+    redactConnectorToolPartsForPersistence(normalized, secrets),
+    logger,
   )
 }
 

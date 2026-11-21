@@ -2,6 +2,7 @@ import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 import { orderOutputCardPartsLast } from '../../../app/utils/artifact-parts'
 import {
+  getPartGaps,
   hasGapBeforePart,
   isCardMessagePart,
 } from '../../../app/utils/message-part-spacing'
@@ -149,5 +150,32 @@ describe('a document card in an answer', () => {
 
     expect(rendered).toEqual([imageTool, text])
     expect(gapFor(rendered, 1)).toBe(true)
+  })
+})
+
+describe('getPartGaps', () => {
+  it('matches hasGapBeforePart for every part in one pass', () => {
+    const reasoning = { type: 'reasoning', text: 'thinking' }
+    const toolPart = { type: 'dynamic-tool', toolName: 'mcp__a__b' }
+    const parts = orderOutputCardPartsLast([
+      reasoning,
+      text,
+      toolPart,
+      imageTool,
+      toolPart,
+      text,
+      artifact,
+      document,
+      codeExecution,
+      reasoning,
+      text,
+      gatewayImage,
+    ]) as UIMessage['parts']
+    const message = messageOf(parts)
+
+    expect(getPartGaps(message, parts)).toEqual(parts.map((_part, index) => {
+      return hasGapBeforePart(message, parts, index)
+    }))
+    expect(getPartGaps(message, [])).toEqual([])
   })
 })

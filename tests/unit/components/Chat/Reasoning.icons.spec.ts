@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { expandReasoningSteps } from './Reasoning/expand-steps'
 
 const cachedConnectors = ref<unknown>({
   connectors: [{ id: 'conn1', slug: 'notion', title: 'Notion' }],
@@ -50,6 +51,8 @@ async function mountMessage(
     },
     global: { stubs: { MDCCached: true } },
   })
+
+  await expandReasoningSteps(wrapper)
 
   if (options.streaming) {
     await wrapper.setProps({ status: 'streaming', isTurnThinkingHeld: true })

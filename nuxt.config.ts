@@ -32,6 +32,69 @@ const legalGitDependencies = createGitDependencies(repositoryRoot)
 
 const contentSignal = 'search=yes, ai-input=yes, ai-train=no'
 
+/**
+ * Dependencies Vite finds only when a page first imports them. In `nuxt dev`
+ * each discovery re-bundles and full-reloads every open page, which makes a
+ * cold e2e run lose a mocked reply or the composer. Listed here so they are
+ * bundled at startup; dev only, the production build ignores it. See
+ * docs/ci-e2e-webserver-exit.md, "Vite dependency discovery".
+ */
+const devPrebundledDependencies = [
+  '@better-auth/oauth-provider/client',
+  '@better-auth/passkey/client',
+  'zod',
+  'zod/v4',
+  'fflate',
+  'pele/lazy',
+  'web-haptics/vue',
+  'remark-breaks',
+  'turndown',
+  '@joplin/turndown-plugin-gfm',
+  'xlsx',
+  '@besidka/doc-renderer > docx',
+  '@besidka/doc-renderer > pdf-lib',
+  '@besidka/doc-renderer > @pdf-lib/fontkit',
+  '@besidka/doc-renderer > pptxgenjs',
+  '@besidka/doc-renderer > write-excel-file/universal',
+  '@videojs/html/i18n',
+  '@videojs/html/icons',
+  '@videojs/html/ui/airplay-button',
+  '@videojs/html/ui/captions-button',
+  '@videojs/html/ui/captions-radio-group',
+  '@videojs/html/ui/container',
+  '@videojs/html/ui/controls-content',
+  '@videojs/html/ui/controls-group',
+  '@videojs/html/ui/controls',
+  '@videojs/html/ui/fullscreen-button',
+  '@videojs/html/ui/gesture',
+  '@videojs/html/ui/hotkey',
+  '@videojs/html/ui/menu-content',
+  '@videojs/html/ui/menu-item-indicator',
+  '@videojs/html/ui/menu-item',
+  '@videojs/html/ui/menu-radio-group',
+  '@videojs/html/ui/menu-radio-item',
+  '@videojs/html/ui/menu',
+  '@videojs/html/ui/mute-button',
+  '@videojs/html/ui/pip-button',
+  '@videojs/html/ui/play-button',
+  '@videojs/html/ui/slider-buffer',
+  '@videojs/html/ui/slider-fill',
+  '@videojs/html/ui/slider-preview',
+  '@videojs/html/ui/slider-thumb',
+  '@videojs/html/ui/slider-thumbnail',
+  '@videojs/html/ui/slider-track',
+  '@videojs/html/ui/slider-value',
+  '@videojs/html/ui/time-slider-chapter-title',
+  '@videojs/html/ui/time-slider-chapters',
+  '@videojs/html/ui/time-slider',
+  '@videojs/html/ui/time',
+  '@videojs/html/ui/tooltip-group',
+  '@videojs/html/ui/tooltip-label',
+  '@videojs/html/ui/tooltip',
+  '@videojs/html/ui/volume-slider',
+  '@videojs/html/video/player',
+]
+
 const keyGuidesLlmsSection = {
   title: 'API key guides',
   description: 'Step-by-step guides for getting an API key from each provider.',
@@ -419,6 +482,7 @@ export default defineNuxtConfig({
     public: {
       baseUrl: '',
       privacyEmail: '',
+      supportEmail: '',
       authorGithubProfile: '',
       artifactsOrigin: process.env.NUXT_PUBLIC_ARTIFACTS_ORIGIN
         || 'https://besidka-artifacts.chernenko.workers.dev',
@@ -778,6 +842,7 @@ export default defineNuxtConfig({
         'shiki/langs',
         'shiki/themes/github-dark-high-contrast.mjs',
         'shiki/themes/github-light-high-contrast.mjs',
+        ...devPrebundledDependencies,
       ],
       // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`

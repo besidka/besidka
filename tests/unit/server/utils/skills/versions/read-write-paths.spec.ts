@@ -38,7 +38,7 @@ const { buildSkillArchive, readSkillVersionFiles } = await import(
 const { getSkillDetail, listSkillVersions, listUserSkills } = await import(
   '~~/server/utils/skills/versions/view'
 )
-const { updateSkillSettings } = await import(
+const { createRacedCommandTakenError, updateSkillSettings } = await import(
   '~~/server/utils/skills/versions/settings'
 )
 const { deleteUserSkill } = await import('~~/server/utils/skills/cleanup')
@@ -563,7 +563,7 @@ describe('skill reads, settings and delete', () => {
       },
     )
 
-    it.each(['Foo', '/Foo', 'a_b', 'a--b', 'two words'])(
+    it.each(['a_b', 'a--b', 'two words', '/a/b'])(
       'refuses the invalid command %j with 400 reserved-name',
       async (command) => {
         expect(await failureOf(patch({ command })))
@@ -579,14 +579,59 @@ describe('skill reads, settings and delete', () => {
         skill: { name: 'other-skill', slashName: 'shared' },
       })
 
-      const failure = await failureOf(patch({ command: 'shared' }))
+      const failure = await failureOf(patch({ command: '/Shared' }))
 
       expect(failure).toMatchObject({
         status: 409,
         code: 'command-taken',
-        message: '/shared is already a command',
+        message: 'The command /shared is already used by the skill '
+          + 'other-skill',
       })
       expect(await slashNameOf(skillId)).toBeNull()
+    })
+
+    it.each(['/Debug', 'cost', 'stats', 'usage'])(
+      'refuses the built-in command %j with 400 reserved-name',
+      async (command) => {
+        expect(await failureOf(patch({ command })))
+          .toMatchObject({ status: 400, code: 'reserved-name' })
+        expect(await slashNameOf(skillId)).toBeNull()
+      },
+    )
+
+    it('stores an uppercase command lowercased', async () => {
+      await expect(patch({ command: '/Review-PR' })).resolves
+        .toMatchObject({ command: 'review-pr' })
+      expect(await slashNameOf(skillId)).toBe('review-pr')
+    })
+
+    it('names the other skill when the unique index refuses a raced write', async () => {
+      const error = await createRacedCommandTakenError({
+        db: testDb.db,
+        userId,
+        command: 'raced',
+      })
+
+      expect(error).toMatchObject({
+        status: 409,
+        code: 'command-taken',
+        message: 'The command /raced is already used by another skill',
+      })
+
+      await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown({ name: 'winner' }) },
+        skill: { name: 'winner', slashName: 'raced' },
+      })
+
+      expect(await createRacedCommandTakenError({
+        db: testDb.db,
+        userId,
+        command: 'raced',
+        exceptSkillId: skillId,
+      })).toMatchObject({
+        message: 'The command /raced is already used by the skill winner',
+      })
     })
 
     it('allows a command another user has', async () => {

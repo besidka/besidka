@@ -404,6 +404,9 @@ const {
   getUnwrap,
   getParserOptions,
 } = useChatFormat()
+
+useConnectorLibrary()
+
 const { loggedIn } = useAuth()
 const {
   isBranching,

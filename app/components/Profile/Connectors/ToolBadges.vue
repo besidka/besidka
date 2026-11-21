@@ -15,9 +15,9 @@
   <span
     v-if="tool.alwaysAsk"
     class="badge badge-soft badge-error badge-sm"
-    title="Besidka asks before every call of this tool"
+    title="Deletes or shares data. Asks until you choose Always allow"
   >
-    Always asks
+    Deletes or shares
   </span>
 </template>
 

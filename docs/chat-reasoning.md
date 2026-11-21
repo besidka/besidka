@@ -257,9 +257,90 @@ accept `none`). Text sends and gateway paths are unchanged.
   - finished steps use complete marker,
   - each step is collapsible.
 
+- Only the streaming message is live: the chat page passes the chat status
+  and `isTurnThinkingHeld` to the last assistant message only, and `ready`
+  and `false` to every earlier one (`getReasoningLiveProps` in
+  `app/utils/chat-reasoning-live.ts`). Before 2026-11-20 every earlier message
+  got the live status too, so during a new turn each of them showed the
+  "Reasoning (12s)" shimmer and timer, auto-expanded its steps when the
+  steps setting was on, re-keyed its step bodies, and took the last turn's
+  duration as its own when the turn ended.
+
 Note:
 - Current fallback title length threshold is static (`80` chars).
 - Future option: make this threshold configurable per model or effort level.
+
+### Rendering cost while streaming (2026-11-20)
+
+A connector-heavy reply has 100 to 200 steps, and the AI SDK publishes a
+new message with shallow copies of every part on each streamed chunk. The
+panel is built so a chunk costs only the steps it changed:
+
+- **Steps render only while the box is open.** The collapsed box renders no
+  step at all (`v-if` on the content); a reasoning step's Markdown body
+  renders only while that step is expanded. A side effect: the browser's
+  find in page no longer reaches the titles and text of collapsed steps
+  (they were in the DOM before, hidden by `<details>`). The summary's
+  `aria-controls` is set only while the content exists.
+- **One component per step** (`Chat/Reasoning/Step.vue`) with stable keys
+  (`<part index>-<section index>` for reasoning, `tool-<toolCallId>` for
+  calls). `reuseStableReasoningSteps` (`app/utils/reasoning-steps.ts`)
+  keeps the previous object of every step whose values did not change
+  (nested values the SDK keeps, such as a call's input, compare by
+  identity), so unchanged step components get identical props and skip
+  rendering; when nothing changed the computed returns the previous array
+  and nothing downstream recomputes.
+- **One pass per update.** Connector images and grant markers are read
+  into maps once per update (`getConnectorImagesByToolCallId`,
+  `getGrantMarkersByToolCallId`) instead of one scan of all parts per step,
+  and `createReasoningSectionsCache` parses each reasoning text once (only
+  the streaming text changes).
+- **Approvals per message** (`useMessageApprovals`) read only whether the
+  message is the last one, so a chunk of the live message does not
+  recompute the approval state of earlier messages.
+- **The chat page** caches each message's rendered parts, keys and gaps by
+  its parts array (`getMessageRenderModel` in `pages/chats/[slug].vue`,
+  `getPartGaps` in `app/utils/message-part-spacing.ts`): earlier messages
+  keep their parts array, so they no longer run the quadratic
+  `hasGapBeforePart` and key helpers on every chunk.
+- **The connector list loads once per page**, not in every connector step
+  (each call created a `useLazyFetch` with its watchers): on the chat page
+  the composer already loads it (`useComposerConnectors`), and the shared
+  chat page calls `useConnectorLibrary` once. Do not add a second
+  page-level `useConnectorLibrary()` to `pages/chats/[slug].vue`: next to
+  the composer's call it broke the connector suggestion and the composer
+  in `tests/e2e/chat/composer-overlays-spacer.spec.ts`.
+- **Publishing is throttled** to one update per 50 ms (`throttle` of
+  `useChat` from `@ai-sdk/vue`; status changes flush at once).
+
+Measured with a synthetic fixture (150 steps per message: connector calls
+with inputs, images, search steps, long reasoning text, an approval round
+and its continuation; 120 streamed chunks, one new tool call every tenth),
+headless Chromium with 4x CPU throttling, production build. Time is the
+synchronous update per chunk up to `nextTick`; long tasks cover layout too.
+
+| Scenario | Before (mean / p95) | After (mean / p95) | Long tasks before → after | DOM nodes before → after |
+| --- | --- | --- | --- | --- |
+| One message, steps collapsed | 26.4 / 36.4 ms | 2.6 / 5.6 ms | 4 (419 ms) → 0 | 3,595 → 662 |
+| One message, steps open | 24.8 / 28.2 ms | 4.2 / 6.5 ms | 3 (261 ms) → 1 (131 ms) | 3,595 → 3,517 |
+| Three earlier messages, live steps open | 89.4 / 113.2 ms | 5.6 / 8.8 ms | 245 (22.0 s) → 3 (0.3 s) | 10,785 → 4,119 |
+| Same with the steps setting on | 86.0 / 105.6 ms | 6.1 / 10.2 ms | 248 (24.0 s) → 2 (0.2 s) | 10,770 → 4,119 |
+| Ten earlier messages of 40 steps | 48.5 / 65.1 ms | 3.8 / 5.8 ms | 66 (4.2 s) → 2 (0.1 s) | 8,534 → 2,638 |
+
+The JS heap before garbage collection after the three-message run fell
+from 178 MB to 34 MB. Six repeated stream, approval and continuation
+cycles on one page keep the heap after GC at 18 to 19 MB and the DOM
+constant. The fixture page and its Playwright driver were local only and
+are not in the repository; the fixture does not reproduce the throttle.
+
+### Following the latest step
+- While the reply streams and the box is open, the steps list stays pinned
+  to the bottom: a `ResizeObserver` on the list scrolls the 360px box to
+  its end whenever the content grows.
+- Any scroll up stops the following, and so does opening a step by hand
+  (so the opened step does not scroll away); scrolling back to within 24px
+  of the bottom resumes it. Opening the box during a stream starts pinned.
+  Nothing follows once the reply stops streaming.
 
 ### Auto-expand/follow logic
 - Global preference: `stepsExpanded` (HTTP and MCP field `reasoningExpanded`,
@@ -409,6 +490,12 @@ The hand-rolled provider mapping was removed in the v7 upgrade:
   - the Reasoning row at level `off` with and without billed tokens.
 - `tests/unit/components/Chat/Reasoning.spec.ts`
   - the hidden-reasoning indicator.
+- `tests/unit/components/Chat/Reasoning.streaming.spec.ts`,
+  `tests/unit/components/Chat/Reasoning/Step.spec.ts`,
+  `tests/unit/utils/reasoning-steps.spec.ts`
+  - steps render only while open, unchanged steps keep their objects on a
+    streamed chunk, and the list follows the bottom until the user scrolls
+    up.
 - `tests/unit/composables/user-setting.spec.ts`
   - fallback behavior, lazy load behavior, persistence path.
 

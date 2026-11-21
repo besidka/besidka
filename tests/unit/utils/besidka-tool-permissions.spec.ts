@@ -14,11 +14,13 @@ describe('besidka tool permission modes', () => {
       .toEqual(['blocked', 'ask', 'allow'])
   })
 
-  it('never allows "allow" for ask-every-time tools', () => {
+  it('allows "allow" for ask-every-time tools too (owner decision, '
+    + '2026-11-20)', () => {
     expect(getAllowedBesidkaToolModes('ask-every-time'))
-      .toEqual(['blocked', 'ask'])
-    expect(isBesidkaToolModeAllowed('ask-every-time', 'allow')).toBe(false)
+      .toEqual(['blocked', 'ask', 'allow'])
+    expect(isBesidkaToolModeAllowed('ask-every-time', 'allow')).toBe(true)
     expect(isBesidkaToolModeAllowed('ask-every-time', 'ask')).toBe(true)
+    expect(isBesidkaToolModeAllowed('unknown' as never, 'ask')).toBe(false)
   })
 
   it('matches registry names and refuses prefixed or odd names', () => {

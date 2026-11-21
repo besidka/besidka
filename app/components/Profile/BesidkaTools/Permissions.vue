@@ -59,21 +59,22 @@ import type {
   ToolPermissionGroup,
 } from '~/utils/tool-permissions'
 
-const ASK_EVERY_TIME_HINT = 'this tool deletes, shares or rewrites '
-  + 'instructions, so it always asks'
+const ASK_EVERY_TIME_WARNING = 'Always allow lets the model delete, share '
+  + 'or rewrite instructions without asking you.'
 
 const { tools, status, error, refresh, save } = useBesidkaToolPermissions()
 
 const groups = computed<ToolPermissionGroup[]>(() => {
   return BESIDKA_TOOL_TIERS.map((tier) => {
     const modes = getAllowedBesidkaToolModes(tier)
-    const isAskEveryTime = tier === 'ask-every-time'
 
     return {
       id: tier,
       label: BESIDKA_TOOL_TIER_LABELS[tier],
       description: BESIDKA_TOOL_TIER_DESCRIPTIONS[tier],
-      isLocked: isAskEveryTime,
+      ...(tier === 'ask-every-time'
+        ? { warning: ASK_EVERY_TIME_WARNING }
+        : {}),
       tools: tools.value
         .filter(tool => tool.tier === tier)
         .map((tool) => {
@@ -82,9 +83,6 @@ const groups = computed<ToolPermissionGroup[]>(() => {
             title: tool.title,
             mode: tool.mode,
             modes,
-            ...(isAskEveryTime
-              ? { unavailableHint: ASK_EVERY_TIME_HINT }
-              : {}),
           }
         }),
     }

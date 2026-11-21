@@ -54,6 +54,12 @@
       </button>
     </div>
 
+    <ProfileSkillsBuiltinList
+      v-if="isBuiltinVisible && isLibraryEmpty"
+      :query="appliedQuery"
+      class="mb-6"
+    />
+
     <ProfileSkillsList
       :skills="visibleSkills"
       :has-loaded="hasLoaded"
@@ -73,6 +79,12 @@
       @retry="refresh()"
       @clear="clearFilters"
       @new="onNew"
+    />
+
+    <ProfileSkillsBuiltinList
+      v-if="isBuiltinVisible && !isLibraryEmpty"
+      :query="appliedQuery"
+      class="mt-6"
     />
   </HistoryPageShell>
 
@@ -174,6 +186,18 @@ const isEditJustCreated = editSession.isJustCreated
 
 const isLibraryEmpty = computed<boolean>(() => {
   return hasLoaded.value && !skills.value.length
+})
+
+const commandsFeature = useFeature('skills.commands')
+
+/**
+ * The built-in commands are listed with the user's skills for everyone who
+ * can run them, below the user's own skills, or first while the user has
+ * none. A source filter (Created, Imported, Apps) hides them, since they are
+ * none of those; a search filters them like the user's skills.
+ */
+const isBuiltinVisible = computed<boolean>(() => {
+  return commandsFeature.value.active && appliedSource.value === 'all'
 })
 
 const isFiltered = computed<boolean>(() => {

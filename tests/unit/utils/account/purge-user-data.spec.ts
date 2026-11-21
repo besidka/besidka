@@ -164,7 +164,7 @@ function createStorage(knowledgeKeys: string[] = []) {
 
 function createKv() {
   return {
-    delete: vi.fn(async () => undefined),
+    delete: vi.fn(async (_key: string) => undefined),
   }
 }
 
@@ -652,11 +652,59 @@ describe('purgeUserData', () => {
     })
 
     expect(kv.delete.mock.calls.map(([key]) => key)).toEqual([
+      'usage-stats:42:7d',
+      'usage-stats:42:30d',
+      'usage-stats:42:all',
       'auth:token-a',
       'auth:token-b',
       'auth:active-sessions-42',
     ])
     expect(result.sessionKeysDeleted).toBe(3)
+  })
+
+  it('deletes the cached usage stats of every period', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 9, logger: { set: vi.fn() } })
+
+    expect(kv.delete.mock.calls.map(([key]) => key)).toEqual(
+      expect.arrayContaining([
+        'usage-stats:9:7d',
+        'usage-stats:9:30d',
+        'usage-stats:9:all',
+      ]),
+    )
+  })
+
+  it('keeps purging when a usage stats cache delete fails', async () => {
+    const db = createDb([], ['token-a'])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    kv.delete.mockImplementation(async (key: string) => {
+      if (key.startsWith('usage-stats:')) {
+        throw new Error('kv unavailable')
+      }
+    })
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 1, logger })
+
+    expect(result.sessionKeysDeleted).toBe(2)
+    expect(kv.delete).toHaveBeenCalledWith('auth:token-a')
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        usageStats: { cacheDeleteError: 'kv unavailable' },
+      },
+    })
   })
 
   it('deletes message_search rows scoped to the user owner tag', async () => {
@@ -845,7 +893,11 @@ describe('purgeUserData', () => {
     const storage = createStorage()
     const kv = createKv()
 
-    kv.delete.mockRejectedValueOnce(new Error('kv unavailable'))
+    kv.delete.mockImplementation(async (key: string) => {
+      if (key.startsWith('auth:')) {
+        throw new Error('kv unavailable')
+      }
+    })
     stubBindings(db, storage, kv)
 
     const { purgeUserData } = await importPurgeUserData()

@@ -72,6 +72,8 @@ import {
   serializeApprovalState,
 } from '~~/server/utils/tool-approval/state'
 import type { ApprovalState } from '~~/server/utils/tool-approval/state'
+import { SEND_TOOL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
+import type { SendToolDenialKind } from '~~/server/utils/tool-approval/denial-texts'
 
 type KvNamespace = Parameters<typeof putToolApproval>[0]
 
@@ -101,9 +103,9 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * name the model sees. `taint` and `readSource` are what a call that runs
  * adds to the send's approval state. `userGrants` are the grants the user
  * gave ("Always allow", "Allow in this chat"), each carrying the definition
- * hash it was given for, so a changed tool no longer matches; for a write
- * the policy never lets them lift a prompt caused by outside content, a
- * source switch or the always-ask tier.
+ * hash it was given for, so a changed tool no longer matches; since the
+ * owner decision of 2026-11-20 they run the call before any rule about
+ * outside content, a source switch or the always-ask tier.
  * `permissionMode` is the user's mode for a Besidka tool (Blocked, Needs
  * approval, Always allow); every other tool is decided as `ask`.
  * `summarize` writes the summary of one call from its input (a Besidka
@@ -202,6 +204,7 @@ export interface SendToolApproval {
   getGrantScope: (toolCallId: string) => ToolGrantScope | null
   listWithheldProviderTools: (tools: ToolSet | undefined) => string[]
   recordConnectorOpened: (connectorId: string) => void
+  getDenials: () => Partial<Record<SendToolDenialKind, number>>
 }
 
 interface NativeToolClass {
@@ -323,20 +326,25 @@ function buildUndescribedBesidkaEntry(toolName: string): SendToolEntry {
   }
 }
 
-function exceedsCallCap(
+function exceededCallCap(
   entry: SendToolEntry,
   state: ApprovalState,
-): boolean {
-  if (entry.descriptor.family === 'connector') {
-    return state.counters.connectorCalls
-      >= TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
+): SendToolDenialKind | null {
+  if (
+    entry.descriptor.family === 'connector'
+    && state.counters.connectorCalls >= TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
+  ) {
+    return 'connector-calls'
   }
 
-  if (entry.descriptor.family === 'besidka') {
-    return state.counters.builtInCalls >= TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN
+  if (
+    entry.descriptor.family === 'besidka'
+    && state.counters.builtInCalls >= TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN
+  ) {
+    return 'built-in-calls'
   }
 
-  return false
+  return null
 }
 
 /**
@@ -497,8 +505,28 @@ function userGrantScopeOf(
   return decision.rule === 6 ? 'always' : null
 }
 
-function denied(reason: ToolApprovalDenialReason): ToolApprovalStatus {
-  return { type: 'denied', reason }
+function policyDenialKind(
+  reason: ToolApprovalDenialReason,
+): SendToolDenialKind {
+  return reason === 'over-cap' ? 'invalid-input' : reason
+}
+
+function exceededPauseCap(
+  pendingCount: number,
+  input: unknown,
+  state: ApprovalState,
+): SendToolDenialKind | null {
+  if (state.counters.rounds >= TOOL_APPROVAL_ROUNDS_PER_TURN) {
+    return 'rounds'
+  }
+
+  if (pendingCount >= TOOL_APPROVAL_PENDING_PER_MESSAGE) {
+    return 'pending'
+  }
+
+  return payloadBytes(input) > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
+    ? 'payload'
+    : null
 }
 
 interface ClearedCall {
@@ -540,10 +568,12 @@ function toInputJson(input: unknown): string {
  * (`withProviderToolEgressGuard` keeps such a tool out of a step in which
  * it would need approval). A connector call past the per-turn
  * connector cap is denied. A tool with no entry is denied, and so is a
- * call that would need approval but has an input over the KV payload cap
- * or comes past the per-message cap, so a
+ * call that would need approval but has an input over the KV payload cap,
+ * comes past the per-message cap or would open a sixth round, so a
  * pause never holds a call Besidka cannot store. A call that may run is
- * never held to the payload cap.
+ * never held to the payload cap. Every denial reaches the model as a
+ * sentence that names the limit and the next step
+ * (`SEND_TOOL_DENIAL_TEXT`), never as a bare code.
  */
 export function createSendToolApproval(input: {
   state: ApprovalState
@@ -566,6 +596,13 @@ export function createSendToolApproval(input: {
   }
   const pendingDecisions = new Map<string, PendingToolApprovalDecision>()
   const grantedCalls = new Map<string, ToolGrantScope>()
+  const denials = new Map<SendToolDenialKind, number>()
+
+  function denied(kind: SendToolDenialKind): ToolApprovalStatus {
+    denials.set(kind, (denials.get(kind) ?? 0) + 1)
+
+    return { type: 'denied', reason: SEND_TOOL_DENIAL_TEXT[kind] }
+  }
 
   let stepMessages: unknown
   let stepState: ApprovalState | null = null
@@ -657,8 +694,10 @@ export function createSendToolApproval(input: {
       return 'not-applicable'
     }
 
-    if (exceedsCallCap(entry, state)) {
-      return denied('over-cap')
+    const callCap = exceededCallCap(entry, state)
+
+    if (callCap) {
+      return denied(callCap)
     }
 
     if (entry.failsWithoutRunning?.(toolCall.input) === true) {
@@ -676,6 +715,7 @@ export function createSendToolApproval(input: {
       permissionMode: entry.permissionMode ?? 'ask',
       alwaysGrant: entry.userGrants?.always ?? null,
       chatGrant: entry.userGrants?.chat ?? null,
+      isAlwaysGrantDefault: entry.userGrants?.isAlwaysDefault === true,
     })
     const grantScope = decision.rule === 6
       && entry.userGrants?.isAlwaysDefault
@@ -683,7 +723,7 @@ export function createSendToolApproval(input: {
       : userGrantScopeOf(decision)
 
     if (decision.status.type === 'denied') {
-      return denied(decision.status.reason)
+      return denied(policyDenialKind(decision.status.reason))
     }
 
     if (decision.status.type === 'not-applicable') {
@@ -701,12 +741,14 @@ export function createSendToolApproval(input: {
       return 'not-applicable'
     }
 
-    if (
-      pendingDecisions.size >= TOOL_APPROVAL_PENDING_PER_MESSAGE
-      || payloadBytes(toolCall.input) > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
-      || state.counters.rounds >= TOOL_APPROVAL_ROUNDS_PER_TURN
-    ) {
-      return denied('over-cap')
+    const pauseCap = exceededPauseCap(
+      pendingDecisions.size,
+      toolCall.input,
+      state,
+    )
+
+    if (pauseCap) {
+      return denied(pauseCap)
     }
 
     pendingDecisions.set(toolCall.toolCallId, {
@@ -916,6 +958,7 @@ export function createSendToolApproval(input: {
       clearedCalls.delete(toolCallId)
     },
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
+    getDenials: () => Object.fromEntries(denials),
     getGrantScope: toolCallId => grantedCalls.get(toolCallId) ?? null,
     listWithheldProviderTools,
     recordConnectorOpened: (connectorId) => {
