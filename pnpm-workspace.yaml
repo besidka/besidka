@@ -13,6 +13,7 @@ overrides:
   '@unhead/vue': 3.4.3
   '@unhead/bundler': 3.4.3
   vite-plugin-checker: 0.14.5
+  vue-router: 5.4.0
   vue: 3.6.0-rc.16
   '@vue/shared': 3.6.0-rc.16
   '@vue/reactivity': 3.6.0-rc.16
