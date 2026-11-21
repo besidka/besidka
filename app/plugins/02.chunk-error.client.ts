@@ -71,7 +71,11 @@ export default defineNuxtPlugin({
       })
     }
 
-    nuxtApp.hook('app:chunkError', () => {
+    nuxtApp.hook('app:chunkError', ({ error }) => {
+      if (!isChunkLoadError(error)) {
+        return
+      }
+
       recover()
     })
 

@@ -19,7 +19,11 @@ mockNuxtImport('usePreferenceStorage', () => {
   return () => ({ getItem: () => mocks.draft })
 })
 
-type ChunkErrorHook = () => void
+type ChunkErrorHook = (payload: { error: unknown }) => void
+
+const STALE_CHUNK_ERROR = new TypeError(
+  'Failed to fetch dynamically imported module: /_nuxt/old.js',
+)
 
 function install() {
   const hooks: ChunkErrorHook[] = []
@@ -35,7 +39,9 @@ function install() {
   }
 
   return {
-    emitChunkError: () => hooks.forEach(hook => hook()),
+    emitChunkError: (error: unknown = STALE_CHUNK_ERROR) => {
+      hooks.forEach(hook => hook({ error }))
+    },
     recover: result.provide.recoverFromChunkError,
   }
 }
@@ -103,6 +109,21 @@ describe('chunk-error-recovery plugin', () => {
     await nextTick()
 
     expect(mocks.reloadNuxtApp).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a failed async data fetch reported as a chunk error', () => {
+    const { emitChunkError } = install()
+    const fetchError = Object.assign(
+      new Error(
+        '[GET] "/api/v1/shared/test/context": 404 Page not found',
+      ),
+      { name: 'FetchError', statusCode: 404 },
+    )
+
+    emitChunkError(fetchError)
+
+    expect(mocks.reloadNuxtApp).not.toHaveBeenCalled()
+    expect(mocks.useInfoMessage).not.toHaveBeenCalled()
   })
 
   it('keeps an unsent message instead of reloading over it', () => {
