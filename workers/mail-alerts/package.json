@@ -9,6 +9,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "wrangler": "4.164.0"
+    "wrangler": "4.166.0"
   }
 }
