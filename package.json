@@ -148,7 +148,7 @@
 		"tailwindcss": "^4.3.5",
 		"turndown": "^7.2.5",
 		"ulid": "^3.0.2",
-		"unpdf": "^1.9.1",
+		"unpdf": "^2.2.1",
 		"vue": "3.6.0-rc.16",
 		"vue-router": "^5.5.1",
 		"web-haptics": "0.0.6",

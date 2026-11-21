@@ -402,8 +402,8 @@ importers:
         specifier: ^3.0.2
         version: 3.0.2
       unpdf:
-        specifier: ^1.9.1
-        version: 1.9.1
+        specifier: ^2.2.1
+        version: 2.2.1
       vue:
         specifier: 3.6.0-rc.16
         version: 3.6.0-rc.16(typescript@6.0.3)
@@ -10556,13 +10556,16 @@ packages:
     resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
     engines: {node: '>= 10.0.0'}
 
-  unpdf@1.9.1:
-    resolution: {integrity: sha512-nO1npM2kNyd4hj1fKzUVU6bvnWjDSxI97eycM/DgzI83dYyW+pNRI9NeMQVEfef8fI3Q06i9lkMeE1HxrQqKoA==}
-    engines: {node: '>=22'}
+  unpdf@2.2.1:
+    resolution: {integrity: sha512-tstQpe/fhxkDGY1ZtpejwnU14QZ9w0SYLo9lIZooB1zQ7QXVE4t+SBQUN/2a9+EBg9UrrO2bWlqdzV+UtoebHw==}
+    engines: {node: '>=24'}
     peerDependencies:
       '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+      pdfjs-dist: '*'
     peerDependenciesMeta:
       '@napi-rs/canvas':
+        optional: true
+      pdfjs-dist:
         optional: true
 
   unpipe@1.0.0:
@@ -11839,7 +11842,7 @@ snapshots:
     dependencies:
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.8(supports-color@10.2.2)
-      '@babel/types': 7.29.8
+      '@babel/types': 7.29.15
     transitivePeerDependencies:
       - supports-color
 
@@ -12376,7 +12379,7 @@ snapshots:
     dependencies:
       '@babel/core': 7.29.7(supports-color@10.2.2)
       '@babel/helper-plugin-utils': 7.29.7
-      '@babel/types': 7.29.8
+      '@babel/types': 7.29.15
       esutils: 2.0.3
 
   '@babel/runtime-corejs3@7.29.10':
@@ -23917,7 +23920,7 @@ snapshots:
 
   universalify@2.0.1: {}
 
-  unpdf@1.9.1: {}
+  unpdf@2.2.1: {}
 
   unpipe@1.0.0: {}
 

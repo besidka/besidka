@@ -575,7 +575,7 @@ opens, so the main app bundle does not grow:
 
 | Format | Library | License | Size (gzipped) | Notes |
 |---|---|---|---|---|
-| PDF | `unpdf` 1.9.x (pdf.js 6.4 serverless build) [S23] | MIT (pdf.js Apache-2.0) | ~503 KB | `extractText` per page. Plain text, no tables. Optional heading/table heuristics from `extractTextItems` (font sizes, positions). Needs the global `Iterator` (Safari ≥ 18.4) |
+| PDF | `unpdf` 2.2.x (pdf.js 6.5 serverless build) [S23] | MIT (pdf.js Apache-2.0) | ~503 KB | `extractText` per page. Plain text, no tables. Optional heading/table heuristics from `extractTextItems` (font sizes, positions). Needs the global `Iterator` (Safari ≥ 18.4) |
 | DOCX | `mammoth` 1.13 → HTML **in the Worker** (DOM-free), then `turndown` 7.2 + `@joplin/turndown-plugin-gfm` → Markdown **on the main thread** [S37] | BSD-2 / MIT / MIT | ~101 KB + ~7 KB + plugin | `turndown` parses HTML with `DOMParser`, which a dedicated Web Worker lacks. Converting a few hundred KB of HTML on the main thread is fast. Headings, lists and tables survive; borders and styles do not |
 | XLSX | `read-excel-file` 9.3, its `read-excel-file/web-worker` entry [S38] | MIT | ~14 KB | Each sheet becomes a Markdown table, capped rows per sheet |
 | PPTX | `officeparser` slim (K4, nice-to-have) [S39] | MIT | ~1.7 MB raw | Only maintained option found |
