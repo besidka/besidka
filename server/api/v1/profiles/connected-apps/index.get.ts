@@ -62,6 +62,7 @@ export default defineEventHandler(async () => {
     .select({
       clientId: schema.oauthRefreshTokens.clientId,
       lastUsedAt: sql<number | null>`max(${schema.oauthRefreshTokens.createdAt})`
+        .mapWith(Number)
         .as('last_used_at'),
     })
     .from(schema.oauthRefreshTokens)
@@ -72,6 +73,7 @@ export default defineEventHandler(async () => {
     .select({
       clientId: schema.oauthRefreshTokens.clientId,
       liveSince: sql<number>`max(${schema.oauthRefreshTokens.createdAt})`
+        .mapWith(Number)
         .as('live_since'),
       liveScopes: schema.oauthRefreshTokens.scopes,
     })
@@ -87,6 +89,7 @@ export default defineEventHandler(async () => {
     .select({
       clientId: schema.oauthAccessTokens.clientId,
       liveUntil: sql<number>`max(${schema.oauthAccessTokens.expiresAt})`
+        .mapWith(Number)
         .as('live_until'),
     })
     .from(schema.oauthAccessTokens)

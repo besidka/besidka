@@ -164,14 +164,14 @@ export async function listMcpFiles(
       source: schema.files.source,
       createdAt: schema.files.createdAt,
       expiresAt: schema.files.expiresAt,
-      isLinked: sql<number>`${isFileLinkedToKnowledgeSql(schema.files.id)}`,
+      isLinked: sql<number>`${isFileLinkedToKnowledgeSql(schema.files.id)}`.mapWith(Number),
     })
       .from(schema.files)
       .where(whereConditions)
       .orderBy(desc(schema.files.createdAt), desc(schema.files.id))
       .offset(offset)
       .limit(limit),
-    db.select({ total: sql<number>`count(*)` })
+    db.select({ total: sql<number>`count(*)`.mapWith(Number) })
       .from(schema.files)
       .where(whereConditions)
       .get(),

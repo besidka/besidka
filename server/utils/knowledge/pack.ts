@@ -387,7 +387,7 @@ async function selectPackItems(userId: number, projectId: number) {
   return await useDb()
     .select({
       publicId: schema.projectKnowledgeItems.id,
-      internalId: sql<number>`${schema.projectKnowledgeItems.id}`,
+      internalId: sql<number>`${schema.projectKnowledgeItems.id}`.mapWith(Number),
       title: schema.projectKnowledgeItems.title,
       relativePath: schema.projectKnowledgeItems.relativePath,
       updatedAt: schema.projectKnowledgeItems.updatedAt,
@@ -463,10 +463,10 @@ async function selectReadyTotals(
 ): Promise<{ count: number, textBytes: number }> {
   const rows = await useDb()
     .select({
-      count: sql<number>`count(*)`,
+      count: sql<number>`count(*)`.mapWith(Number),
       textBytes: sql<number>`coalesce(
         sum(${schema.projectKnowledgeItems.textBytes}), 0
-      )`,
+      )`.mapWith(Number),
     })
     .from(schema.projectKnowledgeItems)
     .where(and(
@@ -571,7 +571,7 @@ async function failSizeMismatchRows(input: {
           eq(schema.projectKnowledgeItems.extractStatus, 'ready'),
           eq(schema.projectKnowledgeItems.updatedAt, row.updatedAt),
         ))
-        .returning({ internalId: sql<number>`${schema.projectKnowledgeItems.id}` })
+        .returning({ internalId: sql<number>`${schema.projectKnowledgeItems.id}`.mapWith(Number) })
 
       failedItems += updated.length
     }
@@ -994,7 +994,7 @@ async function removeScopedItems(input: {
       eq(schema.projectKnowledgeItems.userId, input.userId),
     )
     const ownedRows = await db
-      .select({ internalId: sql<number>`${schema.projectKnowledgeItems.id}` })
+      .select({ internalId: sql<number>`${schema.projectKnowledgeItems.id}`.mapWith(Number) })
       .from(schema.projectKnowledgeItems)
       .where(scope)
     const ownedIds = ownedRows.map((row) => {

@@ -328,7 +328,7 @@ async function countEligibleChats(
     .limit(MEMORY_LIMITS.backfillMaxChats)
     .as('capped_eligible_chats')
   const [row] = await db
-    .select({ total: sql<number>`count(*)` })
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(capped)
 
   return Number(row?.total ?? 0)
