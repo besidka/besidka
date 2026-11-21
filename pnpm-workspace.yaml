@@ -5,26 +5,27 @@ packages:
   - 'workers/*'
 
 overrides:
-  '@cloudflare/workers-types': ^5.20261018.1
+  '@cloudflare/workers-types': ^5.20261120.1
   '@types/node': 24.19.2
   drizzle-orm: 1.0.0-rc.5
   fontless>esbuild: '>=0.28.1'
-  unhead: 3.4.2
-  '@unhead/vue': 3.4.2
-  '@unhead/bundler': 3.4.2
+  unhead: 3.4.3
+  '@unhead/vue': 3.4.3
+  '@unhead/bundler': 3.4.3
   vite-plugin-checker: 0.14.5
-  vue: 3.6.0-rc.12
-  '@vue/shared': 3.6.0-rc.12
-  '@vue/reactivity': 3.6.0-rc.12
-  '@vue/runtime-core': 3.6.0-rc.12
-  '@vue/runtime-dom': 3.6.0-rc.12
-  '@vue/runtime-vapor': 3.6.0-rc.12
-  '@vue/server-renderer': 3.6.0-rc.12
-  '@vue/compiler-core': 3.6.0-rc.12
-  '@vue/compiler-dom': 3.6.0-rc.12
-  '@vue/compiler-sfc': 3.6.0-rc.12
-  '@vue/compiler-ssr': 3.6.0-rc.12
-  '@vue/compiler-vapor': 3.6.0-rc.12
+  vue-router: 5.4.0
+  vue: 3.6.0-rc.16
+  '@vue/shared': 3.6.0-rc.16
+  '@vue/reactivity': 3.6.0-rc.16
+  '@vue/runtime-core': 3.6.0-rc.16
+  '@vue/runtime-dom': 3.6.0-rc.16
+  '@vue/runtime-vapor': 3.6.0-rc.16
+  '@vue/server-renderer': 3.6.0-rc.16
+  '@vue/compiler-core': 3.6.0-rc.16
+  '@vue/compiler-dom': 3.6.0-rc.16
+  '@vue/compiler-sfc': 3.6.0-rc.16
+  '@vue/compiler-ssr': 3.6.0-rc.16
+  '@vue/compiler-vapor': 3.6.0-rc.16
 
 allowBuilds:
   '@parcel/watcher': true

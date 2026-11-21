@@ -63,7 +63,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-docx 9.15.3 (MIT)
+docx 9.16.0 (MIT)
 Bundled in: client, worker
 ------------------------------------------------------------------------
 The MIT License (MIT)

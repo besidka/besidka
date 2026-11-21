@@ -913,6 +913,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   defaults to 1.2.15); the migration friction list (`bunfig.toml` release
   age, `trustedDependencies`, missing `NODE_PATH` in bin shims, hardcoded
   `pnpm` call sites); and the criteria for revisiting the decision
+- `docs/dependency-holds.md` - Packages deliberately kept below their newest
+  release (nuxt-studio, vue-router, @nuxtjs/color-mode, vitest, stylistic,
+  msw, nuxt-email-renderer, @vite-pwa/nuxt, typescript, @types/node): the
+  version held, the version blocked, the concrete error or upstream issue, what
+  unblocks each, the matching `ignore` entries in `.github/dependabot.yml`, and
+  the rule to remove the ignore entry in the same PR that does the upgrade
 - `docs/security-audit-2026-10.md` - The 2026-10-24 security-audit skill run
   (source-only, standard profile, 21 leads + 2 rejected): the table of fixes
   (Better Auth rate limit and reset revocation, MDC directive-prop stripping,
