@@ -3,6 +3,7 @@ import {
   MAX_ATTEMPTS,
   RATE_LIMIT_STEP_MS,
   SERVER_ERROR_BACKOFF_MS,
+  formatGraphqlErrors,
   getRetryDelay,
   isRateLimited,
   isTransientServerError,
@@ -161,5 +162,30 @@ describe('linearRequest', () => {
     expect(fetchMock).toHaveBeenCalledTimes(MAX_ATTEMPTS)
     expect(sleepMock.mock.calls.map(([delay]) => delay))
       .toEqual(SERVER_ERROR_BACKOFF_MS)
+  })
+})
+
+describe('formatGraphqlErrors', () => {
+  it('adds the presentable message and validation details', () => {
+    expect(formatGraphqlErrors([{
+      message: 'Argument Validation Error',
+      extensions: {
+        code: 'INVALID_INPUT',
+        type: 'invalid input',
+        userError: true,
+        userPresentableMessage: 'content must be shorter than 250000',
+        validationErrors: [{ property: 'content' }],
+      },
+    }])).toBe(
+      'Argument Validation Error: content must be shorter than 250000: '
+      + '{"validationErrors":[{"property":"content"}]}',
+    )
+  })
+
+  it('keeps a plain message and joins several errors', () => {
+    expect(formatGraphqlErrors([
+      { message: 'First' },
+      { message: 'Second', extensions: { userPresentableMessage: 'Second' } },
+    ])).toBe('First; Second')
   })
 })

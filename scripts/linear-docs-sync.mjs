@@ -10,7 +10,19 @@
  * files get a new document and a new entry; renamed files keep their
  * document; deleted files delete their document (Linear keeps it in
  * "Recently deleted" for 30 days). The "Docs index" document is rebuilt on
- * every run.
+ * every run and links every part of a split doc.
+ *
+ * Linear rejects document content above 250,000 characters with an
+ * "Argument Validation Error" (inferred: the API does not document the limit
+ * for documents; 226,338 characters synced and 259,849 failed, and Linear
+ * caps other Markdown bodies at 250,000). A doc whose rendered content is
+ * longer than MAX_DOCUMENT_CHARACTERS (240,000) is split at its top-level
+ * headings into "<title> (part N of M)" documents. Its map entry is then an
+ * ordered array of ids, one per part: part 1 keeps the id the single document
+ * had, new parts are created, and parts that no longer exist are deleted.
+ *
+ * A failing document does not stop the others: failures are collected,
+ * printed with Linear's validation details, and fail the job at the end.
  *
  * The last fully synced commit is recorded in the Docs index document. Each
  * run syncs every docs change between that commit and HEAD, so runs that
@@ -20,10 +32,17 @@
  * Runs from .github/workflows/linear-docs-sync.yml on pushes to main that
  * touch docs/**, or by hand:
  *   LINEAR_API_KEY=lin_api_... node scripts/linear-docs-sync.mjs --all
+ *   node scripts/linear-docs-sync.mjs --dry-run
+ *
+ * --dry-run prints the planned creates, updates and deletes of a full sync,
+ * with part counts and sizes, without a key, without any request and without
+ * writing the document map.
  *
  * Env:
- *   LINEAR_API_KEY  personal API key with write access (required)
+ *   LINEAR_API_KEY  personal API key with write access (required unless
+ *                   --dry-run)
  *   FULL_SYNC=true  same as --all
+ *   DRY_RUN=true    same as --dry-run
  */
 
 import { execFileSync } from 'node:child_process'
@@ -36,6 +55,14 @@ import {
 } from 'node:fs'
 import { join, relative } from 'node:path'
 import process from 'node:process'
+import {
+  MAX_DOCUMENT_CHARACTERS,
+  documentIds,
+  partTitle,
+  planDocumentParts,
+  splitMarkdown,
+  storeDocumentIds,
+} from './linear-docs-split.mjs'
 import { linearRequest } from './linear-request.mjs'
 
 const ROOT = process.cwd()
@@ -54,9 +81,16 @@ const DELETE_MUTATION = `mutation($id: String!) {
   documentDelete(id: $id) { success }
 }`
 
-const apiKey = process.env.LINEAR_API_KEY
+const TITLE_LIMIT = 250
+const PART_TITLE_BASE_LIMIT = 230
+const PART_BANNER_PLACEHOLDER_COUNT = 999
+const PART_SEPARATOR_LENGTH = '\n\n'.length + '\n'.length
 
-if (!apiKey) {
+const apiKey = process.env.LINEAR_API_KEY
+const dryRun = process.argv.includes('--dry-run')
+  || process.env.DRY_RUN === 'true'
+
+if (!apiKey && !dryRun) {
   console.log(
     '::warning::LINEAR_API_KEY is not set, skipping the Linear docs sync',
   )
@@ -71,6 +105,12 @@ const fullSync = process.argv.includes('--all')
 const failures = []
 
 async function main() {
+  if (dryRun) {
+    planDryRun()
+
+    return
+  }
+
   const syncedSha = fullSync ? null : await lastSyncedSha()
 
   if (syncedSha === commitSha) {
@@ -199,7 +239,7 @@ function toDocPath(path) {
   return path.replace(/^docs\//, '')
 }
 
-function render(path) {
+function readDoc(path) {
   const lines = readFileSync(join(DOCS_DIR, path), 'utf8')
     .replace(/\r\n/g, '\n')
     .split('\n')
@@ -225,13 +265,64 @@ function render(path) {
   const folder = path.includes('/')
     ? path.slice(0, path.lastIndexOf('/'))
     : ''
-  const title = `${folder ? `[${folder}] ` : ''}${heading}`.slice(0, 250)
-  const banner = `> Synced from \`docs/${path}\` at `
+
+  return {
+    title: `${folder ? `[${folder}] ` : ''}${heading}`,
+    body: lines.join('\n').trim(),
+  }
+}
+
+function banner(path, index = 0, count = 1) {
+  const part = count > 1 ? ` (part ${index + 1} of ${count})` : ''
+
+  return `> Synced from \`docs/${path}\`${part} at `
     + `besidka/besidka@${shortSha}. Source of truth: `
     + `[GitHub](${githubUrl(path)}). `
     + 'Edits made here are overwritten on the next sync.'
+}
 
-  return { title, content: `${banner}\n\n${lines.join('\n').trim()}\n` }
+function render(path) {
+  const { title, body } = readDoc(path)
+
+  return {
+    title: title.slice(0, TITLE_LIMIT),
+    content: `${banner(path)}\n\n${body}\n`,
+  }
+}
+
+/**
+ * Renders a doc as one Linear document, or as parts of at most
+ * MAX_DOCUMENT_CHARACTERS each (banner included) when it is too long.
+ */
+function renderParts(path) {
+  const single = render(path)
+
+  if (single.content.length <= MAX_DOCUMENT_CHARACTERS) {
+    return [single]
+  }
+
+  const { title, body } = readDoc(path)
+  const bannerLength = banner(
+    path,
+    PART_BANNER_PLACEHOLDER_COUNT - 1,
+    PART_BANNER_PLACEHOLDER_COUNT,
+  ).length
+  const chunks = splitMarkdown(
+    body,
+    MAX_DOCUMENT_CHARACTERS - bannerLength - PART_SEPARATOR_LENGTH,
+  )
+  const baseTitle = title.slice(0, PART_TITLE_BASE_LIMIT)
+
+  return chunks.map((chunk, index) => {
+    return {
+      title: partTitle(baseTitle, index, chunks.length),
+      content: `${banner(path, index, chunks.length)}\n\n${chunk.trim()}\n`,
+    }
+  })
+}
+
+function describePart(path, index, count) {
+  return count > 1 ? `${path} (part ${index + 1} of ${count})` : path
 }
 
 function githubUrl(path) {
@@ -239,26 +330,38 @@ function githubUrl(path) {
 }
 
 async function upsert(path) {
-  const { title, content } = render(path)
-  const documentId = map.documents[path]
+  const parts = renderParts(path)
+  const { ids, removed } = planDocumentParts(map.documents[path], parts.length)
 
   try {
-    if (documentId) {
-      await request(UPDATE_MUTATION, {
-        id: documentId,
-        input: { title, content },
-      })
-      console.log(`updated  ${path}`)
+    for (const [index, part] of parts.entries()) {
+      const label = describePart(path, index, parts.length)
+      const input = { title: part.title, content: part.content }
 
-      return
+      if (ids[index]) {
+        await request(UPDATE_MUTATION, { id: ids[index], input })
+        console.log(`updated  ${label}`)
+
+        continue
+      }
+
+      const data = await request(CREATE_MUTATION, {
+        input: { ...input, teamId: map.teamId },
+      })
+
+      ids[index] = data.documentCreate.document.id
+      map.documents[path] = storeDocumentIds(ids.filter(Boolean))
+      console.log(`created  ${label}`)
     }
 
-    const data = await request(CREATE_MUTATION, {
-      input: { title, content, teamId: map.teamId },
-    })
+    while (removed.length) {
+      await request(DELETE_MUTATION, { id: removed[0] })
+      removed.shift()
+      map.documents[path] = storeDocumentIds([...ids, ...removed])
+      console.log(`deleted  ${path} (a part that no longer exists)`)
+    }
 
-    map.documents[path] = data.documentCreate.document.id
-    console.log(`created  ${path}`)
+    map.documents[path] = storeDocumentIds(ids)
   } catch (exception) {
     failures.push(path)
     console.log(`::error::${path}: ${exception.message}`)
@@ -266,39 +369,101 @@ async function upsert(path) {
 }
 
 async function removeDocument(path) {
-  const documentId = map.documents[path]
+  const ids = documentIds(map.documents[path])
 
-  if (!documentId) {
+  if (!ids.length) {
     return
   }
 
   try {
-    await request(DELETE_MUTATION, { id: documentId })
+    while (ids.length) {
+      await request(DELETE_MUTATION, { id: ids[0] })
+      ids.shift()
+    }
+
     delete map.documents[path]
     console.log(`deleted  ${path}`)
   } catch (exception) {
+    map.documents[path] = storeDocumentIds(ids)
     failures.push(path)
     console.log(`::error::${path}: ${exception.message}`)
   }
 }
 
+function planDryRun() {
+  console.log(
+    'Dry run: no requests are sent and the document map is not written. '
+    + `Documents over ${MAX_DOCUMENT_CHARACTERS} characters are split.`,
+  )
+
+  for (const path of Object.keys(map.documents)) {
+    if (!existsSync(join(DOCS_DIR, path))) {
+      const count = documentIds(map.documents[path]).length
+
+      console.log(`would delete  ${path} (${count} document(s))`)
+    }
+  }
+
+  for (const path of listDocs()) {
+    const parts = renderParts(path)
+    const { ids, removed } = planDocumentParts(
+      map.documents[path],
+      parts.length,
+    )
+
+    parts.forEach((part, index) => {
+      const action = ids[index] ? 'update' : 'create'
+      const label = describePart(path, index, parts.length)
+
+      console.log(
+        `would ${action}  ${label} (${part.content.length} characters)`,
+      )
+    })
+
+    for (const documentId of removed) {
+      console.log(`would delete  ${path} part document ${documentId}`)
+    }
+  }
+}
+
 async function fetchDocumentUrls() {
-  const entries = Object.entries(map.documents)
+  const entries = Object.entries(map.documents).flatMap(([path, entry]) => {
+    return documentIds(entry).map((documentId, index) => {
+      return { path, index, documentId }
+    })
+  })
   const urls = {}
 
   for (let offset = 0; offset < entries.length; offset += 50) {
     const chunk = entries.slice(offset, offset + 50)
-    const fields = chunk.map(([, documentId], index) => {
+    const fields = chunk.map(({ documentId }, index) => {
       return `d${index}: document(id: "${documentId}") { url }`
     })
     const data = await request(`query { ${fields.join(' ')} }`, {})
 
-    chunk.forEach(([path], index) => {
-      urls[path] = data[`d${index}`]?.url
+    chunk.forEach(({ path, index: partIndex }, index) => {
+      urls[path] ??= []
+      urls[path][partIndex] = data[`d${index}`]?.url
     })
   }
 
   return urls
+}
+
+function linearLinks(partUrls = []) {
+  if (!partUrls.length) {
+    return '**not synced**'
+  }
+
+  if (partUrls.length === 1) {
+    return partUrls[0] ? `[Linear doc](${partUrls[0]})` : '**not synced**'
+  }
+
+  return partUrls.map((url, index) => {
+    const label = `part ${index + 1} of ${partUrls.length}`
+
+    return url ? `[Linear ${label}](${url})` : `**${label} not synced**`
+  }).join(' · ')
 }
 
 async function lastSyncedSha() {
@@ -350,9 +515,7 @@ async function rebuildIndex(syncedSha) {
 
       for (const path of groups.get(folder)) {
         const { title } = render(path)
-        const linearLink = urls[path]
-          ? `[Linear doc](${urls[path]})`
-          : '**not synced**'
+        const linearLink = linearLinks(urls[path])
 
         lines.push(
           `- **${title}** — \`${path}\` · ${linearLink} · `
