@@ -23,7 +23,6 @@ Recorded on 2026-11-21 during the dependency batch on
 | `nuxt-studio` | 1.7.0 | >1.7.0 | 1.8.0 shipped an empty `studio.client.d.ts` (TS2306 dropped every `$plugin` injection type). 1.8.2 fixes that, but its `dist/module/module.mjs` imports `../../../dist/module/runtime/utils/media.js`, which resolves outside the package and loads only through Nuxt's jiti fallback (`NUXT_B8023`), and nuxt-content/nuxt-studio#597 (1.8.x external media loses its public URL) is open. Studio cannot be verified locally | A release that imports `media.js` from inside the package, #597 closed, and a Studio edit checked on a preview |
 | `vue-router` | 5.4.0 | >=5.5.0 | 5.5 persists scroll positions to `sessionStorage["vue-router:scroll"]` at module scope, keyed by history position plus the full path with its query string, with no opt-out. UTM parameters then land in browser storage, which breaks the URL-only attribution rule (`docs/analytics-utm.md`) and adds a storage entry the Cookie Policy does not list. `tests/e2e/attribution/utm-signup.spec.ts` fails on it. nuxt 4.6.4 itself pins 5.4.0. A workspace `overrides` entry keeps `@nuxtjs/i18n` from pulling a second copy | A vue-router option to turn the persistence off (or a key without the query), or a Nuxt release that moves to 5.5 and a decision on how to keep UTM out of storage; then drop the override too |
 | `@nuxtjs/color-mode` | 4.0.1 | >=4.1.0 | 4.1.0 writes `nuxt-color-mode` to localStorage in an idle callback after hydration (`onIdleAfterHydration`). `app/plugins/cookie-consent-gate.client.ts` purges the key once at startup, so the key is written for visitors who have not consented to preferences or rejected them. `tests/e2e/cookies/consent.spec.ts:240` and `:490` fail on a production build | The consent gate handles the deferred write (for example a storage option or hook that suppresses the write until consent), proven by the consent e2e spec on a production build |
-| `drizzle-orm`, `drizzle-kit` | 1.0.0-rc.5 | >=1.0.0-rc.6 | rc.6 removed the cast codecs, so on `better-sqlite3` (the unit and integration test driver) every integer `sql` field without `.mapWith()` is a `bigint`. With rc.6, 166 unit tests in 4 spec files failed (`Cannot mix BigInt and other types`, `expected 3n to be 3`). D1 returns numbers, so production would likely be unaffected, but the tests would no longer match it | Every raw `sql<number>` aggregate gets `.mapWith(Number)` (or the tests use a driver mode that returns numbers), then the full unit, integration and e2e suites pass on rc.6 |
 | `vitest`, `@vitest/ui`, `@vitest/coverage-v8` | 4.1.12 | major 5 | 436 of 1210 unit spec files fail: projects now inherit the root config and share one Vite server by default, so the Nuxt project transforms every SFC twice (`Identifier '__temp' has already been declared`, empty SFC descriptors). The 5.0 migration guide lists about 35 breaking changes (`clearMocks` on by default, unawaited assertions fail, top-level hoisted mocks, and more) | A dedicated migration PR: project config per the 5.0 guide, then the full unit, integration and cookie-consent suites |
 | `@stylistic/eslint-plugin` | 5.10.0 | major 6 | `@nuxt/eslint-config` 1.17.0 (the newest) depends on `@stylistic/eslint-plugin` ^5.10.0, and `eslint.config.js` registers the same `@stylistic` plugin name | A `@nuxt/eslint-config` release on stylistic 6 |
 | `msw` | 2.15.0 | major 3 | Its only user, `tests/setup/mocks/api.ts`, is imported by no spec and is outside typecheck, so no check would exercise an upgrade. It looks unused | Delete `msw` and the mock file, or start using them; either way the hold ends |
@@ -31,34 +30,6 @@ Recorded on 2026-11-21 during the dependency batch on
 | `@vite-pwa/nuxt` | 1.1.1 | major 2 | `pnpm run dev` disables the PWA module, so nothing local exercises the service worker, and the Safari service worker history (`docs/pwa-safari-dock-app-launch.md`) makes an unverified major risky | A PR with preview checks in Safari and the iOS home-screen PWA |
 | `typescript` | 6.x | major 7 | The native compiler port has no stable compiler API: vue-tsc has no TS7 support (vuejs/language-tools#5381) and typescript-eslint's peer range excludes it (typescript-eslint/typescript-eslint#12518). See PR #297 | vue-tsc and typescript-eslint support TS7 |
 | `@types/node` | 24.x | major 26 | Must match the Node 24 LTS runtime; `scripts/verify-node-types.mjs` fails the install on another major | The runtime moves to a newer Node LTS |
-
-## drizzle-orm
-
-Covers `drizzle-orm` and `drizzle-kit`, pinned exactly in `package.json`, and
-the `drizzle-orm` entry in `pnpm-workspace.yaml` `overrides`. Move all three
-together.
-
-- **Held at:** 1.0.0-rc.5.
-- **Blocked:** 1.0.0-rc.6 and later.
-- **Why:** rc.6 removed the cast codecs. Its release notes say that on
-  `better-sqlite3`, `node-sqlite` and the other SQLite drivers, "Integer `sql`
-  fields without `.mapWith()` are `bigint`s", and the d1 driver output is
-  "decoded as returned". The unit and integration suites run on
-  `better-sqlite3`, so raw `sql<number>` aggregates (`COUNT`, `SUM`, the
-  storage usage SQL and similar) came back as `3n`. With rc.6, 166 tests in
-  `tests/unit/utils/knowledge/ingest.spec.ts`, `pack.spec.ts`, `items.spec.ts`
-  and `tests/unit/server/utils/mcp/private-files.spec.ts` failed. The same
-  release also changes SQLite `substring()` and makes d1 `numeric` integers
-  past the safe range throw; this repo uses neither. `pnpm run db:generate` and
-  `pnpm run db:consents:generate` produced no migration and no snapshot diff,
-  so the schema side is clean.
-- **Unblocks it:** `.mapWith(Number)` on every raw `sql<number>` field that
-  reads an integer, or a test driver mode that returns numbers, so tests keep
-  matching D1.
-- **Verify:** `pnpm run test:unit`, `pnpm run test:integration`, the e2e
-  suite in CI mode, `git status --porcelain -- .drizzle` empty after both
-  generate scripts, and a read-only check on `besidka-preview` that counts
-  and byte sums are numbers (AGENTS.md "D1 Migration Safety").
 
 ## vitest
 
