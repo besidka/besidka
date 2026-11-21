@@ -72,6 +72,10 @@ updates:
         versions: [">=5.5.0"]
       - dependency-name: "@nuxtjs/color-mode"
         versions: [">=4.1.0"]
+      - dependency-name: "drizzle-orm"
+        versions: [">=1.0.0-rc.6"]
+      - dependency-name: "drizzle-kit"
+        versions: [">=1.0.0-rc.6"]
     labels:
       - "dependencies"
     commit-message:
