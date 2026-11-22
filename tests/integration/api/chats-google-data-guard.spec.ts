@@ -915,22 +915,42 @@ describe('chat send data guard', () => {
         .not.toHaveProperty('gateway')
     })
 
-    it('sends the gateway safeguards once the send registers a Google tool',
-      async () => {
-        mocks.flags.add('tool-approvals')
-        mocks.flags.add('google.drive')
-        mocks.googleCandidates = {
-          tools: { google__drive_search: { execute: vi.fn() } },
-          entries: new Map([['google__drive_search', {}]]),
-        }
+    it('registers no Google tool and sends no safeguards on a gateway while '
+      + 'the chat holds no Google data, whatever candidates the user has',
+    async () => {
+      mocks.flags.add('tool-approvals')
+      mocks.flags.add('google.drive')
+      mocks.googleCandidates = {
+        tools: { google__drive_search: { execute: vi.fn() } },
+        entries: new Map([['google__drive_search', {}]]),
+      }
 
-        const result = await runSend({
-          googleDataAt: null,
-          gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
-        })
-
-        expect(gatewayOptionsOf(result)).toEqual({ googleDataSafeguards: true })
+      const result = await runSend({
+        googleDataAt: null,
+        gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
       })
+
+      expect(gatewayOptionsOf(result)).toEqual({ googleDataSafeguards: false })
+      expect(result.firstCallProviderOptions ?? {})
+        .not.toHaveProperty('gateway')
+    })
+
+    it('sends the safeguards on a gateway exactly when the chat holds '
+      + 'Google data, with the Google tools registered', async () => {
+      mocks.flags.add('tool-approvals')
+      mocks.flags.add('google.drive')
+      mocks.googleCandidates = {
+        tools: { google__drive_search: { execute: vi.fn() } },
+        entries: new Map([['google__drive_search', {}]]),
+      }
+
+      const result = await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
+        gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
+      })
+
+      expect(gatewayOptionsOf(result)).toEqual({ googleDataSafeguards: true })
+    })
 
     it('shows the Google reason when Vercel refuses zero data retention on '
       + 'a flagged send', async () => {

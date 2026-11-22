@@ -194,6 +194,36 @@ export async function hasActiveCopyConnection(
  * failure stops before D1 so the sweep retries. `complete` is false when
  * R2 failed or the file or time budget ran out. Logs ids and counts only.
  */
+/**
+ * Forgets the Drive copies the user's files were saved as (`drive_copy_id`)
+ * once no connection of a copy-making mode is active, so "already saved"
+ * never answers with a link into a Google account that is no longer
+ * connected (a disconnect, an `invalid_grant`, or a different Google
+ * account replacing the connection). A failure is logged and the sweep
+ * tries again, because the cleanup runs again for the user.
+ */
+export async function clearSavedDriveCopyIds(
+  db: DbClient,
+  userId: number,
+  logger: LoggerLike,
+): Promise<void> {
+  try {
+    await db
+      .update(schema.files)
+      .set({ driveCopyId: null })
+      .where(and(
+        eq(schema.files.userId, userId),
+        isNotNull(schema.files.driveCopyId),
+      ))
+  } catch (exception) {
+    logCleanup(logger, {
+      phase: 'drive-copy-ids',
+      userId,
+      error: exceptionMessage(exception),
+    })
+  }
+}
+
 export async function deleteGoogleDerivedFiles(
   input: CleanupInput,
 ): Promise<GoogleFileCleanupResult> {
@@ -203,6 +233,10 @@ export async function deleteGoogleDerivedFiles(
   let deleted = 0
   let complete = false
   let skipped = false
+
+  if (!await hasActiveCopyConnection(db, userId)) {
+    await clearSavedDriveCopyIds(db, userId, logger)
+  }
 
   while (true) {
     if (budget.remainingFiles <= 0 || budget.now() >= budget.deadline) {

@@ -12,6 +12,7 @@ import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import {
   GOOGLE_TOOL_NAME_PREFIX,
   canOfferGoogleTools,
+  googleToolReturnsContent,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
 import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
@@ -130,12 +131,17 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * `failsWithoutRunning` marks a call `execute` always refuses with a plain
  * error (a Besidka delete or move of the current chat): it is cleared
  * without a prompt, so the user is never asked for a call that cannot run.
+ * `taintsRun` is for a Google tool that returns no Google content
+ * (`taint` and `readSource` null): one lookup before `execute` says the
+ * call names Google-derived data after all (a marked file), and the call
+ * then taints the send like any Google call.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
   summary: string
   summarize?: (input: unknown) => string
   describe?: (input: unknown) => Promise<string | null>
+  taintsRun?: (input: unknown) => Promise<boolean>
   preview?: (input: unknown) => string | null
   failsWithoutRunning?: (input: unknown) => boolean
   permissionMode?: ToolPermissionMode
@@ -381,6 +387,7 @@ export function buildGoogleApprovalEntry(input: {
   toolApprovalsActive: boolean
   summarize?: (input: unknown) => string
   chatGrantHash?: string | null
+  taintsRun?: (input: unknown) => Promise<boolean>
 }): SendToolEntry {
   if (!canOfferGoogleTools(input)) {
     throw createError({
@@ -400,6 +407,7 @@ export function buildGoogleApprovalEntry(input: {
   }
 
   const isRead = input.kind === 'read'
+  const returnsContent = googleToolReturnsContent(input.toolName)
 
   return {
     descriptor: {
@@ -411,8 +419,11 @@ export function buildGoogleApprovalEntry(input: {
     },
     summary: clampSummary(input.summary),
     ...(input.summarize ? { summarize: input.summarize } : {}),
-    taint: 'google',
-    readSource: TOOL_APPROVAL_GOOGLE_READ_SOURCE,
+    ...(!returnsContent && input.taintsRun
+      ? { taintsRun: input.taintsRun }
+      : {}),
+    taint: returnsContent ? 'google' : null,
+    readSource: returnsContent ? TOOL_APPROVAL_GOOGLE_READ_SOURCE : null,
     userGrants: {
       always: null,
       chat: isRead && input.chatGrantHash
@@ -967,7 +978,10 @@ export function createSendToolApproval(input: {
 
       return [toolName, {
         ...tool,
-        execute: (input: unknown, options?: { toolCallId?: string }) => {
+        execute: async (
+          input: unknown,
+          options?: { toolCallId?: string },
+        ) => {
           if (!consumeClearedCall({
             toolCallId: options?.toolCallId,
             toolName,
@@ -981,7 +995,12 @@ export function createSendToolApproval(input: {
             })
           }
 
-          return execute(input, options)
+          if (entry?.taintsRun && await entry.taintsRun(input)) {
+            recordTaint(state, 'google')
+            recordToolRead(state, TOOL_APPROVAL_GOOGLE_READ_SOURCE)
+          }
+
+          return await execute(input, options)
         },
       } as ToolSet[string]]
     }))

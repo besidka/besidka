@@ -295,7 +295,7 @@ const compactText = computed<string>(() => {
 })
 
 const buttons = computed(() => {
-  return getApprovalButtons(props.model.rememberOptions)
+  return getApprovalButtons(props.model.rememberOptions, props.model.toolName)
 })
 
 const hasButtons = computed<boolean>(() => {

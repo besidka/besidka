@@ -1,6 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { nextTick, shallowRef } from 'vue'
+import { GOOGLE_DRIVE_TOOLS_HINT } from '#shared/utils/google-drive-tools'
 import type { ChatInputToolsState } from '../../../../../app/types/chat-input-tools'
 import Content from '../../../../../app/components/ChatInput/ToolsMenu/Content.vue'
 
@@ -274,6 +275,25 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
       await row.trigger('click')
 
       expect(wrapper.emitted('open-google-drive')).toHaveLength(1)
+    })
+
+    it('says where the model can use Drive and where it cannot, in one '
+      + 'sentence under the row', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const hint = wrapper.get('[data-testid="tools-google-drive-tools-hint"]')
+
+      expect(hint.text()).toBe(GOOGLE_DRIVE_TOOLS_HINT)
+      expect(hint.text()).toContain('gateway chat only after a Drive file is '
+        + 'attached')
+      expect(hint.text()).toContain('web search')
+      expect(hint.text()).toContain('Run code')
+    })
+
+    it('shows no hint while google.drive is off', async () => {
+      const wrapper = await mountContent(createState({ drive: false }))
+
+      expect(wrapper.find('[data-testid="tools-google-drive-tools-hint"]')
+        .exists()).toBe(false)
     })
 
     it('sits in the Add section beside the other file sources', async () => {

@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
     tools: Record<string, unknown>
     entries: Map<string, unknown>
   },
+  pickedRead: null as null | Record<string, any>,
+  saveFile: null as null | ((...args: unknown[]) => unknown),
   failRateLimitRead: false,
   chatGoogleDataAt: null as Date | null,
   memoryToolsEnabled: false,
@@ -244,6 +246,19 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
     },
   }
 })
+
+vi.mock('~~/server/utils/google/drive-picked', async (importOriginal) => {
+  return {
+    ...await importOriginal<
+      typeof import('~~/server/utils/google/drive-picked')
+    >(),
+    readPickedDriveFile: async () => mocks.pickedRead,
+  }
+})
+
+vi.mock('~~/server/utils/google/drive-save', () => ({
+  saveFileToGoogleDrive: (...args: unknown[]) => mocks.saveFile!(...args),
+}))
 
 vi.mock('~~/server/utils/tool-approval/secret', () => ({
   useToolApprovalSecret: async () => 'test-tool-approval-secret',
@@ -2258,6 +2273,150 @@ describe('tool approval continuation', () => {
         expect(prompt).not.toContain('SECRET GOOGLE BODY')
         expect(prompt).toContain('could not be kept')
       })
+
+    describe('with the real Drive tools', () => {
+      const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
+
+      beforeEach(async () => {
+        const { buildGoogleDriveTools } = await import(
+          '~~/server/utils/google/drive-tools'
+        )
+        const nameQuery = {
+          from: () => nameQuery,
+          where: () => nameQuery,
+          limit: async () => [{
+            name: 'Report.md',
+            size: 2048,
+            createdAt: new Date('2026-11-20T10:00:00.000Z'),
+            googleDerivedAt: null,
+          }],
+        }
+        const build = (grants: Record<string, string> = {}) => {
+          return buildGoogleDriveTools({
+            db: { select: () => nameQuery } as never,
+            kv: {} as never,
+            event: { context: {} } as never,
+            userId: 1,
+            chatGrantHashes: grants,
+            logger: { set: vi.fn() },
+          })
+        }
+        const hash = (await build()).entries
+          .get('google__drive_read_file')!.descriptor.definitionHash!
+
+        mocks.googleSend = await build({ google__drive_read_file: hash })
+        mocks.pickedRead = {
+          status: 'ok',
+          isStale: false,
+          text: 'SECRET DRIVE BODY',
+          file: {
+            id: 'file-1',
+            driveFileId: DRIVE_ID,
+            name: 'Plan.md',
+            type: 'text/markdown',
+            size: 17,
+            copiedAt: new Date('2026-11-20T10:00:00.000Z'),
+            modifiedAt: new Date('2026-11-20T09:00:00.000Z'),
+          },
+        }
+        mocks.saveFile = vi.fn(async () => ({
+          status: 'saved',
+          saved: {
+            fileId: 'file-2',
+            driveFileId: 'saved-drive-id-0000',
+            name: 'Report.md',
+            link: 'https://drive.google.com/open?id=saved-drive-id-0000',
+            isAlreadySaved: false,
+          },
+        }))
+      })
+
+      async function pauseAfterDriveRead() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-g', 'google__drive_read_file', {
+              fileId: 'file-1',
+            }),
+            toolCallChunks('call-w', 'google__drive_save_file', {
+              fileId: 'file-2',
+            }),
+          ],
+        })
+      }
+
+      it('stores the file as a reference only, keeps the framed body in KV '
+        + 'while the save waits, and runs the save once approved', async () => {
+        const paused = await pauseAfterDriveRead()
+        const key = await stashKey(paused.messagePublicId)
+        const [approvalId] = paused.approvalIds
+
+        expect(findPart(paused.assistantParts, 'tool-google__drive_read_file'))
+          .toMatchObject({
+            state: 'output-available',
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: DRIVE_ID,
+                kind: 'drive-file',
+                title: 'Plan.md',
+                link: `https://drive.google.com/open?id=${DRIVE_ID}`,
+              }],
+            },
+          })
+        expect(JSON.stringify(paused.assistantParts))
+          .not.toContain('SECRET DRIVE BODY')
+        expect(mocks.kv.get(key)).toContain('SECRET DRIVE BODY')
+        expect(mocks.kv.get(key)).toContain('<untrusted_tool_result')
+        expect(mocks.saveFile).not.toHaveBeenCalled()
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__drive_save_file',
+          rememberOptions: ['once'],
+          summary: 'Save "Report.md" (2 KB, created 2026-11-20) to your '
+            + 'Google Drive',
+        })
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Saved it.')])
+        const update = mocks.updates.at(-1)!
+
+        expect(mocks.saveFile).toHaveBeenCalledTimes(1)
+        expect(mocks.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+          target: { fileId: 'file-2' },
+        }))
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(prompt).toContain('SECRET DRIVE BODY')
+        expect(prompt).not.toContain('"title"')
+        expect(prompt).not.toContain(`open?id=${DRIVE_ID}`)
+        expect(prompt.match(/Plan\.md/g)?.length).toBe(1)
+        expect(JSON.stringify(update.parts))
+          .not.toContain('SECRET DRIVE BODY')
+        expect(findPart(update.parts, 'tool-google__drive_save_file'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{ id: 'saved-drive-id-0000' }],
+            },
+          })
+        expect(mocks.kv.has(key)).toBe(false)
+      })
+
+      it('does not run the save when the user denies it', async () => {
+        const paused = await pauseAfterDriveRead()
+        const [approvalId] = paused.approvalIds
+
+        await answer(paused, [{ approvalId, approved: false }])
+
+        expect(mocks.saveFile).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('a chat that came to hold Google data while paused', () => {
@@ -2616,6 +2775,78 @@ describe('tool approval continuation', () => {
           messagePublicId: 'assistant-1',
         })
       })
+
+    it('gives the model no Google file name when a round continues a reply '
+      + 'that read a Drive file', async () => {
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'step-start' },
+            {
+              type: 'tool-google__drive_read_file',
+              toolCallId: 'call-drive-1',
+              state: 'output-available',
+              input: { fileId: 'file-1' },
+              output: {
+                references: [{
+                  id: 'drive-id-7',
+                  kind: 'drive-file',
+                  title: 'Secret Plan.md',
+                  link: 'https://drive.google.com/open?id=drive-id-7',
+                }],
+                bodyRemoved: true,
+                note: 'The content was not kept.',
+              },
+            },
+            { type: 'text', text: 'Read it.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: MODEL_ID,
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+
+      const { doStream } = await continueRound('assistant-1', 2, [
+        textChunks('Carried on.'),
+      ])
+      const prompt = JSON.stringify(
+        (doStream.mock.calls[0]?.[0] as any)?.prompt ?? [],
+      )
+
+      expect(prompt).toContain('drive-id-7')
+      expect(prompt).not.toContain('Secret Plan')
+      expect(prompt).not.toContain('open?id=drive-id-7')
+      expect(JSON.stringify(mocks.updates.at(-1)!.parts))
+        .toContain('Secret Plan.md')
+    })
 
     it('never runs a round twice: a round that already started is '
       + 'interrupted', async () => {

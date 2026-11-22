@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
   googleEgressGrantKey,
+  googleToolResultHoldsContent,
+  withoutReferenceNames,
 } from '#shared/utils/google-tool-approvals'
 import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
 import {
@@ -42,9 +44,12 @@ import {
   loadGoogleToolResults,
   markChatGoogleData,
   readGoogleChatGrantHashes,
+  holdsStickyGoogleFlagTrigger,
+  isGoogleToolResultContent,
   redactGoogleToolPartsForPersistence,
   withholdCodeExecutionForGoogleData,
 } from '~~/server/utils/tool-approval/google'
+import { createToolRoundApprovalState } from '~~/server/utils/tool-approval/round-state'
 import {
   getGoogleSendTools,
   planGoogleSendTools,
@@ -89,6 +94,13 @@ const chatSettingsMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('~~/server/utils/besidka-tools/chat-settings', () => chatSettingsMocks)
+
+vi.mock('~~/server/utils/google/store', async (importOriginal) => {
+  return {
+    ...await importOriginal<typeof import('~~/server/utils/google/store')>(),
+    readGoogleConnection: vi.fn(async () => null),
+  }
+})
 
 const HASH = 'c'.repeat(64)
 const OTHER_HASH = 'd'.repeat(64)
@@ -546,6 +558,16 @@ describe('Besidka writes after Google content (rule 13)', () => {
 })
 
 describe('the Google tool gate (tool approvals required)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('useDb', () => ({}))
+    vi.stubGlobal('useKV', () => createFakeKv())
+    vi.stubGlobal('useEvent', () => ({ context: {} }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('refuses to build a Google entry without tool approvals', () => {
     expect(() => buildStrictGoogleApprovalEntry({
       toolName: GOOGLE_READ,
@@ -672,6 +694,252 @@ describe('the Google tool gate (tool approvals required)', () => {
 
     expect(approval.entries.get('GOOGLE__Drive_Search')?.descriptor)
       .toMatchObject({ family: 'google', access: 'write' })
+  })
+})
+
+describe('a Google tool that returns no Google content', () => {
+  const NO_CONTENT = 'google__drive_save_file'
+
+  function entryOf(overrides: Record<string, unknown> = {}) {
+    return buildGoogleApprovalEntry({
+      toolName: NO_CONTENT,
+      kind: 'write',
+      definitionHash: HASH,
+      summary: 'Save a file',
+      ...overrides,
+    } as never)
+  }
+
+  function part(toolName: string, state = 'output-available') {
+    return {
+      type: `tool-${toolName}`,
+      toolCallId: `call-${toolName}`,
+      state,
+      input: {},
+      output: { references: [] },
+    }
+  }
+
+  it('taints nothing and records no read source, from a static property '
+    + 'of the registered tool', () => {
+    const entry = entryOf()
+
+    expect(entry.taint).toBeNull()
+    expect(entry.readSource).toBeNull()
+    expect(entry.descriptor).toMatchObject({
+      family: 'google',
+      access: 'write',
+      destructiveHint: true,
+    })
+  })
+
+  it('defaults to tainting: an unlisted tool, a read and an undescribed '
+    + 'google__ name all return Google content', () => {
+    for (const toolName of [
+      GOOGLE_WRITE,
+      GOOGLE_READ,
+      'google__brand_new_tool',
+    ]) {
+      const entry = entryOf({ toolName })
+
+      expect(entry.taint).toBe('google')
+      expect(entry.readSource).toBe('google')
+    }
+
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools({ google__never_described: {} } as never)
+
+    expect(approval.entries.get('google__never_described')).toMatchObject({
+      taint: 'google',
+      readSource: 'google',
+    })
+  })
+
+  it('takes the property from the registry only, never from a registration '
+    + 'argument', () => {
+    expect(entryOf({ returnsGoogleContent: true }).taint).toBeNull()
+    expect(entryOf({
+      toolName: 'google__brand_new_tool',
+      returnsGoogleContent: false,
+    }).taint).toBe('google')
+  })
+
+  describe('and an empty Drive list', () => {
+    const LIST = 'google__drive_list_picked'
+
+    function listPart(references: unknown[]) {
+      return {
+        type: `tool-${LIST}`,
+        toolCallId: 'call-list',
+        state: 'output-available',
+        input: {},
+        output: { references, bodyRemoved: true, note: 'n' },
+      }
+    }
+
+    it('holds no Google content while a list that names a file does', () => {
+      expect(hasGoogleToolResult([listPart([])])).toBe(false)
+      expect(holdsStickyGoogleFlagTrigger([listPart([])])).toBe(false)
+      expect(hasGoogleToolResult([listPart([{ id: 'f1' }])])).toBe(true)
+      expect(holdsStickyGoogleFlagTrigger([listPart([{ id: 'f1' }])]))
+        .toBe(true)
+      expect(chatHoldsGoogleData({
+        messages: [{ parts: [listPart([])] }],
+      })).toBe(false)
+    })
+
+    it('is not announced to the client as Google data either', () => {
+      expect(isGoogleToolResultContent({
+        type: 'tool-result',
+        toolName: LIST,
+        output: { references: [], count: 0 },
+      })).toBe(false)
+      expect(isGoogleToolResultContent({
+        type: 'tool-result',
+        toolName: LIST,
+        output: { references: [{ id: 'f1' }], count: 1 },
+      })).toBe(true)
+    })
+
+    it('fails closed for a list output of an unexpected shape, and the '
+      + 'other read tools always hold content', () => {
+      expect(googleToolResultHoldsContent(LIST, 'text')).toBe(true)
+      expect(googleToolResultHoldsContent(LIST, { text: 'x' })).toBe(true)
+      expect(googleToolResultHoldsContent(GOOGLE_READ, { references: [] }))
+        .toBe(true)
+      expect(googleToolResultHoldsContent(NO_CONTENT, { references: [] }))
+        .toBe(false)
+    })
+  })
+
+  it('is not a Google result in the parts, the stream or a new round, but '
+    + 'a read and an unknown tool are', () => {
+    expect(hasGoogleToolResult([part(NO_CONTENT)])).toBe(false)
+    expect(hasGoogleToolResult([part(GOOGLE_READ)])).toBe(true)
+    expect(hasGoogleToolResult([part('google__brand_new_tool')])).toBe(true)
+    expect(chatHoldsGoogleData({
+      messages: [{ parts: [part(NO_CONTENT)] }],
+    })).toBe(false)
+    expect(isGoogleToolResultContent({
+      type: 'tool-result',
+      toolName: NO_CONTENT,
+    })).toBe(false)
+    expect(isGoogleToolResultContent({
+      type: 'tool-result',
+      toolName: GOOGLE_READ,
+    })).toBe(true)
+    expect(createToolRoundApprovalState([part(NO_CONTENT)]).taint.has('google'))
+      .toBe(false)
+    expect(createToolRoundApprovalState([part(GOOGLE_READ)]).taint.has('google'))
+      .toBe(true)
+  })
+
+  it('still keeps references only for its part', () => {
+    const [stored] = redactGoogleToolPartsForPersistence([{
+      ...part(NO_CONTENT),
+      output: {
+        references: [{ id: 'saved-1', title: 'Report.md' }],
+        body: 'must not be stored',
+      },
+    }] as never) as unknown as Array<{ output: Record<string, unknown> }>
+
+    expect(stored!.output).toMatchObject({ bodyRemoved: true })
+    expect(JSON.stringify(stored)).not.toContain('must not be stored')
+  })
+
+  describe('when it runs', () => {
+    async function runSave(input: { isGoogleDerived: boolean }) {
+      const approval = createSendToolApproval({ state: createApprovalState() })
+      const execute = vi.fn(async () => ({ references: [] }))
+      const entry = entryOf({
+        taintsRun: async () => input.isGoogleDerived,
+      })
+
+      approval.registerTools(
+        { [NO_CONTENT]: { execute } } as never,
+        new Map([[NO_CONTENT, entry]]),
+      )
+      approval.markApprovedByUser({
+        toolCallId: 'call-1',
+        toolName: NO_CONTENT,
+        input: { fileId: 'f1' },
+      })
+
+      const guarded = approval.guardNativeWrites({
+        [NO_CONTENT]: { execute },
+      } as never) as unknown as Record<string, {
+        execute: (input: unknown, options: unknown) => Promise<unknown>
+      }>
+
+      await guarded[NO_CONTENT]!.execute(
+        { fileId: 'f1' },
+        { toolCallId: 'call-1' },
+      )
+
+      return { state: approval.state, execute }
+    }
+
+    it('keeps the send untainted for an ordinary file', async () => {
+      const { state, execute } = await runSave({ isGoogleDerived: false })
+
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(state.taint.has('google')).toBe(false)
+      expect(state.toolReadSources.size).toBe(0)
+    })
+
+    it('keeps the Google behavior when the file is itself Google-derived',
+      async () => {
+        const { state, execute } = await runSave({ isGoogleDerived: true })
+
+        expect(execute).toHaveBeenCalledTimes(1)
+        expect(state.taint.has('google')).toBe(true)
+        expect(state.toolReadSources.has('google')).toBe(true)
+      })
+
+    it('still counts as a built-in call and still needs the cleared call',
+      async () => {
+        const { state } = await runSave({ isGoogleDerived: false })
+
+        expect(state.counters.builtInCalls).toBe(0)
+
+        const approval = createSendToolApproval({
+          state: createApprovalState(),
+        })
+
+        approval.registerTools(
+          { [NO_CONTENT]: { execute: vi.fn() } } as never,
+          new Map([[NO_CONTENT, entryOf()]]),
+        )
+
+        const guarded = approval.guardNativeWrites({
+          [NO_CONTENT]: { execute: vi.fn() },
+        } as never) as unknown as Record<string, {
+          execute: (input: unknown, options: unknown) => Promise<unknown>
+        }>
+
+        await expect(guarded[NO_CONTENT]!.execute(
+          {},
+          { toolCallId: 'never-approved' },
+        )).rejects.toMatchObject({ status: 403 })
+      })
+  })
+
+  describe('and the sticky chat flag', () => {
+    it('is set by a Google result that returned data or a marked output, '
+      + 'not by a call that only failed', () => {
+      expect(holdsStickyGoogleFlagTrigger([part(GOOGLE_READ)])).toBe(true)
+      expect(holdsStickyGoogleFlagTrigger([
+        part(GOOGLE_READ, 'output-error'),
+      ])).toBe(false)
+      expect(holdsStickyGoogleFlagTrigger([part(NO_CONTENT)])).toBe(false)
+      expect(holdsStickyGoogleFlagTrigger([{ type: 'file', url: '/files/x' }]))
+        .toBe(true)
+      expect(holdsStickyGoogleFlagTrigger([part('code_execution')]))
+        .toBe(true)
+      expect(holdsStickyGoogleFlagTrigger([])).toBe(false)
+      expect(holdsStickyGoogleFlagTrigger(undefined)).toBe(false)
+    })
   })
 })
 
@@ -1196,8 +1464,32 @@ describe('the KV stash of a paused turn', () => {
 
     expect(loaded.get('call-google-1')).toEqual({
       isError: false,
-      output: googleToolPart().output,
+      output: {
+        references: [{
+          id: 'file-1',
+          kind: 'drive-file',
+          date: '2026-11-20',
+          secret: 'not kept',
+        }],
+        text: 'The full document body that must never reach D1.',
+      },
     })
+  })
+
+  it('never gives the model a reference title or link back, only its id, '
+    + 'kind and date', () => {
+    expect(withoutReferenceNames(googleToolPart().output)).toEqual({
+      references: [{
+        id: 'file-1',
+        kind: 'drive-file',
+        date: '2026-11-20',
+        secret: 'not kept',
+      }],
+      text: 'The full document body that must never reach D1.',
+    })
+    expect(withoutReferenceNames('plain text')).toBe('plain text')
+    expect(withoutReferenceNames({ text: 'no references' }))
+      .toEqual({ text: 'no references' })
   })
 
   it('accepts tool call ids that are not approval ids', async () => {
@@ -1631,11 +1923,59 @@ describe('the continuation of a paused Google turn', () => {
       })
 
       expect(modelMessage.parts[0]).toMatchObject({
-        output: googleToolPart().output,
+        output: withoutReferenceNames(googleToolPart().output),
       })
       expect(storedMessage.parts[0]).toBe(stored[0])
       expect(JSON.stringify(storedMessage.parts)).not.toContain('document body')
     })
+
+  it('never gives the model a file name back through the one resume seam, '
+    + 'whether the body is stashed, missing or a plain stored part', () => {
+    const named = {
+      type: `tool-${GOOGLE_READ}`,
+      toolCallId: 'call-named',
+      state: 'output-available',
+      input: {},
+      output: {
+        references: [{
+          id: 'file-9',
+          kind: 'drive-file',
+          title: 'Secret Plan.md',
+          link: 'https://drive.google.com/file/d/file-9/view',
+        }],
+        bodyRemoved: true,
+        note: 'The content was not kept.',
+      },
+    }
+    const awaiting = {
+      type: `tool-${CONNECTOR_TOOL}`,
+      toolCallId: 'call-connector',
+      state: 'approval-requested',
+      input: {},
+      approval: { id: 'approval-1' },
+    }
+    const cases: Array<ReadonlyMap<string, never>> = [
+      new Map(),
+      new Map([['call-named', {
+        isError: false,
+        output: { references: [{ id: 'file-9', title: 'Secret Plan.md' }] },
+      } as never]]),
+    ]
+
+    for (const stashedResults of cases) {
+      const { modelMessage, storedMessage } = buildResumedAssistantMessages({
+        messageId: OWNER.messagePublicId,
+        parts: [named, awaiting] as never,
+        decisions: [decision()],
+        stashedResults: stashedResults as never,
+      })
+
+      expect(JSON.stringify(modelMessage.parts)).not.toContain('Secret Plan')
+      expect(JSON.stringify(modelMessage.parts)).not.toContain('drive.google')
+      expect(JSON.stringify(modelMessage.parts)).toContain('file-9')
+      expect(JSON.stringify(storedMessage.parts)).toContain('Secret Plan.md')
+    }
+  })
 
   it('counts an approved Google call against the built-in cap', () => {
     const entry = buildGoogleApprovalEntry({

@@ -139,6 +139,35 @@ describe('withGoogleDataFlag', () => {
     expect(ensureFlagged).not.toHaveBeenCalled()
   })
 
+  it('does not flag for an empty Drive list, and flags for one that names '
+    + 'a file', async () => {
+    const ensureFlagged = vi.fn(async () => undefined)
+    const listed = {
+      google__drive_list_picked: {
+        execute: vi.fn(async (input: unknown) => {
+          return (input as { references: unknown[] }).references.length > 0
+            ? { references: [{ id: 'f1' }], count: 1 }
+            : { references: [], count: 0, note: 'Nothing picked.' }
+        }),
+      },
+    } as unknown as ToolSet
+    const wrapped = withGoogleDataFlag(listed, {
+      isGoogleDerived: () => true,
+      ensureFlagged,
+    })!
+    const tool = wrapped.google__drive_list_picked as unknown as {
+      execute: (input: unknown, options?: unknown) => Promise<unknown>
+    }
+
+    await tool.execute({ references: [] }, { toolCallId: 'call-1' })
+
+    expect(ensureFlagged).not.toHaveBeenCalled()
+
+    await tool.execute({ references: [{}] }, { toolCallId: 'call-2' })
+
+    expect(ensureFlagged).toHaveBeenCalledTimes(1)
+  })
+
   it('drops the Google result when the flag write fails', async () => {
     const { wrapped, tools } = wrap({
       derived: () => true,
@@ -185,6 +214,56 @@ describe('withGoogleDataFlag', () => {
       (failing.tools.create_artifact as unknown as { execute: unknown })
         .execute,
     ).not.toHaveBeenCalled()
+  })
+
+  describe('a Google tool that returns no Google content', () => {
+    const NO_CONTENT = 'google__drive_save_file'
+
+    function wrapSave(input: {
+      derived: () => boolean
+      ensureFlagged: () => Promise<void>
+      order?: string[]
+    }) {
+      const wrapped = withGoogleDataFlag({
+        [NO_CONTENT]: {
+          execute: vi.fn(async () => {
+            input.order?.push('run')
+
+            return 'saved'
+          }),
+        },
+      } as unknown as ToolSet, {
+        isGoogleDerived: input.derived,
+        ensureFlagged: input.ensureFlagged,
+      })!
+
+      return wrapped
+    }
+
+    it('flags nothing when the send is not Google-derived', async () => {
+      const ensureFlagged = vi.fn(async () => undefined)
+      const wrapped = wrapSave({ derived: () => false, ensureFlagged })
+
+      expect(await run(wrapped, NO_CONTENT)).toBe('saved')
+      expect(ensureFlagged).not.toHaveBeenCalled()
+    })
+
+    it('flags before it runs when the send already is Google-derived, as '
+      + 'any marked write does', async () => {
+      const order: string[] = []
+      const wrapped = wrapSave({
+        derived: () => true,
+        ensureFlagged: async () => {
+          order.push('flag')
+        },
+        order,
+      })
+
+      await run(wrapped, NO_CONTENT)
+
+      expect(order[0]).toBe('flag')
+      expect(order).toContain('run')
+    })
   })
 
   it('costs nothing in a send without Google taint', async () => {

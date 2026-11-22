@@ -2724,3 +2724,44 @@ describe('withSearchAnswerGuarantee deliverable tools', () => {
     expect(guarantee.getOutcome().continuationRan).toBe(false)
   })
 })
+
+describe('buildSearchAnswerContinuationMessages with Google tool history', () => {
+  it('carries no Google tool call, result or file name into the model input',
+    () => {
+      const messages = buildSearchAnswerContinuationMessages([
+        { role: 'user', content: 'What is in my plan?' },
+        {
+          role: 'assistant',
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'call-google-1',
+            toolName: 'google__drive_list_picked',
+            input: {},
+          }],
+        },
+        {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call-google-1',
+            toolName: 'google__drive_list_picked',
+            output: {
+              type: 'json',
+              value: {
+                references: [{ id: 'file-1', title: 'Secret Plan.md' }],
+              },
+            },
+          }],
+        },
+        { role: 'user', content: 'Summarize it' },
+      ] as never, [{
+        toolName: SEARCH_TOOL_NAME,
+        input: { query: 'q' },
+        output: { results: [] },
+      }])
+      const serialized = JSON.stringify(messages)
+
+      expect(serialized).not.toContain('Secret Plan.md')
+      expect(serialized).not.toContain('google__drive_list_picked')
+    })
+})

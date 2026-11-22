@@ -62,6 +62,8 @@ import {
 import {
   googleChatGrantKey,
   googleEgressGrantKey,
+  isGoogleToolName,
+  withoutReferenceNames,
 } from '#shared/utils/google-tool-approvals'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
@@ -688,6 +690,26 @@ function withStashedResult(
 }
 
 /**
+ * A Google tool part as the model sees it when stored parts become model
+ * messages again: the output without any reference title or link
+ * (`withoutReferenceNames`). The one seam every resumed or continued reply
+ * passes through (an approval answer and a `{ continue }` round both call
+ * `buildResumedAssistantMessages`), so no path can forget it, whether the
+ * output is the stored references-only form or a stashed body.
+ */
+function withoutGoogleReferenceNames(part: unknown): unknown {
+  if (!isToolPart(part) || !('output' in part)) {
+    return part
+  }
+
+  const toolName = toolNameOf(part)
+
+  return isGoogleToolName(toolName)
+    ? { ...part, output: withoutReferenceNames(part.output) }
+    : part
+}
+
+/**
  * The paused assistant message twice, with every answered call in
  * `approval-responded`:
  *
@@ -731,7 +753,9 @@ export function buildResumedAssistantMessages(input: {
 
       if (isModelContextPart(part)) {
         modelParts.push(withReplayedConnectorImages(
-          withStashedResult(part, input.stashedResults),
+          withoutGoogleReferenceNames(
+            withStashedResult(part, input.stashedResults),
+          ),
           input.shownAgain,
         ))
       }

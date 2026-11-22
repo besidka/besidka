@@ -474,6 +474,7 @@ const reasoningSteps = computed<ReasoningStep[]>((previousSteps) => {
       memory: getMemoryStepData(part),
       skill: null,
       connector: null,
+      google: getGoogleStepData(part),
       approvalOutcome,
       grantMarker: toolCallId
         ? grantMarkersByToolCallId.get(toolCallId) ?? ''

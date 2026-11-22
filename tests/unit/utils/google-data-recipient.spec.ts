@@ -3,6 +3,7 @@ import {
   GOOGLE_DATA_GATEWAY_CONDITION_REASON,
   GOOGLE_DATA_PAID_TIER_REASON,
   GOOGLE_DATA_REFUSED_REASON,
+  GOOGLE_DATA_SELF_SEARCH_REASON,
   GOOGLE_DATA_UNKNOWN_REASON,
   decideGoogleDataRecipient,
   googleDataRefusalFix,
@@ -10,6 +11,7 @@ import {
   googleDataRouteOf,
   googleDataUpstreamOf,
   isAlibabaServedQwenModel,
+  isSelfSearchingModel,
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
 
@@ -191,6 +193,78 @@ describe('decideGoogleDataRecipient', () => {
         modelId: 'claude-opus-5',
       }, { gatewaySafeguardsSent: true }).reason).toBe('unknown-recipient')
     })
+  })
+})
+
+describe('models that search the web by themselves', () => {
+  const searching: Array<[string, GoogleDataRecipient]> = [
+    ['OpenRouter :online', {
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5:online',
+    }],
+    ['OpenRouter :online, any case', {
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5:ONLINE',
+    }],
+    ['OpenAI -search-preview', {
+      providerId: 'openai',
+      modelId: 'gpt-4o-search-preview',
+    }],
+    ['OpenAI mini -search-preview with a date', {
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini-search-preview-2025-03-11',
+    }],
+    ['OpenAI -search-api', {
+      providerId: 'openai',
+      modelId: 'gpt-5-search-api',
+    }],
+    ['gateway -search-preview', {
+      gatewayId: 'vercel',
+      modelId: 'openai/gpt-4o-search-preview',
+    }],
+    ['bare sonar', { providerId: 'openai', modelId: 'sonar' }],
+    ['Perplexity sonar-pro', {
+      gatewayId: 'openrouter',
+      modelId: 'perplexity/sonar-pro',
+    }],
+    ['Perplexity sonar-reasoning-pro', {
+      gatewayId: 'vercel',
+      modelId: 'perplexity/sonar-reasoning-pro',
+    }],
+  ]
+
+  it.each(searching)('refuses %s with the self-search reason', (
+    _label,
+    recipient,
+  ) => {
+    const decision = decideGoogleDataRecipient(recipient, {
+      gatewaySafeguardsSent: true,
+    })
+
+    expect(decision.allowed).toBe(false)
+    expect(decision.reason).toBe('searches-by-itself')
+    expect(googleDataRefusalReason(decision, recipient))
+      .toBe(GOOGLE_DATA_SELF_SEARCH_REASON)
+    expect(googleDataRefusalFix(decision, recipient))
+      .toContain('without its online or search variant')
+    expect(isSelfSearchingModel(recipient.modelId)).toBe(true)
+  })
+
+  it.each([
+    'claude-sonnet-5',
+    'anthropic/claude-sonnet-4-5',
+    'gpt-5',
+    'openai/gpt-5-mini',
+    'online-model-v1',
+    'research-search-tool',
+    'grok-4',
+  ])('leaves %s alone', (modelId) => {
+    expect(isSelfSearchingModel(modelId)).toBe(false)
+  })
+
+  it('does not cover a self-searching model under another name', () => {
+    expect(isSelfSearchingModel('perplexity/llama-3.1-70b-instruct'))
+      .toBe(false)
   })
 })
 

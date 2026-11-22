@@ -64,6 +64,7 @@ export interface DriveImportInput {
   userId: number
   items: readonly DriveImportRequestItem[]
   logger: LoggerLike
+  maxBytes?: number
 }
 
 interface ItemContext {
@@ -347,9 +348,10 @@ async function copyFromMetadata(
     getUserStorageUsageBytes(input.userId, input.db),
   ])
   const remainingBytes = Math.max(policy.maxStorageBytes - usedBytes, 0)
-  const maxBytes = plan.exportChoice
+  const formatMaxBytes = plan.exportChoice
     ? GOOGLE_DRIVE_EXPORT_MAX_BYTES
     : GOOGLE_DRIVE_FILE_MAX_BYTES
+  const maxBytes = Math.min(formatMaxBytes, input.maxBytes ?? formatMaxBytes)
 
   if (remainingBytes <= 0) {
     return failed(item.id, 'storage_full')

@@ -185,6 +185,7 @@ export type GoogleDataDecisionReason
     | 'refused'
     | 'condition-unmet'
     | 'unknown-recipient'
+    | 'searches-by-itself'
 
 export interface GoogleDataDecision {
   allowed: boolean

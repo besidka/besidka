@@ -1,5 +1,9 @@
 import type { ToolSet } from 'ai'
-import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
+import {
+  googleToolResultHoldsContent,
+  googleToolReturnsContent,
+  isGoogleToolName,
+} from '#shared/utils/google-tool-approvals'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { markChatGoogleData } from '~~/server/utils/tool-approval/google'
 
@@ -85,6 +89,7 @@ export function withGoogleDataFlag(
 
     const execute = tool.execute.bind(tool)
     const isGoogleTool = isGoogleToolName(toolName)
+      && googleToolReturnsContent(toolName)
 
     if (isAsyncGeneratorFunction(tool.execute)) {
       return [toolName, {
@@ -111,8 +116,10 @@ export function withGoogleDataFlag(
         }
 
         const result = await execute(toolInput, options)
+        const returnedNothingFromGoogle = isGoogleTool
+          && !googleToolResultHoldsContent(toolName, result)
 
-        if (input.isGoogleDerived()) {
+        if (!returnedNothingFromGoogle && input.isGoogleDerived()) {
           await input.ensureFlagged()
         }
 

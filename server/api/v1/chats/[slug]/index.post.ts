@@ -390,6 +390,7 @@ import {
 } from '#shared/utils/connectors-policy'
 import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 import { findBuiltinCommandInvocation } from '#shared/utils/builtin-commands'
 import {
   createBuiltinCommandUnavailableError,
@@ -483,7 +484,9 @@ import {
   chatHoldsGoogleData,
   chatMarkedOriginExtras,
   deleteGoogleToolResults,
+  googleToolCallIdsOf,
   hasGoogleToolResult,
+  holdsStickyGoogleFlagTrigger,
   isGoogleToolResultContent,
   loadGoogleToolResults,
   redactGoogleToolPartsForPersistence,
@@ -491,6 +494,7 @@ import {
 } from '~~/server/utils/tool-approval/google'
 import {
   getGoogleSendTools,
+  hasUnremovableProviderTool,
   planGoogleSendTools,
   withGoogleSendTools,
 } from '~~/server/utils/tool-approval/google-send-tools'
@@ -1547,6 +1551,8 @@ export default defineEventHandler(async (event) => {
     chatPublicId: chat.id,
     gatewayId,
     holdsGoogleData,
+    priorGoogleCalls: googleToolCallIdsOf(resume?.assistant.parts ?? [])
+      .length,
     logger: aiLogger,
   })
   const gatewayGoogleSafeguards = googleSendPlan.gatewaySafeguards
@@ -2665,6 +2671,13 @@ export default defineEventHandler(async (event) => {
 
     const googleSend = await getGoogleSendTools({
       plan: googleSendPlan,
+      holdsGoogleData,
+      toolCallingAllowed,
+      providerToolsStayCallable: hasUnremovableProviderTool({
+        isAnthropicRoute,
+        tools: parsedTools.tools,
+        providerOptions: providerOptions as Record<string, unknown>,
+      }),
       mayReceiveGoogleData: async () => {
         const decision = await decideGoogleDataGuard({
           db,
@@ -2911,6 +2924,7 @@ export default defineEventHandler(async (event) => {
   const isApprovalGatedToolName = (toolName: string) => {
     return isConnectorToolName(toolName)
       || isBesidkaChatToolName(toolName)
+      || isGoogleToolName(toolName)
       || toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
   }
   const answerGuaranteeToolNames = new Set(
@@ -6317,7 +6331,10 @@ async function persistAssistantMessageFromStream(input: {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
-    if (input.isGoogleDerived?.()) {
+    if (
+      input.isGoogleDerived?.()
+      && holdsStickyGoogleFlagTrigger(responseMessage.parts)
+    ) {
       await input.ensureGoogleDataFlag?.()
     }
 

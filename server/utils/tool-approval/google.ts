@@ -4,7 +4,9 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
+  googleToolResultHoldsContent,
   isGoogleToolName,
+  withoutReferenceNames,
 } from '#shared/utils/google-tool-approvals'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
 import * as schema from '~~/server/db/schema'
@@ -145,6 +147,31 @@ export function hasGoogleToolResult(parts: unknown): boolean {
   return Array.isArray(parts) && parts.some((part) => {
     return isStaticGoogleToolPart(part)
       && (part as Record<string, unknown>).state === 'output-available'
+      && googleToolResultHoldsContent(
+        toolNameOfPart(part as Record<string, unknown>),
+        (part as Record<string, unknown>).output,
+      )
+  })
+}
+
+/**
+ * Whether the reply holds something the sticky chat flag is for: a Google
+ * result that returned data, or a file or code execution run the send marks
+ * as Google-derived. A Google call that only failed (a refused id, a Drive
+ * error) keeps its transient taint for the rest of the send but never sets
+ * the flag.
+ */
+export function holdsStickyGoogleFlagTrigger(parts: unknown): boolean {
+  if (hasGoogleToolResult(parts)) {
+    return true
+  }
+
+  return Array.isArray(parts) && parts.some((part) => {
+    return isRecord(part)
+      && (
+        part.type === 'file'
+        || toolNameOfPart(part) === CODE_EXECUTION_MODEL_TOOL
+      )
   })
 }
 
@@ -157,6 +184,7 @@ export function isGoogleToolResultContent(content: unknown): boolean {
   return isRecord(content)
     && content.type === 'tool-result'
     && isGoogleToolName(content.toolName)
+    && googleToolResultHoldsContent(content.toolName, content.output)
 }
 
 /**
@@ -432,17 +460,22 @@ export function googleToolCallIdsOf(parts: readonly unknown[]): string[] {
 
 function stashedBodyOf(body: GoogleToolResultBody): StashedResult {
   if (serializedBytes(body.output) <= GOOGLE_TOOL_OUTPUT_MAX_BYTES) {
-    return { isError: body.isError, output: body.output }
+    return {
+      isError: body.isError,
+      output: body.isError
+        ? body.output
+        : withoutReferenceNames(body.output),
+    }
   }
 
   return body.isError
     ? { isError: true, output: GOOGLE_TOOL_ERROR_PERSISTED_TEXT }
     : {
       isError: false,
-      output: toGooglePersistedOutput(
+      output: withoutReferenceNames(toGooglePersistedOutput(
         body.output,
         GOOGLE_TOOL_BODY_TOO_LARGE_NOTE,
-      ),
+      )),
     }
 }
 
@@ -464,7 +497,7 @@ export async function buildGoogleResultStash(
   for (const body of collectGoogleToolResultBodies(parts)) {
     const stashed = stashedBodyOf(body)
 
-    if (stashed.output !== body.output) {
+    if (serializedBytes(body.output) > GOOGLE_TOOL_OUTPUT_MAX_BYTES) {
       oversized += 1
     }
 
@@ -498,10 +531,10 @@ function unavailableResultOf(
 
   return {
     isError: false,
-    output: toGooglePersistedOutput(
+    output: withoutReferenceNames(toGooglePersistedOutput(
       part.output,
       GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE,
-    ),
+    )),
   }
 }
 

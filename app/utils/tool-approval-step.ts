@@ -20,6 +20,7 @@ import {
 } from '#shared/utils/besidka-tool-permissions'
 import {
   GOOGLE_EGRESS_REASON_TEXT,
+  GOOGLE_TOOL_CHAT_GRANT_LABELS,
   GOOGLE_TOOL_NAME_PREFIX,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
@@ -434,11 +435,24 @@ export function getApprovalReasonText(
 
 export function getApprovalButtons(
   rememberOptions: readonly ToolApprovalRemember[],
+  toolName?: string,
 ): ApprovalButton[] {
+  const chatLabel = toolName && Object.hasOwn(
+    GOOGLE_TOOL_CHAT_GRANT_LABELS,
+    toolName,
+  )
+    ? GOOGLE_TOOL_CHAT_GRANT_LABELS[toolName]
+    : undefined
+
   return REMEMBER_ORDER
     .filter(option => rememberOptions.includes(option))
     .map((remember) => {
-      return { remember, label: REMEMBER_LABELS[remember] }
+      return {
+        remember,
+        label: remember === 'chat' && chatLabel
+          ? chatLabel
+          : REMEMBER_LABELS[remember],
+      }
     })
 }
 

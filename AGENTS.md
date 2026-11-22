@@ -915,9 +915,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   stays exposed, export choices and every limit, the one-hop download
   redirect rule, reuse of an unchanged copy, the `data-drive-file` part
   rebuilt on the server, names only in shares, the path-scoped `frame-src`
-  source and why, and the owner's real-account checklist), and section 12.12,
+  source and why, and the owner's real-account checklist), section 12.12,
   the Drive tab in the file manager (states, the `google` list source, the
-  dialog suspended around the Picker, refresh as a new copy)
+  dialog suspended around the Picker, refresh as a new copy), and section 13,
+  the Drive tools (`google__drive_list_picked`, `_read_file`, `_save_file`:
+  when they are offered, the output cap, the multipart save and its atomic
+  claim, `POST /api/v1/google/drive/saved-files`, the Save to Google Drive
+  button, and what is stored and shown after a reload)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes

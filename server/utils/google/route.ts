@@ -12,13 +12,14 @@ export const GOOGLE_WRITES_PER_MINUTE = 10
 export const GOOGLE_READS_PER_MINUTE = 60
 export const GOOGLE_PICKER_TOKENS_PER_MINUTE = 30
 export const GOOGLE_DRIVE_IMPORTS_PER_MINUTE = 10
+export const GOOGLE_DRIVE_SAVES_PER_MINUTE = 10
 export const GOOGLE_CALLBACK_FAILURE_KEY_PREFIX = 'google:callback-failures:'
 
 const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 
 export type GoogleRateLimitBucket
-  = 'write' | 'read' | 'picker' | 'import' | 'none'
+  = 'write' | 'read' | 'picker' | 'import' | 'save' | 'none'
 
 const RATE_LIMIT_BUCKETS: Readonly<Record<
   Exclude<GoogleRateLimitBucket, 'none'>,
@@ -39,6 +40,10 @@ const RATE_LIMIT_BUCKETS: Readonly<Record<
   import: {
     prefix: 'google-drive-import-rate-limit',
     max: GOOGLE_DRIVE_IMPORTS_PER_MINUTE,
+  },
+  save: {
+    prefix: 'google-drive-save-rate-limit',
+    max: GOOGLE_DRIVE_SAVES_PER_MINUTE,
   },
 }
 
