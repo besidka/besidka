@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
+import { openai } from '@ai-sdk/openai'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
@@ -39,6 +40,12 @@ const mocks = vi.hoisted(() => ({
   connectorUrls: {} as Record<string, string>,
   holdsSkillText: false,
   skillsInstructionBlock: null as string | null,
+  chatGoogleDataAt: null as Date | null,
+  chatUpdates: [] as Array<Record<string, unknown>>,
+  googleSend: null as null | {
+    tools: Record<string, unknown>
+    entries: Map<string, unknown>
+  },
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -51,6 +58,25 @@ const mocks = vi.hoisted(() => ({
 vi.mock('~~/server/utils/tool-approval/secret', () => ({
   useToolApprovalSecret: async () => 'test-tool-approval-secret',
 }))
+
+vi.mock('~~/server/utils/tool-approval/google-send-tools', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/tool-approval/google-send-tools')
+  >()
+
+  return {
+    ...actual,
+    getGoogleSendTools: async (
+      input: Parameters<typeof actual.getGoogleSendTools>[0],
+    ) => {
+      return mocks.googleSend && input.toolApprovalsActive
+        ? mocks.googleSend
+        : await actual.getGoogleSendTools(input)
+    },
+  }
+})
 
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
@@ -293,7 +319,11 @@ function createDb() {
     publicId: 'db-generated-public-id',
   }))
   const updateWhere = vi.fn(async () => undefined)
-  const updateSet = vi.fn(() => ({ where: updateWhere }))
+  const updateSet = vi.fn((values: Record<string, unknown>) => {
+    mocks.chatUpdates.push(values)
+
+    return { where: updateWhere }
+  })
 
   insertValues.mockImplementation(() => ({
     returning: () => ({ get: insertGet }),
@@ -317,6 +347,7 @@ function createDb() {
             projectId: null,
             project: null,
             branchedFromShareSlug: null,
+            googleDataAt: mocks.chatGoogleDataAt,
             messages: mocks.chatMessages,
           })),
         },
@@ -422,12 +453,13 @@ async function runSend(input: {
   servers: MockMcpServer[]
   messageId?: string
   tools?: string[]
+  providerTools?: Record<string, unknown>
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
   vi.stubGlobal('useOpenAI', vi.fn(async () => ({
     instance: model,
-    tools: {},
+    tools: input.providerTools ?? {},
     providerOptions: {},
   })))
   vi.stubGlobal('fetch', createMockMcpFetch(input.servers))
@@ -533,6 +565,9 @@ describe('tool approval requests in the chat send', () => {
     mocks.capabilityTools = {}
     mocks.artifactExecute = null
     mocks.connectorUrls = {}
+    mocks.chatGoogleDataAt = null
+    mocks.chatUpdates = []
+    mocks.googleSend = null
     Object.assign(mocks.store, {
       connectors: [],
       credentials: null,
@@ -1284,6 +1319,276 @@ describe('tool approval requests in the chat send', () => {
       expect(findPart(assistantInsert?.parts ?? [], 'tool-create_artifact'))
         .toMatchObject({ state: 'approval-requested' })
     })
+
+  it('asks for the Google egress grant before a default-allowed connector '
+    + 'read in a chat that holds Google content', async () => {
+    mocks.chatMessages = [
+      {
+        id: 'row-user-google',
+        publicId: 'user-public-0',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Find my budget file' }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      },
+      {
+        id: 'row-assistant-google',
+        publicId: 'assistant-public-0',
+        role: 'assistant',
+        parts: [{
+          type: 'tool-google__drive_search',
+          toolCallId: 'call-google-0',
+          state: 'output-available',
+          input: { query: 'budget' },
+          output: { references: [{ id: 'file-1' }], bodyRemoved: true },
+        }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      },
+    ]
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      connectorIds: ['conn-linear'],
+      steps: [
+        toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(findPart(
+      assistantInsert?.parts ?? [],
+      TOOL_APPROVAL_DATA_PART_TYPE,
+    )).toMatchObject({
+      data: {
+        toolCallId: 'call-1',
+        reason: 'google-egress',
+        rememberOptions: ['once', 'chat'],
+      },
+    })
+  })
+
+  it('never offers a google__ tool that did not come from the Google tool '
+    + 'assembly', async () => {
+    const execute = vi.fn(async () => ({ references: [] }))
+
+    mocks.flags.add('artifacts')
+    createArtifactTool()
+    mocks.capabilityTools = {
+      ...mocks.capabilityTools,
+      Google__Gmail_Create_Draft: tool({
+        description: 'Create a Gmail draft.',
+        inputSchema: z.object({ subject: z.string() }),
+        execute,
+      }),
+    }
+
+    const { doStream } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-1', 'Google__Gmail_Create_Draft', {
+          subject: 'Hello',
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const offered = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+      .map((offeredTool: { name: string }) => offeredTool.name)
+
+    expect(execute).not.toHaveBeenCalled()
+    expect(offered).toContain('create_artifact')
+    expect(offered).not.toContain('Google__Gmail_Create_Draft')
+  })
+
+  it('offers no Google tool when tool approvals are off', async () => {
+    const { buildGoogleApprovalEntry } = await import(
+      '~~/server/utils/tool-approval/send'
+    )
+    const execute = vi.fn(async () => ({ references: [{ id: 'f1' }] }))
+
+    mocks.flags.delete('tool-approvals')
+    mocks.googleSend = {
+      tools: {
+        google__drive_search: tool({
+          description: 'Search Drive.',
+          inputSchema: z.object({ query: z.string() }),
+          execute,
+        }),
+      },
+      entries: new Map([['google__drive_search', buildGoogleApprovalEntry({
+        toolName: 'google__drive_search',
+        kind: 'read',
+        definitionHash: 'g'.repeat(64),
+        summary: 'Search Google Drive',
+        toolApprovalsActive: true,
+        chatGrantHash: 'g'.repeat(64),
+      })]]),
+    }
+
+    const { doStream } = await runSend({
+      servers: [linear],
+      steps: [textChunks('Plain answer.')],
+    })
+    const offered = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+      .map((offeredTool: { name: string }) => offeredTool.name)
+
+    expect(offered).not.toContain('google__drive_search')
+  })
+
+  it('runs a granted Google read, stores references only and sets the chat '
+    + 'flag', async () => {
+    const { buildGoogleApprovalEntry } = await import(
+      '~~/server/utils/tool-approval/send'
+    )
+    const execute = vi.fn(async () => ({
+      references: [{ id: 'file-1', title: 'Budget' }],
+      text: 'SECRET GOOGLE BODY',
+    }))
+
+    mocks.googleSend = {
+      tools: {
+        google__drive_search: tool({
+          description: 'Search Drive.',
+          inputSchema: z.object({ query: z.string() }),
+          execute,
+        }),
+      },
+      entries: new Map([['google__drive_search', buildGoogleApprovalEntry({
+        toolName: 'google__drive_search',
+        kind: 'read',
+        definitionHash: 'g'.repeat(64),
+        summary: 'Search Google Drive',
+        toolApprovalsActive: true,
+        chatGrantHash: 'g'.repeat(64),
+      })]]),
+    }
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+        textChunks('Found the budget file.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(findPart(parts, 'tool-google__drive_search')).toMatchObject({
+      state: 'output-available',
+      output: {
+        references: [{ id: 'file-1', title: 'Budget' }],
+        bodyRemoved: true,
+      },
+    })
+    expect(JSON.stringify(parts)).not.toContain('SECRET GOOGLE BODY')
+    expect(mocks.chatUpdates).toContainEqual({
+      googleDataAt: expect.any(Date),
+    })
+  })
+
+  it('keeps the egress ask in a flagged chat whose Google part is gone',
+    async () => {
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          textChunks('Never reached.'),
+        ],
+      })
+
+      expect(linear.callCount('tools/call')).toBe(0)
+      expect(findPart(
+        assistantInsert?.parts ?? [],
+        TOOL_APPROVAL_DATA_PART_TYPE,
+      )).toMatchObject({ data: { reason: 'google-egress' } })
+      expect(mocks.chatUpdates).not.toContainEqual({
+        googleDataAt: expect.any(Date),
+      })
+    })
+
+  it('withholds web search in a later send of a flagged chat', async () => {
+    const providerTools = {
+      tools: { web_search: openai.tools.webSearch() },
+    }
+    const offeredIn = async () => {
+      mocks.mergedStreams = []
+      mocks.writers = []
+
+      const { doStream } = await runSend({
+        servers: [linear],
+        tools: ['web_search'],
+        providerTools,
+        steps: [textChunks('Answer.')],
+      })
+
+      return ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((offeredTool: { name: string }) => offeredTool.name)
+    }
+
+    expect(await offeredIn()).toContain('web_search')
+
+    mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+    expect(await offeredIn()).not.toContain('web_search')
+  })
+
+  it('deletes the stashed Google bodies of the chat when a new user message '
+    + 'arrives', async () => {
+    const resultId = 'result_abcdefgh'
+
+    mocks.kv.set(`tool-approval:result:${resultId}`, '{"stale":true}')
+    mocks.kv.set(`tool-approval:chat:${CHAT_PUBLIC_ID}`, JSON.stringify({
+      version: 1,
+      approvalIds: ['approval-0001'],
+      messageIds: ['assistant-public-1'],
+      resultIds: [resultId],
+    }))
+    mocks.chatMessages = [
+      {
+        id: 'row-user',
+        publicId: 'user-public-0',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Find it' }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      },
+      {
+        id: 'row-assistant',
+        publicId: 'assistant-public-1',
+        role: 'assistant',
+        parts: [{
+          type: 'dynamic-tool',
+          toolName: 'mcp__linear__create_issue',
+          toolCallId: 'call-1',
+          state: 'approval-requested',
+          input: { title: 'x' },
+          approval: { id: 'approval-0001' },
+        }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      },
+    ]
+
+    await runSend({
+      servers: [linear],
+      messageId: 'user-public-2',
+      steps: [textChunks('Fresh answer.')],
+    })
+
+    expect(mocks.kv.has(`tool-approval:result:${resultId}`)).toBe(false)
+  })
 
   describe('with the tool-approvals flag off', () => {
     beforeEach(() => {

@@ -5,6 +5,7 @@ import {
   TOOL_ACCESS_LEVELS,
   TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS,
   TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES,
+  TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS,
   TOOL_APPROVAL_ID_PATTERN,
   TOOL_APPROVAL_KV_PREFIX,
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
@@ -31,6 +32,26 @@ const TOOL_LIST_MAX = 200
 
 const subjectIdSchema = z.string().min(1).max(SUBJECT_ID_MAX_LENGTH)
 
+/**
+ * A family this version does not know (a record written by a newer or
+ * older deploy) reads as null: the record still loads, and the replay
+ * denies that one call (`invalid-input`) instead of the whole continuation
+ * failing as expired. A null family never matches a live tool.
+ */
+const storedFamilySchema = z.union([
+  z.enum(TOOL_FAMILIES),
+  z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => null),
+])
+
+const storedReasonSchema = z.union([
+  z.enum(TOOL_APPROVAL_REASONS),
+  z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => null),
+])
+
+const ONCE_ONLY: Array<typeof TOOL_APPROVAL_REMEMBER_OPTIONS[number]> = [
+  'once',
+]
+
 const pendingSnapshotSchema = z.object({
   model: z.string().min(1).max(TOOL_NAME_MAX_LENGTH),
   gateway: z.string().max(SUBJECT_ID_MAX_LENGTH).nullable(),
@@ -38,13 +59,19 @@ const pendingSnapshotSchema = z.object({
   connectorIds: z.array(subjectIdSchema).max(TOOL_LIST_MAX),
 })
 
+/**
+ * A reason this version does not know (a record written by a newer or
+ * older deploy) reads as `default` and limits the answer to Allow once: the
+ * stored remember options were offered for a rule this version cannot
+ * check, so an answer applies to that one call and stores no grant.
+ */
 const pendingApprovalSchema = z.object({
   version: z.literal(TOOL_APPROVAL_RECORD_VERSION),
   userId: z.number().int().positive(),
   chatPublicId: subjectIdSchema,
   messagePublicId: subjectIdSchema,
   toolCallId: z.string().min(1).max(TOOL_CALL_ID_MAX_LENGTH),
-  family: z.enum(TOOL_FAMILIES),
+  family: storedFamilySchema,
   access: z.enum(TOOL_ACCESS_LEVELS),
   toolName: z.string().min(1).max(TOOL_NAME_MAX_LENGTH),
   connectorId: subjectIdSchema.nullable(),
@@ -55,12 +82,16 @@ const pendingApprovalSchema = z.object({
     z.record(z.string(), z.unknown()),
   ).nullable().optional(),
   signature: z.string().min(1).max(SIGNATURE_MAX_LENGTH),
-  reason: z.enum(TOOL_APPROVAL_REASONS),
+  reason: storedReasonSchema,
   rememberOptions: z.array(z.enum(TOOL_APPROVAL_REMEMBER_OPTIONS))
     .max(TOOL_APPROVAL_REMEMBER_OPTIONS.length),
   summary: z.string().max(TOOL_APPROVAL_SUMMARY_MAX_LENGTH),
   auditCallId: z.number().int().positive().nullable(),
   snapshot: pendingSnapshotSchema,
+}).transform((record) => {
+  return record.reason === null
+    ? { ...record, reason: 'default' as const, rememberOptions: ONCE_ONLY }
+    : { ...record, reason: record.reason }
 })
 
 const turnRecordSchema = z.object({
@@ -90,6 +121,9 @@ const chatIndexSchema = z.object({
     .max(TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS),
   messageIds: z.array(z.string().regex(TOOL_APPROVAL_SUBJECT_ID_PATTERN))
     .max(TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES),
+  resultIds: z.array(z.string().regex(TOOL_APPROVAL_ID_PATTERN))
+    .max(TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS)
+    .default([]),
 })
 
 export type ToolApprovalPendingRecord = z.infer<typeof pendingApprovalSchema>
@@ -202,21 +236,28 @@ function addBounded(
 }
 
 /**
- * Adds an approval id and/or a message id to the per-chat index
- * `tool-approval:chat:<chatPublicId>`, which is how deleting a chat finds
- * the keys it has to remove: the pending, turn and result keys are named by
- * approval or message id, and nothing else ties them to a chat. The index
- * lives 24 hours like the records it lists and is refreshed on every write.
- * It is bounded; past the bound the oldest ids fall off, and the record they
- * name expires on its own within 24 hours. The read-modify-write is not
- * atomic: two writers racing on one chat can lose an id, with the same
- * 24 hour residual. Written before the record it names, so a crash between
- * the two leaves only an id with no record behind it.
+ * Adds ids to the per-chat index `tool-approval:chat:<chatPublicId>`, which
+ * is how deleting a chat finds the keys it has to remove: the pending keys
+ * are named by approval id, the turn keys by message id and the result keys
+ * by a result id (`toolApprovalResultIdOf`), each in its own bounded list,
+ * so stashed results never push pending approvals out. Nothing else ties
+ * these keys to a chat. The index lives 24 hours like the records it lists
+ * and is refreshed on every write; KV takes about one write a second per
+ * key, so a pause writes it once for all its ids. Past a bound the oldest
+ * ids fall off, and the record they name expires on its own within 24
+ * hours. The read-modify-write is not atomic: two writers racing on one
+ * chat can lose an id, with the same 24 hour residual. Written before the
+ * records it names, so a crash between the two leaves only ids with no
+ * record behind them.
  */
-async function indexChatRecord(
+export async function indexToolApprovalChatRecords(
   kv: KVNamespace,
   chatPublicId: string,
-  ids: { approvalId?: string, messageId?: string },
+  ids: {
+    approvalIds?: readonly string[]
+    messageIds?: readonly string[]
+    resultIds?: readonly string[]
+  },
 ): Promise<void> {
   const key = toolApprovalChatKey(chatPublicId)
   const current = await readRecord(kv, key, chatIndexSchema)
@@ -224,25 +265,43 @@ async function indexChatRecord(
     version: TOOL_APPROVAL_RECORD_VERSION,
     approvalIds: current?.approvalIds ?? [],
     messageIds: current?.messageIds ?? [],
+    resultIds: current?.resultIds ?? [],
   }
 
-  if (ids.approvalId) {
+  for (const approvalId of ids.approvalIds ?? []) {
     index.approvalIds = addBounded(
       index.approvalIds,
-      ids.approvalId,
+      assertApprovalId(approvalId),
       TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS,
     )
   }
 
-  if (ids.messageId) {
+  for (const messageId of ids.messageIds ?? []) {
     index.messageIds = addBounded(
       index.messageIds,
-      ids.messageId,
+      assertSubjectId(messageId),
       TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES,
     )
   }
 
+  for (const resultId of ids.resultIds ?? []) {
+    index.resultIds = addBounded(
+      index.resultIds,
+      assertApprovalId(resultId),
+      TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS,
+    )
+  }
+
   await putRecord(kv, key, index)
+}
+
+/**
+ * `alreadyIndexed` tells a put that the caller listed its id in the
+ * per-chat index already (`indexToolApprovalChatRecords`), so the index key
+ * is not written again right after.
+ */
+export interface ToolApprovalPutOptions {
+  alreadyIndexed?: boolean
 }
 
 async function readRecord<Schema extends z.ZodType>(
@@ -281,6 +340,7 @@ export async function putToolApproval(
   kv: KVNamespace,
   approvalId: string,
   record: ToolApprovalPendingRecord,
+  options: ToolApprovalPutOptions = {},
 ): Promise<void> {
   const key = toolApprovalKey(approvalId)
 
@@ -294,7 +354,13 @@ export async function putToolApproval(
   }
 
   assertReadable(pendingApprovalSchema, record)
-  await indexChatRecord(kv, record.chatPublicId, { approvalId })
+
+  if (!options.alreadyIndexed) {
+    await indexToolApprovalChatRecords(kv, record.chatPublicId, {
+      approvalIds: [approvalId],
+    })
+  }
+
   await putRecord(kv, key, record)
 }
 
@@ -324,13 +390,18 @@ export async function putToolApprovalTurn(
   kv: KVNamespace,
   messagePublicId: string,
   record: ToolApprovalTurnRecord,
+  options: ToolApprovalPutOptions = {},
 ): Promise<void> {
   const key = toolApprovalTurnKey(messagePublicId)
 
   assertReadable(turnRecordSchema, record)
-  await indexChatRecord(kv, record.chatPublicId, {
-    messageId: messagePublicId,
-  })
+
+  if (!options.alreadyIndexed) {
+    await indexToolApprovalChatRecords(kv, record.chatPublicId, {
+      messageIds: [messagePublicId],
+    })
+  }
+
   await putRecord(kv, key, record)
 }
 
@@ -356,32 +427,131 @@ export async function deleteToolApprovalTurn(
   await kv.delete(toolApprovalTurnKey(messagePublicId))
 }
 
+function cappedResultRecord(record: ToolApprovalResultRecord): {
+  stored: ToolApprovalResultRecord
+  truncated: boolean
+} {
+  const outputBytes = payloadBytes(record.output)
+  const truncated = outputBytes > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
+
+  if (!truncated) {
+    return { stored: record, truncated }
+  }
+
+  return {
+    stored: {
+      ...record,
+      output: `[Output omitted: ${outputBytes} bytes is over the `
+        + `${TOOL_APPROVAL_PAYLOAD_MAX_BYTES} byte limit]`,
+    },
+    truncated,
+  }
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = ''
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+
+  return btoa(binary)
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
+}
+
 /**
- * Stores the result record and lists it in the per-chat index. A result
- * whose serialized output is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES` is
- * stored with the output replaced by a short marker string, and the return
- * value says so: a continuation replays a marker rather than megabytes.
+ * The id a stashed tool result is stored and indexed under: the SHA-256 of
+ * the message public id and the tool call id, base64url. Tool call ids are
+ * provider strings that need not match `TOOL_APPROVAL_ID_PATTERN` and are
+ * not unique across users or messages, so they are never used as a key on
+ * their own. The 43 characters always match the pattern.
+ */
+export async function toolApprovalResultIdOf(
+  messagePublicId: string,
+  toolCallId: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${messagePublicId}\n${toolCallId}`),
+  )
+
+  return toBase64Url(new Uint8Array(digest))
+}
+
+/**
+ * Stores one result record under `tool-approval:result:<id>` and lists the
+ * id in the per-chat index, like `putToolApprovalResults` with one entry.
  */
 export async function putToolApprovalResult(
   kv: KVNamespace,
   approvalId: string,
   record: ToolApprovalResultRecord,
 ): Promise<PutToolApprovalResultOutcome> {
-  const key = toolApprovalResultKey(approvalId)
-  const outputBytes = payloadBytes(record.output)
-  const truncated = outputBytes > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
-  const stored = truncated
-    ? {
-      ...record,
-      output: `[Output omitted: ${outputBytes} bytes is over the `
-        + `${TOOL_APPROVAL_PAYLOAD_MAX_BYTES} byte limit]`,
+  const [outcome] = await putToolApprovalResults(kv, [
+    { resultId: approvalId, record },
+  ])
+
+  return outcome ?? { truncated: false }
+}
+
+/**
+ * Stores the bodies of tool results a paused turn must give back to the
+ * model on its continuation (today: Google tool results, which D1 keeps as
+ * references only). All ids go into the result list of the per-chat index
+ * in one index write (none with `alreadyIndexed`), then each record is
+ * written, one KV connection at a time, for 24 hours. A result whose
+ * serialized output is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES` is stored
+ * with the output replaced by a short marker, and its outcome says so.
+ * Every entry must name the same chat.
+ */
+export async function putToolApprovalResults(
+  kv: KVNamespace,
+  entries: ReadonlyArray<{
+    resultId: string
+    record: ToolApprovalResultRecord
+  }>,
+  options: ToolApprovalPutOptions = {},
+): Promise<PutToolApprovalResultOutcome[]> {
+  const first = entries[0]
+
+  if (!first) {
+    return []
+  }
+
+  const isOneChat = entries.every((entry) => {
+    return entry.record.chatPublicId === first.record.chatPublicId
+  })
+
+  if (!isOneChat) {
+    throw createError({
+      message: 'Approval results name different chats',
+      status: 500,
+      why: 'One batch of stashed results must belong to one chat',
+    })
+  }
+
+  const keyed = entries.map((entry) => {
+    assertReadable(resultRecordSchema, entry.record)
+
+    return {
+      key: toolApprovalResultKey(entry.resultId),
+      ...cappedResultRecord(entry.record),
     }
-    : record
+  })
 
-  await indexChatRecord(kv, record.chatPublicId, { approvalId })
-  await putRecord(kv, key, stored)
+  if (!options.alreadyIndexed) {
+    await indexToolApprovalChatRecords(kv, first.record.chatPublicId, {
+      resultIds: entries.map(entry => entry.resultId),
+    })
+  }
 
-  return { truncated }
+  for (const entry of keyed) {
+    await putRecord(kv, entry.key, entry.stored)
+  }
+
+  return keyed.map(entry => ({ truncated: entry.truncated }))
 }
 
 export async function getToolApprovalResult(
@@ -423,20 +593,19 @@ export async function deleteToolApprovalChatRecords(
 
   const indexKey = toolApprovalChatKey(chatPublicId)
   const index = await readRecord(kv, indexKey, chatIndexSchema)
-  let keysDeleted = 0
+  const keys = new Set<string>([
+    ...(index?.approvalIds ?? []).flatMap((approvalId) => {
+      return [toolApprovalKey(approvalId), toolApprovalResultKey(approvalId)]
+    }),
+    ...(index?.messageIds ?? []).map(toolApprovalTurnKey),
+    ...(index?.resultIds ?? []).map(toolApprovalResultKey),
+  ])
 
-  for (const approvalId of index?.approvalIds ?? []) {
-    await kv.delete(toolApprovalKey(approvalId))
-    await kv.delete(toolApprovalResultKey(approvalId))
-    keysDeleted += 2
-  }
-
-  for (const messageId of index?.messageIds ?? []) {
-    await kv.delete(toolApprovalTurnKey(messageId))
-    keysDeleted += 1
+  for (const key of keys) {
+    await kv.delete(key)
   }
 
   await kv.delete(indexKey)
 
-  return { keysDeleted }
+  return { keysDeleted: keys.size }
 }

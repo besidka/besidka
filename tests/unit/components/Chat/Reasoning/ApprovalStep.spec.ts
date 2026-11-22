@@ -7,6 +7,7 @@ import type {
   ApprovalStepState,
 } from '~/utils/tool-approval-step'
 import { TOOL_APPROVAL_CONTROLLER_KEY } from '~/composables/tool-approvals'
+import { getApprovalReasonText } from '~/utils/tool-approval-step'
 import { useSidePanel } from '~/composables/side-panel'
 import ApprovalStep from '../../../../../app/components/Chat/Reasoning/ApprovalStep.vue'
 
@@ -58,6 +59,7 @@ async function mountStep(options: {
   summaryLine?: string
   connectorName?: string
   controller?: ToolApprovalController | null
+  reasonText?: string
 } = {}) {
   const controller = options.controller === undefined
     ? createController()
@@ -68,7 +70,7 @@ async function mountStep(options: {
       model: options.model ?? createModel(),
       state: options.state ?? 'pending',
       title: options.title ?? 'Linear wants to run create_issue',
-      reasonText: 'Changes or deletes data',
+      reasonText: options.reasonText ?? 'Changes or deletes data',
       summaryLine: options.summaryLine ?? '',
       progress: options.progress ?? '',
       outcome: options.outcome ?? '',
@@ -142,6 +144,21 @@ describe('Chat/Reasoning/ApprovalStep', () => {
     expect(buttons.at(-1)!.classes()).toContain('btn-ghost')
     expect(buttons.every(button => button.classes().includes('btn-sm')))
       .toBe(true)
+  })
+
+  it('shows the Google egress prompt without Always allow', async () => {
+    const { wrapper } = await mountStep({
+      model: createModel({
+        reason: 'google-egress',
+        rememberOptions: ['once', 'chat'],
+      }),
+      reasonText: getApprovalReasonText('google-egress', ''),
+    })
+
+    expect(wrapper.get(testId('reason')).text())
+      .toBe('Content from Google in this chat may be sent to this connector')
+    expect(wrapper.find(testId('allow-always')).exists()).toBe(false)
+    expect(wrapper.find(testId('allow-chat')).exists()).toBe(true)
   })
 
   it('sends Allow once with its remember choice', async () => {

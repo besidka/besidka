@@ -142,8 +142,11 @@ export async function cleanupToolApprovalsForDeletedChats(
  * chats itself, so this selects their public ids; the `users` row and its
  * cascade are still there). A user with more chats than that, a key the
  * index lost to its bound or a write race, and a chat that was already
- * deleted keep their keys until the 24 hour TTL; the records name only ids
- * and tool inputs the user approved, and no row points back to the account.
+ * deleted keep their keys until the 24 hour TTL; the records name ids,
+ * tool inputs the user approved and, for a reply paused for approval, the
+ * Google tool result bodies D1 keeps only as references
+ * (`server/utils/tool-approval/google.ts`), and no row points back to the
+ * account.
  */
 export async function purgeUserToolApprovals(
   db: DbClient,

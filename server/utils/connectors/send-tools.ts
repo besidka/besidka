@@ -135,6 +135,7 @@ import type {
 import type { ConnectorToolDefinition } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
+import { googleEgressGrantKey } from '#shared/utils/google-tool-approvals'
 import type {
   ClearedCallCheck,
   SendToolEntry,
@@ -1925,6 +1926,10 @@ export async function getConnectorTools(
           chat: chatGrantHashOf(
             chatGrantsByConnector.get(candidate.connector.id),
             exposedName,
+          ),
+          googleEgress: chatGrantHashOf(
+            chatGrantsByConnector.get(candidate.connector.id),
+            googleEgressGrantKey(exposedName),
           ),
         },
       })

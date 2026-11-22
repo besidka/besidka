@@ -45,6 +45,10 @@ const mocks = vi.hoisted(() => ({
   connectorUrls: {} as Record<string, string>,
   holdsSkillText: false,
   providerTools: {} as Record<string, unknown>,
+  googleSend: null as null | {
+    tools: Record<string, unknown>
+    entries: Map<string, unknown>
+  },
   failRateLimitRead: false,
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
@@ -221,6 +225,25 @@ vi.mock('~~/server/utils/files/connector-images', async (importOriginal) => {
       mocks.keptFinderCalls.push(input)
 
       return mocks.keptFiles.filter(file => input.fileIds.includes(file.id))
+    },
+  }
+})
+
+vi.mock('~~/server/utils/tool-approval/google-send-tools', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/tool-approval/google-send-tools')
+  >()
+
+  return {
+    ...actual,
+    getGoogleSendTools: async (
+      input: Parameters<typeof actual.getGoogleSendTools>[0],
+    ) => {
+      return mocks.googleSend && input.toolApprovalsActive
+        ? mocks.googleSend
+        : await actual.getGoogleSendTools(input)
     },
   }
 })
@@ -828,6 +851,7 @@ describe('tool approval continuation', () => {
     mocks.holdsSkillText = false
     mocks.memoryToolsEnabled = false
     mocks.providerTools = {}
+    mocks.googleSend = null
     mocks.failRateLimitRead = false
     mocks.memoryWrites = []
     mocks.claims = new Map()
@@ -2071,6 +2095,147 @@ describe('tool approval continuation', () => {
         })
         expect(writtenChunks().some(chunk => chunk.type === 'error'))
           .toBe(false)
+      })
+  })
+
+  describe('Google tools', () => {
+    const GOOGLE_HASH = 'g'.repeat(64)
+    let readExecute: ReturnType<typeof vi.fn>
+    let writeExecute: ReturnType<typeof vi.fn>
+
+    beforeEach(async () => {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+
+      readExecute = vi.fn(async () => ({
+        references: [{ id: 'file-1', title: 'Budget' }],
+        text: 'SECRET GOOGLE BODY',
+      }))
+      writeExecute = vi.fn(async () => ({
+        references: [{ id: 'event-1' }],
+        text: 'EVENT BODY',
+      }))
+      mocks.googleSend = {
+        tools: {
+          google__drive_search: tool({
+            description: 'Search Drive.',
+            inputSchema: z.object({ query: z.string() }),
+            execute: readExecute,
+          }),
+          google__calendar_create_event: tool({
+            description: 'Create an event.',
+            inputSchema: z.object({ title: z.string() }),
+            execute: writeExecute,
+          }),
+        },
+        entries: new Map([
+          ['google__drive_search', buildGoogleApprovalEntry({
+            toolName: 'google__drive_search',
+            kind: 'read',
+            definitionHash: GOOGLE_HASH,
+            summary: 'Search Google Drive',
+            toolApprovalsActive: true,
+            chatGrantHash: GOOGLE_HASH,
+          })],
+          ['google__calendar_create_event', buildGoogleApprovalEntry({
+            toolName: 'google__calendar_create_event',
+            kind: 'write',
+            definitionHash: GOOGLE_HASH,
+            summary: 'Create a calendar event',
+            toolApprovalsActive: true,
+          })],
+        ]),
+      }
+    })
+
+    async function pauseAfterGoogleRead() {
+      return await pauseTurn({
+        servers: [linear],
+        connectorIds: [],
+        steps: [
+          toolCallChunks('call-g', 'google__drive_search', {
+            query: 'budget',
+          }),
+          toolCallChunks('call-w', 'google__calendar_create_event', {
+            title: 'Budget review',
+          }),
+        ],
+      })
+    }
+
+    async function stashKey(messagePublicId: string) {
+      const { toolApprovalResultIdOf, toolApprovalResultKey } = await import(
+        '~~/server/utils/tool-approval/kv'
+      )
+
+      return toolApprovalResultKey(
+        await toolApprovalResultIdOf(messagePublicId, 'call-g'),
+      )
+    }
+
+    it('keeps the body only in KV while paused and gives it back to the '
+      + 'model on the answer', async () => {
+      const paused = await pauseAfterGoogleRead()
+      const key = await stashKey(paused.messagePublicId)
+      const [approvalId] = paused.approvalIds
+      const readPart = findPart(
+        paused.assistantParts,
+        'tool-google__drive_search',
+      )
+
+      expect(readExecute).toHaveBeenCalledTimes(1)
+      expect(writeExecute).not.toHaveBeenCalled()
+      expect(readPart).toMatchObject({
+        state: 'output-available',
+        output: { bodyRemoved: true, references: [{ id: 'file-1' }] },
+      })
+      expect(JSON.stringify(paused.assistantParts))
+        .not.toContain('SECRET GOOGLE BODY')
+      expect(mocks.kv.get(key)).toContain('SECRET GOOGLE BODY')
+      expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+        family: 'google',
+        access: 'write',
+        rememberOptions: ['once'],
+      })
+      expect(readKvJson(`tool-approval:chat:${CHAT_PUBLIC_ID}`))
+        .toMatchObject({
+          approvalIds: [approvalId],
+          messageIds: [paused.messagePublicId],
+          resultIds: [key.replace('tool-approval:result:', '')],
+        })
+
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true },
+      ], [textChunks('Scheduled the review.')])
+      const update = mocks.updates.at(-1)!
+
+      expect(writeExecute).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify((doStream.mock.calls[0]?.[0] as any)?.prompt))
+        .toContain('SECRET GOOGLE BODY')
+      expect(JSON.stringify(update.parts)).not.toContain('SECRET GOOGLE BODY')
+      expect(JSON.stringify(update.parts)).not.toContain('EVENT BODY')
+      expect(update.parts.length)
+        .toBeGreaterThanOrEqual(paused.assistantParts.length)
+      expect(mocks.kv.has(key)).toBe(false)
+    })
+
+    it('tells the model the content is unavailable when the stash is gone',
+      async () => {
+        const paused = await pauseAfterGoogleRead()
+        const [approvalId] = paused.approvalIds
+
+        mocks.kv.delete(await stashKey(paused.messagePublicId))
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ])
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(prompt).not.toContain('SECRET GOOGLE BODY')
+        expect(prompt).toContain('could not be kept')
       })
   })
 

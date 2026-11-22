@@ -55,6 +55,7 @@ type BranchTestMessage = ReturnType<typeof createMessages>[number] & {
 function createDb(overrides: {
   projectId?: string | null
   memoryExcluded?: boolean | null
+  googleDataAt?: Date | null
   messages?: BranchTestMessage[]
 } = {}) {
   const batchedQueries: PreparedInsert[][] = []
@@ -81,6 +82,7 @@ function createDb(overrides: {
           title: 'Test Chat',
           projectId: overrides.projectId ?? null,
           memoryExcluded: overrides.memoryExcluded ?? null,
+          googleDataAt: overrides.googleDataAt ?? null,
           messages: overrides.messages ?? createMessages(1),
         })),
       },
@@ -399,6 +401,60 @@ describe('chat branch API', () => {
 
     expect(included.insertValues.mock.calls[0]![0])
       .not.toHaveProperty('memoryExcluded')
+  })
+
+  it('copies the Google data flag to the branch', async () => {
+    const handler = await getHandler()
+    const flaggedAt = new Date('2026-11-22T10:00:00Z')
+    const flagged = createDb({ googleDataAt: flaggedAt })
+
+    vi.stubGlobal('useDb', () => flagged.db)
+    await handler({
+      body: { chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as never)
+
+    expect(flagged.insertValues.mock.calls[0]![0])
+      .toMatchObject({ googleDataAt: flaggedAt })
+
+    const plain = createDb()
+
+    vi.stubGlobal('useDb', () => plain.db)
+    await handler({
+      body: { chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as never)
+
+    expect(plain.insertValues.mock.calls[0]![0])
+      .not.toHaveProperty('googleDataAt')
+  })
+
+  it('flags a branch whose copied messages hold a Google result although '
+    + 'the parts are stripped', async () => {
+    const handler = await getHandler()
+    const messages = [
+      ...createMessages(1),
+      {
+        id: 'msg-google',
+        publicId: 'msg-google',
+        role: 'assistant',
+        parts: [{
+          type: 'tool-google__drive_search',
+          toolCallId: 'call-g',
+          state: 'output-available',
+          output: { references: [{ id: 'file-1' }], bodyRemoved: true },
+        }, { type: 'text', text: 'Found it.' }],
+        tools: [],
+        reasoning: 'off',
+      },
+    ] as unknown as BranchTestMessage[]
+    const { db, insertValues } = createDb({ messages })
+
+    vi.stubGlobal('useDb', () => db)
+    await handler({
+      body: { chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as never)
+
+    expect(insertValues.mock.calls[0]![0])
+      .toMatchObject({ googleDataAt: expect.any(Date) })
   })
 
   it('copies only messages up to the branch point', async () => {
