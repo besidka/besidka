@@ -800,6 +800,9 @@ export default defineNuxtConfig({
       icons: [
         'lucide:git-branch-plus',
         'thesvg:zhipu',
+        'logos:google-drive',
+        'logos:google-gmail',
+        'logos:google-calendar',
         'streamline-logos:github-logo-2-solid',
         'streamline-logos:linkedin-logo-block',
         'streamline-logos:twitter-logo-1-solid',

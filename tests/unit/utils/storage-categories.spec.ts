@@ -13,7 +13,7 @@ describe('storage categories', () => {
     })).toEqual([
       ['aiImages', 'AI images', 'lucide:images'],
       ['uploads', 'Uploaded files', 'lucide:paperclip'],
-      ['googleDrive', 'Google Drive copies', 'lucide:hard-drive'],
+      ['googleDrive', 'Google Drive copies', 'logos:google-drive'],
       ['generatedFiles', 'Generated files', 'lucide:file-text'],
       ['connectorImages', 'Connector images', 'lucide:plug'],
       ['artifacts', 'Artifacts', 'lucide:app-window'],

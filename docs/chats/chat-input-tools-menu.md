@@ -612,8 +612,8 @@ after edits, until the message is cleared or sent.
 ## Google Drive row (Picker child, G-4)
 
 The Add section has one more row, "Google Drive" (`tools-action-google-drive`,
-the generic `lucide:hard-drive` icon, not Google's logo, after "Add
-artifact"), shown while
+the Google Drive logo, `GOOGLE_DRIVE_ICON`, unfaded because a brand mark
+takes no opacity, after "Add artifact"), shown while
 the `google.drive` flag is active for the user and the model takes files
 (`state.googleDrive.visible`, which needs `state.files.visible`). The hint is
 the attach-time label "Saves a copy in your Besidka files", and a
@@ -628,7 +628,12 @@ after the title (`tools-action-google-drive-info`, the `lucide:info` icon at
 size 14, `aria-label` "About Google Drive in chats", `aria-expanded`,
 `aria-controls`) that toggles an `InfoNote` under the row
 (`tools-action-google-drive-note`, `GOOGLE_DRIVE_TOOLS_HINT`), exactly the
-pattern of Use memory. There is no always-visible paragraph: it was three
+pattern of Use memory. Opening the note scrolls it into view (`block:
+'nearest'`, smooth unless `prefers-reduced-motion`), because at about
+1280x860 the popover is as tall as the viewport and the note otherwise opens
+below its bottom fade; the Use memory, Web search and Run code notes keep
+their own open state and do not scroll yet. There is no always-visible
+paragraph: it was three
 lines of text that pushed the menu out of the viewport. `ActionRow` is a
 `<button>`, so the info control cannot nest in it. The row button holds only
 the title and stretches over the whole row (`after:absolute after:inset-0`),

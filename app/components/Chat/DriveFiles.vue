@@ -12,7 +12,7 @@
       data-testid="message-drive-file"
     >
       <span
-        class="grid size-6 shrink-0 place-items-center rounded-field bg-base-100 text-base-content/70"
+        class="grid size-6 shrink-0 place-items-center rounded-field bg-base-100"
         role="img"
         :aria-label="GOOGLE_DRIVE_BRAND_NAME"
       >
@@ -44,9 +44,9 @@
 
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   GOOGLE_DRIVE_BRAND_NAME,
-  GOOGLE_DRIVE_ICON,
   isDriveFileReference,
 } from '#shared/utils/google-drive'
 

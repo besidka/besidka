@@ -42,7 +42,6 @@ export const GOOGLE_BYO_TOOL_SCOPES: Readonly<
 }
 
 export const GOOGLE_GMAIL_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/
-export const GOOGLE_GMAIL_ICON = 'lucide:mail'
 export const GOOGLE_GMAIL_THREAD_REFERENCE_KIND = 'gmail-thread'
 export const GOOGLE_GMAIL_DRAFT_REFERENCE_KIND = 'gmail-draft'
 export const GOOGLE_GMAIL_DRAFTS_LINK = 'https://mail.google.com/mail/#drafts'
@@ -214,9 +213,10 @@ const TOOL_STEP_TITLES: Readonly<Record<string, {
 }
 
 /**
- * The reasoning step title of a Gmail tool call: the text "Gmail", never a
- * Google or Gmail logo (the Gmail brand page was not checked, pre-check
- * row 9). A Gmail tool this file does not know gets a generic Gmail title.
+ * The reasoning step title of a Gmail tool call, always naming "Gmail" in
+ * words (the step icon is `GOOGLE_GMAIL_ICON` from
+ * `shared/utils/google-brand-icons.ts`). A Gmail tool this file does not
+ * know gets a generic Gmail title.
  */
 export function getGoogleGmailToolStepTitle(
   toolName: string,

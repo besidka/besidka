@@ -15,6 +15,10 @@ import {
   GOOGLE_BYO_TOOL_NAMES,
   GOOGLE_GMAIL_TOOL_NAMES,
 } from '#shared/utils/google-gmail-tools'
+import {
+  GOOGLE_DRIVE_ICON,
+  GOOGLE_GMAIL_ICON,
+} from '#shared/utils/google-brand-icons'
 
 type Part = UIMessage['parts'][number]
 
@@ -46,17 +50,23 @@ describe('Gmail reasoning steps', () => {
     }
   })
 
-  it('uses a neutral pinned-collection mail icon for Gmail and the drive '
-    + 'icon for Drive search', () => {
+  it('uses the official Gmail mark for Gmail and the Drive mark for the '
+    + 'Drive tools', () => {
     for (const toolName of GOOGLE_GMAIL_TOOL_NAMES) {
       expect(resolveReasoningStepSource({ toolName, title: 'x' }).icon)
-        .toEqual({ kind: 'iconify', name: 'lucide:mail' })
+        .toEqual({ kind: 'iconify', name: GOOGLE_GMAIL_ICON })
     }
 
-    expect(resolveReasoningStepSource({
-      toolName: 'google__drive_search',
-      title: 'x',
-    }).icon).toEqual({ kind: 'iconify', name: 'lucide:hard-drive' })
+    for (const toolName of [
+      'google__drive_search',
+      'google__drive_read_found_file',
+    ]) {
+      expect(resolveReasoningStepSource({ toolName, title: 'x' }).icon)
+        .toEqual({ kind: 'iconify', name: GOOGLE_DRIVE_ICON })
+    }
+
+    expect(getToolStepTitle('google__drive_read_found_file', false, false))
+      .toBe('Read a found file from Google Drive')
   })
 
   it('titles the approval with its server summary and shows no extra line',

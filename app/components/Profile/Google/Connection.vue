@@ -6,7 +6,7 @@
   >
     <div class="flex flex-wrap items-center gap-3">
       <Icon
-        name="lucide:hard-drive"
+        :name="GOOGLE_DRIVE_ICON"
         size="20"
         class="shrink-0"
       />
@@ -167,6 +167,7 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
   GOOGLE_CONNECT_RESULT_QUERY_KEY,

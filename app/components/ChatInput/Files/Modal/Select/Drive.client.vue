@@ -16,7 +16,7 @@
       <Icon
         :name="GOOGLE_DRIVE_ICON"
         size="48"
-        class="text-base-content/30 mb-3"
+        class="mb-3"
       />
       <p class="text-base-content/80 text-sm max-w-sm mb-4">
         {{ statusSentence }}
@@ -84,7 +84,7 @@
         <Icon
           :name="GOOGLE_DRIVE_ICON"
           size="48"
-          class="text-base-content/30 mb-3"
+          class="mb-3"
         />
         <h4 class="text-lg font-medium mb-2 max-w-full break-words">
           {{
@@ -200,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-drive'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import type {
   AttachedFile,
   FileManagerFile,

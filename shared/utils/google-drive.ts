@@ -26,7 +26,6 @@ export function isGooglePickerPagePath(path: string): boolean {
 
 export const GOOGLE_DRIVE_COPY_LABEL = 'Saves a copy in your Besidka files'
 export const GOOGLE_DRIVE_BRAND_NAME = 'Google Drive'
-export const GOOGLE_DRIVE_ICON = 'lucide:hard-drive'
 
 export interface DriveExportChoice {
   mimeType: string

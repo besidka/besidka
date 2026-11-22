@@ -191,6 +191,7 @@
 <script setup lang="ts">
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import type { Providers, Provider } from '#shared/types/providers.d'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   enabledGateways,
   enabledMemoryCheckProviders,
@@ -260,7 +261,7 @@ const baseTabs: KeyTab[] = [
 const googleTab: KeyTab = {
   id: googleTabId,
   label: 'Google',
-  icon: 'lucide:hard-drive',
+  icon: GOOGLE_DRIVE_ICON,
 }
 
 const tabs = computed<KeyTab[]>(() => {

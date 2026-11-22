@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import GoogleStep from '../../../../../app/components/Chat/Reasoning/GoogleStep.vue'
 
 const LINK = 'https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz'
-const ICON = { kind: 'iconify', name: 'lucide:hard-drive' } as const
+const ICON = { kind: 'iconify', name: 'logos:google-drive' } as const
 
 function data(overrides: Record<string, unknown> = {}) {
   return {
@@ -111,7 +111,7 @@ describe('Chat/Reasoning/GoogleStep', () => {
         } as never,
         title: 'Searched Gmail',
         pending: false,
-        icon: { kind: 'iconify', name: 'lucide:mail' },
+        icon: { kind: 'iconify', name: 'logos:google-gmail' },
       },
     })
     const link = wrapper.get('[data-testid="reasoning-google-step-link"]')

@@ -10,7 +10,8 @@
         v-if="icon"
         :name="icon"
         size="16"
-        class="shrink-0 opacity-75"
+        class="shrink-0"
+        :class="{ 'opacity-75': !isBrandIcon }"
       />
       <span class="flex flex-col grow min-w-0">
         <span class="inline-flex items-center gap-1 leading-tight">
@@ -30,7 +31,7 @@
             :aria-expanded="isNoteOpen"
             :aria-controls="noteId"
             :data-testid="`${testId}-info`"
-            @click="isNoteOpen = !isNoteOpen"
+            @click="toggleNote"
           >
             <Icon
               name="lucide:info"
@@ -66,7 +67,8 @@
     <ChatInputToolsMenuInfoNote
       v-show="isNoteOpen"
       :id="noteId"
-      class="mx-2 mt-1 mb-2 ml-8.5"
+      ref="noteElement"
+      class="mx-2 mt-1 mb-2 ml-8.5 scroll-mb-8"
       :data-testid="`${testId}-note`"
     >
       <slot />
@@ -92,6 +94,33 @@ const emit = defineEmits<{
 const hintId = useId()
 const noteId = useId()
 const isNoteOpen = shallowRef<boolean>(false)
+
+const isBrandIcon = computed<boolean>(() => {
+  return !!props.icon?.startsWith('logos:')
+})
+const noteElement = useTemplateRef<ComponentPublicInstance>('noteElement')
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    ?.matches === true
+}
+
+async function toggleNote() {
+  isNoteOpen.value = !isNoteOpen.value
+
+  if (!isNoteOpen.value) {
+    return
+  }
+
+  await nextTick()
+
+  const note = noteElement.value?.$el as HTMLElement | undefined
+
+  note?.scrollIntoView({
+    block: 'nearest',
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+  })
+}
 
 const mainDescribedBy = computed<string | undefined>(() => {
   const ids = [
