@@ -74,7 +74,7 @@ interface GroupState {
 
 const GAP_MAX = 2
 const NO_GROUP = -1
-export const COLLAPSE_CELLS_MAX = 200_000
+export const COLLAPSE_CELLS_MAX = 100_000
 export const COLLAPSE_WORK_CHARACTERS_MAX = 24 * 1024 * 1024
 export const DERIVED_CHARACTERS_MAX = 512 * 1024
 

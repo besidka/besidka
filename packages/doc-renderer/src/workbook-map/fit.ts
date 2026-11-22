@@ -101,15 +101,85 @@ function droppedValues(sheet: SheetBlock): string {
     + `earlier turn: ${plural(sheet.valueRows, 'row', 'rows')})`
 }
 
-function sheetsLeftOutNote(names: readonly string[]): string {
-  const shown = names.slice(0, SHEET_NAMES_IN_NOTE_MAX)
-  const rest = names.length - shown.length
+function sheetsLeftOutNote(
+  parsed: ParsedMap,
+  sheetCount: number,
+): string | null {
+  const total = parsed.sheets.length - sheetCount
+
+  if (total <= 0) {
+    return null
+  }
+
+  const shown = parsed.sheets
+    .slice(sheetCount, sheetCount + SHEET_NAMES_IN_NOTE_MAX)
+    .map(sheet => sheet.name)
+  const rest = total - shown.length
   const list = rest > 0
     ? `${shown.join(', ')} and ${rest} more`
     : shown.join(', ')
 
-  return `[${plural(names.length, 'sheet was', 'sheets were')} left out of `
+  return `[${plural(total, 'sheet was', 'sheets were')} left out of `
     + `this earlier turn: ${list}.]`
+}
+
+interface StructureSizes {
+  bytes: number[]
+  blocks: number[]
+  trailerBytes: number
+}
+
+/**
+ * The bytes and block counts of the preamble plus the first `count` sheets
+ * (structure and a dropped Values line each), for every `count`, computed in
+ * one pass so the size of any shortened map is read in constant time.
+ */
+function structureSizes(parsed: ParsedMap): StructureSizes {
+  const bytes = [utf8Length(parsed.preamble)]
+  const blocks = [parsed.preamble.length > 0 ? 1 : 0]
+
+  for (const sheet of parsed.sheets) {
+    const previousBytes = bytes[bytes.length - 1] as number
+    const previousBlocks = blocks[blocks.length - 1] as number
+    let sheetBytes = utf8Length(sheet.structure)
+    let sheetBlocks = sheet.structure.length > 0 ? 1 : 0
+
+    if (sheet.values !== null) {
+      sheetBytes += utf8Length(droppedValues(sheet))
+      sheetBlocks += 1
+    }
+
+    bytes.push(previousBytes + sheetBytes)
+    blocks.push(previousBlocks + sheetBlocks)
+  }
+
+  return {
+    bytes,
+    blocks,
+    trailerBytes: parsed.trailer ? utf8Length(parsed.trailer) : 0,
+  }
+}
+
+function structureBytes(
+  parsed: ParsedMap,
+  sizes: StructureSizes,
+  sheetCount: number,
+): number {
+  const note = sheetsLeftOutNote(parsed, sheetCount)
+  let bytes = sizes.bytes[sheetCount] as number
+  let blocks = sizes.blocks[sheetCount] as number
+
+  if (note !== null) {
+    bytes += utf8Length(note)
+    blocks += 1
+  }
+
+  if (parsed.trailer) {
+    bytes += sizes.trailerBytes
+    blocks += 1
+  }
+
+  return bytes + Math.max(blocks - 1, 0) * SEPARATOR.length
 }
 
 function cutToBytes(text: string, maxBytes: number): string {
@@ -149,10 +219,10 @@ function assemble(
     blocks.push(keptValues.has(index) ? sheet.values : droppedValues(sheet))
   })
 
-  const leftOut = parsed.sheets.slice(sheetCount).map(sheet => sheet.name)
+  const leftOutNote = sheetsLeftOutNote(parsed, sheetCount)
 
-  if (leftOut.length > 0) {
-    blocks.push(sheetsLeftOutNote(leftOut))
+  if (leftOutNote !== null) {
+    blocks.push(leftOutNote)
   }
 
   if (parsed.trailer) {
@@ -179,11 +249,12 @@ export function fitWorkbookMap(text: string, maxBytes: number): string {
   }
 
   const parsed = parseMap(text)
+  const sizes = structureSizes(parsed)
   let sheetCount = parsed.sheets.length
 
   while (
     sheetCount > 0
-    && utf8Length(assemble(parsed, sheetCount, new Set())) > maxBytes
+    && structureBytes(parsed, sizes, sheetCount) > maxBytes
   ) {
     sheetCount -= 1
   }

@@ -386,6 +386,31 @@ describe('cleanLine', () => {
       .toBe('x ## Sheet: Evil ˋˋˋ')
   })
 
+  it('replaces a lone surrogate and still processes the next unit', () => {
+    expect(cleanLine('a\ud800\n## Sheet: Fake', 100))
+      .toBe('a� ## Sheet: Fake')
+    expect(cleanLine('a\udc00\nb', 100)).toBe('a� b')
+    expect(cleanLine('a\ud800', 100)).toBe('a�')
+    expect(cleanLine('a\ud800𐀀b', 100)).toBe('a�\u{10000}b')
+    expect(cleanLine('a\ud800`b', 100)).toBe('a�ˋb')
+  })
+
+  it('removes blank letters that render as nothing', () => {
+    const blank = [
+      0x3164, 0x2800, 0x115F, 0x1160, 0xFFA0,
+      0x1D173, 0x1D174, 0x1D17A,
+    ]
+
+    for (const codePoint of blank) {
+      const cleaned = cleanLine(`a${String.fromCodePoint(codePoint)}b`, 100)
+
+      expect(cleaned, codePoint.toString(16)).toBe('ab')
+    }
+
+    expect(cleanLine(`a${String.fromCodePoint(0x1D17B)}b`, 100))
+      .toBe(`a${String.fromCodePoint(0x1D17B)}b`)
+  })
+
   it('escapes double quotes inside a quoted note', () => {
     const { text } = renderWorkbookMap(model([sheet({
       notes: [{ address: 'A1', text: 'He said "stop" \\ now' }],

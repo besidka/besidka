@@ -126,6 +126,7 @@ const NAMES_MAX = 500
 const BUILT_IN_NAME_PREFIX = '_xlnm.'
 const FROZEN_MAX = 100_000
 const SHARED_MAX = 100_000
+export const FORMULA_CELL_OVERHEAD_CHARACTERS = 100
 const SKIPPED_NAMES_MAX = 10
 const SKIPPED_NAME_CHARACTERS_MAX = 64
 const STYLES_MAX = 65_536
@@ -803,7 +804,7 @@ class FormulaReader {
     }
 
     const budget = this.collector.formulaCharacters
-    const cost = (fields.formula ?? '').length
+    const cost = (fields.formula ?? '').length + FORMULA_CELL_OVERHEAD_CHARACTERS
 
     if (budget.used + cost > budget.max) {
       this.collector.isFormulaLimit = true

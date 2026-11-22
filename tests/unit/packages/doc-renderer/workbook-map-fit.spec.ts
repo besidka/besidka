@@ -162,4 +162,32 @@ describe('fitWorkbookMap', () => {
     ])
     expect(fitted).not.toContain('forged')
   })
+
+  it('shortens thousands of sheet headings in linear time', () => {
+    const parts = ['# Workbook map', '', 'legend', '']
+
+    for (let index = 0; index < 4000; index += 1) {
+      parts.push(
+        `## Sheet: S${index}`,
+        '',
+        '### Formulas',
+        `- A${index + 1} =B${index + 1}*2`,
+        '',
+        '### Values',
+        '#,A',
+        `${index + 1},value`,
+        '',
+      )
+    }
+
+    const text = parts.join('\n')
+    const start = performance.now()
+    const fitted = fitWorkbookMap(text, 64 * 1024)
+    const elapsed = performance.now() - start
+
+    expect(elapsed).toBeLessThan(500)
+    expect(bytes(fitted)).toBeLessThanOrEqual(64 * 1024)
+    expect(fitted).toMatch(/\[\d+ sheets were left out of this earlier turn: /)
+    expect(sectionLines(fitted, '## Sheet: ')[0]).toBe('## Sheet: S0')
+  })
 })

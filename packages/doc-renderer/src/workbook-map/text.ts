@@ -49,9 +49,13 @@ const DELETED_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0x00AD, 0x00AD],
   [0x034F, 0x034F],
   [0x061C, 0x061C],
+  [0x115F, 0x1160],
   [0x180E, 0x180E],
   [0x2060, 0x2064],
+  [0x2800, 0x2800],
+  [0x3164, 0x3164],
   [0xFE00, 0xFE0F],
+  [0xFFA0, 0xFFA0],
   [0xFFF9, 0xFFFB],
 ]
 const TAG_HIGH_SURROGATE = 0xDB40
@@ -59,6 +63,18 @@ const TAG_LOW_START = 0xDC00
 const TAG_LOW_END = 0xDC7F
 const VARIATION_LOW_START = 0xDD00
 const VARIATION_LOW_END = 0xDDEF
+const MUSICAL_HIGH_SURROGATE = 0xD834
+const MUSICAL_LOW_START = 0xDD73
+const MUSICAL_LOW_END = 0xDD7A
+const REPLACEMENT_CHARACTER = '�'
+
+function isHighSurrogate(code: number): boolean {
+  return code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= LOW_SURROGATE_START && code <= LOW_SURROGATE_END
+}
 
 function isInvisibleOrControl(code: number): boolean {
   return code < SPACE
@@ -83,6 +99,13 @@ function deletedWidth(code: number, next: number): number {
     const isSelector = next >= VARIATION_LOW_START && next <= VARIATION_LOW_END
 
     return isTag || isSelector ? 2 : 0
+  }
+
+  if (code === MUSICAL_HIGH_SURROGATE) {
+    const isMusicalFormat = next >= MUSICAL_LOW_START
+      && next <= MUSICAL_LOW_END
+
+    return isMusicalFormat ? 2 : 0
   }
 
   for (const [start, end] of DELETED_RANGES) {
@@ -145,9 +168,18 @@ export function cleanLine(text: string, maxCharacters: number): string {
       continue
     }
 
-    const width = code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END
-      ? 2
-      : 1
+    const isPair = isHighSurrogate(code)
+      && isLowSurrogate(text.charCodeAt(index + 1))
+
+    if ((isHighSurrogate(code) && !isPair) || isLowSurrogate(code)) {
+      result += `${text.slice(runStart, index)}${REPLACEMENT_CHARACTER}`
+      index += 1
+      runStart = index
+      kept += 1
+      continue
+    }
+
+    const width = isPair ? 2 : 1
 
     if (kept + width > maxCharacters) {
       break

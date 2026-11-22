@@ -475,6 +475,37 @@ describe('extractOfficeText with workbookMap', () => {
     expect(result.workbookMap?.cut).toContain('names')
   })
 
+  it('charges every formula cell a fixed overhead against the budget', () => {
+    const rows: string[] = []
+
+    for (let row = 1; row <= 1000; row += 1) {
+      const cells: string[] = []
+
+      for (let column = 1; column <= 90; column += 1) {
+        const seed = row * 1000 + column
+        const formula = `A${seed % 997 + 1}*${seed}+B${seed % 5000 + 1}*3+1`
+        const value = row === 1000 && column === 90 ? 987654 : 1
+
+        cells.push(formulaCell(
+          `${columnName(column)}${row}`,
+          formula.padEnd(38, '+'),
+          value,
+        ))
+      }
+
+      rows.push(rowXml(row, cells))
+    }
+
+    const result = mapOf(workbookPackage({
+      sheets: [{ name: 'Data', xml: sheetXml({ rows: rows.join('') }) }],
+    }))
+
+    expect(result.workbookMap?.cut).toContain('formulas')
+    expect(result.stats.truncations).toContain('formulas_limit')
+    expect(result.text).toContain('The formula limit was reached')
+    expect(result.text).toContain('987654')
+  })
+
   it('maps an estimate-shaped sheet within the inline size', () => {
     const result = mapOf(estimateShapedWorkbook(), { textBytesMax: 200 * 1024 })
 
