@@ -437,7 +437,7 @@ describe('getApprovalButtons for a Google Drive tool', () => {
   })
 
   it('leaves every other tool, and the write, with the generic labels', () => {
-    expect(getApprovalButtons(['once', 'chat'], 'google__drive_search')[1])
+    expect(getApprovalButtons(['once', 'chat'], 'google__docs_lookup')[1])
       .toMatchObject({ label: 'Allow in this chat' })
     expect(getApprovalButtons(['once'], 'google__drive_save_file'))
       .toEqual([{ remember: 'once', label: 'Allow once' }])
