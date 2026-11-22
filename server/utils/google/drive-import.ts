@@ -212,6 +212,7 @@ async function findReusableCopy(
       expiresAt: schema.files.expiresAt,
       textStatus: schema.files.textStatus,
       textBytes: schema.files.textBytes,
+      textVersion: schema.files.textVersion,
       textOmittedMedia: schema.files.textOmittedMedia,
       textOmittedCharts: schema.files.textOmittedCharts,
       externalSource: schema.files.externalSource,

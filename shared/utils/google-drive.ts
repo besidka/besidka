@@ -1,4 +1,5 @@
 import type { FileMetadata } from '#shared/types/files.d'
+import type { WorkbookTextSummary } from '#shared/utils/office-files'
 
 export const DRIVE_FILE_PART_TYPE = 'data-drive-file'
 
@@ -100,12 +101,15 @@ export type DriveImportedFile = Pick<
   FileMetadata,
   | 'textStatus'
   | 'textBytes'
+  | 'textVersion'
   | 'textOmittedMedia'
   | 'textOmittedCharts'
   | 'externalSource'
   | 'externalId'
   | 'externalModifiedAt'
->>
+>> & {
+  workbookSummary?: WorkbookTextSummary | null
+}
 
 export type DriveImportItemResult
   = | {

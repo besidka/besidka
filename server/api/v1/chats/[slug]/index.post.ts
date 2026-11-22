@@ -119,7 +119,10 @@ import {
   assertOnlyDeliverableFileParts,
 } from '~~/server/utils/chats/file-delivery-check'
 import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
-import { isOfficeMediaType } from '#shared/utils/office-files'
+import {
+  OFFICE_MEDIA_TYPES,
+  isOfficeMediaType,
+} from '#shared/utils/office-files'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
   appendTextAsLastUserTurn,
@@ -1346,6 +1349,7 @@ export default defineEventHandler(async (event) => {
   )
   const fileSizesByStorageKey = new Map<string, number>()
   const officeTextBytesByStorageKey = new Map<string, number>()
+  const spreadsheetTextVersionsByStorageKey = new Map<string, number>()
 
   for (const [storageKey, file] of ownedContextFiles) {
     fileSizesByStorageKey.set(storageKey, file.size)
@@ -1357,15 +1361,22 @@ export default defineEventHandler(async (event) => {
       && typeof file.textBytes === 'number'
     ) {
       officeTextBytesByStorageKey.set(storageKey, file.textBytes)
+
+      if (file.type === OFFICE_MEDIA_TYPES.xlsx) {
+        spreadsheetTextVersionsByStorageKey
+          .set(storageKey, file.textVersion ?? 1)
+      }
     }
   }
 
   const {
     messages: modelContextMessages,
     omittedFiles,
+    structureOnlyFiles,
   } = buildModelContextMessages(allMessages, {
     fileSizesByStorageKey,
     officeTextBytesByStorageKey,
+    spreadsheetTextVersionsByStorageKey,
     canCarryMediaType: model
       ? createCarriedMediaTypePredicate(getModelInputModalities(model))
       : undefined,
@@ -1379,6 +1390,7 @@ export default defineEventHandler(async (event) => {
     container: codeExecutionGate.filesActive && provider
       ? { providerId: provider.id, messageId: newMessage.id }
       : undefined,
+    structureOnlyFiles,
   })
 
   assertOnlyDeliverableFileParts(messagesForAI, {

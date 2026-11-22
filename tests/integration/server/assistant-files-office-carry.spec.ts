@@ -148,6 +148,89 @@ describe('Office files in the carry-over window', () => {
       .toContain('file:older.png')
   })
 
+  it('carries a large workbook map structure-only at a fixed charge', () => {
+    const XLSX = OFFICE_MEDIA_TYPES.xlsx
+    const { messages, omittedFiles, structureOnlyFiles } = (
+      buildModelContextMessages([
+        fileMessage('earlier', [
+          { key: 'estimate.xlsx', mediaType: XLSX },
+          { key: 'small.xlsx', mediaType: XLSX },
+          { key: 'old.xlsx', mediaType: XLSX },
+          { key: 'huge.xlsx', mediaType: XLSX },
+        ]),
+        fileMessage('latest', [{ key: 'estimate-again.xlsx', mediaType: XLSX }]),
+      ], {
+        canCarryMediaType: textOnly,
+        fileSizesByStorageKey: new Map([
+          ['estimate.xlsx', 500 * 1024],
+          ['small.xlsx', 500 * 1024],
+          ['old.xlsx', 500 * 1024],
+          ['huge.xlsx', 500 * 1024],
+          ['estimate-again.xlsx', 500 * 1024],
+        ]),
+        officeTextBytesByStorageKey: new Map([
+          ['estimate.xlsx', 92 * 1024],
+          ['small.xlsx', 40 * 1024],
+          ['old.xlsx', 90 * 1024],
+          ['huge.xlsx', 300 * 1024],
+          ['estimate-again.xlsx', 92 * 1024],
+        ]),
+        spreadsheetTextVersionsByStorageKey: new Map([
+          ['estimate.xlsx', 2],
+          ['small.xlsx', 2],
+          ['old.xlsx', 1],
+          ['huge.xlsx', 2],
+          ['estimate-again.xlsx', 2],
+        ]),
+      })
+    )
+
+    expect(getPartTypes(messages, 'earlier')).toEqual([
+      'text',
+      'file:estimate.xlsx',
+      'file:small.xlsx',
+      'text',
+      'text',
+    ])
+    expect(omittedFiles.map(file => [file.filename, file.reason])).toEqual([
+      ['old.xlsx', 'over-limit'],
+      ['huge.xlsx', 'over-limit'],
+    ])
+    expect(structureOnlyFiles).toEqual([
+      { messageId: 'earlier', storageKey: 'estimate.xlsx' },
+      { messageId: 'earlier', storageKey: 'small.xlsx' },
+    ])
+  })
+
+  it('charges structure-only maps against the carry budget', () => {
+    const XLSX = OFFICE_MEDIA_TYPES.xlsx
+    const keys = Array.from({ length: 8 }, (_value, index) => {
+      return `map-${index}.xlsx`
+    })
+    const latestBytes = REQUEST_FILES_MAX_BYTES
+      - (3 * CARRIED_TEXT_FILE_MAX_BYTES + 1000)
+    const { omittedFiles, structureOnlyFiles } = buildModelContextMessages([
+      fileMessage('earlier', keys.map(key => ({ key, mediaType: XLSX }))),
+      fileMessage('latest', [{ key: 'latest.png', mediaType: 'image/png' }]),
+    ], {
+      canCarryMediaType: createCarriedMediaTypePredicate(['text', 'image']),
+      fileSizesByStorageKey: new Map([
+        ...keys.map(key => [key, 400 * 1024] as const),
+        ['latest.png', latestBytes],
+      ]),
+      officeTextBytesByStorageKey: new Map(keys.map((key) => {
+        return [key, 150 * 1024] as const
+      })),
+      spreadsheetTextVersionsByStorageKey: new Map(keys.map((key) => {
+        return [key, 2] as const
+      })),
+    })
+
+    expect(structureOnlyFiles).toHaveLength(3)
+    expect(omittedFiles).toHaveLength(5)
+    expect(omittedFiles.every(file => file.reason === 'over-limit')).toBe(true)
+  })
+
   it('keeps the newest message Office file unfiltered', () => {
     const { messages } = buildModelContextMessages([
       fileMessage('latest', [{ key: 'plan.docx', mediaType: DOCX }]),

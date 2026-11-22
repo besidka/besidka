@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   EXTRACT_VERSION,
+  WORKBOOK_MAP_EXTRACT_VERSION,
 } from '@besidka/doc-renderer/extract'
 import {
   OFFICE_MEDIA_TYPES,
   OFFICE_TEXT_VERSION,
+  WORKBOOK_MAP_TEXT_VERSION,
   getAllowedFileFormats,
+  getOfficeTextVersion,
   getOfficeExtensionKind,
   getOfficeFormatByFileName,
   getOfficeFormatByMediaType,
@@ -20,6 +23,14 @@ import { DOCUMENT_MEDIA_TYPES } from '../../../shared/utils/documents'
 describe('office files', () => {
   it('keeps the stored text version in step with the extractor', () => {
     expect(OFFICE_TEXT_VERSION).toBe(EXTRACT_VERSION)
+    expect(WORKBOOK_MAP_TEXT_VERSION).toBe(WORKBOOK_MAP_EXTRACT_VERSION)
+  })
+
+  it('moves only spreadsheets to the workbook map version', () => {
+    expect(getOfficeTextVersion(OFFICE_MEDIA_TYPES.xlsx)).toBe(2)
+    expect(getOfficeTextVersion(OFFICE_MEDIA_TYPES.docx)).toBe(1)
+    expect(getOfficeTextVersion(OFFICE_MEDIA_TYPES.pptx)).toBe(1)
+    expect(getOfficeTextVersion('text/plain')).toBe(1)
   })
 
   it('uses the same media types as generated documents', () => {

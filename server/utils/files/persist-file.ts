@@ -11,6 +11,7 @@ import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { createStorageFullError } from '~~/server/utils/storage/errors'
 import { isOfficeMediaType } from '#shared/utils/office-files'
+import type { WorkbookTextSummary } from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { extractAndStoreOfficeText } from '~~/server/utils/files/office-text'
 import {
@@ -59,8 +60,14 @@ export type PersistedFile = Pick<
   | 'expiresAt'
 > & Partial<Pick<
   FileMetadata,
-  'textStatus' | 'textBytes' | 'textOmittedMedia' | 'textOmittedCharts'
->>
+  | 'textStatus'
+  | 'textBytes'
+  | 'textVersion'
+  | 'textOmittedMedia'
+  | 'textOmittedCharts'
+>> & {
+  workbookSummary?: WorkbookTextSummary | null
+}
 
 const MAX_LOGGED_EXTENSION_LENGTH = 16
 
@@ -314,8 +321,10 @@ export async function persistFile(
     ...storedFile,
     textStatus: textState?.textStatus ?? null,
     textBytes: textState?.textBytes ?? null,
+    textVersion: textState?.textVersion ?? null,
     textOmittedMedia: textState?.textOmittedMedia ?? null,
     textOmittedCharts: textState?.textOmittedCharts ?? null,
+    workbookSummary: textState?.workbookSummary ?? null,
   }
 }
 

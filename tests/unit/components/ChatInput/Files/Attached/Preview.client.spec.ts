@@ -277,11 +277,77 @@ describe('ChatInput/Files/Attached/Preview', () => {
       modalities: ['text', 'image', 'pdf'],
     })
     const officeFile = {
+      storageKey: 'brief-key',
+      name: 'brief.docx',
+      type: OFFICE_MEDIA_TYPES.docx,
+      size: 2048,
+    }
+    const spreadsheetFile = {
       storageKey: 'budget-key',
       name: 'budget.xlsx',
       type: OFFICE_MEDIA_TYPES.xlsx,
       size: 2048,
     }
+
+    it('always notes a spreadsheet, with sheets and formulas', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            ...spreadsheetFile,
+            textStatus: 'ready' as const,
+            textVersion: 2,
+            workbookSummary: {
+              sheets: 3,
+              sheetsTotal: 3,
+              formulas: 40,
+              rules: 2,
+              cut: [],
+              valuesCut: [],
+            },
+          }],
+          resolveDelivery,
+        },
+      })
+      const hint = wrapper.get('[data-testid="files-delivery-hint"]')
+
+      expect(hint.text()).toBe('3 sheets · formulas')
+      expect(hint.attributes('aria-label')).toBe('3 sheets · formulas')
+      expect(hint.attributes('title')).toMatch(/^3 sheets · formulas: /)
+      expect(hint.classes()).toContain('max-w-36')
+      expect(hint.get('span').classes()).toContain('truncate')
+      expect(hint.element.tagName).toBe('BUTTON')
+      expect(hint.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('[data-testid="files-delivery-hint-note"]').exists())
+        .toBe(false)
+    })
+
+    it('opens and closes the info note from the hint', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            ...spreadsheetFile,
+            textStatus: 'ready' as const,
+            textVersion: 2,
+          }],
+          resolveDelivery,
+        },
+      })
+      const hint = wrapper.get('[data-testid="files-delivery-hint"]')
+
+      await hint.trigger('click')
+
+      const note = wrapper.get('[data-testid="files-delivery-hint-note"]')
+
+      expect(hint.attributes('aria-expanded')).toBe('true')
+      expect(hint.attributes('aria-controls')).toBe(note.attributes('id'))
+      expect(note.text()).toContain('budget.xlsx:')
+      expect(note.text()).toContain('Colors, charts and images aren\'t sent.')
+
+      await hint.trigger('click')
+
+      expect(wrapper.find('[data-testid="files-delivery-hint-note"]').exists())
+        .toBe(false)
+    })
 
     it('shows no hint for an Office file whose text is complete',
       async () => {
@@ -334,7 +400,7 @@ describe('ChatInput/Files/Attached/Preview', () => {
 
       expect(hint.text()).toBe('1 image not sent')
       expect(hint.attributes('title')).toBe(
-        'The model gets this file\'s text only. Images, charts and formatting aren\'t sent.',
+        '1 image not sent: The model gets this file\'s text only. Images, charts and formatting aren\'t sent.',
       )
       expect(hint.classes()).toEqual(expect.arrayContaining([
         'badge',
@@ -364,8 +430,9 @@ describe('ChatInput/Files/Attached/Preview', () => {
         const wrapper = await mountSuspended(Preview, {
           props: {
             files: [{
-              ...officeFile,
+              ...spreadsheetFile,
               textStatus: 'ready' as const,
+              textVersion: 2,
               textOmittedMedia: 2,
             }],
             resolveDelivery,
@@ -373,6 +440,7 @@ describe('ChatInput/Files/Attached/Preview', () => {
           },
         })
         const note = wrapper.get('[data-testid="files-converted-note"]')
+        const hint = wrapper.get('[data-testid="files-delivery-hint"]')
 
         expect(note.text()).toBe('Converted from .xls')
         expect(note.attributes('title')).toBe(
@@ -380,35 +448,15 @@ describe('ChatInput/Files/Attached/Preview', () => {
           + 'their last calculated values. Styles, charts and macros are not '
           + 'kept.',
         )
-        expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
-          .toBe('2 images not sent')
+        expect(hint.text()).toBe('Values and formulas')
+        expect(hint.attributes('title')).toContain('2 images aren\'t sent.')
       })
-
-    it('shows the converted note alone when nothing is left out', async () => {
-      const wrapper = await mountSuspended(Preview, {
-        props: {
-          files: [{
-            ...officeFile,
-            textStatus: 'ready' as const,
-            textOmittedMedia: 0,
-            textOmittedCharts: 0,
-          }],
-          resolveDelivery,
-          convertedFromXlsKeys: new Set(['budget-key']),
-        },
-      })
-
-      expect(wrapper.get('[data-testid="files-converted-note"]').text())
-        .toBe('Converted from .xls')
-      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
-        .toBe(false)
-    })
 
     it('shows no converted note for a file that was not converted',
       async () => {
         const wrapper = await mountSuspended(Preview, {
           props: {
-            files: [{ ...officeFile, textStatus: 'ready' as const }],
+            files: [{ ...spreadsheetFile, textStatus: 'ready' as const }],
             resolveDelivery,
             convertedFromXlsKeys: new Set(['another-key']),
           },

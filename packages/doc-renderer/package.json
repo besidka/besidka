@@ -12,7 +12,8 @@
     "./stamp": "./src/stamp/index.ts",
     "./csv": "./src/csv.ts",
     "./zip": "./src/validate/zip.ts",
-    "./extract": "./src/extract/index.ts"
+    "./extract": "./src/extract/index.ts",
+    "./workbook-map": "./src/workbook-map/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

@@ -13,8 +13,11 @@ import {
 import { getModelInputModalities } from '#shared/utils/model'
 import {
   OFFICE_TEXT_INLINE_MAX_BYTES,
+  WORKBOOK_MAP_TEXT_VERSION,
+  getOfficeFormatByMediaType,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
+import type { WorkbookTextSummary } from '#shared/utils/office-files'
 import { getUnsupportedInputMessage } from '~/utils/files'
 
 export interface DeliveryFile {
@@ -22,9 +25,11 @@ export interface DeliveryFile {
   name?: string
   textStatus?: string | null
   textBytes?: number | null
+  textVersion?: number | null
   textTruncated?: boolean
   textOmittedMedia?: number | null
   textOmittedCharts?: number | null
+  workbookSummary?: WorkbookTextSummary | null
 }
 
 export type FileDeliveryContext = Pick<
@@ -55,6 +60,32 @@ export const TEXT_SHORTENED_DESCRIPTION
   = 'It is long, so only the start is sent.'
 
 export const OMITTED_COUNT_DISPLAY_MAX = 99
+
+export const SPREADSHEET_MAP_LABEL = 'Values and formulas'
+
+export const SPREADSHEET_MAP_DESCRIPTION = 'The model gets a map of this '
+  + 'workbook: values, formulas, number formats, dropdown and conditional '
+  + 'formatting rules, merged cells and notes. Values are the ones last '
+  + 'saved in the file. Colors, charts and images aren\'t sent.'
+
+const SPREADSHEET_ROWS_READ = '1,000'
+
+const VALUES_CUT_SHEETS_SHOWN = 2
+
+const STRUCTURE_CUTS: readonly string[] = [
+  'formulas',
+  'formula_patterns',
+  'validations',
+  'conditional_rules',
+  'number_formats',
+  'merged_cells',
+  'notes',
+  'names',
+  'structure',
+  'limits',
+  'cells',
+  'part',
+]
 
 export const NEEDS_RUN_CODE_LABEL = 'Needs Run code'
 
@@ -233,17 +264,146 @@ export function getTextLossNote(
   }
 }
 
+function omittedSentence(file: DeliveryFile): string | null {
+  const omitted = [
+    formatOmittedCount(file.textOmittedCharts, 'chart', 'charts'),
+    formatOmittedCount(file.textOmittedMedia, 'image', 'images'),
+  ].filter((part): part is string => part !== null)
+
+  if (omitted.length === 0) {
+    return null
+  }
+
+  const isOne = omitted.length === 1 && /^1 /.test(omitted[0] as string)
+
+  return `${omitted.join(' and ')} ${isOne ? 'isn\'t' : 'aren\'t'} sent.`
+}
+
+function valuesCutSentence(summary: WorkbookTextSummary): string | null {
+  const shown = summary.valuesCut.slice(0, VALUES_CUT_SHEETS_SHOWN)
+
+  if (shown.length === 0) {
+    return null
+  }
+
+  const parts = shown.map((cut) => {
+    return `after row ${cut.afterRow} of ${cut.sheet}`
+  })
+  const rest = summary.valuesCut.length - shown.length
+  const more = rest > 0
+    ? `, and on ${rest} more ${rest === 1 ? 'sheet' : 'sheets'}`
+    : ''
+
+  return `It is long, so values ${parts.join(' and ')}${more} aren't sent.`
+}
+
+function cutSentences(summary: WorkbookTextSummary): string[] {
+  const sentences: string[] = []
+
+  if (summary.cut.includes('sheets')) {
+    sentences.push(
+      `Only the first ${summary.sheets} of ${summary.sheetsTotal} sheets `
+      + 'are sent.',
+    )
+  }
+
+  if (summary.cut.includes('rows')) {
+    sentences.push(
+      `Sheets are read up to row ${SPREADSHEET_ROWS_READ}.`,
+    )
+  }
+
+  if (summary.cut.includes('columns')) {
+    sentences.push('Columns after GR aren\'t read.')
+  }
+
+  const valuesCut = valuesCutSentence(summary)
+
+  if (valuesCut) {
+    sentences.push(valuesCut)
+  }
+
+  if (summary.cut.some(cut => STRUCTURE_CUTS.includes(cut))) {
+    sentences.push(
+      'Some formulas, rules or notes are left out because the workbook is '
+      + 'large.',
+    )
+  }
+
+  return sentences
+}
+
+function sentences(parts: Array<string | null>): string {
+  return parts.filter((part): part is string => !!part).join(' ')
+}
+
 /**
- * The note on an attached file. A file the send would refuse gets a blocking
- * note with the reason instead of being dropped, and "Needs Run code" when
- * only the sandbox could take it. An Office file whose text reaches the
- * model gets a quiet note only when that text leaves content out (see
- * `getTextLossNote`). Plain text files and complete Office files need none.
+ * The note for a spreadsheet read as a workbook map. It always shows, not
+ * only when something is cut: what the model gets, how many sheets and what
+ * was cut when the upload carried the extraction summary. The label stays
+ * short for the chip; the description goes to the info note. A spreadsheet
+ * stored before the map (or whose version is not known yet) keeps the
+ * loss-only note of the other Office files, so no "Sent as text" label comes
+ * back (owner decision of 2026-11-12).
+ */
+export function getSpreadsheetNote(
+  file: DeliveryFile,
+): Pick<FileDeliveryHint, 'label' | 'description'> | null {
+  const summary = file.workbookSummary
+  const hasMap = !!summary
+    || (file.textVersion ?? 0) >= WORKBOOK_MAP_TEXT_VERSION
+  const omitted = omittedSentence(file)
+
+  if (!hasMap) {
+    return getTextLossNote(file)
+  }
+
+  if (!summary) {
+    return {
+      label: SPREADSHEET_MAP_LABEL,
+      description: sentences([SPREADSHEET_MAP_DESCRIPTION, omitted]),
+    }
+  }
+
+  const sheets = `${summary.sheets} ${summary.sheets === 1 ? 'sheet' : 'sheets'}`
+  const labelParts = [
+    sheets,
+    summary.formulas > 0 ? 'formulas' : null,
+    summary.cut.length > 0 ? TEXT_SHORTENED_LABEL.toLowerCase() : null,
+  ].filter((part): part is string => part !== null)
+
+  return {
+    label: labelParts.join(' · '),
+    description: sentences([
+      SPREADSHEET_MAP_DESCRIPTION,
+      ...cutSentences(summary),
+      omitted,
+    ]),
+  }
+}
+
+function isSpreadsheet(file: DeliveryFile): boolean {
+  return getOfficeFormatByMediaType(file.type) === 'xlsx'
+}
+
+export interface FileDeliveryHintOptions {
+  spreadsheetNote?: boolean
+}
+
+/**
+ * The note on a file. A file the send would refuse gets a blocking note
+ * with the reason instead of being dropped, and "Needs Run code" when only
+ * the sandbox could take it. An Office file whose text reaches the model
+ * gets a quiet note only when that text leaves content out (see
+ * `getTextLossNote`). With `spreadsheetNote` (the attach chip), a
+ * spreadsheet always gets a note that says what the model gets (see
+ * `getSpreadsheetNote`). Plain text files and complete documents need none.
  */
 export function getFileDeliveryHint(
   file: DeliveryFile,
   resolve: FileDeliveryResolver,
   resolveWithRunCode?: FileDeliveryResolver,
+  options: FileDeliveryHintOptions = {},
 ): FileDeliveryHint | null {
   const result = resolve(file)
 
@@ -269,7 +429,9 @@ export function getFileDeliveryHint(
     return null
   }
 
-  const note = getTextLossNote(file)
+  const note = options.spreadsheetNote && isSpreadsheet(file)
+    ? getSpreadsheetNote(file)
+    : getTextLossNote(file)
 
   return note ? { ...note, isBlocking: false } : null
 }

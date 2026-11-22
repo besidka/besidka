@@ -176,8 +176,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/doc-renderer/extract-pptx.spec.ts',
     'tests/unit/packages/doc-renderer/extract-hostile.spec.ts',
     'tests/unit/packages/doc-renderer/xml-truncation.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-formula.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-shift-oracle.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-collapse-bounds.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-tail.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-fit.spec.ts',
+    'tests/integration/server/assistant-files-office-carry.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/knowledge-zip.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
   ]
   const storageQuotaTests = [
     'tests/unit/server/utils/storage/usage.spec.ts',
@@ -435,6 +445,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/documents/renderer.spec.ts',
     'tests/unit/workflows/production-satellites.spec.ts',
     'tests/unit/config/wrangler-previews.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
   ]
   const artifactsAttachTests = [
     'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
