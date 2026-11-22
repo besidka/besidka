@@ -92,8 +92,13 @@ uncompressed), so they ship in the client bundle and the server renders them
 too: the page HTML carries the `.i-logos\:google-drive` rule with the icon as
 a `background-image` data URI. A multicolor body has no `currentColor`, so
 `@nuxt/icon` picks background mode, never mask mode, which keeps the colors;
-the box is `1.08em x 1em` (the mark's own 256x238 ratio), so a brand mark must
-not get a forced square size, a `text-*` color, opacity or a filter.
+the box is `1.08em x 1em` (the mark's own 256x238 ratio). A brand mark must
+not get a `text-*` color, opacity or a filter, and should keep that box: a
+forced square size stretches the image (measured: the Drive triangle fills a
+96px square edge to edge, about 8 percent taller). The reasoning step icon
+box (`Chat/Reasoning/StepIcon.vue`, `size-full` at 14px, shared with every
+iconify step) still forces a square, an accepted distortion that is not
+visible at that size.
 
 ## The landing footer logos are in the client bundle too
 

@@ -68,7 +68,7 @@
       v-show="isNoteOpen"
       :id="noteId"
       ref="noteElement"
-      class="mx-2 mt-1 mb-2 ml-8.5"
+      class="mx-2 mt-1 mb-2 ml-8.5 scroll-mb-8"
       :data-testid="`${testId}-note`"
     >
       <slot />

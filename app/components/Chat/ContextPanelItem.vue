@@ -11,7 +11,6 @@
       v-else
       :name="iconName"
       size="16"
-      class="size-4"
     />
   </span>
   <span class="min-w-0 grow">
