@@ -2,6 +2,7 @@ import { parseError } from 'evlog'
 import {
   GOOGLE_DRIVE_FOLDER_MIME_TYPE,
   GOOGLE_DRIVE_PICK_MAX,
+  isDriveFileId,
 } from '#shared/utils/google-drive'
 
 export const GOOGLE_API_SCRIPT_URL = 'https://apis.google.com/js/api.js'
@@ -70,14 +71,21 @@ interface PickerLike {
   dispose: () => void
 }
 
-interface DocsViewLike {
+interface PickerViewLike {
+  setLabel?: (label: string) => unknown
+}
+
+interface DocsViewLike extends PickerViewLike {
   setIncludeFolders: (include: boolean) => DocsViewLike
   setSelectFolderEnabled: (enabled: boolean) => DocsViewLike
   setEnableDrives: (enabled: boolean) => DocsViewLike
+  setOwnedByMe: (isOwnedByMe: boolean) => DocsViewLike
+  setMode: (mode: string) => DocsViewLike
+  setFileIds: (fileIds: string) => DocsViewLike
 }
 
 interface PickerBuilderLike {
-  addView: (view: DocsViewLike) => PickerBuilderLike
+  addView: (view: PickerViewLike) => PickerBuilderLike
   enableFeature: (feature: string) => PickerBuilderLike
   setMaxItems: (maximum: number) => PickerBuilderLike
   setOAuthToken: (token: string) => PickerBuilderLike
@@ -93,6 +101,8 @@ interface PickerBuilderLike {
 interface GooglePickerNamespace {
   PickerBuilder: new () => PickerBuilderLike
   DocsView: new (viewId?: string) => DocsViewLike
+  DocsUploadView?: new () => PickerViewLike
+  DocsViewMode?: { LIST: string }
   ViewId: { DOCS: string }
   Feature: { MULTISELECT_ENABLED: string, SUPPORT_DRIVES: string }
   Action: { PICKED: string, CANCEL: string, LOADED?: string }
@@ -344,9 +354,130 @@ function collectPickedItems(response: PickerResponseLike): GooglePickerResult {
   return { status: 'picked', items, rejected }
 }
 
+export const GOOGLE_PICKER_VIEW_LABELS = {
+  recent: 'Recent',
+  sharedWithMe: 'Shared with me',
+  sharedDrives: 'Shared drives',
+  upload: 'Upload',
+} as const
+
+function labelView<View extends PickerViewLike>(
+  view: View,
+  label: string,
+): View {
+  view.setLabel?.(label)
+
+  return view
+}
+
+function listMode(
+  picker: GooglePickerNamespace,
+  view: DocsViewLike,
+): DocsViewLike {
+  const mode = picker.DocsViewMode?.LIST
+
+  return mode ? view.setMode(mode) : view
+}
+
+type PickerViewFactory = (picker: GooglePickerNamespace) => PickerViewLike
+
+const PICKER_TAB_FACTORIES: readonly PickerViewFactory[] = [
+  (picker) => {
+    return labelView(
+      listMode(
+        picker,
+        new picker.DocsView(picker.ViewId.DOCS)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(false),
+      ),
+      GOOGLE_PICKER_VIEW_LABELS.recent,
+    )
+  },
+  (picker) => {
+    return labelView(
+      listMode(
+        picker,
+        new picker.DocsView(picker.ViewId.DOCS)
+          .setIncludeFolders(false)
+          .setOwnedByMe(false),
+      ),
+      GOOGLE_PICKER_VIEW_LABELS.sharedWithMe,
+    )
+  },
+  (picker) => {
+    return labelView(
+      listMode(
+        picker,
+        new picker.DocsView(picker.ViewId.DOCS)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(false)
+          .setEnableDrives(true),
+      ),
+      GOOGLE_PICKER_VIEW_LABELS.sharedDrives,
+    )
+  },
+  (picker) => {
+    if (!picker.DocsUploadView) {
+      throw new Error('upload-view-missing')
+    }
+
+    return labelView(
+      new picker.DocsUploadView(),
+      GOOGLE_PICKER_VIEW_LABELS.upload,
+    )
+  },
+]
+
+function buildSingleFileView(
+  picker: GooglePickerNamespace,
+  fileIds: readonly string[],
+): PickerViewLike {
+  return listMode(
+    picker,
+    new picker.DocsView(picker.ViewId.DOCS).setFileIds(fileIds.join(',')),
+  )
+}
+
+/**
+ * The tabs of the Picker, each built on its own so that a method Google
+ * changed or removed drops one tab and never the Picker. Without file ids:
+ * Recent (My Drive with folders, list mode), Shared with me
+ * (`setOwnedByMe(false)`, no folders: Google ignores the owner filter when
+ * folders are included), Shared drives (`setEnableDrives(true)`, which must
+ * not be combined with the owner filter) and Upload (`DocsUploadView`).
+ * With file ids, one view that holds only those files (`setFileIds`, which
+ * Google says is overridden by `setEnableDrives` and `setParent`, so neither
+ * is set): the user confirms the file once and the Picker grants Besidka
+ * access to it. An empty result falls back to the plain Drive view.
+ */
+export function buildPickerViews(
+  picker: GooglePickerNamespace,
+  fileIds: readonly string[] = [],
+): PickerViewLike[] {
+  const factories: readonly PickerViewFactory[] = fileIds.length > 0
+    ? [pickerNamespace => buildSingleFileView(pickerNamespace, fileIds)]
+    : PICKER_TAB_FACTORIES
+  const views: PickerViewLike[] = []
+
+  for (const factory of factories) {
+    try {
+      views.push(factory(picker))
+    } catch {
+      continue
+    }
+  }
+
+  if (views.length > 0) {
+    return views
+  }
+
+  return [new picker.DocsView(picker.ViewId.DOCS)]
+}
+
 function showPicker(
   token: PickerToken,
   maxItems: number,
+  fileIds: readonly string[],
   registerCancel: (cancel: () => void) => void,
 ): Promise<GooglePickerResult> {
   const picker = readGlobals().google?.picker
@@ -428,13 +559,24 @@ function showPicker(
       }, milliseconds)
     }
 
-    const docsView = new picker.DocsView(picker.ViewId.DOCS)
-      .setIncludeFolders(true)
-      .setSelectFolderEnabled(false)
-      .setEnableDrives(true)
+    let builder: PickerBuilderLike
 
-    instance = new picker.PickerBuilder()
-      .addView(docsView)
+    try {
+      builder = buildPickerViews(picker, fileIds).reduce(
+        (current, view) => current.addView(view),
+        new picker.PickerBuilder(),
+      )
+    } catch {
+      finish(toFailure(
+        'failed',
+        'Google\'s file picker could not be built',
+        'Reload the page and try again.',
+      ))
+
+      return
+    }
+
+    instance = builder
       .enableFeature(picker.Feature.MULTISELECT_ENABLED)
       .enableFeature(picker.Feature.SUPPORT_DRIVES)
       .setMaxItems(maxItems)
@@ -525,7 +667,7 @@ export function useGooglePicker() {
   }
 
   async function pick(
-    options: { maxItems?: number } = {},
+    options: { maxItems?: number, fileIds?: readonly string[] } = {},
   ): Promise<GooglePickerResult> {
     if (isPicking.value || isScopeDisposed) {
       return { status: 'canceled' }
@@ -569,7 +711,9 @@ export function useGooglePicker() {
         GOOGLE_DRIVE_PICK_MAX,
       )
 
-      return await showPicker(token, maxItems, (cancel) => {
+      const fileIds = (options.fileIds ?? []).filter(isDriveFileId)
+
+      return await showPicker(token, maxItems, fileIds, (cancel) => {
         cancelOpenPicker = cancel
       })
     } finally {

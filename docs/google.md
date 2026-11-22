@@ -2213,6 +2213,71 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
 8. Disconnect Google on the API Keys page and reopen the tab: the copies are
    gone and the "not connected" state shows.
 
+### 12.13 The Picker tabs (BES-451)
+
+The Picker used to open on one view built with `setEnableDrives(true)`, which
+Google fills with shared drives and their files: a user without shared drives
+saw "No documents." and had to search. `buildPickerViews` in
+`app/composables/google-picker.ts` now adds four views in this order, each
+labeled and each built on its own (an exception in one drops that tab and
+nothing else; with none left the plain `ViewId.DOCS` view opens):
+
+| Tab | Built with |
+|---|---|
+| Recent | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(true)`, `setSelectFolderEnabled(false)`, `setMode(DocsViewMode.LIST)` |
+| Shared with me | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(false)`, `setOwnedByMe(false)`, `setMode(DocsViewMode.LIST)` |
+| Shared drives | the earlier view, `setEnableDrives(true)` with folders, plus `setMode(DocsViewMode.LIST)` |
+| Upload | `new DocsUploadView()` |
+
+What Google's reference says about each (read 2026-11-22 on
+`developers.google.com/workspace/drive/picker/reference/`): `DocsView` "Use
+`DocsView` to select files from Google Drive." `setMode(mode)` "Selects which
+mode the view will use to display the documents"; `DocsViewMode.LIST` is
+"Display documents in a detailed list" and `GRID` "Display documents in a
+thumbnail grid". `setOwnedByMe(me)` "Filters the documents based on whether
+they are owned by the user, or shared with the user"; the page warns that
+with `setEnableDrives(true)` and `setOwnedByMe(true)` there are no results,
+and the method is ignored when `setIncludeFolders(true)`, which is why Shared
+with me has no folders and never `setEnableDrives`. `setEnableDrives(enabled)`
+"Shows shared drives and the files they contain." `DocsUploadView` "Use
+`DocsUploadView` to upload files to Google Drive." The web guide recommends
+list mode when the token's scope is narrower than full Drive, because
+thumbnails are not accessible "as the user hasn't granted access to
+thumbnails", which matches the blank checkerboards seen with `drive.file`.
+Every view is list mode for that reason.
+
+An upload through the Upload tab is a pick: Google uploads the local file into
+the user's Drive and returns it, and the normal import then runs (copy,
+chip). That it works with the `drive.file` scope is NOT VERIFIED: the guide
+says users "can select and upload files with the Google Picker" and names
+`drive.file` as the scope for these views, without a sentence that ties the
+two together. The upload runs inside the Picker's own frame, so no source was
+added to the content security policy (section 12.8); whether the upload view
+loads another frame host is NOT VERIFIED, and the `securitypolicyviolation`
+listener turns a block into the "Reload the page" message.
+
+Three things are NOT VERIFIED and need a real account. The tab labels:
+`View.setLabel` is marked deprecated in the reference with no replacement,
+so it is called only when it exists (`view.setLabel?.(label)`) and the Picker
+may show its own names. "Recent": no method sets a sort order and the
+reference marks `ViewId.RECENTLY_PICKED` deprecated, so "most recent first"
+rests on how the plain Drive view orders its list, which is not documented.
+And whether multi-select works across tabs, including Upload.
+
+Besidka cannot draw its own list of recent Drive files. The `drive.file`
+permission only reaches files the user created with Besidka or picked in the
+Picker; it does not allow listing, so a list of recent files would need a
+broader scope (`drive.readonly` or `drive.metadata.readonly`, which are
+restricted) and Besidka asks for neither. Only Google's Picker can show those
+files.
+
+Opening the Picker for one file: `pick({ fileIds })` builds a single view
+with `setFileIds` and list mode and nothing else. The reference: `setFileIds`
+"Sets the file IDs included in the view", takes a comma-separated string,
+leaves out IDs the user cannot access, and must not be used with
+`setEnableDrives` or `setParent` (each call overrides the earlier ones). The
+ids are checked against the Drive id pattern first.
+
 ## 14. Gmail tools and Drive search (Gmail tools child, G-8)
 
 Built on `feat/google-gmail-tools`. Five `google__` tools for the owner's own
