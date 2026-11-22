@@ -36,14 +36,18 @@ export interface RejectedDriveItem {
 }
 
 export type GooglePickerResult
-  = | { status: 'picked', items: PickedDriveItem[], rejected: RejectedDriveItem[] }
-    | { status: 'cancelled' }
-    | {
-      status: 'error'
-      code: GooglePickerFailure
-      message: string
-      why?: string
-    }
+  = | {
+    status: 'picked'
+    items: PickedDriveItem[]
+    rejected: RejectedDriveItem[]
+  }
+  | { status: 'canceled' }
+  | {
+    status: 'error'
+    code: GooglePickerFailure
+    message: string
+    why?: string
+  }
 
 interface PickerDocumentLike {
   id?: string
@@ -112,6 +116,13 @@ interface PickerToken {
   accessToken: string
   apiKey: string
   appId: string
+  expiresInSeconds: number
+}
+
+const TOOLS_TRIGGER_SELECTOR = '.js-chat-input-tools-trigger'
+
+function returnFocusToToolsButton() {
+  document.querySelector<HTMLElement>(TOOLS_TRIGGER_SELECTOR)?.focus()
 }
 
 let pickerLibraryLoad: Promise<void> | null = null
@@ -134,6 +145,7 @@ function loadGoogleApiScript(): Promise<void> {
 
     script.src = GOOGLE_API_SCRIPT_URL
     script.async = true
+    script.referrerPolicy = 'no-referrer'
     script.dataset.googleApiScript = 'true'
     script.onload = () => {
       clearTimeout(timer)
@@ -220,6 +232,7 @@ async function fetchPickerToken(): Promise<PickerToken | GooglePickerResult> {
       accessToken: response.accessToken,
       apiKey: response.apiKey,
       appId: response.appId,
+      expiresInSeconds: response.expiresInSeconds,
     }
   } catch (exception) {
     const parsed = parseError(exception)
@@ -293,7 +306,7 @@ function collectPickedItems(response: PickerResponseLike): GooglePickerResult {
   }
 
   if (items.length === 0) {
-    return { status: 'cancelled' }
+    return { status: 'canceled' }
   }
 
   return { status: 'picked', items, rejected }
@@ -302,6 +315,7 @@ function collectPickedItems(response: PickerResponseLike): GooglePickerResult {
 function showPicker(
   token: PickerToken,
   maxItems: number,
+  registerCancel: (cancel: () => void) => void,
 ): Promise<GooglePickerResult> {
   const picker = readGlobals().google?.picker
 
@@ -313,6 +327,7 @@ function showPicker(
   }
 
   return new Promise<GooglePickerResult>((resolve) => {
+    let isDisposed = false
     let instance: PickerLike | null = null
     let timer: ReturnType<typeof setTimeout> | null = null
     let isSettled = false
@@ -337,8 +352,19 @@ function showPicker(
         instance = null
       }
 
+      instance = null
+
+      if (!isDisposed) {
+        returnFocusToToolsButton()
+      }
+
       resolve(result)
     }
+
+    registerCancel(() => {
+      isDisposed = true
+      finish({ status: 'canceled' })
+    })
 
     function onViolation(event: Event) {
       const violation = event as Partial<SecurityPolicyViolationEvent>
@@ -385,9 +411,16 @@ function showPicker(
       .setAppId(token.appId)
       .setOrigin(`${window.location.protocol}//${window.location.host}`)
       .setCallback((response) => {
+        if (isSettled) {
+          return
+        }
+
         if (response.action === picker.Action.LOADED) {
           startTimer(
-            GOOGLE_PICKER_IDLE_TIMEOUT_MS,
+            Math.min(
+              GOOGLE_PICKER_IDLE_TIMEOUT_MS,
+              Math.max(token.expiresInSeconds, 1) * 1000,
+            ),
             toFailure(
               'timeout',
               'The Google Drive picker was left open too long',
@@ -398,7 +431,7 @@ function showPicker(
         }
 
         if (response.action === picker.Action.CANCEL) {
-          finish({ status: 'cancelled' })
+          finish({ status: 'canceled' })
 
           return
         }
@@ -435,23 +468,19 @@ function showPicker(
  */
 export function useGooglePicker() {
   const isPicking = shallowRef<boolean>(false)
+  let cancelOpenPicker: (() => void) | null = null
+  let isScopeDisposed = false
 
   async function pick(
     options: { maxItems?: number } = {},
   ): Promise<GooglePickerResult> {
-    if (isPicking.value) {
-      return { status: 'cancelled' }
+    if (isPicking.value || isScopeDisposed) {
+      return { status: 'canceled' }
     }
 
     isPicking.value = true
 
     try {
-      const token = await fetchPickerToken()
-
-      if (!isPickerToken(token)) {
-        return token
-      }
-
       try {
         await loadPickerLibrary()
       } catch (exception) {
@@ -466,15 +495,36 @@ export function useGooglePicker() {
         )
       }
 
+      const token = await fetchPickerToken()
+
+      if (isScopeDisposed) {
+        return { status: 'canceled' }
+      }
+
+      if (!isPickerToken(token)) {
+        return token
+      }
+
       const maxItems = Math.min(
         options.maxItems ?? GOOGLE_DRIVE_PICK_MAX,
         GOOGLE_DRIVE_PICK_MAX,
       )
 
-      return await showPicker(token, maxItems)
+      return await showPicker(token, maxItems, (cancel) => {
+        cancelOpenPicker = cancel
+      })
     } finally {
+      cancelOpenPicker = null
       isPicking.value = false
     }
+  }
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      isScopeDisposed = true
+      cancelOpenPicker?.()
+      cancelOpenPicker = null
+    })
   }
 
   return { isPicking, pick }

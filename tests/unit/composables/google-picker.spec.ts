@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope } from 'vue'
+import type { EffectScope } from 'vue'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 
 const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }))
@@ -134,12 +136,14 @@ describe('useGooglePicker', () => {
     }
   }
 
-  async function loadComposable() {
+  async function loadComposable(scope?: EffectScope) {
     vi.resetModules()
 
     const module = await import('../../../app/composables/google-picker')
 
-    return module.useGooglePicker()
+    return scope
+      ? scope.run(() => module.useGooglePicker())!
+      : module.useGooglePicker()
   }
 
   async function settle() {
@@ -367,14 +371,14 @@ describe('useGooglePicker', () => {
     })
   })
 
-  it('returns cancelled when the user closes the picker', async () => {
+  it('returns canceled when the user closes the picker', async () => {
     const { pick } = await loadComposable()
     const pending = pick()
 
     await finishScriptLoad()
     pickerCallback({ action: 'cancel' })
 
-    expect(await pending).toEqual({ status: 'cancelled' })
+    expect(await pending).toEqual({ status: 'canceled' })
     expect(picker.setVisible).toHaveBeenLastCalledWith(false)
     expect(picker.dispose).toHaveBeenCalled()
   })
@@ -490,7 +494,7 @@ describe('useGooglePicker', () => {
     document.dispatchEvent(violation)
     pickerCallback({ action: 'cancel' })
 
-    expect(await pending).toEqual({ status: 'cancelled' })
+    expect(await pending).toEqual({ status: 'canceled' })
   })
 
   it('does not time out once the picker has loaded, until it sits idle',
@@ -507,7 +511,7 @@ describe('useGooglePicker', () => {
 
       pickerCallback({ action: 'cancel' })
 
-      expect(await pending).toEqual({ status: 'cancelled' })
+      expect(await pending).toEqual({ status: 'canceled' })
     })
 
   it('gives up on a picker left open for fifteen minutes', async () => {
@@ -551,7 +555,7 @@ describe('useGooglePicker', () => {
     await finishScriptLoad()
 
     expect(isPicking.value).toBe(true)
-    expect(await pick()).toEqual({ status: 'cancelled' })
+    expect(await pick()).toEqual({ status: 'canceled' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     pickerCallback({ action: 'cancel' })
@@ -566,17 +570,127 @@ describe('useGooglePicker', () => {
       [409, 'reauthorize'],
       [503, 'not-configured'],
       [500, 'failed'],
-    ])('maps a %s answer to %s without loading the script', async (
+    ])('maps a %s answer to %s and opens no picker', async (
       status,
       code,
     ) => {
       fetchMock.mockRejectedValue(httpError(status))
 
       const { pick } = await loadComposable()
-      const result = await pick()
+      const pending = pick()
 
-      expect(result).toMatchObject({ status: 'error', code })
+      await finishScriptLoad()
+
+      expect(await pending).toMatchObject({ status: 'error', code })
+      expect(builderCall.token).toBeUndefined()
+    })
+
+    it('mints the token only after Google\'s script has loaded', async () => {
+      const { pick } = await loadComposable()
+      const pending = pick()
+
+      await settle()
+
+      expect(appended).toHaveLength(1)
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      await finishScriptLoad()
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      pickerCallback({ action: 'cancel' })
+      await pending
+    })
+
+    it('mints no token when the script is blocked', async () => {
+      const { pick } = await loadComposable()
+      const pending = pick()
+
+      await settle()
+      appended.at(-1)!.onerror?.(new Event('error'))
+
+      expect(await pending).toMatchObject({ code: 'script-blocked' })
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the script tag', () => {
+    it('sends no referrer to Google', async () => {
+      const { pick } = await loadComposable()
+      const pending = pick()
+
+      await finishScriptLoad()
+
+      expect(appended[0]!.referrerPolicy).toBe('no-referrer')
+
+      pickerCallback({ action: 'cancel' })
+      await pending
+    })
+  })
+
+  describe('cleanup and focus', () => {
+    it('closes an open picker when the owning scope is disposed', async () => {
+      const scope = effectScope()
+      const { pick } = await loadComposable(scope)
+      const pending = pick()
+
+      await finishScriptLoad()
+      scope.stop()
+
+      expect(await pending).toEqual({ status: 'canceled' })
+      expect(picker.dispose).toHaveBeenCalled()
+    })
+
+    it('refuses to open after its scope is disposed', async () => {
+      const scope = effectScope()
+      const { pick } = await loadComposable(scope)
+
+      scope.stop()
+
+      expect(await pick()).toEqual({ status: 'canceled' })
       expect(appended).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('returns focus to the tools button when the picker closes',
+      async () => {
+        const trigger = document.createElement('button')
+
+        trigger.className = 'js-chat-input-tools-trigger'
+        document.body.appendChild(trigger)
+
+        const { pick } = await loadComposable()
+        const pending = pick()
+
+        await finishScriptLoad()
+        pickerCallback({ action: 'cancel' })
+        await pending
+
+        expect(document.activeElement).toBe(trigger)
+
+        trigger.remove()
+      })
+  })
+
+  describe('the idle timeout', () => {
+    it('never outlives the access token', async () => {
+      vi.useFakeTimers()
+      fetchMock.mockResolvedValue({
+        accessToken: 'picker-token',
+        apiKey: 'public-key',
+        appId: '123456789012',
+        expiresInSeconds: 120,
+      })
+
+      const { pick } = await loadComposable()
+      const pending = pick()
+
+      await vi.advanceTimersByTimeAsync(0)
+      await finishScriptLoad()
+      pickerCallback({ action: 'loaded' })
+      await vi.advanceTimersByTimeAsync(121_000)
+
+      expect(await pending).toMatchObject({ status: 'error', code: 'timeout' })
     })
   })
 })

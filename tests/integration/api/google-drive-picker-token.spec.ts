@@ -361,6 +361,56 @@ describe('POST /api/v1/google/drive/picker-token', () => {
       })
   })
 
+  describe('a refresh that widens the grant', () => {
+    it('refuses the token when the refresh stored wider scopes', async () => {
+      google = createFakeGoogle({
+        token: () => ({
+          status: 200,
+          body: {
+            access_token: 'access-widened',
+            expires_in: 3599,
+            token_type: 'Bearer',
+            scope: `openid ${DRIVE_FILE_SCOPE} ${CALENDAR_SCOPE}`,
+          },
+        }),
+      })
+      vi.stubGlobal('fetch', google.fetch)
+      await seedConnection({ expiresInMs: 30_000 })
+
+      const failure = await failureOf(call())
+
+      expect(failure).toMatchObject({
+        status: 409,
+        code: 'google_picker_scope_too_wide',
+      })
+      expect(google.tokenRequests()).toHaveLength(1)
+      expect(JSON.stringify(mocks.logged)).toContain('after-mint')
+      expect(JSON.stringify(mocks.logged)).not.toContain('access-widened')
+    })
+
+    it('returns the refreshed token when the scopes stay narrow', async () => {
+      await seedConnection({ expiresInMs: 30_000 })
+
+      const { result } = await call()
+
+      expect(result.accessToken).toMatch(/^access-refreshed-/)
+    })
+  })
+
+  describe('lifetime', () => {
+    it('hands out the cached token with its real remaining lifetime',
+      async () => {
+        await seedConnection({ expiresInMs: 4 * 60_000 })
+
+        const { result } = await call()
+
+        expect(result.accessToken).toBe('access-stored')
+        expect(result.expiresInSeconds).toBeGreaterThan(200)
+        expect(result.expiresInSeconds).toBeLessThanOrEqual(240)
+        expect(google.tokenRequests()).toHaveLength(0)
+      })
+  })
+
   describe('configuration', () => {
     it.each([
       ['the API key', { googlePickerApiKey: '' }],

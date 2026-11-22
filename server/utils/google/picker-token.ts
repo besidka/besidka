@@ -71,8 +71,38 @@ function reauthorize(why: string) {
   })
 }
 
+function isGrantTooWide(grantedScopes: readonly string[]): boolean {
+  return parseGoogleScopes(grantedScopes).some((scope) => {
+    return !PICKER_TOKEN_SCOPES.has(scope)
+  })
+}
+
+function scopeTooWide(
+  logger: LoggerLike | undefined,
+  stage: 'before-mint' | 'after-mint',
+) {
+  logger?.set({
+    attributes: { googlePicker: { refused: 'scope-too-wide', stage } },
+  })
+
+  return createError({
+    message: 'The Picker cannot use this Google connection',
+    status: 409,
+    code: GOOGLE_PICKER_SCOPE_TOO_WIDE_CODE,
+    why: 'The grant holds more than Google Drive file access, and the '
+      + 'token would reach the browser',
+    fix: 'Disconnect Google Drive and connect it again',
+    link: '/profile/keys?tab=google',
+  })
+}
+
 /**
  * Mints the short-lived access token the browser gives to Google's Picker.
+ * The token is the cached one while it has more than two minutes left, so
+ * it is the shortest-lived token available without an extra Google call; a
+ * new token (about an hour) is minted only when the cache is nearly spent.
+ * The grant's scopes are checked before the mint and again after it, since
+ * a refresh can store a different set.
  * This is the one place a Google token leaves the server. It is a token of
  * Besidka's own OAuth client only (never the owner's client, whose grant can
  * carry restricted scopes), it is the access token and never the refresh
@@ -114,25 +144,8 @@ export async function createGooglePickerToken(
     throw notConnected()
   }
 
-  const grantedScopes = parseGoogleScopes(connection.grantedScopes)
-  const isTooWide = grantedScopes.some((scope) => {
-    return !PICKER_TOKEN_SCOPES.has(scope)
-  })
-
-  if (isTooWide) {
-    input.logger?.set({
-      attributes: { googlePicker: { refused: 'scope-too-wide' } },
-    })
-
-    throw createError({
-      message: 'The Picker cannot use this Google connection',
-      status: 409,
-      code: GOOGLE_PICKER_SCOPE_TOO_WIDE_CODE,
-      why: 'The grant holds more than Google Drive file access, and the '
-        + 'token would reach the browser',
-      fix: 'Disconnect Google Drive and connect it again',
-      link: '/profile/keys?tab=google',
-    })
+  if (isGrantTooWide(connection.grantedScopes)) {
+    throw scopeTooWide(input.logger, 'before-mint')
   }
 
   const token = await getGoogleAccessToken({
@@ -156,6 +169,19 @@ export async function createGooglePickerToken(
 
   if (token.status === 'missing_scope') {
     throw reauthorize('The connection does not grant Google Drive file access')
+  }
+
+  const connectionAfterMint = await readGoogleConnectionTokenState(
+    input.db,
+    input.userId,
+    'besidka',
+  )
+
+  if (
+    !connectionAfterMint
+    || isGrantTooWide(connectionAfterMint.grantedScopes)
+  ) {
+    throw scopeTooWide(input.logger, 'after-mint')
   }
 
   const now = (input.now ?? Date.now)()
