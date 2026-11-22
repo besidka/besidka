@@ -5,6 +5,7 @@ import {
   defineEventHandler,
   readValidatedBody,
 } from 'nuxt/server'
+import { assertSameOriginAdminRequest } from '~~/server/utils/features/admin-request'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const RATE_LIMIT_RULE = { window: 60, max: 10 }
@@ -18,17 +19,9 @@ const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:google:paid-tier'
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
-  const body = await readValidatedBody(event, z.object({
-    confirmed: z.boolean(),
-  }).safeParse)
 
-  if (body.error) {
-    throw createError({
-      message: 'Invalid request body',
-      status: 400,
-      why: body.error.message,
-    })
-  }
+  assertNotCrossSiteRequest(event)
+  assertSameOriginAdminRequest(event)
 
   const session = await useUserSession()
 
@@ -44,6 +37,20 @@ export default defineEventHandler(async (event) => {
     RATE_LIMIT_KEY_PREFIX,
     RATE_LIMIT_RULE,
   )
+
+  const body = await readValidatedBody(event, z.object({
+    confirmed: z.boolean(),
+  }).safeParse)
+
+  if (body.error) {
+    throw createError({
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
+      fix: 'Send { "confirmed": true } to confirm the paid tier, or '
+        + '{ "confirmed": false } to withdraw it.',
+    })
+  }
 
   const db = useDb()
   const ownKey = and(

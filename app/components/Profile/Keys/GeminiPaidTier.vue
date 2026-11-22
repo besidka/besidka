@@ -8,7 +8,7 @@
         type="checkbox"
         data-testid="gemini-paid-tier-toggle"
         class="checkbox checkbox-sm mt-0.5"
-        :checked="isGeminiPaidTierConfirmed"
+        :checked="isChecked"
         :disabled="pending"
         @change="onToggle"
       >
@@ -37,6 +37,23 @@ import { GOOGLE_DATA_PAID_TIER_STATEMENT } from '#shared/utils/google-data-recip
 const { isGeminiPaidTierConfirmed, refresh } = useUserKeys()
 
 const pending = shallowRef<boolean>(false)
+const savedConfirmation = shallowRef<boolean | null>(null)
+
+const isChecked = computed<boolean>(() => {
+  return savedConfirmation.value ?? isGeminiPaidTierConfirmed.value
+})
+
+watch(isGeminiPaidTierConfirmed, () => {
+  savedConfirmation.value = null
+})
+
+async function refreshKeysQuietly() {
+  try {
+    await refresh()
+  } catch {
+    return
+  }
+}
 
 async function onToggle(event: Event) {
   const input = event.target as HTMLInputElement
@@ -45,16 +62,15 @@ async function onToggle(event: Event) {
   pending.value = true
 
   try {
-    await $fetch('/api/v1/profiles/keys/google/paid-tier', {
+    const response = await $fetch('/api/v1/profiles/keys/google/paid-tier', {
       method: 'POST',
       body: { confirmed },
     })
-    await refresh()
-    useSuccessMessage(confirmed
-      ? 'Gemini paid tier confirmed'
-      : 'Gemini paid tier confirmation removed')
+
+    savedConfirmation.value = response.paidTierConfirmed
   } catch (exception) {
     input.checked = !confirmed
+    pending.value = false
 
     const parsedException = parseError(exception)
 
@@ -62,8 +78,16 @@ async function onToggle(event: Event) {
       parsedException.message || 'Failed to save the confirmation',
       parsedException.why,
     )
-  } finally {
-    pending.value = false
+
+    return
   }
+
+  useSuccessMessage(confirmed
+    ? 'Gemini paid tier confirmed'
+    : 'Gemini paid tier confirmation removed')
+
+  await refreshKeysQuietly()
+
+  pending.value = false
 }
 </script>
