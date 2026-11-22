@@ -274,15 +274,20 @@ function checkTimedEnd(
   input: CalendarEventInput,
   start: ParsedDateTime,
   end: ParsedDateTime,
+  checkTimeZoneData: boolean,
 ): string | null {
   if (start.hasFraction || end.hasFraction) {
     return 'start and end must not have fractions of a second'
   }
 
-  for (const [name, value, parsed] of [
-    ['start', input.start, start],
-    ['end', input.end, end],
-  ] as const) {
+  const boundaries = checkTimeZoneData
+    ? [
+      ['start', input.start, start],
+      ['end', input.end, end],
+    ] as const
+    : []
+
+  for (const [name, value, parsed] of boundaries) {
     const zoneOffset = getTimeZoneOffsetMinutes(
       input.timeZone,
       parsed.instantMilliseconds,
@@ -308,9 +313,19 @@ function checkTimedEnd(
  * date and date-time forms, an end that is not after the start, padded text
  * or an unsafe character is a refusal with one fixed sentence. For an
  * all-day event the end date is exclusive (Google's meaning): one day on
- * 2026-12-01 is start 2026-12-01 and end 2026-12-02.
+ * 2026-12-01 is start 2026-12-01 and end 2026-12-02. With
+ * `checkTimeZoneData: false` the two checks that need the runtime's time zone
+ * data (the name is known, the offset is the zone's at that instant) are
+ * skipped and only the shape of the name is checked: the approval card uses
+ * that, because the server already enforced them before the approval was
+ * asked and a browser's time zone data must not turn a valid card into raw
+ * arguments.
  */
-export function validateCalendarEvent(value: unknown): CalendarEventValidation {
+export function validateCalendarEvent(
+  value: unknown,
+  options: { checkTimeZoneData?: boolean } = {},
+): CalendarEventValidation {
+  const checkTimeZoneData = options.checkTimeZoneData !== false
   const input = value as Partial<CalendarEventInput> | null
 
   if (
@@ -377,7 +392,12 @@ export function validateCalendarEvent(value: unknown): CalendarEventValidation {
     )
   }
 
-  if (!isKnownTimeZone(timeZone)) {
+  const hasValidTimeZone = checkTimeZoneData
+    ? isKnownTimeZone(timeZone)
+    : timeZone.length <= TIME_ZONE_MAX_LENGTH
+      && TIME_ZONE_PATTERN.test(timeZone)
+
+  if (!hasValidTimeZone) {
     return refuse(
       'timeZone must be an IANA time zone name in its usual letter case, '
       + 'such as Europe/Kyiv or America/New_York, or UTC.',
@@ -412,6 +432,7 @@ export function validateCalendarEvent(value: unknown): CalendarEventValidation {
       { title, start, end, timeZone },
       startDateTime!,
       endDateTime!,
+      checkTimeZoneData,
     )
 
     if (message) {
@@ -441,12 +462,13 @@ export function validateCalendarEvent(value: unknown): CalendarEventValidation {
  * What an approval card shows for a create-event input. It is read from the
  * request body that `validateCalendarEvent` builds, which is the body the
  * tool sends, so the card cannot differ from what runs. Null for an input
- * that is not a valid event.
+ * that is not a valid event. It does not repeat the two checks that need the
+ * runtime's time zone data (the server ran them before the approval).
  */
 export function readCalendarEventApprovalView(
   input: unknown,
 ): CalendarEventApprovalView | null {
-  const validation = validateCalendarEvent(input)
+  const validation = validateCalendarEvent(input, { checkTimeZoneData: false })
 
   if (!validation.ok) {
     return null

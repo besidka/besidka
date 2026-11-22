@@ -822,6 +822,34 @@ describe('Google bring-your-own client routes', () => {
         .not.toContain('calendar')
     })
 
+    it('does not ask again for a stored Calendar grant while Calendar is '
+      + 'off, and asks for it while Calendar is on', async () => {
+      await saveClient()
+      await testDb.db.insert(schema.featureOptIns).values({
+        userId,
+        flag: 'google.calendar',
+        optedInAt: new Date('2026-11-01T00:00:00.000Z'),
+      })
+      grantedScope = `openid ${EMAIL_SCOPE} ${AUTH}calendar.events.owned `
+        + `${AUTH}calendar.events.freebusy ${DRIVE_READONLY}`
+      await connectByo(['calendar', 'drive-read'])
+
+      const whileOn = (await startByo(['drive-read']))
+        .searchParams.get('scope')!.split(' ')
+
+      expect(whileOn).toContain(`${AUTH}calendar.events.owned`)
+      expect(whileOn).toContain(`${AUTH}calendar.events.freebusy`)
+
+      await testDb.db.delete(schema.featureOptIns)
+        .where(eq(schema.featureOptIns.flag, 'google.calendar'))
+
+      const whileOff = (await startByo(['drive-read']))
+        .searchParams.get('scope')!.split(' ')
+
+      expect(whileOff).toContain(DRIVE_READONLY)
+      expect(whileOff.some(scope => scope.includes('calendar'))).toBe(false)
+    })
+
     it('stores only what was asked for when Google returns more',
       async () => {
         await saveClient()

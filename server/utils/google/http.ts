@@ -9,7 +9,8 @@ export const GOOGLE_DOWNLOAD_TIMEOUT_MS = 60_000
  * Every host the server calls for Google. The authorization endpoint on
  * `accounts.google.com` is opened by the browser, never fetched here, so it
  * is not listed. `www.googleapis.com` is the Drive API (metadata, export,
- * media download and search); `gmail.googleapis.com` is the Gmail API.
+ * media download and search) and the Calendar API (`/calendar/v3/`);
+ * `gmail.googleapis.com` is the Gmail API.
  */
 export const GOOGLE_FETCH_HOSTS: ReadonlySet<string> = new Set([
   'oauth2.googleapis.com',

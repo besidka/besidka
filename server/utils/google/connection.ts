@@ -60,7 +60,9 @@ function logConnection(logger: LoggerLike, values: Record<string, unknown>) {
  * scopes the owner asked for) and returns Google's consent URL. Consent is
  * asked again when no refresh token is stored for the mode or when the
  * caller forces it; a reconnect passes the stored Google subject as
- * `login_hint`, never the email.
+ * `login_hint`, never the email. `excludedScopes` are left out of the
+ * request even when the stored grant holds them (the Calendar scopes while
+ * `google.calendar` is off), so the connection then drops them.
  */
 export async function startGoogleConnection(input: {
   db: DbClient
@@ -71,6 +73,7 @@ export async function startGoogleConnection(input: {
   returnTo: string
   logger: LoggerLike
   capabilityScopes?: readonly string[]
+  excludedScopes?: readonly string[]
   forceConsent?: boolean
   now?: number
 }): Promise<{ authorizationUrl: string }> {
@@ -89,11 +92,12 @@ export async function startGoogleConnection(input: {
   const keptScopes = existing?.status === 'active'
     ? existing.grantedScopes
     : []
+  const excludedScopes = input.excludedScopes ?? []
   const requestedScopes = input.clientMode === 'byo'
     ? filterByoCapabilityScopes([
       ...(input.capabilityScopes ?? []),
       ...keptScopes,
-    ])
+    ]).filter(scope => !excludedScopes.includes(scope))
     : undefined
 
   if (requestedScopes?.length === 0) {

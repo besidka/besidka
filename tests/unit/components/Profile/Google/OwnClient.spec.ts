@@ -366,6 +366,21 @@ describe('Profile/Google/OwnClient', () => {
     expect(option.text()).toContain('with no guests and no email')
   })
 
+  it('shows the official Calendar mark on the Calendar row only, with no '
+    + 'color class or opacity', async () => {
+    calendarFeature.value = { active: true }
+    setByo({ hasClient: true })
+
+    const wrapper = await mountOwnClient()
+    const mark = wrapper.get('[data-testid="google-byo-capability-calendar-icon"]')
+
+    expect(mark.classes()).toContain('i-logos:google-calendar')
+    expect(mark.classes().some(name => /^(text|opacity|fill)-/.test(name)))
+      .toBe(false)
+    expect(wrapper.find('[data-testid="google-byo-capability-gmail-read-icon"]')
+      .exists()).toBe(false)
+  })
+
   it('lists the Calendar tools in the hint and a note when Calendar access '
     + 'was not granted', async () => {
     calendarFeature.value = { active: true }

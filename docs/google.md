@@ -2836,8 +2836,13 @@ offer the Calendar box otherwise, drops `calendar` from the capabilities of a
 reconnect, and `POST /api/v1/google/byo/start` answers 403 "Google Calendar
 is not turned on" for a body that names `calendar` while the flag is off
 (`checkGoogleByoAccess` with `requiredFlags: ['google.calendar']`; the
-existing admin gate runs first). A connection without them simply gets no
-Calendar tools, as with a missing Gmail scope.
+existing admin gate runs first). The route also leaves the two Calendar
+scopes out of the request while the flag is off even when the stored grant
+holds them (the start route normally adds the scopes of an active connection,
+section 10.4; `excludedScopes` of `startGoogleConnection` removes them), so
+"Add access" never re-requests Calendar without the flag, and the connection
+then drops them (tested by reading the authorization URL). A connection
+without them simply gets no Calendar tools, as with a missing Gmail scope.
 
 ### 15.3 When the tools are offered
 
@@ -2911,7 +2916,11 @@ tool part's input with `readCalendarEventApprovalView`, which is built from
 the same `validateCalendarEvent` body that the tool sends, so it cannot show
 a title, time or time zone that differs from the request (a spec compares the
 view with the parsed request body for timed, all-day and daylight saving
-cases). It shows the title, "Timed event" or "All-day event", the start and
+cases). The view skips the two checks that need the runtime's time zone data
+(the name is known, the offset is the zone's at that instant; the server ran
+them before the approval was asked), so a browser whose time zone data
+differs from the Worker's never turns a valid card into raw arguments; every
+other check still runs. It shows the title, "Timed event" or "All-day event", the start and
 the end exactly as the strings that are sent (for an all-day event "First
 day" and "End (not included)" and the last day), the time zone, the location,
 the description in the same keyboard-reachable scrolling region as the Gmail
@@ -2964,7 +2973,13 @@ step reads "Read Google Calendar", "Checked free and busy time in Google
 Calendar" or "Created an event in Google Calendar" with Google's official
 Calendar mark (`GOOGLE_CALENDAR_ICON` from
 `shared/utils/google-brand-icons.ts`, unmodified, no color class), and each
-reference is one line with "Open in Google Calendar".
+reference is one line with "Open in Google Calendar". The owner card
+(`OwnClient.vue`) lists Calendar access like Gmail, under the label "Your
+Google Calendar events", only while `google.calendar` is active, with the same
+mark beside the box (no color class, no opacity, square so its aspect ratio
+is kept) and one sentence about what the two permissions allow; the connected
+card lists Calendar in the tools hint and, when the access was not granted, in
+the "some tools are off" note.
 
 ### 15.6 Outbound
 

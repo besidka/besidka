@@ -477,6 +477,48 @@ describe('readCalendarEventApprovalView', () => {
     expect(view?.descriptionLineCount).toBe(9)
   })
 
+  it('does not depend on the runtime\'s time zone data, which the server '
+    + 'already checked', () => {
+    const input = {
+      title: 'Planning',
+      start: '2026-12-01T10:00:00+01:00',
+      end: '2026-12-01T11:00:00+01:00',
+      timeZone: 'Atlantis/Lost_City',
+    }
+
+    expect(validateCalendarEvent(input).ok).toBe(false)
+    expect(readCalendarEventApprovalView(input)).toMatchObject({
+      title: 'Planning',
+      start: '2026-12-01T10:00:00+01:00',
+      timeZone: 'Atlantis/Lost_City',
+    })
+    expect(readCalendarEventApprovalView({
+      ...input,
+      start: '2026-03-29T10:00:00+01:00',
+      end: '2026-03-29T11:00:00+01:00',
+      timeZone: 'Europe/Berlin',
+    })).not.toBeNull()
+  })
+
+  it('still refuses what needs no time zone data', () => {
+    const base = {
+      title: 'Planning',
+      start: '2026-12-01T10:00:00+01:00',
+      end: '2026-12-01T11:00:00+01:00',
+      timeZone: 'Europe/Berlin',
+    }
+
+    for (const input of [
+      { ...base, end: base.start },
+      { ...base, start: '2026-02-30T10:00:00+01:00' },
+      { ...base, timeZone: '+01:00' },
+      { ...base, title: 'a\nb' },
+      { ...base, start: '2026-12-01' },
+    ]) {
+      expect(readCalendarEventApprovalView(input)).toBeNull()
+    }
+  })
+
   it('is null for an input that cannot run', () => {
     expect(readCalendarEventApprovalView({ ...TIMED, end: TIMED.start }))
       .toBeNull()

@@ -221,7 +221,13 @@
           :data-testid="`google-byo-capability-${option.id}`"
         >
         <span>
-          {{ option.label }}
+          <Icon
+            v-if="option.icon"
+            :name="option.icon"
+            size="16"
+            class="mr-1 inline-block shrink-0 align-text-bottom"
+            :data-testid="`google-byo-capability-${option.id}-icon`"
+          />{{ option.label }}
           <span
             v-if="option.note"
             class="block text-xs text-base-content/60"
@@ -342,6 +348,7 @@ import {
   isGoogleOAuthClientSecret,
 } from '#shared/utils/google-byo'
 import type { GoogleByoCapability } from '#shared/utils/google-byo'
+import { GOOGLE_CALENDAR_ICON } from '#shared/utils/google-brand-icons'
 import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
 import { getGoogleByoToolsHint } from '#shared/utils/google-gmail-tools'
 import {
@@ -362,6 +369,7 @@ interface CapabilityOption {
   id: GoogleByoCapability
   label: string
   note?: string
+  icon?: string
 }
 
 const COMPOSE_SEND_NOTE = 'Google\'s gmail.compose permission technically '
@@ -385,6 +393,7 @@ const CAPABILITY_OPTIONS: CapabilityOption[] = [
     id: 'calendar',
     label: 'Your Google Calendar events',
     note: GOOGLE_CALENDAR_ACCESS_NOTE,
+    icon: GOOGLE_CALENDAR_ICON,
   },
 ]
 
