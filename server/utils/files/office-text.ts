@@ -29,6 +29,8 @@ import type { ExtractResult } from '~~/workers/doc-renderer/src/contract'
 import { OFFICE_UPLOAD_ZIP_LIMITS } from '~~/server/utils/files/office-upload-check'
 
 const RENDERER_UNAVAILABLE_CODE = 'renderer_unavailable'
+const UPGRADE_FAILED_PREFIX = 'office-text-upgrade-failed:'
+const UPGRADE_FAILED_TTL_SECONDS = 7 * 24 * 60 * 60
 const SIDECAR_CONTENT_TYPE = 'text/markdown; charset=utf-8'
 const SIDECAR_SLACK_BYTES = 4 * 1024
 export const OFFICE_OMITTED_COUNT_MAX = 99
@@ -76,11 +78,22 @@ export interface StoreOfficeTextInput {
   mediaType: string
   bytes: Uint8Array
   logger: LoggerLike
+  isUpgrade?: boolean
 }
 
 export interface LoadedOfficeText {
   text: string
   textBytes: number
+  textVersion: number
+}
+
+/**
+ * The KV key that remembers a failed workbook map upgrade of a stored
+ * spreadsheet for 7 days, so a send does not read the file again each
+ * time. Deleted with the file by `invalidateFileCache`.
+ */
+export function getOfficeTextUpgradeFailedKey(storageKey: string): string {
+  return `${UPGRADE_FAILED_PREFIX}${storageKey}`
 }
 
 function logOfficeText(
@@ -307,6 +320,10 @@ export async function extractAndStoreOfficeText(
       return null
     }
 
+    if (input.isUpgrade) {
+      return await storeUpgrade(input, format, result, askedForMap)
+    }
+
     let textStatus: OfficeTextStatus = result.status
     let textBytes: number | null = null
 
@@ -357,6 +374,108 @@ export async function extractAndStoreOfficeText(
   }
 }
 
+async function rememberFailedUpgrade(
+  storageKey: string,
+  logger: LoggerLike,
+): Promise<void> {
+  try {
+    await useKV().put(getOfficeTextUpgradeFailedKey(storageKey), '1', {
+      expirationTtl: UPGRADE_FAILED_TTL_SECONDS,
+    })
+  } catch (exception) {
+    logOfficeText(logger, {
+      phase: 'upgrade',
+      status: 'remember-failed',
+      error: exceptionMessage(exception),
+    })
+  }
+}
+
+async function hasFailedUpgrade(
+  storageKey: string,
+  logger: LoggerLike,
+): Promise<boolean> {
+  try {
+    const marker = await useKV().get(getOfficeTextUpgradeFailedKey(storageKey))
+
+    return marker !== null
+  } catch (exception) {
+    logOfficeText(logger, {
+      phase: 'upgrade',
+      status: 'marker-unreadable',
+      error: exceptionMessage(exception),
+    })
+
+    return false
+  }
+}
+
+/**
+ * The upgrade of a ready version 1 spreadsheet to the workbook map. Only a
+ * ready map is stored; any other answer leaves the row and the version 1
+ * text untouched, so the file stays readable. A failure that belongs to
+ * the file (failed, too large, empty, or a map too big to store) is
+ * remembered in KV for 7 days so later sends skip the read; a renderer
+ * that is down or answers without a map is not remembered. A row update
+ * that fails keeps the new sidecar, because the old text is already gone.
+ */
+async function storeUpgrade(
+  input: StoreOfficeTextInput,
+  format: OfficeFormat,
+  result: ExtractResult,
+  askedForMap: boolean,
+): Promise<OfficeTextState | null> {
+  if (!askedForMap) {
+    return null
+  }
+
+  const isFileFailure = result.status !== 'ready'
+  const textBytes = result.status === 'ready' && result.workbookMap
+    ? await writeSidecar(input.storageKey, result.text)
+    : null
+
+  if (textBytes === null) {
+    const remembers = isFileFailure || !!result.workbookMap
+
+    if (remembers) {
+      await rememberFailedUpgrade(input.storageKey, input.logger)
+    }
+
+    logOfficeText(input.logger, {
+      format,
+      phase: 'upgrade',
+      status: result.status,
+      errorCode: result.errorCode,
+      kept: 'version-1',
+      remembered: remembers,
+    })
+
+    return null
+  }
+
+  const omitted = countOmittedOfficeContent(input.bytes)
+  const state: OfficeTextState = {
+    textStatus: 'ready',
+    textBytes,
+    textVersion: WORKBOOK_MAP_TEXT_VERSION,
+    textOmittedMedia: omitted?.media ?? 0,
+    textOmittedCharts: omitted?.charts ?? 0,
+  }
+
+  await saveOfficeTextState(input, state)
+  logOfficeText(input.logger, {
+    format,
+    phase: 'upgrade',
+    status: 'ready',
+    textBytes,
+    textVersion: state.textVersion,
+  })
+
+  return result.workbookMap
+    ? { ...state, workbookSummary: toWorkbookTextSummary(result.workbookMap) }
+    : state
+}
+
 async function discardSidecar(storageKey: string): Promise<void> {
   try {
     await useFileStorage().delete([getOfficeTextStorageKey(storageKey)])
@@ -378,6 +497,7 @@ async function readSidecar(storageKey: string): Promise<string | null> {
 async function extractFromStoredFile(
   file: OfficeTextFile,
   logger: LoggerLike,
+  isUpgrade = false,
 ): Promise<OfficeTextState | null> {
   const object = await useFileStorage().get(file.storageKey)
 
@@ -392,6 +512,7 @@ async function extractFromStoredFile(
     mediaType: file.type,
     bytes: new Uint8Array(await object.arrayBuffer()),
     logger,
+    isUpgrade,
   })
 }
 
@@ -400,7 +521,7 @@ async function upgradeOfficeText(
   logger: LoggerLike,
 ): Promise<OfficeTextState | null> {
   try {
-    return await extractFromStoredFile(file, logger)
+    return await extractFromStoredFile(file, logger, true)
   } catch (exception) {
     logOfficeText(logger, {
       status: 'error',
@@ -496,6 +617,7 @@ export async function ensureOfficeTextState(
     }
 
     const canUpgrade = isOfficeTextUpgradable(file)
+      && !await hasFailedUpgrade(file.storageKey, logger)
       && await rendererOffersWorkbookMap(logger)
 
     if (canUpgrade) {
@@ -543,6 +665,7 @@ export async function loadOfficeText(
     }
 
     let text = await readSidecar(file.storageKey)
+    let { textVersion } = state
 
     if (text === null) {
       const refreshed = await extractFromStoredFile(file, logger)
@@ -551,12 +674,13 @@ export async function loadOfficeText(
         return null
       }
 
+      textVersion = refreshed.textVersion
       text = await readSidecar(file.storageKey)
     }
 
     return text === null
       ? null
-      : { text, textBytes: encoder.encode(text).byteLength }
+      : { text, textBytes: encoder.encode(text).byteLength, textVersion }
   } catch (exception) {
     logOfficeText(logger, {
       status: 'error',

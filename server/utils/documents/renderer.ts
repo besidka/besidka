@@ -267,7 +267,13 @@ export async function rendererOffersWorkbookMap(
 ): Promise<boolean> {
   try {
     return offersWorkbookMap(await getRendererCapabilities(logger))
-  } catch {
+  } catch (exception) {
+    logger?.set({
+      attributes: {
+        documents: { workbookMapOffer: exceptionSummary(exception) },
+      },
+    })
+
     return false
   }
 }

@@ -857,6 +857,111 @@ describe('ensureOfficeTextState and loadOfficeText', () => {
     })
   })
 
+  describe('a version 1 spreadsheet whose upgrade fails', () => {
+    const versionOneFile = {
+      id: 'f1',
+      userId: 1,
+      storageKey: 'k.xlsx',
+      type: XLSX,
+      textStatus: 'ready',
+      textBytes: 10,
+      textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
+    }
+    let kvGet: ReturnType<typeof vi.fn>
+    let kvPut: ReturnType<typeof vi.fn>
+    let put: ReturnType<typeof vi.fn>
+    let get: ReturnType<typeof vi.fn>
+    let updateSet: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      kvGet = vi.fn().mockResolvedValue(null)
+      kvPut = vi.fn().mockResolvedValue(undefined)
+      put = vi.fn().mockResolvedValue({ key: 'k' })
+      updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }))
+      get = vi.fn(async (key: string) => {
+        const text = key.endsWith('.text.md') ? '## Sheet: A\n1,2' : 'x'
+
+        return {
+          arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+        }
+      })
+      vi.stubGlobal('useKV', () => ({ get: kvGet, put: kvPut }))
+      vi.stubGlobal('useFileStorage', () => ({ get, put, delete: vi.fn() }))
+      vi.stubGlobal('useDb', () => ({ update: vi.fn(() => ({ set: updateSet })) }))
+      mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+    })
+
+    const failures = [
+      { status: 'failed', errorCode: 'extract_crashed' },
+      { status: 'failed', errorCode: 'extract_error' },
+      { status: 'too_large', errorCode: 'file_too_large' },
+    ]
+
+    for (const failure of failures) {
+      it(`keeps the stored text after ${failure.errorCode}`, async () => {
+        mocks.extractOfficeText.mockResolvedValue({
+          ...failure,
+          text: '',
+          truncated: false,
+          stats: { inputBytes: 1, entries: 0, textBytes: 0, truncations: [] },
+        })
+
+        const loaded = await loadOfficeText(versionOneFile, logger)
+
+        expect(loaded).toEqual({
+          text: '## Sheet: A\n1,2',
+          textBytes: 15,
+          textVersion: 1,
+        })
+        expect(updateSet).not.toHaveBeenCalled()
+        expect(put).not.toHaveBeenCalled()
+        expect(kvPut).toHaveBeenCalledWith(
+          'office-text-upgrade-failed:k.xlsx',
+          '1',
+          { expirationTtl: 7 * 24 * 60 * 60 },
+        )
+      })
+    }
+
+    it('does not remember an answer without a map', async () => {
+      mocks.extractOfficeText.mockResolvedValue(readyResult('## Sheet: A'))
+
+      await expect(ensureOfficeTextState(versionOneFile, logger))
+        .resolves.toMatchObject({ textStatus: 'ready', textVersion: 1 })
+      expect(updateSet).not.toHaveBeenCalled()
+      expect(kvPut).not.toHaveBeenCalled()
+    })
+
+    it('skips the upgrade while the failure is remembered', async () => {
+      kvGet.mockResolvedValue('1')
+
+      await expect(ensureOfficeTextState(versionOneFile, logger))
+        .resolves.toMatchObject({ textStatus: 'ready', textVersion: 1 })
+      expect(get).not.toHaveBeenCalled()
+      expect(mocks.extractOfficeText).not.toHaveBeenCalled()
+    })
+
+    it('returns the map version once the upgrade succeeds', async () => {
+      mocks.extractOfficeText.mockResolvedValue({
+        ...readyResult('# Workbook map'),
+        workbookMap: MAP_SUMMARY,
+      })
+      get.mockImplementation(async (key: string) => {
+        const text = key.endsWith('.text.md') ? '# Workbook map' : 'x'
+
+        return {
+          arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+        }
+      })
+
+      await expect(loadOfficeText(versionOneFile, logger))
+        .resolves.toMatchObject({ text: '# Workbook map', textVersion: 2 })
+      expect(kvPut).not.toHaveBeenCalled()
+    })
+  })
+
   it('loads the sidecar text with its byte size', async () => {
     vi.stubGlobal('useFileStorage', () => ({
       get: vi.fn(async () => {
@@ -873,6 +978,10 @@ describe('ensureOfficeTextState and loadOfficeText', () => {
       type: DOCX,
       textStatus: 'ready',
       textVersion: 1,
-    }, logger)).resolves.toEqual({ text: 'héllo', textBytes: 6 })
+    }, logger)).resolves.toEqual({
+      text: 'héllo',
+      textBytes: 6,
+      textVersion: 1,
+    })
   })
 })
