@@ -80,20 +80,25 @@ export async function startGoogleConnection(input: {
     kv: input.kv,
     logger: input.logger,
   })
-  const requestedScopes = input.clientMode === 'byo'
-    ? filterByoCapabilityScopes(input.capabilityScopes ?? [])
-    : undefined
-
-  if (requestedScopes?.length === 0) {
-    throw new GoogleConnectionError('GOOGLE_NO_CAPABILITY')
-  }
-
   const redirectUri = buildGoogleRedirectUri(input.origin, input.clientMode)
   const existing = await readGoogleConnectionTokenState(
     input.db,
     input.userId,
     input.clientMode,
   )
+  const keptScopes = existing?.status === 'active'
+    ? existing.grantedScopes
+    : []
+  const requestedScopes = input.clientMode === 'byo'
+    ? filterByoCapabilityScopes([
+      ...(input.capabilityScopes ?? []),
+      ...keptScopes,
+    ])
+    : undefined
+
+  if (requestedScopes?.length === 0) {
+    throw new GoogleConnectionError('GOOGLE_NO_CAPABILITY')
+  }
   const forcedConsent = input.forceConsent === true
   const promptConsent = forcedConsent || !existing?.hasRefreshToken
   const state = createOAuthState()
@@ -131,6 +136,34 @@ export async function startGoogleConnection(input: {
       promptConsent,
     }),
   }
+}
+
+/**
+ * What a callback stores as granted. The request asks Google to include
+ * earlier grants (`include_granted_scopes=true`), so the answer can hold
+ * more than this flow asked for. For the bring-your-own client only the
+ * granted scopes that were requested (the ticked capabilities, which start
+ * already includes the kept ones) plus identity are stored, so the stored
+ * set never claims access the owner did not ask for here. Besidka's client
+ * keeps Google's answer as before.
+ */
+function scopesToStore(
+  clientMode: GoogleClientMode,
+  granted: readonly string[],
+  requested: readonly string[],
+): string[] {
+  if (clientMode !== 'byo') {
+    return [...granted]
+  }
+
+  const allowed = new Set<string>([
+    ...requested,
+    ...getConnectionScopes('byo'),
+  ])
+
+  return granted.filter((scope) => {
+    return allowed.has(scope)
+  })
 }
 
 async function revokeFreshTokens(
@@ -259,7 +292,11 @@ export async function completeGoogleConnection(input: {
     clientMode: oauthState.clientMode,
     subject: identity.subject,
     email: identity.email,
-    scopes: tokens.scopes,
+    scopes: scopesToStore(
+      oauthState.clientMode,
+      tokens.scopes,
+      requiredScopes,
+    ),
     accessToken: tokens.accessToken,
     accessTokenExpiresAt: tokens.expiresAt,
     refreshToken: tokens.refreshToken,

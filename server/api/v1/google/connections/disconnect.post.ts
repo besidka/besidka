@@ -13,22 +13,43 @@ const bodySchema = z.object({
   clientMode: z.enum(GOOGLE_CLIENT_MODES).optional(),
 }).optional()
 
+function unclearBody() {
+  return createError({
+    message: 'Invalid request',
+    status: 400,
+    why: 'The request has a body that is not JSON',
+    fix: 'Send no body, or a JSON body with the client mode',
+  })
+}
+
 /**
- * The client mode to disconnect. A request without a body (the Google
- * Drive card sends none, and a fetch may omit `Content-Length` or send 0)
- * means Besidka's client, so the existing Disconnect never depends on a
- * body.
+ * The client mode to disconnect, never guessed in the destructive
+ * direction. A JSON body is always parsed (and refused with 411 when it
+ * declares no `Content-Length`), so `{ clientMode: 'byo' }` can never end
+ * Besidka's connection by losing a header. Only a request that clearly
+ * has no body (no content type, no transfer encoding, and no or a zero
+ * `Content-Length`; the Google Drive card sends none) means Besidka's
+ * client. Any other body is refused.
  */
 async function readClientMode(event: RequestEvent): Promise<GoogleClientMode> {
-  const length = Number(getRequestHeader(event, 'content-length') ?? '')
+  const contentType = getRequestHeader(event, 'content-type') ?? ''
 
-  if (!Number.isFinite(length) || length <= 0) {
-    return 'besidka'
+  if (contentType.toLowerCase().includes('application/json')) {
+    const body = await readConnectorBody(event, bodySchema)
+
+    return body?.clientMode ?? 'besidka'
   }
 
-  const body = await readConnectorBody(event, bodySchema)
+  const contentLength = getRequestHeader(event, 'content-length')
+  const isBodyless = !contentType
+    && !getRequestHeader(event, 'transfer-encoding')
+    && (!contentLength || contentLength.trim() === '0')
 
-  return body?.clientMode ?? 'besidka'
+  if (!isBodyless) {
+    throw unclearBody()
+  }
+
+  return 'besidka'
 }
 
 /**

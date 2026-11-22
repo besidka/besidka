@@ -73,7 +73,7 @@ function setByo(byo: Partial<GoogleByoConnectionStatus> | null) {
       ? {
         canManage: true,
         redirectUri: REDIRECT_URI,
-        client: null,
+        hasClient: false,
         connection: null,
         ...byo,
       }
@@ -149,17 +149,14 @@ describe('Profile/Google/OwnClient', () => {
   })
 
   it('saves the client, then clears both fields', async () => {
-    fetchMock.mockResolvedValue({
-      saved: true,
-      clientIdHint: 'abcd',
-      connectionEnded: false,
-    })
+    fetchMock.mockResolvedValue({ saved: true, connectionEnded: false })
 
     const wrapper = await mountOwnClient()
     const secret = wrapper.get('[data-testid="google-byo-client-secret"]')
 
     expect((secret.element as HTMLInputElement).type).toBe('password')
     expect((secret.element as HTMLInputElement).value).toBe('')
+    expect(secret.attributes('autocomplete')).toBe('new-password')
 
     await wrapper.get('[data-testid="google-byo-client-id"]')
       .setValue(CLIENT_ID)
@@ -219,27 +216,31 @@ describe('Profile/Google/OwnClient', () => {
     expect(alert.text()).not.toContain(CLIENT_SECRET)
   })
 
-  it('shows the saved client by its hint and never the secret', async () => {
-    setByo({ client: { clientIdHint: 'abcd' } })
+  it('says a client is saved and never shows it', async () => {
+    setByo({ hasClient: true })
 
     const wrapper = await mountOwnClient()
 
     expect(wrapper.get('[data-testid="google-byo-client-saved"]').text())
-      .toContain('abcd')
+      .toContain('A client is saved')
     expect(wrapper.html()).not.toContain(CLIENT_SECRET)
+    expect(wrapper.html()).not.toContain(CLIENT_ID)
   })
 
   it('connects with only the ticked capabilities', async () => {
-    setByo({ client: { clientIdHint: 'abcd' } })
+    setByo({ hasClient: true })
     fetchMock.mockResolvedValue({
       authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?x=1',
     })
 
     const wrapper = await mountOwnClient()
     const connect = wrapper.get('[data-testid="google-byo-connect"]')
+    const ids = ['drive-read', 'gmail-read', 'gmail-compose', 'calendar']
 
-    for (const id of ['drive-read', 'gmail-read', 'gmail-compose', 'calendar']) {
-      const checkbox = wrapper.get(`[data-testid="google-byo-capability-${id}"]`)
+    for (const id of ids) {
+      const checkbox = wrapper.get(
+        `[data-testid="google-byo-capability-${id}"]`,
+      )
 
       expect((checkbox.element as HTMLInputElement).checked).toBe(false)
     }
@@ -264,17 +265,21 @@ describe('Profile/Google/OwnClient', () => {
     )
   })
 
-  it('says the tools for the capabilities arrive later', async () => {
-    setByo({ client: { clientIdHint: 'abcd' } })
+  it('says the tools arrive later and what gmail.compose allows', async () => {
+    setByo({ hasClient: true })
 
     const wrapper = await mountOwnClient()
+    const text = wrapper
+      .get('[data-testid="google-byo-capabilities-form"]')
+      .text()
 
-    expect(wrapper.get('[data-testid="google-byo-capabilities-form"]').text())
-      .toContain('requested now for tools that arrive later')
+    expect(text).toContain('requested now for tools that arrive later')
+    expect(text).toContain('managing drafts and sending mail')
+    expect(text).toContain('Besidka has no send tool')
   })
 
   it('shows the connected account and what Google granted', async () => {
-    setByo({ client: { clientIdHint: 'abcd' }, connection: connection() })
+    setByo({ hasClient: true, connection: connection() })
 
     const wrapper = await mountOwnClient()
 
@@ -284,12 +289,41 @@ describe('Profile/Google/OwnClient', () => {
       .toBe('owner@example.test')
     expect(wrapper.get('[data-testid="google-byo-granted"]').text())
       .toContain('All your Google Drive files, read only')
-    expect(wrapper.find('[data-testid="google-byo-capabilities-form"]')
-      .exists()).toBe(false)
   })
 
+  it('lets a connected owner add a capability without disconnecting',
+    async () => {
+      setByo({ hasClient: true, connection: connection() })
+      fetchMock.mockResolvedValue({
+        authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?y=2',
+      })
+
+      const wrapper = await mountOwnClient()
+
+      expect(wrapper.find('[data-testid="google-byo-capability-drive-read"]')
+        .exists()).toBe(false)
+
+      await wrapper.get('[data-testid="google-byo-capability-calendar"]')
+        .setValue(true)
+
+      const addAccess = wrapper.get('[data-testid="google-byo-connect"]')
+
+      expect(addAccess.text()).toBe('Add access')
+
+      await addAccess.trigger('click')
+      await flushPromises()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/google/byo/start', {
+        method: 'POST',
+        body: {
+          capabilities: ['drive-read', 'calendar'],
+          returnTo: '/profile/keys?tab=google',
+        },
+      })
+    })
+
   it('disconnects the own client behind a confirmation', async () => {
-    setByo({ client: { clientIdHint: 'abcd' }, connection: connection() })
+    setByo({ hasClient: true, connection: connection() })
     confirmMock.mockResolvedValue({ label: 'Disconnect', index: 0 })
     fetchMock.mockResolvedValue({
       disconnected: true,
@@ -313,7 +347,7 @@ describe('Profile/Google/OwnClient', () => {
   })
 
   it('does nothing when the disconnect is canceled', async () => {
-    setByo({ client: { clientIdHint: 'abcd' }, connection: connection() })
+    setByo({ hasClient: true, connection: connection() })
     confirmMock.mockResolvedValue(null)
 
     const wrapper = await mountOwnClient()
@@ -325,7 +359,7 @@ describe('Profile/Google/OwnClient', () => {
   })
 
   it('deletes the client behind a confirmation', async () => {
-    setByo({ client: { clientIdHint: 'abcd' } })
+    setByo({ hasClient: true })
     confirmMock.mockResolvedValue({ label: 'Delete', index: 0 })
     fetchMock.mockResolvedValue({
       deleted: true,
@@ -365,7 +399,36 @@ describe('Profile/Google/OwnClient', () => {
         .toBe(false)
       expect(wrapper.find('[data-testid="google-byo-disconnect"]').exists())
         .toBe(true)
+      expect(wrapper.find('[data-testid="google-byo-delete"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="google-byo-connect"]').exists())
+        .toBe(false)
     })
+
+  it('lets a former owner delete the client they left behind', async () => {
+    setByo({ canManage: false, redirectUri: null, hasClient: true })
+    confirmMock.mockResolvedValue({ label: 'Delete', index: 0 })
+    fetchMock.mockResolvedValue({
+      deleted: true,
+      connectionEnded: false,
+      revoked: false,
+    })
+
+    const wrapper = await mountOwnClient()
+
+    expect(wrapper.find('[data-testid="google-byo-client-form"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="google-byo-capabilities-form"]')
+      .exists()).toBe(false)
+
+    await wrapper.get('[data-testid="google-byo-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/profiles/keys/google-oauth-client',
+      { method: 'DELETE' },
+    )
+  })
 
   it('turns its own callback result into a toast and cleans the URL',
     async () => {

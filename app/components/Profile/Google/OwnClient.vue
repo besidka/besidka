@@ -76,13 +76,12 @@
         </div>
       </div>
       <p
-        v-if="byo.client"
+        v-if="byo.hasClient"
         class="text-sm"
         data-testid="google-byo-client-saved"
       >
-        A client is saved: its client id ends in
-        <span class="font-mono">{{ byo.client.clientIdHint }}</span>.
-        The secret is never shown again. Enter both values to replace it.
+        A client is saved. Its id and secret are never shown again; enter
+        both values to replace them.
       </p>
       <form
         class="grid gap-3"
@@ -113,9 +112,9 @@
             <input
               v-model="clientSecret"
               type="password"
-              autocomplete="off"
+              autocomplete="new-password"
               spellcheck="false"
-              :placeholder="byo.client
+              :placeholder="byo.hasClient
                 ? 'Enter a new secret to replace the saved one'
                 : 'The client secret from the same client'"
               :disabled="isBusy"
@@ -150,7 +149,7 @@
             Save client
           </button>
           <button
-            v-if="byo.client"
+            v-if="byo.hasClient"
             type="button"
             class="btn btn-ghost btn-sm"
             :disabled="isBusy"
@@ -162,30 +161,47 @@
         </div>
       </form>
     </template>
-    <p
-      v-else
-      class="text-sm text-base-content/70"
-      data-testid="google-byo-not-owner"
-    >
-      Only the instance owner can connect with this client. You can still
-      disconnect it.
-    </p>
+    <template v-else>
+      <p
+        class="text-sm text-base-content/70"
+        data-testid="google-byo-not-owner"
+      >
+        Only the instance owner can use this client. You can still remove
+        what is left of it.
+      </p>
+      <div
+        v-if="byo.hasClient"
+        class="flex flex-wrap gap-2"
+      >
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :disabled="isBusy"
+          data-testid="google-byo-delete"
+          @click="deleteClient"
+        >
+          Delete client
+        </button>
+      </div>
+    </template>
     <fieldset
-      v-if="byo.canManage && byo.client && connectionState !== 'connected'"
+      v-if="byo.canManage && byo.hasClient && offeredOptions.length > 0"
       class="grid gap-2"
       data-testid="google-byo-capabilities-form"
     >
       <legend class="text-sm font-semibold">
-        What Besidka may request
+        {{ connectionState === 'connected'
+          ? 'Add access'
+          : 'What Besidka may request' }}
       </legend>
       <p class="text-sm text-base-content/70">
         Nothing is ticked for you. Besidka has no tools for full Google
         Drive, Gmail or Google Calendar yet: what you tick is requested now
-        for tools that arrive later. To change it later, disconnect and
-        connect again.
+        for tools that arrive later. You can add more later; to remove
+        access, disconnect and connect again.
       </p>
       <label
-        v-for="option in CAPABILITY_OPTIONS"
+        v-for="option in offeredOptions"
         :key="option.id"
         class="flex items-start gap-2 text-sm"
       >
@@ -213,7 +229,7 @@
           data-testid="google-byo-connect"
           @click="connect"
         >
-          {{ connectionState === 'needs_reauth' ? 'Reconnect' : 'Connect' }}
+          {{ connectButtonLabel }}
         </button>
       </div>
     </fieldset>
@@ -309,7 +325,8 @@ const CAPABILITY_OPTIONS: CapabilityOption[] = [
   {
     id: 'gmail-compose',
     label: 'Gmail drafts',
-    note: 'Lets Besidka create drafts. Besidka never sends mail.',
+    note: 'Google\'s permission for this covers managing drafts and sending '
+      + 'mail. Besidka has no send tool: it only creates drafts.',
   },
   {
     id: 'calendar',
@@ -319,12 +336,11 @@ const CAPABILITY_OPTIONS: CapabilityOption[] = [
   },
 ]
 
-const GRANTED_LABELS: Partial<Record<GoogleCapability, string>> = {
-  'drive-read': 'All your Google Drive files, read only',
-  'gmail-read': 'Your Gmail, read only',
-  'gmail-compose': 'Gmail drafts',
-  'calendar': 'Your Google Calendar events',
-}
+const GRANTED_LABELS: ReadonlyMap<GoogleCapability, string> = new Map(
+  CAPABILITY_OPTIONS.map((option) => {
+    return [option.id, option.label]
+  }),
+)
 
 const RESULT_MESSAGES: Record<
   GoogleConnectResult,
@@ -388,10 +404,36 @@ const connectionState = computed<ConnectionState>(() => {
 
 const grantedLabels = computed<string[]>(() => {
   return (connection.value?.capabilities ?? []).flatMap((capability) => {
-    const label = GRANTED_LABELS[capability]
+    const label = GRANTED_LABELS.get(capability)
 
     return label ? [label] : []
   })
+})
+
+const grantedCapabilities = computed<GoogleByoCapability[]>(() => {
+  if (connectionState.value !== 'connected') {
+    return []
+  }
+
+  return CAPABILITY_OPTIONS
+    .map(option => option.id)
+    .filter((id) => {
+      return connection.value?.capabilities.includes(id) === true
+    })
+})
+
+const offeredOptions = computed<CapabilityOption[]>(() => {
+  return CAPABILITY_OPTIONS.filter((option) => {
+    return !grantedCapabilities.value.includes(option.id)
+  })
+})
+
+const connectButtonLabel = computed<string>(() => {
+  if (connectionState.value === 'connected') {
+    return 'Add access'
+  }
+
+  return connectionState.value === 'needs_reauth' ? 'Reconnect' : 'Connect'
 })
 
 const canSaveClient = computed<boolean>(() => {
@@ -456,8 +498,11 @@ async function copyRedirectUri() {
     await navigator.clipboard.writeText(byo.value.redirectUri)
     announcement.value = 'Redirect URI copied.'
     useSuccessMessage('Redirect URI copied')
-  } catch {
-    useErrorMessage('The redirect URI could not be copied')
+  } catch (exception) {
+    useErrorMessage(
+      'The redirect URI could not be copied',
+      exception instanceof Error ? exception.message : undefined,
+    )
   }
 }
 
@@ -548,7 +593,12 @@ async function connect() {
     const { authorizationUrl } = await $fetch('/api/v1/google/byo/start', {
       method: 'POST',
       body: {
-        capabilities: [...selectedCapabilities.value],
+        capabilities: [
+          ...new Set([
+            ...grantedCapabilities.value,
+            ...selectedCapabilities.value,
+          ]),
+        ],
         returnTo: GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
       },
     })

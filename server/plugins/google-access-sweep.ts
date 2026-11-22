@@ -4,6 +4,7 @@ import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepGoogleAccessEnded } from '~~/server/utils/google/access-ended'
+import { endUngatedGoogleByoConnections } from '~~/server/utils/google/byo-sweep'
 import type { GoogleFetchOptions } from '~~/server/utils/google/http'
 import { validateStaleGoogleConnections } from '~~/server/utils/google/tokens'
 
@@ -41,7 +42,9 @@ export default defineNitroPlugin((nitroApp) => {
 
 /**
  * The hourly backup for Google access that ended without a finished
- * cleanup (docs/google.md, section 9.6): first refreshes up to ten active
+ * cleanup (docs/google.md, section 9.6): first ends the bring-your-own
+ * connections of users who no longer pass the admin and `google.byo` gate
+ * (section 10.6), then refreshes up to ten active
  * connections idle for more than a day, so a revoke made at Google is
  * detected and ends access through the normal `invalid_grant` path, then
  * clears tokens left on rows that are not active, deletes the Google copies
@@ -64,6 +67,13 @@ export async function runGoogleAccessSweepJob(
     const db = input.db || useDb()
     const kv = input.kv || useKV()
     const now = () => Date.now()
+    const byoGate = await endUngatedGoogleByoConnections({
+      db,
+      kv,
+      logger,
+      storage: input.storage,
+      fetchOptions: input.fetchOptions,
+    })
     const validation = await validateStaleGoogleConnections({
       db,
       kv,
@@ -88,6 +98,9 @@ export async function runGoogleAccessSweepJob(
           staleChecked: validation.checked,
           staleEnded: validation.ended,
           staleFailed: validation.failed,
+          byoGateChecked: byoGate.checked,
+          byoGateEnded: byoGate.ended,
+          byoGateFailed: byoGate.failed,
         },
       },
     })

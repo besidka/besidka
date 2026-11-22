@@ -235,6 +235,28 @@ async function endAccessAfterInvalidGrant(
   return { status: 'needs_reauth' }
 }
 
+/**
+ * The granted scopes after a refresh. An empty answer keeps the stored
+ * set. For the bring-your-own client a refresh can only narrow the stored
+ * set, never widen it: Google's answer may list earlier grants of the
+ * client that this connection never asked for.
+ */
+function refreshedScopes(row: TokenRow, scopes: string[]): string[] {
+  if (scopes.length === 0) {
+    return row.grantedScopes
+  }
+
+  if (row.clientMode !== 'byo') {
+    return scopes
+  }
+
+  const stored = new Set(row.grantedScopes)
+
+  return scopes.filter((scope) => {
+    return stored.has(scope)
+  })
+}
+
 async function storeRefreshedTokens(
   row: TokenRow,
   tokens: GoogleTokenSet,
@@ -249,9 +271,7 @@ async function storeRefreshedTokens(
       accessToken: await useEncryptText(tokens.accessToken),
       accessTokenExpiresAt: tokens.expiresAt,
       refreshToken,
-      grantedScopes: tokens.scopes.length > 0
-        ? tokens.scopes
-        : row.grantedScopes,
+      grantedScopes: refreshedScopes(row, tokens.scopes),
       updatedAt: new Date((dependencies.now ?? Date.now)()),
     })
     .where(and(
@@ -678,8 +698,11 @@ async function revokeTokenRow(
 /**
  * Revokes the stored grant of one connection at Google (the refresh token,
  * which ends the whole grant, or the access token when no refresh token is
- * left). Best effort and never throws; the caller clears the row either
- * way.
+ * left). The revoke itself is best effort: a failure at Google is reported
+ * as `revoked: false` and the caller clears the row either way. A failure
+ * to read the row is thrown, never read as "no connection", so a caller
+ * that deletes something after a disconnect (the stored own client) stops
+ * instead of leaving live tokens behind.
  */
 export async function revokeStoredGoogleConnection(
   db: DbClient,
@@ -687,25 +710,31 @@ export async function revokeStoredGoogleConnection(
   clientMode: GoogleClientMode,
   options: { fetchOptions?: GoogleFetchOptions, logger?: LoggerLike } = {},
 ): Promise<GoogleRevocationResult & { connectionId: string | null }> {
-  try {
-    const row = await readTokenRow(db, userId, clientMode)
+  const row = await readTokenRow(db, userId, clientMode)
 
-    if (!row) {
-      return { connectionId: null, attempted: false, revoked: false }
-    }
-
-    const result = await revokeTokenRow(row, options.fetchOptions)
-
-    logToken(options.logger, {
-      connectionId: row.id,
-      revokeAttempted: result.attempted,
-      revoked: result.revoked,
-    })
-
-    return { connectionId: row.id, ...result }
-  } catch {
+  if (!row) {
     return { connectionId: null, attempted: false, revoked: false }
   }
+
+  let result: GoogleRevocationResult
+
+  try {
+    result = await revokeTokenRow(row, options.fetchOptions)
+  } catch (exception) {
+    logToken(options.logger, {
+      connectionId: row.id,
+      revokeError: exception instanceof Error ? exception.name : 'unknown',
+    })
+    result = { attempted: true, revoked: false }
+  }
+
+  logToken(options.logger, {
+    connectionId: row.id,
+    revokeAttempted: result.attempted,
+    revoked: result.revoked,
+  })
+
+  return { connectionId: row.id, ...result }
 }
 
 /**

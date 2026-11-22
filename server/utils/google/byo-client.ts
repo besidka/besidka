@@ -1,12 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import {
   GOOGLE_BYO_KEY_PROVIDER,
-  googleClientIdHint,
   isGoogleOAuthClientId,
   isGoogleOAuthClientSecret,
 } from '#shared/utils/google-byo'
-import type { GoogleByoClientSummary } from '#shared/utils/google-byo'
 import * as schema from '~~/server/db/schema'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -22,12 +22,27 @@ function isOwnKeyRow(userId: number) {
   )
 }
 
-function parseStoredClient(plain: string): GoogleByoClientCredentials | null {
+function logUnreadable(logger: LoggerLike | undefined, exception: unknown) {
+  logger?.set({
+    attributes: {
+      google: {
+        byoClientUnreadable: exceptionMessage(exception).slice(0, 80),
+      },
+    },
+  })
+}
+
+function parseStoredClient(
+  plain: string,
+  logger?: LoggerLike,
+): GoogleByoClientCredentials | null {
   let value: unknown
 
   try {
     value = JSON.parse(plain)
-  } catch {
+  } catch (exception) {
+    logUnreadable(logger, exception)
+
     return null
   }
 
@@ -62,6 +77,7 @@ function parseStoredClient(plain: string): GoogleByoClientCredentials | null {
 export async function readGoogleByoClient(
   db: DbClient,
   userId: number,
+  logger?: LoggerLike,
 ): Promise<GoogleByoClientCredentials | null> {
   const [row] = await db
     .select({ apiKey: schema.keys.apiKey })
@@ -73,30 +89,24 @@ export async function readGoogleByoClient(
     return null
   }
 
+  let plain: string
+
   try {
-    return parseStoredClient(await useDecryptText(row.apiKey))
-  } catch {
+    plain = await useDecryptText(row.apiKey)
+  } catch (exception) {
+    logUnreadable(logger, exception)
+
     return null
   }
+
+  return parseStoredClient(plain, logger)
 }
 
 /**
- * What the API Keys page may know about the stored client: that one is
- * saved, and the last four characters of its client id. Never the secret.
+ * Whether a client is stored, without decrypting anything: the status
+ * route answers only "saved" or "not saved", so a status read never
+ * touches the secret.
  */
-export async function readGoogleByoClientSummary(
-  db: DbClient,
-  userId: number,
-): Promise<GoogleByoClientSummary | null> {
-  const client = await readGoogleByoClient(db, userId)
-
-  if (!client) {
-    return null
-  }
-
-  return { clientIdHint: googleClientIdHint(client.clientId) }
-}
-
 export async function hasStoredGoogleByoClient(
   db: DbClient,
   userId: number,
@@ -132,34 +142,34 @@ export async function isGoogleByoClientReplacement(
 }
 
 /**
- * Creates or replaces the stored client as one encrypted JSON value.
+ * Creates or replaces the stored client as one encrypted JSON value, in a
+ * single upsert on the unique `(user_id, provider)` index, so two saves at
+ * the same moment cannot collide.
  */
 export async function saveGoogleByoClient(
   db: DbClient,
   userId: number,
   credentials: GoogleByoClientCredentials,
-): Promise<{ created: boolean }> {
+): Promise<void> {
   const apiKey = await useEncryptText(JSON.stringify({
     clientId: credentials.clientId,
     clientSecret: credentials.clientSecret,
   }))
-  const updated = await db
-    .update(schema.keys)
-    .set({ apiKey, updatedAt: new Date() })
-    .where(isOwnKeyRow(userId))
-    .returning({ id: schema.keys.id })
+  const now = new Date()
 
-  if (updated.length > 0) {
-    return { created: false }
-  }
-
-  await db.insert(schema.keys).values({
-    userId,
-    provider: GOOGLE_BYO_KEY_PROVIDER,
-    apiKey,
-  })
-
-  return { created: true }
+  await db
+    .insert(schema.keys)
+    .values({
+      userId,
+      provider: GOOGLE_BYO_KEY_PROVIDER,
+      apiKey,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [schema.keys.userId, schema.keys.provider],
+      set: { apiKey, updatedAt: now },
+    })
 }
 
 export async function deleteGoogleByoClient(

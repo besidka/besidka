@@ -4,7 +4,6 @@ import { z } from 'zod'
 import {
   GOOGLE_OAUTH_CLIENT_ID_MAX_LENGTH,
   GOOGLE_OAUTH_CLIENT_SECRET_MAX_LENGTH,
-  googleClientIdHint,
   isGoogleOAuthClientId,
   isGoogleOAuthClientSecret,
 } from '#shared/utils/google-byo'
@@ -14,6 +13,7 @@ import {
   isGoogleByoClientReplacement,
   saveGoogleByoClient,
 } from '~~/server/utils/google/byo-client'
+import { isBesidkaGoogleClientId } from '~~/server/utils/google/client'
 import { disconnectGoogleConnection } from '~~/server/utils/google/connection'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -41,15 +41,26 @@ function invalidClientSecret() {
   })
 }
 
+function besidkaClientRefused() {
+  return createError({
+    message: 'This is Besidka\'s own Google client',
+    status: 400,
+    why: 'Your own client must come from a Google Cloud project of yours, '
+      + 'not from the client Besidka uses for sign-in or Google Drive',
+    fix: 'Create a Web client in your own Google Cloud project and paste its '
+      + 'client id and secret',
+  })
+}
+
 /**
  * Saves or replaces the owner's own Google OAuth client (admin and
  * `google.byo` only) as one encrypted `keys` row of the
- * `google-oauth-client` kind. The secret is write-only: the answer holds
- * only the last four characters of the client id. Saving a different
- * client id first ends the connection made with the old client (revoke,
- * tokens cleared), because its refresh token belongs to that client; a
- * new secret for the same client keeps the connection. Neither value is
- * logged or echoed in an error.
+ * `google-oauth-client` kind. Besidka's own sign-in or Drive client is
+ * refused. The secret is write-only: the answer only says it was saved.
+ * Saving a different client id first ends the connection made with the old
+ * client (revoke, tokens cleared), because its refresh token belongs to
+ * that client; a new secret for the same client keeps the connection.
+ * Neither value is logged or echoed in an error.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireGoogleByoAccess(event, {
@@ -64,6 +75,10 @@ export default defineEventHandler(async (event) => {
 
   if (!isGoogleOAuthClientSecret(body.clientSecret)) {
     throw invalidClientSecret()
+  }
+
+  if (isBesidkaGoogleClientId(body.clientId)) {
+    throw besidkaClientRefused()
   }
 
   const db = useDb()
@@ -86,7 +101,7 @@ export default defineEventHandler(async (event) => {
     connectionEnded = disconnection.disconnected
   }
 
-  const { created } = await saveGoogleByoClient(db, userId, {
+  await saveGoogleByoClient(db, userId, {
     clientId: body.clientId,
     clientSecret: body.clientSecret,
   })
@@ -94,7 +109,7 @@ export default defineEventHandler(async (event) => {
   logger.set({
     attributes: {
       google: {
-        byoClient: created ? 'created' : 'updated',
+        byoClient: 'saved',
         clientReplaced: isReplacement,
         connectionEnded,
       },
@@ -103,9 +118,5 @@ export default defineEventHandler(async (event) => {
 
   event.res.headers.set('cache-control', 'no-store')
 
-  return {
-    saved: true,
-    clientIdHint: googleClientIdHint(body.clientId),
-    connectionEnded,
-  }
+  return { saved: true, connectionEnded }
 })

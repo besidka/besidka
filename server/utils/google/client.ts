@@ -167,6 +167,22 @@ export function isDedicatedGoogleClientConfigured(): boolean {
   return !!dedicated.clientId && !!dedicated.clientSecret
 }
 
+/**
+ * Whether `clientId` is one of Besidka's own OAuth clients (the sign-in
+ * client or the dedicated Drive client). Such a client must never be saved
+ * as the owner's own client: its grants and revokes would mix with every
+ * user's sign-in and Drive connection.
+ */
+export function isBesidkaGoogleClientId(clientId: string): boolean {
+  const config = useRuntimeConfig()
+  const besidkaClientIds = [
+    String(config.googleClientId ?? ''),
+    String(config.googleDriveClientId ?? ''),
+  ].filter(Boolean)
+
+  return besidkaClientIds.includes(clientId)
+}
+
 async function resolveByoClient(
   context: GoogleClientContext | undefined,
 ): Promise<GoogleOAuthClient> {
@@ -176,9 +192,13 @@ async function resolveByoClient(
 
   await assertGoogleByoAllowed(context)
 
-  const stored = await readGoogleByoClient(context.db, context.userId)
+  const stored = await readGoogleByoClient(
+    context.db,
+    context.userId,
+    context.logger,
+  )
 
-  if (!stored) {
+  if (!stored || isBesidkaGoogleClientId(stored.clientId)) {
     throw byoClientMissing()
   }
 

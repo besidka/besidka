@@ -3,7 +3,6 @@ import {
   GOOGLE_BYO_CALLBACK_PATH,
   GOOGLE_BYO_CAPABILITIES,
   getGoogleByoScopes,
-  googleClientIdHint,
   isGoogleByoCapability,
   isGoogleOAuthClientId,
   isGoogleOAuthClientSecret,
@@ -57,11 +56,6 @@ describe('google-byo contracts', () => {
     ['x'.repeat(129), false],
   ])('checks the client secret %#', (value, expected) => {
     expect(isGoogleOAuthClientSecret(value)).toBe(expected)
-  })
-
-  it('hints at the last four characters before the Google suffix', () => {
-    expect(googleClientIdHint('owner-test-abcd9xyz.apps.googleusercontent.com'))
-      .toBe('9xyz')
   })
 
   it('keeps the own callback apart from Besidka\'s', () => {

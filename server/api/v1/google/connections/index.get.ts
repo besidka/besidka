@@ -5,7 +5,7 @@ import type {
   GoogleConnectionStatusResponse,
 } from '#shared/utils/google-connections'
 import { isGoogleByoAllowed } from '~~/server/utils/google/byo-access'
-import { readGoogleByoClientSummary } from '~~/server/utils/google/byo-client'
+import { hasStoredGoogleByoClient } from '~~/server/utils/google/byo-client'
 import {
   buildGoogleRedirectUri,
   isDedicatedGoogleClientConfigured,
@@ -35,24 +35,33 @@ async function canManageByo(
   db: DbClient,
   userId: number,
 ): Promise<boolean> {
+  const logger = useRequestLogger(event)
+
   try {
-    return await isGoogleByoAllowed({
-      db,
-      userId,
-      logger: useRequestLogger(event),
+    return await isGoogleByoAllowed({ db, userId, logger })
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        google: {
+          byoGate: 'unavailable',
+          byoGateError: exception instanceof Error
+            ? exception.name
+            : 'unknown',
+        },
+      },
     })
-  } catch {
+
     return false
   }
 }
 
 /**
  * The bring-your-own part of the status: `null` unless the user passes the
- * admin and `google.byo` gate or still has a bring-your-own connection.
- * Only a user who passes the gate gets the redirect URI to register and
- * the stored client's hint (the last four characters of its client id,
- * never the secret); a connected user who no longer passes it still sees
- * the connection, so it can always be ended.
+ * admin and `google.byo` gate or still holds a stored client or a
+ * bring-your-own connection. Only a user who passes the gate gets the
+ * redirect URI to register. Everyone else gets exactly enough to remove
+ * what is left (`canManage: false`, whether a client is saved, the
+ * connection). Whether a client is saved is read without decrypting it.
  */
 async function readByoStatus(
   event: RequestEvent,
@@ -63,10 +72,11 @@ async function readByoStatus(
   const connection = toVisibleSummary(
     await readGoogleConnection(db, userId, 'byo'),
   )
+  const hasClient = await hasStoredGoogleByoClient(db, userId)
 
   if (!canManage) {
-    return connection
-      ? { canManage: false, redirectUri: null, client: null, connection }
+    return connection || hasClient
+      ? { canManage: false, redirectUri: null, hasClient, connection }
       : null
   }
 
@@ -76,7 +86,7 @@ async function readByoStatus(
       resolveRequestPublicOrigin(event),
       'byo',
     ),
-    client: await readGoogleByoClientSummary(db, userId),
+    hasClient,
     connection,
   }
 }

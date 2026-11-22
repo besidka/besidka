@@ -93,7 +93,12 @@ mockNuxtImport('useGoogleConnection', () => {
       canConnect: mocks.googleDriveActive,
       dedicatedClient: false,
       byo: mocks.googleByo
-        ? { canManage: false, redirectUri: null, client: null, connection: {} }
+        ? {
+          canManage: false,
+          redirectUri: null,
+          hasClient: false,
+          connection: {},
+        }
         : null,
     })),
   })

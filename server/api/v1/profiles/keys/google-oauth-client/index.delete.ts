@@ -1,21 +1,26 @@
 import { createError } from 'evlog'
 import { defineEventHandler } from 'nuxt/server'
-import { requireGoogleByoAccess } from '~~/server/utils/google/byo-access'
 import { deleteGoogleByoClient } from '~~/server/utils/google/byo-client'
 import { disconnectGoogleConnection } from '~~/server/utils/google/connection'
+import { requireGoogleAccess } from '~~/server/utils/google/route'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
- * Deletes the owner's own Google OAuth client (admin and `google.byo`
- * only). A connection made with it ends first, exactly like Disconnect:
- * the grant is revoked at Google (best effort; revoking needs no client
- * secret), the tokens are cleared and the access-ended cleanup runs. Then
- * the stored client id and secret are deleted.
+ * Deletes the stored own Google OAuth client. Removal only, so it needs the
+ * session and the same-origin guard but neither the admin role nor
+ * `google.byo`, like Disconnect: a former admin can always remove the
+ * secret they left behind. A connection made with the client ends first,
+ * exactly like Disconnect: the grant is revoked at Google (best effort;
+ * revoking needs no client secret), the tokens are cleared and the
+ * access-ended cleanup runs. If the connection cannot even be read, the
+ * request fails and nothing is deleted, so no live token is ever left
+ * without its client.
  */
 export default defineEventHandler(async (event) => {
-  const userId = await requireGoogleByoAccess(event, {
+  const userId = await requireGoogleAccess(event, {
     write: true,
     rateLimit: 'write',
+    feature: false,
   })
   const db = useDb()
   const logger = useRequestLogger(event)

@@ -1655,6 +1655,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/plugins/evlog-request-observability.spec.ts',
     'tests/unit/server/routes/waf-blocked-paths.spec.ts',
     'tests/unit/composables/user-keys.spec.ts',
+    'tests/integration/server/google-access-sweep-plugin.spec.ts',
+    'tests/integration/api/profiles-features.spec.ts',
   ]
 
   const connectorsStorageTests = [
@@ -3839,7 +3841,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-byo|google-connections|google-scopes|features\/registry)\.ts|server\/utils\/google\/(byo-access|byo-client|callback|client|connection|oauth-state|route|tokens|access-ended)\.ts|server\/api\/v1\/google\/.*\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google-oauth-client\/.*)\.ts|server\/db\/schemas\/keys\.ts|server\/utils\/features\/(evaluate|guards)\.ts|server\/plugins\/evlog-request-observability\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|tests\/setup\/helpers\/google-connections\.ts)$/,
+        /^(shared\/utils\/(google-byo|google-connections|google-scopes|features\/registry)\.ts|server\/utils\/google\/(byo-access|byo-client|byo-sweep|callback|client|connection|oauth-state|route|tokens|access-ended)\.ts|server\/api\/v1\/google\/.*\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google-oauth-client\/.*)\.ts|server\/api\/v1\/profiles\/features\/index\.get\.ts|server\/db\/schemas\/keys\.ts|server\/utils\/features\/(evaluate|guards)\.ts|server\/plugins\/(evlog-request-observability|google-access-sweep)\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|tests\/setup\/helpers\/google-connections\.ts)$/,
       tests: googleByoClientTests,
     },
     {

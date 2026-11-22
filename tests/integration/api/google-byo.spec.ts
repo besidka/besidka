@@ -98,7 +98,7 @@ const ROUTES = {
   keys: '~~/server/api/v1/profiles/keys/index.get',
 } as const
 
-const BYO_ROUTES = ['save', 'remove', 'start', 'callback'] as const
+const GATED_ROUTES = ['save', 'start'] as const
 
 async function failureOf(promise: Promise<unknown>) {
   try {
@@ -161,11 +161,15 @@ describe('Google bring-your-own client routes', () => {
     partial: Partial<SkillsRouteEvent> = {},
   ) {
     const module = await import(ROUTES[route])
+    const bodyHeaders: Record<string, string> = partial.body === undefined
+      ? { 'content-length': '0' }
+      : { 'content-type': 'application/json' }
     const event = createSkillsRouteEvent({
       ...partial,
       headers: {
         'origin': ORIGIN,
         'sec-fetch-site': 'same-origin',
+        ...bodyHeaders,
         ...partial.headers,
       },
     })
@@ -262,6 +266,26 @@ describe('Google bring-your-own client routes', () => {
     return rows.length
   }
 
+  async function seedStoredClient() {
+    await testDb.db.insert(schema.keys).values({
+      userId,
+      provider: 'google-oauth-client',
+      apiKey: fakeEncrypt(JSON.stringify({
+        clientId: BYO_CLIENT_ID,
+        clientSecret: BYO_CLIENT_SECRET,
+      })),
+    })
+  }
+
+  async function callbackLocation() {
+    const { event } = await call('callback', {
+      query: { state: 'a'.repeat(43), code: 'auth-code' },
+      headers: { 'origin': '', 'sec-fetch-site': 'cross-site' },
+    })
+
+    return event.res.headers.get('location') ?? ''
+  }
+
   function revokedTokens() {
     return google.revokeRequests().map((request) => {
       return request.form.get('token')
@@ -304,13 +328,26 @@ describe('Google bring-your-own client routes', () => {
   })
 
   describe('admin gate', () => {
-    it.each(BYO_ROUTES)('%s refuses a signed-out request', async (route) => {
+    it.each(GATED_ROUTES)('%s refuses a signed-out request', async (route) => {
       sessionUserId = 0
 
       expect((await failureOf(call(route))).status).toBe(401)
     })
 
-    it.each(BYO_ROUTES)(
+    it('sends a signed-out callback back to the Google tab', async () => {
+      sessionUserId = 0
+
+      expect(await callbackLocation())
+        .toBe('/profile/keys?tab=google&google-byo=error')
+    })
+
+    it('refuses a signed-out delete', async () => {
+      sessionUserId = 0
+
+      expect((await failureOf(call('remove'))).status).toBe(401)
+    })
+
+    it.each(GATED_ROUTES)(
       '%s refuses a non-admin whose flag grants make google.byo active',
       async (route) => {
         await seedGoogleByoAccess(testDb.db, userId, {
@@ -328,21 +365,71 @@ describe('Google bring-your-own client routes', () => {
         })
 
         expect(await flagCheck.isActiveForUser(userId)).toBe(true)
-        expect((await failureOf(call(route, {
-          body: { clientId: BYO_CLIENT_ID, clientSecret: BYO_CLIENT_SECRET },
-        }))).status).toBe(404)
+
+        const failure = await failureOf(call(route, {
+          body: route === 'save'
+            ? { clientId: BYO_CLIENT_ID, clientSecret: BYO_CLIENT_SECRET }
+            : { capabilities: ['drive-read'] },
+        }))
+
+        expect(failure.status).toBe(404)
+        expect(failure.why).toBe('feature_unavailable')
         expect(await storedClientRows()).toEqual([])
       },
     )
 
-    it.each(BYO_ROUTES)(
+    it('sends the callback of a flag-granted non-admin back with an error',
+      async () => {
+        await seedGoogleByoAccess(testDb.db, userId, {
+          admin: false,
+          grant: true,
+        })
+
+        expect(await callbackLocation())
+          .toBe('/profile/keys?tab=google&google-byo=error')
+        expect(google.tokenRequests()).toHaveLength(0)
+      })
+
+    it.each(GATED_ROUTES)(
       '%s refuses an admin who did not opt in to google.byo',
       async (route) => {
         await seedGoogleByoAccess(testDb.db, userId, { optIn: false })
 
-        expect((await failureOf(call(route))).status).toBe(404)
+        const failure = await failureOf(call(route))
+
+        expect(failure.status).toBe(404)
+        expect(failure.why).toBe('feature_unavailable')
       },
     )
+
+    it('lets a non-admin delete a client they left behind', async () => {
+      await seedGoogleByoAccess(testDb.db, userId, {
+        admin: false,
+        grant: true,
+      })
+      await seedStoredClient()
+
+      const { result } = await call('remove')
+
+      expect(result).toEqual({
+        deleted: true,
+        connectionEnded: false,
+        revoked: false,
+      })
+      expect(await storedClientRows()).toEqual([])
+    })
+
+    it('shows a non-admin with a stored client only what removes it',
+      async () => {
+        await seedStoredClient()
+
+        expect((await call('status')).result.byo).toEqual({
+          canManage: false,
+          redirectUri: null,
+          hasClient: true,
+          connection: null,
+        })
+      })
 
     it.each(['save', 'remove', 'start'] as const)(
       '%s refuses a cross-origin request',
@@ -370,9 +457,8 @@ describe('Google bring-your-own client routes', () => {
         .delete(schema.userRoles)
         .where(eq(schema.userRoles.userId, userId))
 
-      const failure = await failureOf(finish('callback', url))
-
-      expect(failure.status).toBe(404)
+      expect(await finish('callback', url))
+        .toBe('/profile/keys?tab=google&google-byo=error')
       expect(google.tokenRequests()).toHaveLength(0)
       expect(await connectionRow('byo')).toBeNull()
     })
@@ -392,16 +478,12 @@ describe('Google bring-your-own client routes', () => {
       await seedGoogleByoAccess(testDb.db, userId)
     })
 
-    it('stores both values encrypted and answers with a hint only',
+    it('stores both values encrypted and answers without either',
       async () => {
         const result = await saveClient()
         const [row] = await storedClientRows()
 
-        expect(result).toEqual({
-          saved: true,
-          clientIdHint: 'abcd',
-          connectionEnded: false,
-        })
+        expect(result).toEqual({ saved: true, connectionEnded: false })
         expect(row!.apiKey).toMatch(/^enc:/)
         expect(JSON.parse(fakeDecrypt(row!.apiKey))).toEqual({
           clientId: BYO_CLIENT_ID,
@@ -414,8 +496,12 @@ describe('Google bring-your-own client routes', () => {
         expect(logged).not.toContain(BYO_CLIENT_ID)
       })
 
-    it('shows the redirect URI and the hint, never the secret', async () => {
+    it('shows the redirect URI and "saved" without decrypting', async () => {
       await saveClient()
+
+      const decrypt = vi.fn(async (cipher: string) => fakeDecrypt(cipher))
+
+      vi.stubGlobal('useDecryptText', decrypt)
 
       const { result } = await call('status')
       const serialized = JSON.stringify(result)
@@ -423,11 +509,44 @@ describe('Google bring-your-own client routes', () => {
       expect(result.byo).toEqual({
         canManage: true,
         redirectUri: `${ORIGIN}/api/v1/google/byo/callback`,
-        client: { clientIdHint: 'abcd' },
+        hasClient: true,
         connection: null,
       })
+      expect(decrypt).not.toHaveBeenCalled()
       expect(serialized).not.toContain(BYO_CLIENT_SECRET)
       expect(serialized).not.toContain(BYO_CLIENT_ID)
+    })
+
+    it.each([
+      ['the sign-in client', GOOGLE_CLIENT_ID, {}],
+      [
+        'the dedicated Drive client',
+        'drive-test-client.apps.googleusercontent.com',
+        {
+          googleDriveClientId: 'drive-test-client.apps.googleusercontent.com',
+          googleDriveClientSecret: 'drive-test-secret-value-0123456789',
+        },
+      ],
+    ])('refuses Besidka\'s own %s', async (_label, clientId, overrides) => {
+      restoreRuntimeConfig()
+      restoreRuntimeConfig = await useGoogleRuntimeConfig(overrides)
+
+      const failure = await failureOf(saveClient(clientId))
+
+      expect(failure.status).toBe(400)
+      expect(failure.message).toBe('This is Besidka\'s own Google client')
+      expect(failure.why).toBeTruthy()
+      expect(await storedClientRows()).toEqual([])
+    })
+
+    it('answers a clean 200 when two saves race', async () => {
+      const results = await Promise.all([
+        saveClient(),
+        saveClient(BYO_CLIENT_ID, 'test-second-secret-value-0123456'),
+      ])
+
+      expect(results.every(result => result.saved)).toBe(true)
+      expect(await storedClientRows()).toHaveLength(1)
     })
 
     it.each([
@@ -480,7 +599,6 @@ describe('Google bring-your-own client routes', () => {
         )
 
         expect(result.connectionEnded).toBe(true)
-        expect(result.clientIdHint).toBe('wxyz')
         expect(revokedTokens()).toEqual([`refresh-${BYO_CLIENT_ID}`])
         expect(await connectionRow('byo')).toBeNull()
       })
@@ -522,6 +640,24 @@ describe('Google bring-your-own client routes', () => {
 
     it('answers 404 when nothing is saved', async () => {
       expect((await failureOf(call('remove'))).status).toBe(404)
+    })
+
+    it('deletes nothing when the connection cannot be read', async () => {
+      await saveClient()
+      await connectByo()
+
+      const select = vi.spyOn(testDb.db, 'select')
+
+      select.mockImplementationOnce(() => {
+        throw new Error('D1 unavailable')
+      })
+
+      await failureOf(call('remove'))
+      select.mockRestore()
+
+      expect(await storedClientRows()).toHaveLength(1)
+      expect((await connectionRow('byo'))!.status).toBe('active')
+      expect(google.revokeRequests()).toHaveLength(0)
     })
   })
 
@@ -610,6 +746,44 @@ describe('Google bring-your-own client routes', () => {
         expect(result.byo.connection.capabilities).toContain('gmail-read')
         expect(result.byo.connection.capabilities)
           .not.toContain('gmail-compose')
+      })
+
+    it('stores only what was asked for when Google returns more',
+      async () => {
+        await saveClient()
+        grantedScope = [
+          'openid',
+          EMAIL_SCOPE,
+          DRIVE_READONLY,
+          `${AUTH}calendar.events`,
+          `${AUTH}userinfo.profile`,
+        ].join(' ')
+
+        await connectByo(['drive-read'])
+
+        const row = await connectionRow('byo')
+
+        expect(row!.grantedScopes.sort())
+          .toEqual(['openid', EMAIL_SCOPE, DRIVE_READONLY].sort())
+      })
+
+    it('adds a capability while connected and keeps the earlier one',
+      async () => {
+        await saveClient()
+        await connectByo(['drive-read'])
+        grantedScope = `openid ${EMAIL_SCOPE} ${DRIVE_READONLY} ${GMAIL_READONLY}`
+
+        const url = await startByo(['gmail-read'])
+
+        expect(url.searchParams.get('scope')!.split(' '))
+          .toEqual(expect.arrayContaining([DRIVE_READONLY, GMAIL_READONLY]))
+
+        const location = await finish('callback', url)
+        const row = await connectionRow('byo')
+
+        expect(location).toBe('/profile/keys?tab=google&google-byo=connected')
+        expect(row!.grantedScopes)
+          .toEqual(expect.arrayContaining([DRIVE_READONLY, GMAIL_READONLY]))
       })
 
     it('revokes a grant that holds none of the ticked capabilities',
@@ -709,13 +883,90 @@ describe('Google bring-your-own client routes', () => {
       expect(status.byo).toEqual(expect.objectContaining({
         canManage: false,
         redirectUri: null,
-        client: null,
+        hasClient: true,
       }))
       expect(status.byo.connection.clientMode).toBe('byo')
 
       await call('disconnect', { body: { clientMode: 'byo' } })
+      await call('remove')
 
       expect(await connectionRow('byo')).toBeNull()
+      expect(await storedClientRows()).toEqual([])
+    })
+
+    it('refuses an own-client disconnect that lost its Content-Length',
+      async () => {
+        const failure = await failureOf(call('disconnect', {
+          body: { clientMode: 'byo' },
+          headers: { 'content-length': '' },
+        }))
+
+        expect(failure.status).toBe(411)
+        expect((await connectionRow('besidka'))!.status).toBe('active')
+        expect((await connectionRow('byo'))!.status).toBe('active')
+        expect(await fileCount()).toBe(1)
+      })
+
+    it('refuses a disconnect body that is not JSON', async () => {
+      const failure = await failureOf(call('disconnect', {
+        headers: { 'content-length': '24' },
+      }))
+
+      expect(failure.status).toBe(400)
+      expect((await connectionRow('besidka'))!.status).toBe('active')
+    })
+
+    describe('the hourly gate sweep', () => {
+      async function sweepByoGate() {
+        const { endUngatedGoogleByoConnections } = await import(
+          '~~/server/utils/google/byo-sweep'
+        )
+
+        return await endUngatedGoogleByoConnections({
+          db: testDb.db,
+          kv: kv as never,
+          logger: { set: vi.fn() },
+          storage: bucket,
+        })
+      }
+
+      it('leaves the connection of a user who passes the gate', async () => {
+        const result = await sweepByoGate()
+
+        expect(result).toEqual({ checked: 1, ended: 0, failed: 0 })
+        expect((await connectionRow('byo'))!.status).toBe('active')
+        expect(google.revokeRequests()).toHaveLength(0)
+      })
+
+      it('ends the connection of a user who lost the admin role', async () => {
+        await testDb.db
+          .delete(schema.userRoles)
+          .where(eq(schema.userRoles.userId, userId))
+
+        const result = await sweepByoGate()
+
+        expect(result).toEqual({ checked: 1, ended: 1, failed: 0 })
+        expect(revokedTokens()).toEqual([`refresh-${BYO_CLIENT_ID}`])
+        expect(await connectionRow('byo')).toBeNull()
+        expect((await connectionRow('besidka'))!.status).toBe('active')
+        expect(await fileCount()).toBe(1)
+      })
+
+      it('ends the connection when the user opted out of google.byo',
+        async () => {
+          await testDb.db
+            .update(schema.featureOptIns)
+            .set({ optedOutAt: new Date() })
+            .where(and(
+              eq(schema.featureOptIns.userId, userId),
+              eq(schema.featureOptIns.flag, 'google.byo'),
+            ))
+
+          const result = await sweepByoGate()
+
+          expect(result.ended).toBe(1)
+          expect(await connectionRow('byo')).toBeNull()
+        })
     })
 
     it('revokes both grants and deletes the client with the account',

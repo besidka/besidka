@@ -25,20 +25,21 @@ export const GOOGLE_OAUTH_CLIENT_ID_MAX_LENGTH = 200
 export const GOOGLE_OAUTH_CLIENT_SECRET_MIN_LENGTH = 20
 export const GOOGLE_OAUTH_CLIENT_SECRET_MAX_LENGTH = 128
 
-const GOOGLE_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com'
 const GOOGLE_CLIENT_ID_PATTERN
   = /^[0-9a-z][0-9a-z-]*\.apps\.googleusercontent\.com$/
 const GOOGLE_CLIENT_SECRET_PATTERN = /^[\x21-\x7E]+$/
-const CLIENT_ID_HINT_LENGTH = 4
 
-export interface GoogleByoClientSummary {
-  clientIdHint: string
-}
-
+/**
+ * The bring-your-own part of the Google status. `canManage` is true only
+ * for a user who passes the admin and `google.byo` gate; everyone else who
+ * still holds a stored client or a connection gets `canManage: false` and
+ * may only remove them. `hasClient` says whether a client is saved, never
+ * which one.
+ */
 export interface GoogleByoStatus {
   canManage: boolean
   redirectUri: string | null
-  client: GoogleByoClientSummary | null
+  hasClient: boolean
 }
 
 export function isGoogleOAuthClientId(value: string): boolean {
@@ -50,19 +51,6 @@ export function isGoogleOAuthClientSecret(value: string): boolean {
   return value.length >= GOOGLE_OAUTH_CLIENT_SECRET_MIN_LENGTH
     && value.length <= GOOGLE_OAUTH_CLIENT_SECRET_MAX_LENGTH
     && GOOGLE_CLIENT_SECRET_PATTERN.test(value)
-}
-
-/**
- * The last four characters of a client id before the Google suffix: enough
- * for the owner to recognize which client is stored, and nothing a caller
- * could use, since a client id alone is a public value anyway.
- */
-export function googleClientIdHint(clientId: string): string {
-  const base = clientId.endsWith(GOOGLE_CLIENT_ID_SUFFIX)
-    ? clientId.slice(0, -GOOGLE_CLIENT_ID_SUFFIX.length)
-    : clientId
-
-  return base.slice(-CLIENT_ID_HINT_LENGTH)
 }
 
 export function isGoogleByoCapability(

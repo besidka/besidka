@@ -146,11 +146,15 @@ describe('Google connection routes', () => {
     partial: Partial<SkillsRouteEvent> = {},
   ) {
     const module = await import(ROUTES[route])
+    const bodyHeaders: Record<string, string> = partial.body === undefined
+      ? { 'content-length': '0' }
+      : { 'content-type': 'application/json' }
     const event = createSkillsRouteEvent({
       ...partial,
       headers: {
         'origin': mocks.origin,
         'sec-fetch-site': 'same-origin',
+        ...bodyHeaders,
         ...partial.headers,
       },
     })
