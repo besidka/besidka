@@ -2024,6 +2024,15 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
   ]
 
+  const googleDriveTabTests = [
+    'tests/integration/api/google-drive-refresh.spec.ts',
+    'tests/integration/api/google-drive-import.spec.ts',
+    'tests/integration/api/files-index-google-source.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
+    'tests/unit/server/utils/files/connector-images.spec.ts',
+    'tests/unit/utils/google-drive.spec.ts',
+  ]
+
   const googleToolApprovalTests = [
     'tests/unit/server/utils/tool-approval/google.spec.ts',
     'tests/unit/server/utils/tool-approval/round-state.spec.ts',
@@ -4012,6 +4021,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(google-drive|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/Preview\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
       tests: googleDrivePickerTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-drive\.ts|server\/utils\/files\/source-filter\.ts|server\/utils\/google\/drive-import\.ts|server\/api\/v1\/google\/drive\/files\/refresh\.post\.ts|server\/api\/v1\/files\/index\.get\.ts|tests\/setup\/helpers\/knowledge-db\.ts)$/,
+      tests: googleDriveTabTests,
     },
     {
       pattern:
