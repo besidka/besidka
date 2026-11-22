@@ -4687,7 +4687,7 @@ describe('ChatInput.client', () => {
     it('shows no suggestion row without a suggestion', async () => {
       const wrapper = await mountChatInput()
 
-      expect(wrapper.find('[data-testid="google-link-suggestions"]').exists())
+      expect(wrapper.find('[data-testid="google-link-suggestion"]').exists())
         .toBe(false)
     })
   })
