@@ -72,8 +72,9 @@ function notConfigured() {
 /**
  * The OAuth client for a mode. Besidka's mode reuses the sign-in client
  * from the private runtime config; the bring-your-own mode answers 404
- * until its child supplies the user's own client (the user id is already a
- * parameter for that). Never logs or returns the secret to a browser.
+ * until its child supplies the user's own client. `_userId` is unused on
+ * purpose: it is the seam that child needs, so every caller already passes
+ * it. Never logs or returns the secret to a browser.
  */
 export async function resolveGoogleClient(
   clientMode: GoogleClientMode,

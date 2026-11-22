@@ -139,6 +139,16 @@ function refreshFailed() {
   })
 }
 
+function undecryptable() {
+  return createError({
+    message: 'Google connection cannot be read',
+    status: 500,
+    why: 'The stored Google token could not be decrypted with the current '
+      + 'encryption key',
+    fix: 'Check NUXT_ENCRYPTION_KEY on this deployment',
+  })
+}
+
 function refreshBusy() {
   return createError({
     message: 'Google connection is busy',
@@ -159,7 +169,6 @@ function refreshBusy() {
 async function endAccessAfterInvalidGrant(
   row: TokenRow,
   dependencies: GoogleTokenDependencies,
-  reason: 'invalid-grant' | 'undecryptable',
 ): Promise<GoogleAccessTokenResult> {
   const logger = dependencies.logger ?? NOOP_LOGGER
   const ended = await dependencies.db
@@ -191,7 +200,7 @@ async function endAccessAfterInvalidGrant(
     return { status: 'needs_reauth' }
   }
 
-  logToken(logger, { connectionId: row.id, refresh: reason })
+  logToken(logger, { connectionId: row.id, refresh: 'invalid-grant' })
 
   const now = (dependencies.now ?? Date.now)()
   const accessTokenAlive = !!row.accessToken
@@ -262,7 +271,12 @@ async function performRefresh(
     : null
 
   if (!refreshToken) {
-    return await endAccessAfterInvalidGrant(row, dependencies, 'undecryptable')
+    logToken(dependencies.logger, {
+      connectionId: row.id,
+      refresh: 'undecryptable',
+    })
+
+    throw undecryptable()
   }
 
   const client = await resolveGoogleClient(row.clientMode, row.userId)
@@ -301,7 +315,7 @@ async function performRefresh(
       return await toOkResult(latest) ?? { status: 'needs_reauth' }
     }
 
-    return await endAccessAfterInvalidGrant(row, dependencies, 'invalid-grant')
+    return await endAccessAfterInvalidGrant(row, dependencies)
   }
 
   if (await storeRefreshedTokens(row, result.tokens, dependencies)) {

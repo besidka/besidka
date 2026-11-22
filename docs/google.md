@@ -340,8 +340,10 @@ is the one planned exception). Key-management position (pre-check row 12): a
 Worker secret is acceptable for `drive.file`, a non-sensitive scope; a KMS or
 HSM-backed key is required before any public restricted-scope path. Rotating
 `NUXT_ENCRYPTION_KEY` without re-encrypting makes every stored token
-undecryptable; `getGoogleAccessToken` then ends the connection like
-`invalid_grant` and users reconnect.
+undecryptable. `getGoogleAccessToken` then answers 500 and changes nothing,
+so a wrong key on one deployment never ends connections or deletes copies;
+after a deliberate rotation, wipe the tokens by hand (the restore runbook's
+step 2d) and users reconnect.
 
 ### 9.4 Getting a token and the refresh lock
 

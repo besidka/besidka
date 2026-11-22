@@ -394,6 +394,31 @@ describe('Google tokens', () => {
     expect((await connectionRow())!.status).toBe('active')
   })
 
+  it('never ends access when the stored token cannot be decrypted',
+    async () => {
+      await seedConnection({ expiresInMs: 0 })
+      await seedGoogleFile('user/drive-a.pdf')
+
+      const before = await connectionRow()
+
+      vi.stubGlobal('useDecryptText', async () => {
+        throw new Error('bad key')
+      })
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const failure = await failureOf(getGoogleAccessToken(
+        { userId, clientMode: 'besidka' },
+        dependencies(),
+      ))
+      const after = await connectionRow()
+
+      expect(failure.status).toBe(500)
+      expect(after!.status).toBe('active')
+      expect(after!.refreshToken).toBe(before!.refreshToken)
+      expect(await googleFileCount()).toBe(1)
+      expect(google.fetch).not.toHaveBeenCalled()
+    })
+
   it('answers 409 through requireGoogleAccessToken after access ended',
     async () => {
       await seedConnection()
