@@ -25,6 +25,7 @@ const SAVE_AS_HINT = 'Save it as .xlsx / .docx / .pptx and upload again.'
 const IMAGE_DOCUMENT_NAME = 'e2e-with-image.docx'
 const TEXT_ONLY_TITLE = 'The model gets this file\'s text only. '
   + 'Images, charts and formatting aren\'t sent.'
+const IMAGE_OMITTED_LABEL = '1 image not sent'
 const SPREADSHEET_MAP_NOTE = '1 sheet'
 const PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -306,8 +307,11 @@ test.describe('Office attachments', () => {
 
     const hint = page.getByTestId('files-delivery-hint')
 
-    await expect(hint).toHaveText('1 image not sent')
-    await expect(hint).toHaveAttribute('title', TEXT_ONLY_TITLE)
+    await expect(hint).toHaveText(IMAGE_OMITTED_LABEL)
+    await expect(hint).toHaveAttribute(
+      'title',
+      `${IMAGE_OMITTED_LABEL}: ${TEXT_ONLY_TITLE}`,
+    )
 
     const files = await page.request.get('/api/v1/files?limit=50')
     const uploaded = (await files.json()).files.find(
