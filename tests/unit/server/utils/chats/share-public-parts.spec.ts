@@ -405,6 +405,42 @@ describe('connector image parts in shares and branches', () => {
     })).toBe(false)
   })
 
+  it('shows a Google Drive file by its name only in a public share', () => {
+    const [message] = filterPublicParts([{
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'Summarize this' },
+        {
+          type: 'file',
+          mediaType: 'text/markdown',
+          filename: 'Plan.md',
+          url: '/files/abc.md',
+        },
+        {
+          type: 'data-drive-file',
+          data: {
+            driveFileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+            name: 'Plan',
+            mimeType: 'text/markdown',
+            link: 'https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz',
+          },
+        },
+      ],
+    }] as unknown as Array<{ role: string, parts: UIMessage['parts'] }>)
+    const reference = message!.parts.find((part) => {
+      return part.type === 'data-drive-file'
+    }) as unknown as { data: Record<string, string> }
+
+    expect(reference.data).toEqual({
+      driveFileId: '',
+      name: 'Plan',
+      mimeType: '',
+      link: '',
+    })
+    expect(JSON.stringify(message)).not.toContain('drive.google.com')
+    expect(JSON.stringify(message)).not.toContain('1AbCdEfGhIjKlMnOpQrStUvWxYz')
+  })
+
   it('drops the stopped marker from a share and keeps it in a branch',
     () => {
       const stoppedReply = {

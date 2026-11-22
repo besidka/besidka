@@ -160,6 +160,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       text_omitted_media integer,
       text_omitted_charts integer,
       external_source text,
+      external_id text,
+      external_modified_at integer,
       google_derived_at integer
     );
 

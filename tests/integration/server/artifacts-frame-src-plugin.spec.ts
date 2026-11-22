@@ -244,4 +244,80 @@ describe('artifacts frame-src plugin', () => {
           `^frame-src 'self' ${runtimeOrigin} ${TURNSTILE}$`,
         ))
     })
+
+  describe('Google Drive Picker', () => {
+    const PICKER_FRAMES = 'https://docs.google.com https://drive.google.com'
+
+    it('lets a chat page frame the Picker once it is configured',
+      async () => {
+        const { applyArtifactFrameSrc } = await loadPlugin()
+        const response = { headers: {} as Record<string, string> }
+
+        applyArtifactFrameSrc(
+          response as never,
+          createContext('/chats/01JCHAT') as never,
+          {
+            artifactsOrigin: ARTIFACTS_ORIGIN,
+            googlePickerApiKey: 'public-key',
+          },
+        )
+
+        expect(response.headers['content-security-policy']).toBe(
+          `frame-src ${SELF} ${ARTIFACTS_ORIGIN} ${TURNSTILE} ${PICKER_FRAMES}`,
+        )
+      })
+
+    it('adds no Google frame while the Picker is not configured',
+      async () => {
+        const { applyArtifactFrameSrc } = await loadPlugin()
+        const response = { headers: {} as Record<string, string> }
+
+        applyArtifactFrameSrc(
+          response as never,
+          createContext('/chats/01JCHAT') as never,
+          { artifactsOrigin: ARTIFACTS_ORIGIN, googlePickerApiKey: '' },
+        )
+
+        expect(response.headers['content-security-policy'])
+          .not.toContain('google.com')
+      })
+
+    it.each([
+      '/shared/01JSHARE',
+      '/artifacts/token-1',
+      '/admin/artifact-reports',
+    ])('never opens a Google frame on %s', async (path) => {
+      const { applyArtifactFrameSrc } = await loadPlugin()
+      const response = { headers: {} as Record<string, string> }
+
+      applyArtifactFrameSrc(
+        response as never,
+        createContext(path) as never,
+        {
+          artifactsOrigin: ARTIFACTS_ORIGIN,
+          googlePickerApiKey: 'public-key',
+        },
+      )
+
+      expect(response.headers['content-security-policy'])
+        .not.toContain('google.com')
+    })
+
+    it('never adds a script, connect or image directive', async () => {
+      const { applyArtifactFrameSrc } = await loadPlugin()
+      const response = { headers: {} as Record<string, string> }
+
+      applyArtifactFrameSrc(
+        response as never,
+        createContext('/chats/new') as never,
+        {
+          artifactsOrigin: ARTIFACTS_ORIGIN,
+          googlePickerApiKey: 'public-key',
+        },
+      )
+
+      expect(response.headers['content-security-policy'])
+        .not.toMatch(/script-src|connect-src|img-src|default-src/)
+    })
+  })
 })

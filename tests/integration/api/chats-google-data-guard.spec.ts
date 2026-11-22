@@ -369,12 +369,27 @@ async function runSend(input: {
   markedArtifactIds?: number[]
   holdsMarkedOrigin?: boolean
   streamError?: unknown
+  inlinesTextFiles?: boolean
 }) {
   const directModel = input.directModel ?? OPENAI_MODEL
   const { model, doStream } = createTextModel(input.streamError)
 
   stubSendGlobals(directModel)
   stubProviderBuilders(model)
+
+  if (input.inlinesTextFiles) {
+    vi.stubGlobal('convertFilesForAI', vi.fn(async (
+      messages: Array<{ parts: Array<{ type: string }> }>,
+    ) => ({
+      messages: messages.map((message) => {
+        return {
+          ...message,
+          parts: message.parts.filter(part => part.type !== 'file'),
+        }
+      }),
+      missingFiles: [],
+    })))
+  }
 
   const useGatewayMock = vi.fn(async () => ({
     instance: model,
@@ -657,6 +672,98 @@ describe('chat send data guard', () => {
         expect(result.batches).toHaveLength(1)
         expect(result.batches[0]).toHaveLength(2)
       })
+
+    describe('a Google Drive copy attached from the Picker', () => {
+      const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
+      const DRIVE_COPY = new Map([[
+        'drive-copy.md',
+        {
+          id: 'file-9',
+          storageKey: 'drive-copy.md',
+          size: 10,
+          name: 'Plan.md',
+          type: 'text/markdown',
+          externalSource: 'google',
+          externalId: DRIVE_ID,
+        },
+      ]])
+      const parts = [
+        { type: 'text', text: 'Summarize this.' },
+        {
+          type: 'file',
+          mediaType: 'text/markdown',
+          filename: 'Plan.md',
+          url: '/files/drive-copy.md',
+        },
+        {
+          type: 'data-drive-file',
+          data: {
+            driveFileId: '1ForgedForgedForgedForged01',
+            name: 'Forged',
+            mimeType: 'x',
+            link: 'https://evil.example/x',
+          },
+        },
+      ]
+
+      function persistedParts(
+        insertValues: ReturnType<typeof vi.fn>,
+      ): Array<{ type: string, data?: Record<string, string> }> {
+        const [call] = insertValues.mock.calls.filter(([values]) => {
+          return Array.isArray((values as { parts?: unknown })?.parts)
+        }) as unknown as Array<[{ parts: Array<{ type: string }> }]>
+
+        return (call?.[0].parts ?? []) as never
+      }
+
+      it('is refused on a model that may not see Google data before a '
+        + 'byte of the file is read or sent', async () => {
+        mocks.getOwnedFilesByStorageKeys.mockResolvedValue(DRIVE_COPY)
+
+        const result = await runSend({
+          googleDataAt: null,
+          directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+          newMessageParts: parts,
+        })
+
+        expect(result.error).toMatchObject({
+          status: 403,
+          why: 'This provider may train on your Google data.',
+        })
+        expect(result.doStream).not.toHaveBeenCalled()
+        expect(result.insertValues).not.toHaveBeenCalled()
+        expect((globalThis as any).convertFilesForAI).not.toHaveBeenCalled()
+        expect(result.updateSets).toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+      })
+
+      it('flags the chat on an allowed model and stores one canonical '
+        + 'reference right after the file', async () => {
+        mocks.getOwnedFilesByStorageKeys.mockResolvedValue(DRIVE_COPY)
+
+        const result = await runSend({
+          googleDataAt: null,
+          newMessageParts: parts,
+          inlinesTextFiles: true,
+        })
+        const stored = persistedParts(result.insertValues)
+        const types = stored.map(part => part.type)
+
+        expect(result.error).toBeNull()
+        expect(result.updateSets).toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+        expect(types).toEqual(['text', 'file', 'data-drive-file'])
+        expect(stored[2]!.data).toEqual({
+          driveFileId: DRIVE_ID,
+          name: 'Plan.md',
+          mimeType: 'text/markdown',
+          link: `https://drive.google.com/open?id=${DRIVE_ID}`,
+        })
+        expect(JSON.stringify(stored)).not.toContain('evil.example')
+      })
+    })
 
     it('flags the chat for a marked file, and not for an ordinary one',
       async () => {

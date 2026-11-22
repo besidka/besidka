@@ -1970,6 +1970,42 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextPanel.spec.ts',
   ]
 
+  const googleDrivePickerTests = [
+    'tests/unit/utils/google-drive.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/download.spec.ts',
+    'tests/unit/server/utils/google/drive.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/integration/api/google-drive-picker-token.spec.ts',
+    'tests/integration/api/google-drive-import.spec.ts',
+    'tests/integration/server/google-drive-parts.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/server/artifacts-frame-src-plugin.spec.ts',
+    'tests/integration/api/storage.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
+    'tests/unit/composables/google-picker.spec.ts',
+    'tests/unit/composables/chat-drive-files.spec.ts',
+    'tests/unit/components/Chat/DriveFiles.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/chats/context/drive-files.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/utils/chats/request-schema-drive.spec.ts',
+    'tests/unit/utils/artifact-frame-policy.spec.ts',
+    'tests/unit/utils/storage-categories.spec.ts',
+    'tests/unit/server/utils/storage/usage.spec.ts',
+    'tests/unit/server/utils/mcp/private-settings-storage.spec.ts',
+    'tests/unit/pages/profile/storage.spec.ts',
+    'tests/unit/utils/knowledge/quota.spec.ts',
+    'tests/unit/composables/chat-scroll-spacer.spec.ts',
+    'tests/e2e/chat/scroll-spacer.spec.ts',
+    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  ]
+
   const googleToolApprovalTests = [
     'tests/unit/server/utils/tool-approval/google.spec.ts',
     'tests/unit/server/utils/tool-approval/round-state.spec.ts',
@@ -3953,6 +3989,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/google-data-(policy|recipient)\.ts|server\/utils\/google\/(data-guard|send-flag)\.ts|server\/utils\/gateways\/(index|vercel|openrouter|cloudflare)\.ts|server\/utils\/tool-approval\/google(-send-tools|-send-candidates)?\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.(post|get)|title\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/index\.post\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/(index\.(get|post)|check\.post)\.ts|server\/api\/v1\/artifacts\/\[id\]\/complete\.post\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google\/(index|paid-tier)\.post)\.ts|server\/utils\/chats\/(share|share-pii-check)\.ts|server\/utils\/files\/(file-governance|file-share-access)\.ts|server\/utils\/mcp\/private\/(chats|files|artifacts)\.ts|server\/utils\/besidka-tools\/(chat-adapter|tools\/rename-file)\.ts|server\/utils\/documents\/(images|create-document-tool)\.ts|server\/api\/v1\/documents\/\[id\]\/render\.post\.ts|server\/utils\/knowledge\/ingest\.ts|server\/utils\/memory\/(chat-memory-filters|backfill-queue|entries|extract|extract-apply|extract-sweep)\.ts|server\/utils\/memory\/tools\/(memory-tools|read-chat|search-chats)\.ts|server\/utils\/projects\/(memory-refresh|memory-sweep-settle)\.ts|app\/composables\/(chat-google-data|user-keys|chat-share)\.ts|app\/types\/chat-share\.d\.ts|shared\/types\/chats\.d\.ts|app\/components\/Profile\/Keys\/(GeminiPaidTier|ProviderKeyCard)\.vue|app\/components\/ChatInput\/ModelsTrigger\/(ModelItem|GatewayModelItem|GatewayModelList|Panel)\.vue|app\/components\/Chat\/(ShareModal\.client|ContextPanel)\.vue|app\/pages\/chats\/\[slug\]\.vue|tests\/setup\/helpers\/(chat-context-db|search-index-db|knowledge-db)\.ts)$/,
       tests: googleDataGuardTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-drive|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance)\.ts|server\/utils\/storage\/categories\.ts|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/Preview\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
+      tests: googleDrivePickerTests,
     },
     {
       pattern:

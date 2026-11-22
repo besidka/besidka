@@ -1,15 +1,10 @@
-import { and, eq, inArray } from 'drizzle-orm'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import {
+  DRIVE_FILE_PART_TYPE,
   driveFilePartFromFile,
-  isDriveFilePart,
 } from '#shared/utils/google-drive'
 import type { DataDriveFilePart } from '#shared/utils/google-drive'
-import * as schema from '~~/server/db/schema'
-
-type DbClient = ReturnType<typeof useDb>
-
-const LOOKUP_CHUNK_SIZE = 90
+import { getOwnedFilesByStorageKeys } from '~~/server/utils/files/file-governance'
 
 function storageKeyOf(part: unknown): string | null {
   const record = part as { type?: unknown, url?: unknown } | null
@@ -32,13 +27,12 @@ function storageKeyOf(part: unknown): string | null {
  */
 export async function resolveDriveFileParts<TPart extends { type: string }>(
   input: {
-    db: DbClient
     userId: number
     parts: readonly TPart[]
   },
 ): Promise<TPart[]> {
   const withoutClientParts = input.parts.filter((part) => {
-    return !isDriveFilePart(part) && part.type !== 'data-drive-file'
+    return part.type !== DRIVE_FILE_PART_TYPE
   })
   const storageKeys = [...new Set(
     withoutClientParts.flatMap((part) => {
@@ -52,37 +46,24 @@ export async function resolveDriveFileParts<TPart extends { type: string }>(
     return withoutClientParts
   }
 
+  const ownedFiles = await getOwnedFilesByStorageKeys(
+    input.userId,
+    storageKeys,
+  )
   const copies = new Map<string, DataDriveFilePart>()
 
-  for (
-    let start = 0;
-    start < storageKeys.length;
-    start += LOOKUP_CHUNK_SIZE
-  ) {
-    const rows = await input.db
-      .select({
-        storageKey: schema.files.storageKey,
-        name: schema.files.name,
-        type: schema.files.type,
-        externalSource: schema.files.externalSource,
-        externalId: schema.files.externalId,
+  for (const [storageKey, file] of ownedFiles) {
+    const reference = file.name && file.type
+      ? driveFilePartFromFile({
+        name: file.name,
+        type: file.type,
+        externalSource: file.externalSource,
+        externalId: file.externalId,
       })
-      .from(schema.files)
-      .where(and(
-        eq(schema.files.userId, input.userId),
-        eq(schema.files.externalSource, 'google'),
-        inArray(
-          schema.files.storageKey,
-          storageKeys.slice(start, start + LOOKUP_CHUNK_SIZE),
-        ),
-      ))
+      : null
 
-    for (const row of rows) {
-      const part = driveFilePartFromFile(row)
-
-      if (part) {
-        copies.set(row.storageKey, part)
-      }
+    if (reference) {
+      copies.set(storageKey, reference)
     }
   }
 

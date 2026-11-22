@@ -828,7 +828,6 @@ export default defineEventHandler(async (event) => {
     onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
   })
   newMessage.parts = await resolveDriveFileParts({
-    db,
     userId,
     parts: newMessage.parts,
   })

@@ -105,7 +105,6 @@ export default defineEventHandler(async (event) => {
     logger,
   })
   const driveParts = await resolveDriveFileParts({
-    db,
     userId,
     parts: attachmentParts,
   })
