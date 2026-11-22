@@ -4628,6 +4628,35 @@ describe('ChatInput.client', () => {
         )
       })
 
+    it('does not look for links in an empty or cleared message', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      driveLinkMocks.detectLinks.mockClear()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      await textarea.setValue('hello')
+      await textarea.setValue('')
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(driveLinkMocks.detectLinks).not.toHaveBeenCalled()
+    })
+
+    it('drops a pending look for links when the composer is removed',
+      async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        driveLinkMocks.detectLinks.mockClear()
+
+        const wrapper = await mountChatInput()
+
+        await wrapper.get('[data-testid="chat-input-textarea"]')
+          .setValue(`see ${LINK_TEXT}`)
+        wrapper.unmount()
+        await vi.advanceTimersByTimeAsync(2000)
+
+        expect(driveLinkMocks.detectLinks).not.toHaveBeenCalled()
+      })
+
     it('shows one suggestion that opens the Picker for the file, and one '
       + 'that dismisses it', async () => {
       driveLinkSuggestions.value = [{ id: 'abc', kind: 'spreadsheet' }]

@@ -694,9 +694,17 @@ const {
 
 const GOOGLE_LINK_DETECTION_DELAY_MS = 800
 
-watchDebounced(message, async (text) => {
-  await detectLinks(text)
-}, { debounce: GOOGLE_LINK_DETECTION_DELAY_MS })
+watch(message, (text, _previousText, onCleanup) => {
+  if (!text.trim()) {
+    return
+  }
+
+  const timer = setTimeout(() => {
+    detectLinks(text)
+  }, GOOGLE_LINK_DETECTION_DELAY_MS)
+
+  onCleanup(() => clearTimeout(timer))
+})
 
 watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {
