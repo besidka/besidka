@@ -12,6 +12,8 @@
       />
       <h3
         id="google-drive-connection-heading"
+        ref="heading"
+        tabindex="-1"
         class="text-lg font-bold"
       >
         Google Drive
@@ -31,17 +33,54 @@
         Reconnect needed
       </span>
     </div>
+    <p
+      class="sr-only"
+      aria-live="polite"
+      data-testid="google-drive-announcement"
+    >
+      {{ announcement }}
+    </p>
     <div
       v-if="viewState === 'loading'"
       class="skeleton skeleton--default h-16 w-full"
       data-testid="google-drive-skeleton"
     />
+    <div
+      v-else-if="viewState === 'error'"
+      role="alert"
+      class="alert alert-soft alert-error text-sm"
+      data-testid="google-drive-load-error"
+    >
+      <Icon
+        name="lucide:circle-alert"
+        size="16"
+        class="shrink-0"
+      />
+      <p>The Google Drive connection could not be loaded.</p>
+      <button
+        type="button"
+        class="btn btn-sm"
+        data-testid="google-drive-retry"
+        @click="retry"
+      >
+        Try again
+      </button>
+    </div>
     <template v-else-if="viewState === 'disconnected'">
-      <p class="text-sm text-base-content/70">
-        Besidka can only see the files you pick.
-      </p>
-      <div>
+      <ul
+        class="grid list-disc gap-1 pl-5 text-sm text-base-content/70"
+        data-testid="google-drive-explainer"
+      >
+        <li>Besidka gets access only to the Google Drive files you pick.</li>
+        <li>Files you pick are copied into your Besidka files.</li>
+        <li>
+          Besidka reads your Google account's email address to show which
+          account is connected.
+        </li>
+      </ul>
+      <div v-if="canConnect">
         <button
+          ref="connectButton"
           type="button"
           class="btn btn-primary btn-sm"
           :disabled="isBusy"
@@ -65,9 +104,11 @@
           class="shrink-0"
         />
         <p>
-          Google no longer accepts Besidka's access, so the Google Drive
-          files copied into Besidka were deleted. Reconnect to pick files
-          again.
+          Google no longer accepts Besidka's access. The Google Drive files
+          copied into Besidka are deleted when Google access ends.
+          <template v-if="canConnect">
+            Reconnect to pick files again.
+          </template>
         </p>
       </div>
       <dl class="grid gap-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-6">
@@ -101,7 +142,7 @@
       </dl>
       <div class="flex flex-wrap gap-2">
         <button
-          v-if="viewState === 'needs_reauth'"
+          v-if="viewState === 'needs_reauth' && canConnect"
           type="button"
           class="btn btn-primary btn-sm"
           :disabled="isBusy"
@@ -129,6 +170,7 @@ import { parseError } from 'evlog'
 import {
   GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
   GOOGLE_CONNECT_RESULT_QUERY_KEY,
+  GOOGLE_THIRD_PARTY_ACCESS_URL,
   isGoogleConnectResult,
 } from '#shared/utils/google-connections'
 import type {
@@ -137,7 +179,8 @@ import type {
 } from '#shared/utils/google-connections'
 import type { GoogleCapability } from '#shared/utils/google-scopes'
 
-type ViewState = 'loading' | 'disconnected' | 'connected' | 'needs_reauth'
+type ViewState
+  = 'loading' | 'error' | 'disconnected' | 'connected' | 'needs_reauth'
 
 interface ResultMessage {
   type: 'success' | 'info' | 'error'
@@ -145,8 +188,7 @@ interface ResultMessage {
   description?: string
 }
 
-const CAPABILITY_LABELS: Record<GoogleCapability, string> = {
-  'identity': 'Your name and email address',
+const CAPABILITY_LABELS: Partial<Record<GoogleCapability, string>> = {
   'drive-picked': 'Only the Google Drive files you pick',
   'drive-read': 'All your Google Drive files, read only',
   'gmail-read': 'Your Gmail, read only',
@@ -180,19 +222,23 @@ const RESULT_MESSAGES: Record<GoogleConnectResult, ResultMessage> = {
 
 const route = useRoute()
 const isBusy = shallowRef<boolean>(false)
+const announcement = shallowRef<string>('')
+const heading = useTemplateRef<HTMLElement>('heading')
+const connectButton = useTemplateRef<HTMLButtonElement>('connectButton')
 
-const { data, status, refresh } = await useLazyFetch(
-  '/api/v1/google/connections',
-  { key: 'google-drive-connection' },
-)
+const { data, status, refresh } = await useGoogleConnection()
 
 const connection = computed<GoogleConnectionSummary | null>(() => {
   return data.value?.connection ?? null
 })
 
+const canConnect = computed<boolean>(() => {
+  return data.value?.canConnect === true
+})
+
 const viewState = computed<ViewState>(() => {
-  if (!data.value && status.value !== 'error') {
-    return 'loading'
+  if (!data.value) {
+    return status.value === 'error' ? 'error' : 'loading'
   }
 
   if (!connection.value) {
@@ -203,8 +249,10 @@ const viewState = computed<ViewState>(() => {
 })
 
 const capabilityLabels = computed<string[]>(() => {
-  return (connection.value?.capabilities ?? []).map((capability) => {
-    return CAPABILITY_LABELS[capability]
+  return (connection.value?.capabilities ?? []).flatMap((capability) => {
+    const label = CAPABILITY_LABELS[capability]
+
+    return label ? [label] : []
   })
 })
 
@@ -235,6 +283,10 @@ async function handleConnectResult() {
 
   showResultMessage(result)
 
+  if (result === 'connected') {
+    await refresh()
+  }
+
   const query = Object.fromEntries(
     Object.entries(route.query).filter(([key]) => {
       return key !== GOOGLE_CONNECT_RESULT_QUERY_KEY
@@ -242,6 +294,10 @@ async function handleConnectResult() {
   )
 
   await navigateTo({ query }, { replace: true })
+}
+
+async function retry() {
+  await refresh()
 }
 
 async function connect() {
@@ -265,12 +321,54 @@ async function connect() {
   }
 }
 
+function disconnectSubtitle(): string {
+  const lines = [
+    'Besidka removes its access at Google, and the Google Drive files '
+    + 'copied into Besidka will be deleted. This also happens whenever '
+    + 'Google access ends.',
+  ]
+
+  if (data.value?.dedicatedClient === false) {
+    lines.push('Google will ask for your consent again the next time you '
+      + 'use Sign in with Google.')
+  }
+
+  return lines.join(' ')
+}
+
+async function focusAfterDisconnect() {
+  await nextTick()
+
+  const target = connectButton.value ?? heading.value
+
+  target?.focus()
+}
+
+function reportDisconnect(result: {
+  revoked: boolean
+  filesPending: boolean
+}) {
+  const copies = result.filesPending
+    ? 'The copied Google Drive files are being deleted; this finishes '
+    + 'shortly.'
+    : 'The copied Google Drive files were deleted.'
+
+  useSuccessMessage('Google Drive disconnected', copies)
+
+  if (!result.revoked) {
+    useErrorMessage(
+      'Google did not confirm that Besidka\'s access was removed',
+      `Remove Besidka yourself at ${GOOGLE_THIRD_PARTY_ACCESS_URL}`,
+    )
+  }
+
+  announcement.value = 'Google Drive disconnected.'
+}
+
 async function disconnect() {
   const confirmation = await useConfirm({
     text: 'Disconnect Google Drive?',
-    subtitle: 'Besidka removes its access at Google, and the Google Drive '
-      + 'files copied into Besidka will be deleted. This also happens '
-      + 'whenever Google access ends.',
+    subtitle: disconnectSubtitle(),
     alert: true,
     actions: ['Disconnect'],
     labelDecline: 'Cancel',
@@ -287,13 +385,10 @@ async function disconnect() {
       method: 'POST',
     })
 
-    useSuccessMessage(
-      'Google Drive disconnected',
-      result.filesPending
-        ? 'The copied Google Drive files will be deleted within the hour.'
-        : undefined,
-    )
     await refresh()
+    reportDisconnect(result)
+    isBusy.value = false
+    await focusAfterDisconnect()
   } catch (exception) {
     const parsedException = parseError(exception)
 

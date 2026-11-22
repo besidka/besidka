@@ -3,7 +3,10 @@ import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reactive, ref } from 'vue'
 import Connection from '../../../../../app/components/Profile/Google/Connection.vue'
-import type { GoogleConnectionSummary } from '#shared/utils/google-connections'
+import type {
+  GoogleConnectionStatusResponse,
+  GoogleConnectionSummary,
+} from '#shared/utils/google-connections'
 
 enableAutoUnmount(afterEach)
 
@@ -25,15 +28,13 @@ const {
   infoMock: vi.fn(),
 }))
 
-type ConnectionPayload = { connection: GoogleConnectionSummary | null }
-
-const connectionData = ref<ConnectionPayload | null>(null)
+const statusData = ref<GoogleConnectionStatusResponse | null>(null)
 const fetchStatus = ref<string>('success')
 const mockRoute = reactive<{ query: Record<string, unknown> }>({ query: {} })
 
-mockNuxtImport('useLazyFetch', () => {
+mockNuxtImport('useGoogleConnection', () => {
   return () => ({
-    data: connectionData,
+    data: statusData,
     status: fetchStatus,
     refresh: refreshMock,
   })
@@ -53,14 +54,23 @@ function summary(
     clientMode: 'besidka',
     status: 'active',
     email: 'person@example.test',
-    capabilities: ['identity', 'drive-picked'],
+    capabilities: ['drive-picked'],
     connectedAt: '2026-11-22T12:00:00.000Z',
     ...patch,
   }
 }
 
+function setStatus(patch: Partial<GoogleConnectionStatusResponse> = {}) {
+  statusData.value = {
+    connection: null,
+    canConnect: true,
+    dedicatedClient: false,
+    ...patch,
+  }
+}
+
 async function mountConnection() {
-  const wrapper = await mountSuspended(Connection)
+  const wrapper = await mountSuspended(Connection, { attachTo: document.body })
 
   await flushPromises()
 
@@ -69,7 +79,7 @@ async function mountConnection() {
 
 describe('Profile/Google/Connection', () => {
   beforeEach(() => {
-    connectionData.value = { connection: null }
+    setStatus()
     fetchStatus.value = 'success'
     mockRoute.query = {}
 
@@ -87,7 +97,7 @@ describe('Profile/Google/Connection', () => {
   })
 
   it('shows a skeleton while the status loads', async () => {
-    connectionData.value = null
+    statusData.value = null
     fetchStatus.value = 'pending'
 
     const wrapper = await mountConnection()
@@ -96,13 +106,42 @@ describe('Profile/Google/Connection', () => {
       .toBe(true)
   })
 
-  it('offers to connect when nothing is connected', async () => {
+  it('shows an error with a retry when the status cannot load', async () => {
+    statusData.value = null
+    fetchStatus.value = 'error'
+
     const wrapper = await mountConnection()
 
-    expect(wrapper.text()).toContain('Google Drive')
-    expect(wrapper.text()).toContain('Besidka can only see the files you pick.')
-    expect(wrapper.find('[data-testid="google-drive-connect"]').exists())
+    expect(wrapper.find('[data-testid="google-drive-load-error"]').exists())
       .toBe(true)
+    expect(wrapper.find('[data-testid="google-drive-connect"]').exists())
+      .toBe(false)
+
+    await wrapper.get('[data-testid="google-drive-retry"]').trigger('click')
+
+    expect(refreshMock).toHaveBeenCalled()
+  })
+
+  it('explains what connecting does without promising a picker',
+    async () => {
+      const wrapper = await mountConnection()
+      const text = wrapper.get('[data-testid="google-drive-explainer"]').text()
+
+      expect(text).toContain('access only to the Google Drive files you pick')
+      expect(text).toContain('copied into your Besidka files')
+      expect(text).toContain('email address')
+      expect(text).not.toMatch(/button/i)
+      expect(wrapper.find('[data-testid="google-drive-connect"]').exists())
+        .toBe(true)
+    })
+
+  it('offers no Connect button while connecting is off', async () => {
+    setStatus({ canConnect: false })
+
+    const wrapper = await mountConnection()
+
+    expect(wrapper.find('[data-testid="google-drive-connect"]').exists())
+      .toBe(false)
   })
 
   it('opens Google\'s consent page on connect', async () => {
@@ -145,7 +184,7 @@ describe('Profile/Google/Connection', () => {
   })
 
   it('shows the account and what Besidka can access', async () => {
-    connectionData.value = { connection: summary() }
+    setStatus({ connection: summary() })
 
     const wrapper = await mountConnection()
 
@@ -159,43 +198,59 @@ describe('Profile/Google/Connection', () => {
       .toBe(false)
   })
 
-  it('disconnects after a confirmation that names the deleted copies',
+  it('keeps Disconnect for a connected user while connecting is off',
     async () => {
-      connectionData.value = { connection: summary() }
-      confirmMock.mockResolvedValue({ label: 'Disconnect', index: 0 })
-      fetchMock.mockResolvedValue({
-        disconnected: true,
-        filesDeleted: 2,
-        filesPending: false,
-      })
+      setStatus({ connection: summary(), canConnect: false })
 
       const wrapper = await mountConnection()
 
-      await wrapper.get('[data-testid="google-drive-disconnect"]')
-        .trigger('click')
-      await flushPromises()
-
-      expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
-        text: 'Disconnect Google Drive?',
-        subtitle: expect.stringContaining(
-          'Google Drive files copied into Besidka will be deleted',
-        ),
-      }))
-      expect(confirmMock.mock.calls[0]![0].subtitle)
-        .toContain('whenever Google access ends')
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/google/connections/disconnect',
-        { method: 'POST' },
-      )
-      expect(successMock).toHaveBeenCalledWith(
-        'Google Drive disconnected',
-        undefined,
-      )
-      expect(refreshMock).toHaveBeenCalled()
+      expect(wrapper.find('[data-testid="google-drive-disconnect"]').exists())
+        .toBe(true)
     })
 
-  it('does nothing when the confirmation is declined', async () => {
-    connectionData.value = { connection: summary() }
+  it('disconnects, announces it and moves focus', async () => {
+    setStatus({ connection: summary(), dedicatedClient: true })
+    confirmMock.mockResolvedValue({ label: 'Disconnect', index: 0 })
+    fetchMock.mockResolvedValue({
+      disconnected: true,
+      revoked: true,
+      filesDeleted: 2,
+      filesPending: false,
+    })
+    refreshMock.mockImplementation(async () => {
+      setStatus({ dedicatedClient: true })
+    })
+
+    const wrapper = await mountConnection()
+
+    await wrapper.get('[data-testid="google-drive-disconnect"]')
+      .trigger('click')
+    await flushPromises()
+
+    const subtitle = confirmMock.mock.calls[0]![0].subtitle as string
+
+    expect(subtitle).toContain(
+      'Google Drive files copied into Besidka will be deleted',
+    )
+    expect(subtitle).toContain('whenever Google access ends')
+    expect(subtitle).not.toContain('Sign in with Google')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/google/connections/disconnect',
+      { method: 'POST' },
+    )
+    expect(successMock).toHaveBeenCalledWith(
+      'Google Drive disconnected',
+      'The copied Google Drive files were deleted.',
+    )
+    expect(errorMock).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="google-drive-announcement"]').text())
+      .toBe('Google Drive disconnected.')
+    expect(document.activeElement?.getAttribute('data-testid'))
+      .toBe('google-drive-connect')
+  })
+
+  it('warns about the sign-in consent on the shared client', async () => {
+    setStatus({ connection: summary(), dedicatedClient: false })
     confirmMock.mockResolvedValue(null)
 
     const wrapper = await mountConnection()
@@ -204,20 +259,47 @@ describe('Profile/Google/Connection', () => {
       .trigger('click')
     await flushPromises()
 
+    expect(confirmMock.mock.calls[0]![0].subtitle).toContain(
+      'Google will ask for your consent again the next time you use Sign in '
+      + 'with Google.',
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('says when Google did not confirm the revoke and cleanup is pending',
+    async () => {
+      setStatus({ connection: summary() })
+      confirmMock.mockResolvedValue({ label: 'Disconnect', index: 0 })
+      fetchMock.mockResolvedValue({
+        disconnected: true,
+        revoked: false,
+        filesDeleted: 0,
+        filesPending: true,
+      })
+
+      const wrapper = await mountConnection()
+
+      await wrapper.get('[data-testid="google-drive-disconnect"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(successMock.mock.calls[0]![1]).toContain('finishes shortly')
+      expect(successMock.mock.calls[0]![1]).not.toContain('hour')
+      expect(errorMock.mock.calls[0]![1])
+        .toContain('https://myaccount.google.com/connections')
+    })
+
   it('asks to reconnect when Google access ended', async () => {
-    connectionData.value = {
+    setStatus({
       connection: summary({ status: 'needs_reauth', capabilities: [] }),
-    }
+    })
 
     const wrapper = await mountConnection()
+    const alert = wrapper.get('[data-testid="google-drive-reauth-alert"]')
 
     expect(wrapper.get('[data-testid="google-drive-status"]').text())
       .toBe('Reconnect needed')
-    expect(wrapper.find('[data-testid="google-drive-reauth-alert"]').exists())
-      .toBe(true)
+    expect(alert.text()).not.toContain('were deleted')
     expect(wrapper.find('[data-testid="google-drive-reconnect"]').exists())
       .toBe(true)
   })

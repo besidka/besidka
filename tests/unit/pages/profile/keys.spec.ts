@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   guides: [] as Array<{ provider: string, title: string }>,
   shouldAutoExpand: true,
   googleDriveActive: false,
+  googleConnected: false,
   openAtMount: {} as Record<string, boolean>,
   expandCard: {} as Record<string, (isExpanded?: boolean) => void>,
   resizeObservers: [] as Array<{
@@ -81,6 +82,16 @@ mockNuxtImport('useFeature', () => {
     const active = key === 'google.drive' && mocks.googleDriveActive
 
     return { enabled: active, active, variant: null }
+  })
+})
+
+mockNuxtImport('useGoogleConnection', () => {
+  return () => ({
+    data: computed(() => ({
+      connection: mocks.googleConnected ? { status: 'active' } : null,
+      canConnect: mocks.googleDriveActive,
+      dedicatedClient: false,
+    })),
   })
 })
 
@@ -173,6 +184,7 @@ describe('profile keys page', () => {
     mocks.guides = []
     mocks.shouldAutoExpand = true
     mocks.googleDriveActive = false
+    mocks.googleConnected = false
     mocks.expandCard = {}
     mocks.openAtMount = {}
     mocks.resizeObservers = []
@@ -368,6 +380,17 @@ describe('profile keys page', () => {
     expect(wrapper.get('[data-testid="key-tab-providers"]').classes())
       .toContain('tab-active')
   })
+
+  it('keeps the Google tab for a connected user after the flag is off',
+    async () => {
+      mocks.googleConnected = true
+      mockRoute.query = { tab: 'google' }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.get('[data-testid="key-tab-google"]').classes())
+        .toContain('tab-active')
+    })
 
   it('adds the Google tab last and opens it for tab=google', async () => {
     mocks.googleDriveActive = true

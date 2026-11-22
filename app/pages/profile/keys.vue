@@ -172,7 +172,7 @@
     />
   </div>
   <div
-    v-if="isGoogleDriveActive"
+    v-if="isGoogleTabVisible"
     v-show="activeTab === googleTabId"
     :id="`key-panel-${googleTabId}`"
     role="tabpanel"
@@ -234,9 +234,11 @@ useSeoMeta({
 const config = useRuntimeConfig().public
 const route = useRoute()
 const googleDriveFeature = useFeature('google.drive')
+const { data: googleConnectionData } = await useGoogleConnection()
 
-const isGoogleDriveActive = computed<boolean>(() => {
+const isGoogleTabVisible = computed<boolean>(() => {
   return googleDriveFeature.value.active
+    || !!googleConnectionData.value?.connection
 })
 
 const baseTabs: KeyTab[] = [
@@ -257,7 +259,7 @@ const googleTab: KeyTab = {
 }
 
 const tabs = computed<KeyTab[]>(() => {
-  return isGoogleDriveActive.value ? [...baseTabs, googleTab] : baseTabs
+  return isGoogleTabVisible.value ? [...baseTabs, googleTab] : baseTabs
 })
 
 resetKeyGuideTracking()
