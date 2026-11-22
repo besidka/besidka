@@ -16,6 +16,7 @@ export const KEYS_PAGE_TAB_IDS = [
   'search',
   'gateways',
   'memory-checks',
+  'google',
 ] as const
 
 const KEYS_PAGE_PATHNAME = '/profile/keys'

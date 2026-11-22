@@ -623,7 +623,11 @@ describe('purgeUserData', () => {
     const { purgeUserData } = await importPurgeUserData()
     const result = await purgeUserData({ userId: 19, logger })
 
-    expect(mocks.purgeUserGoogleConnections).toHaveBeenCalledWith(19, db)
+    expect(mocks.purgeUserGoogleConnections).toHaveBeenCalledWith(
+      19,
+      db,
+      expect.objectContaining({ logger: expect.anything() }),
+    )
     expect(result).toEqual(expect.objectContaining(googleConnectionPurgeCounts))
   })
 
