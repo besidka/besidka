@@ -13,10 +13,45 @@ export const GOOGLE_DRIVE_TOOL_NAMES: readonly string[] = [
   GOOGLE_DRIVE_SAVE_TOOL_NAME,
 ]
 
+export const GOOGLE_DRIVE_FILE_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/
+export const GOOGLE_DRIVE_CALLS_PER_MESSAGE = 30
+
+const TEXT_LIKE_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  'application/json',
+  'application/xml',
+  'application/xhtml+xml',
+  'application/yaml',
+  'application/x-yaml',
+  'application/toml',
+  'application/csv',
+  'application/javascript',
+  'application/x-sh',
+  'application/sql',
+])
+
+/**
+ * Whether a copy's media type is text the model can read as it is: `text/*`
+ * (plain text, Markdown, CSV, TSV, HTML), JSON, XML, YAML and the `+json` and
+ * `+xml` families. Anything else answers "not readable here".
+ */
+export function isGoogleDriveTextMediaType(mediaType: string): boolean {
+  const base = (mediaType.split(';')[0] ?? '').trim().toLowerCase()
+
+  return base.startsWith('text/')
+    || TEXT_LIKE_MEDIA_TYPES.has(base)
+    || base.endsWith('+json')
+    || base.endsWith('+xml')
+}
+
 export const GOOGLE_DRIVE_LIST_MAX = 50
 export const GOOGLE_DRIVE_READ_TEXT_MAX_BYTES = 40 * 1024
 export const GOOGLE_DRIVE_READ_SOURCE_MAX_BYTES = 8 * 1024 * 1024
 export const GOOGLE_DRIVE_SAVE_MAX_BYTES = 5 * 1024 * 1024
+export const GOOGLE_DRIVE_TOOLS_HINT = 'The model can list, read and save '
+  + 'your picked Drive files when you allow it, but not while web search or '
+  + 'Run code is on with an Anthropic model or Qwen search is on, and in a '
+  + 'gateway chat only after a Drive file is attached.'
+
 export const GOOGLE_DRIVE_FILE_REFERENCE_KIND = 'drive-file'
 export const GOOGLE_DRIVE_SAVE_PENDING_PREFIX = 'pending:'
 export const GOOGLE_DRIVE_SAVE_CLAIM_MAX_AGE_MS = 2 * 60 * 1000
@@ -60,6 +95,8 @@ export type DriveSaveFailureCode
     | 'no_access'
     | 'drive_full'
     | 'busy'
+    | 'unconfirmed'
+    | 'not_recorded'
     | 'failed'
 
 export const GOOGLE_DRIVE_SAVE_FAILURE_STATUS: Readonly<
@@ -76,6 +113,8 @@ export const GOOGLE_DRIVE_SAVE_FAILURE_STATUS: Readonly<
   no_access: 403,
   drive_full: 409,
   busy: 409,
+  unconfirmed: 502,
+  not_recorded: 409,
   failed: 502,
 }
 
@@ -99,6 +138,12 @@ export const GOOGLE_DRIVE_SAVE_FAILURE_MESSAGES: Readonly<
     + 'on the API Keys page and allow access to the files Besidka creates.',
   drive_full: 'Your Google Drive storage is full, so the file was not saved.',
   busy: 'This file is already being saved to Google Drive. Wait a moment.',
+  unconfirmed: 'The save did not finish, so it is not known whether the '
+    + 'file reached Google Drive. Check Google Drive before saving it '
+    + 'again; saving is paused for this file for a couple of minutes.',
+  not_recorded: 'The file was uploaded to Google Drive, but Besidka could '
+    + 'not record it because another save of the same file took over, so it '
+    + 'may exist twice in Google Drive. Check Google Drive.',
   failed: 'The file could not be saved to Google Drive. Try again in a '
     + 'moment.',
 }

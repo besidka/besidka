@@ -1,12 +1,13 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import type { RequestEvent } from 'nuxt/server'
-import { normalizeMediaType } from '#shared/utils/files'
 import { isDriveFileId } from '#shared/utils/google-drive'
 import type { DriveImportFailureCode } from '#shared/utils/google-drive'
 import {
+  GOOGLE_DRIVE_FILE_ID_SHAPE,
   GOOGLE_DRIVE_LIST_MAX,
   GOOGLE_DRIVE_READ_SOURCE_MAX_BYTES,
+  isGoogleDriveTextMediaType,
 } from '#shared/utils/google-drive-tools'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -28,9 +29,10 @@ export const GOOGLE_DRIVE_READ_FAILURE_TEXT: Readonly<
   unsupported_type: 'This kind of file cannot be read here.',
   not_downloadable: 'The owner of this file does not allow downloading it, '
     + 'so it cannot be read.',
-  too_large: 'This file is larger than 20 MB and cannot be read here.',
-  export_too_large: 'Google Drive cannot export this file because it is '
-    + 'larger than 10 MB.',
+  too_large: 'This file is larger than the 8 MB this tool reads. It was '
+    + 'not downloaded.',
+  export_too_large: 'This file is larger than the 8 MB this tool reads '
+    + '(Google Drive exports up to 10 MB). It was not copied.',
   storage_full: 'The user\'s Besidka storage is full, so a fresh copy of '
     + 'this file could not be made. Tell the user to free space.',
   reauthorize: 'Google no longer accepts the connection. Tell the user to '
@@ -52,12 +54,14 @@ export interface PickedDriveFile {
   modifiedAt: Date | null
 }
 
+export type PickedDriveStaleCause = 'unreachable' | 'storage_full'
+
 export type PickedDriveRead
   = | {
     status: 'ok'
     file: PickedDriveFile
     text: string
-    isStale: boolean
+    staleCause: PickedDriveStaleCause | null
   }
   | { status: 'not_text', file: PickedDriveFile }
   | { status: 'not_picked' }
@@ -147,6 +151,10 @@ async function readOwnedPickedRow(
   userId: number,
   fileId: string,
 ): Promise<PickedRow | null> {
+  if (!GOOGLE_DRIVE_FILE_ID_SHAPE.test(fileId)) {
+    return null
+  }
+
   const [row] = await db
     .select(pickedFileColumns)
     .from(schema.files)
@@ -173,19 +181,29 @@ async function readStoredText(
   return stored ? await stored.text() : null
 }
 
-function isReadableAsText(mediaType: string): boolean {
-  return normalizeMediaType(mediaType).startsWith('text/')
+export interface PickedDriveSendState {
+  refreshedCopyByDriveId: Map<string, string>
+}
+
+export function createPickedDriveSendState(): PickedDriveSendState {
+  return { refreshedCopyByDriveId: new Map() }
 }
 
 /**
  * Reads one file the user picked, by the id of one of their own copies (the
- * id the list returned). An id that is not one of the user's Google copies
- * is refused before any call to Google. A binary file answers `not_text`
- * without a call. For text, the copy is made current first through the same
- * import the Picker uses: it reuses an unchanged copy (one metadata call)
- * and downloads again only when the Drive original changed. When Google is
- * busy or unreachable the stored copy is read and marked `isStale`; any
- * other failure is a model-readable `failed` answer.
+ * id the list or an earlier read returned). An id that is not one of the
+ * user's Google copies, or has the wrong shape, is refused before any call
+ * to Google. A binary file answers `not_text` without a call.
+ *
+ * The first page (`offset` 0) makes the copy current through the same
+ * import the Picker uses (an unchanged original is one metadata call, a
+ * changed one is exported again, never above the readable limit), and the
+ * send remembers which copy that was, so a second first page of the same
+ * Drive file in the same send does not refresh again. Every later page
+ * (`offset` above 0) reads exactly the copy whose id the model passes, with
+ * no call to Google, so the pages of one read come from one version. When
+ * Google is busy, unreachable or the user's storage is full, the last copy
+ * is read and the answer names the cause.
  */
 export async function readPickedDriveFile(input: {
   event: Pick<RequestEvent, 'context'>
@@ -193,6 +211,8 @@ export async function readPickedDriveFile(input: {
   kv: KVNamespace
   userId: number
   fileId: string
+  offset: number
+  sendState: PickedDriveSendState
   logger: LoggerLike
 }): Promise<PickedDriveRead> {
   const row = await readOwnedPickedRow(input.db, input.userId, input.fileId)
@@ -202,34 +222,58 @@ export async function readPickedDriveFile(input: {
     return { status: 'not_picked' }
   }
 
-  if (!isReadableAsText(row.type)) {
+  if (!isGoogleDriveTextMediaType(row.type)) {
     return { status: 'not_text', file: picked }
   }
 
-  const [result] = await importDriveFiles({
-    event: input.event,
-    db: input.db,
-    kv: input.kv,
-    userId: input.userId,
-    items: [{ id: picked.driveFileId }],
-    logger: input.logger,
-  })
   let current: PickedRow = row
-  let isStale = false
+  let staleCause: PickedDriveStaleCause | null = null
 
-  if (result?.status === 'failed') {
-    if (!STALE_COPY_FALLBACK_CODES.has(result.code)) {
-      return {
-        status: 'failed',
-        code: result.code,
-        message: GOOGLE_DRIVE_READ_FAILURE_TEXT[result.code],
+  if (input.offset === 0) {
+    const refreshedId = input.sendState.refreshedCopyByDriveId
+      .get(picked.driveFileId)
+
+    if (refreshedId) {
+      current = await readOwnedPickedRow(input.db, input.userId, refreshedId)
+        ?? row
+    } else {
+      const [result] = await importDriveFiles({
+        event: input.event,
+        db: input.db,
+        kv: input.kv,
+        userId: input.userId,
+        items: [{ id: picked.driveFileId }],
+        maxBytes: GOOGLE_DRIVE_READ_SOURCE_MAX_BYTES,
+        logger: input.logger,
+      })
+
+      if (result?.status === 'failed') {
+        if (!STALE_COPY_FALLBACK_CODES.has(result.code)) {
+          return {
+            status: 'failed',
+            code: result.code,
+            message: GOOGLE_DRIVE_READ_FAILURE_TEXT[result.code],
+          }
+        }
+
+        staleCause = result.code === 'storage_full'
+          ? 'storage_full'
+          : 'unreachable'
+      } else if (result?.file.id && result.file.id !== row.id) {
+        current = await readOwnedPickedRow(
+          input.db,
+          input.userId,
+          result.file.id,
+        ) ?? row
+      }
+
+      if (!staleCause) {
+        input.sendState.refreshedCopyByDriveId.set(
+          picked.driveFileId,
+          current.id,
+        )
       }
     }
-
-    isStale = true
-  } else if (result?.file.id && result.file.id !== row.id) {
-    current = await readOwnedPickedRow(input.db, input.userId, result.file.id)
-      ?? row
   }
 
   const text = await readStoredText(current.storageKey, current.size)
@@ -239,8 +283,9 @@ export async function readPickedDriveFile(input: {
       status: 'failed',
       code: 'failed',
       message: current.size > GOOGLE_DRIVE_READ_SOURCE_MAX_BYTES
-        ? 'This file is larger than 8 MB and cannot be read here.'
-        : GOOGLE_DRIVE_READ_FAILURE_TEXT.failed,
+        ? GOOGLE_DRIVE_READ_FAILURE_TEXT.too_large
+        : 'The stored copy of this file is missing. Read the file again '
+          + 'from its first page.',
     }
   }
 
@@ -248,6 +293,6 @@ export async function readPickedDriveFile(input: {
     status: 'ok',
     file: toPickedFile(current) ?? picked,
     text,
-    isStale,
+    staleCause,
   }
 }

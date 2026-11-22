@@ -5,6 +5,7 @@ import {
   GOOGLE_DRIVE_SAVE_CLAIM_MAX_AGE_MS,
   GOOGLE_DRIVE_SAVE_MAX_BYTES,
   GOOGLE_DRIVE_SAVE_PENDING_PREFIX,
+  readSavedDriveCopyId,
 } from '#shared/utils/google-drive-tools'
 import type {
   DriveSaveFailureCode,
@@ -225,15 +226,14 @@ async function claimSave(
     { fileId: file.id },
   )
 
-  if (
-    current?.driveCopyId
-    && readPendingClaim(current.driveCopyId) === null
-  ) {
+  const concurrentCopyId = readSavedDriveCopyId(current?.driveCopyId)
+
+  if (concurrentCopyId) {
     return {
       ok: false,
       result: {
         status: 'already_saved',
-        saved: toSaved(file, current.driveCopyId, true),
+        saved: toSaved(file, concurrentCopyId, true),
       },
     }
   }
@@ -284,6 +284,8 @@ async function recordDriveCopy(
     input.logger.set({
       attributes: { googleDriveSave: { claimLost: true } },
     })
+
+    return failed('not_recorded')
   }
 
   return {
@@ -320,10 +322,12 @@ export async function saveFileToGoogleDrive(
     return failed('drive_copy')
   }
 
-  if (file.driveCopyId && readPendingClaim(file.driveCopyId) === null) {
+  const savedCopyId = readSavedDriveCopyId(file.driveCopyId)
+
+  if (savedCopyId) {
     return {
       status: 'already_saved',
-      saved: toSaved(file, file.driveCopyId, true),
+      saved: toSaved(file, savedCopyId, true),
     }
   }
 
@@ -345,7 +349,7 @@ export async function saveFileToGoogleDrive(
     return claimed.result
   }
 
-  let isRecorded = false
+  let keepsClaim = false
 
   try {
     const token = await readAccessToken(input)
@@ -365,6 +369,9 @@ export async function saveFileToGoogleDrive(
     }
 
     const driveName = sanitizeDriveFileName(input.name?.trim() || file.name)
+
+    keepsClaim = true
+
     const created = await createDriveFile({
       accessToken: token.accessToken,
       name: driveName,
@@ -373,6 +380,7 @@ export async function saveFileToGoogleDrive(
     })
 
     if (!created.ok) {
+      keepsClaim = false
       const code = classifyUploadFailure(created.status, created.reason)
 
       input.logger.set({
@@ -389,8 +397,6 @@ export async function saveFileToGoogleDrive(
       name: driveName,
     })
 
-    isRecorded = true
-
     input.logger.set({
       attributes: {
         googleDriveSave: { outcome: result.status, bytes: bytes.byteLength },
@@ -401,13 +407,16 @@ export async function saveFileToGoogleDrive(
   } catch (exception) {
     input.logger.set({
       attributes: {
-        googleDriveSave: { error: exceptionMessage(exception) },
+        googleDriveSave: {
+          error: exceptionMessage(exception),
+          afterUploadStarted: keepsClaim,
+        },
       },
     })
 
-    return failed('failed')
+    return failed(keepsClaim ? 'unconfirmed' : 'failed')
   } finally {
-    if (!isRecorded) {
+    if (!keepsClaim) {
       await releaseClaim(input, file, claimed.claim)
     }
   }

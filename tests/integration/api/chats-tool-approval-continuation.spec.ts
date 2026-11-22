@@ -2284,7 +2284,12 @@ describe('tool approval continuation', () => {
         const nameQuery = {
           from: () => nameQuery,
           where: () => nameQuery,
-          limit: async () => [{ name: 'Report.md' }],
+          limit: async () => [{
+            name: 'Report.md',
+            size: 2048,
+            createdAt: new Date('2026-11-20T10:00:00.000Z'),
+            googleDerivedAt: null,
+          }],
         }
         const build = (grants: Record<string, string> = {}) => {
           return buildGoogleDriveTools({
@@ -2370,7 +2375,8 @@ describe('tool approval continuation', () => {
           access: 'write',
           toolName: 'google__drive_save_file',
           rememberOptions: ['once'],
-          summary: 'Save "Report.md" to your Google Drive',
+          summary: 'Save "Report.md" (2 KB, created 2026-11-20) to your '
+            + 'Google Drive',
         })
 
         const { doStream } = await answer(paused, [
@@ -2382,8 +2388,14 @@ describe('tool approval continuation', () => {
         expect(mocks.saveFile).toHaveBeenCalledWith(expect.objectContaining({
           target: { fileId: 'file-2' },
         }))
-        expect(JSON.stringify((doStream.mock.calls[0]?.[0] as any)?.prompt))
-          .toContain('SECRET DRIVE BODY')
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(prompt).toContain('SECRET DRIVE BODY')
+        expect(prompt).not.toContain('"title"')
+        expect(prompt).not.toContain(`open?id=${DRIVE_ID}`)
+        expect(prompt.match(/Plan\.md/g)?.length).toBe(1)
         expect(JSON.stringify(update.parts))
           .not.toContain('SECRET DRIVE BODY')
         expect(findPart(update.parts, 'tool-google__drive_save_file'))
