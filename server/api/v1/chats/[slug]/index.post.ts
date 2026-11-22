@@ -482,7 +482,6 @@ import {
   deleteGoogleToolResults,
   hasGoogleToolResult,
   loadGoogleToolResults,
-  markChatGoogleData,
   redactGoogleToolPartsForPersistence,
   withholdCodeExecutionForGoogleData,
 } from '~~/server/utils/tool-approval/google'
@@ -493,8 +492,11 @@ import {
 import {
   assertGoogleDataRecipient,
   decideGoogleDataGuard,
+  buildGoogleContentPersistStatements,
   disabledRerankModelResolver,
+  flagChatGoogleData,
   mayOfferConnectorsWithGoogleData,
+  resolveSendGoogleContent,
   withGoogleTaintRerankStop,
   withoutWebSearchForGoogleData,
 } from '~~/server/utils/google/data-guard'
@@ -691,15 +693,17 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const holdsGoogleData = chatHoldsGoogleData({
+  let holdsGoogleData = chatHoldsGoogleData({
     googleDataAt: chat.googleDataAt,
     messages: chat.messages,
   })
 
   if (holdsGoogleData && !chat.googleDataAt) {
-    await markChatGoogleData(db, chat.id, logger)
+    await flagChatGoogleData(db, chat.id, false)
   }
 
+  let sendHoldsGoogleTaint: () => boolean = () => false
+  const isGoogleDerivedSend = () => holdsGoogleData || sendHoldsGoogleTaint()
   let resume: ToolApprovalResume | null = null
   let sendBody: ChatSendBody
 
@@ -839,6 +843,21 @@ export default defineEventHandler(async (event) => {
 
   if (skillInvocation && !isStoredUserMessage && !preloadedSkillInvocation) {
     throw createSkillInvocationUnavailableError()
+  }
+
+  const sendGoogleContent = await resolveSendGoogleContent({
+    db,
+    userId,
+    chatMessages: chat.messages,
+    newMessageParts: newMessage.parts,
+  })
+
+  if (sendGoogleContent.holdsGoogleContent) {
+    if (!holdsGoogleData || sendGoogleContent.newMessage) {
+      await flagChatGoogleData(db, chat.id, sendGoogleContent.newMessage)
+    }
+
+    holdsGoogleData = true
   }
 
   const firstUserMessage = chat.messages.length === 1
@@ -1589,6 +1608,7 @@ export default defineEventHandler(async (event) => {
               imageModel: openAiImageModel,
               logger: aiLogger,
               requestId: getRequestId(event),
+              isGoogleDerived: isGoogleDerivedSend,
               sourceImages: getImageEditSourceImages(messagesForAI),
               previousImage: previousGeneratedImage && fileStorage
                 ? {
@@ -1681,6 +1701,7 @@ export default defineEventHandler(async (event) => {
               imageModel: googleImageModel,
               logger: aiLogger,
               requestId: getRequestId(event),
+              isGoogleDerived: isGoogleDerivedSend,
               onGenerated: ({ aspectRatio }) => {
                 generatedImage = { modelId: googleImageModelId, aspectRatio }
               },
@@ -1736,6 +1757,7 @@ export default defineEventHandler(async (event) => {
               imageModel: xaiImageModel,
               logger: aiLogger,
               requestId: getRequestId(event),
+              isGoogleDerived: isGoogleDerivedSend,
               onGenerated: ({ aspectRatio }) => {
                 generatedImage = { modelId: xaiImageModelId, aspectRatio }
               },
@@ -1977,6 +1999,8 @@ export default defineEventHandler(async (event) => {
   const toolApprovalSend = createSendToolApproval({
     state: resume?.loaded.state ?? createApprovalState(),
   })
+
+  sendHoldsGoogleTaint = () => toolApprovalSend.state.taint.has('google')
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
@@ -1988,7 +2012,7 @@ export default defineEventHandler(async (event) => {
         userId,
         logger: aiLogger,
       }),
-      () => toolApprovalSend.state.taint.has('google'),
+      sendHoldsGoogleTaint,
     )
 
   if (chatSearchBudget && chatSearchToolsRegistered) {
@@ -2105,6 +2129,7 @@ export default defineEventHandler(async (event) => {
       attachedArtifactIds,
       logger: aiLogger,
       isFeatureActive: sendFeatures.isFeatureActive,
+      isGoogleDerived: isGoogleDerivedSend,
     })
     : {}
   const artifactToolsRegistered = Object.keys(artifactTools)
@@ -2380,6 +2405,7 @@ export default defineEventHandler(async (event) => {
         reserve: toolIndexReserve,
         consumeClearedCall: toolApprovalSend.consumeClearedCall,
         guard: chatSearchBudget,
+        holdsGoogleData: isGoogleDerivedSend,
         logger: aiLogger,
       })
 
@@ -3686,6 +3712,7 @@ export default defineEventHandler(async (event) => {
             skillsAttached: skillScriptsAttachment?.attachedCount ?? 0,
             tracker: codeExecutionSession.tracker,
             rates: resolveCodeExecutionRatesFromConfig(),
+            isGoogleDerived: isGoogleDerivedSend,
             logger: aiLogger,
           })
           : undefined
@@ -3762,7 +3789,7 @@ export default defineEventHandler(async (event) => {
             }
             : undefined,
           getConnectorSecrets: connectorsRun?.secrets,
-          chatGoogleDataAt: chat.googleDataAt,
+          isGoogleDerived: isGoogleDerivedSend,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -4262,6 +4289,7 @@ async function prepareBesidkaChatTools(input: {
   reserve: { tools: number, bytes: number }
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   guard: UntrustedContentGuard | undefined
+  holdsGoogleData: () => boolean
   logger: { set: (data: Record<string, unknown>) => void }
 }): Promise<PreparedBesidkaChatTools> {
   const { db, userId, logger } = input
@@ -4334,6 +4362,7 @@ async function prepareBesidkaChatTools(input: {
     consumeClearedCall: input.consumeClearedCall,
     limitCalls: adapter.createBesidkaCallLimiter(useKV()),
     ...(input.guard ? { guard: input.guard } : {}),
+    holdsGoogleData: input.holdsGoogleData,
     logger,
   })
 
@@ -6016,6 +6045,46 @@ async function updateResumedAssistantMessage(input: {
 }
 
 /**
+ * Stores a reply that holds a Google result together with the chat flag
+ * (`chats.google_data_at`) and the cleared share opt-in, in one D1 batch:
+ * the flag can never miss a stored Google result, and a failed batch fails
+ * the persist instead of leaving an unflagged chat.
+ */
+async function persistAssistantWithGoogleFlag(input: {
+  db: ReturnType<typeof useDb>
+  chatId: string
+  publicId: string
+  resume: boolean
+  values: Partial<typeof schema.messages.$inferInsert>
+}): Promise<{ id: string, publicId: string | null } | undefined> {
+  const returning = {
+    id: schema.messages.id,
+    publicId: schema.messages.publicId,
+  }
+  const messageStatement = input.resume
+    ? input.db.update(schema.messages)
+      .set(input.values)
+      .where(and(
+        eq(schema.messages.publicId, input.publicId),
+        eq(schema.messages.chatId, input.chatId),
+        eq(schema.messages.role, 'assistant'),
+      ))
+      .returning(returning)
+    : input.db.insert(schema.messages)
+      .values({
+        ...input.values,
+        publicId: input.publicId,
+      } as typeof schema.messages.$inferInsert)
+      .returning(returning)
+  const [rows] = await input.db.batch([
+    messageStatement,
+    ...buildGoogleContentPersistStatements(input.db, input.chatId),
+  ])
+
+  return rows[0]
+}
+
+/**
  * The chunks that rebuild a stored tool part waiting for approval: its
  * input, then the approval request with the stored approval id and reason.
  * The stored part has no signature, and the replay adds none.
@@ -6114,7 +6183,7 @@ async function persistAssistantMessageFromStream(input: {
   pastChatChipPart?: UIMessage['parts'][number]
   skillActivationParts?: UIMessage['parts']
   getConnectorSecrets?: () => string[]
-  chatGoogleDataAt?: Date | null
+  isGoogleDerived?: () => boolean
   resume?: {
     storedMessage: UIMessage
     storedPartCount: number
@@ -6193,6 +6262,7 @@ async function persistAssistantMessageFromStream(input: {
         chatId: input.chatId,
         gatewayId: input.providerId,
         modelId: input.modelId,
+        googleDerived: input.isGoogleDerived?.() === true,
         logger: input.logger,
       })
       : undefined
@@ -6373,37 +6443,55 @@ async function persistAssistantMessageFromStream(input: {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
-    const assistantMessage = input.resume
-      ? await updateResumedAssistantMessage({
+    const assistantTools: ModelTool[] = usedImageGeneration
+      ? ['image_generation']
+      : []
+    const assistantMessage = hasGoogleToolResult(responseParts)
+      ? await persistAssistantWithGoogleFlag({
         db: input.db,
         chatId: input.chatId,
         publicId: input.publicId,
-        parts: finalParts,
-        tools: usedImageGeneration ? ['image_generation'] : [],
-        usage: sumMessageUsages(input.resume.previousUsage, usage) ?? null,
+        resume: !!input.resume,
+        values: input.resume
+          ? {
+            parts: finalParts,
+            tools: assistantTools,
+            usage: sumMessageUsages(input.resume.previousUsage, usage) ?? null,
+          }
+          : {
+            chatId: input.chatId,
+            role: 'assistant',
+            parts: input.pastChatChipPart
+              ? [input.pastChatChipPart, ...finalParts]
+              : finalParts,
+            tools: assistantTools,
+            reasoning: input.reasoning,
+            usage: usage ?? null,
+          },
       })
-      : await insertMessageWithPublicId({
-        db: input.db,
-        values: {
+      : input.resume
+        ? await updateResumedAssistantMessage({
+          db: input.db,
           chatId: input.chatId,
-          role: 'assistant',
-          parts: input.pastChatChipPart
-            ? [input.pastChatChipPart, ...finalParts]
-            : finalParts,
-          tools: usedImageGeneration ? ['image_generation'] : [],
-          reasoning: input.reasoning,
-          usage: usage ?? null,
-        },
-        publicId: input.publicId,
-      })
-
-    if (
-      assistantMessage
-      && !input.chatGoogleDataAt
-      && hasGoogleToolResult(responseParts)
-    ) {
-      await markChatGoogleData(input.db, input.chatId, input.logger)
-    }
+          publicId: input.publicId,
+          parts: finalParts,
+          tools: assistantTools,
+          usage: sumMessageUsages(input.resume.previousUsage, usage) ?? null,
+        })
+        : await insertMessageWithPublicId({
+          db: input.db,
+          values: {
+            chatId: input.chatId,
+            role: 'assistant',
+            parts: input.pastChatChipPart
+              ? [input.pastChatChipPart, ...finalParts]
+              : finalParts,
+            tools: assistantTools,
+            reasoning: input.reasoning,
+            usage: usage ?? null,
+          },
+          publicId: input.publicId,
+        })
 
     if (assistantMessage && turn.stoppedReplies.length > 0) {
       const replacedStoppedReplies = await deleteStoppedReplies({

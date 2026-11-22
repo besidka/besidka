@@ -38,6 +38,7 @@ export const artifactsCapability = defineCapability({
       allowedKinds: getAllowedArtifactKinds(context.isFeatureActive),
       chatArtifactIds,
       modelId: context.modelId ?? context.model?.id ?? null,
+      isGoogleDerived: context.isGoogleDerived,
       logger: context.logger,
     })
   },

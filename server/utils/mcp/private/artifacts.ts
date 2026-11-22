@@ -38,6 +38,8 @@ import {
 } from '~~/server/utils/features/evaluate'
 import { clampMcpLimit } from '~~/server/utils/mcp/private/chats'
 import { readable } from '~~/server/utils/mcp/readable-error'
+import { createGoogleContentWithheldError } from '~~/server/utils/google/data-guard'
+import type { GoogleContentAccess } from '~~/server/utils/google/data-guard'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -70,6 +72,8 @@ export interface McpArtifactContext {
   clientId: string
   logger: LoggerLike
   siteUrl: string
+  googleContent?: GoogleContentAccess
+  isGoogleDerived?: () => boolean
 }
 
 interface FeatureCheck {
@@ -178,6 +182,7 @@ export async function listMcpArtifacts(
     limit,
     query: input.query,
     kind: input.kind,
+    excludesGoogleContent: context.googleContent !== 'allowed',
   })
   const nextOffset = offset + items.length
 
@@ -203,6 +208,7 @@ export async function getMcpArtifact(
   input: { id: string, version?: number },
 ) {
   await assertMcpArtifactsAvailable(context, { active: true, flags: [] })
+  await assertArtifactReadable(context, input.id)
 
   const version = await readable(() => {
     return readArtifactVersion({
@@ -297,6 +303,7 @@ export async function createMcpArtifact(
       originMessageId: null,
       createdVia: 'mcp',
       createdBy: 'mcp',
+      googleDerived: context.isGoogleDerived?.() === true,
       logger: context.logger,
     })
   })
@@ -306,6 +313,33 @@ export async function createMcpArtifact(
     version: created.version,
     url_in_app: `${context.siteUrl}/chats/artifacts?artifact=${created.artifactId}`,
   }
+}
+
+/**
+ * Refuses to return the content of an artifact written in a send that held
+ * Google data, unless the caller is a send that already holds Google data:
+ * MCP answers the same 404 as an unknown id (pre-check row 5), the Besidka
+ * tools of another chat get the withheld notice.
+ */
+async function assertArtifactReadable(
+  context: McpArtifactContext,
+  artifactId: string,
+): Promise<void> {
+  const access = context.googleContent ?? 'hidden'
+
+  if (access === 'allowed') {
+    return
+  }
+
+  const artifact = await requireOwnedArtifact(context, artifactId)
+
+  if (!artifact.googleDerivedAt) {
+    return
+  }
+
+  throw access === 'withheld'
+    ? createGoogleContentWithheldError()
+    : createArtifactNotFoundError()
 }
 
 async function requireOwnedArtifact(
@@ -384,6 +418,7 @@ export async function updateMcpArtifact(
       title: input.title,
       expectedVersion,
       createdBy: 'mcp',
+      googleDerived: context.isGoogleDerived?.() === true,
       logger: context.logger,
     })
   })

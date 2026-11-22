@@ -8,8 +8,8 @@ import type {
   KnowledgeItem,
   KnowledgeMode,
 } from '#shared/types/project-knowledge.d'
-import { isGoogleExternalSource } from '#shared/utils/google-data-policy'
 import { hasFormatCharacters } from '#shared/utils/invisible-characters'
+import { isGoogleContentFile } from '~~/server/utils/google/data-guard'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { countKnowledgeChars } from '#shared/utils/project-knowledge-budget'
 import {
@@ -124,6 +124,7 @@ interface LinkedFileRow {
   type: string
   expiresAt: Date | null
   externalSource: string | null
+  googleDerivedAt: Date | null
   isLinked: number
 }
 
@@ -517,6 +518,7 @@ async function loadLinkableFiles(
       type: schema.files.type,
       expiresAt: schema.files.expiresAt,
       externalSource: schema.files.externalSource,
+      googleDerivedAt: schema.files.googleDerivedAt,
       isLinked: sql<number>`exists (
         select 1 from project_knowledge_items as knowledge_link
         where knowledge_link.file_id = ${schema.files.id}
@@ -585,10 +587,11 @@ function assertFilesLinkable(
       })
     }
 
-    if (isGoogleExternalSource(file.externalSource)) {
+    if (isGoogleContentFile(file)) {
       throw createInvalidInputError(
-        'A copy of a Google Drive file cannot be added to project knowledge',
-        'Upload the file from your device instead',
+        'A file with Google content cannot be added to project knowledge',
+        'It is a copy of a Google Drive file or was written in a chat that '
+        + 'holds Google data. Upload a file from your device instead',
       )
     }
 

@@ -13,7 +13,12 @@ import {
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { persistFile } from '~~/server/utils/files/persist-file'
 import { getFilesSourceCondition } from '~~/server/utils/files/source-filter'
-import { fileIsNotGoogleCopy } from '~~/server/utils/google/data-guard'
+import {
+  createGoogleContentWithheldError,
+  fileHoldsNoGoogleContent,
+  isGoogleContentFile,
+} from '~~/server/utils/google/data-guard'
+import type { GoogleContentAccess } from '~~/server/utils/google/data-guard'
 import { assertUploadContentLength } from '~~/server/utils/files/upload-request'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import { isFileLinkedToKnowledgeSql } from '~~/server/utils/knowledge/linked-files'
@@ -108,6 +113,7 @@ async function resolveOwnedMcpFile(
   db: DbClient,
   userId: number,
   fileId: string,
+  googleContent: GoogleContentAccess,
 ) {
   if (decodeKnowledgeEntityId(fileId) === null) {
     throw createFileNotFoundError(fileId)
@@ -119,17 +125,24 @@ async function resolveOwnedMcpFile(
     type: schema.files.type,
     size: schema.files.size,
     storageKey: schema.files.storageKey,
+    externalSource: schema.files.externalSource,
+    googleDerivedAt: schema.files.googleDerivedAt,
   })
     .from(schema.files)
     .where(and(
       eq(schema.files.id, fileId),
       eq(schema.files.userId, userId),
-      fileIsNotGoogleCopy(),
     ))
     .get()
 
   if (!file) {
     throw createFileNotFoundError(fileId)
+  }
+
+  if (googleContent !== 'allowed' && isGoogleContentFile(file)) {
+    throw googleContent === 'withheld'
+      ? createGoogleContentWithheldError()
+      : createFileNotFoundError(fileId)
   }
 
   return file
@@ -143,6 +156,7 @@ export async function listMcpFiles(
     search?: string
     offset?: number
     limit?: number
+    googleContent?: GoogleContentAccess
   },
 ) {
   const limit = clampMcpLimit(
@@ -154,7 +168,7 @@ export async function listMcpFiles(
   const search = input.search?.trim() ?? ''
   const whereConditions = and(
     eq(schema.files.userId, userId),
-    fileIsNotGoogleCopy(),
+    input.googleContent === 'allowed' ? undefined : fileHoldsNoGoogleContent(),
     getFilesSourceCondition(input.source ?? 'all'),
     search ? containsLikeEscaped(schema.files.name, search) : undefined,
   )
@@ -204,9 +218,19 @@ export async function listMcpFiles(
 export async function readMcpFile(
   db: DbClient,
   userId: number,
-  input: { fileId: string, offset?: number, maxChars?: number },
+  input: {
+    fileId: string
+    offset?: number
+    maxChars?: number
+    googleContent?: GoogleContentAccess
+  },
 ) {
-  const file = await resolveOwnedMcpFile(db, userId, input.fileId)
+  const file = await resolveOwnedMcpFile(
+    db,
+    userId,
+    input.fileId,
+    input.googleContent ?? 'hidden',
+  )
   const mediaType = normalizeMediaType(file.type)
 
   if (!mediaType.startsWith('text/')) {
@@ -260,6 +284,7 @@ export async function createMcpFile(
   userId: number,
   input: { name: string, text: string },
   logger: LoggerLike,
+  googleDerived = false,
 ) {
   const name = normalizeMcpFileName(input.name)
 
@@ -290,6 +315,7 @@ export async function createMcpFile(
     fileData,
     quotaSizeBytes: fileData.byteLength,
     source: 'upload',
+    googleDerivedAt: googleDerived ? new Date() : null,
     logger,
     policy,
     totalFilesSize,

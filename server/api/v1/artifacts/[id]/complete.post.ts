@@ -34,10 +34,7 @@ import {
 import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storage-request'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { requireFeature } from '~~/server/utils/features/guards'
-import {
-  assertGoogleDataRecipient,
-  readArtifactHoldsGoogleData,
-} from '~~/server/utils/google/data-guard'
+import { assertGoogleDataRecipient } from '~~/server/utils/google/data-guard'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import {
   assertLegalConsent,
@@ -188,10 +185,7 @@ export default defineEventHandler(async (
   }
 
   await assertGoogleDataRecipient({
-    holdsGoogleData: await readArtifactHoldsGoogleData(
-      db,
-      access.artifactInternalId,
-    ),
+    holdsGoogleData: access.googleDerived,
     db,
     userId: viewerUserId,
     recipient: {

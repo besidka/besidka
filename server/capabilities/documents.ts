@@ -106,6 +106,7 @@ export const documentsCapability = defineCapability({
       enabledFormats,
       modelId: context.modelId ?? context.model?.id ?? null,
       assistantMessageId: context.assistantMessageId,
+      isGoogleDerived: context.isGoogleDerived,
     })
   },
 })

@@ -38,7 +38,7 @@ import {
   parseSearchCursor,
 } from '~~/server/utils/chats/history/search-cursor'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
-import { fileIsNotGoogleCopy } from '~~/server/utils/google/data-guard'
+import { fileHoldsNoGoogleContent } from '~~/server/utils/google/data-guard'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import {
@@ -579,7 +579,7 @@ async function resolveMcpContextFiles(
       .where(and(
         eq(schema.files.userId, userId),
         inArray(schema.files.storageKey, storageKeys),
-        fileIsNotGoogleCopy(),
+        fileHoldsNoGoogleContent(),
       ))
     : []
   const idByStorageKey = new Map(rows.map((row) => {

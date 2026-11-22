@@ -23,6 +23,7 @@ export interface CapabilityToolContext {
   attachedArtifactIds?: readonly string[]
   logger: LoggerLike
   isFeatureActive: (flag: FeatureKey) => boolean
+  isGoogleDerived?: () => boolean
 }
 
 /**

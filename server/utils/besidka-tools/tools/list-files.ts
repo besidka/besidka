@@ -56,7 +56,10 @@ export const listFilesBesidkaTool = defineBesidkaTool({
     + 'storage usage: id, name, media type, size, source and expiry. '
     + 'Pass nextOffset back as offset to continue.',
   handler: async (input: ListFilesInput, context) => {
-    const result = await listMcpFiles(context.db, context.userId, input)
+    const result = await listMcpFiles(context.db, context.userId, {
+      ...input,
+      googleContent: context.googleContent ?? 'hidden',
+    })
 
     context.log({
       file_source: input.source ?? 'all',

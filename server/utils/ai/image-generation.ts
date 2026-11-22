@@ -94,6 +94,7 @@ export interface CreateImageGenerationToolInput {
   onGenerated?: (result: {
     aspectRatio: ImageGenerationAspectRatio
   }) => void
+  isGoogleDerived?: () => boolean
 }
 
 function getDataUrlMediaType(url: string): string {
@@ -376,6 +377,7 @@ export function createImageGenerationTool(
         originProvider: input.provider,
         originModel: input.model,
         generationCost: getImageGenerationCost(input.model, aspectRatio),
+        googleDerivedAt: input.isGoogleDerived?.() ? new Date() : null,
         logger: input.logger,
       })
       const url = `/files/${persistedFile.storageKey}`

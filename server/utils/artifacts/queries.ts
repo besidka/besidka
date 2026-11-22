@@ -39,6 +39,7 @@ export interface ListArtifactsInput {
   query?: string
   kind?: ArtifactKind
   now?: Date
+  excludesGoogleContent?: boolean
 }
 
 function versionCountSql() {
@@ -129,6 +130,9 @@ export async function listArtifacts(
     gt(schema.artifacts.currentVersion, 0),
     input.kind ? eq(schema.artifacts.kind, input.kind) : undefined,
     search ? containsLikeEscaped(schema.artifacts.title, search) : undefined,
+    input.excludesGoogleContent
+      ? isNull(schema.artifacts.googleDerivedAt)
+      : undefined,
   )
   const itemsQuery = input.db
     .select(summarySelection(now))

@@ -576,6 +576,7 @@ export interface PersistGatewayImageOutputInput {
   chatId: string
   gatewayId: string
   modelId: string
+  googleDerived?: boolean
   logger: LoggerLike
 }
 
@@ -822,6 +823,7 @@ export async function persistGatewayGeneratedImageParts(
         source: 'assistant',
         originProvider: input.gatewayId,
         originModel: input.modelId,
+        googleDerivedAt: input.googleDerived ? new Date() : null,
         logger: input.logger,
       })
 

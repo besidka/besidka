@@ -3,11 +3,16 @@ import {
   eq,
   isNotNull,
   isNull,
+  inArray,
   notInArray,
   or,
+  sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
-import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
+import {
+  GOOGLE_EXTERNAL_SOURCES,
+  isGoogleExternalSource,
+} from '#shared/utils/google-data-policy'
 import type { GoogleDataDecision } from '#shared/utils/google-data-policy'
 import {
   decideGoogleDataRecipient,
@@ -16,7 +21,11 @@ import {
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
+import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
+import { collectReferencedArtifactIds } from '~~/server/utils/artifacts/message-parts'
+import { decodeArtifactId } from '~~/server/utils/artifacts/store'
+import { extractStorageKeyFromFileUrl } from '~~/server/utils/files/file-governance'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
@@ -252,39 +261,254 @@ export function mayOfferConnectorsWithGoogleData(input: {
 }
 
 /**
- * A file that is not a copy of a Google file: `external_source` is null or
- * not one of `GOOGLE_EXTERNAL_SOURCES`. Google copies stay out of MCP, the
- * Besidka file tools and share grants.
+ * The statements that go into the same D1 batch as a write that brings new
+ * Google content into a chat: set `chats.google_data_at` once (the first
+ * time is kept) and clear the chat share's opt-in, so a share pauses until
+ * the owner opts in again for the new content.
  */
-export function fileIsNotGoogleCopy() {
-  return or(
-    isNull(schema.files.externalSource),
-    notInArray(schema.files.externalSource, [...GOOGLE_EXTERNAL_SOURCES]),
+export function buildGoogleContentPersistStatements(
+  db: DbClient,
+  chatPublicId: string,
+) {
+  return [
+    db.update(schema.chats)
+      .set({
+        googleDataAt: sql`coalesce(${schema.chats.googleDataAt}, ${Math.floor(Date.now() / 1000)})`,
+      })
+      .where(eq(schema.chats.id, chatPublicId)),
+    db.update(schema.chatShares)
+      .set({ googleOptInAt: null })
+      .where(eq(schema.chatShares.chatId, chatPublicId)),
+  ] as const
+}
+
+/**
+ * Flags a chat that a send found to hold Google content before the guard
+ * (a Google copy or a marked item attached or referenced), and clears its
+ * share opt-in when that content is new in this send. Not best effort: a
+ * failure stops the send.
+ */
+export async function flagChatGoogleData(
+  db: DbClient,
+  chatPublicId: string,
+  clearsShareOptIn: boolean,
+): Promise<void> {
+  const [flag, clearOptIn] = buildGoogleContentPersistStatements(
+    db,
+    chatPublicId,
+  )
+
+  await db.batch(clearsShareOptIn ? [flag, clearOptIn] : [flag])
+}
+
+/**
+ * A file that holds no Google content: not a copy of a Google file
+ * (`external_source` null or not one of `GOOGLE_EXTERNAL_SOURCES`) and not
+ * written in a send that held Google data (`google_derived_at` null).
+ * Such files stay out of MCP, other chats' Besidka file tools, share grants
+ * and project knowledge.
+ */
+export function fileHoldsNoGoogleContent() {
+  return and(
+    or(
+      isNull(schema.files.externalSource),
+      notInArray(schema.files.externalSource, [...GOOGLE_EXTERNAL_SOURCES]),
+    ),
+    isNull(schema.files.googleDerivedAt),
   )
 }
 
 /**
- * Whether the chat an artifact was written in holds Google data: the
- * artifact's source may quote it. An artifact with no origin chat, or whose
- * chat is gone, reads as not flagged.
+ * How a reader treats Google content (Google copies and marked artifacts
+ * and files): `hidden` for MCP clients (filtered out, an id answers 404),
+ * `withheld` for the Besidka tools of a chat without Google data (listed
+ * out, a read answers a short notice so the model can tell the user), and
+ * `allowed` inside a send that already holds Google data, whose model the
+ * guard cleared.
  */
-export async function readArtifactHoldsGoogleData(
-  db: DbClient,
-  artifactInternalId: number,
-): Promise<boolean> {
-  const row = await db.select({ id: schema.artifacts.id })
-    .from(schema.artifacts)
-    .innerJoin(
-      schema.chats,
-      eq(schema.chats.id, schema.artifacts.originChatId),
-    )
-    .where(and(
-      eq(schema.artifacts.id, artifactInternalId),
-      isNotNull(schema.chats.googleDataAt),
-    ))
-    .get()
+export type GoogleContentAccess = 'hidden' | 'withheld' | 'allowed'
 
-  return !!row
+export const GOOGLE_CONTENT_WITHHELD_MESSAGE = 'This item holds content '
+  + 'from Google and is not available in this chat. Tell the user to open it '
+  + 'in the chat it came from.'
+
+export function createGoogleContentWithheldError() {
+  return createError({
+    message: GOOGLE_CONTENT_WITHHELD_MESSAGE,
+    status: 403,
+    why: 'The item was written in a chat that holds Google data.',
+    fix: 'Open the chat the item came from.',
+  })
+}
+
+/**
+ * An artifact not written in a send that held Google data
+ * (`artifacts.google_derived_at` null).
+ */
+export function artifactHoldsNoGoogleContent() {
+  return isNull(schema.artifacts.googleDerivedAt)
+}
+
+/**
+ * Whether a file row holds Google content: a Google copy or a file a send
+ * that held Google data wrote.
+ */
+export function isGoogleContentFile(file: {
+  externalSource?: string | null
+  googleDerivedAt?: Date | null
+}): boolean {
+  return isGoogleExternalSource(file.externalSource) || !!file.googleDerivedAt
+}
+
+/**
+ * The Google content a send carries before any model call: file parts of
+ * the chat and the new message whose file is a Google copy or carries the
+ * derived mark, and attached or referenced artifacts with the mark. One
+ * query per kind, only when there is something to look up. `newMessage`
+ * says whether the new message itself brought such content.
+ */
+export async function findSendGoogleContent(input: {
+  db: DbClient
+  userId: number
+  storageKeys: readonly string[]
+  newMessageStorageKeys: readonly string[]
+  artifactIds: readonly number[]
+  newMessageArtifactIds: readonly number[]
+}): Promise<{ holdsGoogleContent: boolean, newMessage: boolean }> {
+  const markedKeys = new Set<string>()
+  const markedArtifactIds = new Set<number>()
+  const storageKeys = [...new Set(input.storageKeys)]
+  const artifactIds = [...new Set(input.artifactIds)]
+
+  for (const chunk of chunkValues(storageKeys)) {
+    const rows = await input.db.select({ storageKey: schema.files.storageKey })
+      .from(schema.files)
+      .where(and(
+        eq(schema.files.userId, input.userId),
+        inArray(schema.files.storageKey, chunk),
+        or(
+          inArray(schema.files.externalSource, [...GOOGLE_EXTERNAL_SOURCES]),
+          isNotNull(schema.files.googleDerivedAt),
+        ),
+      ))
+
+    for (const row of rows) {
+      markedKeys.add(row.storageKey)
+    }
+  }
+
+  for (const chunk of chunkValues(artifactIds)) {
+    const rows = await input.db.select({ id: schema.artifacts.id })
+      .from(schema.artifacts)
+      .where(and(
+        eq(schema.artifacts.userId, input.userId),
+        inArray(schema.artifacts.id, chunk),
+        isNotNull(schema.artifacts.googleDerivedAt),
+      ))
+
+    for (const row of rows) {
+      markedArtifactIds.add(row.id)
+    }
+  }
+
+  const newMessage = input.newMessageStorageKeys.some((key) => {
+    return markedKeys.has(key)
+  }) || input.newMessageArtifactIds.some((id) => {
+    return markedArtifactIds.has(id)
+  })
+
+  return {
+    holdsGoogleContent: markedKeys.size > 0 || markedArtifactIds.size > 0,
+    newMessage,
+  }
+}
+
+function fileStorageKeysOf(parts: unknown): string[] {
+  if (!Array.isArray(parts)) {
+    return []
+  }
+
+  return parts.flatMap((part: unknown) => {
+    const record = part as { type?: unknown, url?: unknown } | null
+
+    if (record?.type !== 'file' || typeof record.url !== 'string') {
+      return []
+    }
+
+    const storageKey = extractStorageKeyFromFileUrl(record.url)
+
+    return storageKey ? [storageKey] : []
+  })
+}
+
+function internalArtifactIdsOf(publicIds: readonly string[]): number[] {
+  return publicIds.flatMap((publicId) => {
+    const internalId = decodeArtifactId(publicId)
+
+    return internalId === null ? [] : [internalId]
+  })
+}
+
+/**
+ * Whether a send carries Google content it must treat as Google data before
+ * the guard runs: a Google copy or a marked file attached to any message of
+ * the chat or to the new message, or a marked artifact attached or referenced
+ * there. No query runs when there is nothing to look up, so an ordinary send
+ * without files or artifacts costs nothing.
+ */
+export async function resolveSendGoogleContent(input: {
+  db: DbClient
+  userId: number
+  chatMessages: ReadonlyArray<{ role: string, parts: unknown }>
+  newMessageParts: unknown
+}): Promise<{ holdsGoogleContent: boolean, newMessage: boolean }> {
+  const newMessageStorageKeys = fileStorageKeysOf(input.newMessageParts)
+  const storageKeys = [
+    ...input.chatMessages.flatMap((message) => {
+      return fileStorageKeysOf(message.parts)
+    }),
+    ...newMessageStorageKeys,
+  ]
+  const newMessage = { role: 'user', parts: input.newMessageParts }
+  const newMessageArtifactIds = internalArtifactIdsOf(
+    collectArtifactAttachments([newMessage]).map((attachment) => {
+      return attachment.artifactId
+    }),
+  )
+  const artifactIds = [
+    ...internalArtifactIdsOf(
+      collectArtifactAttachments(input.chatMessages).map((attachment) => {
+        return attachment.artifactId
+      }),
+    ),
+    ...internalArtifactIdsOf(collectReferencedArtifactIds(input.chatMessages)),
+    ...newMessageArtifactIds,
+  ]
+
+  if (storageKeys.length === 0 && artifactIds.length === 0) {
+    return { holdsGoogleContent: false, newMessage: false }
+  }
+
+  return await findSendGoogleContent({
+    db: input.db,
+    userId: input.userId,
+    storageKeys,
+    newMessageStorageKeys,
+    artifactIds,
+    newMessageArtifactIds,
+  })
+}
+
+const LOOKUP_CHUNK_SIZE = 90
+
+function chunkValues<Value>(values: readonly Value[]): Value[][] {
+  const chunks: Value[][] = []
+
+  for (let start = 0; start < values.length; start += LOOKUP_CHUNK_SIZE) {
+    chunks.push(values.slice(start, start + LOOKUP_CHUNK_SIZE))
+  }
+
+  return chunks
 }
 
 /**

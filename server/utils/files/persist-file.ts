@@ -38,6 +38,7 @@ export interface PersistFileInput {
   originProvider?: string | null
   originModel?: string | null
   generationCost?: number | null
+  googleDerivedAt?: Date | null
   logger?: LoggerLike
   policy?: FilePolicy
   totalFilesSize?: number
@@ -193,6 +194,7 @@ export async function persistFile(
         originProvider: input.originProvider ?? null,
         originModel: input.originModel ?? null,
         generationCost: input.generationCost ?? null,
+        googleDerivedAt: input.googleDerivedAt ?? null,
       })
       .returning({
         id: schema.files.id,

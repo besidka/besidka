@@ -69,6 +69,7 @@ export interface CreateArtifactToolsInput {
   chatArtifactIds: readonly string[]
   modelId?: string | null
   createdBy?: ArtifactVersionCreatedBy
+  isGoogleDerived?: () => boolean
   logger: LoggerLike
 }
 
@@ -534,6 +535,7 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
             createdVia: 'chat',
             createdBy,
             modelId: input.modelId ?? null,
+            googleDerived: input.isGoogleDerived?.() === true,
             logger: input.logger,
           })
 
@@ -624,6 +626,7 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
             expectedVersion,
             createdBy,
             modelId: input.modelId ?? null,
+            googleDerived: input.isGoogleDerived?.() === true,
             logger: input.logger,
           })
 
