@@ -20,6 +20,8 @@ import {
   EXTRACT_FORMATS,
   EXTRACT_LIMITS,
   EXTRACT_VERSION,
+  EXTRACT_VERSIONS,
+  WORKBOOK_MAP_EXTRACT_VERSION,
   extractOfficeText,
 } from '@besidka/doc-renderer/extract'
 import type { ExtractFormat } from '@besidka/doc-renderer/extract'
@@ -79,6 +81,7 @@ export function getCapabilities(): RendererCapabilities {
     maxOutputBytes: VALIDATION_LIMITS.fileBytesMax,
     extract: {
       version: EXTRACT_VERSION,
+      versions: [...EXTRACT_VERSIONS],
       formats: [...EXTRACT_FORMATS],
       maxInputBytes: EXTRACT_LIMITS.fileBytesMax,
       maxTextBytes: EXTRACT_LIMITS.textBytesMax,
@@ -370,6 +373,26 @@ function extractFailure(
   }
 }
 
+const MAP_TEXT_BYTES_MIN = 16 * 1024
+
+function mapTextBytes(requested: unknown): number {
+  if (typeof requested !== 'number' || !Number.isFinite(requested)) {
+    return EXTRACT_LIMITS.textBytesMax
+  }
+
+  return Math.min(
+    Math.max(Math.floor(requested), MAP_TEXT_BYTES_MIN),
+    EXTRACT_LIMITS.textBytesMax,
+  )
+}
+
+/**
+ * Extracts text. A request without `version`, or with version 1, gets the
+ * version 1 answer exactly as before, so an app built before the workbook
+ * map keeps working against this Worker. Version 2 asks for the workbook
+ * map for XLSX (other formats answer as version 1), optionally within
+ * `maxTextBytes`, clamped to the Worker's own limit.
+ */
 export function extractDocumentText(request: ExtractRequest): ExtractResult {
   try {
     if (!isRecord(request) || !(request.bytes instanceof Uint8Array)) {
@@ -380,7 +403,22 @@ export function extractDocumentText(request: ExtractRequest): ExtractResult {
       return extractFailure('unsupported_format', request.bytes.length)
     }
 
-    return extractOfficeText(request.bytes, request.format)
+    const version = request.version ?? EXTRACT_VERSION
+
+    if (!EXTRACT_VERSIONS.includes(version)) {
+      return extractFailure('unsupported_version', request.bytes.length)
+    }
+
+    if (version !== WORKBOOK_MAP_EXTRACT_VERSION) {
+      return extractOfficeText(request.bytes, request.format)
+    }
+
+    return extractOfficeText(
+      request.bytes,
+      request.format,
+      { textBytesMax: mapTextBytes(request.maxTextBytes) },
+      { workbookMap: true },
+    )
   } catch {
     return extractFailure('extract_error', 0)
   }

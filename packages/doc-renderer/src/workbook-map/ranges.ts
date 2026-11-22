@@ -1,4 +1,4 @@
-import { rangeAddress } from './address.ts'
+import { parseRange, rangeAddress } from './address.ts'
 import type { CellPosition, CellRange } from './address.ts'
 
 function compareRanges(first: CellRange, second: CellRange): number {
@@ -77,6 +77,63 @@ export function cellsToRanges(cells: readonly CellPosition[]): CellRange[] {
   }
 
   return joined.sort(compareRanges)
+}
+
+function joinPass(
+  ranges: CellRange[],
+  isAcross: boolean,
+): CellRange[] {
+  const sorted = [...ranges].sort((first, second) => {
+    return isAcross
+      ? first.top - second.top || first.bottom - second.bottom
+      || first.left - second.left
+      : first.left - second.left || first.right - second.right
+        || first.top - second.top
+  })
+  const joined: CellRange[] = []
+
+  for (const range of sorted) {
+    const last = joined[joined.length - 1]
+    const canJoin = last && (isAcross
+      ? last.top === range.top && last.bottom === range.bottom
+      && last.right + 1 === range.left
+      : last.left === range.left && last.right === range.right
+        && last.bottom + 1 === range.top)
+
+    if (last && canJoin) {
+      last.right = Math.max(last.right, range.right)
+      last.bottom = Math.max(last.bottom, range.bottom)
+      continue
+    }
+
+    joined.push({ ...range })
+  }
+
+  return joined
+}
+
+/**
+ * Joins rectangles that touch along a whole edge (`C7:C171` and `D7:D171`
+ * become `C7:D171`). Ranges that do not parse are kept as they are, after
+ * the joined ones.
+ */
+export function joinRangeTexts(texts: readonly string[]): string[] {
+  const parsed: CellRange[] = []
+  const unparsed: string[] = []
+
+  for (const text of texts) {
+    const range = parseRange(text)
+
+    if (range) {
+      parsed.push(range)
+    } else {
+      unparsed.push(text)
+    }
+  }
+
+  const joined = joinPass(joinPass(parsed, true), false)
+
+  return [...joined.sort(compareRanges).map(rangeAddress), ...unparsed]
 }
 
 export function formatRanges(ranges: readonly CellRange[]): string[] {

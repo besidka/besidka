@@ -15,25 +15,31 @@ import { EXTRACT_FORMATS, EXTRACT_LIMITS } from './types.ts'
 import type {
   ExtractFormat,
   ExtractLimits,
+  ExtractOptions,
   ExtractResult,
   ExtractStats,
 } from './types.ts'
 import { extractXlsx } from './xlsx.ts'
+import { extractXlsxMap } from './xlsx-map.ts'
 
 export {
   EXTRACT_FORMATS,
   EXTRACT_LIMITS,
   EXTRACT_VERSION,
+  EXTRACT_VERSIONS,
   TRUNCATION_MARKER,
+  WORKBOOK_MAP_EXTRACT_VERSION,
 } from './types.ts'
 export type {
   ExtractFormat,
   ExtractLimits,
+  ExtractOptions,
   ExtractResult,
   ExtractStats,
   ExtractStatus,
   TruncationReason,
 } from './types.ts'
+export type { WorkbookMapSummary } from '../workbook-map/types.ts'
 
 const CONTENT_TYPES_PART = '[Content_Types].xml'
 const COMPOUND_FILE_SIGNATURE = [0xD0, 0xCF, 0x11, 0xE0]
@@ -196,12 +202,15 @@ function failure(
  * are refused before any part is read, the ZIP limits are applied from the
  * central directory, and only the XML parts that carry text are inflated.
  * Images, charts, shapes, comments, headers, footers and formatting are not
- * included.
+ * included. With `options.workbookMap` an XLSX becomes the workbook map
+ * (formulas, rules, number formats, notes and values) instead of CSV, and
+ * the result carries its summary; other formats ignore the option.
  */
 export function extractOfficeText(
   bytes: Uint8Array,
   format: ExtractFormat,
   limits: Partial<ExtractLimits> = {},
+  options: ExtractOptions = {},
 ): ExtractResult {
   const effective: ExtractLimits = { ...EXTRACT_LIMITS, ...limits }
   const stats: ExtractStats = {
@@ -237,7 +246,13 @@ export function extractOfficeText(
 
     assertPackageFormat(officePackage, format)
 
-    const output = EXTRACTORS[format](officePackage)
+    const isWorkbookMap = format === 'xlsx' && options.workbookMap === true
+    const output = isWorkbookMap
+      ? extractXlsxMap(officePackage)
+      : EXTRACTORS[format](officePackage)
+    const mapField = output.workbookMap
+      ? { workbookMap: output.workbookMap }
+      : {}
 
     if (!output.hasContent) {
       return {
@@ -246,6 +261,7 @@ export function extractOfficeText(
         truncated: false,
         stats: { ...stats, truncations: [] },
         errorCode: 'no_text',
+        ...mapField,
       }
     }
 
@@ -258,6 +274,7 @@ export function extractOfficeText(
       text,
       truncated: stats.truncations.length > 0,
       stats,
+      ...mapField,
     }
   } catch (exception) {
     if (exception instanceof ExtractError || exception instanceof XmlError) {

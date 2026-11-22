@@ -1,5 +1,5 @@
 import { formulaTemplate } from './formula.ts'
-import { listWithRest } from './ranges.ts'
+import { joinRangeTexts, listWithRest } from './ranges.ts'
 import { ELLIPSIS, cleanLine, quote } from './text.ts'
 import type {
   ComparisonOperator,
@@ -62,7 +62,9 @@ export function cleanRanges(
   ranges: readonly string[],
   options: WorkbookMapOptions,
 ): string {
-  const cleaned = ranges.map(range => cleanLine(range, RANGE_CHARACTERS_MAX))
+  const cleaned = joinRangeTexts(ranges).map((range) => {
+    return cleanLine(range, RANGE_CHARACTERS_MAX)
+  })
 
   return listWithRest(cleaned, options.rangesPerItemMax)
 }

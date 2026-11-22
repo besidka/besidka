@@ -1,3 +1,5 @@
+import type { WorkbookMapSummary } from '../workbook-map/types.ts'
+
 export type ExtractFormat = 'docx' | 'xlsx' | 'pptx'
 
 export type ExtractStatus = 'ready' | 'empty' | 'too_large' | 'failed'
@@ -11,6 +13,9 @@ export type TruncationReason
     | 'columns_limit'
     | 'cells_limit'
     | 'cell_chars_limit'
+    | 'formulas_limit'
+    | 'structure_limit'
+    | 'map_limit'
 
 export interface ExtractStats {
   inputBytes: number
@@ -31,6 +36,11 @@ export interface ExtractResult {
   truncated: boolean
   stats: ExtractStats
   errorCode?: string
+  workbookMap?: WorkbookMapSummary
+}
+
+export interface ExtractOptions {
+  workbookMap?: boolean
 }
 
 export interface ExtractLimits {
@@ -51,6 +61,9 @@ export interface ExtractLimits {
   inflatedBytesMax: number
   eventsMax: number
   contentTypesBytesMax: number
+  extraInflatedBytesMax: number
+  extraEventsMax: number
+  tailBytesMax: number
 }
 
 export const EXTRACT_FORMATS: readonly ExtractFormat[] = [
@@ -60,6 +73,13 @@ export const EXTRACT_FORMATS: readonly ExtractFormat[] = [
 ]
 
 export const EXTRACT_VERSION = 1
+
+export const WORKBOOK_MAP_EXTRACT_VERSION = 2
+
+export const EXTRACT_VERSIONS: readonly number[] = [
+  EXTRACT_VERSION,
+  WORKBOOK_MAP_EXTRACT_VERSION,
+]
 
 export const EXTRACT_LIMITS: ExtractLimits = {
   fileBytesMax: 30 * 1024 * 1024,
@@ -79,6 +99,9 @@ export const EXTRACT_LIMITS: ExtractLimits = {
   inflatedBytesMax: 64 * 1024 * 1024,
   eventsMax: 10_000_000,
   contentTypesBytesMax: 1024 * 1024,
+  extraInflatedBytesMax: 160 * 1024 * 1024,
+  extraEventsMax: 3_000_000,
+  tailBytesMax: 4 * 1024 * 1024,
 }
 
 export const TRUNCATION_MARKER

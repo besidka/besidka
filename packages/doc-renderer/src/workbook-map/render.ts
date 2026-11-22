@@ -533,10 +533,7 @@ function namesBlock(
       : ''
 
     return `- ${cleanLine(name.name, NAMED_RANGE_NAME_MAX)}${scope} = `
-      + printFormula(name.refersTo, {
-        ...options,
-        formulaPrintCharactersMax: options.nameCharactersMax,
-      })
+      + cleanLine(stripEquals(name.refersTo), options.nameCharactersMax)
   })
 
   return `## Named ranges\n${[

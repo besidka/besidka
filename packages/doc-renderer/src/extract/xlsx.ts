@@ -15,10 +15,27 @@ import {
   scanPart,
 } from './common.ts'
 import type { ExtractionOutput, OfficePackage } from './common.ts'
+import { BUILT_IN_FORMAT_CODES } from './xlsx-structure.ts'
+import { cellAddress, parseRange, rangeAddress } from '../workbook-map/address.ts'
+import {
+  FORMULA_CHARACTERS_MAX,
+  canExpandShared,
+  shiftTokens,
+  tokenizeFormula,
+} from '../workbook-map/formula.ts'
+import type { TokenizedFormula } from '../workbook-map/formula.ts'
+import type { SheetVisibility } from '../workbook-map/types.ts'
 
 interface SheetReference {
   name: string
   partName: string
+  visibility: SheetVisibility
+}
+
+interface DefinedName {
+  name: string
+  refersTo: string
+  localSheetId: number | null
 }
 
 interface Workbook {
@@ -26,6 +43,14 @@ interface Workbook {
   date1904: boolean
   sharedStringsPart: string
   stylesPart: string
+  declaredSheetNames: string[]
+  names: DefinedName[]
+  hiddenNamesSkipped: number
+}
+
+export interface CellFormats {
+  serialFormats: Map<number, SerialFormat>
+  formatCodes: Map<number, string>
 }
 
 type SerialFormat
@@ -35,10 +60,24 @@ type SerialFormat
     | 'elapsedMinutes'
     | 'elapsedSeconds'
 
-interface RawCell {
+export interface RawCell {
   column: number
   text: string
   sharedIndex: number
+  formula?: string
+  formulaKind?: 'array' | 'shared-copy'
+  arrayRange?: string
+  sharedFrom?: string
+  numberFormat?: string
+}
+
+export interface SheetCollector {
+  formatCodes: Map<number, string>
+  formulaCharacters: { used: number, max: number }
+  usedRange?: string
+  frozenRows: number
+  frozenColumns: number
+  isFormulaLimit: boolean
 }
 
 interface SheetRow {
@@ -46,7 +85,7 @@ interface SheetRow {
   cells: RawCell[]
 }
 
-interface SheetData {
+export interface SheetData {
   rows: SheetRow[]
   cellCount: number
   sharedIndexes: Set<number>
@@ -78,6 +117,11 @@ const BUILT_IN_ELAPSED_HOURS_FORMAT = 46
 const FORMAT_CODE_MAX_CHARACTERS = 255
 const FORMATS_MAX = 1024
 const SHEET_NAME_MAX = 255
+const NAME_TEXT_MAX = 2000
+const NAMES_MAX = 500
+const BUILT_IN_NAME_PREFIX = '_xlnm.'
+const FROZEN_MAX = 100_000
+const SHARED_MAX = 100_000
 const SKIPPED_NAMES_MAX = 10
 const SKIPPED_NAME_CHARACTERS_MAX = 64
 const STYLES_MAX = 65_536
@@ -280,7 +324,15 @@ function formatSerial(
   return seconds === 0 ? date : `${date}T${time}`
 }
 
-function readWorkbook(officePackage: OfficePackage): Workbook {
+function visibilityOf(state: string | undefined): SheetVisibility {
+  if (state === 'hidden') {
+    return 'hidden'
+  }
+
+  return state === 'veryHidden' ? 'very-hidden' : 'visible'
+}
+
+export function readWorkbook(officePackage: OfficePackage): Workbook {
   const workbookPart = officePackage.mainPart || WORKBOOK_PART
   const entry = findEntry(officePackage, workbookPart)
 
@@ -291,15 +343,38 @@ function readWorkbook(officePackage: OfficePackage): Workbook {
     )
   }
 
-  const declared: Array<{ name: string, relationshipId: string | null }> = []
+  const declared: Array<{
+    name: string
+    relationshipId: string | null
+    visibility: SheetVisibility
+  }> = []
+  const names: DefinedName[] = []
   let date1904 = false
+  let hiddenNamesSkipped = 0
 
   scanPart(officePackage, entry, (events) => {
     declared.length = 0
+    names.length = 0
     date1904 = false
+    hiddenNamesSkipped = 0
+
+    let pendingName: DefinedName | null = null
 
     for (const event of events) {
-      if (event.type !== 'start') {
+      if (event.type === 'text') {
+        if (pendingName && pendingName.refersTo.length < NAME_TEXT_MAX) {
+          pendingName.refersTo += event.text
+        }
+
+        continue
+      }
+
+      if (event.type === 'end') {
+        if (event.name === 'definedName' && pendingName) {
+          names.push(pendingName)
+          pendingName = null
+        }
+
         continue
       }
 
@@ -307,11 +382,33 @@ function readWorkbook(officePackage: OfficePackage): Workbook {
         declared.push({
           name: (event.attributes.name ?? '').slice(0, SHEET_NAME_MAX),
           relationshipId: relationshipIdOf(event.attributes),
+          visibility: visibilityOf(event.attributes.state),
         })
       } else if (event.name === 'workbookPr') {
         const flag = event.attributes.date1904
 
         date1904 = flag === '1' || flag === 'true'
+      } else if (event.name === 'definedName') {
+        const name = (event.attributes.name ?? '').slice(0, NAME_TEXT_MAX)
+        const isHidden = event.attributes.hidden === '1'
+          || event.attributes.hidden === 'true'
+          || name.startsWith(BUILT_IN_NAME_PREFIX)
+
+        if (isHidden || names.length >= NAMES_MAX) {
+          hiddenNamesSkipped += 1
+          continue
+        }
+
+        const sheetIndex = Number.parseInt(
+          event.attributes.localSheetId ?? '',
+          10,
+        )
+
+        pendingName = {
+          name,
+          refersTo: '',
+          localSheetId: Number.isInteger(sheetIndex) ? sheetIndex : null,
+        }
       }
     }
 
@@ -338,7 +435,11 @@ function readWorkbook(officePackage: OfficePackage): Workbook {
 
     if (!seenParts.has(partKey)) {
       seenParts.add(partKey)
-      sheets.push({ name: sheet.name, partName: relationship.target })
+      sheets.push({
+        name: sheet.name,
+        partName: relationship.target,
+        visibility: sheet.visibility,
+      })
     }
   }
 
@@ -354,33 +455,45 @@ function readWorkbook(officePackage: OfficePackage): Workbook {
     date1904,
     sharedStringsPart: sharedStrings?.target ?? DEFAULT_SHARED_STRINGS_PART,
     stylesPart: styles?.target ?? DEFAULT_STYLES_PART,
+    declaredSheetNames: declared.map(sheet => sheet.name),
+    names,
+    hiddenNamesSkipped,
   }
 }
 
-function readSerialFormats(
+export function readCellFormats(
   officePackage: OfficePackage,
   partName: string,
-): Map<number, SerialFormat> {
+): CellFormats {
   const serialFormats = new Map<number, SerialFormat>()
+  const formatCodes = new Map<number, string>()
   const entry = findEntry(officePackage, partName)
 
   if (!entry) {
-    return serialFormats
+    return { serialFormats, formatCodes }
   }
 
   scanPart(officePackage, entry, (events) => {
     serialFormats.clear()
+    formatCodes.clear()
 
     const customFormats = new Map<number, SerialFormat | null>()
+    const customCodes = new Map<number, string>()
     let isInCellFormats = false
     let styleIndex = 0
 
     for (const event of events) {
       if (event.type === 'start') {
         if (event.name === 'numFmt' && customFormats.size < FORMATS_MAX) {
+          const code = event.attributes.formatCode ?? ''
+
           customFormats.set(
             Number(event.attributes.numFmtId),
-            classifyFormatCode(event.attributes.formatCode ?? ''),
+            classifyFormatCode(code),
+          )
+          customCodes.set(
+            Number(event.attributes.numFmtId),
+            code.slice(0, FORMAT_CODE_MAX_CHARACTERS),
           )
         } else if (event.name === 'cellXfs') {
           isInCellFormats = true
@@ -389,9 +502,16 @@ function readSerialFormats(
           const format = customFormats.has(formatId)
             ? customFormats.get(formatId)
             : builtInFormatOf(formatId)
+          const code = customCodes.get(formatId)
+            ?? BUILT_IN_FORMAT_CODES.get(formatId)
+            ?? (formatId > 0 ? `built-in format ${formatId}` : null)
 
           if (format) {
             serialFormats.set(styleIndex, format)
+          }
+
+          if (code) {
+            formatCodes.set(styleIndex, code)
           }
 
           styleIndex += 1
@@ -408,10 +528,10 @@ function readSerialFormats(
     return false
   })
 
-  return serialFormats
+  return { serialFormats, formatCodes }
 }
 
-class SharedStrings {
+export class SharedStrings {
   private readonly strings: string[] = []
   private readonly needed = new Set<number>()
   private readonly cutStrings = new Set<number>()
@@ -584,19 +704,174 @@ class SharedStrings {
   }
 }
 
-function readSheet(
+function readSheetView(
+  name: string,
+  attributes: Record<string, string>,
+  collector: SheetCollector,
+  viewState: { views: number },
+): void {
+  if (name === 'dimension') {
+    const range = parseRange(attributes.ref ?? '')
+
+    collector.usedRange = range ? rangeAddress(range) : undefined
+  } else if (name === 'sheetView') {
+    viewState.views += 1
+  } else if (name === 'pane' && viewState.views === 1) {
+    const isFrozen = attributes.state === 'frozen'
+      || attributes.state === 'frozenSplit'
+
+    if (!isFrozen) {
+      return
+    }
+
+    const rows = Math.floor(Number(attributes.ySplit ?? 0))
+    const columns = Math.floor(Number(attributes.xSplit ?? 0))
+
+    collector.frozenRows = Number.isFinite(rows)
+      ? Math.min(Math.max(rows, 0), FROZEN_MAX)
+      : 0
+    collector.frozenColumns = Number.isFinite(columns)
+      ? Math.min(Math.max(columns, 0), FROZEN_MAX)
+      : 0
+  }
+}
+
+/**
+ * Turns the `<f>` element of a cell into the formula fields of the cell. A
+ * shared formula's master keeps its text and its followers get the master
+ * shifted by their distance, the way Excel fills it; a master the tokenizer
+ * cannot shift safely leaves its followers marked as copies, never with a
+ * made-up text. Created once per pass over the part.
+ */
+class FormulaReader {
+  private readonly masters = new Map<string, {
+    row: number
+    column: number
+    tokens: TokenizedFormula
+  }>()
+
+  private readonly collector: SheetCollector
+
+  constructor(collector: SheetCollector) {
+    this.collector = collector
+  }
+
+  attach(
+    cell: RawCell | null,
+    position: { row: number, column: number },
+    attributes: Record<string, string>,
+    text: string,
+  ): RawCell | null {
+    const fields = this.fieldsOf(position, attributes, text)
+
+    if (fields === null) {
+      return cell
+    }
+
+    const budget = this.collector.formulaCharacters
+    const cost = (fields.formula ?? '').length
+
+    if (budget.used + cost > budget.max) {
+      this.collector.isFormulaLimit = true
+
+      return cell
+    }
+
+    budget.used += cost
+
+    const target = cell ?? { column: position.column, text: '', sharedIndex: -1 }
+
+    return Object.assign(target, fields)
+  }
+
+  private fieldsOf(
+    position: { row: number, column: number },
+    attributes: Record<string, string>,
+    text: string,
+  ): Partial<RawCell> | null {
+    const kind = attributes.t ?? 'normal'
+
+    if (kind === 'array' || kind === 'dataTable') {
+      const range = parseRange(attributes.ref ?? '')
+      const formula = kind === 'array'
+        ? text
+        : `TABLE(${attributes.r1 ?? ''},${attributes.r2 ?? ''})`
+
+      return {
+        formula,
+        formulaKind: 'array',
+        arrayRange: range ? rangeAddress(range) : undefined,
+      }
+    }
+
+    if (kind !== 'shared') {
+      return text.length > 0 ? { formula: text } : null
+    }
+
+    const id = attributes.si ?? ''
+
+    if (text.length > 0) {
+      if (attributes.ref !== undefined && this.masters.size < SHARED_MAX) {
+        this.masters.set(id, {
+          row: position.row,
+          column: position.column,
+          tokens: tokenizeFormula(text),
+        })
+      }
+
+      return { formula: text }
+    }
+
+    const master = this.masters.get(id)
+
+    if (!master) {
+      return { formulaKind: 'shared-copy', sharedFrom: 'an unknown cell' }
+    }
+
+    const derived = canExpandShared(master.tokens)
+      ? shiftTokens(
+        master.tokens,
+        position.row - master.row,
+        position.column - master.column,
+      )
+      : null
+
+    if (derived !== null) {
+      return { formula: derived }
+    }
+
+    return {
+      formulaKind: 'shared-copy',
+      sharedFrom: cellAddress(master.row, master.column + 1),
+    }
+  }
+}
+
+export function readSheet(
   officePackage: OfficePackage,
   entry: ZipEntry,
   serialFormats: Map<number, SerialFormat>,
   date1904: boolean,
   cellsAvailable: number,
+  collector: SheetCollector | null = null,
 ): { data: SheetData, isCut: boolean } {
   const { rowsMax, columnsMax, cellCharsMax } = officePackage.limits
+  const formulaBase = collector?.formulaCharacters.used ?? 0
   let data = createSheetData()
 
   const outcome = scanPart(officePackage, entry, (events) => {
     data = createSheetData()
 
+    if (collector) {
+      collector.formulaCharacters.used = formulaBase
+      collector.isFormulaLimit = false
+    }
+
+    const formulas = collector ? new FormulaReader(collector) : null
+    const viewState = { views: 0 }
+    let isInFormula = false
+    let formulaText = ''
+    let formulaAttributes: Record<string, string> | null = null
     let isInSheetData = false
     let rowCells: RawCell[] = []
     let rowNumber = 0
@@ -617,6 +892,10 @@ function readSheet(
         if (event.name === 'sheetData') {
           isInSheetData = true
         } else if (!isInSheetData) {
+          if (collector) {
+            readSheetView(event.name, event.attributes, collector, viewState)
+          }
+
           continue
         } else if (event.name === 'row') {
           const declared = Number.parseInt(event.attributes.r ?? '', 10)
@@ -632,9 +911,14 @@ function readSheet(
           styleIndex = Number(event.attributes.s ?? 0)
           valueText = ''
           inlineText = ''
+          formulaText = ''
+          formulaAttributes = null
           nextColumn = column + 1
         } else if (event.name === 'v') {
           isInValue = true
+        } else if (event.name === 'f' && formulas) {
+          isInFormula = true
+          formulaAttributes = event.attributes
         } else if (event.name === 'is') {
           isInInline = true
         } else if (event.name === 'rPh') {
@@ -647,9 +931,16 @@ function readSheet(
           valueText += event.text
         } else if (isInInlineText) {
           inlineText += event.text
+        } else if (
+          isInFormula
+          && formulaText.length <= FORMULA_CHARACTERS_MAX
+        ) {
+          formulaText += event.text
         }
       } else if (event.name === 'v') {
         isInValue = false
+      } else if (event.name === 'f') {
+        isInFormula = false
       } else if (event.name === 't') {
         isInInlineText = false
       } else if (event.name === 'rPh') {
@@ -657,7 +948,7 @@ function readSheet(
       } else if (event.name === 'is') {
         isInInline = false
       } else if (event.name === 'c' && column !== null) {
-        const cell = buildCell(
+        let cell = buildCell(
           column,
           type,
           styleIndex,
@@ -666,6 +957,23 @@ function readSheet(
           serialFormats,
           date1904,
         )
+
+        if (formulas && collector) {
+          if (formulaAttributes) {
+            cell = formulas.attach(
+              cell,
+              { row: rowNumber, column },
+              formulaAttributes,
+              formulaText,
+            )
+          }
+
+          const formatCode = collector.formatCodes.get(styleIndex)
+
+          if (cell && formatCode) {
+            cell.numberFormat = formatCode
+          }
+        }
 
         column = null
 
@@ -812,7 +1120,10 @@ function skippedSheetsNotice(skipped: SheetReference[]): string {
 export function extractXlsx(officePackage: OfficePackage): ExtractionOutput {
   const { limits, stats } = officePackage
   const workbook = readWorkbook(officePackage)
-  const serialFormats = readSerialFormats(officePackage, workbook.stylesPart)
+  const { serialFormats } = readCellFormats(
+    officePackage,
+    workbook.stylesPart,
+  )
   const shared = new SharedStrings(
     officePackage,
     findEntry(officePackage, workbook.sharedStringsPart),
