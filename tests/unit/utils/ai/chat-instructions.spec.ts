@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildChatInstructions } from '~~/server/utils/ai/chat-instructions'
+import {
+  buildCurrentDateInstruction,
+  CURRENT_DATE_SEARCH_HINT,
+} from '~~/server/utils/ai/current-date-instruction'
 
 const STABLE_PREFIX = [
   'Memory block.',
@@ -44,6 +48,12 @@ const BEFORE = {
     + `Cite the sources you used. ${BEFORE_DATE_TAIL}`,
 }
 
+const DATE_LINE = buildCurrentDateInstruction(
+  new Date('2026-11-22T10:15:00Z'),
+  'Europe/Warsaw',
+)
+const LINE_SEPARATOR = '\n\n'
+
 const baseInput = {
   projectSystemPrompt: 'Project prompt.',
   requestedTools: [],
@@ -57,39 +67,120 @@ const baseInput = {
   skillsInstructionBlock: 'Skills block.',
   connectorsInstructionBlock: 'Connectors block.',
   toolIndexBlock: 'Tool index block.',
-  now: new Date('2026-11-22T10:15:00Z'),
+  currentDateInstruction: DATE_LINE,
+}
+
+function withoutLastLine(systemText: string): string {
+  expect(systemText.endsWith(`${LINE_SEPARATOR}${DATE_LINE}`)).toBe(true)
+
+  return systemText.slice(0, -`${LINE_SEPARATOR}${DATE_LINE}`.length)
+}
+
+function withoutDateSentence(before: string): string {
+  expect(before).toContain(BEFORE_DATE_TAIL)
+
+  return before.replace(BEFORE_DATE_TAIL, CURRENT_DATE_SEARCH_HINT)
 }
 
 describe('buildChatInstructions', () => {
-  it('builds the system text of a send without web search', () => {
-    expect(buildChatInstructions(baseInput)).toBe(BEFORE.none)
+  it('ends a send without web search with the date line', () => {
+    const systemText = buildChatInstructions(baseInput)
+
+    expect(systemText.endsWith(DATE_LINE)).toBe(true)
+    expect(systemText).toContain('Today is Sunday, 2026-11-22 in the user')
   })
 
-  it('builds the system text of a send with native search', () => {
-    expect(buildChatInstructions({
+  it('leaves everything before the date line as it was without search',
+    () => {
+      expect(withoutLastLine(buildChatInstructions(baseInput)))
+        .toBe(BEFORE.none)
+    })
+
+  it('changes only the date sentence in the native search text', () => {
+    const systemText = buildChatInstructions({
       ...baseInput,
       shouldNudgeNativeSearch: true,
-    })).toBe(BEFORE.native)
+    })
+
+    expect(withoutLastLine(systemText))
+      .toBe(withoutDateSentence(BEFORE.native))
   })
 
-  it('builds the system text of a send with DeepSeek search', () => {
-    expect(buildChatInstructions({
+  it('changes only the date sentence in the DeepSeek search text', () => {
+    const systemText = buildChatInstructions({
       ...baseInput,
       hasDeepSeekWebSearch: true,
-    })).toBe(BEFORE.deepseek)
+    })
+
+    expect(withoutLastLine(systemText))
+      .toBe(withoutDateSentence(BEFORE.deepseek))
   })
 
-  it('builds the system text of a send with Brave search', () => {
-    expect(buildChatInstructions({
+  it('changes only the date sentence in the Brave search text', () => {
+    const systemText = buildChatInstructions({
       ...baseInput,
       requestedTools: ['web_search_brave'],
-    })).toBe(BEFORE.brave)
+    })
+
+    expect(withoutLastLine(systemText))
+      .toBe(withoutDateSentence(BEFORE.brave))
   })
 
-  it('builds the system text of a send with Exa search', () => {
-    expect(buildChatInstructions({
+  it('changes only the date sentence in the Exa search text', () => {
+    const systemText = buildChatInstructions({
       ...baseInput,
       requestedTools: ['web_search_exa'],
-    })).toBe(BEFORE.exa)
+    })
+
+    expect(withoutLastLine(systemText))
+      .toBe(withoutDateSentence(BEFORE.exa))
+  })
+
+  it('keeps the search clauses free of the date itself', () => {
+    const systemText = buildChatInstructions({
+      ...baseInput,
+      requestedTools: ['web_search_exa'],
+      hasDeepSeekWebSearch: true,
+      shouldNudgeNativeSearch: true,
+    })
+
+    expect(systemText).not.toContain('Today\'s date is')
+    expect(systemText.split(DATE_LINE)).toHaveLength(2)
+    expect(systemText.split(CURRENT_DATE_SEARCH_HINT)).toHaveLength(4)
+  })
+
+  it('puts the date line after every other optional block', () => {
+    const systemText = buildChatInstructions({
+      ...baseInput,
+      requestedTools: ['code_execution', 'image_generation', 'web_search_brave'],
+      artifactInstructions: 'Artifact block.',
+      documentsContextLine: 'Documents line.',
+      codeExecutionInputNames: ['input.csv'],
+      shouldNudgeNativeSearch: true,
+    })
+
+    expect(systemText.endsWith(DATE_LINE)).toBe(true)
+    expect(systemText.indexOf('Artifact block.'))
+      .toBeLessThan(systemText.indexOf(DATE_LINE))
+    expect(systemText.indexOf('Documents line.'))
+      .toBeLessThan(systemText.indexOf(DATE_LINE))
+    expect(systemText.indexOf('Image generation mode is active'))
+      .toBeLessThan(systemText.indexOf(DATE_LINE))
+    expect(systemText.indexOf('web_search_brave'))
+      .toBeLessThan(systemText.indexOf(DATE_LINE))
+  })
+
+  it('gives the same system text on every call of one request', () => {
+    expect(buildChatInstructions(baseInput))
+      .toBe(buildChatInstructions({ ...baseInput }))
+  })
+
+  it('states the date on a gateway send as well', () => {
+    const systemText = buildChatInstructions({
+      ...baseInput,
+      gatewayId: 'openrouter',
+    })
+
+    expect(systemText.endsWith(DATE_LINE)).toBe(true)
   })
 })

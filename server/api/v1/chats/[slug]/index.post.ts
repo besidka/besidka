@@ -141,6 +141,7 @@ import {
   chatToolSchema,
   chatToolsSchema,
   incomingUserMessageSchema,
+  requestTimeZoneSchema,
   toolApprovalContinuationBodySchema,
   toolRoundContinuationBodySchema,
 } from '~~/server/utils/chats/request-schema'
@@ -218,6 +219,7 @@ import {
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
 import { buildChatInstructions } from '~~/server/utils/ai/chat-instructions'
+import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import { loadKnowledgeSendData } from '~~/server/utils/knowledge/send-data'
 import type { KnowledgeSendData } from '~~/server/utils/knowledge/send-data'
 import {
@@ -587,6 +589,7 @@ const chatSendBodySchema = z.object({
     .optional(),
   besidkaToolsEnabled: z.boolean().optional(),
   stoppedRunId: z.uuid().optional(),
+  timeZone: requestTimeZoneSchema,
   messages: z.array(incomingUserMessageSchema).length(1),
 })
 
@@ -642,6 +645,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const currentDateInstruction = buildCurrentDateInstruction(
+    new Date(),
+    body.data.timeZone,
+  )
   const continuationRequest = 'approval' in body.data
     ? body.data.approval
     : null
@@ -2335,6 +2342,7 @@ export default defineEventHandler(async (event) => {
         documentsContextLine,
         skillsInstructionBlock,
         codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
+        currentDateInstruction,
       }),
       artifactContextBlock,
     ].filter(Boolean).join('\n\n') || undefined,
@@ -3427,6 +3435,7 @@ export default defineEventHandler(async (event) => {
               toolIndexBlock: toolIndex?.instructions ?? null,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
+              currentDateInstruction,
             }),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -3740,6 +3749,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: false,
               skillsInstructionBlock: skillsSend.activeSkillsBlock,
               connectorsInstructionBlock,
+              currentDateInstruction,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(

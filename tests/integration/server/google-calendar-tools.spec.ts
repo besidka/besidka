@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { z } from 'zod'
 import * as schema from '~~/server/db/schema'
 import {
   GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
@@ -352,6 +353,32 @@ describe('Google Calendar tools on the owner\'s own client', () => {
       expect([...built.entries.values()].every((entry) => {
         return entry.descriptor.family === 'google'
       })).toBe(true)
+    })
+
+    it('names no year in a description or an input schema', async () => {
+      const built = await tools({ gmail: true })
+      const yearPattern = /\b(19|20)\d{2}\b/
+
+      expect(Object.keys(built).length).toBeGreaterThan(0)
+
+      for (const tool of Object.values(built)) {
+        const schemaText = JSON.stringify(
+          z.toJSONSchema(tool.inputSchema as unknown as z.ZodType),
+        ).replace(/"\$schema":"[^"]*",?/, '')
+
+        expect(tool.description).not.toMatch(yearPattern)
+        expect(schemaText).not.toMatch(yearPattern)
+      }
+    })
+
+    it('points the three tools at the date in the system text', async () => {
+      const built = await tools()
+
+      for (const name of GOOGLE_CALENDAR_TOOL_NAMES) {
+        expect(built[name]!.description).toContain(
+          'from the date given in the system text',
+        )
+      }
     })
 
     it('offers none while Calendar is off for the send', async () => {
