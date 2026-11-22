@@ -32,11 +32,16 @@ const {
 const statusData = ref<GoogleConnectionStatusResponse | null>(null)
 const mockRoute = reactive<{ query: Record<string, unknown> }>({ query: {} })
 const gmailFeature = ref<{ active: boolean }>({ active: true })
+const calendarFeature = ref<{ active: boolean }>({ active: true })
 
 mockNuxtImport('useFeature', () => {
   return (key: string) => {
     return computed(() => {
-      return key === 'google.gmail' ? gmailFeature.value : { active: false }
+      if (key === 'google.gmail') {
+        return gmailFeature.value
+      }
+
+      return key === 'google.calendar' ? calendarFeature.value : { active: false }
     })
   }
 })
@@ -103,6 +108,7 @@ describe('Profile/Google/OwnClient', () => {
     setByo({})
     mockRoute.query = {}
     gmailFeature.value = { active: true }
+    calendarFeature.value = { active: false }
 
     for (const mock of [
       fetchMock,
@@ -238,6 +244,7 @@ describe('Profile/Google/OwnClient', () => {
   })
 
   it('connects with only the ticked capabilities', async () => {
+    calendarFeature.value = { active: true }
     setByo({ hasClient: true })
     fetchMock.mockResolvedValue({
       authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?x=1',
@@ -276,6 +283,7 @@ describe('Profile/Google/OwnClient', () => {
   })
 
   it('says what each access is for and what gmail.compose allows', async () => {
+    calendarFeature.value = { active: true }
     setByo({ hasClient: true })
 
     const wrapper = await mountOwnClient()
@@ -285,7 +293,11 @@ describe('Profile/Google/OwnClient', () => {
 
     expect(text).toContain('search and read your mail when you allow it')
     expect(text).toContain('search your files and read the ones it finds')
-    expect(text).toContain('Besidka has no tool for Google Calendar yet')
+    expect(text).toContain('Google Calendar access lets it list events, '
+      + 'check when you are busy and create one event you approve')
+    expect(text).toContain('with no guests and no email')
+    expect(text).toContain('create events on calendars you own')
+    expect(text).toContain('read your free and busy time')
     expect(text).toContain('gmail.compose permission technically also '
       + 'allows sending mail')
     expect(text).toContain('it has no code that sends mail')
@@ -316,6 +328,83 @@ describe('Profile/Google/OwnClient', () => {
     expect(hint).toContain('read the files it found')
     expect(wrapper.find('[data-testid="google-byo-missing-tools"]').exists())
       .toBe(false)
+  })
+
+  it('offers no Calendar access and names no Calendar tool while Calendar is '
+    + 'off in Labs', async () => {
+    setByo({ hasClient: true })
+
+    const wrapper = await mountOwnClient()
+
+    expect(wrapper.find('[data-testid="google-byo-capability-calendar"]')
+      .exists()).toBe(false)
+    expect(wrapper.get('[data-testid="google-byo-capabilities-form"]').text())
+      .not.toContain('Calendar')
+
+    setByo({ hasClient: true, connection: connection() })
+
+    const connected = await mountOwnClient()
+
+    expect(connected.get('[data-testid="google-byo-tools-hint"]').text())
+      .not.toContain('Calendar')
+    expect(connected.get('[data-testid="google-byo-missing-tools"]').text())
+      .not.toContain('Calendar')
+  })
+
+  it('offers Calendar access with what its two permissions allow while '
+    + 'Calendar is on in Labs', async () => {
+    calendarFeature.value = { active: true }
+    setByo({ hasClient: true })
+
+    const wrapper = await mountOwnClient()
+    const option = wrapper.get('[data-testid="google-byo-capabilities-form"]')
+
+    expect(wrapper.find('[data-testid="google-byo-capability-calendar"]')
+      .exists()).toBe(true)
+    expect(option.text()).toContain('Your Google Calendar events')
+    expect(option.text()).toContain('two narrow permissions')
+    expect(option.text()).toContain('with no guests and no email')
+  })
+
+  it('lists the Calendar tools in the hint and a note when Calendar access '
+    + 'was not granted', async () => {
+    calendarFeature.value = { active: true }
+    setByo({ hasClient: true, connection: connection() })
+
+    const wrapper = await mountOwnClient()
+
+    expect(wrapper.get('[data-testid="google-byo-tools-hint"]').text())
+      .toContain('invites nobody and sends no email')
+    expect(wrapper.get('[data-testid="google-byo-missing-tools"]').text())
+      .toContain('needs Google Calendar access')
+  })
+
+  it('never asks for Calendar when it is off in Labs, even if it was '
+    + 'granted before', async () => {
+    setByo({
+      hasClient: true,
+      connection: connection({
+        capabilities: ['identity', 'drive-read', 'calendar'],
+      }),
+    })
+    fetchMock.mockResolvedValue({
+      authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?z=3',
+    })
+
+    const wrapper = await mountOwnClient()
+
+    await wrapper.get('[data-testid="google-byo-capability-gmail-read"]')
+      .setValue(true)
+    await wrapper.get('[data-testid="google-byo-connect"]').trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/google/byo/start', {
+      method: 'POST',
+      body: {
+        capabilities: ['drive-read', 'gmail-read'],
+        returnTo: '/profile/keys?tab=google',
+      },
+    })
   })
 
   it('tells a connected owner where the tools work and which are off for '
@@ -378,6 +467,7 @@ describe('Profile/Google/OwnClient', () => {
 
   it('lets a connected owner add a capability without disconnecting',
     async () => {
+      calendarFeature.value = { active: true }
       setByo({ hasClient: true, connection: connection() })
       fetchMock.mockResolvedValue({
         authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?y=2',

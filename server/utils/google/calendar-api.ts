@@ -303,8 +303,8 @@ export function buildCalendarInsertPayload(
 
 /**
  * `events.insert` on the owner's primary calendar, the one write of the
- * Calendar tools. `sendUpdates=none` is always sent, no `conferenceDataVersion`
- * or `supportsAttachments` is, and the body comes from
+ * Calendar tools. `sendUpdates=none` is always sent, no query parameter that
+ * would turn on video calls or attachments is, and the body comes from
  * `buildCalendarInsertPayload`. This module has no function for any other
  * write: no update, no delete, no move, no other calendar.
  */

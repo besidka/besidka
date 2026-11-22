@@ -27,7 +27,9 @@ import type { FakeGoogle } from '../../setup/helpers/google-connections'
 const ORIGIN = 'https://besidka.com'
 const PICKER_KEY = 'public-picker-api-key'
 const PROJECT_NUMBER = '123456789012'
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events.owned'
+const FREEBUSY_SCOPE
+  = 'https://www.googleapis.com/auth/calendar.events.freebusy'
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 
 const mocks = vi.hoisted(() => ({
@@ -350,6 +352,20 @@ describe('POST /api/v1/google/drive/picker-token', () => {
       async () => {
         await seedConnection({
           scopes: ['openid', DRIVE_FILE_SCOPE, CALENDAR_SCOPE],
+          expiresInMs: 30_000,
+        })
+
+        expect(await failureOf(call())).toMatchObject({
+          status: 409,
+          code: 'google_picker_scope_too_wide',
+        })
+        expect(google.fetch).not.toHaveBeenCalled()
+      })
+
+    it('mints nothing when the grant holds only the free and busy scope',
+      async () => {
+        await seedConnection({
+          scopes: ['openid', DRIVE_FILE_SCOPE, FREEBUSY_SCOPE],
           expiresInMs: 30_000,
         })
 

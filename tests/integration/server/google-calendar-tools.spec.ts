@@ -933,8 +933,8 @@ describe('Google Calendar tools on the owner\'s own client', () => {
         link: EVENT_LINK,
         date: '2026-12-01',
       }])
-      expect(output.message).toContain('Nobody is invited')
-      expect(output.message).toContain('no email is sent')
+      expect(output.message).toContain('Nobody was invited')
+      expect(output.message).toContain('no email was sent')
     })
 
     it('sends an all-day event as dates', async () => {
@@ -1143,7 +1143,7 @@ describe('Google Calendar tools on the owner\'s own client', () => {
         .toModelOutput({ output })
 
       expect(model.value).not.toContain('references')
-      expect(model.value).toContain('Nobody is invited')
+      expect(model.value).toContain('Nobody was invited')
     })
 
     it('summarizes the event for the approval by its title and day', async () => {

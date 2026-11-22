@@ -26,7 +26,6 @@ import {
   GOOGLE_CALENDAR_LIST_EVENTS_MAX,
   GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME,
   GOOGLE_CALENDAR_LIST_TEXT_BUDGET_BYTES,
-  GOOGLE_CALENDAR_NO_INVITE_NOTE,
   GOOGLE_CALENDAR_SHOWN_DESCRIPTION_MAX_CHARACTERS,
   GOOGLE_CALENDAR_SHOWN_LOCATION_MAX_CHARACTERS,
   GOOGLE_CALENDAR_SHOWN_ORGANIZER_MAX_CHARACTERS,
@@ -754,7 +753,7 @@ export async function buildGoogleCalendarTools(
         created: true,
         link,
         message: 'The event was created on the user\'s primary Google '
-          + `Calendar. ${GOOGLE_CALENDAR_NO_INVITE_NOTE}`,
+          + 'Calendar. Nobody was invited and no email was sent.',
       } satisfies GoogleToolOutput
     }),
   })) as ToolSet[string]

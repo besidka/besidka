@@ -260,6 +260,7 @@ describe('Chat/Reasoning/ApprovalStep', () => {
   it.each([
     'google__gmail_create_draft',
     'google__drive_save_file',
+    'google__calendar_create_event',
   ])('never approves the Google write %s on Enter from the card', async (
     toolName,
   ) => {
@@ -543,6 +544,142 @@ describe('Chat/Reasoning/ApprovalStep', () => {
 
         expect(other.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
         expect(broken.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
+      })
+  })
+
+  describe('a Google Calendar event', () => {
+    const description = `Agenda${'\n'.repeat(12)}THE END`
+    const eventInput = {
+      title: 'Planning',
+      start: '2026-12-01T10:00:00+01:00',
+      end: '2026-12-01T11:00:00+01:00',
+      timeZone: 'Europe/Berlin',
+      description,
+      location: 'Room 4',
+    }
+
+    function eventModel(
+      overrides: Partial<ApprovalStepModel> = {},
+    ): ApprovalStepModel {
+      return createModel({
+        toolName: 'google__calendar_create_event',
+        connectorSlug: null,
+        tool: 'google__calendar_create_event',
+        input: eventInput,
+        summary: 'Create the Google Calendar event "Planning" on 2026-12-01',
+        ...overrides,
+      })
+    }
+
+    it('shows the title, times, time zone, location and description as '
+      + 'they will be sent', async () => {
+      const { wrapper } = await mountStep({ model: eventModel() })
+      const card = wrapper.get(testId('calendar-event'))
+
+      expect(card.get(testId('calendar-event-title')).text())
+        .toBe('Planning')
+      expect(card.get(testId('calendar-event-kind')).text())
+        .toBe('Timed event')
+      expect(card.get(testId('calendar-event-start')).text())
+        .toBe('2026-12-01T10:00:00+01:00')
+      expect(card.get(testId('calendar-event-end')).text())
+        .toBe('2026-12-01T11:00:00+01:00')
+      expect(card.get(testId('calendar-event-time-zone')).text())
+        .toBe('Europe/Berlin')
+      expect(card.get(testId('calendar-event-location')).text())
+        .toBe('Room 4')
+      expect(card.find(testId('calendar-event-last-day')).exists())
+        .toBe(false)
+      expect(card.get(testId('calendar-event-lines')).text())
+        .toContain('13 lines')
+      expect(card.get(testId('calendar-event-description')).text())
+        .toBe('Agenda\n[11 blank lines]\nTHE END')
+    })
+
+    it('says nobody is invited and no email is sent', async () => {
+      const { wrapper } = await mountStep({ model: eventModel() })
+
+      expect(wrapper.get(testId('calendar-event-note')).text())
+        .toContain('Nobody is invited and no email is sent')
+    })
+
+    it('shows an all-day event with its exclusive end and its last day',
+      async () => {
+        const { wrapper } = await mountStep({
+          model: eventModel({
+            input: {
+              title: 'Holiday',
+              start: '2026-12-24',
+              end: '2026-12-26',
+              timeZone: 'Europe/Berlin',
+            },
+          }),
+        })
+
+        expect(wrapper.get(testId('calendar-event-kind')).text())
+          .toBe('All-day event')
+        expect(wrapper.get(testId('calendar-event')).text())
+          .toContain('End (not included)')
+        expect(wrapper.get(testId('calendar-event-last-day')).text())
+          .toBe('2026-12-25')
+        expect(wrapper.find(testId('calendar-event-description')).exists())
+          .toBe(false)
+      })
+
+    it('makes the scrolling description a labeled region keyboard users '
+      + 'can reach', async () => {
+      const { wrapper } = await mountStep({ model: eventModel() })
+      const region = wrapper.get(testId('calendar-event-description'))
+
+      expect(region.attributes('tabindex')).toBe('0')
+      expect(region.attributes('role')).toBe('region')
+      expect(region.attributes('aria-label')).toBe('Event description')
+    })
+
+    it('offers Allow once and nothing else to allow', async () => {
+      const { wrapper } = await mountStep({ model: eventModel() })
+
+      expect(wrapper.find(testId('allow-once')).exists()).toBe(true)
+      expect(wrapper.find(testId('allow-chat')).exists()).toBe(false)
+      expect(wrapper.find(testId('allow-always')).exists()).toBe(false)
+    })
+
+    it('renders the text as text, never as markup', async () => {
+      const { wrapper } = await mountStep({
+        model: eventModel({
+          input: {
+            ...eventInput,
+            title: '<img src=x onerror=alert(1)>',
+            description: '<b>bold</b> [link](https://evil.example)',
+          },
+        }),
+      })
+      const card = wrapper.get(testId('calendar-event'))
+
+      expect(card.find('img').exists()).toBe(false)
+      expect(card.find('b').exists()).toBe(false)
+      expect(card.get(testId('calendar-event-description')).text())
+        .toBe('<b>bold</b> [link](https://evil.example)')
+    })
+
+    it('shows no event card for another tool or an input that cannot run',
+      async () => {
+        const other = await mountStep({
+          model: createModel({ input: eventInput }),
+        })
+        const endBeforeStart = await mountStep({
+          model: eventModel({
+            input: { ...eventInput, end: '2026-12-01T09:00:00+01:00' },
+          }),
+        })
+        const broken = await mountStep({
+          model: eventModel({ input: { nothing: true } }),
+        })
+
+        for (const mounted of [other, endBeforeStart, broken]) {
+          expect(mounted.wrapper.find(testId('calendar-event')).exists())
+            .toBe(false)
+        }
       })
   })
 
