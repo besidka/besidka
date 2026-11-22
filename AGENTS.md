@@ -870,8 +870,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
-- `docs/google.md` - Google Drive, Calendar and Gmail design (Phase 4b, not
-  built yet, 2026-11-22): the umbrella `feat/google-connectors` and what
+- `docs/google.md` - Google Drive, Calendar and Gmail design (Phase 4b, partly
+  built, 2026-11-22): the umbrella `feat/google-connectors` and what
   exists on it so far (the four `google.*` flags with `optIn: 'required'`,
   `google.gmail` under `google.byo`; `shared/utils/google-scopes.ts` with
   `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`
@@ -882,8 +882,20 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `chernenko-chat` (redirect URI forms for localhost, the long-lived preview,
   `pr-<n>` and production; Picker key referrers), the data rule (allow-list,
   references-only persistence, deletion within 24 hours when access ends),
-  the BYO owner runbook outline, and what is not in the phase (legal notices
-  stay the owner's decision)
+  approvals in section 5.2 (the `google` tool family, the `google` taint and
+  the sticky `chats.google_data_at` flag, the Google egress grant for
+  connectors, rule 13 for Besidka writes after Google content,
+  references-only persistence, the 64 KiB output cap, the 24 h KV stash of
+  bodies for a paused reply, tolerant reads of records from another deploy),
+  the data guard in section 5.3 (`server/utils/google/data-guard.ts` over
+  `shared/utils/google-data-recipient.ts`: every enforcement point as a table
+  with what the user sees, the recipient check on every model call of a
+  flagged chat, the gateway safeguards sent, the Gemini paid-tier route,
+  skipped web search and TypeSafe AI, memory exclusion, the share opt-in
+  derived from `chat_shares.updated_at`, MCP and Besidka tool withholding,
+  no Google copies as project knowledge, and the exits still open), the BYO
+  owner runbook outline, and what is not in the phase (legal notices stay
+  the owner's decision)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
