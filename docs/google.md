@@ -2204,7 +2204,8 @@ result, and never repeats Google's own message text (it can echo the request,
 which holds a search the user wrote): `classifyGmailFailure` maps the status and
 reason to a fixed sentence (401 reconnect, `accessNotConfigured` "the Gmail API
 is not turned on in your Google Cloud project", 403, 404, 429, too large, 400,
-anything else). A failed call keeps the send's transient taint but never sets
+anything else); Drive search has its own wording of the same codes
+(`DRIVE_SEARCH_FAILURE_TEXT`, "the Google Drive API is not turned on"). A failed call keeps the send's transient taint but never sets
 the sticky chat flag (section 5.3). HTML mail is converted to text by a linear
 scanner (`htmlToPlainText`): `script`, `style`, `head`, `title`, `svg` and
 comments are dropped with their content, block elements become line breaks, a
@@ -2279,11 +2280,12 @@ reference title and link from every Google part on the way to the model, on an
 approval resume and a `{ continue }` round alike, so no mail-derived string
 reaches the model outside the frame on any path. Tests prove it through the
 route (`chats-tool-approval-continuation.spec.ts`: a paused reply, a missing
-stash and a round). Two approval parts also persist text in D1: the summary
+stash and a round). The approval part persists a summary in D1, one of three
 (`Search your Gmail for "<query>"`, `Read the email thread <id> in your Gmail`,
 `Create a Gmail draft "<subject>" to <first recipient> and N more`); none holds
-text from mail, and `describe` is not used for a thread read, so no Gmail call is
-made to word a card and no subject can reach a stored summary.
+text from mail (the query and the draft are composed by the user and the
+model), and `describe` is not used for a thread read, so no Gmail call is made
+to word a card and no subject can reach a stored summary.
 
 Taint and the chat flag: `gmail_search`, `gmail_read_thread` and `drive_search`
 return Google content (taint, read source and sticky flag as in section 5.3);
@@ -2346,7 +2348,10 @@ separate security review. Rules:
   included), a line or paragraph separator or an invisible format character
   (zero width, bidi controls) other than the two emoji joiners is refused,
   never stripped or repaired. A body is refused for the same set except tab
-  and line breaks.
+  and line breaks. A display name may not hold `@`, `<` or `>` either, so a
+  name cannot pose as another address in the mail client
+  (`CEO <ceo@corp.example>` with an attacker's address is refused); the owner
+  still approves every recipient card.
 - Non-ASCII or long text in a header becomes RFC 2047 encoded words
   (`=?UTF-8?B?...?=`, at most 45 bytes of text each, split between characters
   and never inside one, folded with `CRLF SPACE`); a short plain display name
@@ -2465,7 +2470,16 @@ paging, a thread binding to search results (see 14.1), the "+" menu toggles,
 injection screening, Calendar (the next child), reading a found Drive file
 (14.8), and any MCP exposure: `config/mcp-surface.json` is unchanged, the MCP
 modules import none of this code, and a chat that used Gmail is withheld from
-`get_chat` through the sticky flag (tested).
+`get_chat` through the sticky flag (tested through `chatHoldsGoogleData`, not
+through an MCP tool call).
+
+Known limits: the refresh of an expired `byo` access token is not exercised
+by these tests (they cover a connection that needs re-authorization, a 401, a
+missing scope and a lost admin gate); thread reads that need an approval each
+are bounded by the 5 approval rounds per message (section 5.2); assistant text
+that summarizes mail is not redacted (section 5.2); a draft's input, which may
+quote mail, stays in D1 like every Google write input; no Snyk scan was run
+on the new code.
 
 ### 14.10 Owner checklist, with a real Google project
 
