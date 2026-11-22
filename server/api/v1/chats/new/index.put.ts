@@ -12,6 +12,7 @@ import {
 } from '~~/server/utils/chats/request-schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { resolveArtifactAttachmentParts } from '~~/server/utils/artifacts/attachments'
+import { resolveSendGoogleContent } from '~~/server/utils/google/data-guard'
 import { resolveDriveFileParts } from '~~/server/utils/google/drive-parts'
 import { resolveSkillInvocationPart } from '~~/server/utils/skills/runtime/invocation'
 import { resolveBuiltinCommandPart } from '~~/server/utils/chats/builtin-commands'
@@ -41,6 +42,10 @@ const rules = z.object({
     })).max(12).optional(),
   }).optional(),
 })
+
+function isFilePart(part: { type: string }): boolean {
+  return part.type === 'file'
+}
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -93,6 +98,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (body.data.research && body.data.parts.some(isFilePart)) {
+    throw createError({
+      message: 'Deep research only supports text-only prompts for now.',
+      status: 400,
+      why: 'The message included attachments, which research models ignore.',
+      fix: 'Remove the attachments and resend your research request.',
+    })
+  }
+
   const db = useDb()
   const activityAt = new Date()
   const attachmentParts = await resolveArtifactAttachmentParts({
@@ -133,6 +147,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const sendGoogleContent = await resolveSendGoogleContent({
+    db,
+    userId,
+    chatMessages: [],
+    newMessageParts: parts,
+  })
+  const googleDataAt = sendGoogleContent.holdsGoogleContent
+    ? activityAt
+    : null
+
   let projectId: string | undefined
 
   if (body.data.projectId) {
@@ -156,6 +180,7 @@ export default defineEventHandler(async (event) => {
       activityAt,
       ...(projectId ? { projectId } : {}),
       ...(body.data.memoryExcluded ? { memoryExcluded: true } : {}),
+      ...(googleDataAt ? { googleDataAt } : {}),
     })
     .returning({
       id: schema.chats.id,
