@@ -104,7 +104,7 @@ vi.mock('~~/server/utils/google/store', async (importOriginal) => {
 
 const HASH = 'c'.repeat(64)
 const OTHER_HASH = 'd'.repeat(64)
-const GOOGLE_READ = 'google__drive_search'
+const GOOGLE_READ = 'google__docs_lookup'
 const GOOGLE_WRITE = 'google__calendar_create_event'
 const CONNECTOR_TOOL = 'mcp__linear__search_issues'
 const CONNECTOR_ID = 'conn-linear'

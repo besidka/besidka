@@ -19,6 +19,60 @@ function read(path: string): string {
   return readFileSync(join(ROOT, path), 'utf8')
 }
 
+describe('the share dialog names for Gmail references', () => {
+  it('names an email thread by its day and never by subject or sender',
+    async () => {
+      const { listChatGoogleItemNames } = await import(
+        '~~/server/utils/google/data-guard'
+      )
+      const names = await listChatGoogleItemNames({
+        db: {
+          query: {
+            messages: {
+              findMany: async () => [{
+                parts: [
+                  {
+                    type: 'tool-google__gmail_search',
+                    state: 'output-available',
+                    output: {
+                      references: [
+                        {
+                          id: 't1',
+                          kind: 'gmail-thread',
+                          date: '2026-11-21T10:00:00.000Z',
+                        },
+                        { id: 't2', kind: 'gmail-thread' },
+                        { id: 't3', kind: 'gmail-thread', date: 'not a date' },
+                        { id: 'r-1', kind: 'gmail-draft' },
+                      ],
+                    },
+                  },
+                  {
+                    type: 'tool-google__drive_search',
+                    state: 'output-available',
+                    output: {
+                      references: [
+                        { id: 'f1', kind: 'drive-file', title: 'Budget.xlsx' },
+                      ],
+                    },
+                  },
+                ],
+              }],
+            },
+          },
+        } as never,
+        userId: 1,
+        chatId: 'chat-1',
+      })
+
+      expect(names).toEqual([
+        'Email thread from 2026-11-21',
+        'Email thread',
+        'Budget.xlsx',
+      ])
+    })
+})
+
 describe('the Gmail boundary', () => {
   it('has a Gmail API module that can only list, read and create drafts',
     () => {

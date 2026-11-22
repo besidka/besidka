@@ -20,6 +20,7 @@ import {
   googleDataRefusalReason,
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
+import { GOOGLE_GMAIL_THREAD_REFERENCE_KIND } from '#shared/utils/google-gmail-tools'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
@@ -612,12 +613,40 @@ function googleReferenceTitlesOf(parts: unknown): string[] {
 
     return Array.isArray(references)
       ? references.flatMap((reference: unknown) => {
-        const title = (reference as { title?: unknown } | null)?.title
+        const label = googleReferenceLabel(reference)
 
-        return typeof title === 'string' && title.trim() ? [title.trim()] : []
+        return label ? [label] : []
       })
       : []
   })
+}
+
+/**
+ * The name the share dialog shows for one stored reference: its title, or
+ * for an email thread (which stores no subject) "Email thread from <day>"
+ * from Gmail's own timestamp.
+ */
+function googleReferenceLabel(reference: unknown): string | null {
+  const record = reference as {
+    title?: unknown
+    kind?: unknown
+    date?: unknown
+  } | null
+
+  if (typeof record?.title === 'string' && record.title.trim()) {
+    return record.title.trim()
+  }
+
+  if (record?.kind !== GOOGLE_GMAIL_THREAD_REFERENCE_KIND) {
+    return null
+  }
+
+  const day = typeof record.date === 'string' && /^\d{4}-\d{2}-\d{2}/
+    .test(record.date)
+    ? record.date.slice(0, 10)
+    : null
+
+  return day ? `Email thread from ${day}` : 'Email thread'
 }
 
 /**
