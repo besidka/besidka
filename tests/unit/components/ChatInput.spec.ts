@@ -4648,6 +4648,42 @@ describe('ChatInput.client', () => {
       expect(driveLinkMocks.dismissLinkSuggestion).toHaveBeenCalledWith('abc')
     })
 
+    it('looks for links once more on send and waits for it, so a link typed '
+      + 'and sent at once is attached first', async () => {
+      let finishDetection: () => void = () => {}
+
+      driveLinkMocks.detectLinks.mockClear()
+      driveLinkMocks.detectLinks.mockImplementationOnce(() => {
+        return new Promise<void>((resolve) => {
+          finishDetection = resolve
+        })
+      })
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      await textarea.setValue(`see ${LINK_TEXT}`)
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledWith(
+        `see ${LINK_TEXT}`,
+      )
+      expect(wrapper.emitted('submit')).toBeUndefined()
+
+      finishDetection()
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('gives the textarea a hook class for focus', async () => {
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.get('[data-testid="chat-input-textarea"]')
+        .classes()).toContain('js-chat-input-textarea')
+    })
+
     it('shows no suggestion row without a suggestion', async () => {
       const wrapper = await mountChatInput()
 

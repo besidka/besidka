@@ -17,7 +17,9 @@ import type {
   GoogleDriveLinkKind,
   GoogleDriveLinkMatch,
 } from '#shared/utils/google-drive-links'
+import type { GoogleConnectionStatusResponse } from '#shared/utils/google-connections'
 import type { AttachedFile } from '~/types/file-manager'
+import { GOOGLE_CONNECTION_FETCH_KEY } from '~/composables/google-connection'
 import type { PickedDriveItem } from '~/composables/google-picker'
 
 export const GOOGLE_DRIVE_CONNECT_PATH = '/profile/keys?tab=google'
@@ -25,6 +27,10 @@ export const GOOGLE_DRIVE_CONNECT_SENTENCE
   = 'Connect Google Drive on the API Keys page to attach files from it.'
 export const GOOGLE_DRIVE_BUSY_REASON
   = 'Google Drive files are still being copied. Wait a moment, then send.'
+
+export const GOOGLE_LINK_REQUEST_TIMEOUT_MS = 15_000
+export const GOOGLE_LINK_RUN_BUDGET_MS = 15_000
+const UNREADABLE_LINKS_STATE_KEY = 'google-drive-unreadable-links'
 
 const LINK_IMPORT_BLOCKING_STATUSES: ReadonlySet<number> = new Set([
   401,
@@ -78,17 +84,22 @@ interface QueuedLink {
  * file, which is how a user grants Besidka access to a file it cannot read
  * (the `drive.file` permission cannot read a file from its link alone).
  * `detectLinks(text)` looks for Google Doc, Sheet, Slides and Drive file
- * links in the composer text while Google Drive is active for the user:
- * for each new link (at most five a message, one request at a time, only to
- * Besidka's own link route) Besidka copies the file when it can already read
- * it, and otherwise offers the Picker for that file as a suggestion. Nothing
- * is shown or asked for a link that fails for any other reason than missing
- * access, and nothing is requested at all once Besidka answered that Google
- * is not connected, until the next message.
+ * links in the composer text (outside code) while Google Drive is active for
+ * the user, `options.isAvailable` agrees (the menu row's own gates) and the
+ * connection is active: for each new link (at most five a message, one
+ * request at a time, only to Besidka's own link route, each request and the
+ * whole run bounded to 15 seconds) Besidka copies the file when it can
+ * already read it, and otherwise offers the Picker for that file as a
+ * suggestion, remembered for the page session so the same link is not asked
+ * about again. Nothing is shown for a link that fails for any other reason
+ * than missing access. A copy that arrives after the message was sent is
+ * deleted again. The composer awaits `detectLinks` when the user sends, so a
+ * link typed and sent at once is still attached first.
  */
 export function useChatDriveFiles(
   attachedFiles: ModelRef<FileMetadata[]>,
   attach: (files: AttachedFile[]) => number,
+  options: { isAvailable?: () => boolean } = {},
 ) {
   const nuxtApp = useNuxtApp()
   const { ensureSendConsent } = useLegalConsent()
@@ -100,10 +111,18 @@ export function useChatDriveFiles(
   const linkSuggestions = ref<DriveLinkSuggestion[]>([])
   const isPicking = shallowRef<boolean>(false)
   const isLinkProbing = shallowRef<boolean>(false)
+  const connectionData
+    = useNuxtData<GoogleConnectionStatusResponse>(GOOGLE_CONNECTION_FETCH_KEY)
+  const unreadableLinks = useState<Record<string, DriveLinkSuggestion>>(
+    UNREADABLE_LINKS_STATE_KEY,
+    () => ({}),
+  )
   const handledLinkIds = new Set<string>()
   const linkQueue: QueuedLink[] = []
+  let linkRunner: Promise<void> | null = null
+  let connectionRequest: Promise<boolean> | null = null
+  let hasConnectionCheckFailed = false
   let isLinkImportBlocked = false
-  let isLinkQueueRunning = false
   let generation = 0
 
   const isDriveBusy = computed<boolean>(() => {
@@ -264,6 +283,7 @@ export function useChatDriveFiles(
       }
 
       removeProgress(result.id)
+      forgetUnreadable(result.id)
       copies.push(result.file)
 
       if (result.note) {
@@ -378,14 +398,55 @@ export function useChatDriveFiles(
     })
   }
 
+  function toSuggestion(link: GoogleDriveLinkMatch): DriveLinkSuggestion {
+    return {
+      id: link.id,
+      ...(link.resourceKey ? { resourceKey: link.resourceKey } : {}),
+      kind: link.kind,
+    }
+  }
+
+  function suggest(suggestion: DriveLinkSuggestion) {
+    const isListed = linkSuggestions.value.some((listed) => {
+      return listed.id === suggestion.id
+    })
+
+    if (!isListed) {
+      linkSuggestions.value = [...linkSuggestions.value, suggestion]
+    }
+  }
+
+  function forgetUnreadable(id: string) {
+    if (unreadableLinks.value[id]) {
+      unreadableLinks.value = Object.fromEntries(
+        Object.entries(unreadableLinks.value).filter(([key]) => key !== id),
+      )
+    }
+  }
+
+  async function discardStaleCopy(
+    result: { status: 'imported' | 'reused', file: { id: string } },
+  ) {
+    if (result.status !== 'imported') {
+      return
+    }
+
+    try {
+      await $fetch(`/api/v1/files/${result.file.id}`, { method: 'DELETE' })
+    } catch {
+      return
+    }
+  }
+
   async function probeLink(
     link: GoogleDriveLinkMatch,
     startedGeneration: number,
+    timeout: number,
   ) {
     let response: Awaited<ReturnType<typeof requestLinkImport>>
 
     try {
-      response = await requestLinkImport(link)
+      response = await requestLinkImport(link, timeout)
     } catch (exception) {
       const status = (exception as { status?: unknown }).status
 
@@ -401,7 +462,15 @@ export function useChatDriveFiles(
 
     const result = response.results[0]
 
-    if (generation !== startedGeneration || !result) {
+    if (!result) {
+      return
+    }
+
+    if (generation !== startedGeneration) {
+      if (result.status !== 'failed') {
+        await discardStaleCopy(result)
+      }
+
       return
     }
 
@@ -416,14 +485,13 @@ export function useChatDriveFiles(
     }
 
     if (NO_ACCESS_LINK_FAILURE_CODES.has(result.code)) {
-      linkSuggestions.value = [
-        ...linkSuggestions.value,
-        {
-          id: link.id,
-          ...(link.resourceKey ? { resourceKey: link.resourceKey } : {}),
-          kind: link.kind,
-        },
-      ]
+      const suggestion = toSuggestion(link)
+
+      unreadableLinks.value = {
+        ...unreadableLinks.value,
+        [link.id]: suggestion,
+      }
+      suggest(suggestion)
 
       return
     }
@@ -433,63 +501,155 @@ export function useChatDriveFiles(
     }
   }
 
-  function requestLinkImport(link: GoogleDriveLinkMatch) {
+  function requestLinkImport(link: GoogleDriveLinkMatch, timeout: number) {
     return $fetch('/api/v1/google/drive/files/link', {
       method: 'POST',
       body: { link: link.url },
+      timeout,
     })
   }
 
-  async function runLinkQueue() {
-    if (isLinkQueueRunning) {
-      return
-    }
+  async function processLinkQueue() {
+    await Promise.resolve()
 
-    isLinkQueueRunning = true
-    isLinkProbing.value = true
+    const startedAt = Date.now()
 
     try {
       while (linkQueue.length > 0) {
         const queued = linkQueue.shift()
+        const remaining = GOOGLE_LINK_RUN_BUDGET_MS - (Date.now() - startedAt)
 
-        if (isLinkImportBlocked) {
+        if (isLinkImportBlocked || remaining <= 0) {
           linkQueue.length = 0
 
           break
         }
 
         if (queued && queued.startedGeneration === generation) {
-          await probeLink(queued.link, queued.startedGeneration)
+          isLinkProbing.value = true
+
+          await probeLink(
+            queued.link,
+            queued.startedGeneration,
+            Math.min(GOOGLE_LINK_REQUEST_TIMEOUT_MS, remaining),
+          )
         }
       }
     } finally {
-      isLinkQueueRunning = false
+      linkRunner = null
       isLinkProbing.value = false
     }
   }
 
+  function runLinkQueue(): Promise<void> {
+    if (!linkRunner) {
+      linkRunner = processLinkQueue()
+    }
+
+    return linkRunner
+  }
+
+  async function loadConnection(): Promise<boolean> {
+    try {
+      const response = await $fetch('/api/v1/google/connections')
+
+      connectionData.data.value = response
+
+      return isUsableConnection(response)
+    } catch {
+      hasConnectionCheckFailed = true
+
+      return false
+    } finally {
+      connectionRequest = null
+    }
+  }
+
+  function isUsableConnection(
+    status: GoogleConnectionStatusResponse | null | undefined,
+  ): boolean {
+    const connection = status?.connection
+
+    return connection?.status === 'active'
+      && connection.capabilities.includes('drive-picked')
+  }
+
+  /**
+   * Whether Google Drive is connected with an active connection, read from
+   * the status the API Keys page keeps under the same fetch key. It is
+   * requested from Besidka's own status route only when nothing is cached,
+   * once, and again only after a failed answer on the next message; a
+   * disconnect on the API Keys page refreshes that same entry. A link never
+   * leaves the browser unless this is true.
+   */
+  async function isGoogleConnected(): Promise<boolean> {
+    if (connectionData.data.value) {
+      return isUsableConnection(connectionData.data.value)
+    }
+
+    if (hasConnectionCheckFailed) {
+      return false
+    }
+
+    if (!connectionRequest) {
+      connectionRequest = loadConnection()
+    }
+
+    return await connectionRequest
+  }
+
+  function isLinkDetectionAvailable(): boolean {
+    return googleDriveFeature.value.active
+      && (options.isAvailable?.() ?? true)
+  }
+
   async function detectLinks(text: string) {
-    if (!googleDriveFeature.value.active || isLinkImportBlocked) {
+    if (!isLinkDetectionAvailable() || isLinkImportBlocked) {
       return
     }
 
+    const candidates = extractGoogleDriveLinks(text).filter((link) => {
+      return !handledLinkIds.has(link.id) && !isAlreadyAttached(link.id)
+    })
+
     const startedGeneration = generation
 
-    for (const link of extractGoogleDriveLinks(text)) {
+    if (candidates.length === 0) {
+      await linkRunner
+
+      return
+    }
+
+    if (!await isGoogleConnected()) {
+      return
+    }
+
+    if (generation !== startedGeneration) {
+      return
+    }
+
+    for (const link of candidates) {
       if (handledLinkIds.size >= GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX) {
         break
       }
 
-      if (handledLinkIds.has(link.id) || isAlreadyAttached(link.id)) {
+      handledLinkIds.add(link.id)
+
+      const remembered = unreadableLinks.value[link.id]
+
+      if (remembered) {
+        suggest(remembered)
+
         continue
       }
 
-      handledLinkIds.add(link.id)
       linkQueue.push({ link, startedGeneration })
     }
 
     if (linkQueue.length > 0) {
       await runLinkQueue()
+    } else if (linkRunner) {
+      await linkRunner
     }
   }
 
@@ -504,7 +664,9 @@ export function useChatDriveFiles(
   function invalidatePendingWork() {
     generation++
     isPicking.value = false
+    isLinkProbing.value = false
     isLinkImportBlocked = false
+    hasConnectionCheckFailed = false
     handledLinkIds.clear()
     linkQueue.length = 0
     linkSuggestions.value = []

@@ -111,7 +111,7 @@
               ref="textarea"
               v-model="input"
               data-testid="chat-input-textarea"
-              class="textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+              class="js-chat-input-textarea textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
               :placeholder="textareaPlaceholder"
               :disabled="displayStop"
               :role="commands.isEnabled.value ? 'combobox' : undefined"
@@ -689,7 +689,9 @@ const {
   acceptLinkSuggestion,
   dismissLinkSuggestion,
   dismissDriveImport,
-} = useChatDriveFiles(files, onFilesAttached)
+} = useChatDriveFiles(files, onFilesAttached, {
+  isAvailable: () => !isDeepResearchModel.value,
+})
 
 const GOOGLE_LINK_DETECTION_DELAY_MS = 800
 
@@ -1793,6 +1795,8 @@ async function sendMessage() {
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
   }
+
+  await detectLinks(message.value)
 
   if (isDriveBusy.value) {
     return useWarningMessage(GOOGLE_DRIVE_BUSY_REASON)
