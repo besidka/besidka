@@ -403,16 +403,18 @@ bring-your-own route answers 404.
    the dialog (Google shows the secret in full only there).
 5. **Paste in Besidka.** API Keys, Google tab, "Your own Google OAuth
    client": paste the client id and the secret, Save client. The card then
-   shows only the last four characters of the client id.
+   says only that a client is saved; it never shows either value again.
+   Besidka refuses its own sign-in or Drive client here.
 6. **Connect.** Tick what Besidka may request (nothing is ticked for you)
    and press Connect. On Google's screens pick your account, accept the
    unverified-app warning and leave every box you want granted ticked.
    Back in Besidka the card lists what Google granted; "Google granted only
    part of the access" means you unticked something, and only the granted
    part is stored.
-7. **Change what is granted.** Disconnect, then Connect again with other
-   boxes. Connecting again without disconnecting only adds scopes, because
-   the request asks Google to include earlier grants.
+7. **Change what is granted.** To add access while connected, tick the
+   new boxes under "Add access" and press Add access; what Google granted
+   before is kept. To remove access, Disconnect (which revokes the whole
+   grant), then Connect again with fewer boxes.
 8. **Rotate the secret.** In the console add a new secret to the same
    client, paste the client id and the new secret in Besidka and save (the
    connection stays, its refresh token belongs to the client, not to the
@@ -423,8 +425,9 @@ bring-your-own route answers 404.
    secret), then delete the client or the project in the console. Check
    myaccount.google.com/connections that the app is gone.
 10. **Breach.** Revoke and delete as in step 9, delete the client secret in
-    the console, and follow `docs/legal/breach-runbook.md` (its Google
-    section still has to name the bring-your-own secret; owner-owned file).
+    the console, and follow `docs/legal/breach-runbook.md`. The runbook has
+    no Google line yet; it is to be added with the Google legal text
+    (G-10), using the note at the end of section 10.9.
 
 There is no public BYO guide page and no video: a page under
 `content/key-guides` would be public on `/guides`, in the sitemap and in
@@ -780,18 +783,23 @@ out of every provider list: it is not in `providerMeta`, and the keys
 summary route (`GET /api/v1/profiles/keys`) leaves it out.
 
 - Decrypted only in `server/utils/google/byo-client.ts`
-  (`readGoogleByoClient`); `token-boundary.spec.ts` fails if another server
-  file reads that row's value.
-- Write-only: no route returns the secret or the full client id. The
-  status answers the last four characters of the client id before
-  `.apps.googleusercontent.com` (`clientIdHint`), so the owner can tell which
-  client is saved.
+  (`readGoogleByoClient`), and only to start, exchange or refresh.
+  `token-boundary.spec.ts` fails if another server file reads that row's
+  value, and also if any other `keys` value read names its provider with
+  anything but a literal or a reviewed expression (research, gateways,
+  Jev, code execution), so no generic reader can be handed this kind.
+- Write-only: no route returns the secret or the client id. The status
+  answers only `hasClient`, read without decrypting (an id-only select),
+  so a status read never touches the secret.
+- Saved in one upsert on `(user_id, provider)`, so two saves at once never
+  collide on the unique index.
 - Validation: the client id matches
   `^[0-9a-z][0-9a-z-]*\.apps\.googleusercontent\.com$` (at most 200
-  characters); the secret is 20 to 128 visible ASCII characters with no
-  spaces. Errors never echo the input; logs carry `byoClient`
-  (`created`, `updated`, `deleted`, `missing`), `clientReplaced` and
-  `connectionEnded` only.
+  characters) and is neither Besidka's sign-in client nor the dedicated
+  Drive client (`isBesidkaGoogleClientId`, also re-checked when the client
+  is resolved); the secret is 20 to 128 visible ASCII characters with no
+  spaces. Errors never echo the input; logs carry `byoClient` (`saved`,
+  `deleted`, `missing`), `clientReplaced` and `connectionEnded` only.
 - Deleted with the account: the `keys` row cascades with `users`, and the
   account purge revokes every stored Google grant first (revoking needs only
   the token, not the client secret).
@@ -800,12 +808,12 @@ summary route (`GET /api/v1/profiles/keys`) leaves it out.
 
 | Method and path | What it does | Gate |
 |---|---|---|
-| `POST /api/v1/profiles/keys/google-oauth-client` | Body `{ clientId, clientSecret }`; saves or replaces the client; `{ saved, clientIdHint, connectionEnded }` | Same-origin write guard, session, admin and `google.byo`, 10 writes per minute |
-| `DELETE /api/v1/profiles/keys/google-oauth-client` | Ends the bring-your-own connection (as Disconnect), then deletes the client; `{ deleted, connectionEnded, revoked }`, 404 when there was neither | Same as above |
-| `POST /api/v1/google/byo/start` | Body `{ capabilities, returnTo? }` with capability names only (`drive-read`, `gmail-read`, `gmail-compose`, `calendar`, at least one); answers `{ authorizationUrl }`; 409 when no client is saved | Same as above |
-| `GET /api/v1/google/byo/callback` | Google's redirect target for the owner's client; redirects with `?google-byo=<result>` | Session, admin and `google.byo`, the callback failure budget; no `Sec-Fetch-Site` check |
-| `GET /api/v1/google/connections` | Adds `byo`: `null` for everyone else; `{ canManage: true, redirectUri, client, connection }` for a user who passes the gate; `{ canManage: false, redirectUri: null, client: null, connection }` for a user who still has a connection but no longer passes it | Section 9.1 |
-| `POST /api/v1/google/connections/disconnect` | `{ clientMode: 'byo' }` ends the bring-your-own connection | Section 9.1: no flag and no admin role, so access can always be ended |
+| `POST /api/v1/profiles/keys/google-oauth-client` | Body `{ clientId, clientSecret }`; saves or replaces the client; `{ saved, connectionEnded }` | Same-origin write guard, session, admin and `google.byo`, 10 writes per minute |
+| `DELETE /api/v1/profiles/keys/google-oauth-client` | Removal only: ends the bring-your-own connection (as Disconnect), then deletes the client; `{ deleted, connectionEnded, revoked }`, 404 when there was neither; a failure to read the connection fails the request and deletes nothing | Same-origin write guard, session, 10 writes per minute; no flag and no admin role, so a former admin can remove the secret |
+| `POST /api/v1/google/byo/start` | Body `{ capabilities, returnTo? }` with capability names only (`drive-read`, `gmail-read`, `gmail-compose`, `calendar`, at least one); answers `{ authorizationUrl }`; 409 when no client is saved | Same as the save route |
+| `GET /api/v1/google/byo/callback` | Google's redirect target for the owner's client; redirects with `?google-byo=<result>`; a refused gate (signed out, not admin, flag off) redirects to the Google tab with `?google-byo=error` instead of an error page | Session, admin and `google.byo`, the callback failure budget; no `Sec-Fetch-Site` check |
+| `GET /api/v1/google/connections` | Adds `byo`: `null` for a user with nothing; `{ canManage: true, redirectUri, hasClient, connection }` for a user who passes the gate; `{ canManage: false, redirectUri: null, hasClient, connection }` for a user who no longer passes it but still holds a client or a connection | Section 9.1 |
+| `POST /api/v1/google/connections/disconnect` | `{ clientMode: 'byo' }` ends the bring-your-own connection. A JSON body is always parsed (411 without `Content-Length`); only a clearly bodyless request means Besidka's client; any other body is refused (400), so the destructive direction is never guessed | Section 9.1: no flag and no admin role, so access can always be ended |
 
 The callback path is separate from Besidka's, so the owner's client
 registers its own redirect URI, a block of one path never takes down the
@@ -822,7 +830,12 @@ is active for the user through the real evaluator (the flag and its parent
 tester role alone is never enough, because stage `internal` still allows
 grants. It needs no request, so it runs:
 
-- in every bring-your-own route (`requireGoogleByoAccess`, an early 404);
+- in the save, start and callback routes (`requireGoogleByoAccess`, an
+  early 404; the callback redirects instead); removal (Delete client,
+  Disconnect) never needs it;
+- in the hourly sweep (`endUngatedGoogleByoConnections`,
+  `server/utils/google/byo-sweep.ts`, section 10.6), which ends the
+  connection of a user who no longer passes it;
 - inside `resolveGoogleClient('byo')`, so start, the code exchange in the
   callback and every token refresh (including the hourly stale check) pass
   it again;
@@ -832,9 +845,11 @@ grants. It needs no request, so it runs:
 A refusal is the same 404 as an unavailable feature and logs
 `attributes.google.byoGate` (`not-admin` or `flag-off`) only.
 `tests/integration/api/google-byo.spec.ts` proves it with a non-admin whose
-flag grants make `google.byo` active (the evaluator says active, every
-route answers 404) and with an admin who did not opt in; the callback test
-removes the admin role between start and callback.
+flag grants make `google.byo` active (the evaluator says active, save and
+start answer 404, the callback redirects with an error) and with an admin
+who did not opt in; the callback test removes the admin role between start
+and callback. `google.byo` also carries `adminOnly: true` in the registry,
+so Labs lists its toggle only for an admin.
 
 ### 10.4 Scopes and capabilities
 
@@ -850,17 +865,26 @@ the card), never `drive.file` or `userinfo.profile`.
 |---|---|---|
 | `drive-read` | `drive.readonly` (restricted) | None yet (Drive search arrives with the Gmail child) |
 | `gmail-read` | `gmail.readonly` (restricted) | None yet (Gmail child) |
-| `gmail-compose` | `gmail.compose` (restricted) | None yet (drafts only; Besidka never sends mail) |
+| `gmail-compose` | `gmail.compose` (restricted; Google's scope for managing drafts and sending mail) | None yet; Besidka has no send tool and its Gmail child creates drafts only, a limit of the product, not of the permission |
 | `calendar` | `calendar.events` (provisional) | None yet (Calendar child) |
 
 Scope minimization (pre-check row 10, "smallest set of scopes"): no
 bring-your-own tool exists yet, so offering only capabilities whose tools
 exist would offer nothing and leave the owner nothing to test. The card
 offers all four unticked and says that what is ticked is requested now for
-tools that arrive later. Because the request carries
-`include_granted_scopes=true`, connecting again only adds scopes; to narrow
-a grant the owner disconnects (which revokes the whole grant) and connects
-with fewer boxes.
+tools that arrive later.
+
+Adding and narrowing (choice for the stored set): the request keeps
+`include_granted_scopes=true`, so adding a capability later works without
+a disconnect. While connected the card shows the capabilities not granted
+yet under "Add access" and sends the union of what is granted and what is
+ticked, and the start route adds the scopes already stored on an active
+connection to the request as well. What is stored is only the granted
+scopes that were requested plus identity (`scopesToStore`): Google's answer
+can list earlier grants of the same client that this flow never asked for,
+and those are not recorded. A refresh may narrow the stored set but never
+widen it (`refreshedScopes`). To narrow a grant the owner disconnects
+(which revokes the whole grant) and connects with fewer boxes.
 
 After the exchange the granted set is compared with the requested
 capability scopes: none granted is refused and revoked (`missing_scope`);
@@ -889,6 +913,14 @@ can no longer be read) ends it before the new client is saved, because the
 refresh token belongs to the old client; a new secret for the same client
 id keeps it.
 
+Losing the gate also ends access. Every hour, before the stale check, the
+sweep reads up to 25 active bring-your-own rows (least recently updated
+first) and runs `checkGoogleByoAccess` for each owner; a refusal (not admin
+any more, 2FA off, the flag off or killed, the Labs opt-in withdrawn) ends
+that connection exactly like Disconnect. A gate check that cannot run
+(KV or D1 down) leaves the row for the next hour. The former admin then
+sees the reduced card and can delete the stored client.
+
 A user can hold both connections (unique `(user_id, client_mode)`). Files
 carry no client mode, and no schema change was allowed, so the rule is
 attribution by mode: only Besidka's client makes copies (the Picker needs
@@ -916,15 +948,17 @@ card, below a divider, only when the status carries `byo`:
   owner; the Google project, its consent screen and its verification status
   are the owner's responsibility), the redirect URI to register with a copy
   button, the client id and secret fields (the secret is a password field,
-  never prefilled, both with the page's Paste button), Save client and,
-  once saved, the client's hint and Delete client behind a confirmation.
-  With a client saved and no active connection: the four capability
-  checkboxes, unticked, the "tools arrive later" note and Connect
-  (Reconnect after access ended).
+  never prefilled, `autocomplete="new-password"`, both with the page's
+  Paste button), Save client and, once saved, "A client is saved" and
+  Delete client behind a confirmation. With a client saved and no active
+  connection: the four capability checkboxes, unticked, the "tools arrive
+  later" note and Connect (Reconnect after access ended).
 - Connected: the Google account's email, what Google granted, Disconnect
-  behind a confirmation.
-- A user with a connection who no longer passes the gate: the connection
-  and Disconnect only.
+  behind a confirmation, and "Add access" with only the capabilities not
+  granted yet.
+- A user who no longer passes the gate but still holds a client or a
+  connection: one line, Delete client (when a client is saved) and the
+  connection with Disconnect; no fields, no Connect.
 
 A save failure shows in an alert with `role="alert"`; changes are announced
 in a polite live region; focus returns to the card heading after Delete and
@@ -951,11 +985,19 @@ bring-your-own one.
   screens of an unverified client, whether Google returns the expanded
   `userinfo.email` scope, the scope list on a partial grant, and the
   `invalid_client` answer after a secret rotation.
-- An admin who loses the role (for example turns off 2FA) keeps the
-  connection and the stored client but can neither use nor manage them;
-  they can still disconnect, and the account deletion removes both. Deleting
-  the client itself then needs the admin role back.
-- The hourly stale check counts a refused bring-your-own row as failed each
-  hour; with one owner that is at most one row of its ten.
-- `docs/legal/breach-runbook.md` does not name the bring-your-own secret
-  yet; it is an owner-owned legal file.
+- An admin who loses the role (for example turns off 2FA) loses the
+  connection within the hour (section 10.6); the stored client stays until
+  they delete it from the reduced card or the account is deleted. On
+  Cloudflare Previews crons do not run, so there only the next use of the
+  token refuses it.
+- The breach runbook line for the bring-your-own secret is still to be
+  added with the Google legal text (G-10); legal files are owner-owned.
+  Wording to add, as a note:
+
+  > **To add (Google, bring-your-own client):** if the owner's own Google
+  > OAuth client secret may have leaked, delete the stored client on the
+  > Google tab of API Keys (this revokes the bring-your-own grant at Google
+  > and clears its tokens), then delete or rotate the client secret in the
+  > owner's own Google Cloud project, and check
+  > myaccount.google.com/connections. While the client is owner-only, the
+  > owner is the only affected Google account.
