@@ -22,6 +22,8 @@ const AFTER_END = 'The new rail is on the canvas.'
 const LAYOUT_TOLERANCE = 2
 const TOP_ALIGNMENT_MAX = 160
 const CONTINUATION_DELAY_MS = 1_500
+const TEXT_WAIT_MAX_MS = 15_000
+const SAMPLE_INTERVAL_MS = 40
 
 const VIEWPORTS = [
   { name: 'mobile', size: { width: 390, height: 844 } },
@@ -141,13 +143,90 @@ async function fulfillStream(route: Route, chunks: unknown[]) {
   })
 }
 
+/**
+ * `route.fulfill()` sends a whole body at once, so a continuation whose text
+ * comes after its tool output is streamed from the page instead: the tool
+ * output goes out first and the text after a delay, which is what happens
+ * when a server runs a slow tool before the model answers.
+ */
+async function streamContinuationFromPage(page: Page) {
+  await page.addInitScript((stream) => {
+    const originalFetch = window.fetch.bind(window)
+    const encoder = new TextEncoder()
+
+    function toEvent(chunk: unknown) {
+      return encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)
+    }
+
+    window.fetch = async (input, init) => {
+      const url = new URL(
+        input instanceof Request ? input.url : String(input),
+        window.location.href,
+      )
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
+      const isApprovalAnswer = init?.method === 'POST'
+        && url.pathname === '/api/v1/chats/test'
+        && !!body?.approval
+
+      if (!isApprovalAnswer) {
+        return originalFetch(input, init)
+      }
+
+      const eventStream = new ReadableStream({
+        async start(controller) {
+          for (const chunk of stream.toolOutputChunks) {
+            controller.enqueue(toEvent(chunk))
+          }
+
+          await new Promise((resolve) => {
+            setTimeout(resolve, stream.delayMs)
+          })
+
+          for (const chunk of stream.textChunks) {
+            controller.enqueue(toEvent(chunk))
+          }
+
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      })
+
+      return new Response(eventStream, {
+        status: 200,
+        headers: {
+          'content-type': 'text/event-stream',
+          'x-vercel-ai-ui-message-stream': 'v1',
+        },
+      })
+    }
+  }, {
+    delayMs: CONTINUATION_DELAY_MS,
+    toolOutputChunks: [
+      { type: 'start', messageId: MESSAGE_ID },
+      { type: 'start-step' },
+      TOOL_OUTPUT_CHUNK,
+      { type: 'finish-step' },
+      { type: 'start-step' },
+    ],
+    textChunks: [
+      ...textChunks('text-2', AFTER_TEXT),
+      { type: 'finish-step' },
+      { type: 'finish' },
+    ],
+  })
+}
+
 async function openMember(
   browser: Browser,
   prefix: string,
   size: { width: number, height: number },
-  mode: 'approval' | 'plain',
+  mode: 'approval' | 'plain' | 'delayed-text',
 ): Promise<Page> {
   const page = await openGrantedMember(browser, prefix, ['tool-approvals'])
+
+  if (mode === 'delayed-text') {
+    await streamContinuationFromPage(page)
+  }
 
   await page.setViewportSize(size)
   await page.route('**/api/v1/profiles/keys**', async (route: Route) => {
@@ -311,5 +390,60 @@ for (const { name, size } of VIEWPORTS) {
       .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
     expect(Math.abs(final.composerHeight - plain.composerHeight))
       .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
+  })
+
+  test(`${name}: the pinned user message stays at the top after the bubble leaves and before the text arrives`, async ({
+    browser,
+  }) => {
+    const page = await openMember(
+      browser,
+      `e2e-approval-scroll-delayed-${name}`,
+      size,
+      'delayed-text',
+    )
+
+    await openChatCase(page, CASE_URL)
+    await settleLayout(page)
+    await send(page)
+    await waitUntilReady(page, BEFORE_END)
+
+    const bubble = page.getByTestId('tool-approval-bubble')
+
+    await expect(bubble).toBeVisible()
+    await expect.poll(async () => {
+      return (await readBubbleClearance(page)).below
+    }).toBeGreaterThanOrEqual(0)
+    await bubble.getByTestId('reasoning-approval-step-allow-once').click()
+
+    await expect.poll(async () => {
+      const { lastUserTop } = await readComposerMetrics(page)
+
+      return lastUserTop >= 0 && lastUserTop <= TOP_ALIGNMENT_MAX
+    }, { timeout: CONTINUATION_DELAY_MS }).toBe(true)
+
+    const lastAssistant = page.locator('[data-role="assistant"]').last()
+    const tops: number[] = []
+    const startedAt = Date.now()
+    let hasBubbleLeft = false
+    let hasTextArrived = false
+
+    while (!hasTextArrived && Date.now() - startedAt < TEXT_WAIT_MAX_MS) {
+      const { lastUserTop } = await readComposerMetrics(page)
+
+      hasBubbleLeft = hasBubbleLeft || await bubble.count() === 0
+      hasTextArrived = (await lastAssistant.innerText()).includes(AFTER_END)
+
+      if (hasBubbleLeft && !hasTextArrived) {
+        tops.push(lastUserTop)
+      }
+
+      await page.waitForTimeout(SAMPLE_INTERVAL_MS)
+    }
+
+    expect(hasBubbleLeft).toBe(true)
+    expect(tops.length).toBeGreaterThan(0)
+    expect(tops.filter((top) => {
+      return top < 0 || top > TOP_ALIGNMENT_MAX
+    })).toEqual([])
   })
 }

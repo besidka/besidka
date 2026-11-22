@@ -146,6 +146,50 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       .toBe(true)
   })
 
+  it.each([
+    ['a Google tool', {
+      toolName: 'google__calendar_list_events',
+      connectorSlug: null,
+      tool: 'google__calendar_list_events',
+    }, 'Allow in this chat: reading events on your Google Calendar'],
+    ['a connector tool', {}, undefined],
+    ['a Besidka tool', {
+      toolName: 'besidka__get_chat',
+      connectorSlug: null,
+      isBesidka: true,
+      tool: 'get_chat',
+    }, undefined],
+  ] as const)('labels the chat grant of %s the same short way and makes '
+    + 'only Allow once and Allow in this chat primary', async (
+    _kind,
+    overrides,
+    ariaLabel,
+  ) => {
+    const { wrapper } = await mountStep({
+      model: createModel({
+        ...overrides,
+        rememberOptions: ['once', 'chat', 'always'],
+      }),
+    })
+    const chatButton = wrapper.get(testId('allow-chat'))
+    const alwaysButton = wrapper.get(testId('allow-always'))
+
+    expect(chatButton.text()).toBe('Allow in this chat')
+    expect(chatButton.attributes('aria-label')).toBe(ariaLabel)
+
+    if (ariaLabel) {
+      expect(chatButton.attributes('title')).toBe(ariaLabel)
+    }
+
+    expect(wrapper.get(testId('allow-once')).classes())
+      .toContain('btn-primary')
+    expect(chatButton.classes()).toContain('btn-primary')
+    expect(chatButton.classes()).not.toContain('btn-soft')
+    expect(alwaysButton.classes()).toContain('btn-soft')
+    expect(alwaysButton.classes()).not.toContain('btn-primary')
+    expect(wrapper.get(testId('deny')).classes()).toContain('btn-ghost')
+  })
+
   it('shows the Google egress prompt without Always allow', async () => {
     const { wrapper } = await mountStep({
       model: createModel({

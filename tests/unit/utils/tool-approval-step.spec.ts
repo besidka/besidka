@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
 import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
+import { GOOGLE_TOOL_CHAT_GRANT_LABELS } from '#shared/utils/google-tool-approvals'
 import type { ApprovalStepContext } from '~/utils/tool-approval-step'
 import {
   formatApprovalOutcome,
@@ -431,27 +432,40 @@ describe('getApprovalButtons', () => {
 })
 
 describe('getApprovalButtons for a Google Drive tool', () => {
-  it('says what Allow in this chat covers for the read and the list, and '
-    + 'keeps Allow once first', () => {
+  it('keeps the short label and says what Allow in this chat covers for the '
+    + 'read and the list in the accessible name, with Allow once first', () => {
     expect(getApprovalButtons(['once', 'chat'], 'google__drive_read_file'))
       .toEqual([
         { remember: 'once', label: 'Allow once' },
         {
           remember: 'chat',
-          label: 'Allow reading any file you picked from Google Drive in '
-            + 'this chat',
+          label: 'Allow in this chat',
+          ariaLabel: 'Allow in this chat: reading any file you picked from '
+            + 'Google Drive',
         },
       ])
     expect(getApprovalButtons(['once', 'chat'], 'google__drive_list_picked')[1])
       .toMatchObject({
-        label: 'Allow listing the files you picked from Google Drive in this '
-          + 'chat',
+        label: 'Allow in this chat',
+        ariaLabel: 'Allow in this chat: listing the files you picked from '
+          + 'Google Drive',
       })
   })
 
-  it('leaves every other tool, and the write, with the generic labels', () => {
+  it('starts the accessible name with the visible label for every Google '
+    + 'chat grant', () => {
+    for (const toolName of Object.keys(GOOGLE_TOOL_CHAT_GRANT_LABELS)) {
+      const chatButton = getApprovalButtons(['once', 'chat'], toolName)[1]!
+
+      expect(chatButton.ariaLabel?.startsWith(`${chatButton.label}: `))
+        .toBe(true)
+      expect(chatButton.ariaLabel).not.toMatch(/ in this chat$/)
+    }
+  })
+
+  it('leaves every other tool, and the write, without an accessible name', () => {
     expect(getApprovalButtons(['once', 'chat'], 'google__docs_lookup')[1])
-      .toMatchObject({ label: 'Allow in this chat' })
+      .toEqual({ remember: 'chat', label: 'Allow in this chat' })
     expect(getApprovalButtons(['once'], 'google__drive_save_file'))
       .toEqual([{ remember: 'once', label: 'Allow once' }])
     expect(getApprovalButtons(['once', 'chat'])[1])

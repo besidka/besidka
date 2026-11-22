@@ -5,6 +5,7 @@ import {
   defineComponent,
   h,
   nextTick,
+  reactive,
   ref,
   shallowRef,
   watch,
@@ -16,6 +17,7 @@ type ChatSdk = Parameters<typeof useChatScrollSpacer>[0]['chatSdk']
 const INPUT_HEIGHT_DEBOUNCE_MS = 150
 const GROWN_INPUT_HEIGHT = 247
 const KEYBOARD_INSET = 300
+const WHEEL_AFTER_MOMENTUM_MS = 300
 
 const keyboardInset = shallowRef<number>(0)
 
@@ -209,18 +211,23 @@ function defineBox(
  * A paused reply: the last user message, the reply under it with the
  * approval bubble at its end, and an 800px scroll container.
  */
-function createContinuationHarness() {
+function createContinuationHarness(initialEndOffsetTop: number = 1100) {
   const scrollTos: ScrollToOptions[] = []
   const scrollBys: ScrollToOptions[] = []
   const tick = shallowRef<number>(0)
   const spacerHeights: number[] = []
-  const chatSdk = {
+  const layout: {
+    endOffsetTop: number
+    container: HTMLElement | null
+    end: HTMLElement | null
+  } = { endOffsetTop: initialEndOffsetTop, container: null, end: null }
+  const chatSdk = reactive({
     status: 'ready',
     messages: [
       { id: 'user-1', role: 'user', parts: [] },
       { id: 'assistant-1', role: 'assistant', parts: [] },
     ],
-  } as unknown as ChatSdk & { status: string }
+  }) as unknown as ChatSdk & { status: string }
 
   const Harness = defineComponent({
     setup() {
@@ -255,6 +262,7 @@ function createContinuationHarness() {
           scrollBys.push(options)
         }) as HTMLElement['scrollBy']
         scrollContainerRef.value = element
+        layout.container = element
       }
 
       function setMessage(
@@ -289,8 +297,9 @@ function createContinuationHarness() {
 
       function setEnd(element: Element | null) {
         if (element instanceof HTMLElement) {
-          defineBox(element, { offsetTop: 1100 })
+          defineBox(element, { offsetTop: layout.endOffsetTop })
           messagesEndRef.value = element
+          layout.end = element
         }
       }
 
@@ -315,18 +324,399 @@ function createContinuationHarness() {
     },
   })
 
-  return { Harness, chatSdk, scrollTos, scrollBys, tick, spacerHeights }
+  function moveMessagesEnd(offsetTop: number) {
+    layout.endOffsetTop = offsetTop
+
+    if (layout.end) {
+      defineBox(layout.end, { offsetTop })
+    }
+  }
+
+  return {
+    Harness,
+    chatSdk,
+    scrollTos,
+    scrollBys,
+    tick,
+    spacerHeights,
+    layout,
+    moveMessagesEnd,
+  }
+}
+
+const resizeObservations: Array<{ target: Element, notify: () => void }> = []
+
+async function notifyContentResize() {
+  resizeObservations.at(-1)?.notify()
+  await nextTick()
+  await nextTick()
+}
+
+function dispatchWheelAt(target: HTMLElement, timeStamp: number) {
+  const event = new Event('wheel')
+
+  Object.defineProperty(event, 'timeStamp', { value: timeStamp })
+  target.dispatchEvent(event)
 }
 
 describe('useChatScrollSpacer continuations and approval pauses', () => {
   beforeEach(() => {
     keyboardInset.value = 0
+    resizeObservations.length = 0
     vi.useFakeTimers()
+    vi.stubGlobal('ResizeObserver', class {
+      private readonly callback: ResizeObserverCallback
+      private readonly observations: typeof resizeObservations = []
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback
+      }
+
+      observe(target: Element) {
+        const observation = {
+          target,
+          notify: () => {
+            this.callback([], this as unknown as ResizeObserver)
+          },
+        }
+
+        this.observations.push(observation)
+        resizeObservations.push(observation)
+      }
+
+      unobserve() {}
+
+      disconnect() {
+        for (const observation of this.observations) {
+          resizeObservations.splice(resizeObservations.indexOf(observation), 1)
+        }
+
+        this.observations.length = 0
+      }
+    })
   })
 
   afterEach(() => {
+    vi.unstubAllGlobals()
     vi.useRealTimers()
   })
+
+  it('keeps the continuation pin when the approval bubble leaves and the '
+    + 'reply under the user message gets shorter', async () => {
+    const {
+      Harness,
+      chatSdk,
+      scrollTos,
+      spacerHeights,
+      moveMessagesEnd,
+    } = createContinuationHarness(400)
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+
+    expect(spacerHeights.at(-1)).toBe(488)
+
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(spacerHeights.at(-1)).toBe(638)
+    expect(scrollTos).toEqual([{ top: 88, behavior: 'instant' }])
+  })
+
+  it('grows the spacer but leaves the scroll position after the user '
+    + 'scrolled during the continuation', async () => {
+    const {
+      Harness,
+      chatSdk,
+      scrollTos,
+      spacerHeights,
+      layout,
+      moveMessagesEnd,
+    } = createContinuationHarness(400)
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    dispatchWheelAt(
+      layout.container!,
+      performance.now() + WHEEL_AFTER_MOMENTUM_MS,
+    )
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(spacerHeights.at(-1)).toBe(638)
+    expect(scrollTos).toEqual([])
+  })
+
+  it('observes the messages container, the parent of the messages end '
+    + 'element', async () => {
+    const { Harness, layout } = createContinuationHarness(400)
+
+    await mountSuspended(Harness)
+
+    expect(layout.end?.parentElement).toBe(layout.container)
+    expect(resizeObservations.map(observation => observation.target))
+      .toContain(layout.end?.parentElement)
+  })
+
+  it('keeps the pin on a wheel event inside the momentum window after the '
+    + 'pin', async () => {
+    const { Harness, chatSdk, scrollTos, layout, moveMessagesEnd } = (
+      createContinuationHarness(400)
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    dispatchWheelAt(layout.container!, performance.now())
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(scrollTos).toEqual([{ top: 88, behavior: 'instant' }])
+  })
+
+  it('releases the pin on a wheel event after the momentum window',
+    async () => {
+      const { Harness, chatSdk, scrollTos, layout, moveMessagesEnd } = (
+        createContinuationHarness(400)
+      )
+
+      await mountSuspended(Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+      chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+      dispatchWheelAt(
+        layout.container!,
+        performance.now() + WHEEL_AFTER_MOMENTUM_MS,
+      )
+      scrollTos.length = 0
+      moveMessagesEnd(250)
+      await notifyContentResize()
+
+      expect(scrollTos).toEqual([])
+    })
+
+  it.each([
+    'PageUp',
+    'PageDown',
+    'Home',
+    'End',
+    'ArrowUp',
+    'ArrowDown',
+    ' ',
+  ])('releases the pin on the %j key', async (key) => {
+    const { Harness, chatSdk, scrollTos, moveMessagesEnd } = (
+      createContinuationHarness(400)
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(scrollTos).toEqual([])
+  })
+
+  it('keeps the pin on a letter key and on a scroll key typed in a text '
+    + 'field', async () => {
+    const { Harness, chatSdk, scrollTos, moveMessagesEnd } = (
+      createContinuationHarness(400)
+    )
+    const textarea = document.createElement('textarea')
+
+    document.body.append(textarea)
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'a',
+      bubbles: true,
+    }))
+    textarea.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+    }))
+    textarea.remove()
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(scrollTos).toEqual([{ top: 88, behavior: 'instant' }])
+  })
+
+  it('releases the pin on a pointer press on the scroll container itself, '
+    + 'the scrollbar', async () => {
+    const { Harness, chatSdk, scrollTos, layout, moveMessagesEnd } = (
+      createContinuationHarness(400)
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    layout.container!.dispatchEvent(new Event('pointerdown', {
+      bubbles: true,
+    }))
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(scrollTos).toEqual([])
+  })
+
+  it('keeps the pin on a pointer press on the content in the container',
+    async () => {
+      const { Harness, chatSdk, scrollTos, layout, moveMessagesEnd } = (
+        createContinuationHarness(400)
+      )
+
+      await mountSuspended(Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+      chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+      layout.end!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      scrollTos.length = 0
+      moveMessagesEnd(250)
+      await notifyContentResize()
+
+      expect(scrollTos).toEqual([{ top: 88, behavior: 'instant' }])
+    })
+
+  it.each(['ready', 'error'])('drops the stored pin when the chat status '
+    + 'becomes %s', async (status) => {
+    const { Harness, chatSdk, scrollTos, spacerHeights, moveMessagesEnd } = (
+      createContinuationHarness(400)
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+
+    chatSdk.status = status
+    await nextTick()
+
+    const spacerCount = spacerHeights.length
+
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(spacerHeights).toHaveLength(spacerCount)
+    expect(scrollTos).toEqual([])
+  })
+
+  it('lets go of the pin when the user scrolls to the bottom during the '
+    + 'continuation', async () => {
+    const {
+      Harness,
+      chatSdk,
+      scrollTos,
+      spacerHeights,
+      moveMessagesEnd,
+    } = createContinuationHarness(400)
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    await useNuxtApp().callHook('chat:scroll-to-bottom')
+    await nextTick()
+
+    const spacerCount = spacerHeights.length
+
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(spacerHeights).toHaveLength(spacerCount)
+    expect(scrollTos).toEqual([])
+  })
+
+  it('does not touch the spacer on a content resize outside a '
+    + 'continuation', async () => {
+    const { Harness, scrollTos, spacerHeights, moveMessagesEnd } = (
+      createContinuationHarness(400)
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    const spacerCount = spacerHeights.length
+
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(spacerHeights).toHaveLength(spacerCount)
+    expect(scrollTos).toEqual([])
+  })
+
+  it('stops following content resizes once the finished reply is placed',
+    async () => {
+      const {
+        Harness,
+        chatSdk,
+        scrollTos,
+        spacerHeights,
+        tick,
+        moveMessagesEnd,
+      } = createContinuationHarness(400)
+
+      await mountSuspended(Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+      chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+
+      chatSdk.status = 'ready'
+      tick.value += 1
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+      await nextTick()
+
+      const spacerCount = spacerHeights.length
+
+      scrollTos.length = 0
+      moveMessagesEnd(250)
+      await notifyContentResize()
+
+      expect(spacerHeights).toHaveLength(spacerCount)
+      expect(scrollTos).toEqual([])
+    })
 
   it('pins the last user message when a reply continues, then places and '
     + 'reveals the paused reply like a finished send', async () => {

@@ -250,6 +250,54 @@ Now:
   covers the reply; it shows only when the bubble is scrolled away, as a
   way back to it.
 
+The pin is kept while the continuation runs (BES-462). The pin sizes the
+spacer from the layout at the moment the request starts, when the approval
+bubble is still under the reply in its `sending` state. The bubble leaves as
+soon as the tool part settles, which can be seconds before any text arrives,
+because the server runs the tool first. `messagesEnd.offsetTop` then drops by
+the bubble's height, `scrollHeight` shrinks, the browser clamps `scrollTop`,
+and the pinned user message slid down by that height (343px on a 390x844
+viewport with a short reply, measured with a per-frame sampler) until
+`adjustSpacerAfterResponse()` placed the finished reply. Nothing recomputed
+the spacer in between: it ran only on submit, continue, regenerate, input
+height changes and once per reply at `ready`.
+
+`keepContinuationPinned()` closes that gap. `pinUserMessageForContinuation()`
+stores its scroll target; a `ResizeObserver` on the messages container
+(`messagesEnd`'s parent) then recomputes the spacer the pin needs after every
+content resize. When it needs more than the current spacer, it grows the
+spacer, waits a tick and scrolls instantly back to the stored target. Content
+growth never shrinks the spacer.
+
+What counts as a user takeover (the spacer still grows, but the view is left
+where the user put it; the flag is reset by every new pin):
+
+- a `wheel` event on the scroll container, except one whose `timeStamp` is
+  within 250 ms of the moment the pin was set
+  (`CONTINUATION_WHEEL_MOMENTUM_MS`, compared with `performance.now()` at the
+  pin, no timer): that is the tail of a trackpad scroll that started before
+  the pin, which keeps sending events for a while;
+- a `touchmove` on the scroll container;
+- a `keydown` of PageUp, PageDown, Home, End, ArrowUp, ArrowDown or Space
+  (listened on `window`) unless its target is an input, textarea, select or
+  `contenteditable` element, so typing in the composer never releases the pin
+  (focusing the composer already releases it through `chat:scroll-to-bottom`);
+- a `pointerdown` whose target is the scroll container itself, which is how a
+  scrollbar drag arrives (a press on a message or any other child is not one).
+
+The stored target is cleared by `adjustSpacerAfterResponse()`,
+`pushUserMessageToTop()`, `reservePinnedSpace()`, `chat:submit`,
+`chat:scroll-to-bottom` (the scroll
+button, or focusing or typing in the composer: the user asked for the bottom,
+so the pin must not pull the view back), the chat status becoming `ready` or
+`error` (through the status watcher, so a continuation that ends without a
+measured reply, such as a stopped one, cannot leave a stale target behind) and
+a change of the `slug` route param (the composable instance can outlive the
+chat it pinned), so a settled layout is never touched. One frame at the
+displaced position can still occur: the resize notification arrives after the
+layout that clamped. Do not replace this with a falling-edge
+`scrollIntoView()` (see the image-generation section for why).
+
 Covered by `tests/unit/composables/chat-scroll-spacer.spec.ts`
 ("continuations and approval pauses") and
 `tests/e2e/chat/approval-scroll.spec.ts` (mobile 390x844 and desktop
