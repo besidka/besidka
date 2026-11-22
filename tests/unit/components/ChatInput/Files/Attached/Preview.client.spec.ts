@@ -543,6 +543,7 @@ describe('ChatInput/Files/Attached/Preview', () => {
         })
         const item = wrapper.get('[data-testid="drive-import-item"]')
 
+        expect(item.attributes('role')).toBe('group')
         expect(item.attributes('aria-label'))
           .toBe('Plan, copying from Google Drive')
         expect(item.get('[data-testid="drive-import-status"]').text())

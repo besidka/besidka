@@ -199,7 +199,7 @@
         v-if="state.files.visible && state.googleDrive?.visible"
         :label="GOOGLE_DRIVE_BRAND_NAME"
         :hint="GOOGLE_DRIVE_COPY_LABEL"
-        :icon="GOOGLE_DRIVE_MARK_ICON"
+        :icon="GOOGLE_DRIVE_ICON"
         :badge="state.googleDrive.importing || undefined"
         data-testid="tools-action-google-drive"
         @click="emit('open-google-drive')"
@@ -241,7 +241,7 @@ import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import {
   GOOGLE_DRIVE_BRAND_NAME,
   GOOGLE_DRIVE_COPY_LABEL,
-  GOOGLE_DRIVE_MARK_ICON,
+  GOOGLE_DRIVE_ICON,
 } from '#shared/utils/google-drive'
 import type {
   ChatInputToolsState,

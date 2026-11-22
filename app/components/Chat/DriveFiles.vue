@@ -17,7 +17,7 @@
         :aria-label="GOOGLE_DRIVE_BRAND_NAME"
       >
         <Icon
-          :name="GOOGLE_DRIVE_MARK_ICON"
+          :name="GOOGLE_DRIVE_ICON"
           size="14"
         />
       </span>
@@ -46,7 +46,7 @@
 import type { UIMessage } from 'ai'
 import {
   GOOGLE_DRIVE_BRAND_NAME,
-  GOOGLE_DRIVE_MARK_ICON,
+  GOOGLE_DRIVE_ICON,
   isDriveFileReference,
 } from '#shared/utils/google-drive'
 

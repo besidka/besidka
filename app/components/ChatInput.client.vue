@@ -191,7 +191,8 @@
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage || isClarifying || researchJobActive"
+                :disabled="!hasMessage || isClarifying || researchJobActive
+                  || isDriveBusy"
                 :title="sendButtonTitle"
                 icon-name="lucide:arrow-up"
                 icon-only
@@ -486,6 +487,10 @@ const sendButtonTitle = computed<string>(() => {
     return missingKeyWarning.value
   }
 
+  if (isDriveBusy.value) {
+    return GOOGLE_DRIVE_BUSY_REASON
+  }
+
   if (props.researchJobActive) {
     return 'Research in progress — please wait'
   }
@@ -667,6 +672,7 @@ const googleDriveFeature = useFeature('google.drive')
 const {
   driveImports,
   importingCount: driveImportingCount,
+  isDriveBusy,
   attachFromDrive,
   dismissDriveImport,
 } = useChatDriveFiles(files, onFilesAttached)
@@ -1524,7 +1530,7 @@ watch(input, (newValue) => {
   }
 })
 
-function onFilesAttached(attachedFiles: AttachedFile[]) {
+function onFilesAttached(attachedFiles: AttachedFile[]): number {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
   const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
@@ -1548,10 +1554,12 @@ function onFilesAttached(attachedFiles: AttachedFile[]) {
   }
 
   if (newFiles.length === 0) {
-    return
+    return 0
   }
 
   files.value = [...files.value, ...newFiles as FileMetadata[]]
+
+  return newFiles.length
 }
 
 function onFilesDetached(fileIds: string[]) {
@@ -1737,6 +1745,10 @@ async function sendMessage() {
 
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
+  }
+
+  if (isDriveBusy.value) {
+    return useWarningMessage(GOOGLE_DRIVE_BUSY_REASON)
   }
 
   const blockedFileMessages = getBlockedFileMessages(

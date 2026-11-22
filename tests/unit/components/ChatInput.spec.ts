@@ -29,8 +29,18 @@ const mocks = vi.hoisted(() => ({
   setStepsAutoHide: vi.fn(async () => {}),
 }))
 
+const driveBusy = shallowRef<boolean>(false)
+
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
 mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
+mockNuxtImport('useChatDriveFiles', () => () => ({
+  driveImports: shallowRef([]),
+  importingCount: shallowRef(0),
+  isDriveBusy: driveBusy,
+  attachFromDrive: vi.fn(),
+  dismissDriveImport: vi.fn(),
+  dismissAllDriveImports: vi.fn(),
+}))
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
 mockNuxtImport('useErrorMessage', () => mocks.useErrorMessage)
@@ -4454,6 +4464,65 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
+    })
+  })
+
+  describe('Google Drive copies in flight', () => {
+    const BUSY_REASON
+      = 'Google Drive files are still being copied. Wait a moment, then send.'
+
+    afterEach(() => {
+      driveBusy.value = false
+    })
+
+    it('disables the send button and says why while files are copied',
+      async () => {
+        driveBusy.value = true
+
+        const wrapper = await mountChatInput()
+
+        await wrapper.get('[data-testid="chat-input-textarea"]')
+          .setValue('Summarize the files')
+        await flushPromises()
+
+        const sendButton = wrapper.get('[data-testid="send-message"]')
+
+        expect(sendButton.attributes('disabled')).toBeDefined()
+        expect(sendButton.attributes('title')).toBe(BUSY_REASON)
+      })
+
+    it('does not send on Enter while files are copied', async () => {
+      driveBusy.value = true
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      await textarea.setValue('Summarize the files')
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(BUSY_REASON)
+    })
+
+    it('sends again once the copies are attached', async () => {
+      driveBusy.value = true
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      await textarea.setValue('Summarize the files')
+      driveBusy.value = false
+      await flushPromises()
+
+      const sendButton = wrapper.get('[data-testid="send-message"]')
+
+      expect(sendButton.attributes('disabled')).toBeUndefined()
+
+      await sendButton.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
     })
   })
 })

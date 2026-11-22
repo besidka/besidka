@@ -1,4 +1,5 @@
-import { shallowRef } from 'vue'
+import { effectScope, shallowRef } from 'vue'
+import type { EffectScope } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useChatDriveFiles } from '../../../app/composables/chat-drive-files'
@@ -54,12 +55,23 @@ function importedFile(storageKey = 'copy-1.md') {
   }
 }
 
-function createSubject(attached: unknown[] = []) {
+function createSubject(attached: unknown[] = [], scope?: EffectScope) {
   const attachedFiles = shallowRef(attached) as never
-  const attach = vi.fn()
-  const subject = useChatDriveFiles(attachedFiles, attach)
+  const attach = vi.fn((files: unknown[]) => files.length)
+  const subject = scope
+    ? scope.run(() => useChatDriveFiles(attachedFiles, attach))!
+    : useChatDriveFiles(attachedFiles, attach)
 
   return { subject, attach, attachedFiles }
+}
+
+function deferred<TValue>() {
+  let resolve: (value: TValue) => void = () => {}
+  const promise = new Promise<TValue>((resolver) => {
+    resolve = resolver
+  })
+
+  return { promise, resolve }
 }
 
 describe('useChatDriveFiles', () => {
@@ -147,8 +159,8 @@ describe('useChatDriveFiles', () => {
     expect(mocks.pick).not.toHaveBeenCalled()
   })
 
-  it('does nothing when the picker is cancelled', async () => {
-    mocks.pick.mockResolvedValue({ status: 'cancelled' })
+  it('does nothing when the picker is canceled', async () => {
+    mocks.pick.mockResolvedValue({ status: 'canceled' })
 
     const { subject, attach } = createSubject()
 
@@ -333,6 +345,152 @@ describe('useChatDriveFiles', () => {
     await subject.attachFromDrive()
 
     expect(attach).toHaveBeenCalledWith([])
+  })
+
+  it('does not mark the chat when nothing was attached', async () => {
+    const { subject } = createSubject([{ storageKey: 'copy-1.md' }])
+
+    await subject.attachFromDrive()
+
+    expect(mocks.remember).not.toHaveBeenCalled()
+  })
+
+  describe('while a pick or a copy is in flight', () => {
+    it('is busy from the pick until the copies are attached', async () => {
+      const picking = deferred<unknown>()
+      const importing = deferred<unknown>()
+
+      mocks.pick.mockReturnValue(picking.promise)
+      mocks.fetch.mockImplementation(async (url: string) => {
+        return url === '/api/v1/files/policy'
+          ? { policy: { maxFilesPerMessage: 10 } }
+          : await importing.promise
+      })
+
+      const { subject } = createSubject()
+      const running = subject.attachFromDrive()
+
+      await vi.waitFor(() => expect(mocks.pick).toHaveBeenCalled())
+
+      expect(subject.isDriveBusy.value).toBe(true)
+
+      picking.resolve({ status: 'picked', items: [PICKED], rejected: [] })
+      await vi.waitFor(() => {
+        expect(subject.driveImports.value).toHaveLength(1)
+      })
+
+      expect(subject.isDriveBusy.value).toBe(true)
+
+      importing.resolve({
+        results: [{
+          id: PICKED.id,
+          status: 'imported',
+          file: importedFile(),
+        }],
+      })
+      await running
+
+      expect(subject.isDriveBusy.value).toBe(false)
+    })
+
+    it('ignores a second request while busy', async () => {
+      const picking = deferred<unknown>()
+
+      mocks.pick.mockReturnValue(picking.promise)
+
+      const { subject } = createSubject()
+      const first = subject.attachFromDrive()
+
+      await vi.waitFor(() => expect(mocks.pick).toHaveBeenCalled())
+      await subject.attachFromDrive()
+
+      expect(mocks.pick).toHaveBeenCalledTimes(1)
+
+      picking.resolve({ status: 'canceled' })
+      await first
+    })
+
+    it('drops a result that arrives after the message was sent', async () => {
+      const importing = deferred<unknown>()
+
+      mocks.fetch.mockImplementation(async (url: string) => {
+        return url === '/api/v1/files/policy'
+          ? { policy: { maxFilesPerMessage: 10 } }
+          : await importing.promise
+      })
+
+      const { subject, attach } = createSubject()
+      const running = subject.attachFromDrive()
+
+      await vi.waitFor(() => {
+        expect(subject.driveImports.value).toHaveLength(1)
+      })
+      await useNuxtApp().callHook('chat:submit' as never)
+
+      expect(subject.isDriveBusy.value).toBe(false)
+
+      importing.resolve({
+        results: [{
+          id: PICKED.id,
+          status: 'imported',
+          file: importedFile(),
+        }],
+      })
+      await running
+
+      expect(attach).not.toHaveBeenCalled()
+      expect(mocks.remember).not.toHaveBeenCalled()
+      expect(subject.driveImports.value).toEqual([])
+    })
+
+    it('does not open the picker for a result nobody will use', async () => {
+      const picking = deferred<unknown>()
+
+      mocks.pick.mockReturnValue(picking.promise)
+
+      const { subject, attach } = createSubject()
+      const running = subject.attachFromDrive()
+
+      await vi.waitFor(() => expect(mocks.pick).toHaveBeenCalled())
+      await useNuxtApp().callHook('chat:submit' as never)
+      picking.resolve({ status: 'picked', items: [PICKED], rejected: [] })
+      await running
+
+      expect(mocks.fetch).not.toHaveBeenCalledWith(
+        '/api/v1/google/drive/files',
+        expect.anything(),
+      )
+      expect(attach).not.toHaveBeenCalled()
+    })
+
+    it('drops the result when its owning scope is disposed', async () => {
+      const importing = deferred<unknown>()
+      const scope = effectScope()
+
+      mocks.fetch.mockImplementation(async (url: string) => {
+        return url === '/api/v1/files/policy'
+          ? { policy: { maxFilesPerMessage: 10 } }
+          : await importing.promise
+      })
+
+      const { subject, attach } = createSubject([], scope)
+      const running = subject.attachFromDrive()
+
+      await vi.waitFor(() => {
+        expect(subject.driveImports.value).toHaveLength(1)
+      })
+      scope.stop()
+      importing.resolve({
+        results: [{
+          id: PICKED.id,
+          status: 'imported',
+          file: importedFile(),
+        }],
+      })
+      await running
+
+      expect(attach).not.toHaveBeenCalled()
+    })
   })
 
   it('does not mark a new chat that has no slug yet', async () => {

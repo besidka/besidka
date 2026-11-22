@@ -39,7 +39,7 @@ export const STORAGE_CATEGORY_META: Record<
   },
   googleDrive: {
     label: 'Google Drive copies',
-    icon: 'simple-icons:googledrive',
+    icon: 'lucide:hard-drive',
     singular: 'copy',
     plural: 'copies',
     hint: 'Copies of the Google Drive files you picked',

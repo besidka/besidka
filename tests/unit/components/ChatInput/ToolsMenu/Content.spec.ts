@@ -263,8 +263,10 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
 
       expect(row.text()).toContain('Google Drive')
       expect(row.text()).toContain(
-        'Saves a copy in your Besidka files for 30 days',
+        'Saves a copy in your Besidka files',
       )
+      expect(row.text()).not.toMatch(/\d/)
+      expect(row.html()).not.toContain('googledrive')
       expect(wrapper.findAll('[data-testid="tools-action-google-drive"]'))
         .toHaveLength(1)
       expect(row.attributes('aria-label') ?? '').not.toContain('Drive file')

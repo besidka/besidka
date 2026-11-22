@@ -142,7 +142,7 @@
           data-testid="files-preview-drive-mark"
         >
           <Icon
-            :name="GOOGLE_DRIVE_MARK_ICON"
+            :name="GOOGLE_DRIVE_ICON"
             size="10"
           />
         </span>
@@ -164,6 +164,7 @@
         v-for="driveImport in driveImports"
         :key="`drive-${driveImport.id}`"
         :data-drive-import-id="driveImport.id"
+        role="group"
         :aria-label="driveCopyingLabel(driveImport.name, driveImport.status)"
         class="carousel-item flex items-center gap-1 relative"
         data-testid="drive-import-item"
@@ -176,7 +177,7 @@
             :class="{ 'opacity-50': driveImport.status === 'importing' }"
           >
             <Icon
-              :name="GOOGLE_DRIVE_MARK_ICON"
+              :name="GOOGLE_DRIVE_ICON"
               size="20"
               class="text-base-content/60"
             />
@@ -224,7 +225,7 @@
           v-if="driveImport.status === 'failed'"
           class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
           :aria-label="`Dismiss ${driveImport.name}`"
-          :title="`Dismiss`"
+          title="Dismiss"
           data-testid="drive-import-dismiss"
           @click="emit('dismiss-drive-import', driveImport.id)"
         >
@@ -432,7 +433,7 @@
 import type { FileMetadata } from '#shared/types/files.d'
 import {
   GOOGLE_DRIVE_BRAND_NAME,
-  GOOGLE_DRIVE_MARK_ICON,
+  GOOGLE_DRIVE_ICON,
 } from '#shared/utils/google-drive'
 import type { DriveImportProgress } from '~/composables/chat-drive-files'
 import type { AttachedFile } from '~/types/file-manager'
