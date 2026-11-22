@@ -1931,6 +1931,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/google/data-guard.spec.ts',
     'tests/unit/server/utils/google/send-flag.spec.ts',
     'tests/unit/server/utils/google/marked-origin.spec.ts',
+    'tests/integration/api/chats-research-start.spec.ts',
     'tests/unit/server/utils/files/file-share-access.spec.ts',
     'tests/integration/api/chats-share-reshare-slug.spec.ts',
     'tests/unit/utils/gateways/google-data-safeguards.spec.ts',

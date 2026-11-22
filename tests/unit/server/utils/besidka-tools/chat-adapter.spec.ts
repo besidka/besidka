@@ -520,12 +520,14 @@ describe('Besidka tools in a send that holds Google data', () => {
     'update_project',
     'update_project_instructions',
     'update_project_knowledge_item',
+    'update_settings',
   ]
   const FREE_TEXT_INPUTS: Record<string, unknown> = {
     create_project: { name: 'Budget from the mail' },
     rename_file: { fileId: 'file-1', name: 'Budget from the mail.txt' },
     update_chat: { slug: CURRENT_SLUG, title: 'Budget from the mail' },
     update_project: { projectId: 'prj_1', name: 'Budget from the mail' },
+    update_settings: { favoriteModels: ['Budget from the mail'] },
   }
 
   beforeEach(() => {

@@ -271,6 +271,7 @@ export const GOOGLE_SPREADING_BESIDKA_TOOLS: ReadonlySet<string> = new Set([
   'update_project',
   'update_project_instructions',
   'update_project_knowledge_item',
+  'update_settings',
 ])
 
 export const GOOGLE_SPREAD_REFUSED_MESSAGE = 'This chat holds content from '

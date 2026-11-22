@@ -216,6 +216,41 @@ describe('withGoogleDataFlag', () => {
       expect(ensureFlagged).toHaveBeenCalledTimes(1)
     })
 
+  it('keeps a streaming tool streaming: the result stays an async iterable '
+    + 'that yields what the tool yields', async () => {
+    const order: string[] = []
+    const tools = {
+      generate_image: {
+        async* execute() {
+          order.push('first')
+          yield { state: 'pending' }
+          order.push('second')
+          yield { state: 'ready' }
+        },
+      },
+    } as unknown as ToolSet
+    const wrapped = withGoogleDataFlag(tools, {
+      isGoogleDerived: () => true,
+      ensureFlagged: async () => {
+        order.push('flag')
+      },
+    })!
+    const execute = (wrapped.generate_image as unknown as {
+      execute: (input: unknown) => AsyncIterable<unknown>
+    }).execute
+    const result = execute({})
+    const yielded: unknown[] = []
+
+    expect(typeof result.then).toBe('undefined')
+
+    for await (const value of result) {
+      yielded.push(value)
+    }
+
+    expect(yielded).toEqual([{ state: 'pending' }, { state: 'ready' }])
+    expect(order).toEqual(['flag', 'first', 'second', 'flag'])
+  })
+
   it('leaves provider tools and a missing tool set alone', () => {
     const { tools, wrapped } = wrap({
       derived: () => true,

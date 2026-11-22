@@ -54,6 +54,11 @@ function isFunctionTool(tool: unknown): tool is {
   return record.type !== 'provider' && typeof record.execute === 'function'
 }
 
+function isAsyncGeneratorFunction(execute: unknown): boolean {
+  return typeof execute === 'function'
+    && execute.constructor.name === 'AsyncGeneratorFunction'
+}
+
 /**
  * Makes every function tool of a send flag the chat before Google data can
  * outlive the send. A Google tool flags after its result exists; any other
@@ -80,6 +85,23 @@ export function withGoogleDataFlag(
 
     const execute = tool.execute.bind(tool)
     const isGoogleTool = isGoogleToolName(toolName)
+
+    if (isAsyncGeneratorFunction(tool.execute)) {
+      return [toolName, {
+        ...tool,
+        execute: async function* (toolInput: unknown, options?: unknown) {
+          if (!isGoogleTool && input.isGoogleDerived()) {
+            await input.ensureFlagged()
+          }
+
+          yield* execute(toolInput, options) as AsyncIterable<unknown>
+
+          if (input.isGoogleDerived()) {
+            await input.ensureFlagged()
+          }
+        },
+      } as ToolSet[string]]
+    }
 
     return [toolName, {
       ...tool,

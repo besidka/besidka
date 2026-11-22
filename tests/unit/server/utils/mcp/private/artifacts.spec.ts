@@ -564,6 +564,22 @@ describe('MCP artifact logic', () => {
       )).resolves.toMatchObject({ version: 2 })
     })
 
+    it('answers a share of a marked artifact like a missing one, so the '
+      + 'Google reason does not confirm that it exists', async () => {
+      const marked = await createMarked()
+
+      await expect(shareMcpArtifact(context(), {
+        id: marked.artifactId,
+        expiresInDays: 7,
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(shareMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId, expiresInDays: 7 },
+      )).rejects.toMatchObject({ status: 403 })
+      expect(await testDb.db.select().from(schema.artifactShares))
+        .toHaveLength(0)
+    })
+
     it('still updates an unmarked artifact over MCP', async () => {
       const plain = await createOwned()
 

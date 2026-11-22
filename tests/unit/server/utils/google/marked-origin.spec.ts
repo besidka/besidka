@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as schema from '~~/server/db/schema'
 import {
   chatHoldsGoogleData,
   chatMarkedOriginExtras,
 } from '~~/server/utils/tool-approval/google'
-import { createKnowledgeTestDb } from '~~/tests/setup/helpers/knowledge-db'
+import {
+  createMemoryExtractionTestDb,
+  seedChat,
+  seedMessage,
+  seedProject,
+  seedUser,
+  textPart,
+} from '~~/tests/setup/helpers/memory-extraction-db'
+import type { MemoryExtractionTestDb } from '~~/tests/setup/helpers/memory-extraction-db'
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -13,101 +22,149 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await publicIdMockFactory()
 })
 
-const NOW = Math.floor(Date.now() / 1000)
+describe('chatMarkedOriginExtras in the chat query of the send route', () => {
+  let testDb: MemoryExtractionTestDb
+  let userId: number
 
-type Store = ReturnType<typeof createKnowledgeTestDb>
-
-function seed(): Store {
-  const store = createKnowledgeTestDb()
-
-  store.sqlite.exec(`
-    CREATE TABLE chats (
-      id integer PRIMARY KEY,
-      created_at integer NOT NULL,
-      updated_at integer NOT NULL,
-      slug text NOT NULL,
-      user_id integer NOT NULL,
-      google_data_at integer
-    );
-  `)
-
-  for (const id of [1, 2, 3, 4]) {
-    store.sqlite.prepare(
-      'insert into chats (id, created_at, updated_at, slug, user_id)'
-      + ' values (?, ?, ?, ?, ?)',
-    ).run(id, NOW, NOW, `slug-${id}`, 7)
-  }
-
-  return store
-}
-
-function insertArtifact(
-  store: Store,
-  originChatId: number,
-  googleDerivedAt: number | null,
-) {
-  store.sqlite.prepare(
-    'insert into artifacts (created_at, updated_at, user_id, origin_chat_id,'
-    + ' kind, title, current_version, total_bytes, created_via,'
-    + ' google_derived_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(NOW, NOW, 7, originChatId, 'html', 'A', 1, 10, 'chat', googleDerivedAt)
-}
-
-function insertDocument(
-  store: Store,
-  originChatId: number,
-  googleDerivedAt: number | null,
-) {
-  store.sqlite.prepare(
-    'insert into documents (created_at, updated_at, user_id, origin_chat_id,'
-    + ' format, status, render_attempts, created_via, google_derived_at)'
-    + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(NOW, NOW, 7, originChatId, 'pdf', 'ready', 0, 'chat', googleDerivedAt)
-}
-
-async function readMarkedOrigin(store: Store, id: number) {
-  const chat = await store.db.query.chats.findFirst({
-    where: { id: `pub-${id}` },
-    columns: { id: true, googleDataAt: true },
-    extras: chatMarkedOriginExtras(),
+  beforeEach(async () => {
+    testDb = createMemoryExtractionTestDb()
+    userId = await seedUser(testDb.db, null)
   })
 
-  return Number(chat?.holdsMarkedOrigin)
-}
+  afterEach(() => {
+    testDb.close()
+  })
 
-describe('chatMarkedOriginExtras', () => {
-  it('reads false for a chat whose artifacts and documents are unmarked',
-    async () => {
-      const store = seed()
-
-      insertArtifact(store, 1, null)
-      insertDocument(store, 1, null)
-
-      expect(await readMarkedOrigin(store, 1)).toBe(0)
+  async function loadChat(slug: string) {
+    return await testDb.db.query.chats.findFirst({
+      where: { slug, userId },
+      columns: {
+        id: true,
+        projectId: true,
+        branchedFromShareSlug: true,
+        googleDataAt: true,
+      },
+      extras: chatMarkedOriginExtras(),
+      with: {
+        project: {
+          columns: {
+            id: true,
+            name: true,
+            instructions: true,
+            memory: true,
+            memoryStatus: true,
+            memoryMigratedAt: true,
+            useAccountMemory: true,
+          },
+        },
+        messages: {
+          columns: {
+            id: true,
+            publicId: true,
+            role: true,
+            parts: true,
+            tools: true,
+            reasoning: true,
+            usage: true,
+            createdAt: true,
+          },
+          orderBy: { id: 'asc' },
+        },
+      },
     })
+  }
 
-  it('reads true for a marked artifact that names the chat as origin',
-    async () => {
-      const store = seed()
-
-      insertArtifact(store, 2, NOW)
-
-      expect(await readMarkedOrigin(store, 2)).toBe(1)
-      expect(await readMarkedOrigin(store, 3)).toBe(0)
+  async function insertArtifact(
+    originChatId: string,
+    googleDerivedAt: Date | null,
+  ) {
+    await testDb.db.insert(schema.artifacts).values({
+      userId,
+      originChatId,
+      kind: 'html',
+      title: 'Plan',
+      currentVersion: 1,
+      totalBytes: 10,
+      createdVia: 'chat',
+      googleDerivedAt,
     })
+  }
 
-  it('reads true for a marked document that names the chat as origin',
+  async function insertDocument(
+    originChatId: string,
+    googleDerivedAt: Date | null,
+  ) {
+    await testDb.db.insert(schema.documents).values({
+      userId,
+      originChatId,
+      format: 'pdf',
+      status: 'ready',
+      createdVia: 'chat',
+      googleDerivedAt,
+    })
+  }
+
+  it('reads false for a chat with unmarked artifacts and documents, and '
+    + 'keeps the project and the messages', async () => {
+    const projectId = await seedProject(testDb.db, userId)
+    const { id, slug } = await seedChat(testDb.db, userId, { projectId })
+
+    await seedMessage(
+      testDb.db,
+      id,
+      'user',
+      [textPart('Hello')],
+      new Date(1_000),
+    )
+    await insertArtifact(id, null)
+    await insertDocument(id, null)
+
+    const chat = await loadChat(slug)
+
+    expect(Number(chat?.holdsMarkedOrigin)).toBe(0)
+    expect(chat?.project?.id).toBe(projectId)
+    expect(chat?.messages).toHaveLength(1)
+    expect(chatHoldsGoogleData({
+      googleDataAt: chat?.googleDataAt,
+      messages: chat?.messages,
+      holdsMarkedOrigin: chat?.holdsMarkedOrigin,
+    })).toBe(false)
+  })
+
+  it('reads true for a marked artifact of the chat and not for another '
+    + 'chat', async () => {
+    const marked = await seedChat(testDb.db, userId)
+    const other = await seedChat(testDb.db, userId)
+
+    await insertArtifact(marked.id, new Date(1_000))
+
+    const chat = await loadChat(marked.slug)
+
+    expect(Number(chat?.holdsMarkedOrigin)).toBe(1)
+    expect(chat?.googleDataAt).toBeNull()
+    expect(chatHoldsGoogleData({
+      googleDataAt: chat?.googleDataAt,
+      messages: chat?.messages,
+      holdsMarkedOrigin: chat?.holdsMarkedOrigin,
+    })).toBe(true)
+    expect(Number((await loadChat(other.slug))?.holdsMarkedOrigin)).toBe(0)
+  })
+
+  it('reads true for a marked document of the chat, with no message at all',
     async () => {
-      const store = seed()
+      const { id, slug } = await seedChat(testDb.db, userId)
 
-      insertDocument(store, 4, NOW)
+      await insertDocument(id, new Date(1_000))
 
-      expect(await readMarkedOrigin(store, 4)).toBe(1)
+      const chat = await loadChat(slug)
+
+      expect(Number(chat?.holdsMarkedOrigin)).toBe(1)
+      expect(chat?.messages).toEqual([])
     })
 
   it('adds no query: the extra is part of the chat query', () => {
-    const query = seed().db.query.chats.findFirst({
-      where: { id: 'pub-1' },
+    const query = testDb.db.query.chats.findFirst({
+      where: { slug: 'x' },
       columns: { id: true },
       extras: chatMarkedOriginExtras(),
     }).toSQL()

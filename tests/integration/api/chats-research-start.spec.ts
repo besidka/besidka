@@ -54,6 +54,7 @@ async function getStartHandler() {
 }
 
 function createDb(overrides: {
+  holdsMarkedOrigin?: boolean
   messages?: Array<{
     id: string
     publicId: string
@@ -75,6 +76,9 @@ function createDb(overrides: {
   }))
   const updateWhere = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: updateWhere }))
+  const batch = vi.fn(async (statements: unknown[]) => {
+    return await Promise.all(statements)
+  })
 
   return {
     db: {
@@ -84,13 +88,17 @@ function createDb(overrides: {
             id: 'chat-1',
             slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             projectId: null,
+            googleDataAt: null,
+            holdsMarkedOrigin: overrides.holdsMarkedOrigin ? 1 : 0,
             messages: overrides.messages ?? [],
           })),
         },
       },
       insert: vi.fn(() => ({ values: insertValues })),
       update: vi.fn(() => ({ set: updateSet })),
+      batch,
     },
+    batch,
     insertValues,
     updateSet,
     updateWhere,
@@ -188,6 +196,34 @@ describe('research start API', () => {
         answers: undefined,
       }),
     )
+  })
+
+  it('flags the chat when a killed send left a marked artifact or '
+    + 'document, and not for an ordinary chat', async () => {
+    const handler = await getStartHandler()
+    const request = {
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5.4',
+        userMessage: {
+          id: 'user-message-1',
+          parts: [{ type: 'text', text: 'Research this topic' }],
+        },
+      },
+    } as any
+    const ordinary = createDb()
+
+    vi.stubGlobal('useDb', () => ordinary.db)
+    await handler(request)
+
+    expect(ordinary.batch).not.toHaveBeenCalled()
+
+    const marked = createDb({ holdsMarkedOrigin: true })
+
+    vi.stubGlobal('useDb', () => marked.db)
+    await handler(request)
+
+    expect(marked.batch).toHaveBeenCalledTimes(1)
   })
 
   it('passes clarification answers through to the start helper', async () => {

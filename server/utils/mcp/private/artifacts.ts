@@ -532,6 +532,7 @@ export async function shareMcpArtifact(
     active: true,
     flags: ['artifacts.share'],
   })
+  await assertArtifactReadable(context, input.id)
 
   if (
     !Number.isInteger(input.expiresInDays)
