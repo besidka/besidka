@@ -160,6 +160,7 @@ import {
   buildModelContextMessages,
   getGeneratedImageFileIds,
   getModelContextFileStorageKeys,
+  getSpreadsheetTextVersions,
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
   stripUndeliveredInlineDataParts,
@@ -1346,6 +1347,8 @@ export default defineEventHandler(async (event) => {
   )
   const fileSizesByStorageKey = new Map<string, number>()
   const officeTextBytesByStorageKey = new Map<string, number>()
+  const spreadsheetTextVersionsByStorageKey
+    = getSpreadsheetTextVersions(ownedContextFiles)
 
   for (const [storageKey, file] of ownedContextFiles) {
     fileSizesByStorageKey.set(storageKey, file.size)
@@ -1363,9 +1366,11 @@ export default defineEventHandler(async (event) => {
   const {
     messages: modelContextMessages,
     omittedFiles,
+    structureOnlyFiles,
   } = buildModelContextMessages(allMessages, {
     fileSizesByStorageKey,
     officeTextBytesByStorageKey,
+    spreadsheetTextVersionsByStorageKey,
     canCarryMediaType: model
       ? createCarriedMediaTypePredicate(getModelInputModalities(model))
       : undefined,
@@ -1379,6 +1384,7 @@ export default defineEventHandler(async (event) => {
     container: codeExecutionGate.filesActive && provider
       ? { providerId: provider.id, messageId: newMessage.id }
       : undefined,
+    structureOnlyFiles,
   })
 
   assertOnlyDeliverableFileParts(messagesForAI, {

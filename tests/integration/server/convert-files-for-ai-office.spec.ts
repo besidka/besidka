@@ -6,6 +6,8 @@ import {
   OFFICE_TEXT_INLINE_MAX_BYTES,
   OFFICE_TEXT_MESSAGE_MAX_BYTES,
 } from '#shared/utils/office-files'
+import { renderWorkbookMap } from '@besidka/doc-renderer/workbook-map'
+import type { WorkbookCell } from '@besidka/doc-renderer/workbook-map'
 import { convertFilesForAI } from '~~/server/utils/files/convert-files-for-ai'
 
 const mocks = vi.hoisted(() => ({
@@ -498,6 +500,132 @@ describe('convertFilesForAI with Office files', () => {
     for (const message of messages) {
       expect(getTexts(message)[1]).not.toContain('[Not included')
     }
+  })
+
+  describe('a workbook map carried from an earlier turn', () => {
+    function estimateMap(rows: number): string {
+      const lines: WorkbookCell[] = []
+
+      for (let row = 2; row <= rows + 1; row += 1) {
+        lines.push({ row, column: 1, value: `Розділ робіт номер ${row}` })
+        lines.push({ row, column: 2, value: 'Developer' })
+        lines.push({
+          row,
+          column: 3,
+          formula: `VLOOKUP(B${row},Lists!$A$1:$B$3,2,0)*2`,
+          value: String(row),
+        })
+      }
+
+      const emptyNotRead = {
+        charts: 0,
+        images: 0,
+        pivotTables: 0,
+        colorScales: 0,
+        dataBars: 0,
+        iconSets: 0,
+        hyperlinks: 0,
+      }
+      const base = {
+        visibility: 'visible' as const,
+        frozenRows: 0,
+        frozenColumns: 0,
+        mergedRanges: [],
+        validations: [],
+        conditionalRules: [],
+        notes: [],
+        notRead: emptyNotRead,
+        cuts: [],
+      }
+
+      return renderWorkbookMap({
+        names: [],
+        sheetsTotal: 2,
+        sheets: [
+          { ...base, name: 'Lines', cells: lines },
+          {
+            ...base,
+            name: 'Lists',
+            cells: [
+              { row: 1, column: 1, value: 'Developer' },
+              { row: 1, column: 2, value: '40' },
+            ],
+          },
+        ],
+      }).text
+    }
+
+    function textOf(message: UIMessage | undefined): string {
+      return getTexts(message).join('\n')
+    }
+
+    it('keeps every formula and the small tabs on turn 2', async () => {
+      const map = estimateMap(1600)
+
+      expect(new TextEncoder().encode(map).byteLength).toBeGreaterThan(92_000)
+      store('e.xlsx.text.md', map)
+      stubOwnedFiles([officeRow('e.xlsx', {
+        type: OFFICE_MEDIA_TYPES.xlsx,
+        textVersion: 2,
+        textBytes: 92 * 1024,
+      })])
+
+      const earlier = {
+        ...userMessage([{ key: 'e.xlsx', mediaType: OFFICE_MEDIA_TYPES.xlsx }]),
+        id: 'earlier',
+      }
+      const latest = {
+        ...userMessage([{ key: 'e.xlsx', mediaType: OFFICE_MEDIA_TYPES.xlsx }]),
+        id: 'latest',
+      }
+      const { messages } = await convertFilesForAI([earlier, latest], {
+        structureOnlyFiles: [{ messageId: 'earlier', storageKey: 'e.xlsx' }],
+      })
+      const carried = textOf(messages[0])
+
+      expect(new TextEncoder().encode(carried).byteLength)
+        .toBeLessThan(66 * 1024)
+      expect(carried)
+        .toContain('- C2:C1601 ↓ =VLOOKUP(B2,Lists!$A$1:$B$3,2,0)*2')
+      expect(carried).toContain('## Sheet: Lists\n\n### Values\n#,A,B\n'
+        + '1,Developer,40')
+      expect(carried).toContain('(values of this sheet were left out of this '
+        + 'earlier turn: 1600 rows)')
+      expect(carried).toContain('Values were shortened in this earlier '
+        + 'attachment')
+      expect(textOf(messages[1])).toContain('1601,Розділ робіт номер 1601')
+      expect(textOf(messages[1])).not.toContain('Values were shortened')
+    })
+
+    it('carries a 40 KB map whole', async () => {
+      const map = estimateMap(300)
+
+      expect(new TextEncoder().encode(map).byteLength).toBeLessThan(64 * 1024)
+      store('s.xlsx.text.md', map)
+      stubOwnedFiles([officeRow('s.xlsx', {
+        type: OFFICE_MEDIA_TYPES.xlsx,
+        textVersion: 2,
+      })])
+
+      const { messages } = await convertFilesForAI([
+        userMessage([{ key: 's.xlsx', mediaType: OFFICE_MEDIA_TYPES.xlsx }]),
+      ], { structureOnlyFiles: [{ messageId: 'm1', storageKey: 's.xlsx' }] })
+
+      expect(textOf(messages[0])).toContain('301,Розділ робіт номер 301')
+      expect(textOf(messages[0])).not.toContain('Values were shortened')
+    })
+
+    it('gives a document titled Workbook map the plain note', async () => {
+      store('t.docx.text.md', '# Workbook map\n\nNot a spreadsheet.')
+      stubOwnedFiles([officeRow('t.docx')])
+
+      const { messages } = await convertFilesForAI([
+        userMessage([{ key: 't.docx', mediaType: OFFICE_MEDIA_TYPES.docx }]),
+      ])
+
+      expect(textOf(messages[0])).toContain('Extracted text. Images, charts')
+      expect(textOf(messages[0])).not.toContain('Workbook map. Included')
+    })
   })
 
   describe('with Run code files', () => {

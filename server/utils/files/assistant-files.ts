@@ -25,7 +25,12 @@ import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
 } from '#shared/utils/chat-failure-text'
-import { isOfficeMediaType } from '#shared/utils/office-files'
+import {
+  OFFICE_TEXT_INLINE_MAX_BYTES,
+  WORKBOOK_MAP_TEXT_VERSION,
+  getOfficeFormatByMediaType,
+  isOfficeMediaType,
+} from '#shared/utils/office-files'
 import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
@@ -50,17 +55,29 @@ export interface NormalizeAssistantMessagePartsInput {
 export interface ModelContextFileOptions {
   fileSizesByStorageKey?: ReadonlyMap<string, number>
   officeTextBytesByStorageKey?: ReadonlyMap<string, number>
+  spreadsheetTextVersionsByStorageKey?: ReadonlyMap<string, number>
   canCarryMediaType?: (mediaType: string) => boolean
+}
+
+/**
+ * A spreadsheet carried from an earlier message whose workbook map is sent
+ * as structure plus the values that fit in `CARRIED_TEXT_FILE_MAX_BYTES`.
+ */
+export interface CarriedStructureOnlyFile {
+  messageId: string
+  storageKey: string
 }
 
 export interface ModelContextMessages {
   messages: UIMessage[]
   omittedFiles: ModelContextOmittedFile[]
+  structureOnlyFiles: CarriedStructureOnlyFile[]
 }
 
 interface CarriedFileSelection {
   carriedFileParts: ReadonlySet<MessagePart>
   omittedFiles: ModelContextOmittedFile[]
+  structureOnlyFiles: CarriedStructureOnlyFile[]
 }
 
 type MessagePart = UIMessage['parts'][number]
@@ -95,10 +112,11 @@ export function buildModelContextMessages(
 ): ModelContextMessages {
   const sanitizedMessages: UIMessage[] = []
   const latestUserMessage = findLatestUserMessage(messages)
-  const { carriedFileParts, omittedFiles } = selectCarriedFileParts(
-    messages,
-    options,
-  )
+  const {
+    carriedFileParts,
+    omittedFiles,
+    structureOnlyFiles,
+  } = selectCarriedFileParts(messages, options)
 
   for (const message of messages) {
     if (!Array.isArray(message.parts)) {
@@ -130,6 +148,7 @@ export function buildModelContextMessages(
   return {
     messages: sanitizedMessages,
     omittedFiles,
+    structureOnlyFiles,
   }
 }
 
@@ -158,6 +177,32 @@ export function getModelContextFileStorageKeys(
   }
 
   return [...storageKeys]
+}
+
+/**
+ * The stored text version of every spreadsheet with ready text, for the
+ * carry-over rules of `buildModelContextMessages`.
+ */
+export function getSpreadsheetTextVersions(
+  files: ReadonlyMap<string, {
+    type?: string
+    textStatus?: string | null
+    textVersion?: number | null
+  }>,
+): Map<string, number> {
+  const versions = new Map<string, number>()
+
+  for (const [storageKey, file] of files) {
+    const isReadySpreadsheet = !!file.type
+      && getOfficeFormatByMediaType(file.type) === 'xlsx'
+      && file.textStatus === 'ready'
+
+    if (isReadySpreadsheet) {
+      versions.set(storageKey, file.textVersion ?? 1)
+    }
+  }
+
+  return versions
 }
 
 function getUserFileParts(message: UIMessage): FileMessagePart[] {
@@ -219,18 +264,59 @@ function toOmittedFile(
   }
 }
 
+/**
+ * What an earlier file costs against the carry budget. A spreadsheet whose
+ * text is or may become a workbook map (a version 1 text is upgraded during
+ * the send) is charged a fixed `CARRIED_TEXT_FILE_MAX_BYTES` and sent
+ * structure-only, fitted to that size at conversion; a map larger than the
+ * per-file inline cap is not carried. Any other text file over the carry
+ * cap is not carried.
+ */
+function carriedCharge(
+  part: FileMessagePart,
+  size: number,
+  textVersion: number | undefined,
+): { bytes: number, isStructureOnly: boolean } | null {
+  if (textVersion !== undefined) {
+    const mayBeMap = textVersion >= WORKBOOK_MAP_TEXT_VERSION
+      || size <= CARRIED_TEXT_FILE_MAX_BYTES
+
+    if (!mayBeMap || size > OFFICE_TEXT_INLINE_MAX_BYTES) {
+      return null
+    }
+
+    const isFixed = size > CARRIED_TEXT_FILE_MAX_BYTES
+      || textVersion < WORKBOOK_MAP_TEXT_VERSION
+
+    return {
+      bytes: isFixed ? CARRIED_TEXT_FILE_MAX_BYTES : size,
+      isStructureOnly: true,
+    }
+  }
+
+  const isText = isTextMediaType(part.mediaType)
+    || isOfficeMediaType(part.mediaType)
+
+  if (isText && size > CARRIED_TEXT_FILE_MAX_BYTES) {
+    return null
+  }
+
+  return { bytes: size, isStructureOnly: false }
+}
+
 function selectCarriedFileParts(
   messages: UIMessage[],
   options: ModelContextFileOptions,
 ): CarriedFileSelection {
   const carriedFileParts = new Set<MessagePart>()
   const omittedFiles: ModelContextOmittedFile[] = []
+  const structureOnlyFiles: CarriedStructureOnlyFile[] = []
   const latestUserMessage = findLatestUserMessage(messages)
   const { canCarryMediaType } = options
   const fileSizesByStorageKey = getEffectiveFileSizes(options)
 
   if (!latestUserMessage) {
-    return { carriedFileParts, omittedFiles }
+    return { carriedFileParts, omittedFiles, structureOnlyFiles }
   }
 
   const windowMessages = getCarryOverWindowMessages(messages)
@@ -242,7 +328,7 @@ function selectCarriedFileParts(
       }
     }
 
-    return { carriedFileParts, omittedFiles }
+    return { carriedFileParts, omittedFiles, structureOnlyFiles }
   }
 
   if (fileSizesByStorageKey && fileSizesByStorageKey.size > 0) {
@@ -282,12 +368,18 @@ function selectCarriedFileParts(
           continue
         }
 
+        const charge = carriedCharge(
+          part,
+          size,
+          storageKey
+            ? options.spreadsheetTextVersionsByStorageKey?.get(storageKey)
+            : undefined,
+        )
+
         if (
           remainingCount < 1
-          || size > remainingBytes
-          || ((isTextMediaType(part.mediaType)
-            || isOfficeMediaType(part.mediaType))
-          && size > CARRIED_TEXT_FILE_MAX_BYTES)
+          || charge === null
+          || charge.bytes > remainingBytes
         ) {
           omittedFiles.push(toOmittedFile(part, 'over-limit'))
           continue
@@ -295,7 +387,11 @@ function selectCarriedFileParts(
 
         carriedFileParts.add(part)
         remainingCount -= 1
-        remainingBytes -= size
+        remainingBytes -= charge.bytes
+
+        if (charge.isStructureOnly && storageKey) {
+          structureOnlyFiles.push({ messageId: message.id, storageKey })
+        }
       }
     }
   }
@@ -310,7 +406,7 @@ function selectCarriedFileParts(
     }
   }
 
-  return { carriedFileParts, omittedFiles }
+  return { carriedFileParts, omittedFiles, structureOnlyFiles }
 }
 
 /**

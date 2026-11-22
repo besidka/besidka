@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 import { useLogger } from 'evlog'
-import { WORKBOOK_MAP_TITLE } from '@besidka/doc-renderer/workbook-map'
+import { fitWorkbookMap } from '@besidka/doc-renderer/workbook-map'
 import { normalizeMediaType } from '#shared/utils/files'
 import { resolveFileDelivery } from '#shared/utils/file-delivery'
 import type { FileDeliveryReason } from '#shared/utils/file-delivery'
@@ -8,24 +8,31 @@ import {
   OFFICE_FORMAT_NOUNS,
   OFFICE_TEXT_INLINE_MAX_BYTES,
   OFFICE_TEXT_MESSAGE_MAX_BYTES,
+  WORKBOOK_MAP_TEXT_VERSION,
   getOfficeFormatByMediaType,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
 import type { OfficeFormat } from '#shared/utils/office-files'
 import {
+  CARRIED_TEXT_FILE_MAX_BYTES,
   extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
   getOwnedGeneratedImageFilesByStorageKeys,
 } from '~~/server/utils/files/file-governance'
+import type {
+  CarriedStructureOnlyFile,
+} from '~~/server/utils/files/assistant-files'
 import {
   resolveServerLogger,
 } from '~~/server/utils/files/logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
+  getOfficeTextUpgradeFailedKey,
   loadOfficeText,
   truncateUtf8,
 } from '~~/server/utils/files/office-text'
+import type { LoadedOfficeText } from '~~/server/utils/files/office-text'
 
 export interface MissingFile {
   storageKey: string
@@ -54,11 +61,49 @@ const WORKBOOK_MAP_NOTE = 'Workbook map. Included: values, formulas, '
   + 'Values are the results last calculated and saved in the file; they are '
   + 'not recalculated.'
 
+const SHORTENED_MAP_NOTE = 'Values were shortened in this earlier '
+  + 'attachment to fit: every formula and rule is included, and only the '
+  + 'value tables that fit are. Ask the user to attach the file again for '
+  + 'the full values.'
+
 export interface ConvertFilesOptions {
   container?: {
     providerId: string
     messageId: string
   }
+  structureOnlyFiles?: readonly CarriedStructureOnlyFile[]
+}
+
+function isStructureOnly(
+  options: ConvertFilesOptions,
+  messageId: string,
+  storageKey: string,
+): boolean {
+  return (options.structureOnlyFiles ?? []).some((file) => {
+    return file.messageId === messageId && file.storageKey === storageKey
+  })
+}
+
+/**
+ * The text an Office file is sent as, decided from the stored format and
+ * text version, never from the text itself. A workbook map carried from an
+ * earlier message is fitted to `CARRIED_TEXT_FILE_MAX_BYTES`.
+ */
+function officeTextToSend(
+  officeText: LoadedOfficeText,
+  mediaType: string,
+  isCarriedStructureOnly: boolean,
+): { text: string, isWorkbookMap: boolean, isShortened: boolean } {
+  const isWorkbookMap = getOfficeFormatByMediaType(mediaType) === 'xlsx'
+    && officeText.textVersion >= WORKBOOK_MAP_TEXT_VERSION
+
+  if (!isWorkbookMap || !isCarriedStructureOnly) {
+    return { text: officeText.text, isWorkbookMap, isShortened: false }
+  }
+
+  const text = fitWorkbookMap(officeText.text, CARRIED_TEXT_FILE_MAX_BYTES)
+
+  return { text, isWorkbookMap, isShortened: text !== officeText.text }
 }
 
 /**
@@ -203,10 +248,15 @@ export async function convertFilesForAI(
       }
 
       if (officeText) {
+        const sent = officeTextToSend(
+          officeText,
+          mediaType,
+          isStructureOnly(options, message.id, storageKey),
+        )
         const formatted = formatOfficeFilePart({
           filename: part.filename,
           mediaType,
-          text: officeText.text,
+          ...sent,
           remainingBytes: officeBytesRemaining,
         })
 
@@ -525,14 +575,16 @@ function formatOfficeFilePart(input: {
   filename?: string
   mediaType: string
   text: string
+  isWorkbookMap: boolean
+  isShortened: boolean
   remainingBytes: number
 }): FormattedOfficeFilePart {
   const format = getOfficeFormatByMediaType(input.mediaType) as OfficeFormat
   const noun = OFFICE_FORMAT_NOUNS[format]
   const name = input.filename ? `**${input.filename}** (${noun})` : noun
-  const isWorkbookMap = input.text.startsWith(WORKBOOK_MAP_TITLE)
-  const note = isWorkbookMap ? WORKBOOK_MAP_NOTE : EXTRACTED_TEXT_NOTE
-  const header = `${name}\n\n${note}\n\n`
+  const note = input.isWorkbookMap ? WORKBOOK_MAP_NOTE : EXTRACTED_TEXT_NOTE
+  const shortened = input.isShortened ? ` ${SHORTENED_MAP_NOTE}` : ''
+  const header = `${name}\n\n${note}${shortened}\n\n`
 
   if (input.remainingBytes <= 0) {
     return {
@@ -639,6 +691,7 @@ export async function invalidateFileCache(
     const cacheKey = getCacheKey(storageKey)
 
     await kv.delete(cacheKey)
+    await kv.delete(getOfficeTextUpgradeFailedKey(storageKey))
   } catch (exception) {
     activeLogger.set({
       fileCache: {
