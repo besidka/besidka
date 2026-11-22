@@ -829,7 +829,14 @@ admin page shows the new recipient count before any approval. Then query
 
 ### 2d. Wipe Google tokens and paid-tier confirmations
 
-Right after the session wipe, run on `besidka-preview` and then `besidka`:
+Revoke first where possible. The wipe below only clears the tokens in D1; a
+grant it clears stays valid at Google until the user removes Besidka at
+myaccount.google.com/connections or Google expires the refresh token. While
+the encryption key still decrypts the restored tokens, revoke each stored
+grant before the wipe with `revokeAllGoogleConnectionsOfUser`
+(`server/utils/google/tokens.ts`) for every user who has a row; no script
+wraps this yet, so it is a one-off admin task. Then, right after the session
+wipe, run on `besidka-preview` and then `besidka`:
 
 ```bash
 npx wrangler d1 execute besidka --env production --remote --command="UPDATE google_connections SET access_token = NULL, refresh_token = NULL, access_token_expires_at = NULL, status = 'needs_reauth'; UPDATE keys SET paid_tier_confirmed_at = NULL WHERE provider = 'google';"
