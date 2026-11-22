@@ -277,7 +277,7 @@ export async function countActiveArtifactShares(input: {
   now?: Date
 }): Promise<number> {
   const [row] = await input.db
-    .select({ total: sql<number>`count(*)` })
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(schema.artifactShares)
     .where(and(
       eq(schema.artifactShares.artifactId, input.artifactInternalId),

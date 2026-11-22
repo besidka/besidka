@@ -464,7 +464,7 @@ describe('preview-build.yml contract', () => {
       + '--shard=${{ matrix.shard }}/${{ strategy.job-total }}',
     )
     expect(readJob('e2e').map(line => line.trim()))
-      .toContain('shard: [1, 2, 3]')
+      .toContain('shard: [1, 2, 3, 4, 5, 6]')
   })
 
   it('never masks a failing test job', () => {

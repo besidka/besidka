@@ -45,7 +45,7 @@ function versionCountSql() {
   return sql<number>`(
     select count(*) from ${schema.artifactVersions}
     where ${schema.artifactVersions.artifactId} = ${schema.artifacts.id}
-  )`
+  )`.mapWith(Number)
 }
 
 function activeShareCountSql(now: Date) {
@@ -60,7 +60,7 @@ function activeShareCountSql(now: Date) {
         ${schema.artifactShares.expiresAt} is null
         or ${schema.artifactShares.expiresAt} > ${nowSeconds}
       )
-  )`
+  )`.mapWith(Number)
 }
 
 export function summarySelection(now: Date) {
@@ -193,13 +193,15 @@ export async function listSharedArtifacts(
       currentVersion: schema.artifacts.currentVersion,
       updatedAt: schema.artifacts.updatedAt,
       activeShareCount: sql<number>`count(${schema.artifactShares.id})`
+        .mapWith(Number)
         .as('active_share_count'),
       nearestExpiresAt:
         sql<number | null>`min(${schema.artifactShares.expiresAt})`
+          .mapWith(Number)
           .as('nearest_expires_at'),
       permanentShareCount: sql<number>`sum(
         case when ${schema.artifactShares.expiresAt} is null then 1 else 0 end
-      )`.as('permanent_share_count'),
+      )`.mapWith(Number).as('permanent_share_count'),
     })
     .from(schema.artifacts)
     .innerJoin(schema.artifactShares, sharedArtifactJoin())

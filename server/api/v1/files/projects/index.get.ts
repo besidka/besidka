@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
       name: schema.projects.name,
       pinnedAt: schema.projects.pinnedAt,
       archivedAt: schema.projects.archivedAt,
-      fileCount: sql<number>`count(distinct ${items.fileId})`,
+      fileCount: sql<number>`count(distinct ${items.fileId})`.mapWith(Number),
     })
     .from(items)
     .innerJoin(

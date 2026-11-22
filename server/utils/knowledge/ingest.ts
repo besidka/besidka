@@ -518,7 +518,7 @@ async function loadLinkableFiles(
         select 1 from project_knowledge_items as knowledge_link
         where knowledge_link.file_id = ${schema.files.id}
           and knowledge_link.project_id = ${context.projectId}
-      )`,
+      )`.mapWith(Number),
     })
     .from(schema.files)
     .where(and(
