@@ -224,6 +224,29 @@ describe('decodeEncodedWords', () => {
     expect(decodeEncodedWords('=?UTF-8?B?a*b?=')).toBe('=?UTF-8?B?a*b?=')
   })
 
+  it.each(['a=', 'abcde=', 'a', '=a'])(
+    'leaves the malformed B word %s as written and never throws',
+    (data) => {
+      const word = `=?UTF-8?B?${data}?=`
+
+      expect(() => decodeEncodedWords(`Subject ${word}`)).not.toThrow()
+      expect(decodeEncodedWords(word)).toBe(word)
+    },
+  )
+
+  it.each(['==', 'abcd==', 'a===', 'ab=c'])(
+    'never throws on the oddly padded B word %s',
+    (data) => {
+      expect(() => decodeEncodedWords(`=?UTF-8?B?${data}?=`)).not.toThrow()
+      expect(() => decodeBodyData(data, null)).not.toThrow()
+    },
+  )
+
+  it('still decodes a padded and an unpadded B word', () => {
+    expect(decodeEncodedWords('=?UTF-8?B?aGk=?=')).toBe('hi')
+    expect(decodeEncodedWords('=?UTF-8?B?aGk?=')).toBe('hi')
+  })
+
   it('names a charset it cannot decode instead of guessing', () => {
     expect(decodeEncodedWords('=?no-such-charset?B?aGk=?='))
       .toBe('[unsupported text encoding: no-such-charset]')

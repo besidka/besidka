@@ -729,11 +729,17 @@ function buildFoundFileOutput(input: {
   mimeType: string
   modifiedTime: Date | null
   text: string
+  totalCharacters: number
+  isCut: boolean
   note?: string
 }, budgetBytes: number): GoogleToolOutput {
-  const cut = budgetBytes > 0
+  const budgetCut = budgetBytes > 0
     ? truncateToByteBudget(input.text, budgetBytes)
     : { text: '', isTruncated: input.text.length > 0 }
+  const cut = {
+    text: budgetCut.text,
+    isTruncated: budgetCut.isTruncated || input.isCut,
+  }
   const name = sanitizeDriveFileName(input.name)
 
   return {
@@ -744,7 +750,7 @@ function buildFoundFileOutput(input: {
     file: {
       fileId: input.fileId,
       type: input.mimeType,
-      totalCharacters: input.text.length,
+      totalCharacters: input.totalCharacters,
       ...(input.modifiedTime
         ? { modified: input.modifiedTime.toISOString() }
         : {}),
@@ -1460,6 +1466,8 @@ export async function buildGoogleByoTools(
           mimeType: read.file.mimeType,
           modifiedTime: read.file.modifiedTime,
           text: read.text,
+          totalCharacters: read.totalCharacters,
+          isCut: read.isCut,
           ...(read.note ? { note: read.note } : {}),
         }, budget),
         GOOGLE_DRIVE_READ_TEXT_MAX_BYTES,
@@ -1469,7 +1477,7 @@ export async function buildGoogleByoTools(
         attributes: {
           googleByoTools: {
             driveReadFound: {
-              characters: read.text.length,
+              characters: read.totalCharacters,
               isTruncated: output.isTruncated === true,
             },
           },

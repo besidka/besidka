@@ -27,6 +27,7 @@ import type {
 import { sanitizeMailText } from '~~/server/utils/google/gmail-text'
 
 const TEXT_DECODER = new TextDecoder()
+const FOUND_TEXT_CLEANED_MAX_CHARACTERS = 64 * 1024
 
 export const FOUND_DRIVE_READ_FAILURE_TEXT: Readonly<
   Record<DriveImportFailureCode, string>
@@ -58,9 +59,16 @@ export interface FoundDriveFileInfo {
 }
 
 export type FoundDriveFileRead
-  = | { status: 'ok', file: FoundDriveFileInfo, text: string, note?: string }
-    | { status: 'not_text', file: FoundDriveFileInfo }
-    | { status: 'failed', code: DriveImportFailureCode }
+  = | {
+    status: 'ok'
+    file: FoundDriveFileInfo
+    text: string
+    totalCharacters: number
+    isCut: boolean
+    note?: string
+  }
+  | { status: 'not_text', file: FoundDriveFileInfo }
+  | { status: 'failed', code: DriveImportFailureCode }
 
 class FoundReadFailure extends Error {
   readonly code: DriveImportFailureCode
@@ -163,10 +171,17 @@ function toTextResult(
     throw new FoundReadFailure('empty')
   }
 
+  const decoded = TEXT_DECODER.decode(bytes)
+
   return {
     status: 'ok',
     file: infoOf(metadata, mimeType),
-    text: sanitizeMailText(TEXT_DECODER.decode(bytes), { keepTabs: true }),
+    text: sanitizeMailText(
+      decoded.slice(0, FOUND_TEXT_CLEANED_MAX_CHARACTERS),
+      { keepTabs: true },
+    ),
+    totalCharacters: decoded.length,
+    isCut: decoded.length > FOUND_TEXT_CLEANED_MAX_CHARACTERS,
     ...(choice?.note ? { note: choice.note } : {}),
   }
 }
@@ -200,8 +215,10 @@ function classifyException(
  * Markdown, CSV or text (Docs fall back to plain text), any other file
  * read only when its type is text, both through the exact-host Google
  * fetch with `redirect: 'manual'` and a byte cap enforced while the body
- * streams in (8 MB, the picked-read limit). The text is cleaned of control
- * and invisible characters (tabs kept). Every failure, a timeout or a
+ * streams in (8 MB, the picked-read limit). Only the first 64 Ki characters
+ * are cleaned of control and invisible characters (tabs kept), since the
+ * answer shows at most 40 KiB; `totalCharacters` and `isCut` say how much
+ * there was. Every failure, a timeout or a
  * refused redirect included, becomes a code; Google's own message text is
  * never returned.
  */

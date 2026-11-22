@@ -1891,6 +1891,18 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         expect(output.isTruncated).toBe(true)
         expect(output.truncationNote).toContain('only its start is shown')
         expect(output.nextOffset).toBeUndefined()
+        expect(output.file.totalCharacters).toBe(60_000)
+
+        apis.driveContent[docId] = 'a'.repeat(200_000)
+
+        const longest = await run(
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+          { fileId: docId },
+          built,
+        )
+
+        expect(longest.file.totalCharacters).toBe(200_000)
+        expect(longest.isTruncated).toBe(true)
         expect(
           new TextEncoder().encode(JSON.stringify(output)).byteLength,
         ).toBeLessThanOrEqual(GOOGLE_TOOL_OUTPUT_MAX_BYTES)

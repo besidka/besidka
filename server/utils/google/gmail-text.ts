@@ -21,7 +21,8 @@ const ENCODED_WORD_GAP_PATTERN = /(\?=)\s+(?==\?)/g
 const HREF_PATTERN = /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
 const SAFE_LINK_PATTERN = /^(?:https?:\/\/|mailto:)/i
 const TAG_START_PATTERN = /^[A-Za-z/!?]$/
-const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*$/
+const TRAILING_PADDING_PATTERN = /=+$/
 const UNSAFE_LABEL_CHARACTERS = /[^A-Za-z0-9._:-]/g
 const BLOCKQUOTE_TAG_PATTERN = /<(\/?)blockquote(?![\w-])/gi
 
@@ -198,15 +199,24 @@ function decodeQuotedPrintableWord(value: string): Uint8Array {
   return Uint8Array.from(bytes)
 }
 
+/**
+ * Base64 or base64url bytes, or null for anything `atob` would refuse: the
+ * padding is removed first, the rest must be the alphabet only with a
+ * length that a byte sequence can have, and the padding is added back.
+ * Never throws, because headers and bodies come from other people.
+ */
 function decodeBase64Bytes(value: string): Uint8Array | null {
-  const normalized = value.replaceAll('-', '+').replaceAll('_', '/')
+  const unpadded = value
+    .replaceAll('-', '+')
+    .replaceAll('_', '/')
+    .replace(TRAILING_PADDING_PATTERN, '')
 
-  if (!BASE64_PATTERN.test(normalized) || normalized.length % 4 === 1) {
+  if (!BASE64_PATTERN.test(unpadded) || unpadded.length % 4 === 1) {
     return null
   }
 
-  const padded = normalized.padEnd(
-    normalized.length + (4 - normalized.length % 4) % 4,
+  const padded = unpadded.padEnd(
+    unpadded.length + (4 - unpadded.length % 4) % 4,
     '=',
   )
 

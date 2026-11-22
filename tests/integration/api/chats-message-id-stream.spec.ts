@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import { GENERATION_GUARD_LEASE_TTL_SECONDS } from '../../../server/utils/ai/generation-guard'
 import {
   GENERATION_LEASE_STALE_MS,
@@ -328,6 +336,10 @@ const ULID_PATTERN = /^[0-9A-Z]{26}$/
 
 describe('chat stream message ids', () => {
   let sendPushNotificationToUserMock: ReturnType<typeof vi.fn>
+
+  beforeAll(async () => {
+    await getHandler()
+  }, 60_000)
 
   beforeEach(() => {
     vi.resetModules()

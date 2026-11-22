@@ -105,6 +105,32 @@ describe('Gmail reasoning steps', () => {
   })
 })
 
+describe('a found Drive file after a reload', () => {
+  it('reads one line with the file name and a Drive link', () => {
+    const data = getGoogleStepData(part({
+      type: 'tool-google__drive_read_found_file',
+      input: { fileId: 'FILEID_ONE_1234' },
+      output: {
+        references: [{
+          id: 'FILEID_ONE_1234',
+          kind: 'drive-file',
+          title: 'Plan',
+          link: 'https://drive.google.com/open?id=FILEID_ONE_1234',
+          date: '2026-11-20T10:00:00.000Z',
+        }],
+        bodyRemoved: true,
+        note: 'The content was not kept.',
+      },
+    }))
+
+    expect(describeGoogleStepReference(data!.references[0]!)).toEqual({
+      text: 'Plan',
+      linkText: 'Open in Google Drive',
+      linkLabel: 'Open Plan in Google Drive',
+    })
+  })
+})
+
 describe('Gmail references after a reload', () => {
   it('reads a thread reference with no title, sender or subject', () => {
     const data = getGoogleStepData(part({

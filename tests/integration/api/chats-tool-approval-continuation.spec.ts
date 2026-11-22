@@ -2596,6 +2596,15 @@ describe('tool approval continuation', () => {
           rememberOptions: ['once'],
           summary: 'Read the email thread from 2025-11-21 in your Gmail',
         })
+        expect(paused.assistantParts.find((part: any) => {
+          return part.type === 'data-tool-approval'
+            && part.data?.toolCallId === 'call-r'
+        })).toMatchObject({
+          data: {
+            summary: 'Read the email thread from 2025-11-21 in your Gmail',
+            link: 'https://mail.google.com/mail/#all/t1',
+          },
+        })
 
         const { doStream } = await answer(paused, [
           { approvalId, approved: true },

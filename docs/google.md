@@ -2263,9 +2263,12 @@ declared charset (an RFC 2231 language tag such as `koi8-r*ru` is dropped). On
 workerd 1.20261119.1 (the repo's wrangler 4.166.0, `compatibility_date`
 2026-01-28 and the repo's flags), checked on 2026-11-22 with a scratch Worker,
 `windows-1251`, `koi8-u`, `koi8-r` and `iso-8859-5` all decode, and all 256
-bytes of each match Node's tables, so no own decoder was added. A charset the
-runtime does not know becomes the visible line `[unsupported text encoding:
-<label>]` (the label cut to `[A-Za-z0-9._:-]`), never a silent UTF-8 guess.
+bytes of each match Node's tables, so no own decoder was added. An unknown
+label throws a `RangeError` there as in Node (also checked), and such a
+charset becomes the visible line `[unsupported text encoding: <label>]` (the
+label cut to `[A-Za-z0-9._:-]`), never a silent UTF-8 guess. Base64 that
+`atob` would refuse (a stray `=`, an impossible length) leaves the encoded
+word as written and a body empty, and never throws.
 
 **Which ids a read accepts.** `google__gmail_read_thread`, a reply draft's
 `replyToThreadId` and `google__drive_read_found_file` accept only an id that a
