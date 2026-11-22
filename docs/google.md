@@ -487,12 +487,11 @@ unknown and refused. Unknown, unverifiable or refused means no.
 - Qwen's `enable_search` is a request body flag set at send start. A send
   that starts without Google data and with web search on keeps it for every
   step, also after a Google result arrives mid-send; only the next send
-  drops it. Acceptable: Google tools run only under approvals and the
-  approval of a Google read is the user's choice in that send. The Drive
-  tools add no `prepareStep` strip of their own: provider-native web search
-  tools declared as tools are already withheld per step once a Google read
-  recorded its tool read source (`withholdProviderTools`, section 5.2), and
-  only the body flag of Qwen stays open.
+  drops it. The same holds for native web search tools of other providers in
+  that first send. Acceptable: Google tools run only under approvals, the
+  approval of a Google read is the user's choice in that send. Still open
+  after the Drive tools (section 13): they add no `prepareStep` strip, and
+  no route test proves one that already exists.
 - Deep research runs the provider's own agent, which searches the web with
   queries it writes from the conversation. The guard checks the research
   provider, but those searches leave the allow-list's scope. Acceptable
@@ -642,7 +641,7 @@ Columns on existing tables:
 | `files.external_source` | text, one of `GOOGLE_EXTERNAL_SOURCES` | Drive snapshots (child 5); deletion when access ends (child 2) |
 | `files.external_id` | text | the Drive file id of a snapshot; reuse of an unchanged snapshot |
 | `files.external_modified_at` | timestamp | live sync: re-export when Drive's `modifiedTime` is newer |
-| `files.drive_copy_id` | text | the id of the copy saved to Drive, so a second "Open in Google" or "Save to Google Drive" opens the same copy (BES-283 owner addendum); kept apart from `external_*`, which describe files imported from Google |
+| `files.drive_copy_id` | text | the id of the copy saved to Drive, so a second "Open in Google" or "Save to Google Drive" opens the same copy (BES-283 owner addendum); kept apart from `external_*`, which describe files imported from Google. While a save runs it holds a claim `pending:<epoch ms>` (section 13.1), so a reader must use `readSavedDriveCopyId` (`shared/utils/google-drive-tools.ts`), which returns the Drive id or null, and never the raw column |
 | `keys.paid_tier_confirmed_at` | timestamp | the `gemini-paid-tier-confirmed` condition of the allow-list |
 | `artifacts.google_derived_at` | timestamp | the derived mark (section 5.3): set on create or on any later version written in a flagged or tainted send, never cleared; MCP and Besidka tool filters, the artifact bridge, public links, send-start lookup |
 | `files.google_derived_at` | timestamp | the derived mark on generated files (images, code execution output, `create_file`, rendered documents); `fileHoldsNoGoogleContent`, `isGoogleContentFile`, project knowledge refusal, send-start lookup |
@@ -1790,6 +1789,25 @@ no "save automatically" and no "save all": one file per call or click
 
 ### 13.5 Where the guards did not fit, and open items
 
+Against the ticket (BES-283), the plan and the pre-check, the brief won:
+
+- Not built, from the ticket: converting an upload to a Google Doc, Sheet or
+  Slides (`mimeType: application/vnd.google-apps.*`, the owner addendum "Open
+  in Google"; the file is saved as the file it is), the resumable upload for
+  5 to 10 MB (saves stop at 5 MB), the allowlist "files attached to this
+  chat" (the read allowlist is every file the user picked), and injection
+  screening of returned text (the frame plus a per-call approval are the
+  measures of pre-check row 13). "Save automatically" stays dropped.
+- A user with an active Drive connection on a gateway now sends the gateway
+  safeguards on every send in which the Drive tools are candidates, also in
+  chats that never use Drive. Section 5.3 says a Vercel Hobby team answers 403
+  to a zero-data-retention request; that guard is unchanged and now reaches
+  those chats. An owner decision whether candidates should wait for the
+  model to ask for Drive.
+- The chat route lists Google tools as approval-gated tools, so a turn that
+  ran only Drive tools does not start the answer guarantee continuation; on
+  direct Anthropic routes such a turn can end without text.
+
 - The save reads nothing from Google, but it is a Google tool, so a call that
   runs records `google` taint and flags the chat for good, which then
   restricts models, memory, sharing and web search for that chat. Built to
@@ -1805,8 +1823,9 @@ no "save automatically" and no "save all": one file per call or click
   older copies expire with retention.
 - NOT VERIFIED without a real Google account (owner checklist): the
   multipart request shape and that `drive.file` may create a file this way
-  (the Google page read for this child does not say so), the
-  `storageQuotaExceeded` and 403 reasons on create,
+  (the `files.create` reference lists `drive.file` among its scopes and
+  `supportsAllDrives` among its parameters; the multipart page read does not
+  mention either), the `storageQuotaExceeded` and 403 reasons on create,
   that a file picked earlier is still readable and refreshable with a fresh
   token, that a Doc or Sheet export of a refreshed file works without the
   resource key, and the link opening the saved file

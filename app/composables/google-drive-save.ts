@@ -1,4 +1,5 @@
 import { parseError } from 'evlog'
+import type { GoogleConnectionSummary } from '#shared/utils/google-connections'
 import { GOOGLE_DRIVE_SAVED_FILE_ROUTE } from '#shared/utils/google-drive-tools'
 
 export interface DriveSavedState {
@@ -9,29 +10,59 @@ export interface DriveSavedState {
 /**
  * The "Save to Google Drive" action of a file card: whether it is offered
  * at all and the save itself. It is offered only while `google.drive` is
- * active and the user holds an active Drive connection; the connection is
- * read once through the cached status fetch and only when the flag is
- * active, never once per card. A saved file is remembered by its storage
- * key for the session; after a reload the first click on a file that was
- * saved before answers with its existing Drive link and creates nothing.
+ * active and the user holds an active Drive connection. The connection is
+ * read once per session into shared state, only once the flag is active
+ * (also when the flag turns active after the card mounted), never once per
+ * card. A saved file is remembered by its storage key for the session;
+ * after a reload the first click on a file that was saved before answers
+ * with its existing Drive link and creates nothing.
  */
 export function useGoogleDriveSave() {
   const googleDriveFeature = useFeature('google.drive')
-  const connection = googleDriveFeature.value.active
-    ? useGoogleConnection()
-    : null
+  const connection = useState<GoogleConnectionSummary | null>(
+    'google-drive-save-connection',
+    () => null,
+  )
+  const hasRequestedConnection = useState<boolean>(
+    'google-drive-save-connection-requested',
+    () => false,
+  )
   const savedByStorageKey = useState<Record<string, DriveSavedState>>(
     'google-drive-saved-files',
     () => ({}),
   )
   const { ensureSendConsent } = useLegalConsent()
 
-  const isAvailable = computed<boolean>(() => {
-    const summary = connection?.data.value?.connection
+  async function loadConnection() {
+    if (hasRequestedConnection.value) {
+      return
+    }
 
+    hasRequestedConnection.value = true
+
+    try {
+      const response = await $fetch('/api/v1/google/connections')
+
+      connection.value = response.connection
+    } catch {
+      hasRequestedConnection.value = false
+    }
+  }
+
+  watch(
+    () => googleDriveFeature.value.active,
+    async (isActive) => {
+      if (isActive) {
+        await loadConnection()
+      }
+    },
+    { immediate: true },
+  )
+
+  const isAvailable = computed<boolean>(() => {
     return googleDriveFeature.value.active
-      && summary?.status === 'active'
-      && summary.capabilities.includes('drive-picked')
+      && connection.value?.status === 'active'
+      && connection.value.capabilities.includes('drive-picked')
   })
 
   function getSaved(storageKey: string): DriveSavedState | null {

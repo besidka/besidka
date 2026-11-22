@@ -8,6 +8,8 @@ import {
   GOOGLE_DRIVE_TOOL_NAMES,
   getGoogleDriveToolStepTitle,
   isGoogleDriveToolName,
+  isPendingDriveCopyId,
+  readSavedDriveCopyId,
 } from '#shared/utils/google-drive-tools'
 import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 
@@ -23,6 +25,22 @@ describe('Google Drive tool names', () => {
     expect(isGoogleDriveToolName('google__calendar_create_event')).toBe(false)
     expect(isGoogleDriveToolName('besidka__read_file')).toBe(false)
     expect(isGoogleDriveToolName(null)).toBe(false)
+  })
+})
+
+describe('the drive_copy_id column', () => {
+  it('tells a save claim from a Drive id', () => {
+    expect(isPendingDriveCopyId('pending:1766400000000')).toBe(true)
+    expect(isPendingDriveCopyId('1AbCdEfGhIjKlMnOpQrStUvWxYz')).toBe(false)
+    expect(isPendingDriveCopyId(null)).toBe(false)
+  })
+
+  it('reads a saved Drive id and never a claim', () => {
+    expect(readSavedDriveCopyId('1AbCdEfGhIjKlMnOpQrStUvWxYz'))
+      .toBe('1AbCdEfGhIjKlMnOpQrStUvWxYz')
+    expect(readSavedDriveCopyId('pending:1766400000000')).toBeNull()
+    expect(readSavedDriveCopyId('')).toBeNull()
+    expect(readSavedDriveCopyId(null)).toBeNull()
   })
 })
 

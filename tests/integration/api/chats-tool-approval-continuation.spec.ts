@@ -2281,9 +2281,14 @@ describe('tool approval continuation', () => {
         const { buildGoogleDriveTools } = await import(
           '~~/server/utils/google/drive-tools'
         )
+        const nameQuery = {
+          from: () => nameQuery,
+          where: () => nameQuery,
+          limit: async () => [{ name: 'Report.md' }],
+        }
         const build = (grants: Record<string, string> = {}) => {
           return buildGoogleDriveTools({
-            db: {} as never,
+            db: { select: () => nameQuery } as never,
             kv: {} as never,
             event: { context: {} } as never,
             userId: 1,
@@ -2365,6 +2370,7 @@ describe('tool approval continuation', () => {
           access: 'write',
           toolName: 'google__drive_save_file',
           rememberOptions: ['once'],
+          summary: 'Save "Report.md" to your Google Drive',
         })
 
         const { doStream } = await answer(paused, [

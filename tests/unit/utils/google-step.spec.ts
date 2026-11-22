@@ -6,6 +6,10 @@ import {
   resolveReasoningStepSource,
 } from '../../../app/utils/reasoning-step-icons'
 import { getToolStepTitle } from '../../../app/utils/reasoning'
+import {
+  getApprovalStepSummaryLine,
+  getApprovalStepTitle,
+} from '../../../app/utils/tool-approval-step'
 
 type Part = UIMessage['parts'][number]
 
@@ -88,6 +92,37 @@ describe('getGoogleStepData', () => {
       toolName: 'google__drive_list_picked',
       output: { references: [{ id: 'a', title: 'A' }] },
     }))?.references).toHaveLength(1)
+  })
+})
+
+describe('Google Drive approval step', () => {
+  function model(overrides: Record<string, unknown> = {}) {
+    return {
+      toolName: 'google__drive_save_file',
+      tool: 'google__drive_save_file',
+      connectorSlug: undefined,
+      isBesidka: false,
+      summary: 'Save "Report.md" to your Google Drive as "Final.md"',
+      ...overrides,
+    } as never
+  }
+
+  it('shows the server summary that names the file as the title', () => {
+    expect(getApprovalStepTitle(model(), undefined))
+      .toBe('Save "Report.md" to your Google Drive as "Final.md"')
+  })
+
+  it('falls back to a plain sentence when the summary is empty', () => {
+    expect(getApprovalStepTitle(model({ summary: '' }), undefined))
+      .toBe('Besidka wants to drive save file on Google')
+  })
+
+  it('has no extra summary line and uses the Drive icon', () => {
+    expect(getApprovalStepSummaryLine(model())).toBe('')
+    expect(resolveReasoningStepSource({
+      toolName: 'google__drive_save_file',
+      title: 'Save a file',
+    }).icon).toEqual({ kind: 'iconify', name: 'lucide:hard-drive' })
   })
 })
 

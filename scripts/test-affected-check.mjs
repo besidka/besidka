@@ -2045,6 +2045,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Reasoning.spec.ts',
     'tests/unit/components/Chat/Reasoning.icons.spec.ts',
     'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/components/Chat/Reasoning.google.spec.ts',
     'tests/unit/composables/chat-scroll-spacer.spec.ts',
     'tests/e2e/chat/scroll-spacer.spec.ts',
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',

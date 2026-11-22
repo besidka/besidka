@@ -21,6 +21,26 @@ export const GOOGLE_DRIVE_FILE_REFERENCE_KIND = 'drive-file'
 export const GOOGLE_DRIVE_SAVE_PENDING_PREFIX = 'pending:'
 export const GOOGLE_DRIVE_SAVE_CLAIM_MAX_AGE_MS = 2 * 60 * 1000
 
+/**
+ * Whether a `files.drive_copy_id` value is the claim of a save in flight
+ * (or abandoned) and not a Drive id. Every reader of the column must treat
+ * such a value as "not saved".
+ */
+export function isPendingDriveCopyId(value: unknown): boolean {
+  return typeof value === 'string'
+    && value.startsWith(GOOGLE_DRIVE_SAVE_PENDING_PREFIX)
+}
+
+/**
+ * The Drive id of the copy saved from a file, or null when the column is
+ * empty or only holds a save claim.
+ */
+export function readSavedDriveCopyId(value: unknown): string | null {
+  return typeof value === 'string' && value && !isPendingDriveCopyId(value)
+    ? value
+    : null
+}
+
 export const GOOGLE_DRIVE_SAVED_FILE_ROUTE = '/api/v1/google/drive/saved-files'
 
 export const GOOGLE_DRIVE_TOOLS_TRUST_NOTE = 'The result is wrapped in '
