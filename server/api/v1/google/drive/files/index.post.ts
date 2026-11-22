@@ -61,6 +61,7 @@ export default defineEventHandler(async (event) => {
     userId,
     items: body.items,
     logger,
+    retryFreshPick: true,
   })
 
   return { results }
