@@ -554,6 +554,21 @@ describe('knowledge ingestion', () => {
       expect(result.items[0]).toMatchObject({ mediaType: 'image/png' })
     })
 
+    it('refuses a copy of a Google Drive file with 400', async () => {
+      harness.testDb.insertFile({ id: 7, userId: OWNER })
+      harness.testDb.sqlite
+        .prepare('update files set external_source = \'google\' where id = ?')
+        .run(7)
+
+      await expectRejection(
+        ingest([fileItem({ fileId: encodePublicId(7), text: 'drive text' })]),
+        { status: 400 },
+      )
+
+      expect(harness.testDb.countItems()).toBe(0)
+      expect(harness.bucket.calls).toEqual([])
+    })
+
     it('rejects a file that is already linked to the project with 409', async () => {
       harness.testDb.insertFile({ id: 5, userId: OWNER })
       await ingest([fileItem({ fileId: encodePublicId(5) })])

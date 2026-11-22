@@ -50,6 +50,7 @@ function mountModelItem(
     isKeyMissing: boolean
     providerName: string
     isRecommended: boolean
+    googleDataReason: string
   }> = {},
 ) {
   return mountSuspended(ModelItem, {
@@ -118,6 +119,41 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
       .toBe(false)
     expect(wrapper.get('button[aria-label="Choose GPT-5.4"]').exists())
       .toBe(true)
+  })
+
+  describe('in a chat that holds Google data', () => {
+    const reason = 'This provider may train on your Google data.'
+
+    it('marks a refused model with the reason and blocks it', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        googleDataReason: reason,
+      })
+      const badge = wrapper.get('[data-testid="model-google-data-blocked"]')
+
+      expect(badge.text()).toContain('Not for Google data')
+      expect(badge.attributes('data-tip')).toBe(reason)
+      expect(wrapper.get('li').attributes('aria-disabled')).toBe('true')
+      expect(wrapper.find('button[aria-label="Choose GPT-5.4"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).toContain(reason)
+
+      await wrapper.get('li > div > div').trigger('click')
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('keeps an allowed model selectable', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        googleDataReason: '',
+      })
+
+      expect(wrapper.find('[data-testid="model-google-data-blocked"]')
+        .exists()).toBe(false)
+
+      await wrapper.get('button[aria-label="Choose GPT-5.4"]').trigger('click')
+
+      expect(wrapper.emitted('select')).toHaveLength(1)
+    })
   })
 
   it('offers no selectable control for a legacy row', async () => {

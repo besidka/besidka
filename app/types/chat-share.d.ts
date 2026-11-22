@@ -17,6 +17,7 @@ export interface ChatShare {
   showMetadata: boolean
   showAuthorAvatar: boolean
   allowBranch: boolean
+  googleOptInNeeded?: boolean
 }
 
 export interface ChatShareOptions {
@@ -26,6 +27,7 @@ export interface ChatShareOptions {
   showMetadata: boolean
   showAuthorAvatar: boolean
   allowBranch: boolean
+  includeGoogleContent?: boolean
 }
 
 export type ChatShareCheckStatus = 'idle' | 'pending' | 'done' | 'error'

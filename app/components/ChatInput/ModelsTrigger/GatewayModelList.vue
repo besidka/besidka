@@ -91,6 +91,7 @@
                 :is-favorite="favoriteModelIds.includes(model.id)"
                 :is-detail-open="detailModelId === model.id"
                 :is-recommended="isRecommendedModel(model)"
+                :google-data-reason="googleDataReasonFor(model.id)"
                 @select="emit('select', model.id)"
                 @toggle-favorite="emit('toggleFavorite', model.id)"
                 @toggle-detail="emit('toggleDetail', model.id)"
@@ -167,11 +168,13 @@ const props = withDefaults(defineProps<{
   recommendedDirectModels?: RecommendedDirectModel[]
   recommendedOnly?: boolean
   isHighlightVisible?: boolean
+  googleDataReasonFor?: (modelId: string) => string
 }>(), {
   filterModel: undefined,
   recommendedDirectModels: () => [],
   recommendedOnly: false,
   isHighlightVisible: true,
+  googleDataReasonFor: () => '',
 })
 
 const emit = defineEmits<{

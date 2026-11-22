@@ -248,6 +248,86 @@ describe('Chat/ShareModal.client', () => {
     expect((select.element as HTMLSelectElement).value).toBe('hour')
   })
 
+  describe('a chat that holds Google data', () => {
+    afterEach(() => {
+      useChatShare().targetHoldsGoogleData.value = false
+    })
+
+    it('asks for the opt-in and keeps the button off until it is ticked',
+      async () => {
+        useChatShare().targetHoldsGoogleData.value = true
+
+        const wrapper = await mountSuspended(ShareModal)
+        const button = wrapper.get('[data-testid="share-generate-button"]')
+
+        expect(wrapper.get('[data-testid="share-google-data"]').text())
+          .toContain('Google Drive, Calendar or Gmail')
+        expect(button.attributes('disabled')).toBeDefined()
+
+        await wrapper.get('[data-testid="share-google-data-opt-in"]')
+          .setValue(true)
+        await wrapper.vm.$nextTick()
+
+        expect((wrapper.get('[data-testid="share-generate-button"]')
+          .element as HTMLButtonElement).disabled).toBe(false)
+      })
+
+    it('sends the opt-in with the share request', async () => {
+      useChatShare().targetHoldsGoogleData.value = true
+      fetchMock.mockResolvedValue({
+        slug: 'share-1',
+        expiresAt: null,
+        indexable: false,
+        showFiles: false,
+        showMetadata: false,
+        showAuthorAvatar: false,
+        allowBranch: false,
+      })
+
+      const wrapper = await mountSuspended(ShareModal)
+
+      await wrapper.get('[data-testid="share-google-data-opt-in"]')
+        .setValue(true)
+      await wrapper.get('[data-testid="share-generate-button"]')
+        .trigger('click')
+      await new Promise(resolve => setTimeout(resolve))
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/share', {
+        method: 'POST',
+        body: expect.objectContaining({ includeGoogleContent: true }),
+      })
+    })
+
+    it('says a link made before the Google content is paused', async () => {
+      const { share, targetHoldsGoogleData } = useChatShare()
+
+      targetHoldsGoogleData.value = true
+      share.value = {
+        slug: 'share-1',
+        url: 'http://localhost:3000/shared/share-1',
+        expiresAt: null,
+        indexable: false,
+        showFiles: false,
+        showMetadata: false,
+        showAuthorAvatar: false,
+        allowBranch: false,
+        googleOptInNeeded: true,
+      }
+
+      const wrapper = await mountSuspended(ShareModal)
+
+      expect(wrapper.find('[data-testid="share-google-data-paused"]').exists())
+        .toBe(true)
+    })
+
+    it('shows no opt-in for an ordinary chat', async () => {
+      const wrapper = await mountSuspended(ShareModal)
+
+      expect(wrapper.find('[data-testid="share-google-data"]').exists())
+        .toBe(false)
+    })
+  })
+
   it('generates a share link, auto-copies it, and shows the Copied state', async () => {
     fetchMock.mockResolvedValue({
       slug: 'share-1',

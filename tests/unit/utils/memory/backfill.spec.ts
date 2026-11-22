@@ -391,6 +391,19 @@ describe('memory backfill', () => {
       expect(processedChatIds()).not.toContain(excluded.id)
     })
 
+    it('never visits a chat that holds Google data', async () => {
+      const plain = await chat(10)
+      const flagged = await chat(20, userId, {
+        googleDataAt: new Date(1_700_000_000_000),
+      })
+      const progress = await start()
+
+      await advance(progress.id, { chatsLimit: 5 })
+
+      expect(processedChatIds()).toEqual([plain.id])
+      expect(processedChatIds()).not.toContain(flagged.id)
+    })
+
     it('breaks ties on equal activity by newest id first', async () => {
       const first = await chat(50)
       const second = await chat(50)

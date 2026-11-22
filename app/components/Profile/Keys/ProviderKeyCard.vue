@@ -74,6 +74,9 @@
         </div>
       </UiFormFieldset>
     </UiForm>
+    <ProfileKeysGeminiPaidTier
+      v-if="providerId === 'google' && status === 'saved'"
+    />
     <ProfileKeysGuide
       :provider="providerId"
       :doc="guide"

@@ -85,7 +85,8 @@ function createSqlite(): SqliteDatabase {
       project_id integer,
       project_memory_summary text,
       project_memory_summary_updated_at integer,
-      activity_at integer NOT NULL
+      activity_at integer NOT NULL,
+      google_data_at integer
     );
     CREATE UNIQUE INDEX uq_chat_slug ON chats (id, slug);
 

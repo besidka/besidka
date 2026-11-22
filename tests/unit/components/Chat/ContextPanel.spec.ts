@@ -284,6 +284,27 @@ describe('Chat/ContextPanel', () => {
       expect(wrapper.find(testId('chat-context-header')).exists()).toBe(true)
     })
 
+    it('says what a chat that holds Google data restricts', async () => {
+      useState('chat-google-data:holds-by-slug').value = { [CHAT_SLUG]: true }
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get(testId('chat-context-google-data')).text())
+        .toContain('This chat holds content from Google')
+      useState('chat-google-data:holds-by-slug').value = {}
+    })
+
+    it('shows no Google note for an ordinary chat', async () => {
+      useState('chat-google-data:holds-by-slug').value = {}
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find(testId('chat-context-google-data')).exists())
+        .toBe(false)
+    })
+
     it('says so when the chat has nothing yet', async () => {
       data.value = ownedData()
 

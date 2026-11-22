@@ -116,6 +116,38 @@ describe('mcp file tools', () => {
     vi.unstubAllGlobals()
   })
 
+  describe('copies of Google files', () => {
+    function markGoogleCopy(id: number) {
+      testDb.sqlite
+        .prepare('update files set external_source = \'google\' where id = ?')
+        .run(id)
+    }
+
+    it('never lists a copy of a Google file', async () => {
+      markGoogleCopy(2)
+
+      const { listMcpFiles } = await load()
+      const result = await listMcpFiles(testDb.db, OWNER, {})
+
+      expect(result.files.map(file => file.name)).toEqual([
+        'generated.png',
+        'notes.md',
+      ])
+      expect(result.total).toBe(2)
+    })
+
+    it('never reads a copy of a Google file', async () => {
+      markGoogleCopy(1)
+      storeObject('drive text')
+
+      const { readMcpFile } = await load()
+
+      await expect(readMcpFile(testDb.db, OWNER, { fileId: fileId(1) }))
+        .rejects.toMatchObject({ status: 404 })
+      expect(mocks.getObject).not.toHaveBeenCalled()
+    })
+  })
+
   describe('listMcpFiles', () => {
     it('lists the files the web list shows, newest first', async () => {
       const { listMcpFiles } = await load()

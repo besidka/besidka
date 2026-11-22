@@ -12,6 +12,7 @@ import {
 } from '#shared/utils/artifacts'
 import {
   createMemoryExtractionTestDb,
+  seedChat,
   seedKey,
   seedUser,
 } from '../../setup/helpers/memory-extraction-db'
@@ -580,6 +581,48 @@ describe('artifact bridge completion API', () => {
           'off',
         )
       })
+  })
+
+  describe('an artifact written in a chat that holds Google data', () => {
+    async function flagArtifactChat(userId: number) {
+      const chat = await seedChat(testDb.db, userId, {
+        googleDataAt: new Date(1_700_000_000_000),
+      })
+
+      const schema = await import('~~/server/db/schema')
+      const { eq } = await import('drizzle-orm')
+
+      await testDb.db.update(schema.artifacts)
+        .set({ originChatId: chat.id })
+        .where(eq(schema.artifacts.id, internalId))
+    }
+
+    it('answers 403 for a refused provider and never calls the model',
+      async () => {
+        const consentedId = await switchToUser({
+          providerTransferConsents: GRANTED_TRANSFERS,
+        })
+
+        await seedKey(testDb.db, consentedId, 'deepseek')
+        await createArtifactFor(consentedId)
+        await flagArtifactChat(consentedId)
+
+        await expect(call({ modelId: DEEPSEEK_MODEL_ID })).rejects
+          .toMatchObject({
+            status: 403,
+            why: 'This provider may train on your Google data.',
+          })
+        expect(factories.useDeepSeek).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
+      })
+
+    it('calls an allowed provider', async () => {
+      await flagArtifactChat(ownerId)
+
+      const { result } = await call()
+
+      expect(result.modelId).toBe(OPENAI_MODEL_ID)
+    })
   })
 
   describe('model and key resolution', () => {

@@ -1883,6 +1883,40 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/tool-approval-spike.spec.ts',
   ]
 
+  const googleDataGuardTests = [
+    'tests/unit/utils/google-data-recipient.spec.ts',
+    'tests/unit/utils/google-data-policy.spec.ts',
+    'tests/unit/server/utils/google/data-guard.spec.ts',
+    'tests/unit/utils/gateways/google-data-safeguards.spec.ts',
+    'tests/unit/utils/gateways/index.spec.ts',
+    'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/api/chats-share-google-data.spec.ts',
+    'tests/integration/api/google-data-guard-routes.spec.ts',
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/profile-keys-summary.spec.ts',
+    'tests/integration/server/chat-share.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-google-data.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/utils/mcp/private-files.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/read-chat.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats.spec.ts',
+    'tests/unit/composables/chat-google-data.spec.ts',
+    'tests/unit/components/Profile/Keys/GeminiPaidTier.spec.ts',
+    'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
+    'tests/unit/components/Chat/ShareModal.client.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+  ]
+
   const googleToolApprovalTests = [
     'tests/unit/server/utils/tool-approval/google.spec.ts',
     'tests/unit/server/utils/tool-approval/round-state.spec.ts',
@@ -3851,6 +3885,20 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/tool-approval-policy\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/hkdf\.ts|server\/utils\/connectors\/audit\.ts|server\/db\/schemas\/tool-approvals\.ts|server\/plugins\/(tool-approval-claim-sweep|connector-audit-prune)\.ts|shared\/utils\/connectors-policy\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/(memory-extraction-db|skills-public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_chunky_gabe_jones\/.*)$/,
       tests: toolApprovalPolicyTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-data-(policy|recipient)\.ts|server\/utils\/google\/data-guard\.ts|server\/utils\/gateways\/(index|vercel|openrouter|cloudflare)\.ts|server\/utils\/tool-approval\/google(-send-tools)?\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.(post|get)|title\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/index\.post\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/(index\.(get|post)|check\.post)\.ts|server\/api\/v1\/artifacts\/\[id\]\/complete\.post\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google\/(index|paid-tier)\.post)\.ts|server\/utils\/chats\/(share|share-pii-check)\.ts|server\/utils\/files\/file-governance\.ts|server\/utils\/mcp\/private\/(chats|files)\.ts|server\/utils\/knowledge\/ingest\.ts|server\/utils\/memory\/(chat-memory-filters|backfill-queue|entries|extract|extract-apply|extract-sweep)\.ts|server\/utils\/memory\/tools\/(memory-tools|read-chat|search-chats)\.ts|server\/utils\/projects\/(memory-refresh|memory-sweep-settle)\.ts|app\/composables\/(chat-google-data|user-keys|chat-share)\.ts|app\/types\/chat-share\.d\.ts|shared\/types\/chats\.d\.ts|app\/components\/Profile\/Keys\/(GeminiPaidTier|ProviderKeyCard)\.vue|app\/components\/ChatInput\/ModelsTrigger\/(ModelItem|GatewayModelItem|GatewayModelList|Panel)\.vue|app\/components\/Chat\/(ShareModal\.client|ContextPanel)\.vue|app\/pages\/chats\/\[slug\]\.vue|tests\/setup\/helpers\/(chat-context-db|search-index-db|knowledge-db)\.ts)$/,
+      tests: googleDataGuardTests,
+    },
+    {
+      pattern:
+        /^app\/composables\/chat-google-data\.ts$/,
+      tests: [
+        'tests/e2e/chat/scroll-spacer.spec.ts',
+        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+      ],
     },
     {
       pattern:

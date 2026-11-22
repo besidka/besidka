@@ -556,16 +556,38 @@ describe('the Google tool gate (tool approvals required)', () => {
   })
 
   it('offers no Google tools without tool approvals', async () => {
+    const mayReceiveGoogleData = vi.fn(async () => true)
     const google = await getGoogleSendTools({
       toolApprovalsActive: false,
       userId: 1,
       chatPublicId: 'chat-1',
+      mayReceiveGoogleData,
       logger: logger(),
     })
 
     expect(google.tools).toEqual({})
     expect(google.entries.size).toBe(0)
+    expect(mayReceiveGoogleData).not.toHaveBeenCalled()
   })
+
+  it('offers no Google tools to a model that may not receive Google data',
+    async () => {
+      const mayReceiveGoogleData = vi.fn(async () => false)
+      const sendLogger = logger()
+      const google = await getGoogleSendTools({
+        toolApprovalsActive: true,
+        userId: 1,
+        chatPublicId: 'chat-1',
+        mayReceiveGoogleData,
+        logger: sendLogger,
+      })
+
+      expect(google.tools).toEqual({})
+      expect(mayReceiveGoogleData).toHaveBeenCalledOnce()
+      expect(sendLogger.set).toHaveBeenCalledWith({
+        attributes: { googleDataGuard: { googleTools: 'recipient-refused' } },
+      })
+    })
 
   it('drops every google__ tool that did not come from the Google assembly',
     () => {

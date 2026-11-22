@@ -171,6 +171,38 @@
             </div>
 
             <div
+              v-if="targetHoldsGoogleData"
+              data-testid="share-google-data"
+              role="note"
+              class="alert alert-warning alert-soft text-sm"
+            >
+              <Icon name="lucide:shield-alert" size="16" />
+              <div class="grid gap-2">
+                <span>
+                  This chat holds content from Google Drive, Calendar or
+                  Gmail. Replies that repeat it would be visible to anyone
+                  with the link. Google files themselves are never shared.
+                </span>
+                <span
+                  v-if="share?.googleOptInNeeded"
+                  data-testid="share-google-data-paused"
+                >
+                  The link is paused because it was made before this chat
+                  held Google content. Share again to turn it back on.
+                </span>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input
+                    v-model="includeGoogleContent"
+                    type="checkbox"
+                    data-testid="share-google-data-opt-in"
+                    class="checkbox checkbox-sm"
+                  >
+                  <span>Share the Google content in this chat</span>
+                </label>
+              </div>
+            </div>
+
+            <div
               data-testid="share-pii-slot"
               class="min-h-36 sm:min-h-28"
             >
@@ -300,7 +332,7 @@
             type="button"
             data-testid="share-generate-button"
             class="btn btn-primary btn-sm"
-            :disabled="isSaving || isLoading"
+            :disabled="isSaving || isLoading || isGoogleOptInMissing"
             @click="onGenerate"
           >
             {{ share ? 'Update' : 'Generate link' }}
@@ -330,6 +362,7 @@ const {
   targetChatSlug,
   targetHasFiles,
   targetUsedConnector,
+  targetHoldsGoogleData,
   share,
   shareCheck,
   isLoading,
@@ -348,7 +381,12 @@ const showFiles = shallowRef<boolean>(false)
 const showMetadata = shallowRef<boolean>(false)
 const showAuthorAvatar = shallowRef<boolean>(false)
 const allowBranch = shallowRef<boolean>(false)
+const includeGoogleContent = shallowRef<boolean>(false)
 const justCopied = shallowRef<boolean>(false)
+
+const isGoogleOptInMissing = computed<boolean>(() => {
+  return targetHoldsGoogleData.value && !includeGoogleContent.value
+})
 
 let copiedTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -433,6 +471,7 @@ function resetToDefaults() {
   showMetadata.value = false
   showAuthorAvatar.value = false
   allowBranch.value = false
+  includeGoogleContent.value = false
   resetCopiedState()
 }
 
@@ -556,6 +595,9 @@ async function onGenerate() {
     showMetadata: showMetadata.value,
     showAuthorAvatar: showAuthorAvatar.value,
     allowBranch: allowBranch.value,
+    ...(targetHoldsGoogleData.value
+      ? { includeGoogleContent: includeGoogleContent.value }
+      : {}),
   })
 
   if (!url) {

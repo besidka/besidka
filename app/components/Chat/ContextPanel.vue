@@ -219,6 +219,22 @@
         </div>
       </header>
       <p
+        v-if="holdsGoogleData"
+        class="flex items-start gap-1.5 text-xs text-base-content/70"
+        data-testid="chat-context-google-data"
+      >
+        <Icon
+          name="lucide:shield-check"
+          size="14"
+          class="mt-px shrink-0"
+        />
+        <span>
+          This chat holds content from Google. It stays out of memory, web
+          search and TypeSafe AI checks, only models that do not train on
+          your data can answer, and sharing asks first.
+        </span>
+      </p>
+      <p
         v-if="data.truncated"
         class="text-xs text-base-content/60"
         data-testid="chat-context-truncated"
@@ -419,6 +435,7 @@ const {
 } = useChatMemoryExclusion()
 
 const { savingSlug: pinSavingSlug, toggleChatPin } = useChatPin()
+const { isChatHoldingGoogleData } = useChatGoogleData()
 
 const { isStandalone } = useStandaloneDisplay()
 const { copied: urlCopied, copyUrl } = useCurrentUrlCopy()
@@ -474,6 +491,11 @@ const isMemoryExcluded = computed<boolean>(() => {
   }
 
   return isChatMemoryExcluded(routeSlug.value, data.value.chat.memoryExcluded)
+})
+
+const holdsGoogleData = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && isChatHoldingGoogleData(routeSlug.value)
 })
 
 const isPinned = computed<boolean>(() => {
