@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '3dfc573f6258742ef474bcf454f61f86b56236d5ddfed27fabe0a5de439b8b6b',
+    hash: '99da70011898afc2748eee1ce25c8d8b50060b4a1c8f0fa3e471a8674bf1af57',
     classification: 'material',
     noticeId: '2026-11-support-requests',
     note: 'Support requests (new purpose): support@besidka.com, the debug '
