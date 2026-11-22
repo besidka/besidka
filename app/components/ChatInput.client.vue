@@ -676,6 +676,7 @@ const {
   driveImports,
   importingCount: driveImportingCount,
   isDriveBusy,
+  isCheckingGoogleConnection,
   attachFromDrive,
   dismissDriveImport,
 } = useChatDriveFiles(files, onFilesAttached)
@@ -1141,6 +1142,7 @@ const toolsState = computed<ChatInputToolsState>(() => {
     googleDrive: {
       visible: googleDriveFeature.value.active && !isDeepResearchModel.value,
       importing: driveImportingCount.value,
+      checking: isCheckingGoogleConnection.value,
     },
     skills: {
       visible: isSkillAttachEnabled.value,

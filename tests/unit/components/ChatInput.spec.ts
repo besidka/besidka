@@ -44,6 +44,7 @@ mockNuxtImport('useChatDriveFiles', () => () => ({
   driveImports: shallowRef([]),
   importingCount: shallowRef(0),
   isDriveBusy: driveBusy,
+  isCheckingGoogleConnection: shallowRef(false),
   attachFromDrive: vi.fn(),
   dismissDriveImport: vi.fn(),
   dismissAllDriveImports: vi.fn(),

@@ -25,7 +25,10 @@ mockNuxtImport('navigateTo', () => mocks.navigateTo)
 mockNuxtImport('useLegalConsent', () => () => ({
   ensureSendConsent: mocks.ensureSendConsent,
 }))
-mockNuxtImport('useGooglePicker', () => () => ({ pick: mocks.pick }))
+mockNuxtImport('useGooglePicker', () => () => ({
+  pick: mocks.pick,
+  isCheckingConnection: checkingConnection,
+}))
 mockNuxtImport('useChatRoute', () => () => ({
   routeSlug: routeSlug,
 }))
@@ -35,6 +38,7 @@ mockNuxtImport('useChatGoogleData', () => () => ({
 }))
 
 const routeSlug = shallowRef<string | null>('chat-1')
+const checkingConnection = shallowRef<boolean>(false)
 
 const PICKED = {
   id: 'drive-file-1-aaaaaaaaaaaa',
@@ -98,6 +102,19 @@ describe('useChatDriveFiles', () => {
       rejected: [],
     })
   })
+
+  it('exposes the picker\'s slow status check for the tools menu row',
+    () => {
+      const { subject } = createSubject()
+
+      expect(subject.isCheckingGoogleConnection.value).toBe(false)
+
+      checkingConnection.value = true
+
+      expect(subject.isCheckingGoogleConnection.value).toBe(true)
+
+      checkingConnection.value = false
+    })
 
   it('copies the picked file and attaches it like an upload', async () => {
     const { subject, attach } = createSubject()

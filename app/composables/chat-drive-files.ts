@@ -37,7 +37,7 @@ export function useChatDriveFiles(
 ) {
   const nuxtApp = useNuxtApp()
   const { ensureSendConsent } = useLegalConsent()
-  const { pick } = useGooglePicker()
+  const { pick, isCheckingConnection } = useGooglePicker()
   const { routeSlug } = useChatRoute()
   const { rememberChatGoogleData } = useChatGoogleData()
   const driveImports = ref<DriveImportProgress[]>([])
@@ -282,6 +282,7 @@ export function useChatDriveFiles(
     driveImports,
     importingCount,
     isDriveBusy,
+    isCheckingGoogleConnection: isCheckingConnection,
     attachFromDrive,
     dismissDriveImport,
     dismissAllDriveImports,

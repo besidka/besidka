@@ -12,7 +12,7 @@ default shows as a tile at the start of the attachments row.
 | Shell, state and all mutation logic | `app/components/ChatInput.client.vue` |
 | "+" button, desktop popover, mobile bottom sheet | `app/components/ChatInput/ToolsMenu.client.vue` |
 | The one section list used by both shells | `app/components/ChatInput/ToolsMenu/Content.vue` |
-| Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue`, `InlineButton.vue` |
+| Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ActionRowWithInfo.vue` (an action row with an info button, used by Google Drive), `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue`, `InlineButton.vue` |
 | Animated show/hide wrapper | `ToolsMenu/Reveal.vue` |
 | Reveal guard and focus rescue | `app/composables/reveal-guard.ts`, `app/composables/tools-menu-focus-rescue.ts` |
 | Web search, reasoning and steps sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` (the level control and its default caption only), `ToolsMenu/StepsSection.vue` (Show steps expanded and Auto-hide when done) |
@@ -622,9 +622,29 @@ Google's Picker through `attachFromDrive` in `ChatInput.client.vue`; picked
 files are never listed inline. It emits `open-google-drive` and closes the menu
 first, like every other row.
 
-Not connected, or needing re-authorization (the token route's 404 and 409):
-one confirm dialog with one sentence and a button to the Google tab of API
-Keys. The Google script loads only when the row is pressed. Picked copies
+The row is `ToolsMenu/ActionRowWithInfo.vue`: the same one-row height as its
+neighbors (`min-h-9`, `max-md:min-h-11`) with a click-to-open info button
+after the title (`tools-action-google-drive-info`, the `lucide:info` icon at
+size 14, `aria-label` "About Google Drive in chats", `aria-expanded`,
+`aria-controls`) that toggles an `InfoNote` under the row
+(`tools-action-google-drive-note`, `GOOGLE_DRIVE_TOOLS_HINT`), exactly the
+pattern of Use memory. There is no always-visible paragraph: it was three
+lines of text that pushed the menu out of the viewport. `ActionRow` is a
+`<button>`, so the info control cannot nest in it. The row button holds only
+the title and stretches over the whole row (`after:absolute after:inset-0`),
+while the info button sits above the stretch (`relative z-10`) and pressing
+it never starts the Picker or closes the menu (the stock `ActionRow` stays as
+it was for every other row). The row button is `tools-action-google-drive-open`;
+`tools-action-google-drive` is the wrapper. A small spinner shows on the row
+(`tools-action-google-drive-pending`, `state.googleDrive.checking`) when the
+status check of the Picker takes over 300 ms.
+
+Not connected, or needing re-authorization: one confirm dialog with one
+sentence and a button to the Google tab of API Keys, shown at once after
+Besidka's own status route (`GET /api/v1/google/connections`) answered, with
+no request to Google and no token request. The Google script loads only when
+the row is pressed and that route says the connection is active, and the
+token is requested after the script (`docs/google.md` section 12.1). Picked copies
 appear as chips with the Drive icon, with progress while copying and a reason
 when a file fails (`ChatInput/Files/Attached/Preview.client.vue`). While a
 pick or a copy runs the send button is disabled with the reason "Google Drive
