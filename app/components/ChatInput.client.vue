@@ -351,7 +351,6 @@ const {
   webSearchProviderOptions,
   isImageGenerationSupported,
   isImageGenerationRequired,
-  isImageInputSupported,
   canAttachMediaType,
   fileDeliveryContext,
   isReasoningSupported,
@@ -1151,7 +1150,6 @@ const toolsState = computed<ChatInputToolsState>(() => {
     files: {
       visible: !isDeepResearchModel.value,
       count: files.value.length,
-      isImageInputSupported: isImageInputSupported.value,
     },
     artifacts: {
       visible: isArtifactAttachEnabled.value,

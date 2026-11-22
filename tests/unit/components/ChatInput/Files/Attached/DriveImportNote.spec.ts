@@ -73,6 +73,29 @@ describe('ChatInput/Files/Attached/DriveImportNote', () => {
         .toBe(false)
     })
 
+  it('can take focus, and asks to close on Escape', async () => {
+    const wrapper = await mountSuspended(DriveImportNote, {
+      props: {
+        id: 'note-d1',
+        item: { id: 'd1', name: 'Plan', status: 'failed', error: 'Nope.' },
+      },
+      attachTo: document.body,
+    })
+    const note = wrapper.get('[data-testid="drive-import-note"]')
+
+    expect(note.attributes('tabindex')).toBe('-1')
+
+    ;(wrapper.vm as unknown as { focus: () => void }).focus()
+
+    expect(document.activeElement).toBe(note.element)
+
+    await note.trigger('keydown', { key: 'Escape' })
+
+    expect(wrapper.emitted('close')).toHaveLength(1)
+
+    wrapper.unmount()
+  })
+
   it('falls back to a plain sentence when there is none', async () => {
     const wrapper = await mountSuspended(DriveImportNote, {
       props: {

@@ -1,10 +1,13 @@
 <template>
   <div
     :id="id"
-    class="mt-1 rounded-box bg-base-200 p-2 text-xs"
+    ref="note"
+    tabindex="-1"
+    class="mt-1 rounded-box bg-base-200 p-2 text-xs outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent"
     role="region"
     :aria-label="`Why ${item.name} could not be imported`"
     data-testid="drive-import-note"
+    @keydown.esc.stop="emit('close')"
   >
     <p
       class="break-words"
@@ -62,5 +65,12 @@ defineProps<{
 const emit = defineEmits<{
   'pick-again': []
   'dismiss': []
+  'close': []
 }>()
+
+const note = useTemplateRef<HTMLElement>('note')
+
+defineExpose({
+  focus: () => note.value?.focus(),
+})
 </script>

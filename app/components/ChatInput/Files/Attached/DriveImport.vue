@@ -2,8 +2,9 @@
   <div
     :data-drive-import-id="item.id"
     role="group"
+    tabindex="-1"
     :aria-label="groupLabel"
-    class="carousel-item flex items-center gap-1 relative"
+    class="carousel-item flex items-center gap-1 relative outline-none"
     data-testid="drive-import-item"
   >
     <div
@@ -39,7 +40,7 @@
         <button
           v-else
           type="button"
-          class="flex min-h-6 items-center gap-0.5 rounded-sm text-left text-[10px] text-error outline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-error"
+          class="js-drive-import-error flex min-h-6 items-center gap-0.5 rounded-sm text-left text-[10px] text-error outline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-error"
           :aria-expanded="isNoteOpen"
           :aria-controls="noteId"
           :aria-label="`${item.name}: could not import. Show why`"

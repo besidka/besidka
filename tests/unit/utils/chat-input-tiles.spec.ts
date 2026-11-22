@@ -46,7 +46,6 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     files: {
       visible: true,
       count: 0,
-      isImageInputSupported: true,
     },
     artifacts: {
       visible: false,

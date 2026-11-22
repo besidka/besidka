@@ -1,4 +1,5 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { flushPromises } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { ChatInputTile } from '../../../../../../app/types/chat-input-tools'
 import { OFFICE_MEDIA_TYPES } from '../../../../../../shared/utils/office-files'
@@ -652,6 +653,132 @@ describe('ChatInput/Files/Attached/Preview', () => {
 
       expect(wrapper.find('[data-testid="drive-import-note"]').exists())
         .toBe(false)
+    })
+
+    describe('keyboard and screen reader use of the note', () => {
+      const failed = {
+        id: 'd1',
+        name: 'Plan',
+        status: 'failed' as const,
+        error: 'Besidka cannot see this file.',
+        code: 'not_found' as const,
+        detail: 'Google: notFound, export',
+      }
+
+      it('moves focus into the note when it opens and announces its '
+        + 'text in the status region', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: { files: [], driveImports: [failed] },
+          attachTo: document.body,
+        })
+        const status = wrapper.get('[role="status"]')
+
+        expect(status.text()).toBe('')
+
+        await wrapper.get('[data-testid="drive-import-error"]')
+          .trigger('click')
+        await wrapper.vm.$nextTick()
+        await wrapper.vm.$nextTick()
+
+        expect(document.activeElement).toBe(
+          wrapper.get('[data-testid="drive-import-note"]').element,
+        )
+        expect(status.text()).toBe(
+          'Plan: Besidka cannot see this file.: (Google: notFound, export)',
+        )
+
+        wrapper.unmount()
+      })
+
+      it('keeps one status region for uploads and the note', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: { files: [], driveImports: [failed] },
+        })
+
+        expect(wrapper.findAll('[role="status"]')).toHaveLength(1)
+      })
+
+      it('returns focus to the chip button on Escape', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: { files: [], driveImports: [failed] },
+          attachTo: document.body,
+        })
+        const button = wrapper.get('[data-testid="drive-import-error"]')
+
+        await button.trigger('click')
+        await wrapper.vm.$nextTick()
+        await wrapper.get('[data-testid="drive-import-note"]')
+          .trigger('keydown', { key: 'Escape' })
+        await wrapper.vm.$nextTick()
+        await wrapper.vm.$nextTick()
+
+        expect(wrapper.find('[data-testid="drive-import-note"]').exists())
+          .toBe(false)
+        expect(document.activeElement).toBe(button.element)
+
+        wrapper.unmount()
+      })
+
+      it('moves focus to the chip, not to nowhere, after Pick again',
+        async () => {
+          const wrapper = await mountSuspended(Preview, {
+            props: { files: [], driveImports: [failed] },
+            attachTo: document.body,
+          })
+
+          await wrapper.get('[data-testid="drive-import-error"]')
+            .trigger('click')
+          await wrapper.vm.$nextTick()
+          await wrapper.get('[data-testid="drive-import-pick-again"]')
+            .trigger('click')
+          await wrapper.vm.$nextTick()
+          await wrapper.vm.$nextTick()
+
+          expect(document.activeElement).toBe(
+            wrapper.get('[data-testid="drive-import-item"]').element,
+          )
+
+          wrapper.unmount()
+        })
+
+      it('moves focus to the next failed chip, or the textarea, when a '
+        + 'file is removed', async () => {
+        const textarea = document.createElement('textarea')
+
+        textarea.className = 'js-chat-input-textarea'
+        document.body.appendChild(textarea)
+
+        const second = { ...failed, id: 'd2', name: 'Notes' }
+        let remaining = [failed, second]
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [],
+            driveImports: remaining,
+            onDismissDriveImport: (id: string) => {
+              remaining = remaining.filter(item => item.id !== id)
+              wrapper.setProps({ driveImports: remaining })
+            },
+          },
+          attachTo: document.body,
+        })
+
+        await wrapper.findAll('[data-testid="drive-import-dismiss"]')[0]!
+          .trigger('click')
+        await flushPromises()
+
+        expect(document.activeElement).toBe(
+          wrapper.get('[data-testid="drive-import-error"]').element,
+        )
+
+        await wrapper.get('[data-testid="drive-import-dismiss"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(document.activeElement).toBe(textarea)
+
+        wrapper.unmount()
+        textarea.remove()
+      })
     })
 
     it('keeps a failed chip as tall as a normal file chip', async () => {

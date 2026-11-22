@@ -227,6 +227,11 @@ card, which shares the textarea, never reacts to a link. Only the textarea
 text is read: the content of a "Pasted text" chip (long paste) is not
 scanned, because it is not in the message until it is sent.
 
+The send path awaits the same detection once more, so a link typed and sent
+within the 800 ms is still attached to its message. Links inside fenced code
+blocks and inline code are skipped, and nothing is requested unless Google
+Drive is connected with an active connection and the model takes files.
+
 When Google Drive is connected, Besidka asks its own link route to copy the
 file and attaches it like a Drive pick; without access it shows "Attach this
 Google file", which opens the Google Picker on that one file. The reason a

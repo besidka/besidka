@@ -78,7 +78,7 @@ function createState(
       defaultLevel: 'medium',
     },
     image: { supported: lower, enabled: false, required: false },
-    files: { visible: files, count: 0, isImageInputSupported: true },
+    files: { visible: files, count: 0 },
     artifacts: { visible: false, attached: [] },
     googleDrive: { visible: drive, importing: driveImporting },
     skills: {

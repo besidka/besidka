@@ -448,7 +448,11 @@ function buildSingleFileView(
  * With file ids, one view that holds only those files (`setFileIds`, which
  * Google says is overridden by `setEnableDrives` and `setParent`, so neither
  * is set): the user confirms the file once and the Picker grants Besidka
- * access to it. An empty result falls back to the plain Drive view.
+ * access to it. If no view could be built at all, the plain Drive view is
+ * returned instead; for a single file it is not limited to that file. A view
+ * that builds but shows nothing, which is what Google does for a file the
+ * connected account cannot open, is the user's to fix: the link suggestion
+ * says to open the file in Google Drive first.
  */
 export function buildPickerViews(
   picker: GooglePickerNamespace,

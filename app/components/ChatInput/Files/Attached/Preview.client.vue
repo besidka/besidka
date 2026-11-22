@@ -12,7 +12,7 @@
       aria-live="polite"
       aria-atomic="true"
     >
-      {{ uploadStatusAnnouncement }}
+      {{ statusAnnouncement }}
     </div>
 
     <div
@@ -167,7 +167,7 @@
         :note-id="driveImportNoteId(driveImport.id)"
         :is-note-open="openDriveImport?.id === driveImport.id"
         @toggle-note="toggleDriveImportNote(driveImport.id)"
-        @dismiss="emit('dismiss-drive-import', driveImport.id)"
+        @dismiss="dismissDriveImport(driveImport.id)"
       />
 
       <!-- Uploading files -->
@@ -363,9 +363,11 @@
     <ChatInputFilesAttachedDriveImportNote
       v-if="openDriveImport"
       :id="driveImportNoteId(openDriveImport.id)"
+      ref="driveImportNoteRef"
       :item="openDriveImport"
       @pick-again="pickDriveImportAgain(openDriveImport.id)"
-      @dismiss="emit('dismiss-drive-import', openDriveImport.id)"
+      @dismiss="dismissDriveImport(openDriveImport.id)"
+      @close="closeDriveImportNote(openDriveImport.id)"
     />
   </div>
 </template>
@@ -454,10 +456,74 @@ function toggleDriveImportNote(id: string) {
   openDriveImportId.value = openDriveImportId.value === id ? null : id
 }
 
-function pickDriveImportAgain(id: string) {
+const driveImportNoteRef
+  = useTemplateRef<{ focus: () => void }>('driveImportNoteRef')
+
+const driveImportAnnouncement = computed<string>(() => {
+  const item = openDriveImport.value
+
+  if (!item) {
+    return ''
+  }
+
+  return [item.name, item.error, item.detail && `(${item.detail})`]
+    .filter(Boolean)
+    .join(': ')
+})
+
+function focusDriveImportElement(id: string, selector?: string) {
+  const chip = carouselRef.value?.querySelector<HTMLElement>(
+    `[data-drive-import-id="${id}"]`,
+  )
+
+  const target = selector ? chip?.querySelector<HTMLElement>(selector) : chip
+
+  target?.focus()
+}
+
+async function focusAfterDriveImportRemoved() {
+  await nextTick()
+
+  const nextChip = carouselRef.value?.querySelector<HTMLElement>(
+    '.js-drive-import-error',
+  )
+
+  if (nextChip) {
+    nextChip.focus()
+
+    return
+  }
+
+  document.querySelector<HTMLElement>('.js-chat-input-textarea')?.focus()
+}
+
+async function closeDriveImportNote(id: string) {
+  openDriveImportId.value = null
+  await nextTick()
+  focusDriveImportElement(id, '.js-drive-import-error')
+}
+
+async function pickDriveImportAgain(id: string) {
   openDriveImportId.value = null
   emit('pick-again-drive-import', id)
+  await nextTick()
+  focusDriveImportElement(id)
 }
+
+async function dismissDriveImport(id: string) {
+  openDriveImportId.value = null
+  emit('dismiss-drive-import', id)
+  await focusAfterDriveImportRemoved()
+}
+
+watch(() => openDriveImport.value?.id, async (id) => {
+  if (!id) {
+    return
+  }
+
+  await nextTick()
+  driveImportNoteRef.value?.focus()
+}, { flush: 'post' })
 
 const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
   const hints = new Map<string, FileDeliveryHint>()
@@ -622,6 +688,10 @@ const uploadStatusAnnouncement = computed<string>(() => {
   }
 
   return ''
+})
+
+const statusAnnouncement = computed<string>(() => {
+  return driveImportAnnouncement.value || uploadStatusAnnouncement.value
 })
 
 const currentUploadingId = computed<string | undefined>(() => {

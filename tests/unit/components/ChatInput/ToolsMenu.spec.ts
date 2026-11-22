@@ -66,7 +66,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
       defaultLevel: 'medium',
     },
     image: { supported: true, enabled: false, required: false },
-    files: { visible: true, count: 2, isImageInputSupported: true },
+    files: { visible: true, count: 2 },
     artifacts: { visible: false, attached: [] },
     project: { visible: true, context: null },
     memory: { excluded: false },

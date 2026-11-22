@@ -1321,7 +1321,7 @@ deletes it from Files.
 |---|---|---|
 | `POST /api/v1/google/drive/picker-token` | Answers `{ accessToken, expiresInSeconds, apiKey, appId }` with `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer` | Same-origin write guard, session, `google.drive` active, 30 per minute (`google-picker-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files` | Body `{ items: [{ id, resourceKey? }] }`, 1 to 5 items, unique ids; answers `{ results }`, one per file | Same gate, 10 per minute (`google-drive-import-rate-limit:<userId>`), body at most 8 KiB, legal consent; 404 or 409 before any read when Google is not connected or needs re-authorization |
-| `POST /api/v1/google/drive/files/link` | Body `{ link }`, one Google file link parsed again on the server (section 12.15); answers `{ item, kind, results }`, no retry | The same gate and the same `import` rate bucket |
+| `POST /api/v1/google/drive/files/link` | Body `{ link }`, one Google file link parsed again on the server (section 12.15); answers `{ item, kind, results }`, no retry | The same gate, with its own bucket, 20 a minute (`google-drive-link-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files/refresh` | Body `{ ids }`, 1 to 5 unique Besidka file ids; answers `{ results }`, one per copy (section 12.12) | The same gate and the same `import` rate bucket |
 
 Ids match `^[A-Za-z0-9_-]{10,128}$` and resource keys `^[A-Za-z0-9_-]{1,128}$`
@@ -2322,7 +2322,9 @@ requests), after 0.5, 1 and 2 seconds, one at a time, in
 route, the Drive tools (`drive-picked.ts`) and the link route never do. Any
 other answer, and a 404 of the export or the download, is final at once.
 "Up to three attempts with the waits 0.5, 1 and 2 seconds" was read as three
-retries after the first try.
+retries after the first try. The waits of all files of one request come out
+of one budget of 6 seconds (`FRESH_PICK_RETRY_BUDGET_MS`), so a batch of ten
+files that all answer 404 waits 6 seconds in total, not 35.
 
 **The sentences.** `describeDriveFailure(code, google)` keeps one sentence
 per code and replaces it when Google's reason says what the user should do:
@@ -2362,15 +2364,25 @@ paths and other hosts are ignored. The composer extracts links from the text
 (at most five a message, one per file id, trailing punctuation and Markdown
 parentheses stripped) and sends the link as written to the server, which runs
 the same parser again; only the file id and the resource key ever reach
-Google. A link that ends the text right after an id shorter than 25
+Google. An uppercase scheme or host is read (URL parsing lowercases it), the
+default port written out (`:443`) counts as no port, any other port is not
+Google's, and an `open?id=` link with more than one `id` parameter is
+refused, so Besidka and Google can never read different ids. Links inside
+fenced code blocks (an unclosed one runs to the end) and inline code are not
+links. A link that ends the text right after an id shorter than 28
 characters is skipped, because a half-typed id already matches the id
-pattern; a real Drive id is longer.
+pattern. Google documents no length for a Drive id (`files.generateIds` and
+the file resource say nothing); 28 is the shortest form seen in practice
+(newer ids are 33 or 44), a choice and not a documented minimum, and it only
+delays a link that ends the text right after a shorter id until more text
+follows.
 
 **The route.** `POST /api/v1/google/drive/files/link`, body `{ link }`, answers
 `{ item, kind, results }` with one result in the shape of the import route. It
 is the import route for one file: same gate (same-origin write guard,
-session, `google.drive`, the 10 a minute `import` bucket, legal consent, a
-connection that is active with `drive.file`, 404 or 409 before any read), the
+session, `google.drive`, its own `link` bucket of 20 a minute so that probes
+ending in 404 never use up the Picker's `import` budget of 10, legal consent,
+a connection that is active with `drive.file`, 404 or 409 before any read), the
 same copy and reuse rules (an unchanged copy is `reused`), and a 400 for a
 link that is not a file. It never retries: a file that was not just picked
 has no grant on its way. `logger` gets `attributes.googleDrive.fromLink`.
@@ -2386,16 +2398,69 @@ has no grant on its way. `logger` gets `attributes.googleDrive.fromLink`.
 | 401, 404, 409, 429 on the request, consent missing, `reauthorize`, rate limit, other failure | Nothing: no toast, no dialog, no chip |
 
 The first 404, 409, 401 or 429 on the request stops every later request until
-the next message. Not connected, or the feature not active: no request and no
-hint (the feature check is local; "not connected" costs one request, which
-Besidka answers with a 404). Requests go one at a time, through Besidka's own
-route only, never from the browser to Google. The probe makes the send button
-wait ("Google Drive files are still being copied") so a link that Besidka can
-read is attached before the message goes. A link already attached (a copy with
-that Drive id) or being copied is ignored, a link is asked about once a
-message, and sending forgets the suggestions and the handled links. Removing
-the link text removes nothing already attached; dismissing a suggestion
-keeps it dismissed for the message.
+the next message.
+
+**A link never leaves the browser unless Google Drive is connected.**
+Detection needs, in this order: the `google.drive` feature active, the menu
+row's own gates (the model takes files, so not a deep-research model:
+`options.isAvailable` from `ChatInput.client.vue`), and a connection that is
+`active` with the `drive-picked` capability. The connection is read from the
+status the API Keys page keeps under the fetch key `google-drive-connection`
+(`useNuxtData`); when nothing is cached it is requested once from Besidka's
+own `GET /api/v1/google/connections` and stored under that key, and a failed
+answer counts as not connected until the next message. A disconnect on the
+API Keys page refreshes that same entry, so detection stops at once; a
+connect is a full page return. No status request is made for text without a
+link. Not connected, or the feature not active: no request to the link route
+and no hint.
+
+**What is remembered for the page session.** A link that was answered "not
+found" or "no access" is kept in `useState('google-drive-unreadable-links')`
+until the user picks the file; the same link in a later message shows its
+suggestion again with no request, so unreadable links cannot use up the
+bucket. A link already attached (a copy with that Drive id) or being copied
+is ignored, a link is asked about once a message (five at most), and sending
+forgets the suggestions and the handled links but not that memory. Removing
+the link text removes nothing already attached; dismissing a suggestion keeps
+it dismissed for the message.
+
+**Time limits.** Each request has a 15 second timeout (the `timeout` option of
+`$fetch`) and one run of the queue has 15 seconds in all: links still queued
+after that are dropped. The send button waits for a probe only while it runs;
+a message sent while a probe is out lets go of the composer at once
+(`invalidatePendingWork` clears the flag), and a request that times out ends
+silently.
+
+**Typed and sent at once (BES-453, 5a).** `sendMessage` awaits
+`detectLinks(message)` before its busy check, so Enter pressed within the
+800 ms debounce still runs the detection once and waits for it (an
+in-flight probe is awaited, not repeated, and the wait is bounded by the
+time limits above). A link that Besidka can read is therefore attached to the
+message that carries it. A link that needs the Picker only shows its
+suggestion, and the message is sent as text.
+
+**A copy that arrives after the send (BES-453, 5b).** When the answer of a
+probe comes back after the message was sent or the composer was torn down
+and the result is `imported` (a new copy), the copy is deleted again through
+`DELETE /api/v1/files/<id>` (a failure of that delete is ignored); a `reused`
+copy was there before and is left alone. Not attaching it to the next
+message was chosen because that message may be unrelated. A request that the
+timeout aborts can still leave a copy on the server that nothing deletes: it
+counts against storage until it expires or the user deletes it from Files.
+
+**If the Picker shows nothing.** `setFileIds` leaves out ids the account
+cannot open, so for a file shared with another Google account the Picker is
+empty. The suggestion row says, below its buttons: "If the Picker shows
+nothing, open the file in Google Drive with the connected account first."
+
+**Keyboard and screen readers.** The suggestion row has one persistent live
+region that receives the announcement (not an `aria-live` on a root that
+appears with its content); dismissing a suggestion moves focus to the next
+one or to the textarea (`js-chat-input-textarea`). The failed-chip note of
+section 12.14 takes focus when it opens, is announced through the attachments
+row's status region, closes on Escape back to its chip button, and after
+"Pick again" or "Remove" focus goes to the chip, the next failed chip or the
+textarea.
 
 **Why a first-time link needs one confirmation.** The `drive.file` permission
 only reaches files the user created with Besidka or picked in the Picker, so
