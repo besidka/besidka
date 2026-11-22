@@ -723,6 +723,23 @@ describe('the chat-level Google flag', () => {
       attributes: { googleTools: { chatFlag: 'failed', error: 'D1 down' } },
     })
   })
+
+  it('throws a failed flag write when asked to fail closed', async () => {
+    const log = logger()
+    const db = {
+      update: vi.fn(() => {
+        throw new Error('D1 down')
+      }),
+    }
+
+    await expect(markChatGoogleData(
+      db as never,
+      'chat-google',
+      log,
+      { failClosed: true },
+    )).rejects.toMatchObject({ status: 500 })
+    expect(log.set).toHaveBeenCalled()
+  })
 })
 
 describe('Google replay', () => {
