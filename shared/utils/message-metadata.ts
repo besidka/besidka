@@ -37,12 +37,12 @@ export type MessageMenuInfo = {
   searchProvider?: SearchProvider
 }
 
-type DisplayCost = {
+export type DisplayCost = {
   amount: number
   isEstimated: boolean
 }
 
-type MenuMessage = {
+export type MenuMessage = {
   id?: string
   role: string
   metadata?: unknown
@@ -310,7 +310,7 @@ export function getMessageUsedTools(
   })
 }
 
-function getFollowingAssistantUsage(
+export function getFollowingAssistantUsage(
   messages: MenuMessage[],
   messageIndex: number,
 ) {
@@ -331,7 +331,7 @@ function getFollowingAssistantUsage(
 // shown in full on the assistant row, the one place `usage` is actually
 // persisted; the paired user row contributes nothing so sumMessageCosts()
 // below never double-counts it.
-function getPerMessageCost(
+export function getPerMessageCost(
   messages: MenuMessage[],
   messageIndex: number,
 ): DisplayCost | undefined {
@@ -397,7 +397,7 @@ function resolveProviderDisplay(
 // cumulative totals (costToMessage/chatTotalCost) can flip to estimated
 // while a message's own `cost` (Current message, token/image cost only)
 // stays unflagged.
-function getPerMessageSearchCost(
+export function getPerMessageSearchCost(
   messages: MenuMessage[],
   messageIndex: number,
 ): DisplayCost | undefined {

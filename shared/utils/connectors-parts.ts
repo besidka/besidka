@@ -2,6 +2,10 @@ import {
   CONNECTOR_RESULT_TAG,
   CONNECTOR_TOOL_NAME_PREFIX,
 } from '#shared/utils/connectors-policy'
+import { parseConnectorCallErrorText } from '#shared/utils/connectors-errors'
+import type {
+  ParsedConnectorCallError,
+} from '#shared/utils/connectors-errors'
 import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 
 export const CONNECTORS_NOTICE_PART_TYPE = 'data-connectors-notice'
@@ -16,11 +20,27 @@ export const CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT = 'This tool belongs to a '
 export const CONNECTOR_UNAPPROVED_CALL_TEXT = 'This tool call was not '
   + 'approved, so it did not run.'
 
-export const CONNECTOR_CALL_LIMIT_TEXT = 'Connector call limit for this '
-  + 'message reached. Answer with what you already have.'
+const CONNECTOR_CALL_LIMIT_PREFIX = 'Connector call limit for this '
+  + 'message reached.'
+
+export const CONNECTOR_CALL_LIMIT_TEXT = `${CONNECTOR_CALL_LIMIT_PREFIX} `
+  + 'Stop calling tools now. Briefly say what is done and what is left, so '
+  + 'the work can continue in the next message.'
 
 export const CONNECTOR_RATE_LIMIT_TEXT = 'This connector received too many '
-  + 'calls in the last minute. Try again later.'
+  + 'calls in the last minute.'
+
+/**
+ * The refusal of a call over the per-minute connector limit, with how long
+ * to wait, so the model can pace itself instead of giving up.
+ */
+export function buildConnectorRateLimitText(retryAfterSeconds: number): string {
+  const seconds = Math.max(1, Math.ceil(retryAfterSeconds))
+
+  return `${CONNECTOR_RATE_LIMIT_TEXT} This call did not run. Wait about `
+    + `${seconds} seconds before you call this connector again, or continue `
+    + 'without it.'
+}
 
 const DENIAL_TEXTS: readonly string[] = [
   CONNECTOR_APPROVAL_DENIAL_TEXT,
@@ -28,10 +48,11 @@ const DENIAL_TEXTS: readonly string[] = [
   CONNECTOR_UNAPPROVED_CALL_TEXT,
 ]
 const LIMIT_TEXTS: readonly string[] = [
-  CONNECTOR_CALL_LIMIT_TEXT,
+  CONNECTOR_CALL_LIMIT_PREFIX,
   CONNECTOR_RATE_LIMIT_TEXT,
 ]
 const TOOL_NAME_SEPARATOR = '__'
+const STATIC_TOOL_PART_PREFIX = 'tool-'
 const FRAMED_OUTPUT_PREFIX = `<${CONNECTOR_RESULT_TAG}`
 const RUNNING_STATES = new Set<string>(['input-streaming', 'input-available'])
 const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
@@ -51,6 +72,7 @@ export interface ConnectorToolCallModel {
   outcome: ConnectorToolOutcome | null
   isFramed: boolean
   input: unknown
+  error: ParsedConnectorCallError | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,6 +104,24 @@ export function parseConnectorToolName(
   }
 
   return { slug: remainder.slice(0, separatorIndex), tool }
+}
+
+/**
+ * The exposed tool name of a tool part, whether it is a `dynamic-tool` part
+ * or a static `tool-<name>` part, or null for any other part.
+ */
+export function getConnectorToolPartName(part: unknown): string | null {
+  if (!isRecord(part) || typeof part.type !== 'string') {
+    return null
+  }
+
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string' ? part.toolName : null
+  }
+
+  return part.type.startsWith(STATIC_TOOL_PART_PREFIX)
+    ? part.type.slice(STATIC_TOOL_PART_PREFIX.length)
+    : null
 }
 
 export function isFramedConnectorOutput(output: unknown): boolean {
@@ -118,15 +158,13 @@ export function isConnectorLimitRefusal(output: unknown): boolean {
 export function getConnectorToolCall(
   part: unknown,
 ): ConnectorToolCallModel | null {
-  if (
-    !isRecord(part)
-    || part.type !== 'dynamic-tool'
-    || typeof part.toolName !== 'string'
-  ) {
+  const toolName = getConnectorToolPartName(part)
+
+  if (!isRecord(part) || toolName === null) {
     return null
   }
 
-  const parsed = parseConnectorToolName(part.toolName)
+  const parsed = parseConnectorToolName(toolName)
 
   if (!parsed) {
     return null
@@ -156,6 +194,9 @@ export function getConnectorToolCall(
     outcome,
     isFramed: isFramedConnectorOutput(part.output),
     input: part.input,
+    error: outcome === 'error'
+      ? parseConnectorCallErrorText(part.errorText)
+      : null,
   }
 }
 

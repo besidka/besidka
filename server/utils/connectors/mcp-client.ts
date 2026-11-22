@@ -1,6 +1,7 @@
 import { createMCPClient } from '@ai-sdk/mcp'
 import type { MCPClient } from '@ai-sdk/mcp'
 import {
+  CONNECTOR_CALL_RESPONSE_MAX_BYTES,
   CONNECTOR_CLOSE_TIMEOUT_MS,
   CONNECTOR_CONNECT_TIMEOUT_MS,
   CONNECTOR_PARALLEL_CONNECTS,
@@ -86,6 +87,192 @@ export function createConcurrencyLimiter(
   }
 }
 
+function scopeNetLogger(
+  logger?: LoggerLike,
+  logsHost: boolean = true,
+): LoggerLike | undefined {
+  if (!logger) {
+    return undefined
+  }
+
+  return {
+    set(data) {
+      const net = (data.attributes as { net?: Record<string, unknown> }
+        | undefined)?.net
+
+      if (!net) {
+        return
+      }
+
+      const { host, ...withoutHost } = net
+
+      logger.set({
+        attributes: {
+          connectors: {
+            net: logsHost ? { ...withoutHost, host } : withoutHost,
+          },
+        },
+      })
+    },
+  }
+}
+
+type JsonRpcId = string | number
+
+function parseRequestBody(init?: RequestInit): Record<string, unknown> | null {
+  if (typeof init?.body !== 'string') {
+    return null
+  }
+
+  try {
+    const message: unknown = JSON.parse(init.body)
+
+    return typeof message === 'object'
+      && message !== null
+      && !Array.isArray(message)
+      ? message as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function isToolCallRequest(init?: RequestInit): boolean {
+  return parseRequestBody(init)?.method === 'tools/call'
+}
+
+function requestIdOf(init?: RequestInit): JsonRpcId | null {
+  const id = parseRequestBody(init)?.id
+
+  return typeof id === 'string' || typeof id === 'number' ? id : null
+}
+
+const SSE_EVENT_SEPARATOR = /\r?\n\r?\n/g
+const SSE_SEPARATOR_MAX_LENGTH = 4
+
+function isResponseMessage(message: unknown, requestId: JsonRpcId): boolean {
+  return typeof message === 'object'
+    && message !== null
+    && (message as { id?: unknown }).id === requestId
+    && ('result' in message || 'error' in message)
+}
+
+/**
+ * Whether one SSE event carries the JSON-RPC response to `requestId`: a
+ * `message` event (or one without a type) whose data is that response, alone
+ * or in a batch.
+ */
+export function isSseResponseEvent(
+  event: string,
+  requestId: JsonRpcId,
+): boolean {
+  const lines = event.split(/\r?\n/)
+  const eventType = lines.find(line => line.startsWith('event:'))
+    ?.slice('event:'.length)
+    .trim()
+
+  if (eventType && eventType !== 'message') {
+    return false
+  }
+
+  const data = lines
+    .filter(line => line.startsWith('data:'))
+    .map(line => line.slice('data:'.length).replace(/^ /, ''))
+    .join('\n')
+
+  if (!data) {
+    return false
+  }
+
+  try {
+    const message: unknown = JSON.parse(data)
+
+    return Array.isArray(message)
+      ? message.some(item => isResponseMessage(item, requestId))
+      : isResponseMessage(message, requestId)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Ends an SSE answer to a POST once it carried the JSON-RPC response to that
+ * request. The MCP spec says a server should close the stream then, but
+ * `@ai-sdk/mcp` reads it until the server does, so a server that keeps it
+ * open held one of the Worker's six simultaneous connections until the
+ * 60-second deadline, per call. Every byte up to and including the
+ * response is passed on unchanged; the rest is dropped and the request is
+ * canceled, which frees the connection.
+ */
+export function closeAfterJsonRpcResponse(
+  response: Response,
+  requestId: JsonRpcId,
+): Response {
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (!response.body || !contentType.includes('text/event-stream')) {
+    return response
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const separatorPattern = new RegExp(SSE_EVENT_SEPARATOR)
+  let pending = ''
+
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        controller.close()
+
+        return
+      }
+
+      controller.enqueue(value)
+
+      const searchFrom = Math.max(
+        0,
+        pending.length - SSE_SEPARATOR_MAX_LENGTH + 1,
+      )
+
+      pending += decoder.decode(value, { stream: true })
+      separatorPattern.lastIndex = searchFrom
+
+      let eventStart = 0
+      let separator = separatorPattern.exec(pending)
+      let isAnswered = false
+
+      while (separator) {
+        const event = pending.slice(eventStart, separator.index)
+
+        if (isSseResponseEvent(event, requestId)) {
+          isAnswered = true
+        }
+
+        eventStart = separator.index + separator[0].length
+        separator = separatorPattern.exec(pending)
+      }
+
+      pending = pending.slice(eventStart)
+
+      if (isAnswered) {
+        controller.close()
+        await reader.cancel().catch(() => undefined)
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+    },
+  })
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  })
+}
+
 /**
  * The `fetch` of one connector's MCP transport. Every request goes through
  * `safeFetch` with purpose `mcp` (https only, no private names, same-origin
@@ -95,20 +282,34 @@ export function createConcurrencyLimiter(
  * (the transport reads it as "no stream offered") and never leaves the
  * Worker, which keeps a send from holding one connection per connector open.
  * The legacy SSE transport needs its one `GET` stream, so it gets a session
- * deadline and size cap instead.
+ * deadline and size cap instead. With `largeCallResponses` (a send that
+ * forwards images to its model), a `tools/call` response on streamable HTTP
+ * may be up to `CONNECTOR_CALL_RESPONSE_MAX_BYTES` (8 MiB); every other
+ * request, and every request of a send without images, keeps the 1 MiB
+ * `mcp` default. The body is counted as it streams and cut at the cap. An
+ * SSE answer to a POST ends right after the JSON-RPC response to it
+ * (`closeAfterJsonRpcResponse`).
  */
 export function createConnectorTransportFetch(
   transport: ConnectorTransport,
   createFetch: typeof createSafeFetch = createSafeFetch,
+  logger?: LoggerLike,
+  logsHost: boolean = true,
+  largeCallResponses: boolean = false,
 ): typeof fetch {
+  const netLogger = scopeNetLogger(logger, logsHost)
+
   if (transport === 'sse') {
     return createFetch('mcp', {
       timeoutMs: CONNECTOR_SSE_SESSION_TIMEOUT_MS,
       maxResponseBytes: CONNECTOR_SSE_SESSION_MAX_BYTES,
+      ...(netLogger ? { logger: netLogger } : {}),
     })
   }
 
-  const safeFetch = createFetch('mcp')
+  const safeFetch = netLogger
+    ? createFetch('mcp', { logger: netLogger })
+    : createFetch('mcp')
 
   return ((input: string | URL | Request, init?: RequestInit) => {
     const method = (init?.method ?? 'GET').toUpperCase()
@@ -119,7 +320,21 @@ export function createConnectorTransportFetch(
       )
     }
 
-    return safeFetch(input, init)
+    const requestId = method === 'POST' ? requestIdOf(init) : null
+    const sent = largeCallResponses && isToolCallRequest(init)
+      ? safeFetch(input, {
+        ...init,
+        maxResponseBytes: CONNECTOR_CALL_RESPONSE_MAX_BYTES,
+      } as RequestInit)
+      : safeFetch(input, init)
+
+    if (requestId === null) {
+      return sent
+    }
+
+    return sent.then((response) => {
+      return closeAfterJsonRpcResponse(response, requestId)
+    })
   }) as typeof fetch
 }
 
@@ -193,12 +408,17 @@ export function createConnectorClientHandle(input: {
   resolveAuth: ConnectorAuthResolver
   limiter: ConcurrencyLimiter
   logger?: LoggerLike
+  logsHost?: boolean
+  largeCallResponses?: boolean
   dependencies?: ConnectorClientDependencies
 }): ConnectorClientHandle {
   const createClient = input.dependencies?.createClient ?? createMCPClient
   const transportFetch = createConnectorTransportFetch(
     input.transport,
     input.dependencies?.createFetch,
+    input.logger,
+    input.logsHost,
+    input.largeCallResponses,
   )
   let clientPromise: Promise<ConnectorClient> | null = null
   let isClosed = false

@@ -43,7 +43,7 @@
         </span>
         <NuxtLink
           v-if="grant.scope === 'always' && grant.source === 'besidka'"
-          :to="BESIDKA_TOOL_PERMISSIONS_LABS_PATH"
+          :to="besidkaPermissionsPath"
           class="btn btn-ghost btn-xs min-h-6 shrink-0"
           :aria-label="`Change the permission of ${grant.toolName}`"
           data-testid="chat-context-approval-manage-besidka"
@@ -85,12 +85,17 @@
 </template>
 
 <script setup lang="ts">
-import { BESIDKA_TOOL_PERMISSIONS_LABS_PATH } from '~/utils/besidka-tool-permissions'
+import { getBesidkaToolPermissionsPath } from '~/utils/besidka-tool-permissions'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
 
 const headingId = useId()
+const connectorsFeature = useFeature('connectors')
+
+const besidkaPermissionsPath = computed<string>(() => {
+  return getBesidkaToolPermissionsPath(connectorsFeature.value.active)
+})
 const {
   grants,
   hasChatGrants,

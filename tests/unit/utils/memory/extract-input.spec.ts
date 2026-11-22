@@ -177,6 +177,28 @@ describe('memory extraction input', () => {
     expect(window.transcript).toContain('A normal answer')
   })
 
+  it('excludes a built-in command and the report Besidka wrote', async () => {
+    const { loadMemoryExtractionWindow } = await loadInput()
+
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('COMMAND-NOTE'),
+      { type: 'data-command-invocation', data: { command: 'stats' } },
+    ], minutesBefore(50))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      { type: 'data-command-report', data: { command: 'stats' } },
+      textPart('REPORT-FAVORITE-MODEL'),
+    ], minutesBefore(49))
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('A normal question'),
+    ], minutesBefore(48))
+
+    const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+    expect(window.transcript).not.toContain('COMMAND-NOTE')
+    expect(window.transcript).not.toContain('REPORT-FAVORITE-MODEL')
+    expect(window.transcript).toContain('A normal question')
+  })
+
   it('excludes a branched turn that kept only the connector marker',
     async () => {
       const { loadMemoryExtractionWindow } = await loadInput()

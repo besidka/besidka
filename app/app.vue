@@ -130,6 +130,12 @@ async function onException(exception: unknown) {
 
   reportException(exception, parsedException.message)
 
+  if (isChunkLoadError(exception)) {
+    useNuxtApp().$recoverFromChunkError?.()
+
+    return
+  }
+
   if (parsedException.status === 401) {
     const { fetchSession, session } = useAuth()
 

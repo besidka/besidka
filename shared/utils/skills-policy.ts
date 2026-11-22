@@ -1,3 +1,8 @@
+import {
+  BUILTIN_COMMAND_NAMES,
+  PLANNED_BUILTIN_COMMAND_NAMES,
+} from '#shared/utils/builtin-commands'
+
 const KIBIBYTE = 1024
 const MEBIBYTE = 1024 * KIBIBYTE
 
@@ -118,15 +123,15 @@ export const SKILL_MCP_WRITES_PER_HOUR = 30
 export const SKILL_MCP_READS_PER_HOUR = 600
 export const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
-export const SKILL_RESERVED_SLASH_NAMES = [
-  'new',
-  'model',
-  'search',
-  'image',
-  'memory',
-  'project',
-  'help',
-] as const
+/**
+ * Commands a skill can never take: the built-in commands Besidka runs
+ * (`BUILTIN_COMMANDS`) and the ones it keeps for later. Both lists live in
+ * `#shared/utils/builtin-commands`, the one source of truth.
+ */
+export const SKILL_RESERVED_SLASH_NAMES: readonly string[] = [
+  ...PLANNED_BUILTIN_COMMAND_NAMES,
+  ...BUILTIN_COMMAND_NAMES,
+]
 
 export type SkillSlashNameRejection = 'invalid-name' | 'reserved'
 
@@ -163,14 +168,16 @@ export function isReservedSkillSlashName(name: string): boolean {
 }
 
 /**
- * What the user typed in a Command field, ready to validate: trimmed, one
- * leading `/` dropped (the placeholder is `/my-command`, so people type it).
- * Empty means "no command" and is `null`.
+ * What the user typed in a Command field, ready to validate: trimmed,
+ * lowercased and one leading `/` dropped (the placeholder is `/my-command`,
+ * so people type it). Every write path and the client use this one rule, so
+ * `/Review` and `review` are the same command. Empty means "no command" and
+ * is `null`.
  */
 export function normalizeSkillCommand(
   value: string | null | undefined,
 ): string | null {
-  const trimmed = (value ?? '').trim()
+  const trimmed = (value ?? '').trim().toLowerCase()
   const withoutSlash = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed
 
   return withoutSlash.length > 0 ? withoutSlash : null
@@ -205,11 +212,27 @@ export function validateSkillSlashName(
 }
 
 /**
+ * The one sentence for a command another skill of the same user already
+ * uses, on every write path and in the Command field.
+ */
+export function formatSkillCommandTakenMessage(
+  command: string,
+  skillName: string | null,
+): string {
+  return skillName
+    ? `The command /${command} is already used by the skill ${skillName}`
+    : `The command /${command} is already used by another skill`
+}
+
+/**
  * The inline message for what the user typed in a Command field, or an empty
- * string when it is empty (no command) or valid.
+ * string when it is empty (no command) or valid. `usedCommands` maps the
+ * commands of the user's other skills to their names, so a duplicate is
+ * named before the server is asked.
  */
 export function getSkillCommandProblem(
   value: string | null | undefined,
+  usedCommands?: ReadonlyMap<string, string>,
 ): string {
   const command = normalizeSkillCommand(value)
 
@@ -219,5 +242,13 @@ export function getSkillCommandProblem(
 
   const validation = validateSkillSlashName(command)
 
-  return validation.valid ? '' : validation.message
+  if (!validation.valid) {
+    return validation.message
+  }
+
+  const usedBy = usedCommands?.get(command)
+
+  return usedBy === undefined
+    ? ''
+    : formatSkillCommandTakenMessage(command, usedBy)
 }

@@ -2478,8 +2478,18 @@ describe('useChat request body connectorIds', () => {
     }).body
   }
 
-  function setSelection(chatKey: string, ids: string[], isKnown: boolean) {
-    useChatConnectorSelection().selection.value = { chatKey, ids, isKnown }
+  function setSelection(
+    chatKey: string,
+    ids: string[],
+    isKnown: boolean,
+    offIds: string[] = [],
+  ) {
+    useChatConnectorSelection().selection.value = {
+      chatKey,
+      ids,
+      offIds,
+      isKnown,
+    }
   }
 
   beforeEach(() => {
@@ -2497,6 +2507,17 @@ describe('useChat request body connectorIds', () => {
     const body = await buildRequestBody()
 
     expect(body.connectorIds).toEqual(['c1', 'c2'])
+    expect(body.offConnectorIds).toEqual([])
+  })
+
+  it('sends the connectors this chat switched off', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', ['c1'], true, ['c9'])
+
+    const body = await buildRequestBody()
+
+    expect(body.connectorIds).toEqual(['c1'])
+    expect(body.offConnectorIds).toEqual(['c9'])
   })
 
   it('sends an empty array when the user turned every connector off', async () => {
@@ -2515,6 +2536,7 @@ describe('useChat request body connectorIds', () => {
     const body = await buildRequestBody()
 
     expect('connectorIds' in body).toBe(false)
+    expect('offConnectorIds' in body).toBe(false)
   })
 
   it('omits the field until the stored choice is known', async () => {

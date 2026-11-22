@@ -1037,7 +1037,10 @@ breach runbook (`docs/legal/breach-runbook.md`, sections 2.2, 2.5 and 3).
   `material` classification and `noticeId` (`2026-12-code-and-documents`), with
   a note that says the connectors text is **not** described by that notice. Read
   the note, not the id. `/admin/legal` shows notices, not this record, so the
-  reused id approves nothing about connectors.
+  reused id approves nothing about connectors. Since the merge of `main` on
+  2026-11-22 both records carry `2026-11-support-requests`, the notice for
+  support requests, which describes neither connectors nor skills; the same
+  rule applies.
 - **Merging publishes the text.** The pages go live with the next deploy and
   content import, before any notice. Policy "Changes to this policy" promises a
   notice at least 30 days before a material change takes effect, so the owner

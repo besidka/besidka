@@ -1,6 +1,7 @@
 import { isConnectorUsedMarker } from '#shared/utils/connectors-parts'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import type { UIMessage } from 'ai'
 import type {
   ComplianceBlockedCounts,
@@ -142,13 +143,19 @@ function memoryExtractionPartToolName(part: unknown): string | null {
  * An assistant turn that read memory, other chats, a connector or used a
  * Besidka tool (`besidka__`). Its text quotes data the user did not write in
  * this chat (stored memory, another chat, a third party's records, the
- * user's other Besidka data), so extraction skips it.
+ * user's other Besidka data), so extraction skips it. A built-in command
+ * (`/cost`, `/stats`, `/debug`) and the report Besidka wrote back are skipped
+ * too: the report is Besidka's own numbers, not the user's words.
  */
 export function isMemoryExtractionRecallMessage(row: {
   role: string
   parts: unknown
   tools: unknown
 }): boolean {
+  if (isBuiltinCommandMessage(row)) {
+    return true
+  }
+
   if (row.role !== 'assistant') {
     return false
   }

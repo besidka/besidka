@@ -23,6 +23,13 @@ describe('detectMermaidLimit', () => {
       .toEqual({ code: 'mermaid-edge-limit', limit: MERMAID_MAX_EDGES })
   })
 
+  it('maps the edge limit message pele 1.13 and later throws', () => {
+    expect(detectMermaidLimit(
+      'Edge limit exceeded. The limit is 500.',
+      'flowchart TD\nA-->B',
+    )).toEqual({ code: 'mermaid-edge-limit', limit: MERMAID_MAX_EDGES })
+  })
+
   it('measures an oversized source before Mermaid replaces it with a stub', () => {
     const source = 'A'.repeat(MERMAID_MAX_TEXT_SIZE + 1)
 

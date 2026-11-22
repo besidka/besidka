@@ -1,6 +1,7 @@
 import type { UIMessage } from 'ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createError } from 'evlog'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { parsePersistedChatFailureNotice } from '#shared/utils/chat-failure-text'
 import {
   READ_CHAT_CONTINUATION_PREFIX,
@@ -62,7 +63,7 @@ function buildCurrentChatError() {
 }
 
 function extractMessageText(parts: UIMessage['parts']): string {
-  if (!Array.isArray(parts)) {
+  if (!Array.isArray(parts) || isBuiltinCommandMessage({ parts })) {
     return ''
   }
 

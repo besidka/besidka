@@ -389,8 +389,25 @@ describe('createAuthoredSkill', () => {
     expect(await failureOf(create({
       kind: 'blank',
       name: 'my-skill',
-      command: '/Foo',
+      command: 'a_b',
     }))).toMatchObject({ status: 400, code: 'reserved-name' })
+  })
+
+  it('refuses a built-in command in any case', async () => {
+    expect(await failureOf(create({
+      kind: 'blank',
+      name: 'my-skill',
+      command: '/Debug',
+    }))).toMatchObject({
+      status: 400,
+      code: 'reserved-name',
+      message: '/debug is reserved by Besidka',
+    })
+  })
+
+  it('stores an uppercase command lowercased', async () => {
+    expect(await create({ kind: 'blank', name: 'my-skill', command: '/Run-It' }))
+      .toMatchObject({ command: 'run-it' })
   })
 
   it('refuses a command another skill already has with command-taken', async () => {
@@ -399,7 +416,7 @@ describe('createAuthoredSkill', () => {
     const failure = await failureOf(create({
       kind: 'blank',
       name: 'second',
-      command: 'run-it',
+      command: '/Run-It',
     }))
     const rows = await testDb.db.select()
       .from(schema.skills)
@@ -408,7 +425,7 @@ describe('createAuthoredSkill', () => {
     expect(failure).toMatchObject({
       status: 409,
       code: 'command-taken',
-      message: '/run-it is already a command',
+      message: 'The command /run-it is already used by the skill first',
     })
     expect(rows).toHaveLength(1)
   })

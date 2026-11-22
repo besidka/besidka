@@ -7,6 +7,9 @@ import {
   useComposerCommands,
 } from '../../../app/composables/composer-commands'
 import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
+import { useComposerBuiltinCommand } from '../../../app/composables/composer-builtin-command'
+import { BUILTIN_COMMANDS } from '#shared/utils/builtin-commands'
+import type { RegisteredBuiltinCommand } from '#shared/utils/builtin-commands'
 import type { ComposerSkillItem } from '../../../app/composables/composer-skills'
 import type { TextSnapshot } from '../../../app/composables/markdown-textarea'
 
@@ -65,6 +68,7 @@ const DEFAULT_ITEMS = [MEETING_NOTES, WRITE, OFF_SKILL, NO_COMMAND_SKILL]
 interface SetupOptions {
   items?: ComposerSkillItem[]
   isAvailable?: boolean
+  builtins?: RegisteredBuiltinCommand[]
 }
 
 interface KeyOptions {
@@ -111,7 +115,9 @@ function setup(options: SetupOptions = {}) {
   const text = ref<string>('')
   const items = ref<ComposerSkillItem[]>(options.items ?? DEFAULT_ITEMS)
   const isAvailable = ref<boolean>(options.isAvailable ?? true)
+  const builtins = ref<RegisteredBuiltinCommand[]>(options.builtins ?? [])
   const invocation = useComposerSkillInvocation()
+  const builtinCommand = useComposerBuiltinCommand()
   const insertText = vi.fn((replacement: string, snapshot?: TextSnapshot) => {
     const start = snapshot?.start ?? element.selectionStart
     const end = snapshot?.end ?? element.selectionEnd
@@ -132,6 +138,7 @@ function setup(options: SetupOptions = {}) {
       text,
       items,
       isAvailable,
+      builtins,
       insertText,
     })
   })!
@@ -157,7 +164,9 @@ function setup(options: SetupOptions = {}) {
     text,
     items,
     isAvailable,
+    builtins,
     invocation,
+    builtinCommand,
     insertText,
     commands,
     type,
@@ -168,12 +177,14 @@ function setup(options: SetupOptions = {}) {
 beforeEach(() => {
   featureState.isCommandsActive = true
   useComposerSkillInvocation().clear()
+  useComposerBuiltinCommand().clear()
 })
 
 afterEach(() => {
   scope?.stop()
   scope = null
   useComposerSkillInvocation().clear()
+  useComposerBuiltinCommand().clear()
   document.body.innerHTML = ''
 })
 
@@ -187,6 +198,7 @@ describe('useComposerCommands picker', () => {
       return command.command
     })).toEqual(['meeting-notes', 'write'])
     expect(commands.matches.value[0]).toEqual({
+      kind: 'skill',
       skillId: 'skl1',
       command: 'meeting-notes',
       name: 'Meeting notes',
@@ -1068,5 +1080,145 @@ describe('useComposerCommands availability', () => {
     commands.refresh()
 
     expect(commands.isOpen.value).toBe(true)
+  })
+})
+
+describe('useComposerCommands built-in commands', () => {
+  const builtins = [...BUILTIN_COMMANDS]
+
+  it('lists built-ins with the skill commands, marked as built-in', () => {
+    const { commands, type } = setup({ builtins })
+
+    type('/')
+
+    expect(commands.matches.value.map((command) => {
+      return `${command.kind}:${command.command}`
+    })).toEqual([
+      'builtin:cost',
+      'builtin:debug',
+      'skill:meeting-notes',
+      'builtin:stats',
+      'skill:write',
+    ])
+    expect(commands.matches.value[3]).toEqual({
+      kind: 'builtin',
+      command: 'stats',
+      name: 'Usage stats',
+      description: 'Your models, tokens, cost and active days',
+      argumentHint: '[7d|30d|all]',
+    })
+  })
+
+  it('offers built-ins when no skill command is available', () => {
+    const { commands, type } = setup({ builtins, isAvailable: false })
+
+    type('/co')
+
+    expect(commands.isOpen.value).toBe(true)
+    expect(commands.hasNoCommands.value).toBe(false)
+    expect(commands.matches.value.map(command => command.command))
+      .toEqual(['cost'])
+  })
+
+  it('offers nothing with the commands flag off', () => {
+    featureState.isCommandsActive = false
+
+    const { commands, type } = setup({ builtins })
+
+    type('/')
+
+    expect(commands.isOpen.value).toBe(false)
+    expect(commands.isEnabled.value).toBe(false)
+  })
+
+  it('sets the built-in from a typed token and strips it at send', () => {
+    const { commands, builtinCommand, invocation, type } = setup({ builtins })
+
+    type('/stats 7d')
+
+    expect(builtinCommand.command.value).toBe('stats')
+    expect(builtinCommand.part.value).toEqual({
+      type: 'data-command-invocation',
+      data: { command: 'stats' },
+    })
+    expect(invocation.invocation.value).toBeNull()
+    expect(commands.activeToken.value).toEqual({
+      start: 0,
+      end: 6,
+      command: 'stats',
+    })
+    expect(commands.stripFromText('/stats 7d')).toBe('7d')
+
+    type('stats 7d')
+
+    expect(builtinCommand.command.value).toBeNull()
+  })
+
+  it('replaces an attached skill, one command per message', () => {
+    const { builtinCommand, invocation, type } = setup({ builtins })
+
+    invocation.set({ skillId: 'skl2', name: 'Writing style', version: 1 })
+    type('/cost')
+
+    expect(builtinCommand.command.value).toBe('cost')
+    expect(invocation.invocation.value).toBeNull()
+
+    type('/write')
+
+    expect(builtinCommand.command.value).toBeNull()
+    expect(invocation.invocation.value).toMatchObject({
+      skillId: 'skl2',
+      source: 'text',
+    })
+  })
+
+  it('leaves the token plain text once the built-in is cleared', () => {
+    const { commands, builtinCommand, type } = setup({ builtins })
+
+    type('/debug ')
+    builtinCommand.clear()
+
+    expect(commands.activeToken.value).toBeNull()
+    expect(commands.stripFromText('/debug ')).toBe('/debug ')
+  })
+
+  describe('a skill that holds a built-in name', () => {
+    const COST_SKILL: ComposerSkillItem = {
+      id: 'skl9',
+      name: 'My cost skill',
+      description: 'Created before the name was reserved',
+      version: 1,
+      mode: 'auto',
+      command: 'cost',
+    }
+    const items = [COST_SKILL, WRITE]
+
+    it('is not offered next to the built-in in the picker', () => {
+      const { commands, type } = setup({ builtins, items })
+
+      type('/co')
+
+      expect(commands.matches.value.map((command) => {
+        return `${command.kind}:${command.command}`
+      })).toEqual(['builtin:cost'])
+    })
+
+    it('runs the built-in for the typed token, never the skill', () => {
+      const { builtinCommand, invocation, type } = setup({ builtins, items })
+
+      type('/cost')
+
+      expect(builtinCommand.command.value).toBe('cost')
+      expect(invocation.invocation.value).toBeNull()
+    })
+
+    it('keeps the skill commands that do not collide', () => {
+      const { commands, type } = setup({ builtins, items })
+
+      type('/wr')
+
+      expect(commands.matches.value.map(command => command.command))
+        .toEqual(['write'])
+    })
   })
 })

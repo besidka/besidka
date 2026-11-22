@@ -159,6 +159,63 @@
             />
             {{ memoryToggleLabel }}
           </button>
+          <button
+            v-if="data.kind === 'owned'"
+            type="button"
+            class="btn btn-sm btn-soft"
+            :disabled="isCopyingDebugInfo"
+            :title="DEBUG_INFO_TITLE"
+            data-testid="chat-context-debug-info"
+            @click="onCopyDebugInfo"
+          >
+            <Icon
+              :name="debugInfoCopied ? 'lucide:check' : 'lucide:bug'"
+              size="16"
+            />
+            {{ debugInfoCopied ? 'Copied' : 'Copy debug info' }}
+          </button>
+          <button
+            v-if="data.kind === 'owned' && isStandalone"
+            type="button"
+            class="btn btn-sm btn-soft"
+            data-testid="chat-context-copy-url"
+            @click="copyUrl"
+          >
+            <Icon
+              :name="urlCopied ? 'lucide:check' : 'lucide:link-2'"
+              size="16"
+            />
+            {{ urlCopied ? 'Copied' : 'Copy URL' }}
+          </button>
+          <span
+            class="sr-only"
+            role="status"
+          >
+            {{ debugInfoCopied ? 'Debug info copied' : '' }}
+            {{ urlCopied ? 'URL copied' : '' }}
+          </span>
+        </div>
+        <div
+          v-if="debugInfoFallback"
+          class="grid gap-2"
+        >
+          <textarea
+            readonly
+            rows="8"
+            class="textarea textarea-sm w-full font-mono text-xs"
+            aria-label="Debug info to copy"
+            data-testid="chat-context-debug-info-fallback"
+            :value="debugInfoFallback"
+            @focus="selectFallbackText"
+          />
+          <button
+            type="button"
+            class="btn btn-xs btn-ghost justify-self-end"
+            data-testid="chat-context-debug-info-hide"
+            @click="clearDebugInfoFallback"
+          >
+            Hide
+          </button>
         </div>
       </header>
       <p
@@ -279,7 +336,7 @@
             class="mt-2 border-t border-base-300 pt-2"
           >
             <NuxtLink
-              to="/profile/connectors"
+              :to="manageConnectorsLink"
               class="chat-context-row min-h-11 text-sm"
               data-testid="chat-context-manage-connectors"
               @click="close"
@@ -336,6 +393,9 @@ interface ContextGroup {
   total: number
 }
 
+const DEBUG_INFO_TITLE = 'Copy ids and statuses to send to support. '
+  + 'Never includes message text or keys.'
+
 const idPrefix = useId()
 const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
@@ -359,6 +419,17 @@ const {
 } = useChatMemoryExclusion()
 
 const { savingSlug: pinSavingSlug, toggleChatPin } = useChatPin()
+
+const { isStandalone } = useStandaloneDisplay()
+const { copied: urlCopied, copyUrl } = useCurrentUrlCopy()
+
+const {
+  isCopying: isCopyingDebugInfo,
+  copied: debugInfoCopied,
+  fallbackReport: debugInfoFallback,
+  copyDebugInfo,
+  clearFallbackReport: clearDebugInfoFallback,
+} = useChatDebugInfo()
 
 const collapsedOverrides = useState<Record<string, boolean>>(
   'chat-context-collapsed-sections',
@@ -464,6 +535,17 @@ const hasManageConnectorsLink = computed<boolean>(() => {
     })
 })
 
+const manageConnectorsLink = computed<string>(() => {
+  const connectorIds = new Set((data.value?.used ?? [])
+    .filter(item => item.kind === 'connector' && item.meta?.connectorId)
+    .map(item => item.meta!.connectorId!))
+  const [connectorId] = connectorIds
+
+  return connectorIds.size === 1 && connectorId
+    ? `/chats/connectors?connector=${encodeURIComponent(connectorId)}`
+    : '/chats/connectors'
+})
+
 const visibleGroups = computed<ContextGroup[]>(() => {
   if (!data.value) {
     return []
@@ -534,6 +616,18 @@ function onBranch() {
   }
 
   branchOwnedChat(routeSlug.value)
+}
+
+watch(routeSlug, () => {
+  clearDebugInfoFallback()
+})
+
+async function onCopyDebugInfo() {
+  await copyDebugInfo(routeSlug.value)
+}
+
+function selectFallbackText(event: FocusEvent) {
+  (event.target as HTMLTextAreaElement).select()
 }
 
 async function onToggleMemoryExclusion() {

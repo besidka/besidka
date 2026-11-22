@@ -30,18 +30,7 @@
             />
           </template>
           <template #labelAfter>
-            <UiButton
-              mode="default"
-              text="Paste"
-              icon-name="lucide:clipboard-paste"
-              :icon-size="16"
-              icon-only
-              circle
-              ghost
-              size="xs"
-              tooltip-position="left"
-              @click="pasteAccountId"
-            />
+            <UiFormPasteButton @paste="pasteAccountId" />
           </template>
         </UiFormInput>
         <UiFormInput
@@ -61,18 +50,7 @@
             />
           </template>
           <template #labelAfter>
-            <UiButton
-              mode="default"
-              text="Paste"
-              icon-name="lucide:clipboard-paste"
-              :icon-size="16"
-              icon-only
-              circle
-              ghost
-              size="xs"
-              tooltip-position="left"
-              @click="pasteGatewayId"
-            />
+            <UiFormPasteButton @paste="pasteGatewayId" />
           </template>
         </UiFormInput>
         <UiFormInput
@@ -93,18 +71,7 @@
             />
           </template>
           <template #labelAfter>
-            <UiButton
-              mode="default"
-              text="Paste"
-              icon-name="lucide:clipboard-paste"
-              :icon-size="16"
-              icon-only
-              circle
-              ghost
-              size="xs"
-              tooltip-position="left"
-              @click="pasteApiKey"
-            />
+            <UiFormPasteButton @paste="pasteApiKey" />
           </template>
           <template #noteAfter>
             <span class="block">
@@ -229,7 +196,6 @@ const gatewayIdInput = ref<FormInputInstance | null>()
 const apiKeyInput = ref<FormInputInstance | null>()
 
 const { Validation } = useValidation()
-const { paste } = useClipboardWithPaste()
 const { refresh: refreshUserKeys } = useUserKeys()
 
 const accountId = shallowRef<string>(
@@ -265,24 +231,25 @@ const placeholder = computed<string>(() => {
 })
 
 async function pasteInto(
+  text: string,
   target: Ref<string>,
   input: Ref<FormInputInstance | null | undefined>,
 ) {
-  target.value = await paste()
+  target.value = text
   await nextTick()
   input.value?.dispatchChange()
 }
 
-function pasteAccountId() {
-  return pasteInto(accountId, accountIdInput)
+function pasteAccountId(text: string) {
+  return pasteInto(text, accountId, accountIdInput)
 }
 
-function pasteGatewayId() {
-  return pasteInto(gatewayId, gatewayIdInput)
+function pasteGatewayId(text: string) {
+  return pasteInto(text, gatewayId, gatewayIdInput)
 }
 
-function pasteApiKey() {
-  return pasteInto(apiKey, apiKeyInput)
+function pasteApiKey(text: string) {
+  return pasteInto(text, apiKey, apiKeyInput)
 }
 
 async function updateCredentials() {

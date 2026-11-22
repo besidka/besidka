@@ -3,14 +3,36 @@ import {
   CONNECTOR_OAUTH_STATE_MAX_LENGTH,
   CONNECTOR_OAUTH_STATE_TTL_SECONDS,
 } from '#shared/utils/connectors-policy'
+import type {
+  ConnectorCreatedVia,
+  ConnectorToolMode,
+} from '#shared/utils/connectors-policy'
 import type { ConnectorClientRegistration } from '~~/server/utils/connectors/store'
 
 const STATE_KEY_PREFIX = 'connectors:oauth:'
 const STATE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/
 
+/**
+ * A connector that does not exist yet: the sign-in of a new connector keeps
+ * everything the row will need in the pending state, so a canceled or failed
+ * sign-in leaves nothing in D1. The consent is what the user ticked on the
+ * connect screen, recorded on the row only when the callback creates it.
+ */
+export interface ConnectorOAuthDraft {
+  url: string
+  title: string
+  presetId: string | null
+  slugBase: string
+  createdVia: ConnectorCreatedVia
+  toolMode: ConnectorToolMode
+  consentIssuerHost: string
+  consentVersion: string
+}
+
 export interface ConnectorOAuthState {
   userId: number
-  connectorId: string
+  connectorId: string | null
+  draft?: ConnectorOAuthDraft
   codeVerifier: string
   issuer: string
   issParameterRequired: boolean
@@ -33,8 +55,9 @@ export function isWellFormedOAuthState(state: unknown): state is string {
 
 /**
  * Stores the pending sign-in under `connectors:oauth:<state>` for ten
- * minutes. The value is encrypted: it holds the PKCE verifier and, for a
- * confidential DCR client, its secret.
+ * minutes. The value is encrypted: it holds the PKCE verifier, for a
+ * confidential DCR client its secret and, for a connector that does not
+ * exist yet, its address (which can carry a secret).
  */
 export async function saveConnectorOAuthState(
   kv: KVNamespace,

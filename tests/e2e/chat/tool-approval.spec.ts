@@ -10,6 +10,7 @@ test.describe.configure({ mode: 'serial', timeout: 90_000 })
 const PROMPT = 'File a Linear issue for the login bug and remember that I '
   + 'use Safari.'
 const STEP = 'reasoning-approval-step'
+const BUBBLE = 'tool-approval-bubble'
 
 function streamBody(chunks: Record<string, unknown>[]): string {
   return [
@@ -66,7 +67,12 @@ async function interceptAnswers(
 async function openScenario(page: Page, scenario: string) {
   await page.goto(`/chats/test?scenario=${scenario}`)
   await waitForHydration(page)
-  await expect(page.getByTestId(STEP).first()).toBeVisible()
+  await expect(page.getByTestId(BUBBLE).getByTestId(STEP).first())
+    .toBeVisible()
+}
+
+async function expandSteps(page: Page) {
+  await page.getByTestId('reasoning-header').last().click()
 }
 
 test('an allowed call resumes the same reply with the answer', async ({ browser }) => {
@@ -95,27 +101,33 @@ test('an allowed call resumes the same reply with the answer', async ({ browser 
 
   await openScenario(page, 'tool-approval')
 
-  const step = page.getByTestId(STEP)
+  const bubble = page.getByTestId(BUBBLE)
+  const step = bubble.getByTestId(STEP)
 
   await expect(step).toHaveAttribute('data-state', 'pending')
-  await expect(page.getByTestId('reasoning-approval-step-title'))
+  await expect(bubble.getByTestId('reasoning-approval-step-title'))
     .toHaveText('linear wants to run create_issue')
-  await expect(page.getByTestId('reasoning-approval-step-reason'))
-    .toHaveText('Runs only after you allow it')
-  await expect(page.getByTestId('reasoning-approval-step-allow-chat'))
+  await expect(bubble.getByTestId('reasoning-approval-step-reason'))
+    .toHaveText(
+      'Asks before each use. Change it in the connector\'s tool settings.',
+    )
+  await expect(bubble.getByTestId('reasoning-approval-step-allow-chat'))
     .toBeVisible()
-  await expect(page.getByTestId('reasoning-approval-step-allow-always'))
+  await expect(bubble.getByTestId('reasoning-approval-step-allow-always'))
     .toBeVisible()
-  await expect(page.getByTestId('tool-approval-chip'))
-    .toHaveText('1 action waiting for approval')
+  await expect(bubble.getByTestId('tool-approval-bubble-heading'))
+    .toHaveText('Waiting for your approval')
+  await expect(page.getByTestId('tool-approval-chip')).toHaveCount(0)
   await expect(page.getByTestId('tool-approval-live-region'))
     .toHaveText('Action waiting for approval')
 
-  await page.getByTestId('tool-approval-chip').click()
+  await step.focus()
   await expect(step).toBeFocused()
   await page.keyboard.press('Enter')
 
   await expect(page.getByText('Filed WEB-42 for you.')).toBeVisible()
+  await expect(bubble).toHaveCount(0)
+  await expandSteps(page)
   await expect(page.getByTestId(STEP)).toHaveCount(0)
   await expect(page.getByTestId('reasoning-approval-outcome'))
     .toContainText('Allowed')
@@ -156,11 +168,11 @@ test('two calls send one request once both are answered', async ({ browser }) =>
 
   await openScenario(page, 'tool-approvals')
 
-  const steps = page.getByTestId(STEP)
+  const steps = page.getByTestId(BUBBLE).getByTestId(STEP)
 
   await expect(steps).toHaveCount(2)
-  await expect(page.getByTestId('tool-approval-chip'))
-    .toHaveText('2 actions waiting for approval')
+  await expect(page.getByTestId('tool-approval-bubble-heading'))
+    .toHaveText('2 actions waiting for your approval')
   await expect(steps.nth(1).getByTestId('reasoning-approval-step-title'))
     .toHaveText('Save to memory')
   await expect(steps.nth(1).getByTestId('reasoning-approval-step-reason'))
@@ -175,6 +187,8 @@ test('two calls send one request once both are answered', async ({ browser }) =>
 
   await steps.nth(1).getByTestId('reasoning-approval-step-allow-once').click()
 
+  await expect(page.getByTestId(BUBBLE)).toHaveCount(0)
+  await expandSteps(page)
   await expect(page.getByTestId(STEP)).toHaveCount(1)
   await expect(page.getByTestId(STEP)).toHaveAttribute('data-state', 'denied')
   expect(bodies).toHaveLength(1)
@@ -205,7 +219,8 @@ test('an expired approval offers Ask again with the original prompt', async ({ b
 
   await page.getByTestId('reasoning-approval-step-allow-once').click()
 
-  await expect(page.getByTestId(STEP)).toHaveAttribute('data-state', 'expired')
+  await expect(page.getByTestId(BUBBLE).getByTestId(STEP))
+    .toHaveAttribute('data-state', 'expired')
   await expect(page.getByTestId('reasoning-approval-step-failure'))
     .toContainText('This approval expired.')
   await expect(page.locator('.alert-error')).toHaveCount(0)
@@ -232,7 +247,8 @@ test('a rate limit brings the buttons back with a toast', async ({ browser }) =>
   await page.getByTestId('reasoning-approval-step-allow-once').click()
 
   await expect(page.getByText('Too many approval answers')).toBeVisible()
-  await expect(page.getByTestId(STEP)).toHaveAttribute('data-state', 'pending')
+  await expect(page.getByTestId(BUBBLE).getByTestId(STEP))
+    .toHaveAttribute('data-state', 'pending')
   await expect(page.getByTestId('reasoning-approval-step-allow-once'))
     .toBeEnabled()
 })

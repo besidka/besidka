@@ -32,9 +32,9 @@ async function persistPipeline(parts: unknown[], secrets: string[] = []) {
     logger,
   })
 
-  return redactConnectorToolPartsForPersistence(
-    stripUndeliveredInlineDataParts(normalized, logger),
-    secrets,
+  return stripUndeliveredInlineDataParts(
+    redactConnectorToolPartsForPersistence(normalized, secrets),
+    logger,
   )
 }
 
@@ -82,5 +82,34 @@ describe('connector parts through the real persistence pipeline', () => {
     expect(persisted.filter(part => part.type === 'dynamic-tool'))
       .toHaveLength(CONNECTOR_CALLS_PER_TURN)
     expect(persisted.at(-1)).toEqual({ type: 'text', text: 'Summary.' })
+  })
+
+  it('keeps the kept-image part of a connector call unchanged', async () => {
+    const imagePart = {
+      type: 'data-connector-image',
+      id: 'connector-image-call-1-0',
+      data: {
+        toolCallId: 'call-1',
+        fileId: 'file-1',
+        url: '/files/connector-abc.png',
+        mediaType: 'image/png',
+        width: 8,
+        height: 8,
+        size: 75,
+        name: 'linear-list_issues.png',
+      },
+    }
+    const persisted = await persistPipeline([
+      connectorPart(1, frameUntrustedResult({
+        slug: 'linear',
+        toolName: 'list_issues',
+        text: '[image/png, 75 B: shown to the model, kept with this chat]',
+      }).text),
+      imagePart,
+      { type: 'text', text: 'It is red.' },
+    ])
+
+    expect(persisted).toHaveLength(3)
+    expect(persisted[1]).toEqual(imagePart)
   })
 })

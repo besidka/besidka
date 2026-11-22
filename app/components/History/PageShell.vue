@@ -21,7 +21,10 @@
         :key="tab.id"
         :to="tab.to"
         class="tab grow gap-2"
-        :class="{ 'tab-active': activeTab === tab.id }"
+        :class="[
+          { 'tab-active': activeTab === tab.id },
+          tightPaddingClass,
+        ]"
         :aria-current="activeTab === tab.id ? 'page' : undefined"
         :aria-label="tab.label"
         :data-testid="`tab-${tab.id}`"
@@ -57,6 +60,7 @@ type HistoryTab
     | 'artifacts'
     | 'documents'
     | 'skills'
+    | 'connectors'
     | 'shared'
 
 interface HistoryTabLink {
@@ -69,6 +73,7 @@ interface HistoryTabLink {
 const BASE_TAB_COUNT = 3
 const FIVE_TAB_COUNT = 5
 const SIX_TAB_COUNT = 6
+const SEVEN_TAB_COUNT = 7
 
 defineProps<{
   activeTab: HistoryTab
@@ -77,15 +82,21 @@ defineProps<{
 const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
 const skillsFeature = useFeature('skills')
+const connectorsFeature = useFeature('connectors')
 
 /**
  * Inactive tabs keep only their icon when the row cannot hold every label.
  * Six labeled tabs need about 570px (measured with Nunito: 82, 96, 100, 118,
- * 80 and 91px), five need about 480px, so the container width that triggers
- * the collapse grows with the tab count. The class strings are written out in
+ * 80 and 91px), five need about 480px, and seven (Connectors adds about
+ * 105px more) need about 790px, so the container width that triggers the
+ * collapse grows with the tab count. The class strings are written out in
  * full so Tailwind can see them.
  */
 const collapseClass = computed<string>(() => {
+  if (tabs.value.length >= SEVEN_TAB_COUNT) {
+    return '@max-[50rem]:sr-only'
+  }
+
   if (tabs.value.length >= SIX_TAB_COUNT) {
     return '@max-[40rem]:sr-only'
   }
@@ -93,6 +104,10 @@ const collapseClass = computed<string>(() => {
   return tabs.value.length === FIVE_TAB_COUNT
     ? '@max-[34rem]:sr-only'
     : '@max-md:sr-only'
+})
+
+const tightPaddingClass = computed<string>(() => {
+  return tabs.value.length >= SEVEN_TAB_COUNT ? 'max-sm:[--tab-p:0.5rem]' : ''
 })
 
 const tabs = computed<HistoryTabLink[]>(() => {
@@ -135,6 +150,15 @@ const tabs = computed<HistoryTabLink[]>(() => {
       to: '/chats/skills',
       label: 'Skills',
       icon: 'lucide:sparkles',
+    })
+  }
+
+  if (connectorsFeature.value.active) {
+    tabLinks.push({
+      id: 'connectors',
+      to: '/chats/connectors',
+      label: 'Connectors',
+      icon: 'lucide:cable',
     })
   }
 

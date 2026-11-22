@@ -32,11 +32,11 @@ import {
   isUniqueViolation,
 } from '~~/server/utils/skills/unique-violation'
 import { countUserSkills } from '~~/server/utils/skills/usage'
+import { createSkillEditError } from '~~/server/utils/skills/versions/errors'
 import {
-  createSkillCommandTakenError,
-  createSkillEditError,
-} from '~~/server/utils/skills/versions/errors'
-import { resolveSkillCommand } from '~~/server/utils/skills/versions/settings'
+  createRacedCommandTakenError,
+  resolveSkillCommand,
+} from '~~/server/utils/skills/versions/settings'
 import {
   asBatch,
   buildVersionStatements,
@@ -337,7 +337,12 @@ export async function createAuthoredSkill(
     })
 
     if (findUniqueViolation(exception)?.includes('slash_name')) {
-      throw createSkillCommandTakenError(command ?? '')
+      throw await createRacedCommandTakenError({
+        db,
+        userId,
+        command: command ?? '',
+        exceptSkillId: createdSkillId,
+      })
     }
 
     throw exception

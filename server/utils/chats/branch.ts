@@ -2,7 +2,9 @@ import type { BatchItem } from 'drizzle-orm/batch'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createError } from 'evlog'
+import { TOOL_BUDGET_PART_TYPE } from '#shared/utils/tool-rounds'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
 import {
   buildConnectorUsedMarkerPart,
   CONNECTORS_NOTICE_PART_TYPE,
@@ -116,8 +118,10 @@ function isNonToolMessagePart(
   return typeof type === 'string'
     && type !== 'dynamic-tool'
     && type !== CONNECTORS_NOTICE_PART_TYPE
+    && type !== CONNECTOR_IMAGE_PART_TYPE
     && type !== TOOL_APPROVAL_DATA_PART_TYPE
     && type !== TOOL_GRANT_DATA_PART_TYPE
+    && type !== TOOL_BUDGET_PART_TYPE
     && !type.startsWith('tool-')
 }
 

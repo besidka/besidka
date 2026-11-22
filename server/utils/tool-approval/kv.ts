@@ -35,8 +35,6 @@ const pendingSnapshotSchema = z.object({
   model: z.string().min(1).max(TOOL_NAME_MAX_LENGTH),
   gateway: z.string().max(SUBJECT_ID_MAX_LENGTH).nullable(),
   reasoning: z.enum(['off', 'low', 'medium', 'high']),
-  toolNames: z.array(z.string().max(TOOL_NAME_MAX_LENGTH))
-    .max(TOOL_LIST_MAX),
   connectorIds: z.array(subjectIdSchema).max(TOOL_LIST_MAX),
 })
 
@@ -167,6 +165,22 @@ function payloadBytes(value: unknown): number {
     : new TextEncoder().encode(serialized).length
 }
 
+function assertReadable(schema: z.ZodType, record: unknown): void {
+  const parsed = schema.safeParse(record)
+
+  if (parsed.success) {
+    return
+  }
+
+  throw createError({
+    message: 'Approval record is invalid',
+    status: 500,
+    why: parsed.error.issues
+      .map(issue => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; '),
+  })
+}
+
 async function putRecord(
   kv: KVNamespace,
   key: string,
@@ -259,7 +273,9 @@ async function readRecord<Schema extends z.ZodType>(
  * Stores the pending record and lists it in the per-chat index. Refuses a
  * record whose serialized input is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES`
  * (413): the user is shown, and the model signs, exactly this input, so it
- * is never cut down.
+ * is never cut down. Refuses a record its own schema would reject on read
+ * (500), so a pause that could never be answered fails when it is stored
+ * instead of reading as expired at the answer.
  */
 export async function putToolApproval(
   kv: KVNamespace,
@@ -277,6 +293,7 @@ export async function putToolApproval(
     })
   }
 
+  assertReadable(pendingApprovalSchema, record)
   await indexChatRecord(kv, record.chatPublicId, { approvalId })
   await putRecord(kv, key, record)
 }
@@ -310,6 +327,7 @@ export async function putToolApprovalTurn(
 ): Promise<void> {
   const key = toolApprovalTurnKey(messagePublicId)
 
+  assertReadable(turnRecordSchema, record)
   await indexChatRecord(kv, record.chatPublicId, {
     messageId: messagePublicId,
   })

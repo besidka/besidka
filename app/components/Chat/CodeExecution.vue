@@ -90,7 +90,7 @@
       <pre
         tabindex="0"
         aria-label="Code preview"
-        class="m-0 overflow-x-auto rounded-field border border-base-300 bg-base-100 p-2 font-mono text-xs leading-relaxed whitespace-pre"
+        class="m-0 overflow-x-auto rounded-box border border-base-300 bg-base-100 p-2 font-mono text-xs leading-relaxed whitespace-pre"
         data-testid="code-execution-preview"
       ><code>{{ preview.text }}</code></pre>
       <button
@@ -204,7 +204,7 @@
     </div>
     <div
       v-if="skippedFiles.length"
-      class="mx-2 mb-2 rounded-field border border-warning/40 bg-warning/10 p-2 text-xs"
+      class="mx-2 mb-2 rounded-box border border-warning/40 bg-warning/10 p-2 text-xs"
       data-testid="code-execution-skipped"
     >
       <p class="flex items-center gap-1.5 font-medium">

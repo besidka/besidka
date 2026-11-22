@@ -82,6 +82,31 @@ single icon (about 0.3 KB) ships in the client bundle and needs no request at
 all. Any other icon from a non-pinned collection must be added the same way
 (or its collection added to `iconCollections`).
 
+## The landing footer logos are in the client bundle too
+
+The landing page (footer and `content/index.md`) uses three
+`streamline-logos:` icons: `github-logo-2-solid`, `linkedin-logo-block` and
+`twitter-logo-1-solid`. `@iconify-json/streamline-logos` is a dev-only
+dependency and `icon.clientBundle.icons` lists all three (about 1 KB), so the
+landing page never calls `/api/_nuxt_icon/streamline-logos.json`.
+
+Why: `serverBundle.remote: 'jsdelivr'` makes the Worker fetch the whole
+collection from jsDelivr on the first request (`createRemoteCollection` in
+`@nuxt/icon`, no timeout, cached only after a success), and the route is a
+Nitro cached handler that shares one in-flight promise per key
+(`pending[key]` in nitropack's `cache.mjs`). When that first fetch stalls (or
+its request is aborted by a quick reload), every later request for the same
+icon set awaits the same promise and never completes. In CI that left
+`/api/_nuxt_icon/streamline-logos.json` pending through three attempts of
+`theme.spec.ts › should persist theme preference on page reload`, whose
+`waitForLoadState('networkidle')` then timed out (run 43886840471, 2026-11-16,
+unrelated to the connectors branch; simple-icons and bxl share the same
+exposure but are not on the landing page).
+
+Any icon used on a page that must load without extra requests follows the same
+route as `thesvg:zhipu`: install the `@iconify-json/<prefix>` package as a dev
+dependency and list the icon in `icon.clientBundle.icons`.
+
 ## `fallbackToApi` is `false`
 
 `icon.fallbackToApi` is pinned to `false`. Two reasons:

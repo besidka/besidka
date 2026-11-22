@@ -45,6 +45,7 @@ function createController(): ToolApprovalController {
     change: vi.fn(),
     askAgain: vi.fn(async () => {}),
     focusFirstPending: vi.fn(),
+    focusApproval: vi.fn(),
   }
 }
 
@@ -174,7 +175,7 @@ describe('Chat/Reasoning/ApprovalStep', () => {
     )
   })
 
-  it('confirms Always allow inline, naming the connector and tool',
+  it('answers Always allow with one click and explains it in the tooltip',
     async () => {
       const { wrapper, controller } = await mountStep({
         model: createModel({
@@ -182,48 +183,21 @@ describe('Chat/Reasoning/ApprovalStep', () => {
           rememberOptions: ['once', 'chat', 'always'],
         }),
       })
+      const always = wrapper.get(testId('allow-always'))
 
-      await wrapper.get(testId('allow-always')).trigger('click')
-
-      expect(controller!.answer).not.toHaveBeenCalled()
-      expect(wrapper.find(testId('actions')).exists()).toBe(false)
-      expect(wrapper.get(testId('always-confirm')).text()).toContain(
-        'Always allow create_issue from Linear? Besidka will run it without '
-        + 'asking in every chat and in later messages, also after content '
-        + 'from earlier messages, until the tool changes. What the tool does '
-        + 'is declared by the service itself.',
+      expect(always.attributes('title')).toBe(
+        'Runs without asking in every chat until the tool changes. '
+        + 'Remove it in the chat panel.',
       )
 
-      await wrapper.get(testId('always-confirm-allow')).trigger('click')
+      await always.trigger('click')
 
       expect(controller!.answer).toHaveBeenCalledWith({
         approvalId: 'approval-1',
         approved: true,
         remember: 'always',
       })
-    })
-
-  it('cancels the Always allow confirmation with Cancel or Escape',
-    async () => {
-      const { wrapper, controller } = await mountStep({
-        model: createModel({
-          reason: 'default',
-          rememberOptions: ['once', 'chat', 'always'],
-        }),
-      })
-
-      await wrapper.get(testId('allow-always')).trigger('click')
-      await wrapper.get(testId('always-confirm-cancel')).trigger('click')
-
       expect(wrapper.find(testId('always-confirm')).exists()).toBe(false)
-      expect(wrapper.find(testId('actions')).exists()).toBe(true)
-
-      await wrapper.get(testId('allow-always')).trigger('click')
-      await wrapper.get('[data-testid="reasoning-approval-step"]')
-        .trigger('keydown', { key: 'Escape' })
-
-      expect(wrapper.find(testId('always-confirm')).exists()).toBe(false)
-      expect(controller!.answer).not.toHaveBeenCalled()
     })
 
   it('sends a denial', async () => {

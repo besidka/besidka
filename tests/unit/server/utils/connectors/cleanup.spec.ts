@@ -223,7 +223,7 @@ describe('connector deletion hooks', () => {
       for (const row of rows) {
         const id = encodePublicId(row.id)
 
-        await kv.put(`connectors:icon:${id}`, 'x')
+        await kv.put(`connectors:icon:v2:${id}`, 'x')
         await kv.put(`connectors:icon-sources:${id}`, 'x')
       }
 
@@ -235,7 +235,7 @@ describe('connector deletion hooks', () => {
         .flatMap((row) => {
           const id = encodePublicId(row.id)
 
-          return [`connectors:icon:${id}`, `connectors:icon-sources:${id}`]
+          return [`connectors:icon:v2:${id}`, `connectors:icon-sources:${id}`]
         })
 
       expect([...kv.entries.keys()].sort()).toEqual(remaining.sort())

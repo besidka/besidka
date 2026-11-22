@@ -76,7 +76,7 @@ never data.
 
 | Scope | Tools |
 | --- | --- |
-| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats` |
+| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats`, `get_debug_info`, `get_chat_cost`, `get_usage_stats` |
 | `chats:write` | `update_chat`, `move_chats_to_project`, `revoke_chat_shares`, `branch_chat` |
 | `projects:read` | `list_projects`, `get_project`, `read_project_knowledge_item` |
 | `projects:write` | `create_project`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_project`, `update_project_knowledge_item` |
@@ -93,7 +93,7 @@ never data.
 | `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`) |
 | `skills:read` | `list_skills`, `get_skill` |
 | `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`), `set_project_skills` (5.1.0, replaces the skills pinned to a project; destructive because omitted pins are removed; never changes a skill) |
-| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_connector_images` (5.2.0), `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
 The first per-user surface had 32 tools (the artifact tools and
@@ -156,7 +156,7 @@ do and removes no user content. `update_skill` is on the list because it
 switches the skill off and stages a replacement of its files; `rename_skill`
 is not, because it writes a new version and keeps the old ones.
 
-Since 5.1.0 the surface has 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
+Since 5.4.0 the surface has 61 private tools: `get_chat_cost` and `get_usage_stats` (the cost of one chat by model, and the user's usage stats for 7 days, 30 days or all time; see `docs/besidka-tools.md`, "Chat cost and usage stats") are the additions, under the existing `chats:read` scope; the counts of projects, artifacts, skills and connectors in `get_usage_stats` need the matching read scope too. Since 5.3.0 the surface had 59 private tools: `get_debug_info` (support and developer debug info, see `docs/besidka-tools.md`, "Debug info") is the only addition, under the existing `chats:read` scope. Since 5.2.0 the surface had 58 private tools: `delete_connector_images` (C-15) deletes every image connectors returned in chats, under the existing `data:delete` scope with `confirm: true`; those images are in no file list, so `list_files` does not show them. Since 5.1.0 the surface had 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
 `skills:read` and `skills:write` scopes were added to the
 50 of 4.0.0 (see [The skills scopes](#the-skills-scopes)).
 
@@ -373,8 +373,9 @@ for `projects:write` or `memory:write` earlier would silently gain deletion
 if the delete tools stayed behind those scopes. Every deletion therefore sits
 behind its own scope, `data:delete` ("Delete your data" on the consent page):
 `delete_chats`, `delete_chat_message`, `delete_project`,
-`delete_project_knowledge_items`, `delete_files`, `delete_memory`,
-`reset_memory` and `delete_artifacts`. `revoke_chat_shares` and
+`delete_project_knowledge_items`, `delete_files`,
+`delete_connector_images`, `delete_memory`, `reset_memory` and
+`delete_artifacts`. `revoke_chat_shares` and
 `revoke_artifact_shares` stay on `chats:write` and `artifacts:write` because
 the chats and artifacts survive them. `data:delete` is a write scope (`MCP_WRITE_SCOPES`,
 `isMcpWriteScope`), so it is unticked by default, shows the warning style, and
@@ -1003,7 +1004,7 @@ decide which wins.
 
 | Chat exposure | Count | Tools |
 | --- | --- | --- |
-| `read` | 11 | `list_shared_chats`, `list_projects`, `get_project`, `read_project_knowledge_item`, `list_files`, `read_file`, `get_settings`, `list_my_features`, `list_artifacts`, `get_artifact`, `list_artifact_shares` |
+| `read` | 14 | `list_shared_chats`, `list_projects`, `get_project`, `read_project_knowledge_item`, `list_files`, `read_file`, `get_settings`, `list_my_features`, `get_debug_info`, `get_chat_cost`, `get_usage_stats`, `list_artifacts`, `get_artifact`, `list_artifact_shares` |
 | `write` | 8 | `update_chat`, `move_chats_to_project`, `branch_chat`, `create_project`, `update_project`, `update_project_knowledge_item`, `create_file`, `rename_file` |
 | `ask-every-time` | 13 | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_artifacts`, `revoke_chat_shares`, `revoke_artifact_shares`, `share_artifact`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_settings` |
 | excluded, admin | 3 | `list_feature_flags`, `list_feature_access`, `set_feature_access` |
@@ -1081,6 +1082,9 @@ text only and capped.
 | --- | --- | --- | --- | --- |
 | `list_chats` | `chats:read` | no | Chats by recent activity with `pinned`, `shared` and `memoryExcluded` flags; `search` (2+ characters) with `searchIn` `all`, `title` or `content`; `projectId` for one project, `pinnedOnly` | `chats/history/cursor`, `search-cursor`, `findChatsMatchingMessageContent` (FTS5 `message_search`), `containsLikeEscaped`. `limit` up to 50; search results up to 200 |
 | `get_chat` | `chats:read` | no | Title, project id and name, pinned and memory-excluded state, share settings (the link only with `chats:write`), models used, a `context` summary (counts of outputs, inputs, web sources, generated images, research reports and memory actions, plus up to 20 attached files as `{ id, name }`; since 2.1.0), messages oldest to newest, text parts only | `messages.parts`, `usage.model`. The `context` summary comes from the chat context panel's builder (`server/utils/chats/context/`, `docs/chats/context-panel.md`) over all messages, not only the returned window, and never contains memory bodies. `maxMessages` up to 200, 8,000 characters per message, 100,000 in total (the oldest are dropped first) |
+| `get_debug_info` | `chats:read` | no | What support or a developer needs to follow one chat, ids and metadata only (since 5.3.0): `report` (one plain-text block to copy) plus `generatedAt`, `app` (`buildId`, `mcpServerVersion`), `chat` (`slug`, `url`, `projectId`, `branchedFromShare` as a boolean, `memoryExcluded`, `createdAt`, `activityAt`, `pendingApprovals`, `generationLeases` (ids of the messages that hold the generation guard, null if unreadable) and the newest `messages`: `id`, `role`, `createdAt`, `status` of `sent`, `complete`, `empty`, `awaiting-approval` or `failed`, `model`, `provider`, `totalTokens`, `reasoning`, `toolCalls`, `toolErrors`, `toolsDenied`, `pendingApprovals`, and `failure` with `message` and `ref` only for the fixed failure notices Besidka itself stores), `connectors` (`id`, `title`, `host`, `mode`, `enabled`, `status`, `chatState`, `lastErrorCode`; only with `connectors:read` while the `connectors` feature is active, and never in a Besidka chat, where `connectorsNote` says so), `features` (as `list_my_features`; only with `settings:read`) and `contact` | `messages.parts`, `usage`, `listConnectors`, `listChatConnectorStates`, `listMyFeatures`. Never message text, tool input or output, tool error text, file names, keys, tokens, connector addresses beyond the host, or the share slug a branch came from. `slug` is optional: without it only the account-level blocks are returned. An unknown or foreign slug is "Chat not found. Call list_chats to find one.". `maxMessages` 1 to 20, default 10 |
+| `get_chat_cost` | `chats:read` | no | The estimated cost of one chat on the user's keys (since 5.4.0): `report` (one plain-text block, rows of at most 40 characters) plus `slug`, `messages`, `truncated`, `firstMessageAt`, `lastMessageAt`, `models` (`model`, `provider`, `replies`, `uncachedInputTokens`, `outputTokens`, `reasoningTokens`, `cacheReadTokens`, `cacheWriteTokens`, `unsplitTokens`, `cost`, `isBlended` for a gateway's blended total, `isEstimated`), `searches` (`provider`, `units`, `billingUnit`, `cost`) and `total` (`amount`, `isEstimated`), the same total as the chat panel | `messages.usage` of the newest 1,000 messages, `getPerMessageCost`, `getChatTotalCost`. `slug` is required over MCP (inside a chat it defaults to the current chat); an unknown or foreign slug is "Chat not found. Call list_chats to find one." |
+| `get_usage_stats` | `chats:read` | no | The user's usage for `period` `7d`, `30d` (default) or `all` (since 5.4.0): `report` plus `replies`, `messages`, `chats`, `tokens` by kind, the estimated `cost`, `unpricedReplies`, `models` by replies (the first is the favorite), `activeDays` of `periodDays`, `mostActiveDay`, `currentStreak` and `longestStreak` (UTC days), `generatedAt` and `counts` of projects, artifacts, skills and connectors, each `null` unless the token also has that kind's read scope | One grouped statement over the user's messages and one row of counts; branch copies (messages older than their chat) are left out; KV cache 15 minutes (an hour for `all`); 20 uncached runs per 10 minutes per user, then 429. Chat replies only: background spend is not counted |
 | `list_shared_chats` | `chats:read` | no | Chats with a live public share link: expiry, what the link shows, and the link itself (`shareUrl`) only when the token also has `chats:write` | `listMcpSharedChats`, the active-share filter of `chats/share-management`. `limit` up to 50. The link is a capability, so `McpPrivateToolContext.scopes` decides whether `includeShareUrl` is set (`get_chat` does the same for `share.url`) |
 | `update_chat` | `chats:write` | yes | Set `title`, `pinned`, `memoryExcluded` and `projectId` (at least one; each field sets the value, never toggles) | `renameChat`, `setChatPinnedAt`, `setChatMemoryExclusion`, `moveChatsToProject` in `chats/lifecycle`. Title up to 200 characters |
 | `move_chats_to_project` | `chats:write` | no | Move chats into a project, or out with a null `projectId`; reports moved, already there and not found | `moveChatsToProject`. Up to 100 slugs |
@@ -1105,6 +1109,7 @@ text only and capped.
 | `create_document` | `files:write` | no | Render a PDF, Word, PowerPoint or Excel file from a spec the client supplies and save it as a private library file (`source: assistant`). Input: `format`, `title`, `spec` (a JSON object, not a string; `format` and `title` are filled from the arguments, `specVersion` defaults to 1), optional `fileName` and `aiGenerated`. Returns `documentId`, `file` (`id`, `name`, `size`, `type`, `expiresAt`), `format` and `stats`. Since 3.1.0 | `createMcpDocument` (`server/utils/mcp/private/documents.ts`): `checkDocumentSpecInput`, `renderDocument` through `DOC_RENDERER`, `createDocument`, `claimDocumentRender`, `finalizeRenderedDocument`. Serialized spec up to 200,000 characters; 10 renders a minute and 100 a day per user (`MCP_DOCUMENT_RENDER_MINUTE_LIMIT`, `MCP_DOCUMENT_RENDER_DAILY_LIMIT`) on top of the write limit |
 | `rename_file` | `files:write` | yes | Change a file's name; the old name is not kept | `assertFileNameCharacters`. 255 characters |
 | `delete_files` | `data:delete` | yes | Hard delete files; the extracted text of files that are project knowledge is removed with them. Skipped ids are reported with a reason (`not_found`, `storage_error`, `error`) | `deleteOwnedFiles` (per file, not a batched R2 delete: each file is removed and caught on its own, so a failure keeps what was already deleted), `isFileLinkedToKnowledgeSql`. Up to 100 ids |
+| `delete_connector_images` | `data:delete` | yes | Delete every image connectors returned in chats (`files.source = 'connector'`, hidden from every file list). Needs `confirm: true`; up to 3 batches of 90 (270 images) per call so one call stays far under the Workers subrequest limit, `hasMore` asks for another call | `deleteAllConnectorImages` (per batch of 90: the rows, then one R2 batch delete, then the storage cache). Not offered to chat models |
 | `list_memory` | `memory:read` | no | Account memory, one project's with `projectId`, or both with `scope: all` | `listMemoryEntries`. The entry caps (30 account, 15 per project, 4 KiB body) |
 | `add_memory` | `memory:write` | no | Create an entry (`category`, `title`, `description`, `body`, optional `projectId`) | `createMemoryEntry`. `MEMORY_LIMITS` |
 | `update_memory` | `memory:write` | yes | Change category, title, description or body | `updateMemoryEntry`. `MEMORY_LIMITS` |

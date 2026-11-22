@@ -23,14 +23,31 @@
     >
       <summary
         :id="`reasoning-${message.id}-label`"
-        :aria-controls="`reasoning-${message.id}-content`"
+        :aria-controls="isMainExpanded
+          ? `reasoning-${message.id}-content`
+          : undefined
+        "
         class="collapse-title flex items-center gap-1 px-0 py-1.5 min-h-0"
+        data-testid="reasoning-header"
         @click.prevent="toggleMain"
       >
-        <component
+        <span
+          aria-hidden="true"
+          :data-kind="headerStepIcon ? headerStepIcon.kind : 'thinking'"
+          data-testid="reasoning-header-icon"
+          class="inline-flex size-4 shrink-0 items-center justify-center"
+        >
+          <ChatReasoningStepIcon
+            v-if="headerStepIcon"
+            :icon="headerStepIcon"
+            class="size-4!"
+          />
+          <component
             :is="reasoningIcon"
+            v-else
             class="size-4 text-base-content/80"
           />
+        </span>
         <span
           :title="isHiddenReasoningSummary ? HIDDEN_REASONING_TITLE : undefined"
           :data-testid="
@@ -74,201 +91,52 @@
         </span>
         <Icon
           name="lucide:chevron-right"
-          class="size-4 text-base-content/60 transition-transform group-open:rotate-90"
+          class="size-4 shrink-0 text-base-content/60 transition-transform group-open:rotate-90"
         />
+        <span
+          v-if="headerImages.length > 0 && !isMainExpanded"
+          class="-my-1 ml-auto flex h-6 shrink-0 items-center gap-1 pl-2"
+          data-testid="reasoning-header-images"
+        >
+          <ChatReasoningConnectorThumbnail
+            :image="headerImages[0]!.image"
+            :alt="headerImages[0]!.alt"
+            size="sm"
+            :gallery="headerImages"
+            :stack-label="headerStackLabel"
+          />
+        </span>
       </summary>
       <div
+        v-if="isMainExpanded"
         :id="`reasoning-${message.id}-content`"
         class="collapse-content mt-3 pb-2 px-0"
       >
-        <div class="max-h-[360px] overflow-y-auto overscroll-contain pr-1">
+        <div
+          ref="stepsScroller"
+          class="max-h-[360px] overflow-y-auto overscroll-contain pr-1"
+          data-testid="reasoning-steps-scroller"
+          @scroll.passive="onStepsScroll"
+        >
           <ul
+            ref="stepsList"
             data-testid="reasoning-steps"
             class="flex flex-col"
           >
-            <li
+            <ChatReasoningStep
               v-for="(step, index) in reasoningSteps"
               :key="step.id"
-              class="relative min-w-0"
-              :class="step.approvalOutcome || step.grantMarker
-                ? 'grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2'
-                : 'flex gap-2'
-              "
-            >
-              <div
-                class="relative flex w-5 shrink-0 items-start justify-center"
-                :class="{
-                  'row-span-2': step.approvalOutcome || step.grantMarker,
-                }"
-              >
-                <span
-                  v-if="index > 0"
-                  aria-hidden="true"
-                  data-testid="reasoning-step-connector-top"
-                  class="
-                    absolute top-0 left-1/2 h-2 w-1 -translate-x-1/2 bg-base-100
-                  "
-                />
-                <span
-                  v-if="index < reasoningSteps.length - 1"
-                  aria-hidden="true"
-                  data-testid="reasoning-step-connector-bottom"
-                  class="
-                    absolute top-7 bottom-0 left-1/2 w-1 -translate-x-1/2
-                    bg-base-100
-                  "
-                />
-                <span
-                  class="
-                    relative z-10 mt-2 flex size-5 items-center justify-center
-                    rounded-full border border-base-100 bg-base-100
-                  "
-                >
-                  <SvgoLoader
-                    v-if="step.pending"
-                    class="size-3.5 text-accent"
-                  />
-                  <span
-                    v-else-if="step.waiting"
-                    aria-hidden="true"
-                    class="reasoning-step-waiting"
-                  />
-                  <span
-                    v-else-if="step.failed"
-                    aria-hidden="true"
-                    class="reasoning-step-failed"
-                  />
-                  <span
-                    v-else
-                    aria-hidden="true"
-                    class="reasoning-step-complete"
-                  />
-                </span>
-              </div>
-              <ChatReasoningApprovalStep
-                v-if="step.approval"
-                :icon="step.icon"
-                :model="step.approval.model"
-                :state="step.approval.state"
-                :title="step.title"
-                :reason-text="step.approval.reasonText"
-                :summary-line="step.approval.summaryLine"
-                :progress="step.approval.progress"
-                :outcome="step.approval.outcome"
-                :message-id="message.id"
-                :connector-name="step.approval.connectorName"
-              />
-              <ChatReasoningSearchStep
-                v-else-if="step.search"
-                :icon="step.icon"
-                :data="step.search"
-                :title="step.title"
-                :pending="step.pending"
-                :searched-at="searchedAt"
-              />
-              <ChatReasoningMemoryStep
-                v-else-if="step.memory"
-                :icon="step.icon"
-                :data="step.memory"
-                :title="step.title"
-                :pending="step.pending"
-              />
-              <ChatReasoningSkillStep
-                v-else-if="step.skill"
-                :icon="step.icon"
-                :data="step.skill"
-                :title="step.title"
-                :pending="step.pending"
-              />
-              <ChatReasoningConnectorStep
-                v-else-if="step.connector"
-                :icon="step.icon"
-                :data="step.connector"
-                :title="step.title"
-                :pending="step.pending"
-              />
-              <details
-                v-else
-                :open="expandedStepId === step.id"
-                class="group/point collapse my-2.5 min-w-0 flex-1"
-              >
-                <summary
-                  :aria-controls="`reasoning-${message.id}-${step.id}-content`"
-                  class="collapse-title flex min-w-0 items-center p-0 text-xs"
-                  @click.prevent="toggleStep(step)"
-                >
-                  <ChatReasoningStepIcon
-                    :icon="step.icon ?? null"
-                    class="mr-1.5"
-                  />
-                  <span
-                    :title="step.title"
-                    data-testid="reasoning-step-title"
-                    class="min-w-0"
-                    :class="[
-                      step.body.length > 0
-                        ? 'truncate'
-                        : 'break-words',
-                      step.pending
-                        ? 'skeleton skeleton-text reasoning-main-title-skeleton'
-                        : undefined,
-                    ]"
-                  >
-                    {{
-                      step.body.length > 0
-                        ? truncateReasoningTitle(step.title)
-                        : step.title
-                    }}
-                  </span>
-                  <Icon
-                    v-if="step.body.length > 0"
-                    name="lucide:chevron-right"
-                    class="
-                      ml-1 size-4 shrink-0 transition-transform
-                      group-open/point:rotate-90
-                    "
-                  />
-                </summary>
-                <div
-                  v-if="step.body.length > 0"
-                  :id="`reasoning-${message.id}-${step.id}-content`"
-                  class="collapse-content mt-2 min-w-0 pb-0 px-0"
-                >
-                  <MDCCached
-                    :key="`reasoning-${message.id}-${step.id}-${status}`"
-                    :cache-key="`reasoning-${message.id}-${step.id}-${status}`"
-                    :value="stripModelCitationMarkers(step.body)"
-                    :components="imageComponents"
-                    :parser-options="{ highlight: false }"
-                    class="chat-markdown text-xs !text-text/80"
-                  />
-                </div>
-              </details>
-              <p
-                v-if="step.approvalOutcome"
-                class="col-start-2 -mt-2 mb-2.5 text-xs text-base-content/60"
-                data-testid="reasoning-approval-outcome"
-              >
-                {{ step.approvalOutcome }}
-              </p>
-              <p
-                v-if="step.grantMarker"
-                class="col-start-2 -mt-2 mb-2.5 flex flex-wrap items-center gap-x-2 text-xs text-base-content/60"
-                data-testid="reasoning-grant-marker"
-              >
-                <span>{{ step.grantMarker }}</span>
-                <button
-                  v-if="approvalController"
-                  type="button"
-                  class="btn btn-link btn-xs min-h-6 px-0 text-base-content/70"
-                  aria-label="Manage remembered approvals in the chat panel"
-                  data-testid="reasoning-grant-manage"
-                  @click="openGrantsPanel"
-                >
-                  Manage
-                </button>
-              </p>
-            </li>
+              :step="step"
+              :message-id="message.id"
+              :is-first="index === 0"
+              :is-last="index === reasoningSteps.length - 1"
+              :is-expanded="expandedStepId === step.id"
+              :body-cache-key="`reasoning-${message.id}-${step.id}-${status}`"
+              :can-manage-grants="!!approvalController"
+              :searched-at="searchedAt"
+              @toggle="toggleStep"
+              @manage-grants="openGrantsPanel"
+            />
           </ul>
         </div>
       </div>
@@ -281,31 +149,17 @@ import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import { LazyChatContextPanel } from '#components'
 import { CHAT_CONTEXT_VIEW_KEY } from '~/composables/chat-context'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import type { MemoryStepData } from '~/types/memory-step.d'
-import type { SearchStepData } from '~/types/search-step.d'
-import type { SkillStepModel } from '~/utils/skill-step'
-import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
+import type { ReasoningStep } from '~/types/reasoning-step.d'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import type { ConnectorImagePartData } from '#shared/utils/connector-image-parts'
+import { getConnectorImagesByToolCallId } from '#shared/utils/connector-image-parts'
 import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
-import type {
-  ApprovalStepModel,
-  ApprovalStepState,
-} from '~/utils/tool-approval-step'
+import { getGrantMarkersByToolCallId } from '~/utils/tool-approval-step'
 import {
-  formatApprovalOutcome,
-  formatApprovalProgress,
-  getApprovalDataByToolCallId,
-  getApprovalReasonText,
-  getApprovalSourceLabel,
-  getApprovalStepModel,
-  getApprovalStepSummaryLine,
-  getApprovalStepTitle,
-  getGrantMarkerText,
-  resolveApprovalStepState,
-} from '~/utils/tool-approval-step'
-import {
+  getConnectorImageAlt,
+  getConnectorImageStackLabel,
   getConnectorStepTitle,
   isConnectorStepFailed,
 } from '~/utils/connector-step'
@@ -319,11 +173,17 @@ import type {
   ReasoningStepSource,
   ReasoningStepSourceInput,
 } from '~/utils/reasoning-step-icons'
+import {
+  createReasoningSectionsCache,
+  reuseStableReasoningSteps,
+} from '~/utils/reasoning-steps'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
 const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
   + 'the reasoning text is not available for this response. Reasoning '
   + 'tokens are billed as output tokens.'
+
+const STEPS_PIN_THRESHOLD_PX = 24
 
 const props = defineProps<{
   message: UIMessage
@@ -336,10 +196,16 @@ const props = defineProps<{
   isShared?: boolean
 }>()
 
-const { imageComponents } = useChatFormat()
 const { titlesBySlug, connectorsBySlug } = useConnectorTitles()
-const approvalController = useToolApprovalController()
 const sidePanel = useSidePanel()
+const {
+  controller: approvalController,
+  entries: approvalEntries,
+  buildApprovalStep,
+  buildApprovalView,
+} = useMessageApprovals(() => props.message, {
+  isShared: () => props.isShared,
+})
 
 function openGrantsPanel() {
   sidePanel.open({
@@ -350,45 +216,11 @@ function openGrantsPanel() {
   })
 }
 
-interface ReasoningApprovalStep {
-  model: ApprovalStepModel
-  state: ApprovalStepState
-  connectorName: string
-  reasonText: string
-  summaryLine: string
-  progress: string
-  outcome: string
-}
-
-interface ReasoningStep {
-  id: string
+interface HeaderConnectorImage {
+  image: ConnectorImagePartData
+  alt: string
   title: string
-  body: string
-  kind: 'reasoning' | 'tool'
-  pending: boolean
-  failed: boolean
-  waiting?: boolean
-  search: SearchStepData | null
-  memory: MemoryStepData | null
-  skill: SkillStepModel | null
-  connector: ConnectorToolCallModel | null
-  icon?: ReasoningStepIcon | null
-  approval?: ReasoningApprovalStep | null
-  approvalOutcome?: string
-  grantMarker?: string
 }
-
-interface MessageApprovalEntry {
-  partIndex: number
-  model: ApprovalStepModel
-  state: ApprovalStepState
-}
-
-const AWAITING_APPROVAL_STEP_STATES = new Set<ApprovalStepState>([
-  'pending',
-  'answered',
-  'sending',
-])
 
 const reasoningIcon = computed<string>(() => {
   const level = props.reasoningLevel
@@ -454,114 +286,31 @@ const isAssistantMessage = computed<boolean>(() => {
   return props.message.role === 'assistant'
 })
 
-const isApprovalUiActive = computed<boolean>(() => {
-  return isAssistantMessage.value
-    && (approvalController?.isActive.value ?? false)
-})
+const reasoningSectionsCache = createReasoningSectionsCache()
 
-const approvalEntries = computed<Map<number, MessageApprovalEntry>>(() => {
-  const entries = new Map<number, MessageApprovalEntry>()
-
-  if (!isApprovalUiActive.value || !approvalController) {
-    return entries
-  }
-
-  const dataByToolCallId = getApprovalDataByToolCallId(props.message.parts)
-  const models: Array<{ partIndex: number, model: ApprovalStepModel }> = []
-
-  for (const [partIndex, part] of props.message.parts.entries()) {
-    const model = getApprovalStepModel(part, dataByToolCallId)
-
-    if (model) {
-      models.push({ partIndex, model })
-    }
-  }
-
-  const awaitingModels = models.filter(({ model }) => {
-    return isAwaitingApprovalToolPart({
-      type: 'dynamic-tool',
-      state: model.partState,
-    })
-  })
-  const isEveryCallAnswered = awaitingModels.every(({ model }) => {
-    return model.partState === 'approval-responded'
-  })
-  const context = {
-    isLastMessage: approvalController.messages.value.at(-1)?.id
-      === props.message.id,
-    sendingApprovalIds: new Set(approvalController.sendingApprovalIds.value),
-    answeredApprovalIds: new Set(approvalController.answeredApprovalIds.value),
-    failures: approvalController.failures.value,
-    isEveryCallAnswered,
-  }
-
-  for (const { partIndex, model } of models) {
-    entries.set(partIndex, {
-      partIndex,
-      model,
-      state: resolveApprovalStepState(model, context),
-    })
-  }
-
-  return entries
-})
-
-const pendingApprovalIdsInMessage = computed<string[]>(() => {
-  return [...approvalEntries.value.values()].flatMap((entry) => {
-    return entry.state === 'pending' ? [entry.model.approvalId] : []
-  })
-})
-
-function buildApprovalStep(
-  entry: MessageApprovalEntry,
-): ReasoningApprovalStep {
-  const awaiting = [...approvalEntries.value.values()].filter((item) => {
-    return AWAITING_APPROVAL_STEP_STATES.has(item.state)
-  })
-  const answeredCount = awaiting.filter((item) => {
-    return item.state !== 'pending'
-  }).length
-  const isLastAwaiting = awaiting.at(-1)?.partIndex === entry.partIndex
-  const sourceLabel = getApprovalSourceLabel(
-    props.message.parts,
-    entry.partIndex,
-    titlesBySlug.value,
-  )
-
-  const connectorSlug = entry.model.connectorSlug
-
-  return {
-    model: entry.model,
-    state: entry.state,
-    connectorName: connectorSlug
-      ? titlesBySlug.value.get(connectorSlug) || connectorSlug
-      : '',
-    reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
-    summaryLine: getApprovalStepSummaryLine(entry.model),
-    progress: isLastAwaiting && entry.state !== 'sending'
-      ? formatApprovalProgress(answeredCount, awaiting.length)
-      : '',
-    outcome: entry.state === 'denied' || entry.state === 'approved'
-      ? formatApprovalOutcome(
-        entry.state,
-        approvalController?.answeredAt.value[entry.model.approvalId],
-      )
-      : '',
-  }
-}
-
-const reasoningSteps = computed<ReasoningStep[]>(() => {
+/**
+ * One step per reasoning section and per tool call, rebuilt on every
+ * streamed update. The connector images and grant markers are read once per
+ * update, and steps whose values did not change keep their previous object
+ * (see `reuseStableReasoningSteps`), so only the changed steps re-render.
+ */
+const reasoningSteps = computed<ReasoningStep[]>((previousSteps) => {
   const steps: ReasoningStep[] = []
+  const { parts } = props.message
+  const imagesByToolCallId = isAssistantMessage.value && !props.isShared
+    ? getConnectorImagesByToolCallId(parts)
+    : new Map<string, ConnectorImagePartData[]>()
+  const grantMarkersByToolCallId = getGrantMarkersByToolCallId(parts)
   let reasoningPartIndex = 0
   let lastReasoningStepIndex = -1
 
-  for (const [partIndex, part] of props.message.parts.entries()) {
+  for (const [partIndex, part] of parts.entries()) {
     if (part.type === 'reasoning') {
       if (!part.text?.length) {
         continue
       }
 
-      for (const [sectionIndex, section] of parseReasoningSections(
+      for (const [sectionIndex, section] of reasoningSectionsCache.parse(
         part.text,
       ).entries()) {
         lastReasoningStepIndex = steps.length
@@ -585,7 +334,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     }
 
     const skillStep = isAssistantMessage.value
-      ? getReasoningSkillStep(props.message.parts, partIndex)
+      ? getReasoningSkillStep(parts, partIndex)
       : null
 
     if (skillStep) {
@@ -614,28 +363,12 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     const approvalEntry = approvalEntries.value.get(partIndex)
 
     if (approvalEntry && approvalEntry.state !== 'approved') {
-      const approvalStep = buildApprovalStep(approvalEntry)
-      const approvalSource = resolveStepSource({
-        toolName: approvalEntry.model.connectorSlug
-          ? `${CONNECTOR_TOOL_NAME_PREFIX}${approvalEntry.model.connectorSlug}`
-          + `__${approvalEntry.model.tool}`
-          : approvalEntry.model.toolName,
-        title: getApprovalStepTitle(
-          approvalEntry.model,
-          approvalEntry.model.connectorSlug
-            ? titlesBySlug.value.get(approvalEntry.model.connectorSlug)
-            : undefined,
-        ),
-        connectorId: approvalEntry.model.connectorSlug
-          ? connectorsBySlug.value.get(approvalEntry.model.connectorSlug)?.id
-          : undefined,
-        connectorTitle: approvalStep.connectorName,
-      })
+      const approvalView = buildApprovalView(approvalEntry)
 
       steps.push({
-        id: `tool-${approvalEntry.model.toolCallId || partIndex}`,
-        title: approvalSource.label,
-        icon: approvalSource.icon,
+        id: approvalView.id,
+        title: approvalView.title,
+        icon: approvalView.icon,
         body: '',
         kind: 'tool',
         pending: approvalEntry.state === 'sending',
@@ -647,7 +380,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         memory: null,
         skill: null,
         connector: null,
-        approval: approvalStep,
+        approval: approvalView.approval,
       })
 
       continue
@@ -656,12 +389,15 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     const approvalOutcome = approvalEntry
       ? buildApprovalStep(approvalEntry).outcome
       : ''
+    const toolCallId = (part as { toolCallId?: string }).toolCallId
 
     const connectorCall = isAssistantMessage.value
       ? getConnectorToolCall(part)
       : null
 
     if (connectorCall) {
+      const connectorTitle = titlesBySlug.value.get(connectorCall.slug)
+        || connectorCall.slug
       const connectorSource = resolveStepSource({
         toolName: `${CONNECTOR_TOOL_NAME_PREFIX}${connectorCall.slug}`
           + `__${connectorCall.tool}`,
@@ -670,12 +406,11 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           titlesBySlug.value.get(connectorCall.slug),
         ),
         connectorId: connectorsBySlug.value.get(connectorCall.slug)?.id,
-        connectorTitle: titlesBySlug.value.get(connectorCall.slug)
-          || connectorCall.slug,
+        connectorTitle,
       })
 
       steps.push({
-        id: `tool-${(part as { toolCallId?: string }).toolCallId || partIndex}`,
+        id: `tool-${toolCallId || partIndex}`,
         title: connectorSource.label,
         icon: connectorSource.icon,
         body: '',
@@ -686,11 +421,14 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         memory: null,
         skill: null,
         connector: connectorCall,
+        connectorTitle,
+        connectorImages: toolCallId
+          ? imagesByToolCallId.get(toolCallId) ?? []
+          : [],
         approvalOutcome,
-        grantMarker: getGrantMarkerText(
-          props.message.parts,
-          (part as { toolCallId?: string }).toolCallId,
-        ),
+        grantMarker: toolCallId
+          ? grantMarkersByToolCallId.get(toolCallId) ?? ''
+          : '',
       })
 
       continue
@@ -698,14 +436,13 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
 
     if (
       !isThinkingToolPart(part)
-      || isSupersededInvalidDocumentPart(props.message.parts, partIndex)
+      || isSupersededInvalidDocumentPart(parts, partIndex)
     ) {
       continue
     }
 
     const isPending = props.status === 'streaming' && isPendingToolPart(part)
     const isFailed = isFailedToolPart(part)
-    const toolCallId = (part as { toolCallId?: string }).toolCallId
     const searchData = getSearchStepData(part)
     const isPreRetrievedStep = searchData?.preRetrieval === true
       && !isPending
@@ -738,9 +475,13 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       skill: null,
       connector: null,
       approvalOutcome,
-      grantMarker: getGrantMarkerText(props.message.parts, toolCallId),
+      grantMarker: toolCallId
+        ? grantMarkersByToolCallId.get(toolCallId) ?? ''
+        : '',
     })
   }
+
+  reasoningSectionsCache.commit()
 
   if (lastReasoningStepIndex >= 0 && isReasoningTextStreaming.value) {
     const lastReasoningStep = steps[lastReasoningStepIndex]
@@ -750,7 +491,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     }
   }
 
-  return steps
+  return reuseStableReasoningSteps(previousSteps ?? [], steps)
 })
 
 const expandableSteps = computed<ReasoningStep[]>(() => {
@@ -778,10 +519,11 @@ const hiddenReasoningTokens = computed<number>(() => {
 })
 
 const streamingTitle = shallowRef<string>('')
+const streamingTitleIcon = shallowRef<ReasoningStepIcon | null>(null)
 const streamingTitleUpdateTimer = shallowRef<
   ReturnType<typeof setTimeout> | null
 >(null)
-const latestStreamingTitleCandidate = computed<string>(() => {
+const latestPendingToolStep = computed<ReasoningStep | null>(() => {
   const pendingToolStep = reasoningSteps.value
     .filter((step) => {
       return step.kind === 'tool' && step.pending
@@ -789,12 +531,22 @@ const latestStreamingTitleCandidate = computed<string>(() => {
     .at(-1)
 
   if (pendingToolStep && !isReasoningTextStreaming.value) {
-    return pendingToolStep.title
+    return pendingToolStep
+  }
+
+  return null
+})
+const latestStreamingTitleCandidate = computed<string>(() => {
+  if (latestPendingToolStep.value) {
+    return latestPendingToolStep.value.title
   }
 
   return extractLastCompleteReasoningTitle(
     reasoningParts.value.at(-1)?.text || '',
   )
+})
+const latestStreamingIconCandidate = computed<ReasoningStepIcon | null>(() => {
+  return latestPendingToolStep.value?.icon ?? null
 })
 
 const isHiddenReasoningSummary = computed<boolean>(() => {
@@ -821,11 +573,40 @@ const activeStreamingTitle = computed<string>(() => {
   return streamingTitle.value
 })
 
+const headerImages = computed<HeaderConnectorImage[]>(() => {
+  return reasoningSteps.value.flatMap((step) => {
+    const title = step.connectorTitle ?? ''
+    const alt = getConnectorImageAlt(title)
+
+    return (step.connectorImages ?? [])
+      .filter(image => !image.deleted)
+      .map(image => ({ image, alt, title }))
+  })
+})
+
+const headerStackLabel = computed<string>(() => {
+  const count = headerImages.value.length
+  const titles = new Set(headerImages.value.map(entry => entry.title))
+
+  return getConnectorImageStackLabel(
+    count,
+    titles.size === 1 ? [...titles][0] : undefined,
+  )
+})
+
+const headerStepIcon = computed<ReasoningStepIcon | null>(() => {
+  if (!isThinkingStreaming.value || !activeStreamingTitle.value.length) {
+    return null
+  }
+
+  return streamingTitleIcon.value
+})
+
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
 const {
-  reasoningExpanded: isReasoningExpanded,
-  reasoningAutoHide,
+  stepsExpanded: isStepsExpanded,
+  stepsAutoHide,
 } = useUserSetting()
 
 const isMainExpanded = shallowRef<boolean>(false)
@@ -836,6 +617,70 @@ const isMainCollapsedByUser = shallowRef<boolean>(false)
 const reasoningInterval = shallowRef<
   ReturnType<typeof setInterval> | null
 >(null)
+
+const stepsScroller = useTemplateRef<HTMLDivElement>('stepsScroller')
+const stepsList = useTemplateRef<HTMLUListElement>('stepsList')
+const isStepsPinnedToBottom = shallowRef<boolean>(true)
+let lastStepsScrollTop = 0
+
+const isStepsAutoScrollActive = computed<boolean>(() => {
+  return props.status === 'streaming' && isMainExpanded.value
+})
+
+function onStepsScroll() {
+  const scroller = stepsScroller.value
+
+  if (!scroller) {
+    return
+  }
+
+  const isScrolledUp = scroller.scrollTop < lastStepsScrollTop
+
+  lastStepsScrollTop = scroller.scrollTop
+
+  if (isScrolledUp) {
+    isStepsPinnedToBottom.value = false
+
+    return
+  }
+
+  isStepsPinnedToBottom.value = scroller.scrollHeight
+    - scroller.scrollTop
+    - scroller.clientHeight <= STEPS_PIN_THRESHOLD_PX
+}
+
+function scrollStepsToBottom() {
+  const scroller = stepsScroller.value
+
+  if (!scroller) {
+    return
+  }
+
+  scroller.scrollTop = scroller.scrollHeight
+  lastStepsScrollTop = scroller.scrollTop
+}
+
+useResizeObserver(stepsList, () => {
+  if (!isStepsAutoScrollActive.value || !isStepsPinnedToBottom.value) {
+    return
+  }
+
+  scrollStepsToBottom()
+})
+
+watch(isStepsAutoScrollActive, async (isActive) => {
+  if (!isActive) {
+    return
+  }
+
+  isStepsPinnedToBottom.value = true
+  lastStepsScrollTop = 0
+  await nextTick()
+  scrollStepsToBottom()
+}, {
+  immediate: true,
+  flush: 'post',
+})
 
 const reasoningLabel = computed<string>(() => {
   if (isThinkingStreaming.value && reasoningSeconds.value > 0) {
@@ -860,7 +705,7 @@ watch(
     isThinkingStreaming,
     () => reasoningSteps.value.at(-1)?.id,
     latestExpandableStepId,
-    isReasoningExpanded,
+    isStepsExpanded,
     isStreamingExpandOverride,
   ],
   ([
@@ -895,7 +740,7 @@ watch(hasTextPart, (textStarted, hadText) => {
     return
   }
 
-  if (!reasoningAutoHide.value) {
+  if (!stepsAutoHide.value) {
     return
   }
 
@@ -905,52 +750,6 @@ watch(hasTextPart, (textStarted, hadText) => {
   hasAutoHiddenThisMessage.value = true
 }, {
   flush: 'post',
-})
-
-const seenPendingApprovalIds = new Set<string>()
-
-watch(pendingApprovalIdsInMessage, (approvalIds) => {
-  const hasNewPendingApproval = approvalIds.some((approvalId) => {
-    return !seenPendingApprovalIds.has(approvalId)
-  })
-
-  for (const approvalId of approvalIds) {
-    seenPendingApprovalIds.add(approvalId)
-  }
-
-  if (!hasNewPendingApproval) {
-    return
-  }
-
-  isMainExpanded.value = true
-  isMainCollapsedByUser.value = false
-}, {
-  immediate: true,
-  flush: 'post',
-})
-
-watch(() => approvalController?.focusRequest.value, async (request) => {
-  if (!request || !pendingApprovalIdsInMessage.value.includes(
-    request.approvalId,
-  )) {
-    return
-  }
-
-  isMainExpanded.value = true
-  isMainCollapsedByUser.value = false
-
-  await nextTick()
-
-  const step = document.querySelector<HTMLElement>(
-    `.js-tool-approval-step[data-approval-id="${CSS.escape(request.approvalId)}"]`,
-  )
-
-  if (!step) {
-    return
-  }
-
-  step.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  step.focus({ preventScroll: true })
 })
 
 // immediate: true — a recovery-poll remount (see turnStartedAt prop above)
@@ -990,22 +789,34 @@ watch(isThinkingStreaming, (streaming, wasStreaming) => {
 })
 
 watch(
-  [isThinkingStreaming, latestStreamingTitleCandidate],
-  ([streaming, candidateTitle]) => {
+  [
+    isThinkingStreaming,
+    latestStreamingTitleCandidate,
+    latestStreamingIconCandidate,
+  ],
+  ([streaming, candidateTitle, candidateIcon]) => {
     if (!streaming) {
       streamingTitle.value = ''
+      streamingTitleIcon.value = null
       clearStreamingTitleTimer()
 
       return
     }
 
-    if (!candidateTitle || candidateTitle === streamingTitle.value) {
+    if (
+      !candidateTitle
+      || (
+        candidateTitle === streamingTitle.value
+        && isSameStepIcon(candidateIcon, streamingTitleIcon.value)
+      )
+    ) {
       return
     }
 
     clearStreamingTitleTimer()
     streamingTitleUpdateTimer.value = setTimeout(() => {
       streamingTitle.value = candidateTitle
+      streamingTitleIcon.value = candidateIcon
       streamingTitleUpdateTimer.value = null
     }, 250)
   },
@@ -1038,6 +849,13 @@ watch(
     flush: 'post',
   },
 )
+
+function isSameStepIcon(
+  first: ReasoningStepIcon | null,
+  second: ReasoningStepIcon | null,
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second)
+}
 
 function clearStreamingTitleTimer() {
   if (!streamingTitleUpdateTimer.value) {
@@ -1090,6 +908,7 @@ function toggleStep(step: ReasoningStep) {
     return
   }
 
+  isStepsPinnedToBottom.value = false
   expandedStepId.value = step.id
 }
 
@@ -1186,44 +1005,6 @@ onBeforeUnmount(() => {
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 0% 40%,
     color-mix(in oklab, var(--color-base-content) 45%, transparent) 50%,
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 60% 100%
-  );
-}
-</style>
-
-<style scoped>
-.reasoning-step-complete {
-  display: inline-flex;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 9999px;
-  background-color: color-mix(
-    in oklab,
-    var(--color-accent) 20%,
-    transparent
-  );
-}
-
-.reasoning-step-waiting {
-  display: inline-flex;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 9999px;
-  background-color: color-mix(
-    in oklab,
-    var(--color-warning) 70%,
-    transparent
-  );
-}
-
-.reasoning-step-failed {
-  display: inline-flex;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 9999px;
-  background-color: color-mix(
-    in oklab,
-    var(--color-error) 20%,
-    transparent
   );
 }
 </style>

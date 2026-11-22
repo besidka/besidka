@@ -36,6 +36,43 @@ export function getRetryDelay(response, body, attempt) {
   return null
 }
 
+const GENERIC_EXTENSION_KEYS = new Set([
+  'code',
+  'type',
+  'userError',
+  'statusCode',
+  'userPresentableMessage',
+])
+
+/**
+ * Formats GraphQL errors with the details Linear puts in `extensions`, such
+ * as `userPresentableMessage` and validation details, because the top-level
+ * `message` of a validation failure is only "Argument Validation Error".
+ */
+export function formatGraphqlErrors(errors) {
+  return errors.map((error) => {
+    const extensions = error.extensions ?? {}
+    const parts = [error.message]
+    const presentable = extensions.userPresentableMessage
+
+    if (presentable && presentable !== error.message) {
+      parts.push(presentable)
+    }
+
+    const details = Object.fromEntries(
+      Object.entries(extensions).filter(([key]) => {
+        return !GENERIC_EXTENSION_KEYS.has(key)
+      }),
+    )
+
+    if (Object.keys(details).length) {
+      parts.push(JSON.stringify(details))
+    }
+
+    return parts.filter(Boolean).join(': ')
+  }).join('; ')
+}
+
 function wait(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds))
 }
@@ -70,7 +107,9 @@ export async function linearRequest({
       continue
     }
 
-    const message = body.errors?.map(error => error.message).join('; ')
+    const message = body.errors?.length
+      ? formatGraphqlErrors(body.errors)
+      : ''
 
     throw new Error(message || `HTTP ${response.status}`)
   }

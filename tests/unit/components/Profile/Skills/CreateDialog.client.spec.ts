@@ -203,6 +203,46 @@ describe('Profile/Skills/CreateDialog', () => {
     })
   })
 
+  it('names the skill that already uses the command before posting', async () => {
+    commandsActive.value = true
+    useNuxtApp().payload.data['skills-library'] = {
+      skills: [{ id: 'skl1', name: 'code-review', command: 'review' }],
+      counts: { sources: { all: 1, created: 1, imported: 0, apps: 0 } },
+    }
+    await mountDialog('skill')
+    await setValue('skill-create-name', 'second')
+    await setValue('skill-create-command', '/Review')
+
+    expect(get('skill-create-command-help').textContent?.trim()).toBe(
+      'The command /review is already used by the skill code-review',
+    )
+    expect((get('skill-create-submit') as HTMLButtonElement).disabled)
+      .toBe(true)
+
+    delete useNuxtApp().payload.data['skills-library']
+  })
+
+  it('shows a command-taken answer of the server on the command field', async () => {
+    commandsActive.value = true
+    mocks.fetch.mockRejectedValue(Object.assign(new Error('taken'), {
+      data: {
+        message: 'The command /summarize is already used by the skill other',
+        statusCode: 409,
+        code: 'command-taken',
+        why: 'Another of your skills already uses this command',
+      },
+      statusCode: 409,
+    }))
+    await mountDialog('skill')
+    await setValue('skill-create-name', 'summarize')
+    await setValue('skill-create-command', 'summarize')
+    await submit()
+
+    expect(get('skill-create-command-help').textContent?.trim()).toBe(
+      'The command /summarize is already used by the skill other',
+    )
+  })
+
   it('leaves the hint out when the command is cleared again', async () => {
     commandsActive.value = true
     await mountDialog('skill')

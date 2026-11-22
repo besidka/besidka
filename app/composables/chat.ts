@@ -15,6 +15,10 @@ import type {
   ToolApprovalController,
   ToolApprovalFailure,
 } from '~/composables/tool-approvals'
+import type {
+  ToolRoundController,
+  ToolRoundRequest,
+} from '~/composables/tool-rounds'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
@@ -24,6 +28,13 @@ import { parseError } from 'evlog'
 import { DefaultChatTransport, isToolUIPart } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
+import {
+  createClientErrorReportLimiter,
+  getGenerationRetryDelayMs,
+  isMarkupErrorText,
+  toReadableErrorResponse,
+  toReadableRequestError,
+} from '~/utils/chat-request-errors'
 import {
   getGenerateImageToolPart,
   isVisibleGenerateImageToolPart,
@@ -53,6 +64,7 @@ import {
   isPersistedOversizedResponseFailureText,
   parsePersistedChatFailureNotice,
 } from '#shared/utils/chat-failure-text'
+import { CHAT_STREAM_HEARTBEAT_PART_TYPE } from '#shared/utils/chat-stream-heartbeat'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -231,6 +243,14 @@ export function normalizeChatClientError(
   const parsedException = parseError(error)
   const requestId = options.requestId || ulid().toLowerCase()
 
+  if (isMarkupErrorText(parsedException.message)) {
+    return toReadableRequestError({
+      status: parsedException.status,
+      bodyText: parsedException.message,
+      requestId: options.requestId,
+    })
+  }
+
   if (isTransportLoadErrorMessage(parsedException.message)) {
     return {
       code: 'unknown',
@@ -384,6 +404,26 @@ export function shouldRecoverInterruptedGeneration(
 // Regenerate alongside Stop. This mirrors displayStop's own generating
 // check (including its `!isStopped` escape hatch for the abort→ready
 // transition) so a genuinely failed/errored turn still shows Regenerate.
+/**
+ * The "Waiting for the previous reply to stop" loader of a fresh send shows
+ * only while no assistant bubble with content ends the chat: a partial
+ * reply or a reasoning step on screen already says something is happening,
+ * and two assistant bubbles at once read as two replies. A continuation
+ * (approval answers, a tool round) always continues the assistant message
+ * on screen, so its wait always shows the loader.
+ */
+export function shouldShowWaitingLoader(
+  waitingSince: number,
+  lastMessage: UIMessage | undefined,
+  isContinuation: boolean = false,
+): boolean {
+  if (waitingSince <= 0) {
+    return false
+  }
+
+  return isContinuation || !hasVisibleAssistantContent(lastMessage)
+}
+
 export function shouldDisplayRegenerate(
   status: ChatStatus,
   isStopped: boolean,
@@ -693,8 +733,40 @@ function showChatError(
   return applyChatErrorToMessages(messages, error)
 }
 
+const CLIENT_ERRORS_PATH = '/api/v1/chats/client-errors'
+const clientErrorReportLimiter = createClientErrorReportLimiter({
+  maxPerWindow: 3,
+  windowMs: 60_000,
+  maxPerSession: 10,
+})
+
+/**
+ * Whether a client error report may go out: never one about the reporter's
+ * own request, and only within the page session's limits.
+ */
+export function shouldSendChatClientErrorReport(
+  payload: Pick<ChatClientErrorReport, 'code' | 'message' | 'reason'>,
+  limiter = clientErrorReportLimiter,
+): boolean {
+  const isAboutReporter = [payload.message, payload.reason].some((text) => {
+    return !!text?.includes(CLIENT_ERRORS_PATH)
+  })
+
+  if (isAboutReporter) {
+    return false
+  }
+
+  return limiter.allow(
+    [payload.code, payload.message, payload.reason ?? ''].join('|'),
+  )
+}
+
 function reportChatClientError(payload: ChatClientErrorReport) {
   if (!import.meta.client) {
+    return
+  }
+
+  if (!shouldSendChatClientErrorReport(payload)) {
     return
   }
 
@@ -706,7 +778,7 @@ function reportChatClientError(payload: ChatClientErrorReport) {
         type: 'application/json',
       })
 
-      navigator.sendBeacon('/api/v1/chats/client-errors', blob)
+      navigator.sendBeacon(CLIENT_ERRORS_PATH, blob)
 
       return
     }
@@ -714,7 +786,7 @@ function reportChatClientError(payload: ChatClientErrorReport) {
     void exception
   }
 
-  globalThis.fetch('/api/v1/chats/client-errors', {
+  globalThis.fetch(CLIENT_ERRORS_PATH, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -726,15 +798,17 @@ function reportChatClientError(payload: ChatClientErrorReport) {
   })
 }
 
+const STOP_REQUEST_WAIT_MS = 2_000
+
 // Bounds how long the client keeps polling a "still generating" turn (issue
 // #275) before giving up and falling back to the manual Regenerate button.
-// 150 attempts * 4s = 10 min, comfortably covering the 2-3 min generations
-// from the bug report with margin, and roughly matching the server's KV ttl
-// on the in-flight generation flag (server/api/v1/chats/[slug]/index.post.ts)
-// — once that expires a retry just starts a fresh generation instead, which
-// is an acceptable fallback.
-const MAX_GENERATION_RETRY_ATTEMPTS = 150
-const GENERATION_RETRY_DELAY_MS = 4_000
+// The resends back off (getGenerationRetryDelayMs: 4 s, 8 s, then 15 s), so
+// 42 attempts still cover about 10 minutes, well past the 2-3 min
+// generations from the bug report.
+const MAX_GENERATION_RETRY_ATTEMPTS = 42
+const STREAM_PUBLISH_THROTTLE_MS = 50
+const STREAM_STALL_TIMEOUT_MS = 45_000
+const STREAM_STALL_CHECK_INTERVAL_MS = 5_000
 
 // A turn counts as active "thinking" while the last message is the
 // assistant's in-progress reply and EITHER at least one of its reasoning
@@ -986,6 +1060,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const files = ref<FileMetadata[]>([])
   const attachedArtifacts = ref<AttachedArtifact[]>([])
   const composerSkillInvocation = useComposerSkillInvocation()
+  const composerBuiltinCommand = useComposerBuiltinCommand()
   const pendingError = shallowRef<ChatErrorPayload | null>(null)
   const transportRequestId = shallowRef<string>()
   const reportedClientErrorIds = new Set<string>()
@@ -1019,6 +1094,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // settles back to a terminal value between each poll, which would
   // otherwise make the UI flash back to "nothing happening" every cycle.
   const isAwaitingGeneration = shallowRef<boolean>(false)
+  const waitingForPreviousReplySince = shallowRef<number>(0)
+  const isContinuationRequest = shallowRef<boolean>(false)
+  let pendingStopRequest: Promise<void> | null = null
+  let stoppedRun: { messageId: string, runId: string } | null = null
   let isPendingGenerationRetry = false
   let pendingRetryAttempts = 0
   let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
@@ -1037,8 +1116,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
 
-  function getConnectorIdsField(): { connectorIds?: string[] } {
-    const { chatKey, ids, isKnown } = connectorSelection.value
+  function getConnectorIdsField(): {
+    connectorIds?: string[]
+    offConnectorIds?: string[]
+  } {
+    const { chatKey, ids, offIds, isKnown } = connectorSelection.value
 
     if (
       !connectorsFeature.value.active
@@ -1048,7 +1130,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return {}
     }
 
-    return { connectorIds: ids }
+    return { connectorIds: ids, offConnectorIds: offIds }
   }
 
   function getBesidkaToolsField(): { besidkaToolsEnabled?: boolean } {
@@ -1074,9 +1156,15 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     { approvalId: string, nonce: number } | null
   >(null)
   let toolApprovalRequestError: unknown = null
+  let requestedToolRound: ToolRoundRequest | null = null
+  const deferredToolRound = shallowRef<ToolRoundRequest | null>(null)
+  const requestedToolRoundKeys = shallowRef<ReadonlySet<string>>(new Set())
+  const activeToolRound = shallowRef<number>(0)
+  const isToolRoundHalted = shallowRef<boolean>(false)
   let isToolApprovalResendHeld = false
   let toolApprovalResendAttempts = 0
   let toolApprovalResendTimeoutId: ReturnType<typeof setTimeout> | undefined
+  let isStreamStallAbort = false
 
   const {
     messages: sdkMessages,
@@ -1090,6 +1178,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   } = useChatSdk<UIMessage>({
     id: chat.id,
     messages: hydratedMessages as unknown as UIMessage[],
+    throttle: STREAM_PUBLISH_THROTTLE_MS,
     transport: new DefaultChatTransport({
       api: api.value,
       async fetch(input, init) {
@@ -1101,9 +1190,34 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           || response.headers.get('x-request-id')
           || undefined
 
-        return response
+        return await toReadableErrorResponse(
+          response,
+          transportRequestId.value,
+        )
       },
       prepareSendMessagesRequest({ messages }) {
+        if (messages.at(-1)?.role === 'assistant') {
+          nuxtApp.callHook('chat:continue')
+        }
+
+        const toolRound = requestedToolRound
+        const lastSentMessage = messages.at(-1)
+
+        isContinuationRequest.value = lastSentMessage?.role === 'assistant'
+        requestedToolRound = null
+
+        if (
+          toolRound
+          && lastSentMessage?.role === 'assistant'
+          && lastSentMessage.id === toolRound.messageId
+        ) {
+          activeToolRound.value = toolRound.round
+
+          return { body: { continue: toolRound } }
+        }
+
+        activeToolRound.value = 0
+
         const approvalBody = buildToolApprovalRequestBody(
           messages,
           toolApprovalRemember,
@@ -1139,6 +1253,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             ),
             ...getConnectorIdsField(),
             ...getBesidkaToolsField(),
+            ...getStoppedRunField(lastMessage?.id),
           },
         }
       },
@@ -1148,10 +1263,35 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return false
       }
 
-      return shouldSendToolApprovalResponses(messages, toolApprovalRemember)
+      if (shouldSendToolApprovalResponses(messages, toolApprovalRemember)) {
+        return true
+      }
+
+      const nextToolRound = resolveAutoToolRound(messages, {
+        isHalted: isToolRoundHalted.value,
+        requestedKeys: requestedToolRoundKeys.value,
+      })
+
+      if (nextToolRound && document.visibilityState !== 'visible') {
+        deferredToolRound.value = nextToolRound
+
+        return false
+      }
+
+      return requestToolRound(nextToolRound)
     },
-    onFinish({ isAbort, isDisconnect, isError, messages }) {
+    onFinish({
+      isAbort: isSdkAbort,
+      isDisconnect: isSdkDisconnect,
+      isError,
+      messages,
+    }) {
+      const isStallAbort = isSdkAbort && isStreamStallAbort
+      const isAbort = isSdkAbort && !isStallAbort
+      const isDisconnect = isSdkDisconnect || isStallAbort
       const approvalRequestIds = toolApprovalRemember.getInFlight()
+
+      isStreamStallAbort = false
 
       if (
         approvalRequestIds.length > 0
@@ -1168,6 +1308,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       const isSuccessfulResponse = !isAbort && !isDisconnect && !isError
 
       toolApprovalRemember.settleInFlight(isSuccessfulResponse)
+
+      if (isAbort || isError) {
+        isToolRoundHalted.value = true
+        deferredToolRound.value = null
+      }
 
       const requestId = transportRequestId.value
       const wasPendingGenerationRetry = isPendingGenerationRetry
@@ -1228,6 +1373,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return
       }
 
+      waitingForPreviousReplySince.value = 0
+
       if (isAbort) {
         wakeLock.release()
         isAwaitingGeneration.value = false
@@ -1261,6 +1408,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
 
       hadInterruptionThisTurn = false
+      pendingRetryAttempts = 0
     },
     onError(error: any) {
       if (toolApprovalRemember.getInFlight().length > 0) {
@@ -1299,8 +1447,21 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
     },
     onData(dataPart) {
+      markStreamActivity()
+
+      if (dataPart.type === CHAT_STREAM_HEARTBEAT_PART_TYPE) {
+        hasStreamHeartbeat = true
+
+        return
+      }
+
       if (dataPart.type === 'data-generation-pending') {
         isPendingGenerationRetry = true
+
+        if (!waitingForPreviousReplySince.value) {
+          waitingForPreviousReplySince.value = Date.now()
+        }
+
         return
       }
 
@@ -1326,6 +1487,94 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   watch(sdkStatus, (status) => {
     isChatStreaming.value = status === 'submitted' || status === 'streaming'
   }, { immediate: true })
+
+  let lastStreamActivityAt = 0
+  let lastStreamStallCheckAt = 0
+  let hasStreamHeartbeat = false
+  let streamStallIntervalId: ReturnType<typeof setInterval> | undefined
+
+  function markStreamActivity() {
+    lastStreamActivityAt = Date.now()
+  }
+
+  function clearStreamStallCheck() {
+    hasStreamHeartbeat = false
+
+    if (streamStallIntervalId === undefined) {
+      return
+    }
+
+    clearInterval(streamStallIntervalId)
+    streamStallIntervalId = undefined
+  }
+
+  /**
+   * Reconnects a reply whose stream went silent. The send route writes a
+   * heartbeat every 15 seconds while it works, also during a long tool
+   * call, so a stream that had heartbeats and then nothing for 45 seconds
+   * is dead. It is aborted and settled like a dropped connection
+   * (`isStreamStallAbort` in `onFinish`): the transport-interruption
+   * recovery resends it, or resends the approval answers, instead of
+   * leaving a spinner that never ends. A stream without heartbeats is never
+   * ended here. The check waits while the page is hidden and after a tick
+   * that came late (the device slept or timers were frozen), because the
+   * connection may still deliver.
+   */
+  function checkStreamStall() {
+    const now = Date.now()
+    const isLateTick = now - lastStreamStallCheckAt
+      > STREAM_STALL_CHECK_INTERVAL_MS * 2
+
+    lastStreamStallCheckAt = now
+
+    if (isLateTick) {
+      markStreamActivity()
+
+      return
+    }
+
+    if (!hasStreamHeartbeat || document.visibilityState === 'hidden') {
+      return
+    }
+
+    if (now - lastStreamActivityAt < STREAM_STALL_TIMEOUT_MS) {
+      return
+    }
+
+    clearStreamStallCheck()
+    isStreamStallAbort = true
+    sdkStop()
+    useWarningMessage(
+      'The reply stopped arriving',
+      'Reconnecting to it. This can take a couple of minutes.',
+    )
+  }
+
+  watch(sdkMessages, markStreamActivity)
+
+  watch(sdkStatus, (status) => {
+    if (status !== 'submitted' && status !== 'streaming') {
+      clearStreamStallCheck()
+
+      return
+    }
+
+    if (status === 'submitted') {
+      hasStreamHeartbeat = false
+    }
+
+    markStreamActivity()
+
+    if (streamStallIntervalId !== undefined) {
+      return
+    }
+
+    lastStreamStallCheckAt = Date.now()
+    streamStallIntervalId = setInterval(
+      checkStreamStall,
+      STREAM_STALL_CHECK_INTERVAL_MS,
+    )
+  })
 
   const renderableMessages = computed<UIMessage[]>(() => {
     return getRenderableChatMessages(sdkMessages.value)
@@ -1414,12 +1663,25 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const displayStop = computed<boolean>(() => {
-    return ['submitted', 'streaming'].includes(chatSdk.status)
-      && !isStopped.value
+    return (
+      ['submitted', 'streaming'].includes(chatSdk.status)
+      || waitingForPreviousReplySince.value > 0
+    )
+    && !isStopped.value
+  })
+
+  const waitingLoaderSince = computed<number>(() => {
+    return shouldShowWaitingLoader(
+      waitingForPreviousReplySince.value,
+      lastMessage.value,
+      isContinuationRequest.value,
+    )
+      ? waitingForPreviousReplySince.value
+      : 0
   })
 
   const displayRegenerate = computed<boolean>(() => {
-    return shouldDisplayRegenerate(
+    return !displayStop.value && shouldDisplayRegenerate(
       chatSdk.status,
       isStopped.value,
       chatSdk.messages,
@@ -1452,6 +1714,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAwaitingGeneration.value = true
 
     if (pendingRetryAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
+      waitingForPreviousReplySince.value = 0
       isAwaitingGeneration.value = false
       isStopped.value = true
       wakeLock.release()
@@ -1459,10 +1722,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    const isFirstAttempt = pendingRetryAttempts === 0
+
     pendingRetryAttempts += 1
     clearScheduledGenerationRetry()
 
-    if (!options.immediate) {
+    if (!options.immediate || !isFirstAttempt) {
       pendingRetryTimeoutId = setTimeout(() => {
         // The generation this was polling for may have resumed on its own
         // between scheduling and firing (e.g. a brief connection hiccup that
@@ -1473,7 +1738,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         }
 
         chatSdk.regenerate()
-      }, GENERATION_RETRY_DELAY_MS)
+      }, getGenerationRetryDelayMs(pendingRetryAttempts))
 
       return
     }
@@ -1523,6 +1788,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   function handleVisibilityChange(): void {
     if (document.visibilityState === 'visible') {
+      markStreamActivity()
       recoverIfInterrupted()
     }
   }
@@ -1549,10 +1815,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   onUnmounted(() => {
+    stopGenerationOnLeave()
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
     clearToolApprovalResend()
+    clearStreamStallCheck()
     reasoningSegmentTracker.reset()
     disposeChatResearch()
     wakeLock.release()
@@ -1569,6 +1837,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     const parts: any[] = []
     const artifactParts = attachedArtifacts.value.map(toArtifactAttachmentPart)
     const skillInvocationPart = composerSkillInvocation.part.value
+    const builtinCommandPart = composerBuiltinCommand.part.value
 
     if (text.trim()) {
       parts.push({
@@ -1587,6 +1856,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
     if (skillInvocationPart) {
       parts.push(skillInvocationPart)
+    }
+
+    if (builtinCommandPart) {
+      parts.push(builtinCommandPart)
     }
 
     return parts
@@ -1706,6 +1979,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     if (
       isDeepResearchModel(model)
       && !pendingClarification.value
+      && !composerBuiltinCommand.command.value
       && topic.trim()
     ) {
       await requestResearchClarification(topic)
@@ -1713,9 +1987,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    waitingForPreviousReplySince.value = 0
     isStopped.value = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
+    isToolRoundHalted.value = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
     reasoningSegmentTracker.reset()
@@ -1723,6 +1999,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     wakeLock.acquire()
 
     const parts = await buildUserMessageParts(topic)
+
+    await waitForPendingStop()
 
     chatSdk.messages = [
       ...chatSdk.messages,
@@ -1738,7 +2016,134 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     chatSdk.regenerate()
   }
 
+  /**
+   * The id of the generation lease the request in flight holds: the
+   * assistant message for an approval or round continuation, the user
+   * message for every other send.
+   */
+  function findGenerationLeaseMessageId(): string | null {
+    const isContinuation = activeToolRound.value > 0
+      || sendingApprovalIds.value.length > 0
+
+    if (isContinuation) {
+      const lastMessage = sdkMessages.value.at(-1)
+
+      return lastMessage?.role === 'assistant' ? lastMessage.id : null
+    }
+
+    return sdkMessages.value.findLast(message => message.role === 'user')?.id
+      ?? null
+  }
+
+  /**
+   * Tells the server the user stopped the reply, so it ends the run and
+   * frees the chat at once and Retry does not wait for the old run's lease.
+   * Sent with `keepalive`, so it still goes out when the page is closing;
+   * a failure only means Retry may wait for the lease as before. The run it
+   * stopped goes back with the retry of the same message.
+   */
+  async function requestGenerationStop(messageId: string): Promise<void> {
+    stoppedRun = null
+
+    try {
+      const response = await $fetch(`/api/v1/chats/${chatSlug}/stop`, {
+        method: 'POST',
+        body: { messageId },
+        keepalive: true,
+      })
+
+      stoppedRun = response.runId
+        ? { messageId, runId: response.runId }
+        : null
+    } catch {
+      return
+    }
+  }
+
+  function getStoppedRunField(
+    messageId: string | undefined,
+  ): { stoppedRunId?: string } {
+    if (!stoppedRun || stoppedRun.messageId !== messageId) {
+      return {}
+    }
+
+    const { runId } = stoppedRun
+
+    stoppedRun = null
+
+    return { stoppedRunId: runId }
+  }
+
+  async function waitForPendingStop(): Promise<void> {
+    if (!pendingStopRequest) {
+      return
+    }
+
+    const request = pendingStopRequest
+    let waitTimer: ReturnType<typeof setTimeout> | undefined
+
+    pendingStopRequest = null
+    await Promise.race([
+      request,
+      new Promise((resolve) => {
+        waitTimer = setTimeout(resolve, STOP_REQUEST_WAIT_MS)
+      }),
+    ])
+    clearTimeout(waitTimer)
+  }
+
   function stop() {
+    const leaseMessageId = isTestChat.value || !displayStop.value
+      ? null
+      : findGenerationLeaseMessageId()
+
+    if (leaseMessageId) {
+      pendingStopRequest = requestGenerationStop(leaseMessageId)
+    }
+
+    endGenerationLocally()
+  }
+
+  /**
+   * Leaving the chat inside the app (history, another chat) while a reply
+   * streams: tells the server to stop the run, so it stores what it has as
+   * a stopped reply and frees the chat, then ends the local request. Before,
+   * the request kept streaming in the background until the next visit
+   * dropped it, the run died with it, nothing was stored and the return
+   * visit waited for a stale lease (owner report, 2026-11-21). A wait for
+   * another run only ends the local polling, as Cancel does.
+   */
+  function stopGenerationOnLeave(): void {
+    if (!displayStop.value) {
+      return
+    }
+
+    const isWaitingOnly = waitingForPreviousReplySince.value > 0
+      && !['submitted', 'streaming'].includes(chatSdk.status)
+
+    if (!isWaitingOnly && !isTestChat.value) {
+      const leaseMessageId = findGenerationLeaseMessageId()
+
+      if (leaseMessageId) {
+        requestGenerationStop(leaseMessageId)
+      }
+    }
+
+    waitingForPreviousReplySince.value = 0
+    chatSdk.stop()
+  }
+
+  /**
+   * Cancel in the "Waiting for the previous reply to stop" state: ends the
+   * wait without telling the server, so a reply another tab is still
+   * writing keeps running. Stop is the button that ends that reply.
+   */
+  function cancelWaiting() {
+    endGenerationLocally()
+  }
+
+  function endGenerationLocally() {
+    waitingForPreviousReplySince.value = 0
     clearScheduledGenerationRetry()
     clearToolApprovalResend()
     isAwaitingGeneration.value = false
@@ -1750,7 +2155,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     nuxtApp.callHook('chat:stop')
   }
 
-  function regenerate() {
+  async function regenerate() {
     // displayRegenerate already hides the button for a DR-selected model —
     // this guards any other caller of regenerate() against streaming against
     // a model that only accepts research turns through the async job flow.
@@ -1758,6 +2163,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    await waitForPendingStop()
+    waitingForPreviousReplySince.value = 0
     isStopped.value = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
@@ -1897,6 +2304,74 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     ) as typeof sdkMessages.value
   }
 
+  /**
+   * Arms the next send to run `request` as the next round of a long tool
+   * task in the same reply. Each round is requested once.
+   */
+  function requestToolRound(request: ToolRoundRequest | null): boolean {
+    if (!request || requestedToolRoundKeys.value.has(toolRoundKey(request))) {
+      return false
+    }
+
+    requestedToolRoundKeys.value = new Set([
+      ...requestedToolRoundKeys.value,
+      toolRoundKey(request),
+    ])
+    requestedToolRound = request
+
+    return true
+  }
+
+  /**
+   * Runs the next round of a long tool task on the user's click (a hidden
+   * tab, or after Stop), into the same reply.
+   */
+  async function continueToolRound() {
+    if (isChatStreaming.value) {
+      return
+    }
+
+    const next = findNextToolRound(sdkMessages.value)
+
+    if (!next) {
+      return
+    }
+
+    requestedToolRoundKeys.value = new Set(
+      [...requestedToolRoundKeys.value].filter((key) => {
+        return key !== toolRoundKey(next)
+      }),
+    )
+    deferredToolRound.value = null
+
+    if (!requestToolRound(next)) {
+      return
+    }
+
+    isToolRoundHalted.value = false
+    isStopped.value = false
+    currentTurnStartedAt.value = Date.now()
+    reasoningSegmentTracker.reset()
+    wakeLock.acquire()
+
+    await sdkSendMessage()
+  }
+
+  /**
+   * Goes on after a reply used every round one message may run: sends
+   * "Continue" as a new message, or adds it to a draft the user is writing.
+   */
+  async function continueToolTaskAsNewMessage() {
+    if (input.value.trim()) {
+      await nuxtApp.callHook('chat-input:prefill', 'Continue')
+
+      return
+    }
+
+    input.value = 'Continue'
+    await submit()
+  }
+
   async function askAgainAfterApproval(messageId: string) {
     const prompt = getPromptBeforeMessage(sdkMessages.value, messageId)
 
@@ -1965,7 +2440,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
 
       sdkSendMessage()
-    }, GENERATION_RETRY_DELAY_MS)
+    }, getGenerationRetryDelayMs(toolApprovalResendAttempts))
   }
 
   function hasRespondedApprovalParts(approvalIds: readonly string[]) {
@@ -2093,11 +2568,52 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return
       }
 
+      toolApprovalController.focusApproval(approvalId)
+    },
+    focusApproval: (approvalId) => {
       toolApprovalFocusRequest.value = { approvalId, nonce: Date.now() }
     },
   }
 
   provide(TOOL_APPROVAL_CONTROLLER_KEY, toolApprovalController)
+
+  const toolRoundController: ToolRoundController = {
+    activeRound: activeToolRound,
+    isRequestActive: isChatStreaming,
+    isWaitingForUser: computed<boolean>(() => {
+      return isToolRoundHalted.value || deferredToolRound.value !== null
+    }),
+    isRequested: (request) => {
+      return requestedToolRoundKeys.value.has(toolRoundKey(request))
+    },
+    continueRound: continueToolRound,
+    continueAsNewMessage: continueToolTaskAsNewMessage,
+  }
+
+  provide(TOOL_ROUND_CONTROLLER_KEY, toolRoundController)
+
+  if (import.meta.client) {
+    useEventListener(document, 'visibilitychange', () => {
+      const deferred = deferredToolRound.value
+
+      if (
+        !deferred
+        || document.visibilityState !== 'visible'
+        || isChatStreaming.value
+        || isToolRoundHalted.value
+      ) {
+        return
+      }
+
+      deferredToolRound.value = null
+
+      const next = findNextToolRound(sdkMessages.value)
+
+      if (next && toolRoundKey(next) === toolRoundKey(deferred)) {
+        continueToolRound()
+      }
+    })
+  }
 
   return {
     chatSdk,
@@ -2113,6 +2629,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isLoading,
     displayRegenerate,
     displayStop,
+    waitingForPreviousReplySince,
+    waitingLoaderSince,
+    cancelWaiting,
     isLastUserMessage,
     isLastAssistantMessage,
     shouldDisplayMessage,

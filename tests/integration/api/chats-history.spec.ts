@@ -115,6 +115,19 @@ vi.mock('~~/server/utils/files/chat-deletion-cleanup', async (
   }
 })
 
+vi.mock('~~/server/utils/files/connector-images', async (
+  importOriginal,
+) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/files/connector-images')
+  >()
+
+  return {
+    ...original,
+    findChatsConnectorImageFiles: async () => [],
+  }
+})
+
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
 }))

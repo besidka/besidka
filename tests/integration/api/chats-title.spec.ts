@@ -176,6 +176,42 @@ describe('chat title API', () => {
     expect(JSON.stringify(set.mock.calls)).not.toContain('secret-skill-name')
   })
 
+  it('titles a chat that starts with a built-in command without a model', async () => {
+    const handler = await getTitleHandler()
+    const where = vi.fn(async () => undefined)
+    const set = vi.fn(() => ({ where }))
+    const db = {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            title: null,
+            projectId: null,
+            messages: [{
+              parts: [
+                { type: 'data-command-invocation', data: { command: 'stats' } },
+                { type: 'text', text: '7d private note' },
+              ],
+            }],
+          })),
+        },
+      },
+      update: vi.fn(() => ({ set })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: { model: 'openai:gpt-4.1-mini' },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response).toBe('Usage stats')
+    expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith({ title: 'Usage stats' })
+    expect(JSON.stringify(set.mock.calls)).not.toContain('private note')
+  })
+
   it('substitutes the research assist model so titling never triggers a real research run', async () => {
     vi.stubGlobal('useChatProvider', () => ({
       provider: { id: 'openai' },

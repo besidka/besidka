@@ -11,46 +11,28 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '2ac8ff662c2de4e732fe264ef23234626fce0e7e362481bd57e1b9df7b4567c2',
+    hash: '3dfc573f6258742ef474bcf454f61f86b56236d5ddfed27fabe0a5de439b8b6b',
     classification: 'material',
-    noticeId: '2026-12-code-and-documents',
-    note: 'Documents (stored outline and file, deleted with the file and '
-      + 'with the chat) and running code at the provider the user chose '
-      + '(what is sent, what Besidka deletes, what each provider keeps), '
-      + 'and create_document under the files permission of connected apps. '
-      + 'Treated as material on the cautious reading: the provider-side '
-      + 'retention is a retention fact users did not have before. The '
-      + 'deletion wording is exact: uploads, the files the sandbox made and '
-      + 'the OpenAI container are deleted when the reply ends; uploads expire '
-      + 'within an hour if it is cut off, and files the Anthropic sandbox '
-      + 'made stay in the user\'s Anthropic account. Body '
-      + 'still includes the 2026-11-experimental-features and '
-      + '2026-12-artifacts changes, effective 2026-12-19. Also minor '
-      + 'clarifications (BES-393): artifacts count against the one storage '
-      + 'limit instead of a separate 25 MB, and Read your settings includes '
-      + 'storage use by type; no new purpose, recipient, transfer or '
-      + 'retention. CONNECTORS (C-10, BES-257): the section Connectors you '
+    noticeId: '2026-11-support-requests',
+    note: 'Support requests (new purpose): support@besidka.com, the debug '
+      + 'block from get_debug_info and Copy debug info, lookup by ids in D1 '
+      + 'and Axiom, the chat itself only on request or with agreement, '
+      + 'basis 6(1)(b) or (f), closed plus 12 months. New recipient: Google '
+      + '(Gmail), the owner\'s personal mailbox every besidka.com alias is '
+      + 'forwarded to, with US transfer under the DPF. Read your chats now '
+      + 'also covers debug details, chat cost and usage statistics '
+      + '(get_debug_info, get_chat_cost, get_usage_stats). Body still '
+      + 'includes the 2026-12-code-and-documents changes, effective '
+      + '2026-12-19. Owner approved the notice and its dates in chat on '
+      + '2026-11-20. '
+      + 'CONNECTORS (C-10, BES-257): the section Connectors you '
       + 'add, the recipient row, the transfer paragraph (explicit consent '
       + 'per connector, Art. 49(1)(a)), the legal-basis and retention rows '
       + '(tool-call log 90 days, registry copy) and the registry copy are '
       + 'judged MATERIAL (new purpose, new recipient category, new '
       + 'transfer, new retention) and are NOT described by the notice id on '
-      + 'this record, which predates them. No notice exists for connectors: '
+      + 'this record. No notice exists for connectors: '
       + 'announcing them is the owner\'s decision in /admin/legal. '
-      + 'Also the two connected-app permissions for connectors '
-      + '(see and add, switch off, restrict and delete; BES-256): they '
-      + 'describe what MCP tools can do and cannot do (never switch a '
-      + 'connector on, sign in or allow a tool without asking), and the '
-      + 'wording about connectors as recipients stays with C-10; whether '
-      + 'the existing notice needs to say more is the owner\'s decision. '
-      + 'Also the two connected-app permissions for skills (see skills and '
-      + 'their full text; add, change and delete skills, saved switched off '
-      + 'for review; BES-292), with skill deletes under that permission and '
-      + 'not under Delete your data: '
-      + 'they describe what MCP tools can do and cannot do (never switch a '
-      + 'skill on or set it to Auto), with no new purpose, recipient, '
-      + 'transfer or retention; whether the existing notice needs to say '
-      + 'more is the owner\'s decision. '
       + 'PHASE 4 LEGAL BATCH (2026-11-16): the new Skills section (sources, '
       + 'GitHub import, what is kept, catalog and text to the chat\'s '
       + 'provider, never public, scripts copied to the user\'s Anthropic '
@@ -64,26 +46,28 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'described by the notice id on this record. Owner decision of '
       + '2026-11-16: updated without notice emails, no LEGAL_NOTICES entry '
       + 'and no consent version bump. '
-      + 'An earlier edit changed British spellings to American '
-      + 'English, with no change of meaning, so it adds no new '
-      + 'classification.',
+      + 'MERGE OF MAIN (2026-11-22): the connector approval paragraphs follow '
+      + 'the owner decision of 2026-11-20 (a tool the user allowed runs '
+      + 'without asking after content from another source and in the delete '
+      + 'and share group, tools grouped by kind, long tasks in up to 10 '
+      + 'rounds while the chat is open); part of the connectors text above '
+      + 'and NOT described by the notice id on this record.',
   },
   'terms-of-use': {
-    hash: '6a7cf7f84be8e9a5f0ea0068a9fe705aaf4c63c00cb341f7bcc7da8d62109539',
+    hash: '054f5c415ce8cfd8b04aa76ca80dcec976522d6709dcb35e9e7f8d598043df24',
     classification: 'material',
-    noticeId: '2026-12-code-and-documents',
-    note: 'New prohibited use for code run with Run code or written through '
-      + 'Besidka (malware, denial of service, bypassing security controls, '
-      + 'critical infrastructure), the provider\'s usage policy and '
-      + 'Anthropic\'s skills, documents and code results not checked by '
-      + 'Besidka, and the AI mark on documents. Body still includes the '
-      + '2026-12-artifacts changes, effective 2026-12-19.'
+    noticeId: '2026-11-support-requests',
+    note: 'Contact: support@besidka.com for help with the app, with a link '
+      + 'to the Privacy Policy support section; the privacy address stays '
+      + 'the single address for everything else. Body still includes the '
+      + '2026-12-code-and-documents changes, effective 2026-12-19. Owner '
+      + 'approved the notice and its dates in chat on 2026-11-20.'
       + ' CONNECTORS (C-10, BES-257): the Connectors section and edits to '
       + 'the key, sensitive-information, other-people\'s-data and liability '
       + 'sections (new duties for the account a user gives a connector, a '
       + 'call the user approved is the user\'s action, and more not-liable '
       + 'items) are judged MATERIAL and are NOT described by the notice id '
-      + 'on this record, which predates them. No notice exists for '
+      + 'on this record. No notice exists for '
       + 'connectors: announcing them is the owner\'s decision in '
       + '/admin/legal. PHASE 4 LEGAL BATCH (2026-11-16): a new Skills '
       + 'section (right to use what you create, paste or import, no review '
@@ -94,9 +78,11 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'MATERIAL (new obligations on users) and NOT described by the '
       + 'notice id on this record. Owner decision of 2026-11-16: updated '
       + 'without notice emails, no LEGAL_NOTICES entry and no consent '
-      + 'version bump. Latest earlier edit is spelling only (British '
-      + 'variants changed to American English), with no change of meaning, '
-      + 'so it adds no new classification.',
+      + 'version bump. MERGE OF MAIN (2026-11-22): the Connectors section '
+      + 'says an allowed tool, including one that deletes or shares, runs '
+      + 'without asking even after outside text in the same message (owner '
+      + 'decision of 2026-11-20); NOT described by the notice id on this '
+      + 'record.',
   },
   'cookie-policy': {
     hash: '23698e9dfcd63b36e96015181acd14ee63db8d28cf75e09ea09993897450f58c',

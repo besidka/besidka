@@ -1120,6 +1120,18 @@ the full 1,024 characters is about 930 tokens; in English it would be about
 `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` (300 characters, "Shortened in the
 catalog"), and why slash-only commands stay out of the catalog.
 
+**The catalog alone does not taint a send (decision of 2026-11-16).** The
+skills catalog holds only names and one-line descriptions, capped and
+reviewed by the user at import, inside its untrusted delimiter. Listing an
+imported skill there no longer sets `holdsSkillText`, so it presets no
+`skill` approval taint and no memory write lock
+(`catalogHoldsImportedText` is still logged). A skill's body taints the
+send as before: an `activate_skill` result, a "+" attachment, a `/`
+invocation, a project-pinned skill whose text is injected, or a skill
+TypeSafe AI picked. Before this, an account with any model-invocable
+imported skill had every connector read ask `untrusted-output` in every
+chat (found on pr-923, `docs/connectors.md` section 6.3).
+
 ### 5.3 Tools
 
 `getSkillTools({ db, bucket, userId, skills, activeSkillIds, family, guard, kv, logger })`
@@ -1302,15 +1314,138 @@ The picker, chip and composer rules are in section 10.
   they are D1 settings applied as **visible, removable composer tiles before
   Send**, never applied silently, because a preset that changes the model or
   tools is a spend escalation.
-- **Built-in commands** are optional and later (S-14, flag
-  `composer.builtin-commands`): `/new`, `/model`, `/search`, `/image`,
-  `/memory`, `/project`, `/help`. They are client-only UI actions that change
-  visible composer state. They never send and never become parts. They appear
-  in the same picker under a "Besidka" group.
-- **Reserve their names now.** The S-1 name validator holds
-  `SKILL_RESERVED_SLASH_NAMES`. A skill can still have such a name, but a
-  reserved **command** is rejected on save with the inline error "/memory is
-  reserved by Besidka" (400 `reserved-name`).
+
+**Built-in commands, as built (2026-11-20).** `/cost`, `/stats [7d|30d|all]`
+and `/debug` are commands Besidka itself answers. Decision (orchestrator,
+2026-11-20, the owner may reverse): they run with **zero model spend**. The
+send never reaches a provider: the server runs the matching Besidka tool and
+stores its `report` as the reply. Why: `/debug` is needed exactly when a
+provider hangs, and `/cost` on a long chat would otherwise resend the whole
+history and add to the number it reports.
+
+- **Registry** (`shared/utils/builtin-commands.ts`, one source of truth, no row
+  in `skills` and no D1 migration): `name`, `title`, `description`,
+  `argumentHint`, `example` (a plain-words request for the Skills page),
+  `requiredFeatures` and `besidkaTool`.
+
+  | Command | Tool | Arguments |
+  | --- | --- | --- |
+  | `/cost` | `get_chat_cost` | none; text after it stays as the user's note |
+  | `/debug` | `get_debug_info` | none; text after it stays as the user's note |
+  | `/stats` | `get_usage_stats` | `7d`, `30d` (default) or `all`; anything else shows 30d with a one-line note |
+
+  The tools are in `docs/besidka-tools.md` ("Chat cost and usage stats",
+  "Debug info"). `PLANNED_BUILTIN_COMMAND_NAMES` keeps the names reserved for
+  later (`new`, `model`, `search`, `image`, `memory`, `project`, `help`, and
+  `usage` for a possible alias of `/stats`).
+- **Who gets them.** `requiredFeatures` is `skills.commands` only. Nothing
+  reaches a model, so they are offered for every model: deep research, image
+  models and a model without a key too. The composer skips the key, model
+  and transfer-consent checks for a command (`sendBuiltinCommand` in
+  `ChatInput.client.vue`), and the send route answers before it resolves a
+  model, a key or a provider; the legal consent of the account still applies.
+- **Part.** The composer sends `{ type: 'data-command-invocation', data: {
+  command } }` (`toBuiltinCommandPart`), next to an optional text part (the
+  arguments). The request schema accepts it alone and allows one command or
+  one skill per message, never both. `resolveBuiltinCommandPart`
+  (`server/utils/chats/builtin-commands.ts`) refuses a command next to a
+  skill, a file or an artifact (400 `command_invocation_unavailable`, "The
+  /cost command is not available"; a command would drop the attachment
+  silently), or with the flag off. The new-chat `PUT` stores it like any
+  part; the first `POST` then runs it.
+- **Answer** (`respondWithBuiltinCommand`, called early in
+  `server/api/v1/chats/[slug]/index.post.ts`): stores the user message
+  (`tools: []`, reasoning off), runs the tool as the user with client id
+  `besidka-command`, no scopes and the current chat (no approval prompt and
+  no Besidka permission check, see "Why no permission check" below), stores an assistant message
+  of a `data-command-report` marker plus one ` ```text ` code block with **no
+  usage**, and streams that message back as a normal UI message stream
+  (`start`, the marker, `text-*`, `finish`), so the chat pins, follows and
+  finishes it like any reply. A resend of the same user message id replays
+  the stored report. While another reply is being written in the chat
+  (`isChatGenerating`) it answers 409 "A reply is still being written in this
+  chat" instead of interleaving two replies. A new chat that starts with a
+  command takes the command's title ("Chat cost"). A run that fails stores
+  no reply: a client error of the tool (404) answers with its own message and
+  anything else with one fixed sentence (500), and only a stored report is
+  ever replayed. The user message stays, so a resend of the same id runs the
+  command again. Three more refusals come before anything is stored: 409
+  `approval_pending` ("Answer or dismiss the pending approval first.") while a
+  tool approval of the chat waits, because a command is not a message that
+  expires it and the approval card would be left dead; 409
+  `generation_in_progress`; and 429 past 30 commands a minute per user
+  (`enforceBuiltinCommandRateLimit`, KV, fails closed; the support-info route
+  behind `/debug` shares the counter). A report is one fenced block whose
+  fence is longer than any run of backticks inside it, and report labels (a
+  model id, a connector title) are cut to one line without control characters
+  or line and direction marks (`toReportLabel`), so no label can close the
+  block or add a line.
+- **Why no permission check.** The command path runs regardless of the
+  per-tool Blocked permission and of the `besidka-tools` flag, because the
+  user triggers it explicitly by typing the command and the result is the
+  user's own data. Those two gates guard what a model may call on its own. The
+  command path is gated by `skills.commands` (and the legal consent of the
+  account) only.
+- **Never a model's words.** `buildModelContextMessages`
+  (`server/utils/files/assistant-files.ts`) drops both messages of a command
+  (`isBuiltinCommandMessage`) from every later model context, so a later turn
+  cannot take a report for the assistant's own words, and memory extraction
+  skips them (`isMemoryExtractionRecallMessage`). The same two messages never
+  reach a third party either: `readSendPathTurns` leaves them out of the
+  TypeSafe AI Jev send-path turns, `extractMessageSearchText` indexes them as
+  an empty body (so the `search_chats` snippets that a model and the Jev
+  re-ranker read never hold a report), the `read_chat` memory tool skips
+  them, the first-message title is the command's title instead of a model
+  call, and the MCP and in-chat `get_chat` transcript leaves them out
+  (counted in `omittedMessages`, not in `hasOlderMessages`), because a report
+  holds the owner's spend and ids and would bypass the scope masking of the
+  other tools. Skill selection and research read no text from stored
+  messages.
+- **Never public.** `filterPublicParts` leaves both messages out of a share
+  and of a visitor's branch: a report describes the owner's account (spend,
+  models, ids). An own branch copies them like any message.
+- **UI.** The `/` picker lists the built-ins with the skill commands, sorted
+  by command, with a "Built-in" badge instead of the mode and the argument
+  hint after the command (`ChatInput/CommandPicker.vue`). The typed token is
+  highlighted and stripped at Send exactly like a skill command, but there is
+  no tile; a typed built-in replaces an attached skill, and a skill picked
+  from the "+" menu clears the built-in (one command per message). After a
+  failed send of a new chat the text comes back with `/<command> ` in front.
+  The sent user message shows a "Built-in /cost" chip
+  (`Chat/SkillInvocation.vue`); the reply is the code block. Attachments with
+  a command show "/cost runs on its own. Remove the attachments first."
+- **Skills page** (2026-11-20, owner request). `/chats/skills` lists the
+  built-ins as a "Built-in" section (`Profile/Skills/BuiltinList.vue`,
+  rendered from the registry, no D1): title, description, the command with
+  its argument hint (`/stats [7d|30d|all]`), a "Built-in" badge, "No model,
+  free", and one line "How to use: type /cost in a chat". The line adds "or
+  ask “How much did this chat cost?” (that one uses the model)" only for a
+  user with `besidka-tools` and `tool-approvals`, because only then can a
+  chat model call the same tool (the registry's `example`). The section note
+  says Besidka runs them without a model, so they cost nothing, and that they
+  cannot be edited, renamed, turned off or deleted. There is no mode select
+  and no actions menu; the only button is "Copy /cost". Shown with
+  `skills.commands`, like the picker: below the user's skills, or first
+  while the user has none (above the empty state). A search filters the
+  built-ins like the user's skills (`filterBuiltinCommands`, name with or
+  without `/`, title, description); a source filter (Created, Imported, Apps)
+  hides them. The section is a `section` labelled by its `h2`, each command
+  a list row; at 390 px the copy button stays beside the text.
+- **A built-in wins a name clash.** A skill created before a name was
+  reserved may still hold `cost`, `debug` or `stats` as its command. The
+  composer then offers only the built-in under that name, in the picker and
+  for the typed token (`useComposerCommands`), so `/cost` never attaches the
+  skill; the skill stays reachable from the "+" menu. A name that is reserved
+  but has no built-in yet (`usage`, `new`, ...) is not filtered: such a skill
+  keeps working until the built-in exists.
+- **Reserved.** `SKILL_RESERVED_SLASH_NAMES` (`shared/utils/skills-policy.ts`)
+  is built from the registry and the planned names. A skill may still be
+  called `debug`; only a reserved **command** is refused, inline: "/debug is
+  reserved by Besidka" (400 `reserved-name`). A production read before the
+  change found no skill with `/debug` and no duplicate commands.
+- **Not built.** Client-only built-ins that change composer state (`/new`,
+  `/model`, ...), the context panel "Used" row for a command, and an alias
+  that runs `/stats` as `/usage`.
 
 ### 5.7 As built (S-3)
 
@@ -1338,12 +1473,25 @@ start as Auto; a template starts as Auto or Only when I ask by its own
 mode is Auto unless the frontmatter sets `disable-model-invocation` (then Only
 when I ask); `user-invocable` is ignored.
 
-**Command validation (S-12).** A command uses the pattern of a skill name
-(lowercase letters, digits, single hyphens, up to 64) after the client or the
-server drops one leading `/` and trims (`normalizeSkillCommand`). It is unique
-per user among commands (unique index `uq_skills_user_slash_name`; SQLite allows
-many NULLs): a taken command is 409 `command-taken` ("/x is already a
-command"), checked first and again from the database error. A reserved command
+**Command validation (S-12, amended 2026-11-20).** A command uses the pattern
+of a skill name (lowercase letters, digits, single hyphens, up to 64) after the
+client or the server trims it, lowercases it and drops one leading `/`
+(`normalizeSkillCommand`, the one rule every path uses, so `/Review` is
+`review`). It is unique per user among commands (unique index
+`uq_skills_user_slash_name`; SQLite allows many NULLs): a taken command is 409
+`command-taken` with "The command /x is already used by the skill y"
+(`formatSkillCommandTakenMessage`), checked before the write
+(`resolveSkillCommand`) and again when the index refuses a raced write
+(`createRacedCommandTakenError` reads the winner's name, or says "another
+skill"). Only two paths can set a command: create (`POST /api/v1/skills`,
+blank or template) and the skill's settings (`PATCH /api/v1/skills/[id]`). An
+import (archive, pasted text, GitHub link), every MCP tool (`create_skill`,
+`update_skill`, `rename_skill`), a restore and a rename write no command or
+leave it as it is, so they cannot make a duplicate. The Command field in the
+create dialog and in Settings checks the user's other commands from the
+loaded library list (`useUsedSkillCommands`) and shows the same sentence
+inline before Save; a server answer of `command-taken` is shown on the field
+too. A reserved command
 (`SKILL_RESERVED_SLASH_NAMES`) or one that does not match the pattern is 400
 `reserved-name`, shown inline under the field; a rename of the skill never
 touches its command, and a skill name may be reserved. The 409 for a duplicate
@@ -1780,7 +1928,7 @@ side), `server/utils/skills/scripts-toggle.ts` and the two routes
    controls, and the purge logs only the counts
    (`attributes.skills.providerPurge`: attempted, deleted, failed).
    Removing the Anthropic key shows the skills that still have a copy
-   (`GET /api/v1/profiles/keys/anthropic/uploads`), because without the key
+   (`GET /api/v1/profiles/keys/anthropic/skill-copies`), because without the key
    Besidka cannot delete them. Unverified: that the API requires versions to be
    deleted before the skill (assumed from the API reference), and a live
    upload; both wait for the manual check below.
@@ -2429,6 +2577,8 @@ the earlier plan (start-of-message only, no picker when a chip exists, a
   `$ARGUMENTS`. The part is built exactly as in S-3.
 - **Not built.** "Use in new chat" in the manager and the `argument_hint`
   placeholder in the textarea are not part of S-12.
+- **Built-in commands** (section 5.6) share the picker, the token and the
+  stripping, with a "Built-in" badge and no tile.
 - **Sent messages:** the bubble shows the chip above the text. The context
   panel lists the invocation under "Used" (kind Skill).
 

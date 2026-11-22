@@ -13,7 +13,9 @@ import {
   getApprovalStepSummaryLine,
   getApprovalStepTitle,
   getApprovalSummaryLine,
-  getBesidkaAlwaysConfirmText,
+  getAlwaysAllowHint,
+  getGrantMarkersByToolCallId,
+  getGrantMarkerText,
   isApprovalInputShortened,
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
@@ -268,6 +270,11 @@ describe('approval copy', () => {
       .toBe('Uploads the skill to your Anthropic workspace')
     expect(getApprovalReasonText('default', ''))
       .toBe('Runs only after you allow it')
+    expect(getApprovalReasonText('default', '', 'mcp__notion__notion-search'))
+      .toBe('Asks before each use. Change it in the connector\'s tool '
+        + 'settings.')
+    expect(getApprovalReasonText('default', '', 'besidka__list_files'))
+      .toBe('Asks before each use. Change it in Tool permissions in Labs.')
   })
 
   it('titles a Besidka step with its server-written summary', () => {
@@ -298,8 +305,10 @@ describe('approval copy', () => {
     expect(getApprovalStepTitle({ ...besidka, summary: '' }, undefined))
       .toBe('Besidka wants to delete chats')
     expect(getApprovalStepSummaryLine(model)).toBe('')
-    expect(getBesidkaAlwaysConfirmText('list_projects'))
-      .toMatch(/^Always allow Besidka to list projects\? /)
+    expect(getAlwaysAllowHint(true)).toBe(
+      'Runs without asking in every chat. Change it in Tool permissions.',
+    )
+    expect(getAlwaysAllowHint(false)).toContain('until the tool changes')
   })
 
   it('names the user\'s Besidka data as the source after a Besidka read',
@@ -387,5 +396,31 @@ describe('outcome and progress', () => {
   it('counts answers only with two or more calls', () => {
     expect(formatApprovalProgress(0, 1)).toBe('')
     expect(formatApprovalProgress(1, 2)).toBe('1 of 2 answered')
+  })
+})
+
+describe('getGrantMarkersByToolCallId', () => {
+  function grantPart(toolCallId: string, scope: 'chat' | 'always') {
+    return {
+      type: 'data-tool-grant',
+      id: `grant-${toolCallId}`,
+      data: { toolCallId, toolName: 'mcp__linear__create_issue', scope },
+    }
+  }
+
+  it('matches getGrantMarkerText for every call, first grant wins', () => {
+    const parts = [
+      grantPart('call-1', 'always'),
+      { type: 'text', text: 'between' },
+      grantPart('call-2', 'chat'),
+      grantPart('call-1', 'chat'),
+    ] as unknown as UIMessage['parts']
+    const markers = getGrantMarkersByToolCallId(parts)
+
+    expect(markers.get('call-1')).toBe(getGrantMarkerText(parts, 'call-1'))
+    expect(markers.get('call-1')).toBe('Ran without asking (Always allowed)')
+    expect(markers.get('call-2'))
+      .toBe('Ran without asking (Allowed in this chat)')
+    expect(markers.has('call-3')).toBe(false)
   })
 })

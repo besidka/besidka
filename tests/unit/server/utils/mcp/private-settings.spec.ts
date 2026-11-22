@@ -154,7 +154,15 @@ describe('mcp settings tools', () => {
       expect(mocks.applyUserSettingsUpdate).toHaveBeenCalledWith({
         db: testDb.db,
         userId: USER,
-        fieldUpdates: expectedUpdates,
+        fieldUpdates: {
+          stepsExpanded: true,
+          defaultReasoningLevel: null,
+          favoriteModels: ['a/b', 'c/d'],
+          favoriteGatewayModels: { openrouter: ['x/y'] },
+          sidebarPinned: false,
+          memoryEnabled: false,
+          chatSearchEnabled: true,
+        },
       })
     })
 

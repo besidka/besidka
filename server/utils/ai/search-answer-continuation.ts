@@ -1326,6 +1326,7 @@ export function withSearchAnswerGuarantee(input: {
   followUpToolNames: ReadonlySet<string>
   deliverableToolNames?: ReadonlySet<string>
   forcedStepIndex: number
+  isRunStopped?: () => boolean | Promise<boolean>
   startContinuation: (
     searchResults: CollectedSearchResult[],
   ) => SearchAnswerContinuationRun
@@ -1804,6 +1805,7 @@ export function withSearchAnswerGuarantee(input: {
         && !isAborted
         && !hadUnrecoverableError
         && !isAwaitingApproval
+        && !(await input.isRunStopped?.())
 
       if (shouldContinue) {
         for (const closer of mainOpenPartClosers.values()) {

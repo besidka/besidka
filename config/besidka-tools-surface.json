@@ -165,6 +165,18 @@
       "hasSummary": true
     },
     {
+      "name": "delete_connector_images",
+      "mcpScope": "data:delete",
+      "access": "delete",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "chat": {
+        "excluded": "Deleting every connector image is a Storage page action, not something a chat model should start."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "delete_connectors",
       "mcpScope": "connectors:write",
       "access": "write",
@@ -265,6 +277,19 @@
       "hasSummary": false
     },
     {
+      "name": "get_chat_cost",
+      "mcpScope": "chats:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "expose": true,
+        "tier": "read"
+      },
+      "chatDescription": "The estimated cost of this chat by model, with token counts and search cost, plus a ready report. Show the report text to the user verbatim in one code block.",
+      "hasSummary": false
+    },
+    {
       "name": "get_connector",
       "mcpScope": "connectors:read",
       "access": "read",
@@ -274,6 +299,19 @@
         "excluded": "Connector management stays in the Besidka app and on the MCP server: a chat that can see and change its own connectors is an injection path to a new data channel."
       },
       "chatDescription": null,
+      "hasSummary": false
+    },
+    {
+      "name": "get_debug_info",
+      "mcpScope": "chats:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "expose": true,
+        "tier": "read"
+      },
+      "chatDescription": "Debug info for support or a developer: ids, models, statuses and failure notices of this chat and your features, plus a ready report. Show the report text to the user verbatim in one code block.",
       "hasSummary": false
     },
     {
@@ -312,6 +350,19 @@
         "excluded": "Skill management stays in the Besidka app and on the MCP server: a skill is a persistent instruction source, so a chat must not read or change the skills that steer it."
       },
       "chatDescription": null,
+      "hasSummary": false
+    },
+    {
+      "name": "get_usage_stats",
+      "mcpScope": "chats:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "expose": true,
+        "tier": "read"
+      },
+      "chatDescription": "Your usage stats for 7 days, 30 days or all time: favorite model, tokens, estimated cost, active days and streaks, plus a ready report. Show the report text to the user verbatim in one code block.",
       "hasSummary": false
     },
     {

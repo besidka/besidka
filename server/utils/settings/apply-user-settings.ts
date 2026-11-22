@@ -10,8 +10,8 @@ import { claimExtractionEnableCooldown } from '~~/server/utils/memory/extraction
 type DbClient = ReturnType<typeof useDb>
 
 export interface UserSettingsFieldUpdates {
-  reasoningExpanded?: boolean
-  reasoningAutoHide?: boolean
+  stepsExpanded?: boolean
+  stepsAutoHide?: boolean
   defaultReasoningLevel?: ReasoningLevel | null
   allowExternalLinks?: boolean | null
   notificationPromptState?: boolean | null
@@ -28,6 +28,22 @@ export interface UserSettingsFieldUpdates {
   projectMemoryGateway?: GatewayId | null
   typesafeRoles?: JevRoleSettings | null
   dismissedLegalNoticeIds?: string[]
+}
+
+export function toPublicSettingsFields(
+  fieldUpdates: UserSettingsFieldUpdates,
+) {
+  const { stepsExpanded, stepsAutoHide, ...otherUpdates } = fieldUpdates
+
+  return {
+    ...otherUpdates,
+    ...(stepsExpanded === undefined
+      ? {}
+      : { reasoningExpanded: stepsExpanded }),
+    ...(stepsAutoHide === undefined
+      ? {}
+      : { reasoningAutoHide: stepsAutoHide }),
+  }
 }
 
 export function dedupeFavoriteGatewayModels(

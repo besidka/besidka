@@ -495,7 +495,10 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
   - `storageKey` unique R2 key.
   - `name`, `type`, `size`.
   - `expiresAt`: nullable timestamp for retention cleanup.
-  - `source`: `upload | assistant`.
+  - `source`: `upload | assistant | connector` (an app-level enum on a text
+    column; `connector` is an image a connector returned in a chat, kept with
+    that chat and hidden from every file list, see `docs/connectors.md`
+    section 6.5).
   - `originMessageId`: nullable FK to `messages` for provenance.
   - `originProvider`: nullable provider id for provenance.
   - `textStatus`, `textBytes`, `textVersion`: nullable. The state of the text
@@ -551,7 +554,10 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
 
 - `GET /api/v1/files` list files with pagination and search. `source` is
   `all | upload | assistant | project | library`; with `source=project`, an
-  optional `projectId` (public id) narrows the page to one project.
+  optional `projectId` (public id) narrows the page to one project. No source
+  returns `source = 'connector'` rows (`getFilesSourceCondition`).
+- `POST /api/v1/storage/connector-images/delete` deletes the user's connector
+  images (Storage page "Delete all"), batch by batch, with `hasMore`.
 - `GET /api/v1/files/projects` the Projects tab groups (see below).
 - `PUT /api/v1/files/upload` upload one file.
 - `PATCH /api/v1/files/[id]/name` rename one file.

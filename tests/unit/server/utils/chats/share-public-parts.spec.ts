@@ -10,6 +10,28 @@ import {
 } from '~~/server/utils/chats/share-public-parts'
 
 describe('filterPublicParts', () => {
+  it('leaves the messages of a built-in command out whole', () => {
+    const messages = [
+      { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
+      {
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'note' },
+          { type: 'data-command-invocation', data: { command: 'stats' } },
+        ],
+      },
+      {
+        role: 'assistant',
+        parts: [
+          { type: 'data-command-report', data: { command: 'stats' } },
+          { type: 'text', text: '```text\nSPEND\n```' },
+        ],
+      },
+    ] as unknown as Array<{ role: string, parts: UIMessage['parts'] }>
+
+    expect(filterPublicParts(messages)).toEqual([messages[0]])
+  })
+
   it('drops tool parts and artifact attachments, keeps the rest', () => {
     const parts = [
       { type: 'text', text: 'Fix it' },
@@ -332,4 +354,73 @@ describe('grant marker parts in shares and branches', () => {
       return part.type === 'data-tool-grant'
     })).toBe(false)
   })
+})
+
+describe('connector image parts in shares and branches', () => {
+  const imageParts = [
+    { type: 'step-start' },
+    {
+      type: 'dynamic-tool',
+      toolName: 'mcp__doop__get_frame_screenshot',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { frameId: 'f1' },
+      output: '[image/png, 75 B: shown to the model, kept with this chat]',
+    },
+    {
+      type: 'data-connector-image',
+      id: 'connector-image-call-1-0',
+      data: {
+        toolCallId: 'call-1',
+        fileId: 'file-1',
+        url: '/files/connector-abc.png',
+        mediaType: 'image/png',
+        width: 8,
+        height: 8,
+        size: 75,
+        name: 'doop-get_frame_screenshot.png',
+      },
+    },
+    { type: 'text', text: 'The frame looks right.' },
+  ] as UIMessage['parts']
+
+  it('leaves the connector image out of a public share', () => {
+    const [message] = filterPublicParts([{ parts: imageParts }] as Array<{
+      parts: UIMessage['parts']
+    }>)
+
+    expect(message?.parts).toEqual([
+      { type: 'step-start' },
+      { type: 'text', text: 'The frame looks right.' },
+    ])
+    expect(JSON.stringify(message)).not.toContain('connector-abc.png')
+  })
+
+  it('leaves the connector image out of a branch with its step', () => {
+    const branched = stripToolPartsFromBranchedMessage(imageParts)
+
+    expect(branched.some((part) => {
+      return part.type === 'data-connector-image'
+        || part.type === 'dynamic-tool'
+    })).toBe(false)
+  })
+
+  it('drops the stopped marker from a share and keeps it in a branch',
+    () => {
+      const stoppedReply = {
+        id: 'assistant-stopped',
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Half an answ' },
+          { type: 'data-reply-stopped', data: { stoppedAt: 'x' } },
+        ],
+      } as unknown as UIMessage
+
+      expect(filterPublicParts([stoppedReply])[0]!.parts).toEqual([
+        { type: 'text', text: 'Half an answ' },
+      ])
+      expect(stripToolPartsFromBranchedMessage(stoppedReply.parts)
+        .map(part => (part as { type: string }).type))
+        .toContain('data-reply-stopped')
+    })
 })

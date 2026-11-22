@@ -142,11 +142,7 @@ describe('prepareSkillsForSend', () => {
     expect(result.holdsSkillText).toBe(false)
   })
 
-  it('locks the memory write for a catalog that lists an imported skill, not for authored ones only', async () => {
-    const authored = await prepare()
-
-    expect(authored.holdsSkillText).toBe(false)
-
+  it('does not taint the send for a catalog that lists an imported skill: only its body would', async () => {
     const importedId = await seed('imported-skill', 'IMPORTED BODY', {
       modelInvocable: true,
     })
@@ -159,7 +155,8 @@ describe('prepareSkillsForSend', () => {
       const result = await prepare()
 
       expect(result.instructionBlock).toContain('- imported-skill:')
-      expect(result.holdsSkillText).toBe(true)
+      expect(result.instructionBlock).not.toContain('IMPORTED BODY')
+      expect(result.holdsSkillText).toBe(false)
     }
   })
 

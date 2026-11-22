@@ -1,15 +1,17 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
-import { shallowRef } from 'vue'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { nextTick, shallowRef } from 'vue'
 import type { ChatInputToolsState } from '../../../../../app/types/chat-input-tools'
 import Content from '../../../../../app/components/ChatInput/ToolsMenu/Content.vue'
 
+const stepsExpanded = shallowRef<boolean>(false)
+
 mockNuxtImport('useUserSetting', () => {
   return () => ({
-    reasoningExpanded: shallowRef(false),
-    reasoningAutoHide: shallowRef(true),
-    setReasoningExpanded: () => undefined,
-    setReasoningAutoHide: () => undefined,
+    stepsExpanded,
+    stepsAutoHide: shallowRef(true),
+    setStepsExpanded: () => undefined,
+    setStepsAutoHide: () => undefined,
   })
 })
 
@@ -23,6 +25,7 @@ function createState(
     skillAttached?: boolean
     connectors?: boolean
     connectorsOn?: number
+    connectorItems?: boolean
     project?: boolean
     projectName?: string
   } = {},
@@ -36,6 +39,7 @@ function createState(
     skillAttached = false,
     connectors = false,
     connectorsOn = 0,
+    connectorItems = true,
     project = false,
     projectName,
   } = overrides
@@ -91,22 +95,30 @@ function createState(
     },
     connectors: {
       visible: connectors,
-      items: [
-        {
-          id: 'c1',
-          slug: 'notion',
-          title: 'Notion',
-          host: 'mcp.notion.com',
-          status: 'ready',
-        },
-        {
-          id: 'c2',
-          slug: 'linear',
-          title: 'Linear',
-          host: 'mcp.linear.app',
-          status: 'ready',
-        },
-      ],
+      items: !connectorItems
+        ? []
+        : [
+          {
+            id: 'c1',
+            slug: 'notion',
+            title: 'Notion',
+            host: 'mcp.notion.com',
+            status: 'ready',
+            toolMode: 'manual',
+            presetId: null,
+            isIconAvailable: false,
+          },
+          {
+            id: 'c2',
+            slug: 'linear',
+            title: 'Linear',
+            host: 'mcp.linear.app',
+            status: 'ready',
+            toolMode: 'manual',
+            presetId: null,
+            isIconAvailable: false,
+          },
+        ],
       selectedIds: ['c1', 'c2'].slice(0, connectorsOn),
     },
     project: {
@@ -127,12 +139,28 @@ async function mountContent(state: ChatInputToolsState) {
 
 type ContentWrapper = Awaited<ReturnType<typeof mountContent>>
 
-function layout(wrapper: ContentWrapper): string[] {
+function fullLayout(wrapper: ContentWrapper): string[] {
   return Array.from(wrapper.element.children).map((child) => {
     return child.getAttribute('data-section')
       ?? (child.getAttribute('data-testid') === 'tools-menu-divider'
         ? '---'
         : '?')
+  })
+}
+
+function layout(wrapper: ContentWrapper): string[] {
+  const sections = fullLayout(wrapper)
+  const stepsIndex = sections.indexOf('steps')
+
+  if (stepsIndex === -1) {
+    return sections
+  }
+
+  const hasDividerAfterSteps = sections[stepsIndex + 1] === '---'
+
+  return sections.filter((_section, index) => {
+    return index !== stepsIndex
+      && !(hasDividerAfterSteps && index === stepsIndex + 1)
   })
 }
 
@@ -234,6 +262,55 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
       .toBe('2')
   })
 
+  it('shows the row with no connectors at all', async () => {
+    const wrapper = await mountContent(createState({
+      connectors: true,
+      connectorItems: false,
+    }))
+
+    expect(wrapper.find('[data-testid="tools-action-connectors"]').exists())
+      .toBe(true)
+    expect(wrapper.get('[data-testid="tools-action-connectors"]')
+      .find('.badge').exists()).toBe(false)
+  })
+
+  it('counts only the Manual connectors that are on, never Besidka', async () => {
+    const state = createState({ connectors: true, connectorsOn: 1 })
+    const [first, second] = state.connectors?.items ?? []
+
+    if (!state.connectors || !first || !second) {
+      throw new Error('the state needs two connector items')
+    }
+
+    state.connectors = {
+      ...state.connectors,
+      items: [first, { ...second, toolMode: 'auto' }],
+      selectedIds: [first.id, second.id],
+    }
+
+    const wrapper = await mountContent(state)
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"] .badge')
+      .text()).toBe('1')
+  })
+
+  it('shows no badge when only Auto connectors are available', async () => {
+    const state = createState({ connectors: true })
+    const items = (state.connectors?.items ?? [])
+      .map(item => ({ ...item, toolMode: 'auto' as const }))
+
+    state.connectors = {
+      visible: true,
+      items,
+      selectedIds: items.map(item => item.id),
+    }
+
+    const wrapper = await mountContent(state)
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"]')
+      .find('.badge').exists()).toBe(false)
+  })
+
   it('sits after Add skill and before the Project row', async () => {
     const wrapper = await mountContent(createState({
       skills: true,
@@ -324,7 +401,7 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     const wrapper = await mountContent(createState())
     const dividers = wrapper.findAll('[data-testid="tools-menu-divider"]')
 
-    expect(dividers).toHaveLength(3)
+    expect(dividers).toHaveLength(4)
 
     for (const divider of dividers) {
       expect(divider.classes()).toEqual(
@@ -475,11 +552,11 @@ describe('ChatInput/ToolsMenu/Content section titles', () => {
     }
   })
 
-  it('titles the sections Reasoning, Web search and Add, top to bottom', async () => {
+  it('titles the sections Steps, Reasoning, Web search and Add, top to bottom', async () => {
     const wrapper = await mountContent(createState())
     const titles = wrapper.findAll('h3').map(heading => heading.text())
 
-    expect(titles).toEqual(['Reasoning', 'Web search', 'Add'])
+    expect(titles).toEqual(['Steps', 'Reasoning', 'Web search', 'Add'])
   })
 })
 
@@ -629,5 +706,71 @@ describe('ChatInput/ToolsMenu/Content memory row', () => {
     await wrapper.get('[data-testid="new-chat-memory-toggle"]').setValue(false)
 
     expect(wrapper.emitted('update:use-memory')).toEqual([[false]])
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content steps section', () => {
+  beforeEach(() => {
+    stepsExpanded.value = false
+  })
+
+  function withMemory(excluded: boolean): ChatInputToolsState {
+    return { ...createState(), memory: { excluded } }
+  }
+
+  function withReasoningOff(): ChatInputToolsState {
+    const state = withMemory(false)
+
+    return {
+      ...state,
+      reasoning: { ...state.reasoning, level: 'off' },
+    }
+  }
+
+  it('sits directly above the memory section', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const sections = fullLayout(wrapper)
+
+    expect(sections.slice(0, 3)).toEqual(['steps', '---', 'memory'])
+  })
+
+  it('shows Show steps expanded with reasoning Off and a Steps title',
+    async () => {
+      const wrapper = await mountContent(withReasoningOff())
+      const section = wrapper.get('[data-section="steps"]')
+
+      expect(section.get('h3').text()).toBe('Steps')
+      expect(section.get('[data-testid="steps-expanded-toggle"]').exists())
+        .toBe(true)
+      expect(wrapper.get('[data-section="reasoning"]')
+        .find('[data-testid="steps-expanded-toggle"]').exists()).toBe(false)
+    })
+
+  it('renders the Steps section even when reasoning is unavailable',
+    async () => {
+      const state = createState({ reasoning: false })
+      const wrapper = await mountContent(state)
+
+      expect(fullLayout(wrapper)).toContain('steps')
+      expect(wrapper.find('[data-section="reasoning"]').exists())
+        .toBe(false)
+    })
+
+  it('reveals Auto-hide only while steps are expanded', async () => {
+    const wrapper = await mountContent(withReasoningOff())
+    const autoHideReveal = () => {
+      return wrapper.get('[data-testid="steps-auto-hide-toggle"]')
+        .element
+        .closest('[data-open]')
+    }
+
+    expect(autoHideReveal()?.getAttribute('data-open')).toBe('false')
+    expect(autoHideReveal()?.hasAttribute('inert')).toBe(true)
+
+    stepsExpanded.value = true
+    await nextTick()
+
+    expect(autoHideReveal()?.getAttribute('data-open')).toBe('true')
+    expect(autoHideReveal()?.hasAttribute('inert')).toBe(false)
   })
 })

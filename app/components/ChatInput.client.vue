@@ -1,7 +1,8 @@
 <template>
   <div
     ref="chatInputRef"
-    class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
+    data-testid="chat-input"
+    class="js-chat-composer fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
@@ -31,18 +32,33 @@
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="isChatScrollButtonVisible" />
-    <ChatInputCommandPicker
-      ref="commandPicker"
-      :is-open="commands.isOpen.value"
-      :matches="commands.matches.value"
-      :active-index="commands.activeIndex.value"
-      :has-no-commands="commands.hasNoCommands.value"
-      @pick="commands.pick"
-    />
-    <ChatInputToolApprovalChip />
+    <div
+      v-show="visible && !anyMessagesSelected"
+      class="absolute bottom-full left-0 right-0 flex flex-col"
+      data-testid="chat-input-overlays"
+    >
+      <ChatInputCommandPicker
+        ref="commandPicker"
+        :is-open="commands.isOpen.value"
+        :matches="commands.matches.value"
+        :active-index="commands.activeIndex.value"
+        :has-no-commands="commands.hasNoCommands.value"
+        @pick="commands.pick"
+      />
+      <ChatInputToolApprovalChip />
+      <ChatInputConnectorSuggestion
+        v-if="connectorSuggestion"
+        :title="connectorSuggestion.title"
+        :is-at-limit="composerConnectors.isAtLimit.value
+          && connectorSuggestion.toolMode === 'manual'"
+        :is-saving="composerConnectors.isSaving.value"
+        @turn-on="turnOnSuggestedConnector"
+        @dismiss="dismissSuggestedConnector"
+      />
+    </div>
     <div class="flex justify-center w-full px-2">
       <UiBubble
-        class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
+        class="relative z-20 grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
       >
         <div
           class="p-1 pb-0 bg-transparent"
@@ -216,12 +232,17 @@
       v-if="isConnectorPickerMounted && isConnectorsEnabled"
       v-model:open="isConnectorPickerOpen"
       :items="composerConnectors.items.value"
+      :disabled-items="composerConnectors.disabledItems.value"
       :selected-ids="composerConnectors.selectedIds.value"
+      :off-ids="composerConnectors.offIds.value"
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
-      :are-connectors-available="composerConnectors.isFeatureActive.value"
+      :is-loaded="composerConnectors.isLoaded.value"
+      :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
+      @enable="composerConnectors.enable"
+      @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
     />
     <LazyChatInputSkillPicker
@@ -795,8 +816,12 @@ function focusMessageAtEnd() {
   element.setSelectionRange(element.value.length, element.value.length)
 }
 
+const prefilledTexts = shallowRef<string[]>([])
+
 async function prefillMessage(text: string) {
   const draft = message.value.trimEnd()
+
+  prefilledTexts.value = [...prefilledTexts.value, text]
 
   message.value = draft ? `${draft}\n\n${text}` : text
   await nextTick()
@@ -837,10 +862,11 @@ const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
     || hasPastedTextContent(pastedTexts.value)
     || skillInvocation.invocation.value !== null
+    || builtinCommand.command.value !== null
 })
 
 const canShowRegenerate = computed<boolean>(() => {
-  return !!props.displayRegenerate && !hasMessage.value
+  return !!props.displayRegenerate && !props.displayStop && !hasMessage.value
 })
 
 const exaSearchLevel = computed<ExaSearchLevel>(() => {
@@ -948,6 +974,7 @@ const composerBesidkaTools = useComposerBesidkaTools(() => {
   return route.name === 'chats-slug' ? String(route.params.slug) : null
 })
 const skillInvocation = useComposerSkillInvocation()
+const builtinCommand = useComposerBuiltinCommand()
 const skillPreview = useSkillPreview()
 const commandPicker = useTemplateRef<{
   listId: string
@@ -973,22 +1000,79 @@ const besidkaPickerRow = computed(() => {
   }
 })
 
+const connectorsRegistryFeature = useFeature('connectors.registry')
+const lastSentConnectorText = shallowRef<string>('')
+const dismissedConnectorIds = shallowRef<ReadonlySet<string>>(new Set())
+
 const isConnectorsEnabled = computed<boolean>(() => {
-  return (
-    composerConnectors.isVisible.value
-    || composerBesidkaTools.isAvailable.value
-  )
-  && isToolCallingSupported.value
-  && !isDeepResearchModel.value
-  && !isImageGenerationEnabled.value
-  && !isImageGenerationRequired.value
+  return composerConnectors.isVisible.value
+    && isToolCallingSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
 })
+
+watch(message, (text) => {
+  if (!text.trim() && prefilledTexts.value.length > 0) {
+    prefilledTexts.value = []
+  }
+})
+
+const connectorSuggestion = computed(() => {
+  if (
+    !isConnectorsEnabled.value
+    || !composerConnectors.isLoaded.value
+    || !composerConnectors.isSelectionKnown.value
+    || prefilledTexts.value.length > 0
+  ) {
+    return null
+  }
+
+  return findMentionedConnector({
+    text: message.value.trim() || lastSentConnectorText.value,
+    candidates: composerConnectors.items.value,
+    selectedIds: composerConnectors.availableIds.value,
+    dismissedIds: dismissedConnectorIds.value,
+  })
+})
+
+watch(() => route.path, () => {
+  lastSentConnectorText.value = ''
+  dismissedConnectorIds.value = new Set()
+  prefilledTexts.value = []
+})
+
+async function turnOnSuggestedConnector() {
+  const suggestion = connectorSuggestion.value
+
+  if (!suggestion) {
+    return
+  }
+
+  await composerConnectors.toggle(suggestion.id)
+}
+
+function dismissSuggestedConnector() {
+  const suggestion = connectorSuggestion.value
+
+  if (!suggestion) {
+    return
+  }
+
+  dismissedConnectorIds.value = new Set([
+    ...dismissedConnectorIds.value,
+    suggestion.id,
+  ])
+}
+
+const availableBuiltinCommands = useAvailableBuiltinCommands()
 
 const commands = useComposerCommands({
   textarea,
   text: input,
   items: () => composerSkills.items.value,
   isAvailable: () => isSkillAttachEnabled.value,
+  builtins: () => availableBuiltinCommands.value,
   insertText: insertTextAtSelection,
 })
 
@@ -1628,6 +1712,10 @@ async function sendMessage() {
     return useWarningMessage('Please enter a message before sending.')
   }
 
+  if (builtinCommand.command.value !== null) {
+    return sendBuiltinCommand()
+  }
+
   if (isSelectedModelUnavailable.value) {
     return warnAboutUnavailableModel()
   }
@@ -1678,6 +1766,11 @@ async function sendMessage() {
     return
   }
 
+  lastSentConnectorText.value = prefilledTexts.value.length > 0
+    ? ''
+    : commands.stripFromText(message.value)
+  prefilledTexts.value = []
+
   const text = joinMessageWithPastedTexts(
     commands.stripFromText(message.value),
     pastedTexts.value,
@@ -1689,7 +1782,39 @@ async function sendMessage() {
   files.value = []
   attachedArtifacts.value = []
   skillInvocation.clear()
+  builtinCommand.clear()
   pastedTexts.value = []
+  nuxtApp.callHook('chat:submit', { text })
+}
+
+/**
+ * A built-in command (`/cost`, `/stats`, `/debug`) is answered by Besidka
+ * without a model, so none of the model checks apply: no key, no transfer
+ * consent, no file rules. Attachments are refused, because the command
+ * would drop them.
+ */
+function sendBuiltinCommand() {
+  const command = builtinCommand.command.value
+
+  if (
+    files.value.length > 0
+    || attachedArtifacts.value.length > 0
+    || hasPastedTextContent(pastedTexts.value)
+  ) {
+    return useWarningMessage(
+      `/${command} runs on its own. Remove the attachments first.`,
+    )
+  }
+
+  const text = commands.stripFromText(message.value)
+
+  lastSentConnectorText.value = ''
+  prefilledTexts.value = []
+  message.value = text
+  emit('submit')
+  message.value = ''
+  skillInvocation.clear()
+  builtinCommand.clear()
   nuxtApp.callHook('chat:submit', { text })
 }
 
@@ -1710,6 +1835,7 @@ function onSkillSelected(item: ComposerSkillItem) {
     return
   }
 
+  builtinCommand.clear()
   skillInvocation.set({
     skillId: item.id,
     name: item.name,
@@ -1728,6 +1854,7 @@ watch(isSkillAttachEnabled, (isEnabled) => {
 
 onUnmounted(() => {
   skillInvocation.clear()
+  builtinCommand.clear()
 })
 
 const isConnectorPickerMounted = shallowRef<boolean>(false)
@@ -1740,6 +1867,7 @@ function openConnectorPicker() {
 
   isConnectorPickerMounted.value = true
   isConnectorPickerOpen.value = true
+  composerConnectors.refresh()
 }
 
 watch(isConnectorsEnabled, (isEnabled) => {

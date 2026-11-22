@@ -18,7 +18,7 @@ const ALLOWED_EXTERNAL_IMPORTS = new Set([
 ])
 const PINNED_DEPENDENCIES = {
   '@pdf-lib/fontkit': '1.1.1',
-  'docx': '9.15.3',
+  'docx': '9.16.0',
   'fflate': '0.8.3',
   'pdf-lib': '1.17.1',
   'pptxgenjs': '4.0.1',

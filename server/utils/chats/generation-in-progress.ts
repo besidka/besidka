@@ -26,3 +26,21 @@ export async function isChatGenerating(
 
   return result.keys.length > 0
 }
+
+/**
+ * The message ids whose sends currently hold a generation-in-progress lease
+ * for the chat, in KV key order (a user message id, or the assistant message
+ * id for a resume). Ids only.
+ */
+export async function listChatGenerationLeases(
+  chatId: string,
+  kv: Pick<KVNamespace, 'list'> = useKV(),
+  limit: number = 10,
+): Promise<string[]> {
+  const prefix = `${GENERATION_IN_PROGRESS_KEY_PREFIX}:${chatId}:`
+  const result = await kv.list({ prefix, limit })
+
+  return result.keys.map((key) => {
+    return key.name.slice(prefix.length)
+  })
+}

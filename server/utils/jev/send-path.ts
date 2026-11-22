@@ -5,6 +5,7 @@ import {
 } from '#shared/utils/jev-policy'
 import { jevDecide } from '~~/server/utils/jev/client'
 import type { JevDecideResult, JevQuestions } from '~~/server/utils/jev/client'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { redactNeverStore } from '~~/server/utils/memory/compliance'
 
 export type SendPathTurnRole = 'user' | 'assistant'
@@ -50,7 +51,9 @@ function prepareTurnText(text: string): string {
 
 /**
  * The last `limit` user and assistant turns that carry text, oldest first,
- * as plain text. Pass the persisted messages before the one being sent.
+ * as plain text. Pass the persisted messages before the one being sent. The
+ * messages of a built-in command (the user's `/cost` and the report Besidka
+ * wrote back) are left out: they never reach a model or a third party.
  */
 export function readSendPathTurns(
   messages: readonly SendPathMessage[],
@@ -59,6 +62,10 @@ export function readSendPathTurns(
   const turns: SendPathTurn[] = []
 
   for (const message of messages) {
+    if (isBuiltinCommandMessage(message)) {
+      continue
+    }
+
     const text = readTextParts(message.parts)
 
     if (isSendPathTurnRole(message.role) && text) {

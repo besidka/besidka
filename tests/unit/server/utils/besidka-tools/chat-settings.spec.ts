@@ -54,8 +54,7 @@ function besidkaEntry(toolName: string) {
     summary: toolName,
     taint: 'besidka' as const,
     readSource: 'besidka',
-    alwaysGrant: null,
-    alwaysGrantWhenTainted: false,
+
     connector: null,
   }
 }

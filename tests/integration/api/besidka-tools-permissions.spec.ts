@@ -173,17 +173,13 @@ describe('Besidka tool permission routes', () => {
       }).every((tool: { mode: string }) => tool.mode === 'ask')).toBe(true)
     })
 
-    it('keeps the ask-every-time tier to blocked or ask', async () => {
-      expect((await failureOf(put({
-        tier: 'ask-every-time',
-        mode: 'allow',
-      }))).status).toBe(400)
-      expect((await failureOf(put({
-        tool: 'delete_files',
-        mode: 'allow',
-      }))).status).toBe(400)
+    it('lets the ask-every-time tier take every mode (owner decision, '
+      + '2026-11-20)', async () => {
+      const allowed = await put({ tool: 'delete_files', mode: 'allow' })
 
-      const blocked = await put({ tool: 'delete_files', mode: 'blocked' })
+      expect(modeOf(allowed).delete_files).toBe('allow')
+
+      const blocked = await put({ tier: 'ask-every-time', mode: 'blocked' })
 
       expect(modeOf(blocked).delete_files).toBe('blocked')
     })

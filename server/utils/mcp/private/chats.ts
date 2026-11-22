@@ -14,6 +14,7 @@ import {
   SNIPPET_END,
   SNIPPET_START,
 } from '#shared/utils/search'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import * as schema from '~~/server/db/schema'
@@ -443,7 +444,10 @@ export function extractMessageText(parts: unknown): string {
 /**
  * Builds a newest-last transcript of text parts only. Messages are taken
  * from the newest backwards until the total character budget is spent, so
- * the oldest ones are the ones dropped.
+ * the oldest ones are the ones dropped. The messages of a built-in command
+ * (the user's `/cost` and the stored report) are left out and counted in
+ * `omittedMessages`: a report holds the owner's spend and ids, and a client
+ * that cannot read it through a scope must not read it here either.
  */
 export function buildMcpChatTranscript(
   rowsNewestFirst: McpChatMessageRow[],
@@ -454,7 +458,7 @@ export function buildMcpChatTranscript(
   let truncated = false
 
   for (const row of rowsNewestFirst) {
-    if (!isPersistedMessageRole(row.role)) {
+    if (!isPersistedMessageRole(row.role) || isBuiltinCommandMessage(row)) {
       continue
     }
 
@@ -618,6 +622,7 @@ export async function getMcpChat(
     messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
     totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
   })
+  const commandMessageCount = window.filter(isBuiltinCommandMessage).length
   const context = await resolveMcpContextFiles(
     db,
     userId,
@@ -641,7 +646,8 @@ export async function getMcpChat(
     createdAt: toIsoTimestamp(chat.createdAt),
     activityAt: toIsoTimestamp(chat.activityAt),
     models: collectChatModels(window),
-    hasOlderMessages: hasOlderMessages || transcript.omittedMessages > 0,
+    hasOlderMessages: hasOlderMessages
+      || transcript.omittedMessages - commandMessageCount > 0,
     truncated: transcript.truncated,
     context,
     messages: transcript.messages,

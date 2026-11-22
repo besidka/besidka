@@ -1,31 +1,11 @@
-import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import type {
   ReasoningEnabledLevel,
   ReasoningLevel,
 } from '#shared/types/reasoning.d'
 import ReasoningSection from '../../../../../app/components/ChatInput/ToolsMenu/ReasoningSection.vue'
-
-const mocks = vi.hoisted(() => ({
-  useUserSetting: vi.fn(),
-  setReasoningExpanded: vi.fn(),
-  setReasoningAutoHide: vi.fn(),
-}))
-
-mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
-
-function setReasoningUserSetting(
-  reasoningExpanded: boolean,
-  reasoningAutoHide: boolean,
-) {
-  mocks.useUserSetting.mockReturnValue({
-    reasoningExpanded: shallowRef<boolean>(reasoningExpanded),
-    reasoningAutoHide: shallowRef<boolean>(reasoningAutoHide),
-    setReasoningExpanded: mocks.setReasoningExpanded,
-    setReasoningAutoHide: mocks.setReasoningAutoHide,
-  })
-}
 
 interface SectionProps {
   mode?: 'configurable' | 'always-on'
@@ -77,12 +57,6 @@ function input(wrapper: SectionWrapper, testId: string) {
     .element as HTMLInputElement
 }
 
-function hasRow(wrapper: SectionWrapper, testId: string): boolean {
-  const element = wrapper.find(`[data-testid="${testId}"]`)
-
-  return element.exists() && !element.element.closest('[inert]')
-}
-
 function caption(wrapper: SectionWrapper): string {
   return wrapper.get('[data-testid="reasoning-default-caption"]').text()
 }
@@ -92,10 +66,6 @@ function saveButton(wrapper: SectionWrapper) {
 }
 
 describe('ChatInput/ToolsMenu/ReasoningSection', () => {
-  beforeEach(() => {
-    setReasoningUserSetting(false, true)
-  })
-
   it('offers Off plus every effort level by default', async () => {
     const { wrapper } = await mountSection({
       reasoning: 'medium',
@@ -161,73 +131,25 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
       expect(selectedLevels).toEqual(['medium'])
     })
 
-  it('hides both steps rows while reasoning is off', async () => {
-    setReasoningUserSetting(true, true)
-
-    const { wrapper } = await mountSection({
-      reasoning: 'off',
-      levels: ['low', 'medium', 'high'],
-    })
-
-    expect(hasRow(wrapper, 'reasoning-expanded-toggle')).toBe(false)
-    expect(hasRow(wrapper, 'reasoning-auto-hide-toggle')).toBe(false)
-  })
-
-  it('shows Show steps expanded as soon as reasoning is on, reflecting the '
-    + 'saved setting', async () => {
-    setReasoningUserSetting(false, true)
-
+  it('renders no steps rows, whatever the reasoning level', async () => {
     const { wrapper, state } = await mountSection({
       reasoning: 'off',
       levels: ['low', 'medium', 'high'],
     })
 
-    expect(hasRow(wrapper, 'reasoning-expanded-toggle')).toBe(false)
+    expect(wrapper.find('[data-testid="steps-expanded-toggle"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="steps-auto-hide-toggle"]').exists())
+      .toBe(false)
 
     state.value = { ...state.value, reasoning: 'low' }
     await nextTick()
 
-    expect(input(wrapper, 'reasoning-expanded-toggle').checked).toBe(false)
-    expect(input(wrapper, 'reasoning-expanded-toggle').disabled).toBe(false)
+    expect(wrapper.find('[data-testid="steps-expanded-toggle"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="steps-auto-hide-toggle"]').exists())
+      .toBe(false)
   })
-
-  it('hides Auto-hide while steps are collapsed', async () => {
-    setReasoningUserSetting(false, true)
-
-    const { wrapper } = await mountSection({
-      reasoning: 'low',
-      levels: ['low', 'medium', 'high'],
-      defaultLevel: 'low',
-    })
-
-    expect(hasRow(wrapper, 'reasoning-expanded-toggle')).toBe(true)
-    expect(hasRow(wrapper, 'reasoning-auto-hide-toggle')).toBe(false)
-  })
-
-  it('shows Auto-hide only while reasoning is on and steps are expanded',
-    async () => {
-      setReasoningUserSetting(true, false)
-
-      const { wrapper, state } = await mountSection({
-        reasoning: 'low',
-        levels: ['low', 'medium', 'high'],
-        defaultLevel: 'low',
-      })
-
-      expect(input(wrapper, 'reasoning-expanded-toggle').checked).toBe(true)
-      expect(input(wrapper, 'reasoning-auto-hide-toggle').disabled)
-        .toBe(false)
-
-      await wrapper.get('[data-testid="reasoning-auto-hide-toggle"]')
-        .setValue(true)
-
-      expect(mocks.setReasoningAutoHide).toHaveBeenCalledWith(true)
-
-      state.value = { ...state.value, reasoning: 'off' }
-      await nextTick()
-
-      expect(hasRow(wrapper, 'reasoning-auto-hide-toggle')).toBe(false)
-    })
 
   describe('default caption', () => {
     it('is always rendered with a one-line minimum height', async () => {
@@ -362,26 +284,6 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
         .toBe(input(wrapper, 'reasoning-level-high'))
     })
 
-    it('moves focus to the checked level radio when the focused steps '
-      + 'row collapses', async () => {
-      setReasoningUserSetting(true, false)
-
-      const { wrapper, state } = await mountSection({
-        reasoning: 'low',
-        levels: ['low', 'medium', 'high'],
-        defaultLevel: 'low',
-      }, { attachTo: document.body })
-
-      input(wrapper, 'reasoning-expanded-toggle').focus()
-      state.value = { ...state.value, reasoning: 'off' }
-      await nextTick()
-      await nextTick()
-
-      expect(hasRow(wrapper, 'reasoning-expanded-toggle')).toBe(false)
-      expect(document.activeElement)
-        .toBe(input(wrapper, 'reasoning-level-off'))
-    })
-
     it('leaves focus alone when an unfocused control goes away',
       async () => {
         const { wrapper, state } = await mountSection({
@@ -400,23 +302,6 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
       })
   })
 
-  describe('collapsing rows', () => {
-    it('keeps the steps rows mounted but inert while they are hidden',
-      async () => {
-        const { wrapper } = await mountSection({
-          reasoning: 'off',
-          levels: ['low', 'medium', 'high'],
-        })
-        const reveal = wrapper
-          .get('[data-testid="reasoning-expanded-toggle"]')
-          .element
-          .closest('[data-open]')
-
-        expect(reveal?.getAttribute('data-open')).toBe('false')
-        expect(reveal?.hasAttribute('inert')).toBe(true)
-      })
-  })
-
   it('renders a checked, disabled row and no levels for an always-on model',
     async () => {
       const { wrapper } = await mountSection({
@@ -429,6 +314,5 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
       expect(toggle.checked).toBe(true)
       expect(toggle.disabled).toBe(true)
       expect(levelLabels(wrapper)).toEqual([])
-      expect(hasRow(wrapper, 'reasoning-expanded-toggle')).toBe(false)
     })
 })

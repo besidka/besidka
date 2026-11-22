@@ -80,7 +80,6 @@ async function seedKvRecords(
       model: 'claude-haiku-4-5',
       gateway: null,
       reasoning: 'off',
-      toolNames: [],
       connectorIds: [],
     },
   })

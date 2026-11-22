@@ -25,22 +25,22 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@nuxt/kit": "^4.6.2",
+    "@nuxt/kit": "^4.6.4",
     "@nuxtjs/i18n": "^10.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@nuxt/module-builder": "^1.0.3",
-    "@nuxt/schema": "^4.6.2",
-    "@nuxt/test-utils": "^4.3.4",
+    "@nuxt/module-builder": "^1.0.4",
+    "@nuxt/schema": "^4.6.4",
+    "@nuxt/test-utils": "^4.4.0",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@typescript-eslint/parser": "^8.71.2",
-    "eslint": "^10.13.0",
-    "happy-dom": "^21.0.3",
-    "nuxt": "^4.6.2",
+    "@typescript-eslint/parser": "^8.73.0",
+    "eslint": "^10.15.0",
+    "happy-dom": "^21.0.4",
+    "nuxt": "^4.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.12",
     "vitest-environment-nuxt": "^2.0.0",
-    "vue": "3.6.0-rc.12"
+    "vue": "3.6.0-rc.16"
   }
 }

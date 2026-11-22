@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
-import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_CONSENT_VERSION,
+  CONNECTOR_IMAGE_MAX_BYTES,
+} from '#shared/utils/connectors-policy'
 import {
   keyProviderIdForGateway,
   readOpenRouterCost,
@@ -15,6 +19,10 @@ import {
   createMockMcpServer,
 } from '../../setup/helpers/mock-mcp-server'
 import type { MockMcpServer } from '../../setup/helpers/mock-mcp-server'
+import { RED_PNG_BASE64 } from '../../setup/helpers/connector-images'
+import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
+import { buildConnectorImageLine } from '../../../server/utils/connectors/image-placeholders'
+import { frameUntrustedResult } from '../../../server/utils/connectors/tool-definitions'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -41,11 +49,16 @@ const mocks = vi.hoisted(() => ({
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
   claims: new Map<string, Record<string, any>>(),
+  expiredClaimIds: [] as string[][],
+  stopMarkerSet: false,
   updates: [] as Array<Record<string, any>>,
   besidkaModes: new Map<string, string>(),
   listMcpProjects: null as null | ((...args: unknown[]) => unknown),
   grantCalls: [] as Array<unknown[]>,
   scriptsRun: null as null | Record<string, any>,
+  keptFiles: [] as Array<{ id: string, storageKey: string, size: number }>,
+  keptFinderCalls: [] as Array<Record<string, any>>,
+  r2Objects: new Map<string, Uint8Array>(),
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -181,6 +194,34 @@ vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
       return true
     },
     touchClaim: async () => true,
+    expireUnfinishedClaims: async (
+      _db: unknown,
+      approvalIds: readonly string[],
+    ) => {
+      mocks.expiredClaimIds.push([...approvalIds])
+
+      return approvalIds.filter((approvalId) => {
+        return mocks.claims.get(approvalId)?.status === 'claimed'
+      }).length
+    },
+  }
+})
+
+vi.mock('~~/server/utils/files/connector-images', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/files/connector-images')
+  >()
+
+  return {
+    ...actual,
+    findChatConnectorImageFilesByIds: async (
+      _db: unknown,
+      input: { fileIds: readonly string[] },
+    ) => {
+      mocks.keptFinderCalls.push(input)
+
+      return mocks.keptFiles.filter(file => input.fileIds.includes(file.id))
+    },
   }
 })
 
@@ -536,6 +577,10 @@ function createKv() {
         throw new Error('KV unavailable')
       }
 
+      if (mocks.stopMarkerSet && key.startsWith('chat-generation-stop:')) {
+        return '1'
+      }
+
       return mocks.kv.get(key) ?? null
     }),
     put: vi.fn(async (key: string, value: string) => {
@@ -579,6 +624,7 @@ function seedConnector(input: {
     consentVersion: CONNECTOR_CONSENT_VERSION,
     consentedAt: now,
     consentWithdrawnAt: null,
+    toolMode: 'always-on',
     updatedAt: now,
   })
   mocks.store.credentials = {
@@ -606,8 +652,9 @@ async function request(input: {
   body: Record<string, unknown>
   steps?: Array<Array<Record<string, unknown>>>
   servers: MockMcpServer[]
+  scripted?: ReturnType<typeof createScriptedModel>
 }): Promise<RequestResult> {
-  const { model, doStream } = createScriptedModel(
+  const { model, doStream } = input.scripted ?? createScriptedModel(
     input.steps ?? [textChunks('Unused.')],
   )
 
@@ -615,6 +662,13 @@ async function request(input: {
     instance: model,
     tools: mocks.providerTools,
     providerOptions: {},
+  })))
+  vi.stubGlobal('useAnthropic', vi.fn(async () => ({
+    instance: model,
+    tools: mocks.providerTools,
+    providerOptions: {},
+    reasoning: undefined,
+    thinkingBinding: null,
   })))
   vi.stubGlobal('fetch', createMockMcpFetch(input.servers))
 
@@ -650,6 +704,7 @@ async function pauseTurn(input: {
   steps: Array<Array<Record<string, unknown>>>
   servers: MockMcpServer[]
   tools?: string[]
+  connectorIds?: string[]
 }): Promise<PausedTurn> {
   const first = await request({
     servers: input.servers,
@@ -658,7 +713,7 @@ async function pauseTurn(input: {
       model: MODEL_ID,
       tools: input.tools ?? [],
       reasoning: 'off',
-      connectorIds: ['conn-linear'],
+      connectorIds: input.connectorIds ?? ['conn-linear'],
       messages: [{
         id: USER_MESSAGE_ID,
         role: 'user',
@@ -777,9 +832,14 @@ describe('tool approval continuation', () => {
     mocks.memoryWrites = []
     mocks.claims = new Map()
     mocks.updates = []
+    mocks.expiredClaimIds = []
+    mocks.stopMarkerSet = false
     mocks.besidkaModes = new Map()
     mocks.grantCalls = []
     mocks.scriptsRun = null
+    mocks.keptFiles = []
+    mocks.keptFinderCalls = []
+    mocks.r2Objects = new Map()
     mocks.listMcpProjects = vi.fn(async () => ({
       projects: [{ id: 'prj_1', name: 'Launch' }],
       nextCursor: null,
@@ -952,8 +1012,6 @@ describe('tool approval continuation', () => {
               + 'your key?',
             taint: null,
             readSource: null,
-            alwaysGrant: null,
-            alwaysGrantWhenTainted: false,
             connector: null,
           }]]),
         },
@@ -1119,6 +1177,100 @@ describe('tool approval continuation', () => {
     expect(mocks.store.audit).toHaveLength(1)
     expect(mocks.store.settlements).toEqual([
       expect.objectContaining({ callId: 1, outcome: 'ok', approval: 'once' }),
+    ])
+  })
+
+  it('ends the claim lease of a continuation the user stopped, and stores '
+    + 'nothing', async () => {
+    const paused = await pauseCreateIssue()
+    const [approvalId] = paused.approvalIds
+    const updatesBefore = mocks.updates.length
+
+    mocks.stopMarkerSet = true
+
+    await answer(paused, [{ approvalId, approved: true }], [
+      textChunks('Created the issue.'),
+    ])
+
+    expect(mocks.expiredClaimIds).toEqual([[approvalId]])
+    expect(mocks.updates).toHaveLength(updatesBefore)
+  })
+
+  it('keeps the claims of a continuation that was not stopped', async () => {
+    const paused = await pauseCreateIssue()
+    const [approvalId] = paused.approvalIds
+
+    await answer(paused, [{ approvalId, approved: true }], [
+      textChunks('Created the issue.'),
+    ])
+
+    expect(mocks.expiredClaimIds).toEqual([])
+  })
+
+  it('keeps a tool loaded before the pause offered after the approval',
+    async () => {
+      mocks.store.connectors[0]!.toolMode = 'manual'
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-load', 'tool_index__load', {
+            names: [CREATE_ISSUE],
+          }),
+          toolCallChunks('call-1', CREATE_ISSUE, { title: 'x' }),
+        ],
+      })
+      const [approvalId] = paused.approvalIds
+
+      expect(approvalId).toBeDefined()
+      expect(linear.callCount('tools/call')).toBe(0)
+
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true },
+      ], [textChunks('Created the issue.')])
+      const toolNames = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((tool: { name: string }) => tool.name)
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(toolNames).toContain('tool_index__load')
+      expect(toolNames).toContain(CREATE_ISSUE)
+      expect(mocks.store.settlements).toEqual([
+        expect.objectContaining({ outcome: 'ok', approval: 'once' }),
+      ])
+    })
+
+  it('keeps an Auto connector opened before the pause open after the '
+    + 'approval, from its snapshot', async () => {
+    mocks.store.connectors[0]!.toolMode = 'auto'
+    mocks.store.chatSettings = []
+
+    const paused = await pauseTurn({
+      servers: [linear],
+      connectorIds: [],
+      steps: [
+        toolCallChunks('call-open', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-1', CREATE_ISSUE, { title: 'x' }),
+      ],
+    })
+    const [approvalId] = paused.approvalIds
+
+    expect(approvalId).toBeDefined()
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(readKvJson('connectors:catalog:conn-linear')).toBeTruthy()
+
+    const listsBeforeResume = linear.callCount('tools/list')
+    const { doStream } = await answer(paused, [
+      { approvalId, approved: true },
+    ], [textChunks('Created the issue.')])
+    const toolNames = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+      .map((tool: { name: string }) => tool.name)
+
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(linear.callCount('tools/list')).toBe(listsBeforeResume + 1)
+    expect(toolNames).toContain('use_connector')
+    expect(toolNames).toContain(CREATE_ISSUE)
+    expect(mocks.store.settlements).toEqual([
+      expect.objectContaining({ outcome: 'ok', approval: 'once' }),
     ])
   })
 
@@ -1480,8 +1632,7 @@ describe('tool approval continuation', () => {
     expect(linear.callCount('tools/call')).toBe(1)
     expect(lastToolMessage(doStream).content[0].output).toEqual({
       type: 'execution-denied',
-      reason: 'This turn reached its limit of approved actions, so the action '
-        + 'did not run.',
+      reason: TOOL_APPROVAL_DENIAL_TEXT['over-cap'],
     })
   })
 
@@ -1576,42 +1727,254 @@ describe('tool approval continuation', () => {
     expect(mocks.claims.size).toBe(0)
   })
 
-  it('withholds provider web search after a connector read', async () => {
-    const listIssues = linear.tools.find(tool => tool.name === 'list_issues')!
-
-    listIssues.annotations = { readOnlyHint: true, openWorldHint: false }
+  it('asks a Needs approval connector read after a requested web search, '
+    + 'then withholds web search once the approved read ran', async () => {
     mocks.providerTools = {
       tools: { web_search: openai.tools.webSearch() },
     }
 
-    const { doStream } = await request({
+    await request({
       servers: [linear],
-      steps: [
-        toolCallChunks('call-read', 'mcp__linear__list_issues', {}),
-        textChunks('Here are the issues.'),
-      ],
+      steps: [textChunks('Ready.')],
       body: {
         model: MODEL_ID,
-        tools: ['web_search'],
+        tools: [],
         reasoning: 'off',
         connectorIds: ['conn-linear'],
         messages: [{
-          id: USER_MESSAGE_ID,
+          id: 'user-baseline',
           role: 'user',
-          parts: [{ type: 'text', text: 'List and search' }],
+          parts: [{ type: 'text', text: 'Hello' }],
         }],
       },
     })
-    const toolNamesOf = (callIndex: number) => {
-      const options = doStream.mock.calls[callIndex]?.[0] as any
 
-      return (options?.tools ?? []).map((tool: any) => tool.name)
+    for (const setting of mocks.store.toolSettings) {
+      if (setting.toolName === 'list_issues') {
+        setting.approval = 'needs-approval'
+      }
     }
 
+    const paused = await pauseTurn({
+      servers: [linear],
+      tools: ['web_search'],
+      steps: [toolCallChunks('call-read', 'mcp__linear__list_issues', {})],
+    })
+    const [approvalId] = paused.approvalIds
+    const pending = readKvJson(`tool-approval:${approvalId}`)
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(pending).toMatchObject({
+      reason: 'untrusted-output',
+      rememberOptions: ['once', 'chat', 'always'],
+    })
+
+    const { doStream } = await answer(paused, [
+      { approvalId, approved: true },
+    ], [textChunks('Here are the issues.')])
+    const options = doStream.mock.calls[0]?.[0] as any
+    const toolNames = (options?.tools ?? []).map((tool: any) => tool.name)
+
     expect(linear.callCount('tools/call')).toBe(1)
-    expect(toolNamesOf(0)).toContain('web_search')
-    expect(toolNamesOf(1)).not.toContain('web_search')
-    expect(toolNamesOf(1)).toContain('mcp__linear__list_issues')
+    expect(toolNames).not.toContain('web_search')
+  })
+
+  describe('kept connector images', () => {
+    const LIST_ISSUES = 'mcp__linear__list_issues'
+    const PNG_BYTES = Buffer.from(RED_PNG_BASE64, 'base64')
+    const KEPT_LINE = buildConnectorImageLine(
+      { mediaType: 'image/png', bytes: PNG_BYTES.length },
+      'saved',
+    )
+
+    beforeEach(() => {
+      vi.stubGlobal('useFileStorage', () => ({
+        get: async (key: string) => {
+          const bytes = mocks.r2Objects.get(key)
+
+          return bytes
+            ? { arrayBuffer: async () => bytes.slice().buffer }
+            : null
+        },
+      }))
+    })
+
+    function useAnthropicImageModel() {
+      vi.stubGlobal('useChatProvider', vi.fn(() => ({
+        provider: { id: 'anthropic' },
+        model: {
+          id: 'claude-opus-5-5',
+          name: 'Claude Opus 5.5',
+          tools: [],
+          toolCall: true,
+          modalities: { input: ['text', 'image'], output: ['text'] },
+        },
+      })))
+    }
+
+    function keepImage(fileId: string, size = PNG_BYTES.length) {
+      const storageKey = `connector-${fileId}.png`
+
+      mocks.keptFiles.push({ id: fileId, storageKey, size })
+      mocks.r2Objects.set(storageKey, new Uint8Array(PNG_BYTES))
+    }
+
+    function screenshotParts(toolCallId: string, fileId: string) {
+      return [
+        { type: 'step-start' },
+        {
+          type: 'dynamic-tool',
+          toolName: LIST_ISSUES,
+          toolCallId,
+          state: 'output-available',
+          input: {},
+          output: frameUntrustedResult({
+            slug: 'linear',
+            toolName: 'list_issues',
+            text: `Screenshot\n${KEPT_LINE}`,
+          }).text,
+        },
+        {
+          type: CONNECTOR_IMAGE_PART_TYPE,
+          id: `connector-image-${toolCallId}-0`,
+          data: {
+            toolCallId,
+            fileId,
+            url: `/files/connector-${fileId}.png`,
+            mediaType: 'image/png',
+            width: 8,
+            height: 8,
+            size: PNG_BYTES.length,
+            name: 'linear-list_issues.png',
+          },
+        },
+      ]
+    }
+
+    async function pauseAfterScreenshots(count = 2) {
+      const paused = await pauseCreateIssue()
+      const assistant = mocks.chatMessages.find((message) => {
+        return message.id === 'row-assistant'
+      })!
+
+      assistant.parts = [
+        ...Array.from({ length: count }, (_value, index) => {
+          return screenshotParts(`shot-${index + 1}`, `file-${index + 1}`)
+        }).flat(),
+        ...assistant.parts,
+      ]
+
+      return paused
+    }
+
+    function screenshotResults(doStream: ReturnType<typeof vi.fn>) {
+      const prompt = (doStream.mock.calls[0]?.[0] as any)?.prompt ?? []
+
+      return prompt
+        .filter((message: any) => message.role === 'tool')
+        .flatMap((message: any) => message.content)
+        .filter((part: any) => {
+          return part.type === 'tool-result'
+            && String(part.toolCallId).startsWith('shot-')
+        })
+    }
+
+    it('shows both kept screenshots to Claude again after the approval',
+      async () => {
+        useAnthropicImageModel()
+        keepImage('file-1')
+        keepImage('file-2')
+
+        const paused = await pauseAfterScreenshots()
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Both frames look right.')])
+        const results = screenshotResults(doStream)
+
+        expect(mocks.keptFinderCalls).toEqual([
+          expect.objectContaining({
+            userId: 1,
+            chatPublicId: CHAT_PUBLIC_ID,
+            fileIds: ['file-1', 'file-2'],
+          }),
+        ])
+        expect(results.map((result: any) => result.toolCallId))
+          .toEqual(['shot-1', 'shot-2'])
+
+        for (const result of results) {
+          const output = JSON.stringify(result.output)
+
+          expect(result.output.type).toBe('content')
+          expect(output).toContain(RED_PNG_BASE64)
+          expect(output).toContain('shown to the model again')
+          expect(output).toContain('from the connector \\"Linear\\"')
+          expect(output).not.toContain('no longer available')
+        }
+
+        const stored = JSON.stringify(mocks.updates.at(-1)!.parts)
+
+        expect(stored).not.toContain('shown to the model again')
+        expect(stored).not.toContain(RED_PNG_BASE64)
+      })
+
+    it('leaves the screenshots as text when the model cannot see images',
+      async () => {
+        keepImage('file-1')
+        keepImage('file-2')
+
+        const paused = await pauseAfterScreenshots()
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Done.')])
+        const results = screenshotResults(doStream)
+
+        expect(mocks.keptFinderCalls).toEqual([])
+        expect(results).toHaveLength(2)
+
+        for (const result of results) {
+          const output = JSON.stringify(result.output)
+
+          expect(result.output.type).toBe('text')
+          expect(output).not.toContain(RED_PNG_BASE64)
+          expect(output).toContain('kept with this chat, no longer available')
+        }
+      })
+
+    it('keeps a deleted screenshot as text and shows the other one again',
+      async () => {
+        useAnthropicImageModel()
+        keepImage('file-2')
+
+        const paused = await pauseAfterScreenshots()
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Done.')])
+        const [first, second] = screenshotResults(doStream)
+
+        expect(first.output.type).toBe('text')
+        expect(JSON.stringify(first.output))
+          .toContain('kept with this chat, no longer available')
+        expect(second.output.type).toBe('content')
+        expect(JSON.stringify(second.output)).toContain(RED_PNG_BASE64)
+      })
+
+    it('leaves the oldest screenshot as text when the send budget is full',
+      async () => {
+        useAnthropicImageModel()
+
+        for (let index = 1; index <= 4; index++) {
+          keepImage(`file-${index}`, CONNECTOR_IMAGE_MAX_BYTES)
+        }
+
+        const paused = await pauseAfterScreenshots(4)
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('Done.')])
+        const results = screenshotResults(doStream)
+
+        expect(results.map((result: any) => result.output.type))
+          .toEqual(['text', 'content', 'content', 'content'])
+      })
   })
 
   describe('Besidka tools', () => {
@@ -1653,6 +2016,42 @@ describe('tool approval continuation', () => {
         expect(mocks.claims.get(approvalId)?.status).toBe('done')
       })
 
+    it.each([
+      ['Deny', false, 'output-denied'],
+      ['Allow once', true, 'output-available'],
+    ] as const)('answers %s for a send whose Auto connector has over 200 '
+      + 'tools', async (_label, approved, state) => {
+      const github = createMockMcpServer({
+        url: LINEAR_URL,
+        tools: Array.from({ length: 250 }, (_value, index) => {
+          return {
+            name: `tool_${index}`,
+            description: `Tool ${index}.`,
+            annotations: { readOnlyHint: true },
+          }
+        }),
+        respond: name => ({ text: `${name} result` }),
+      })
+
+      mocks.store.connectors[0]!.toolMode = 'auto'
+      mocks.store.chatSettings = []
+
+      const paused = await pauseTurn({
+        servers: [github],
+        connectorIds: [],
+        steps: [toolCallChunks('call-b', 'besidka__list_projects', {})],
+      })
+      const [approvalId] = paused.approvalIds
+
+      await answer(paused, [{ approvalId, approved }])
+
+      expect(findPart(
+        mocks.updates.at(-1)!.parts,
+        'tool-besidka__list_projects',
+      )).toMatchObject({ state })
+      expect(mocks.claims.get(approvalId)?.status).toBe('done')
+    })
+
     it('denies an approved Besidka call the user has since blocked',
       async () => {
         const paused = await pauseListProjects()
@@ -1684,5 +2083,305 @@ describe('tool approval continuation', () => {
       { approvalId: paused.approvalIds[0], approved: true },
     ])).rejects.toMatchObject({ status: 404 })
     expect(mocks.claims.size).toBe(0)
+  })
+
+  describe('long tool tasks (rounds)', () => {
+    const LIST_ISSUES = 'mcp__linear__list_issues'
+
+    function createWorkingModel() {
+      let callIndex = 0
+      const doStream = vi.fn(async (options: any) => {
+        callIndex += 1
+
+        const isForced = options?.toolChoice?.type === 'none'
+          || !options?.tools?.length
+        const chunks = isForced
+          ? textChunks('Listed some issues, more to go.')
+          : toolCallChunks(`call-${callIndex}`, LIST_ISSUES, {
+            page: callIndex,
+          })
+
+        return { stream: simulateReadableStream({ chunks: chunks as any }) }
+      })
+
+      return { model: new MockLanguageModelV4({ doStream }), doStream }
+    }
+
+    async function continueRound(
+      messageId: string,
+      round: number,
+      steps: Array<Array<Record<string, unknown>>> = [textChunks('Done.')],
+    ) {
+      return await request({
+        servers: [linear],
+        steps,
+        body: { continue: { messageId, round } },
+      })
+    }
+
+    it('ends a reply that ran out of steps with a budget part after a '
+      + 'progress note', async () => {
+      const scripted = createWorkingModel()
+      const { inserts } = await request({
+        servers: [linear],
+        scripted,
+        body: {
+          model: MODEL_ID,
+          tools: [],
+          reasoning: 'off',
+          connectorIds: ['conn-linear'],
+          messages: [{
+            id: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Go through every issue' }],
+          }],
+        },
+      })
+      const assistant = inserts.find(value => value.role === 'assistant')
+      const lastCall = scripted.doStream.mock.calls.at(-1)?.[0] as any
+      const system = JSON.stringify(lastCall?.prompt?.filter((message: any) => {
+        return message.role === 'system'
+      }))
+
+      expect(linear.callCount('tools/call')).toBeGreaterThan(1)
+      expect(system).toContain('The work continues right after this.')
+      expect(assistant?.parts.at(-1)).toEqual({
+        type: 'data-tool-budget',
+        id: 'tool-budget-1',
+        data: {
+          round: 1,
+          maxRounds: 10,
+          reason: 'steps',
+          model: MODEL_ID,
+          gateway: null,
+          reasoning: 'off',
+          connectorIds: ['conn-linear'],
+        },
+      })
+    })
+
+    it('writes no budget part for a reply that answered by itself',
+      async () => {
+        const { inserts } = await request({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-1', LIST_ISSUES, {}),
+            textChunks('One issue.'),
+          ],
+          body: {
+            model: MODEL_ID,
+            tools: [],
+            reasoning: 'off',
+            connectorIds: ['conn-linear'],
+            messages: [{
+              id: USER_MESSAGE_ID,
+              role: 'user',
+              parts: [{ type: 'text', text: 'List issues' }],
+            }],
+          },
+        })
+        const assistant = inserts.find(value => value.role === 'assistant')
+
+        expect(assistant?.parts.some((part: any) => {
+          return part.type === 'data-tool-budget'
+        })).toBe(false)
+      })
+
+    it('refuses a round that is not the next one, after a newer message, '
+      + 'at the round limit, and when the flag is off', async () => {
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Working.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: MODEL_ID,
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+
+      await expect(continueRound('assistant-1', 3))
+        .rejects.toMatchObject({ status: 409, code: 'TOOL_ROUND_STALE' })
+
+      const assistant = mocks.chatMessages[1]!
+
+      assistant.parts[1].data.round = 10
+
+      await expect(continueRound('assistant-1', 11))
+        .rejects.toMatchObject({ status: 400 })
+      await expect(continueRound('assistant-1', 10))
+        .rejects.toMatchObject({ status: 409, code: 'TOOL_ROUND_STALE' })
+
+      assistant.parts[1].data.round = 1
+      mocks.chatMessages.push({
+        id: 'row-user-2',
+        publicId: 'user-2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Newer' }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      })
+
+      await expect(continueRound('assistant-1', 2))
+        .rejects.toMatchObject({ status: 409 })
+
+      mocks.chatMessages.pop()
+      mocks.flags = new Set(['connectors'])
+
+      await expect(continueRound('assistant-1', 2))
+        .rejects.toMatchObject({ status: 404 })
+      expect(mocks.updates).toHaveLength(0)
+    })
+
+    it('runs the next round into the same reply with the continue prompt',
+      async () => {
+        mocks.chatMessages.push(
+          {
+            id: 'row-user',
+            publicId: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Go' }],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+          {
+            id: 'row-assistant',
+            publicId: 'assistant-1',
+            role: 'assistant',
+            parts: [
+              { type: 'step-start' },
+              { type: 'text', text: 'Working on it.' },
+              {
+                type: 'data-tool-budget',
+                id: 'tool-budget-1',
+                data: {
+                  round: 1,
+                  maxRounds: 10,
+                  reason: 'steps',
+                  model: MODEL_ID,
+                  gateway: null,
+                  reasoning: 'off',
+                  connectorIds: ['conn-linear'],
+                },
+              },
+            ],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+        )
+
+        const { doStream } = await continueRound('assistant-1', 2, [
+          textChunks('All issues listed.'),
+        ])
+        const prompt = (doStream.mock.calls[0]?.[0] as any)?.prompt ?? []
+        const lastMessage = prompt.at(-1)
+        const updated = mocks.updates.at(-1)!
+
+        expect(lastMessage).toMatchObject({ role: 'user' })
+        expect(JSON.stringify(lastMessage)).toContain('Continue the task')
+        expect(updated.parts.map((part: any) => part.type)).toEqual([
+          'step-start',
+          'text',
+          'data-tool-budget',
+          'step-start',
+          'text',
+        ])
+        expect(updated.parts.at(-1)).toMatchObject({
+          text: 'All issues listed.',
+        })
+        expect(mocks.claims.get('round-assistant-1-2')).toMatchObject({
+          messagePublicId: 'assistant-1',
+        })
+      })
+
+    it('never runs a round twice: a round that already started is '
+      + 'interrupted', async () => {
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Working.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: MODEL_ID,
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+      mocks.claims.set('round-assistant-1-2', {
+        approvalId: 'round-assistant-1-2',
+        userId: 1,
+        chatPublicId: CHAT_PUBLIC_ID,
+        messagePublicId: 'assistant-1',
+        status: 'claimed',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      await expect(continueRound('assistant-1', 2)).rejects.toMatchObject({
+        status: 409,
+        code: 'TOOL_ROUND_STALE',
+        message: 'This round was interrupted',
+      })
+      expect(mocks.updates).toHaveLength(0)
+    })
   })
 })

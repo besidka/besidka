@@ -9,6 +9,7 @@ const FILE_OBJECT_DELETE_SITES = [
   'server/utils/files/delete-files.ts',
   'server/utils/files/cleanup-expired-files.ts',
   'server/utils/files/chat-deletion-cleanup.ts',
+  'server/utils/files/connector-images.ts',
   'server/utils/account/purge-user-data.ts',
 ]
 

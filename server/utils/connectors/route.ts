@@ -5,9 +5,11 @@ import {
   CONNECTOR_ICON_ROUTES_PER_MINUTE,
   CONNECTOR_ROUTES_PER_MINUTE,
   CONNECTOR_SELECTION_WRITES_PER_MINUTE,
+  REGISTRY_SEARCHES_PER_MINUTE,
 } from '#shared/utils/connectors-policy'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
+import { consumeIconRateLimit } from '~~/server/utils/connectors/icon-rate-limit'
 import { getConnector } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { requireFeature } from '~~/server/utils/features/guards'
@@ -53,7 +55,7 @@ export function assertConnectorWriteRequest(event: RequestEvent): void {
   }
 }
 
-interface RateLimitBucket {
+export interface RateLimitBucket {
   prefix: string
   max: number
 }
@@ -130,14 +132,7 @@ export async function enforceConnectorRateLimit(
   }
 }
 
-function resolveBucket(options: {
-  selection?: boolean
-  icon?: boolean
-}): RateLimitBucket {
-  if (options.icon) {
-    return ICON_BUCKET
-  }
-
+function resolveBucket(options: { selection?: boolean }): RateLimitBucket {
   return options.selection ? SELECTION_BUCKET : DEFAULT_BUCKET
 }
 
@@ -147,8 +142,9 @@ function resolveBucket(options: {
  * `connectors` flag (and `connectors.oauth` for sign-in routes), then the
  * per-user limit (`selection: true` uses the looser bucket of the per-chat
  * toggles, 60 a minute, so flipping switches in the picker is not throttled
- * like connecting a server; `icon: true` uses the loose bucket of the icon
- * route, 120 a minute). Ownership lookups come after it in the route.
+ * like connecting a server; `icon: true` uses the icon budget of
+ * `consumeIconRateLimit`, 300 a minute, written to KV at most once a
+ * second). Ownership lookups come after it in the route.
  */
 export async function requireConnectorAccess(
   event: RequestEvent,
@@ -178,7 +174,18 @@ export async function requireConnectorAccess(
 
   const userId = parseInt(session.user.id)
 
-  if (options.rateLimit !== false) {
+  if (options.rateLimit !== false && options.icon) {
+    const result = await consumeIconRateLimit(
+      useKV(),
+      ICON_BUCKET.prefix,
+      userId,
+      ICON_BUCKET.max,
+    )
+
+    if (!result.allowed) {
+      throw tooManyRequests(event, result.retryAfter ?? 60, ICON_BUCKET.max)
+    }
+  } else if (options.rateLimit !== false) {
     await enforceConnectorRateLimit(
       event,
       userId,
@@ -223,4 +230,27 @@ export async function requireOwnedConnector(
   })
 
   return connector
+}
+
+/**
+ * The gate of the directory routes: a session, the `connectors` and
+ * `connectors.registry` flags, then the directory bucket (60 a minute, or
+ * the given bucket). Read-only, so no write guard.
+ */
+export async function requireRegistryAccess(
+  event: RequestEvent,
+  bucket: RateLimitBucket = {
+    prefix: 'connectors-registry-rate-limit',
+    max: REGISTRY_SEARCHES_PER_MINUTE,
+  },
+): Promise<number> {
+  const userId = await requireConnectorAccess(event, {
+    write: false,
+    rateLimit: false,
+  })
+
+  await requireFeature(event, 'connectors.registry')
+  await enforceConnectorRateLimit(event, userId, bucket)
+
+  return userId
 }

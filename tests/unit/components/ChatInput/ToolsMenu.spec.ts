@@ -9,8 +9,8 @@ import type {
 import ToolsMenu from '../../../../app/components/ChatInput/ToolsMenu.client.vue'
 
 const mocks = vi.hoisted(() => ({
-  setReasoningExpanded: vi.fn(),
-  setReasoningAutoHide: vi.fn(),
+  setStepsExpanded: vi.fn(),
+  setStepsAutoHide: vi.fn(),
 }))
 
 mockNuxtImport('useMediaQuery', () => {
@@ -19,10 +19,10 @@ mockNuxtImport('useMediaQuery', () => {
 
 mockNuxtImport('useUserSetting', () => {
   return () => ({
-    reasoningExpanded: shallowRef(false),
-    reasoningAutoHide: shallowRef(true),
-    setReasoningExpanded: mocks.setReasoningExpanded,
-    setReasoningAutoHide: mocks.setReasoningAutoHide,
+    stepsExpanded: shallowRef(false),
+    stepsAutoHide: shallowRef(true),
+    setStepsExpanded: mocks.setStepsExpanded,
+    setStepsAutoHide: mocks.setStepsAutoHide,
   })
 })
 
@@ -162,6 +162,7 @@ describe('ChatInput/ToolsMenu', () => {
     await open(wrapper)
 
     expect(sectionIds(wrapper)).toEqual([
+      'steps',
       'memory',
       'image',
       'reasoning',
@@ -187,7 +188,7 @@ describe('ChatInput/ToolsMenu', () => {
 
     await open(wrapper)
 
-    expect(sectionIds(wrapper)).toEqual(['add'])
+    expect(sectionIds(wrapper)).toEqual(['steps', 'add'])
     expect(has(wrapper, 'tools-action-generated')).toBe(false)
   })
 
@@ -209,7 +210,7 @@ describe('ChatInput/ToolsMenu', () => {
     await open(wrapper)
 
     expect(has(wrapper, 'tools-deep-research-note')).toBe(true)
-    expect(sectionIds(wrapper)).toEqual(['memory', 'add'])
+    expect(sectionIds(wrapper)).toEqual(['steps', 'memory', 'add'])
   })
 
   it('marks Create image required and checked for an image-only model',
@@ -385,7 +386,7 @@ describe('ChatInput/ToolsMenu', () => {
       await open(wrapper)
 
       expect(document.activeElement).toBe(
-        wrapper.get('[data-testid="new-chat-memory-toggle"]').element,
+        wrapper.get('[data-testid="steps-expanded-toggle"]').element,
       )
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
@@ -617,6 +618,29 @@ describe('ChatInput/ToolsMenu', () => {
           .trigger('click')
 
         expect(wrapper.emitted('remove-tile')).toEqual([['memory']])
+
+        showModal.mockRestore()
+      })
+
+    it('pads the sheet scroll area with the shared sheet bottom padding',
+      async () => {
+        const showModal = vi
+          .spyOn(HTMLDialogElement.prototype, 'showModal')
+          .mockImplementation(function (this: HTMLDialogElement) {
+            this.setAttribute('open', '')
+          })
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+
+        const scroll = wrapper.get(
+          '[data-testid="chat-input-tools-sheet-scroll"]',
+        )
+        const box = wrapper.get('[data-testid="chat-input-tools-panel"]')
+          .get('.modal-box')
+
+        expect(scroll.classes()).toContain('pb-[var(--sheet-bottom-padding)]')
+        expect(box.classes()).toContain('p-0')
 
         showModal.mockRestore()
       })

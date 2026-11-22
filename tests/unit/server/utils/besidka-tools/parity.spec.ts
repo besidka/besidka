@@ -20,8 +20,11 @@ const PUBLIC_MCP_TOOLS = [
 const EXPECTED_EXPOSURE = {
   'read': [
     'get_artifact',
+    'get_chat_cost',
+    'get_debug_info',
     'get_project',
     'get_settings',
+    'get_usage_stats',
     'list_artifact_shares',
     'list_artifacts',
     'list_files',
@@ -62,6 +65,7 @@ const EXPECTED_EXPOSURE = {
     'create_artifact',
     'create_document',
     'create_skill',
+    'delete_connector_images',
     'delete_connectors',
     'delete_memory',
     'delete_skills',

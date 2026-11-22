@@ -9,11 +9,14 @@ import {
   BESIDKA_TOOL_TIERS,
 } from '#shared/utils/besidka-tool-permissions'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
+import { TOOL_INDEX_SOURCE_BESIDKA } from '#shared/utils/tool-index'
 import { TOOL_APPROVAL_BESIDKA_READ_SOURCE } from '#shared/utils/tool-approval-policy'
 import type {
   ToolAccess,
   ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
+import { toolIndexClassOf } from '~~/server/utils/ai/tool-index'
+import type { ToolIndexEntry } from '~~/server/utils/ai/tool-index'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
@@ -105,7 +108,9 @@ export interface BesidkaChatToolsRun {
   tools: ToolSet
   approvalEntries: Map<string, SendToolEntry>
   definitionBytes: number
-  leftOutCount: number
+  upFrontNames: string[]
+  upFrontEntries: ToolIndexEntry[]
+  indexEntries: ToolIndexEntry[]
 }
 
 export type BesidkaCallLimiter = (userId: number) => Promise<boolean>
@@ -137,10 +142,23 @@ function withoutShareLink(result: unknown): unknown {
   }
 }
 
+/**
+ * The debug info result as the chat model sees it: the report only, so the
+ * same ids are not sent twice into model context and the stored message.
+ */
+function reportOnly(result: unknown): unknown {
+  if (!isRecord(result)) {
+    return result
+  }
+
+  return { report: result.report }
+}
+
 const CHAT_RESULT_TRANSFORMS: Readonly<
   Record<string, (result: unknown) => unknown>
 > = {
   share_artifact: withoutShareLink,
+  get_debug_info: reportOnly,
 }
 
 /**
@@ -177,8 +195,8 @@ function jsonSchemaOf(besidkaTool: ChatExposedBesidkaTool): unknown {
  * its registry tier and never from its annotations: a read-tier tool is a
  * read, a write-tier tool a write, and an ask-every-time tool keeps its
  * delete or instructions access (a write otherwise). The descriptor marks
- * the ask-every-time tier destructive, so it always asks with Allow once and
- * Deny only.
+ * the ask-every-time tier destructive, so it asks every time unless the user
+ * set it to Always allow or allowed it in the chat.
  */
 export function besidkaToolAccess(
   besidkaTool: ChatExposedBesidkaTool,
@@ -230,7 +248,9 @@ function rankOf(candidate: BesidkaChatToolCandidate): number {
  * tools are never offered. The rest are ordered Always allow first, then by
  * tier (read, write, ask every time), then by name, and taken while they fit
  * in `maxTools` (at most `BESIDKA_CHAT_TOOLS_MAX`, 24) and `maxBytes` of
- * descriptions plus input schemas. The ones that do not fit are `leftOut`.
+ * descriptions plus input schemas, which are offered up front. The ones
+ * that do not fit are `leftOut`: they go to the tool index and are loaded on
+ * demand (`server/utils/ai/tool-index.ts`), never dropped.
  */
 export function selectBesidkaChatTools(input: {
   modes: ReadonlyMap<string, ToolPermissionMode>
@@ -273,12 +293,25 @@ export function selectBesidkaChatTools(input: {
   return { selected, blocked, leftOut, definitionBytes }
 }
 
+const KV_RETRY_DELAY_MS = 1_100
+
+/**
+ * The per-minute limit of Besidka tool calls, counted in KV and failing
+ * closed. The counts of one send are taken one at a time: parallel calls of
+ * one step wrote the same KV key at once, which KV refuses (about one write
+ * a second per key), so a refused write read as over the limit. A KV
+ * failure is retried once after a second before it refuses.
+ */
 export function createBesidkaCallLimiter(
   kv: Parameters<typeof createAuthRateLimitStorage>[0],
 ): BesidkaCallLimiter {
   const storage = createAuthRateLimitStorage(kv, RATE_LIMIT_KEY_PREFIX)
+  let queue: Promise<unknown> = Promise.resolve()
+  let lastConsumeFailed = false
 
-  return async (userId) => {
+  async function consume(userId: number): Promise<boolean> {
+    lastConsumeFailed = false
+
     try {
       const result = await storage.consume(String(userId), {
         window: RATE_LIMIT_WINDOW_SECONDS,
@@ -287,8 +320,32 @@ export function createBesidkaCallLimiter(
 
       return result.allowed
     } catch {
+      lastConsumeFailed = true
+
       return false
     }
+  }
+
+  async function consumeWithRetry(userId: number): Promise<boolean> {
+    if (await consume(userId)) {
+      return true
+    }
+
+    if (!lastConsumeFailed) {
+      return false
+    }
+
+    await new Promise(resolve => setTimeout(resolve, KV_RETRY_DELAY_MS))
+
+    return await consume(userId)
+  }
+
+  return (userId) => {
+    const result = queue.then(() => consumeWithRetry(userId))
+
+    queue = result
+
+    return result
   }
 }
 
@@ -482,8 +539,6 @@ function buildApprovalEntry(input: {
     permissionMode: input.mode,
     taint: 'besidka',
     readSource: TOOL_APPROVAL_BESIDKA_READ_SOURCE,
-    alwaysGrant: null,
-    alwaysGrantWhenTainted: false,
     userGrants: {
       always: null,
       chat: input.chatGrantHash === definitionHash
@@ -495,19 +550,22 @@ function buildApprovalEntry(input: {
 }
 
 /**
- * Builds the Besidka tools of one chat send (docs/besidka-tools.md): one AI
- * SDK tool per selected registry entry, named `besidka__<name>`, with the
- * registry's chat description and input schema, plus one approval entry per
- * offered tool and per Blocked tool (so a Blocked tool is denied if it is
- * ever called or replayed). The policy decides every call; `execute` runs
- * only a call the policy cleared (`consumeClearedCall`, once, same name and
- * input), refuses to delete or move the current chat or delete one of its
- * messages, keeps to 30 calls a minute per user (failing closed when KV
- * cannot count), runs the registry handler as the session user, and frames
- * the JSON result as untrusted like a connector result. A handler that fails
- * with a client error passes its own message on; anything else becomes one
- * sentence Besidka wrote. Bindings and the logger are captured here, never
- * read inside `execute`.
+ * Builds the Besidka tools of one chat send (docs/besidka-tools.md): one AI SDK
+ * tool per registry entry that is not Blocked, named `besidka__<name>`, with
+ * the registry's chat description and input schema, plus one approval entry per
+ * such tool and per Blocked tool (so a Blocked tool is denied if it is ever
+ * called or replayed). The selected tools are offered up front
+ * (`upFrontNames`); the rest are listed in the tool index (`indexEntries`) and
+ * offered only once the model loads them, through the same approval entry. A
+ * Blocked tool is never built, so it can never be loaded. The policy decides
+ * every call; `execute` runs only a call the policy cleared
+ * (`consumeClearedCall`, once, same name and input), refuses to delete or move
+ * the current chat or delete one of its messages, keeps to 30 calls a minute
+ * per user (failing closed when KV cannot count), runs the registry handler as
+ * the session user, and frames the JSON result as untrusted like a connector
+ * result. A handler that fails with a client error passes its own message on;
+ * anything else becomes one sentence Besidka wrote. Bindings and the logger are
+ * captured here, never read inside `execute`.
  */
 export async function buildBesidkaChatTools(input: {
   db: DbClient
@@ -531,7 +589,13 @@ export async function buildBesidkaChatTools(input: {
   const tools: ToolSet = {}
   const approvalEntries = new Map<string, SendToolEntry>()
 
-  for (const candidate of [...selection.selected, ...selection.blocked]) {
+  const candidates = [
+    ...selection.selected,
+    ...selection.leftOut,
+    ...selection.blocked,
+  ]
+
+  for (const candidate of candidates) {
     const exposedName = toBesidkaChatToolName(candidate.tool.name)
     const definitionHash = await hashBesidkaChatTool(candidate.tool)
 
@@ -566,6 +630,7 @@ export async function buildBesidkaChatTools(input: {
       userId,
       clientId: BESIDKA_CHAT_CLIENT_ID,
       scopes: [],
+      currentChatSlug: input.currentChatSlug,
       db,
       logger,
       log,
@@ -640,7 +705,7 @@ export async function buildBesidkaChatTools(input: {
     }
   }
 
-  for (const candidate of selection.selected) {
+  for (const candidate of [...selection.selected, ...selection.leftOut]) {
     const besidkaTool = candidate.tool
 
     tools[toBesidkaChatToolName(besidkaTool.name)] = withFollowUpTurn(tool({
@@ -650,12 +715,27 @@ export async function buildBesidkaChatTools(input: {
     })) as ToolSet[string]
   }
 
+  function toIndexEntry(candidate: BesidkaChatToolCandidate): ToolIndexEntry {
+    const exposedName = toBesidkaChatToolName(candidate.tool.name)
+
+    return {
+      name: exposedName,
+      sourceKey: TOOL_INDEX_SOURCE_BESIDKA,
+      sourceTitle: 'Besidka',
+      description: chatDescriptionOf(candidate.tool),
+      toolClass: toolIndexClassOf(approvalEntries.get(exposedName)!.descriptor),
+      bytes: candidate.definitionBytes,
+    }
+  }
+
+  const indexEntries = selection.leftOut.map(toIndexEntry)
+
   logger.set({
     attributes: {
       besidkaTools: {
         exposed: selection.selected.length,
         blocked: selection.blocked.length,
-        leftOut: selection.leftOut.length,
+        deferred: selection.leftOut.length,
         definitionBytes: selection.definitionBytes,
       },
     },
@@ -665,6 +745,10 @@ export async function buildBesidkaChatTools(input: {
     tools,
     approvalEntries,
     definitionBytes: selection.definitionBytes,
-    leftOutCount: selection.leftOut.length,
+    upFrontNames: selection.selected.map((candidate) => {
+      return toBesidkaChatToolName(candidate.tool.name)
+    }),
+    upFrontEntries: selection.selected.map(toIndexEntry),
+    indexEntries,
   }
 }

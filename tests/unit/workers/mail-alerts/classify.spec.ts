@@ -155,6 +155,7 @@ describe('resolveMailbox', () => {
     expect(resolveMailbox('Abuse@besidka.com')).toBe('abuse')
     expect(resolveMailbox('security+report@besidka.com')).toBe('security')
     expect(resolveMailbox('contact@besidka.com')).toBe('contact')
+    expect(resolveMailbox('Support+help@besidka.com')).toBe('support')
     expect(resolveMailbox('mail-alerts-test@besidka.com'))
       .toBe('mail-alerts-test')
   })

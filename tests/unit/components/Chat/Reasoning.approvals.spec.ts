@@ -4,7 +4,9 @@ import { computed, nextTick, ref, shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import type { ToolApprovalController } from '~/composables/tool-approvals'
 import { TOOL_APPROVAL_CONTROLLER_KEY } from '~/composables/tool-approvals'
+import type { VueWrapper } from '@vue/test-utils'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { expandReasoningSteps } from './Reasoning/expand-steps'
 
 const cachedConnectors = ref<unknown>({
   connectors: [{ slug: 'linear', title: 'Linear' }],
@@ -18,8 +20,8 @@ mockNuxtImport('useConnectorLibrary', () => {
 })
 mockNuxtImport('useUserSetting', () => {
   return () => ({
-    reasoningExpanded: shallowRef<boolean>(false),
-    reasoningAutoHide: shallowRef<boolean>(true),
+    stepsExpanded: shallowRef<boolean>(false),
+    stepsAutoHide: shallowRef<boolean>(true),
   })
 })
 
@@ -70,6 +72,7 @@ function createController(
     change: vi.fn(),
     askAgain: vi.fn(async () => {}),
     focusFirstPending: vi.fn(),
+    focusApproval: vi.fn(),
     ...overrides,
   }
 }
@@ -77,8 +80,9 @@ function createController(
 async function mountMessage(
   parts: unknown[],
   controller: ToolApprovalController | null = createController(),
+  options: { expand?: boolean } = {},
 ) {
-  return await mountSuspended(Reasoning, {
+  const wrapper = await mountSuspended(Reasoning, {
     props: {
       message: { id: MESSAGE_ID, role: 'assistant', parts } as UIMessage,
       status: 'ready',
@@ -97,41 +101,83 @@ async function mountMessage(
         : {}),
     },
   })
+
+  if (options.expand ?? true) {
+    await expandReasoningSteps(wrapper)
+  }
+
+  return wrapper
 }
 
 const STEP = '[data-testid="reasoning-approval-step"]'
+const ANSWER_BUTTONS = [
+  'reasoning-approval-step-allow-once',
+  'reasoning-approval-step-allow-chat',
+  'reasoning-approval-step-allow-always',
+  'reasoning-approval-step-deny',
+  'reasoning-approval-step-change',
+]
+
+function answerButtonCount(wrapper: VueWrapper): number {
+  return ANSWER_BUTTONS.reduce((count, testId) => {
+    return count + wrapper.findAll(`[data-testid="${testId}"]`).length
+  }, 0)
+}
 
 describe('Chat/Reasoning approval steps', () => {
-  it('shows the skill scripts consent with its summary, reason and both buttons',
+  it('shows a waiting call as a compact step that points to the bubble',
+    async () => {
+      const controller = createController()
+      const wrapper = await mountMessage(
+        [approvalCall('1'), approvalData('1')],
+        controller,
+      )
+      const step = wrapper.get(STEP)
+
+      expect(step.attributes('data-state')).toBe('pending')
+      expect(step.classes()).not.toContain('js-tool-approval-step')
+      expect(step.attributes('tabindex')).toBeUndefined()
+      expect(step.get('[data-testid="reasoning-approval-step-title"]').text())
+        .toBe('Linear wants to run create_issue')
+      expect(step.get('[data-testid="reasoning-approval-step-waiting"]')
+        .text()).toContain('Waiting for your approval below the message')
+      expect(answerButtonCount(wrapper)).toBe(0)
+      expect(wrapper.find('.reasoning-step-waiting').exists()).toBe(true)
+
+      await step.get('[data-testid="reasoning-approval-step-review"]')
+        .trigger('click')
+
+      expect(controller.focusApproval).toHaveBeenCalledWith('approval-1')
+    })
+
+  it('shows an answered call and a sending call without buttons',
     async () => {
       const wrapper = await mountMessage([
         approvalCall('1', {
-          type: 'tool-run_skill_scripts',
-          toolName: undefined,
-          input: {},
+          state: 'approval-responded',
+          approval: { id: 'approval-1', approved: true },
         }),
-        approvalData('1', {
-          toolName: 'run_skill_scripts',
-          reason: 'consent',
-          summary: 'Run scripts from data-report in Anthropic\'s container '
-            + 'on your key?',
-          rememberOptions: ['once', 'chat'],
+        approvalData('1'),
+        approvalCall('2', {
+          state: 'approval-responded',
+          approval: { id: 'approval-2', approved: false },
         }),
-      ])
-      const step = wrapper.get(STEP)
+        approvalData('2'),
+        approvalCall('3'),
+        approvalData('3'),
+      ], createController({
+        answeredApprovalIds: shallowRef(['approval-1', 'approval-2']),
+        sendingApprovalIds: shallowRef(['approval-2']),
+      }))
+      const steps = wrapper.findAll(STEP)
 
-      expect(step.get('[data-testid="reasoning-approval-step-title"]').text())
-        .toBe('Run skill scripts')
-      expect(step.get('[data-testid="reasoning-approval-step-summary"]').text())
-        .toContain('Anthropic\'s container on your key?')
-      expect(step.get('[data-testid="reasoning-approval-step-reason"]').text())
-        .toBe('Uploads the skill to your Anthropic workspace')
-      expect(step.find('[data-testid="reasoning-approval-step-allow-once"]')
-        .exists()).toBe(true)
-      expect(step.find('[data-testid="reasoning-approval-step-allow-chat"]')
-        .exists()).toBe(true)
-      expect(step.find('[data-testid="reasoning-approval-step-allow-always"]')
-        .exists()).toBe(false)
+      expect(steps.map(step => step.attributes('data-state')))
+        .toEqual(['answered', 'sending', 'pending'])
+      expect(steps[0]!.text()).toContain('Waiting for the other answers')
+      expect(steps[1]!.text()).toContain('Sending your answer…')
+      expect(steps[1]!.get('[data-testid="reasoning-approval-step-waiting"]')
+        .find('svg').exists()).toBe(false)
+      expect(answerButtonCount(wrapper)).toBe(0)
     })
 
   it('shows a Besidka call with the Besidka mark and its summary as title',
@@ -169,10 +215,6 @@ describe('Chat/Reasoning approval steps', () => {
 
       expect(step.get('[data-testid="reasoning-approval-step-title"]').text())
         .toBe('Delete 1 chat: 01HZX')
-      expect(step.find('[data-testid="reasoning-approval-step-summary"]')
-        .exists()).toBe(false)
-      expect(step.get('[data-testid="reasoning-approval-step-reason"]').text())
-        .toBe('Changes or deletes data')
       expect(kinds).toEqual(['besidka', 'besidka'])
       expect(wrapper.text()).toContain('Besidka: list projects')
       expect(wrapper.get('[data-testid="reasoning-grant-marker"]').text())
@@ -199,61 +241,17 @@ describe('Chat/Reasoning approval steps', () => {
     expect(wrapper.find(STEP).exists()).toBe(false)
   })
 
-  it('renders a pending approval and opens the block despite auto-hide',
-    async () => {
-      const wrapper = await mountMessage([
-        { type: 'text', text: 'I will file it.' },
-        approvalCall('1'),
-        approvalData('1'),
-      ])
-
-      await nextTick()
-
-      expect(wrapper.get('details').attributes('open')).toBeDefined()
-      expect(wrapper.get(STEP).attributes('data-state')).toBe('pending')
-      expect(wrapper.get('[data-testid="reasoning-approval-step-title"]')
-        .text()).toBe('Linear wants to run create_issue')
-      expect(wrapper.find('[data-testid="reasoning-approval-step-summary"]')
-        .exists()).toBe(false)
-      expect(wrapper.find('.reasoning-step-waiting').exists()).toBe(true)
-    })
-
-  it('shows progress across two waiting calls', async () => {
+  it('leaves the steps collapsed for a new waiting call', async () => {
     const wrapper = await mountMessage([
-      approvalCall('1', {
-        state: 'approval-responded',
-        approval: { id: 'approval-1', approved: true },
-      }),
-      approvalData('1'),
-      approvalCall('2'),
-      approvalData('2'),
-    ], createController({
-      answeredApprovalIds: shallowRef(['approval-1']),
-    }))
-    const steps = wrapper.findAll(STEP)
-
-    expect(steps.map(step => step.attributes('data-state')))
-      .toEqual(['answered', 'pending'])
-    expect(steps[1]!.get('[data-testid="reasoning-approval-step-progress"]')
-      .text()).toBe('1 of 2 answered')
-  })
-
-  it('names the source of untrusted content in the reason', async () => {
-    const wrapper = await mountMessage([
-      {
-        type: 'dynamic-tool',
-        toolName: 'mcp__linear__search',
-        toolCallId: 'call-0',
-        state: 'output-available',
-        input: {},
-        output: 'result',
-      },
+      { type: 'text', text: 'I will file it.' },
       approvalCall('1'),
-      approvalData('1', { reason: 'untrusted-output' }),
-    ])
+      approvalData('1'),
+    ], createController(), { expand: false })
 
-    expect(wrapper.get('[data-testid="reasoning-approval-step-reason"]')
-      .text()).toBe('Because this message read content from Linear')
+    await nextTick()
+
+    expect(wrapper.get('details').attributes('open')).toBeUndefined()
+    expect(wrapper.find(STEP).exists()).toBe(false)
   })
 
   it('marks an approval on an earlier message as expired', async () => {
@@ -268,6 +266,25 @@ describe('Chat/Reasoning approval steps', () => {
     )
 
     expect(wrapper.get(STEP).attributes('data-state')).toBe('expired')
+    expect(wrapper.find('[data-testid="reasoning-approval-step-failure"]')
+      .exists()).toBe(true)
+    expect(answerButtonCount(wrapper)).toBe(0)
+  })
+
+  it('points a failed answer on the last message to the bubble', async () => {
+    const wrapper = await mountMessage(
+      [approvalCall('1'), approvalData('1')],
+      createController({
+        failures: shallowRef({ 'approval-1': 'interrupted' as const }),
+      }),
+    )
+    const step = wrapper.get(STEP)
+
+    expect(step.attributes('data-state')).toBe('interrupted')
+    expect(step.find('[data-testid="reasoning-approval-step-ask-again"]')
+      .exists()).toBe(false)
+    expect(step.get('[data-testid="reasoning-approval-step-waiting"]').text())
+      .toBe('Could not finish. See below the message.')
   })
 
   it('shows a denial as one line', async () => {
@@ -301,49 +318,6 @@ describe('Chat/Reasoning approval steps', () => {
       expect(wrapper.get('[data-testid="reasoning-approval-outcome"]').text())
         .toBe('Allowed')
     })
-
-  it('scrolls to and focuses the step on a focus request', async () => {
-    const focusRequest = shallowRef<{
-      approvalId: string
-      nonce: number
-    } | null>(null)
-    const wrapper = await mountSuspended(Reasoning, {
-      attachTo: document.body,
-      props: {
-        message: {
-          id: MESSAGE_ID,
-          role: 'assistant',
-          parts: [approvalCall('1'), approvalData('1')],
-        } as UIMessage,
-        status: 'ready',
-        reasoningLevel: 'off',
-        turnStartedAt: 0,
-        reasoningAccumulatedMs: 0,
-        reasoningSegmentStartedAt: 0,
-        isTurnThinkingHeld: false,
-      },
-      global: {
-        stubs: { MDCCached: true },
-        provide: {
-          [TOOL_APPROVAL_CONTROLLER_KEY as symbol]: createController({
-            focusRequest,
-          }),
-        },
-      },
-    })
-    const step = wrapper.get(STEP).element as HTMLElement
-    const scrollIntoView = vi.fn()
-
-    step.scrollIntoView = scrollIntoView
-    focusRequest.value = { approvalId: 'approval-1', nonce: 1 }
-    await nextTick()
-    await nextTick()
-
-    expect(scrollIntoView).toHaveBeenCalled()
-    expect(document.activeElement).toBe(step)
-
-    wrapper.unmount()
-  })
 })
 
 describe('Chat/Reasoning grant marker', () => {

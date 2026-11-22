@@ -26,7 +26,6 @@ import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
-import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -66,7 +65,6 @@ async function chatGrantItems(
     if (
       Object.hasOwn(alwaysAllowTools, exposedName)
       && alwaysAllowTools[exposedName] === setting.definitionHash
-      && !hasAlwaysAskToolName(setting.toolName)
     ) {
       items.push(grantItem('chat', connector, setting.toolName))
     }
@@ -83,7 +81,6 @@ function alwaysGrantItems(
     .filter((setting) => {
       return setting.approval === 'always'
         && setting.approvedDefinitionHash === setting.definitionHash
-        && !hasAlwaysAskToolName(setting.toolName)
     })
     .map(setting => grantItem('always', connector, setting.toolName))
 }
@@ -132,11 +129,9 @@ async function listBesidkaGrantItems(
     const chatHash = Object.hasOwn(settings.alwaysAllowTools, exposedName)
       ? settings.alwaysAllowTools[exposedName]
       : null
-    const isAskEveryTime = besidkaTool.chat.tier === 'ask-every-time'
 
     if (
       chatHash
-      && !isAskEveryTime
       && chatHash === await hashBesidkaChatTool(besidkaTool)
     ) {
       items.push(besidkaGrantItem('chat', besidkaTool.name))
@@ -267,7 +262,7 @@ export function isDecodableConnectorId(connectorId: string): boolean {
 }
 
 /**
- * Sets one connector tool back to "Ask every time": the setting keeps its
+ * Sets one connector tool back to "Needs approval": the setting keeps its
  * reviewed definition hash and loses the approved one. The connector id is
  * decoded and looked up through the user's own connectors first, so an id
  * that does not decode or belongs to someone else changes nothing. Returns
@@ -289,7 +284,7 @@ export async function revokeAlwaysToolApprovalGrant(
   }
 
   const rows = await db.update(schema.connectorToolSettings)
-    .set({ approval: 'ask', approvedDefinitionHash: null })
+    .set({ approval: 'needs-approval', approvedDefinitionHash: null })
     .where(and(
       eq(schema.connectorToolSettings.userId, userId),
       eq(schema.connectorToolSettings.connectorId, input.connectorId),

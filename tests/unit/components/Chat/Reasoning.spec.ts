@@ -4,6 +4,7 @@ import { shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import type { VueWrapper } from '@vue/test-utils'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { expandReasoningSteps } from './Reasoning/expand-steps'
 import { useSkillPreview } from '../../../../app/composables/composer-skills'
 import { isThinkingActive } from '../../../../app/utils/reasoning'
 
@@ -14,12 +15,12 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 
 function setReasoningUserSetting(
-  reasoningExpanded: boolean,
-  reasoningAutoHide: boolean,
+  stepsExpanded: boolean,
+  stepsAutoHide: boolean,
 ) {
   mocks.useUserSetting.mockReturnValue({
-    reasoningExpanded: shallowRef<boolean>(reasoningExpanded),
-    reasoningAutoHide: shallowRef<boolean>(reasoningAutoHide),
+    stepsExpanded: shallowRef<boolean>(stepsExpanded),
+    stepsAutoHide: shallowRef<boolean>(stepsAutoHide),
   })
 }
 
@@ -32,6 +33,16 @@ const multiStepReasoning = [
   '',
   'Second body',
 ].join('\n')
+
+async function mountExpanded(
+  ...args: Parameters<typeof mountSuspended<typeof Reasoning>>
+) {
+  const wrapper = await mountSuspended(...args)
+
+  await expandReasoningSteps(wrapper)
+
+  return wrapper
+}
 
 function createMessage(parts: UIMessage['parts']): UIMessage {
   return {
@@ -512,7 +523,7 @@ describe('Chat/Reasoning', () => {
     expect(isMainExpanded(wrapper)).toBe(false)
   })
 
-  it('never auto-collapses or suppresses re-expansion when reasoningAutoHide is off',
+  it('never auto-collapses or suppresses re-expansion when stepsAutoHide is off',
     async () => {
       setReasoningUserSetting(true, false)
 
@@ -694,6 +705,8 @@ describe('Chat/Reasoning', () => {
   it('constrains the reasoning steps to an inner max-height scroll wrapper', async () => {
     const wrapper = await mountSettledReasoning('Thinking about the request.')
 
+    await expandReasoningSteps(wrapper)
+
     const steps = wrapper.get('[data-testid="reasoning-steps"]')
     const scrollWrapper = steps.element.parentElement
 
@@ -705,6 +718,8 @@ describe('Chat/Reasoning', () => {
   it('lays the steps out without daisyUI timeline classes', async () => {
     const wrapper = await mountSettledReasoning(multiStepReasoning)
 
+    await expandReasoningSteps(wrapper)
+
     expect(wrapper.html()).not.toMatch(/\btimeline(-[a-z-]+)?\b/)
 
     const steps = wrapper.get('[data-testid="reasoning-steps"]')
@@ -715,6 +730,8 @@ describe('Chat/Reasoning', () => {
 
   it('never lets a step row rely on a full-width box with side margins', async () => {
     const wrapper = await mountSettledReasoning(multiStepReasoning)
+
+    await expandReasoningSteps(wrapper)
 
     const rows = wrapper.findAll('[data-testid="reasoning-steps"] > li')
 
@@ -734,6 +751,8 @@ describe('Chat/Reasoning', () => {
 
   it('draws the connector only between steps, not past the first or last', async () => {
     const wrapper = await mountSettledReasoning(multiStepReasoning)
+
+    await expandReasoningSteps(wrapper)
 
     const rows = wrapper.findAll('[data-testid="reasoning-steps"] > li')
     const topSelector = '[data-testid="reasoning-step-connector-top"]'
@@ -761,6 +780,8 @@ describe('Chat/Reasoning', () => {
       = 'Analyzing the request in considerable depth before answering'
     const wrapper = await mountSettledReasoning(`${longTitle}.\n\nSome body text.`)
 
+    await expandReasoningSteps(wrapper)
+
     const title = wrapper.get('[data-testid="reasoning-step-title"]')
 
     expect(title.text()).toBe('Analyzing the request in…')
@@ -771,6 +792,8 @@ describe('Chat/Reasoning', () => {
 
   it('leaves a short step title untouched', async () => {
     const wrapper = await mountSettledReasoning('Thinking about the request.')
+
+    await expandReasoningSteps(wrapper)
 
     const title = wrapper.get('[data-testid="reasoning-step-title"]')
 
@@ -786,6 +809,8 @@ describe('Chat/Reasoning', () => {
         = 'The user wants to compare the Toyota Corolla and Camry 2026 '
           + 'to the Kia Ceed.'
       const wrapper = await mountSettledReasoning(longSentence)
+
+      await expandReasoningSteps(wrapper)
 
       const title = wrapper.get('[data-testid="reasoning-step-title"]')
       const expectedTitle = longSentence.slice(0, -1)
@@ -822,7 +847,7 @@ describe('Chat/Reasoning', () => {
   )
 
   it('renders a step and mounts the box for a tool part alone', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           {
@@ -850,7 +875,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('interleaves reasoning and tool steps in true chronological order', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'reasoning', text: 'Step A.', state: 'done' },
@@ -1008,7 +1033,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('shows the done title and no spinner once a tool call settles to output-available', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-available' },
@@ -1029,7 +1054,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('renders a failed title for output-error, never spinning indefinitely', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-error' },
@@ -1060,7 +1085,7 @@ describe('Chat/Reasoning', () => {
     }
 
     function mountSteps(parts: unknown[]) {
-      return mountSuspended(Reasoning, {
+      return mountExpanded(Reasoning, {
         props: {
           message: createMessage(parts as UIMessage['parts']),
           status: 'ready',
@@ -1103,7 +1128,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('renders a failed title for output-denied, never spinning indefinitely', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-denied' },
@@ -1125,7 +1150,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('renders a waiting-for-approval title and green dot for approval-requested, not spinning nor failed', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'approval-requested' },
@@ -1147,7 +1172,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('treats an orphaned pending tool call as settled once status leaves streaming', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'input-available' },
@@ -1170,7 +1195,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('never turns a generate_image tool part into a reasoning step', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           {
@@ -1199,7 +1224,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('titles a Moonshot-shaped dynamic tool key and a generic tool name', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-$web_search', state: 'input-available' },
@@ -1241,9 +1266,9 @@ describe('Chat/Reasoning', () => {
     }
 
     async function mountStreamingTurn(
-      reasoningExpandedSetting: boolean,
+      stepsExpandedSetting: boolean,
     ): Promise<VueWrapper> {
-      setReasoningUserSetting(reasoningExpandedSetting, true)
+      setReasoningUserSetting(stepsExpandedSetting, true)
 
       const firstStreamingParts = [
         { ...firstReasoning, state: 'streaming' },
@@ -1292,8 +1317,8 @@ describe('Chat/Reasoning', () => {
       ['on', true],
     ])(
       'lets the user collapse the expanded block once the next step starts, with the expanded-by-default setting %s',
-      async (_label, reasoningExpandedSetting) => {
-        const wrapper = await mountStreamingTurn(reasoningExpandedSetting)
+      async (_label, stepsExpandedSetting) => {
+        const wrapper = await mountStreamingTurn(stepsExpandedSetting)
 
         expect(isMainExpanded(wrapper)).toBe(true)
 
@@ -1420,7 +1445,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('exposes a chevron for a step with a body, which the bodyless check relies on', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'reasoning', text: '**Plan**\n\nBody of the step.', state: 'done' },
@@ -1443,7 +1468,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('exposes no chevron for a bodyless tool step and ignores clicks on it', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-available' },
@@ -1571,6 +1596,8 @@ describe('Chat/Reasoning', () => {
       'Found the figure 【5†L1-L8】 in the report 【3†source】.',
     ].join('\n'))
 
+    await expandReasoningSteps(wrapper)
+
     const renderedValues = wrapper
       .findAllComponents({ name: 'MDCCached' })
       .map(component => String(component.props('value')))
@@ -1582,7 +1609,7 @@ describe('Chat/Reasoning', () => {
 
   it('renders an expandable search step with query, freshness and count '
     + 'for an external search tool part', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           {
@@ -1629,7 +1656,7 @@ describe('Chat/Reasoning', () => {
 
   it('titles a past-chat pre-retrieval step by its count with links',
     async () => {
-      const wrapper = await mountSuspended(Reasoning, {
+      const wrapper = await mountExpanded(Reasoning, {
         props: {
           message: createMessage([
             {
@@ -1673,7 +1700,7 @@ describe('Chat/Reasoning', () => {
 
   it('shows a streaming external search step with a partial input',
     async () => {
-      const wrapper = await mountSuspended(Reasoning, {
+      const wrapper = await mountExpanded(Reasoning, {
         props: {
           message: createMessage([
             {
@@ -1704,7 +1731,7 @@ describe('Chat/Reasoning', () => {
 
   it('renders memory tool parts as memory steps, not generic ones',
     async () => {
-      const wrapper = await mountSuspended(Reasoning, {
+      const wrapper = await mountExpanded(Reasoning, {
         props: {
           message: createMessage([
             {
@@ -1786,7 +1813,7 @@ describe('Chat/Reasoning', () => {
       parts: unknown[],
       options: { status?: 'ready' | 'streaming', role?: UIMessage['role'] } = {},
     ) {
-      return await mountSuspended(Reasoning, {
+      return await mountExpanded(Reasoning, {
         props: {
           message: {
             id: 'msg-skill',
@@ -2037,6 +2064,8 @@ describe('Chat/Reasoning', () => {
           ],
           900,
         ))
+
+        await expandReasoningSteps(wrapper)
 
         expect(findIndicator(wrapper).exists()).toBe(false)
         expect(wrapper.find('[data-testid="reasoning-steps"]').exists())

@@ -23,13 +23,16 @@ import {
   serializeApprovalState,
 } from '~~/server/utils/tool-approval/state'
 import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
+import { SEND_TOOL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
+import {
+  TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
+} from '#shared/utils/tool-approval-policy'
 
 const HASH = 'a'.repeat(64)
 const SNAPSHOT = {
   model: 'claude-haiku-4-5',
   gateway: null,
   reasoning: 'off' as const,
-  toolNames: ['create_artifact'],
   connectorIds: [],
 }
 
@@ -57,6 +60,7 @@ function connectorEntry(input: {
   destructive?: boolean
   title?: string
   grantHashes?: { always: string | null, chat: string | null }
+  isAlwaysDefault?: boolean
 }) {
   return buildConnectorApprovalEntry({
     exposedName: `mcp__${input.slug}__${input.tool}`,
@@ -72,6 +76,7 @@ function connectorEntry(input: {
       ...(input.destructive ? { destructiveHint: true } : {}),
     },
     ...(input.grantHashes ? { grantHashes: input.grantHashes } : {}),
+    ...(input.isAlwaysDefault ? { isAlwaysDefault: true } : {}),
   })
 }
 
@@ -93,6 +98,15 @@ function createApproval(
 
 function call(toolCallId: string, toolName: string, input: unknown = {}) {
   return { toolCall: { toolCallId, toolName, input } }
+}
+
+function stepCall(
+  messages: unknown[],
+  toolCallId: string,
+  toolName: string,
+  input: unknown = {},
+) {
+  return { toolCall: { toolCallId, toolName, input }, messages }
 }
 
 describe('classifyNativeTool', () => {
@@ -225,7 +239,34 @@ describe('createSendToolApproval', () => {
       .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
   })
 
-  it('asks cross-source for a connector read after search_chats', () => {
+  it('asks default with every answer for a read-only connector tool set '
+    + 'to Needs approval', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+      }),
+    ])
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+      .toEqual({ type: 'user-approval', reason: 'default' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once', 'chat', 'always'])
+  })
+
+  it('runs an Always allow connector read after search_chats and asks one '
+    + 'set to Needs approval with every answer', () => {
+    const granted = createApproval(['search_chats'], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+        grantHashes: { always: HASH, chat: null },
+      }),
+    ])
     const approval = createApproval(['search_chats'], [
       connectorEntry({
         connectorId: 'c1',
@@ -235,42 +276,60 @@ describe('createSendToolApproval', () => {
       }),
     ])
 
+    expect(granted.toolApproval(call('call-1', 'search_chats')))
+      .toBe('not-applicable')
+    expect(granted.toolApproval(call('call-2', 'mcp__linear__list_issues')))
+      .toBe('not-applicable')
     expect(approval.toolApproval(call('call-1', 'search_chats')))
       .toBe('not-applicable')
     expect(approval.toolApproval(call('call-2', 'mcp__linear__list_issues')))
-      .toEqual({ type: 'user-approval', reason: 'cross-source' })
+      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.getPendingDecision('call-2')?.decision.rememberOptions)
+      .toEqual(['once', 'chat', 'always'])
     expect([...approval.state.readSources]).toEqual(['besidka'])
   })
 
-  it('asks untrusted-output for an open-world read-only connector tool '
-    + 'after taint, and runs a closed-world one', () => {
+  it('runs the default Always allow of a plain read without a grant marker',
+    () => {
+      const approval = createApproval([], [
+        buildConnectorApprovalEntry({
+          exposedName: 'mcp__linear__list_issues',
+          connectorId: 'c1',
+          connectorTitle: 'Linear',
+          connectorHost: 'mcp.linear.example.com',
+          remoteToolName: 'list_issues',
+          definitionHash: HASH,
+          annotations: { readOnlyHint: true },
+          grantHashes: { always: HASH, chat: null },
+          isAlwaysDefault: true,
+        }),
+      ])
+
+      expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+        .toBe('not-applicable')
+      expect(approval.getGrantScope('call-1')).toBeNull()
+    })
+
+  it('runs an Always allow read after its own connector\'s result', () => {
     const approval = createApproval([], [
       connectorEntry({
         connectorId: 'c1',
         slug: 'linear',
         tool: 'list_issues',
         readOnly: true,
-      }),
-      connectorEntry({
-        connectorId: 'c1',
-        slug: 'linear',
-        tool: 'get_issue',
-        readOnly: true,
-        openWorld: false,
+        grantHashes: { always: HASH, chat: null },
       }),
     ])
 
-    approval.state.taint.add('web')
+    approval.state.taint.add('connector')
+    approval.state.readSources.add('connector:c1')
 
     expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
-      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-      .toEqual(['once'])
-    expect(approval.toolApproval(call('call-2', 'mcp__linear__get_issue')))
       .toBe('not-applicable')
+    expect(approval.getGrantScope('call-1')).toBe('always')
   })
 
-  it('records a connector read when it is decided, so a same-step '
+  it('records a connector read when it is decided, so the next step\'s '
     + 'artifact write asks', () => {
     const approval = createApproval(['create_artifact'], [
       connectorEntry({
@@ -278,19 +337,33 @@ describe('createSendToolApproval', () => {
         slug: 'linear',
         tool: 'list_issues',
         readOnly: true,
+        grantHashes: { always: HASH, chat: null },
       }),
     ])
+    const firstStep: unknown[] = []
+    const secondStep: unknown[] = []
 
-    expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
-      .toBe('not-applicable')
-    expect(approval.toolApproval(call('call-2', 'create_artifact')))
-      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.toolApproval(stepCall(
+      firstStep,
+      'call-1',
+      'mcp__linear__list_issues',
+    ))).toBe('not-applicable')
+    expect(approval.toolApproval(stepCall(
+      firstStep,
+      'call-2',
+      'create_artifact',
+    ))).toBe('not-applicable')
     expect([...approval.state.taint]).toEqual(['connector'])
     expect([...approval.state.readSources]).toEqual(['connector:c1'])
     expect(approval.state.counters.connectorCalls).toBe(1)
+    expect(approval.toolApproval(stepCall(
+      secondStep,
+      'call-3',
+      'create_artifact',
+    ))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
   })
 
-  it('asks cross-source for a second connector after the first was read',
+  it('asks cross-source for a write to a second connector in the next step',
     () => {
       const approval = createApproval([], [
         connectorEntry({
@@ -298,22 +371,179 @@ describe('createSendToolApproval', () => {
           slug: 'linear',
           tool: 'list_issues',
           readOnly: true,
+          grantHashes: { always: HASH, chat: null },
         }),
         connectorEntry({
           connectorId: 'c2',
           slug: 'notion',
-          tool: 'list_pages',
-          readOnly: true,
+          tool: 'create_page',
+          readOnly: false,
         }),
       ])
 
-      approval.toolApproval(call('call-1', 'mcp__linear__list_issues'))
+      approval.toolApproval(stepCall([], 'call-1', 'mcp__linear__list_issues'))
 
-      expect(approval.toolApproval(call('call-2', 'mcp__notion__list_pages')))
-        .toEqual({ type: 'user-approval', reason: 'cross-source' })
-      expect(approval.toolApproval(call('call-3', 'mcp__linear__list_issues')))
-        .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.toolApproval(
+        stepCall([], 'call-2', 'mcp__notion__create_page'),
+      )).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
     })
+
+  describe('one model step (Part 1, 2026-11-15)', () => {
+    function notionEntries(ungranted: readonly string[] = []) {
+      return [
+        ['c1', 'notion', 'notion-list-private-pages', true],
+        ['c1', 'notion', 'notion-search', true],
+        ['c1', 'notion', 'notion-create-pages', false],
+        ['c2', 'linear', 'create_issue', false],
+      ].map(([connectorId, slug, tool, readOnly]) => {
+        return connectorEntry({
+          connectorId: connectorId as string,
+          slug: slug as string,
+          tool: tool as string,
+          readOnly: readOnly as boolean,
+          ...(ungranted.includes(tool as string)
+            ? {}
+            : { grantHashes: { always: HASH, chat: null } }),
+        })
+      })
+    }
+
+    it('judges every call of a step against the state at its start', () => {
+      const approval = createApproval(['create_artifact'], notionEntries())
+      const step: unknown[] = []
+
+      expect(approval.toolApproval(stepCall(
+        step,
+        'call-1',
+        'mcp__notion__notion-list-private-pages',
+      ))).toBe('not-applicable')
+      expect(approval.toolApproval(stepCall(
+        step,
+        'call-2',
+        'mcp__notion__notion-search',
+      ))).toBe('not-applicable')
+      expect(approval.toolApproval(stepCall(
+        step,
+        'call-3',
+        'mcp__linear__create_issue',
+      ))).toBe('not-applicable')
+      expect(approval.toolApproval(stepCall(
+        step,
+        'call-4',
+        'create_artifact',
+      ))).toBe('not-applicable')
+      expect([...approval.state.readSources].sort())
+        .toEqual(['connector:c1', 'connector:c2'])
+    })
+
+    it('judges the next step against the taint the step recorded', () => {
+      const approval = createApproval([], notionEntries(['create_issue']))
+
+      approval.toolApproval(stepCall(
+        [],
+        'call-1',
+        'mcp__notion__notion-search',
+      ))
+
+      expect(approval.toolApproval(stepCall(
+        [],
+        'call-2',
+        'mcp__notion__notion-create-pages',
+      ))).toBe('not-applicable')
+      expect(approval.toolApproval(stepCall(
+        [],
+        'call-3',
+        'mcp__linear__create_issue',
+      ))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    })
+
+    it('counts a provider-run call within its own step', () => {
+      const approval = createApproval(
+        ['web_search'],
+        notionEntries(['notion-create-pages', 'notion-search']),
+      )
+      const step: unknown[] = []
+
+      approval.toolApproval({
+        toolCall: {
+          toolCallId: 'call-1',
+          toolName: 'web_search',
+          input: {},
+          providerExecuted: true,
+        },
+        messages: step,
+      })
+
+      expect(approval.toolApproval(stepCall(
+        step,
+        'call-2',
+        'mcp__notion__notion-create-pages',
+      ))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.toolApproval(stepCall(
+        step,
+        'call-3',
+        'mcp__notion__notion-search',
+      ))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    })
+
+    it('asks connector reads after taint preset before the first step',
+      () => {
+        const approval = createApproval([], notionEntries([
+          'notion-search',
+          'notion-create-pages',
+        ]))
+
+        presetApprovalTaint(approval.state, {
+          requestedTools: ['web_search'],
+          holdsUntrustedKnowledge: true,
+          holdsArtifactContext: true,
+          holdsSkillText: true,
+          holdsPastChatExcerpts: true,
+          isBranchedFromShare: true,
+          holdsUserAttachments: true,
+          holdsBesidkaToolHistory: true,
+        })
+
+        expect(approval.toolApproval(stepCall(
+          [],
+          'call-1',
+          'mcp__notion__notion-search',
+        ))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+        expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+          .toEqual(['once', 'chat', 'always'])
+        expect(approval.toolApproval(stepCall(
+          [],
+          'call-2',
+          'mcp__notion__notion-create-pages',
+        ))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+        expect(approval.getPendingDecision('call-2')?.decision.rememberOptions)
+          .toEqual(['once', 'chat', 'always'])
+      })
+
+    it('runs granted connector calls after taint preset before the first '
+      + 'step (owner decision, 2026-11-20)', () => {
+      const approval = createApproval([], notionEntries())
+
+      presetApprovalTaint(approval.state, {
+        requestedTools: ['web_search'],
+        holdsUntrustedKnowledge: true,
+        holdsArtifactContext: false,
+        holdsSkillText: false,
+        holdsPastChatExcerpts: false,
+        isBranchedFromShare: false,
+      })
+
+      for (const [toolCallId, toolName] of [
+        ['call-1', 'mcp__notion__notion-search'],
+        ['call-2', 'mcp__notion__notion-create-pages'],
+        ['call-3', 'mcp__linear__create_issue'],
+      ]) {
+        expect(approval.toolApproval(stepCall([], toolCallId!, toolName!)))
+          .toBe('not-applicable')
+        expect(approval.getGrantScope(toolCallId!)).toBe('always')
+      }
+    })
+  })
 
   it('asks default with every answer for a plain connector write', () => {
     const approval = createApproval([], [
@@ -331,22 +561,40 @@ describe('createSendToolApproval', () => {
       .toEqual(['once', 'chat', 'always'])
   })
 
-  it('asks always-ask with Allow once only for destructiveHint true', () => {
-    const approval = createApproval([], [
-      connectorEntry({
+  it('asks always-ask with every answer for destructiveHint true and runs '
+    + 'it under the user\'s grant', () => {
+    const entryOf = (input: {
+      grantHashes?: { always: string | null, chat: string | null }
+      isAlwaysDefault?: boolean
+    }) => {
+      return connectorEntry({
         connectorId: 'c1',
         slug: 'linear',
-        tool: 'delete_issue',
+        tool: 'archive_issue',
         readOnly: false,
         destructive: true,
-        grantHashes: { always: HASH, chat: HASH },
+        ...input,
+      })
+    }
+    const asked = createApproval([], [entryOf({})])
+    const granted = createApproval([], [
+      entryOf({ grantHashes: { always: HASH, chat: null } }),
+    ])
+    const defaulted = createApproval([], [
+      entryOf({
+        grantHashes: { always: HASH, chat: null },
+        isAlwaysDefault: true,
       }),
     ])
 
-    expect(approval.toolApproval(call('call-1', 'mcp__linear__delete_issue')))
+    expect(asked.toolApproval(call('call-1', 'mcp__linear__archive_issue')))
       .toEqual({ type: 'user-approval', reason: 'always-ask' })
-    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-      .toEqual(['once'])
+    expect(asked.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once', 'chat', 'always'])
+    expect(granted.toolApproval(call('call-1', 'mcp__linear__archive_issue')))
+      .toBe('not-applicable')
+    expect(defaulted.toolApproval(call('call-1', 'mcp__linear__archive_issue')))
+      .toEqual({ type: 'user-approval', reason: 'always-ask' })
   })
 
   it('never gates a provider-executed web search and taints the send',
@@ -566,7 +814,8 @@ describe('createSendToolApproval', () => {
     approval.state.counters.rounds = 5
 
     expect(approval.toolApproval(call('call-2', 'mcp__linear__create_issue')))
-      .toEqual({ type: 'denied', reason: 'over-cap' })
+      .toEqual({ type: 'denied', reason: SEND_TOOL_DENIAL_TEXT.rounds })
+    expect(approval.getDenials()).toEqual({ rounds: 1 })
   })
 
   it('denies a connector call once the turn spent its connector calls', () => {
@@ -579,10 +828,33 @@ describe('createSendToolApproval', () => {
       }),
     ])
 
-    approval.state.counters.connectorCalls = 12
+    approval.state.counters.connectorCalls
+      = TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN - 1
 
     expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
-      .toEqual({ type: 'denied', reason: 'over-cap' })
+      .toMatchObject({ type: 'user-approval' })
+
+    approval.state.counters.connectorCalls
+      = TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
+
+    expect(approval.toolApproval(call('call-2', 'mcp__linear__list_issues')))
+      .toEqual({
+        type: 'denied',
+        reason: SEND_TOOL_DENIAL_TEXT['connector-calls'],
+      })
+  })
+
+  it('tells the model which limit it reached and what to do next', () => {
+    for (const text of Object.values(SEND_TOOL_DENIAL_TEXT)) {
+      expect(text).not.toContain('over-cap')
+      expect(text).toMatch(/did not run/)
+    }
+
+    expect(SEND_TOOL_DENIAL_TEXT['connector-calls'])
+      .toContain(`${TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN} connector calls`)
+    expect(SEND_TOOL_DENIAL_TEXT['connector-calls'])
+      .toContain('Stop calling tools now')
+    expect(SEND_TOOL_DENIAL_TEXT.pending).toContain('Make it again after')
   })
 
   it('denies a tool with no entry, an input over the cap and the 11th '
@@ -599,10 +871,13 @@ describe('createSendToolApproval', () => {
     })
 
     expect(approval.toolApproval(call('call-x', 'unknown_tool')))
-      .toEqual({ type: 'denied', reason: 'missing-tool' })
+      .toEqual({
+        type: 'denied',
+        reason: SEND_TOOL_DENIAL_TEXT['missing-tool'],
+      })
     expect(approval.toolApproval(call('call-y', 'memory_write', {
       body: 'x'.repeat(70 * 1024),
-    }))).toEqual({ type: 'denied', reason: 'over-cap' })
+    }))).toEqual({ type: 'denied', reason: SEND_TOOL_DENIAL_TEXT.payload })
 
     for (let index = 0; index < 10; index++) {
       expect(approval.toolApproval(call(`call-${index}`, 'memory_write')))
@@ -610,7 +885,12 @@ describe('createSendToolApproval', () => {
     }
 
     expect(approval.toolApproval(call('call-10', 'memory_write')))
-      .toEqual({ type: 'denied', reason: 'over-cap' })
+      .toEqual({ type: 'denied', reason: SEND_TOOL_DENIAL_TEXT.pending })
+    expect(approval.getDenials()).toEqual({
+      'missing-tool': 1,
+      'payload': 1,
+      'pending': 1,
+    })
   })
 
   it('can only ask when a tool other than a native read is registered',
@@ -748,8 +1028,7 @@ describe('createToolApprovalStreamCollector', () => {
           permissionMode: 'ask',
           taint: 'besidka',
           readSource: 'besidka',
-          alwaysGrant: null,
-          alwaysGrantWhenTainted: false,
+
           connector: null,
         },
       ]]))
@@ -1025,38 +1304,56 @@ describe('user grants in the send', () => {
     ['connector', ['connector'], []],
     ['skill', ['skill'], []],
   ] as const)(
-    'still asks untrusted-output with Allow once only after %s taint',
+    'runs a granted write after %s taint and asks an ungranted one with '
+    + 'every answer',
     (_name, taint) => {
+      const granted = createApproval([], [
+        writeEntry({ always: HASH, chat: null }),
+      ])
       const approval = createApproval([], [
-        writeEntry({ always: HASH, chat: HASH }),
+        writeEntry({ always: null, chat: null }),
       ])
 
-      taint.forEach(kind => approval.state.taint.add(kind))
+      taint.forEach((kind) => {
+        granted.state.taint.add(kind)
+        approval.state.taint.add(kind)
+      })
 
+      expect(
+        granted.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+      ).toBe('not-applicable')
+      expect(granted.getGrantScope('call-1')).toBe('always')
       expect(
         approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
       ).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
       expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-        .toEqual(['once'])
+        .toEqual(['once', 'chat', 'always'])
     },
   )
 
-  it('still asks cross-source with Allow once only after another source',
-    () => {
-      const approval = createApproval([], [
-        writeEntry({ always: HASH, chat: HASH }),
-      ])
+  it('runs a chat-granted write after another source and asks an '
+    + 'ungranted one cross-source with every answer', () => {
+    const granted = createApproval([], [
+      writeEntry({ always: null, chat: HASH }),
+    ])
+    const approval = createApproval([], [
+      writeEntry({ always: null, chat: null }),
+    ])
 
-      approval.state.readSources.add('connector:c2')
+    granted.state.readSources.add('connector:c2')
+    approval.state.readSources.add('connector:c2')
 
-      expect(
-        approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
-      ).toEqual({ type: 'user-approval', reason: 'cross-source' })
-      expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-        .toEqual(['once'])
-    })
+    expect(granted.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toBe('not-applicable')
+    expect(granted.getGrantScope('call-1')).toBe('chat')
+    expect(
+      approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+    ).toEqual({ type: 'user-approval', reason: 'cross-source' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once', 'chat', 'always'])
+  })
 
-  it('asks for a second write after a granted write in the same send',
+  it('runs a second granted write after its own connector\'s result',
     () => {
       const approval = createApproval([], [
         writeEntry({ always: HASH, chat: HASH }),
@@ -1067,7 +1364,7 @@ describe('user grants in the send', () => {
       ).toBe('not-applicable')
       expect(
         approval.toolApproval(call('call-2', 'mcp__linear__create_issue')),
-      ).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      ).toBe('not-applicable')
     })
 
   it('never lets a grant of another connector match', () => {
@@ -1084,21 +1381,30 @@ describe('user grants in the send', () => {
       .toEqual({ type: 'user-approval', reason: 'default' })
   })
 
-  it('ignores user grants on a read-only tool after untrusted content', () => {
+  it('honors a chat grant on a read-only tool after its own connector and '
+    + 'after the web', () => {
     const approval = createApproval([], [
       connectorEntry({
         connectorId: 'c1',
         slug: 'linear',
         tool: 'list_issues',
         readOnly: true,
-        grantHashes: { always: HASH, chat: HASH },
+        grantHashes: { always: null, chat: HASH },
       }),
     ])
 
-    approval.state.taint.add('web')
+    approval.state.taint.add('connector')
+    approval.state.readSources.add('connector:c1')
 
     expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
-      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      .toBe('not-applicable')
+    expect(approval.getGrantScope('call-1')).toBe('chat')
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-2', 'mcp__linear__list_issues')))
+      .toBe('not-applicable')
+    expect(approval.getGrantScope('call-2')).toBe('chat')
   })
 })
 
@@ -1146,8 +1452,8 @@ describe('grants audit follow-ups', () => {
       expect(state.taint.size).toBe(0)
     })
 
-    it('asks Allow once / Deny for a granted write in a send with an '
-      + 'attachment', () => {
+    it('runs a granted write in a send with an attachment (owner '
+      + 'decision, 2026-11-20)', () => {
       const approval = createApproval([], [grantedWrite()])
 
       presetApprovalTaint(approval.state, {
@@ -1157,9 +1463,7 @@ describe('grants audit follow-ups', () => {
 
       expect(
         approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
-      ).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-      expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-        .toEqual(['once'])
+      ).toBe('not-applicable')
     })
 
     it('asks for a memory write and keeps code execution with an '
@@ -1208,18 +1512,31 @@ describe('grants audit follow-ups', () => {
       expect(chat.getGrantScope('call-1')).toBe('chat')
     })
 
-    it('records no grant for a read that runs on its read-only hint', () => {
+    it('never runs a read on its read-only hint alone', () => {
       const approval = createApproval([], [connectorEntry({
         connectorId: 'c1',
         slug: 'linear',
         tool: 'list_issues',
         readOnly: true,
-        grantHashes: { always: HASH, chat: HASH },
+      })])
+
+      expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+      expect(approval.getGrantScope('call-1')).toBeNull()
+    })
+
+    it('marks a read that ran on Always allow', () => {
+      const approval = createApproval([], [connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+        grantHashes: { always: HASH, chat: null },
       })])
 
       expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
         .toBe('not-applicable')
-      expect(approval.getGrantScope('call-1')).toBeNull()
+      expect(approval.getGrantScope('call-1')).toBe('always')
     })
 
     it('writes a data-tool-grant part after the output of a granted call',
@@ -1292,6 +1609,13 @@ describe('grants audit follow-ups', () => {
       'share_file',
       'transferOwnership',
       'PUBLISH_PAGE',
+      'send_email',
+      'sendMessage',
+      'post-comment',
+      'forwardMessage',
+      'reply_to_thread',
+      'unshare_page',
+      'unpublishPost',
     ])('treats %s as always-ask', (name) => {
       expect(hasAlwaysAskToolName(name)).toBe(true)
     })
@@ -1302,9 +1626,43 @@ describe('grants audit follow-ups', () => {
       'shared_drives_list',
       'list_publishers',
       'removal_status',
+      'search_posts',
+      'list_replies',
+      'get_sender',
+      'list_shares',
+      'postal_code_lookup',
     ])('leaves %s alone', (name) => {
       expect(hasAlwaysAskToolName(name)).toBe(false)
     })
+
+    it.each(['send_email', 'sendMessage', 'post-comment', 'forwardMessage',
+      'unshare_page'])(
+      'asks for read-only-labeled %s until the user allows it, also after '
+      + 'its own connector',
+      (tool) => {
+        const entry = connectorEntry({
+          connectorId: 'c1',
+          slug: 'mail',
+          tool,
+          readOnly: true,
+          grantHashes: { always: HASH, chat: null },
+          isAlwaysDefault: true,
+        })
+        const approval = createApproval([], [entry])
+
+        approval.state.taint.add('connector')
+        approval.state.readSources.add('connector:c1')
+
+        expect(entry.descriptor).toMatchObject({
+          access: 'write',
+          destructiveHint: true,
+        })
+        expect(approval.toolApproval(call('call-1', `mcp__mail__${tool}`)))
+          .toEqual({ type: 'user-approval', reason: 'always-ask' })
+        expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+          .toEqual(['once', 'chat', 'always'])
+      },
+    )
 
     it('matches the title too, never the exposed name', () => {
       expect(hasAlwaysAskToolName('update_item', 'Share item with a team'))
@@ -1314,15 +1672,24 @@ describe('grants audit follow-ups', () => {
         .toBe(false)
     })
 
-    it('asks always-ask once/deny for a granted tool named for deletion',
+    it('runs a tool named for deletion only under the user\'s own grant',
       () => {
         const approval = createApproval([], [grantedWrite('delete_issue')])
+        const asked = createApproval([], [connectorEntry({
+          connectorId: 'c1',
+          slug: 'linear',
+          tool: 'delete_issue',
+          readOnly: false,
+        })])
 
         expect(
           approval.toolApproval(call('call-1', 'mcp__linear__delete_issue')),
+        ).toBe('not-applicable')
+        expect(
+          asked.toolApproval(call('call-1', 'mcp__linear__delete_issue')),
         ).toEqual({ type: 'user-approval', reason: 'always-ask' })
-        expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-          .toEqual(['once'])
+        expect(asked.getPendingDecision('call-1')?.decision.rememberOptions)
+          .toEqual(['once', 'chat', 'always'])
       })
 
     it('never auto-runs a read-only tool whose title shares data', () => {
@@ -1339,7 +1706,6 @@ describe('grants audit follow-ups', () => {
         access: 'write',
         destructiveHint: true,
       })
-      expect(entry.alwaysGrant).toBeNull()
       expect(approval.toolApproval(call('call-1', 'mcp__drive__file_access')))
         .toEqual({ type: 'user-approval', reason: 'always-ask' })
     })

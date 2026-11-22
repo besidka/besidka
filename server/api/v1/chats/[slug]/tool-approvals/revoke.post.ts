@@ -14,7 +14,7 @@ const bodySchema = z.object({
 })
 
 /**
- * Sets one connector tool back to "Ask every time" in every chat, removing
+ * Sets one connector tool back to "Needs approval" in every chat, removing
  * its "Always allow" grant. Listed in the chat context panel next to the
  * chat's grants.
  */

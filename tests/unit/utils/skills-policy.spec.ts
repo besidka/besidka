@@ -1,3 +1,4 @@
+import { BUILTIN_COMMAND_NAMES } from '#shared/utils/builtin-commands'
 import { describe, expect, it } from 'vitest'
 import {
   SKILL_ARGUMENT_HINT_MAX,
@@ -66,8 +67,10 @@ describe('skills policy constants', () => {
     expect(SKILL_SAVE_REQUEST_MAX_BYTES).toBeGreaterThan(SKILL_SAVE_MAX_BYTES)
   })
 
-  it('reserves the seven built-in command names', () => {
+  it('reserves the planned names and every built-in command', () => {
     expect([...SKILL_RESERVED_SLASH_NAMES].sort()).toEqual([
+      'cost',
+      'debug',
       'help',
       'image',
       'memory',
@@ -75,7 +78,15 @@ describe('skills policy constants', () => {
       'new',
       'project',
       'search',
+      'stats',
+      'usage',
     ])
+  })
+
+  it('takes the built-in names from the built-in command registry', () => {
+    for (const name of BUILTIN_COMMAND_NAMES) {
+      expect(SKILL_RESERVED_SLASH_NAMES).toContain(name)
+    }
   })
 })
 
@@ -148,8 +159,9 @@ describe('normalizeSkillCommand', () => {
     expect(normalizeSkillCommand('//review-pr')).toBe('/review-pr')
   })
 
-  it('does not change the case', () => {
-    expect(normalizeSkillCommand('/Foo')).toBe('Foo')
+  it('lowercases, so every write path compares one form', () => {
+    expect(normalizeSkillCommand('/Foo')).toBe('foo')
+    expect(normalizeSkillCommand('  /Review-PR ')).toBe('review-pr')
   })
 
   it.each(['', '   ', '/', ' / ', null, undefined])(
@@ -174,12 +186,29 @@ describe('getSkillCommandProblem', () => {
       .toBe('/memory is reserved by Besidka')
   })
 
-  it('explains an invalid pattern, including uppercase', () => {
+  it('explains an invalid pattern', () => {
     const message = 'Use lowercase letters, digits and single hyphens (max 64)'
 
-    expect(getSkillCommandProblem('Foo')).toBe(message)
-    expect(getSkillCommandProblem('/Foo')).toBe(message)
     expect(getSkillCommandProblem('a--b')).toBe(message)
     expect(getSkillCommandProblem('a b')).toBe(message)
+    expect(getSkillCommandProblem('a_b')).toBe(message)
+  })
+
+  it('accepts uppercase, which is lowercased', () => {
+    expect(getSkillCommandProblem('/Foo')).toBe('')
+  })
+
+  it('refuses a built-in command in any case', () => {
+    expect(getSkillCommandProblem('/Debug')).toBe('/debug is reserved by Besidka')
+    expect(getSkillCommandProblem('cost')).toBe('/cost is reserved by Besidka')
+  })
+
+  it('names the skill that already uses the command', () => {
+    const used = new Map([['review', 'code-review']])
+
+    expect(getSkillCommandProblem('/Review', used)).toBe(
+      'The command /review is already used by the skill code-review',
+    )
+    expect(getSkillCommandProblem('other', used)).toBe('')
   })
 })

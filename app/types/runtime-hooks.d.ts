@@ -15,6 +15,7 @@ declare module '#app' {
     ) => void
     'chat:stop': () => void
     'chat:regenerate': () => void
+    'chat:continue': () => void
     'chat:generation-ready-while-hidden': () => void
     'chat:generation-finished': () => void
     'chat:context-changed': () => void

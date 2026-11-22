@@ -5,11 +5,16 @@ import type {
   UIMessageChunk,
   LanguageModelUsage,
   ModelMessage,
+  ToolSet,
+  UIMessageStreamWriter,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { GatewayProvider } from '@ai-sdk/gateway'
 import type { RequestEvent } from 'nuxt/server'
-import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type {
+  ChatErrorCode,
+  ChatErrorPayload,
+} from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type {
   Model,
@@ -102,6 +107,7 @@ import {
   normalizeChatError,
   normalizeModelToolCallError,
 } from '~~/server/utils/chats/errors'
+import { recordStreamError } from '~~/server/utils/chats/stream-error-telemetry'
 import {
   emitSourcesForExternalSearchResults,
   filterRecoverableUIMessageStreamErrors,
@@ -131,9 +137,11 @@ import {
   chatToolsSchema,
   incomingUserMessageSchema,
   toolApprovalContinuationBodySchema,
+  toolRoundContinuationBodySchema,
 } from '~~/server/utils/chats/request-schema'
 import type {
   ToolApprovalContinuationBody,
+  ToolRoundContinuationBody,
 } from '~~/server/utils/chats/request-schema'
 import {
   getActiveShareForChat,
@@ -165,10 +173,35 @@ import {
   loadOwnedGeneratedImageDataUrl,
 } from '~~/server/utils/files/convert-files-for-ai'
 import {
-  putGenerationGuard,
-  startGenerationGuardHeartbeat,
-} from '~~/server/utils/ai/generation-guard'
+  GENERATION_STOPPED_REASON,
+  confirmLeaseHolder,
+  createGenerationRunId,
+  endDisconnectedRun,
+  type GenerationRun,
+  type GenerationRunState,
+  putGenerationLease,
+  readGenerationLeaseState,
+  startGenerationRun,
+} from '~~/server/utils/chats/generation-lease'
 import { generationInProgressKvKey } from '~~/server/utils/chats/generation-in-progress'
+import { startStreamHeartbeat } from '~~/server/utils/chats/stream-heartbeat'
+import {
+  logClientDisconnect,
+  withClientDisconnectResponse,
+} from '~~/server/utils/chats/stream-disconnect'
+import {
+  deleteStoppedReplies,
+  finalizeStoppedReplyParts,
+  findStoppedRepliesAfter,
+  loadMessagesAfterUserMessage,
+  takeTurnReplies,
+} from '~~/server/utils/chats/stopped-replies'
+import type { MessageAfterUserMessage } from '~~/server/utils/chats/stopped-replies'
+import { hasReplyStoppedPart } from '#shared/utils/chat-reply-stopped'
+import {
+  resolveStreamTimeout,
+  withVisibleTimeoutErrors,
+} from '~~/server/utils/ai/stream-stall'
 import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
@@ -343,25 +376,61 @@ import {
   resolveSkillSelection,
 } from '~~/server/utils/skills/jev/selection'
 import {
+  CONNECTORS_PER_SEND,
   CONNECTORS_PER_USER,
+  canForwardConnectorImages,
+  resolveConnectorToolMode,
+  CONNECTOR_SSE_PER_SEND,
   CONNECTOR_STEPS_PER_TURN,
   CONNECTOR_TOOLS_PER_REQUEST,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
 import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import { findBuiltinCommandInvocation } from '#shared/utils/builtin-commands'
+import {
+  createBuiltinCommandUnavailableError,
+  resolveBuiltinCommandPart,
+  respondWithBuiltinCommand,
+} from '~~/server/utils/chats/builtin-commands'
+import {
+  isToolIndexLoadToolName,
+  TOOL_INDEX_CATALOG_STEPS,
+  TOOL_INDEX_LOAD_STEPS,
+  TOOL_INDEX_RESERVED_BYTES,
+  TOOL_INDEX_RESERVED_TOOLS,
+} from '#shared/utils/tool-index'
+import {
+  createToolIndex,
+  fitUpFrontTools,
+  keepsFixedToolList,
+  selectFixedToolListEntries,
+} from '~~/server/utils/ai/tool-index'
+import { matchToolIndexEntries } from '~~/server/utils/ai/tool-index-prefetch'
+import type { ToolIndex } from '~~/server/utils/ai/tool-index'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
 import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
-import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
+import {
+  hasSignedAnthropicReasoning,
+  withAnthropicThinkingBinding,
+} from '~~/server/utils/ai/anthropic-thinking-binding'
+import type {
+  AnthropicThinkingOption,
+} from '~~/server/utils/providers/anthropic'
+import {
+  CONNECTORS_NOTICE_PART_TYPE,
+  getConnectorToolPartName,
+  parseConnectorToolName,
+} from '#shared/utils/connectors-parts'
 import {
   auditConnectorCall,
   createConnectorArgsHasher,
 } from '~~/server/utils/connectors/audit'
 import {
-  listChatConnectorIds,
+  listChatConnectorStates,
   persistChatConnectorSelection,
-  resolveConnectorSelection,
+  planSendConnectors,
 } from '~~/server/utils/connectors/chat-selection'
 import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
 import {
@@ -370,6 +439,19 @@ import {
   getConnectorTools,
 } from '~~/server/utils/connectors/send-tools'
 import type { ConnectorToolsRun } from '~~/server/utils/connectors/send-tools'
+import {
+  createConnectorImageSaver,
+  linkConnectorImagesToMessage,
+} from '~~/server/utils/connectors/image-saver'
+import { collectConnectorImageFileIds } from '#shared/utils/connector-image-parts'
+import type { ConnectorImageSaver } from '~~/server/utils/connectors/image-saver'
+import {
+  attachKeptConnectorImages,
+  keptConnectorImageLineIndexes,
+  loadKeptConnectorImages,
+} from '~~/server/utils/connectors/kept-images'
+import type { KeptConnectorImages } from '~~/server/utils/connectors/kept-images'
+import { withConnectorImageParts } from '~~/server/utils/connectors/image-parts-stream'
 import {
   listConnectors,
   settleConnectorToolCall,
@@ -395,7 +477,25 @@ import {
   withholdProviderTools,
   withProviderToolEgressGuard,
 } from '~~/server/utils/tool-approval/send'
-import { createApprovalState } from '~~/server/utils/tool-approval/state'
+import {
+  createApprovalState,
+  recordTaint,
+} from '~~/server/utils/tool-approval/state'
+import type { ApprovalState } from '~~/server/utils/tool-approval/state'
+import {
+  TOOL_ROUND_CONTINUE_PROMPT,
+  TOOL_ROUND_STALE_CODE,
+  resolveToolBudgetReason,
+  toolRoundClaimId,
+  toolRoundFinalInstructions,
+  withToolBudgetPart,
+} from '~~/server/utils/ai/tool-rounds'
+import {
+  TOOL_ROUNDS_PER_MESSAGE,
+  readEndingToolBudget,
+  readLastToolRound,
+} from '#shared/utils/tool-rounds'
+import type { ToolBudgetPartData } from '#shared/utils/tool-rounds'
 import {
   applyRememberGrants,
   assertEndsWithApprovalResponse,
@@ -419,6 +519,7 @@ import type {
   LoadedContinuation,
 } from '~~/server/utils/tool-approval/continuation'
 import type { ToolApprovalClaimOwner } from '~~/server/utils/tool-approval/claims'
+import { expireUnfinishedClaims } from '~~/server/utils/tool-approval/claims'
 import {
   appendAnthropicContainerUploads,
   buildCodeExecutionInstruction,
@@ -446,7 +547,10 @@ const chatSendBodySchema = z.object({
   webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
   connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
     .optional(),
+  offConnectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
+    .optional(),
   besidkaToolsEnabled: z.boolean().optional(),
+  stoppedRunId: z.uuid().optional(),
   messages: z.array(incomingUserMessageSchema).length(1),
 })
 
@@ -454,9 +558,14 @@ type ChatSendBody = z.infer<typeof chatSendBodySchema>
 
 const chatRequestBodySchema = z.union([
   toolApprovalContinuationBodySchema,
+  toolRoundContinuationBodySchema,
   chatSendBodySchema,
 ])
 
+/**
+ * A request that continues a stored reply: the answers to its approvals, or
+ * (`round` set) the next round of a long tool task, which answers nothing.
+ */
 interface ToolApprovalResume {
   owner: ToolApprovalClaimOwner
   assistant: {
@@ -465,7 +574,8 @@ interface ToolApprovalResume {
     parts: UIMessage['parts']
     usage: MessageUsage | null
   }
-  loaded: LoadedContinuation
+  loaded: Pick<LoadedContinuation, 'state' | 'answers'>
+  round?: number
 }
 
 export default defineEventHandler(async (event) => {
@@ -497,6 +607,9 @@ export default defineEventHandler(async (event) => {
 
   const continuationRequest = 'approval' in body.data
     ? body.data.approval
+    : null
+  const roundRequest = 'continue' in body.data
+    ? body.data.continue
     : null
   const session = await useUserSession()
 
@@ -578,6 +691,22 @@ export default defineEventHandler(async (event) => {
 
     resume = prepared.resume
     sendBody = prepared.sendBody
+  } else if (roundRequest) {
+    const prepared = await prepareToolRoundContinuation({
+      event,
+      db,
+      userId,
+      chat,
+      request: roundRequest,
+      logger,
+    })
+
+    if ('response' in prepared) {
+      return prepared.response
+    }
+
+    resume = prepared.resume
+    sendBody = prepared.sendBody
   } else {
     sendBody = body.data as ChatSendBody
   }
@@ -617,6 +746,34 @@ export default defineEventHandler(async (event) => {
     return message.role === 'user'
       && (message.publicId ?? message.id) === newMessage.id
   })
+  const sentBuiltinCommand = isResume
+    ? null
+    : findBuiltinCommandInvocation(newMessage.parts)
+
+  if (sentBuiltinCommand) {
+    newMessage.parts = await resolveBuiltinCommandPart({
+      event,
+      parts: newMessage.parts,
+      logger,
+      onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
+    })
+
+    if (!findBuiltinCommandInvocation(newMessage.parts)) {
+      throw createBuiltinCommandUnavailableError(sentBuiltinCommand.command)
+    }
+
+    return await respondWithBuiltinCommand({
+      event,
+      db,
+      userId,
+      chat: { ...chat, slug: params.data.slug },
+      newMessage: {
+        id: newMessage.id,
+        parts: newMessage.parts as UIMessage['parts'],
+      },
+      logger,
+    })
+  }
 
   newMessage.parts = await resolveArtifactAttachmentParts({
     event,
@@ -979,12 +1136,23 @@ export default defineEventHandler(async (event) => {
   // constraint. The flag is set for the duration of generation (see
   // execute() below) so a retry within that window gets a lightweight
   // "still working" signal instead of starting a duplicate generation.
+  let supersededRunId: string | undefined
+
   if (!isResume && newMessage.role === 'user' && persistedUserIndex >= 0) {
-    const isGenerating = await useKV().get(
+    const leaseState = await readGenerationLeaseState(
+      useKV(),
       generationInProgressKvKey(chat.id, newMessage.id),
+      { stoppedRunId: sendBody.stoppedRunId },
     )
 
-    if (isGenerating) {
+    if (leaseState.state === 'stopped' || leaseState.state === 'stale') {
+      supersededRunId = leaseState.lease.runId
+      logger.set({
+        attributes: { generationGuard: { takeover: leaseState.state } },
+      })
+    }
+
+    if (leaseState.state === 'live') {
       logger.set({ stage: 'generation-in-progress' })
 
       return createUIMessageStreamResponse({
@@ -1018,9 +1186,14 @@ export default defineEventHandler(async (event) => {
   )
 
   const resumedAssistantId = resume?.owner.messagePublicId ?? null
+  const stoppedReplyIds = new Set(
+    findStoppedRepliesAfter(previousMessages, persistedUserIndex),
+  )
   const allMessages = [
     ...previousMessages.filter((message) => {
-      return message.id !== newMessage.id && message.id !== resumedAssistantId
+      return message.id !== newMessage.id
+        && message.id !== resumedAssistantId
+        && !stoppedReplyIds.has(message.id)
     }),
     newMessage,
   ]
@@ -1255,6 +1428,7 @@ export default defineEventHandler(async (event) => {
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
+  let anthropicThinkingBinding: AnthropicThinkingOption | undefined
   const providerOptions: SharedV2ProviderOptions = {}
   let generatedImage: {
     modelId: string
@@ -1391,6 +1565,7 @@ export default defineEventHandler(async (event) => {
             tools: anthropicTools,
             providerOptions: anthropicProviderOptions,
             reasoning: anthropicReasoning,
+            thinkingBinding,
           } = await useAnthropic(
             session.user.id,
             model.id,
@@ -1401,6 +1576,7 @@ export default defineEventHandler(async (event) => {
           instance = anthropicInstance
           parsedTools = anthropicTools
           reasoningEffort = anthropicReasoning
+          anthropicThinkingBinding = thinkingBinding
           Object.assign(providerOptions, {
             anthropic: anthropicProviderOptions,
           })
@@ -2033,7 +2209,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (toolApprovalsActive && !isResume) {
+  if (toolApprovalsActive && (!isResume || resume?.round)) {
     presetApprovalTaint(toolApprovalSend.state, {
       requestedTools,
       holdsUntrustedKnowledge: !!knowledgeContext
@@ -2096,7 +2272,20 @@ export default defineEventHandler(async (event) => {
     useRuntimeConfig().encryptionKey,
   )
   let connectorsRun: ConnectorToolsRun | null = null
+  let connectorImageSaver: ConnectorImageSaver | null = null
+  let keptConnectorImages: KeptConnectorImages | null = null
+  const forwardsConnectorImages = canForwardConnectorImages({
+    gatewayId,
+    providerId: provider?.id,
+    inputModalities: model ? getModelInputModalities(model) : null,
+  })
   let besidkaToolsRun: PreparedBesidkaChatTools | null = null
+  let toolIndex: ToolIndex | null
+  const toolIndexReserve = {
+    tools: TOOL_INDEX_RESERVED_TOOLS + 1,
+    bytes: TOOL_INDEX_RESERVED_BYTES,
+  }
+  const nativeToolCount = Object.keys(parsedTools.tools ?? {}).length
   let toolApprovalSecret: string | undefined
   let resumeDecisions: ContinuationDecision[] = []
   let resumedStoredMessage: UIMessage | null = null
@@ -2118,7 +2307,8 @@ export default defineEventHandler(async (event) => {
         chatPublicId: chat.id,
         chatSlug: params.data.slug,
         requestedEnabled: isResume ? undefined : sendBody.besidkaToolsEnabled,
-        existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+        existingToolCount: nativeToolCount,
+        reserve: toolIndexReserve,
         consumeClearedCall: toolApprovalSend.consumeClearedCall,
         guard: chatSearchBudget,
         logger: aiLogger,
@@ -2133,84 +2323,207 @@ export default defineEventHandler(async (event) => {
     }
 
     if (sendFeatures.isFeatureActive('connectors')) {
-      const requestedConnectorIds = sendBody.connectorIds
-        ?? await listChatConnectorIds(db, userId, chat.id)
+      const storedStates = await listChatConnectorStates(db, userId, chat.id)
+      const userConnectors = await listConnectors(db, userId)
+      const knownConnectorIds = new Set(userConnectors.map((connector) => {
+        return connector.id
+      }))
 
-      if (requestedConnectorIds.length > 0 || sendBody.connectorIds) {
-        const userConnectors = await listConnectors(db, userId)
-        const selection = resolveConnectorSelection(
-          userConnectors,
-          requestedConnectorIds,
-        )
+      if (resume && forwardsConnectorImages) {
+        keptConnectorImages = await loadKeptConnectorImages({
+          db,
+          userId,
+          chatPublicId: chat.id,
+          parts: resume.assistant.parts,
+          connectorTitles: new Map(userConnectors.map((connector) => {
+            return [connector.slug, connector.title]
+          })),
+          logger: aiLogger,
+        })
+      }
+      const offConnectorIds = (!isResume && sendBody.offConnectorIds)
+        ? sendBody.offConnectorIds.filter((connectorId) => {
+          return knownConnectorIds.has(connectorId)
+        })
+        : storedStates.offIds
+      const onConnectorIds = sendBody.connectorIds ?? storedStates.onIds
+      const plan = planSendConnectors({
+        connectors: userConnectors,
+        onIds: onConnectorIds,
+        offIds: offConnectorIds,
+      })
+      const selection = plan.live
 
-        if (sendBody.connectorIds && !isResume) {
-          try {
-            await persistChatConnectorSelection(db, {
-              userId,
-              chatPublicId: chat.id,
-              selectedIds: selection.selected.map(connector => connector.id),
-            })
-          } catch (exception) {
-            aiLogger.set({
-              attributes: {
-                connectors: {
-                  selectionPersist: 'failed',
-                  error: exceptionMessage(exception),
-                },
-              },
-            })
-          }
-        }
-
-        if (selection.selected.length > 0 && !toolCallingAllowed) {
-          connectorNotices.push('Connectors are off for this message.')
-        }
-
-        if (selection.selected.length > 0 && toolCallingAllowed) {
-          for (const connector of selection.overCap) {
-            connectorNotices.push(
-              `${connector.title} was left out: a message can use at most 5 connectors.`,
-            )
-          }
-
-          for (const connector of selection.skipped) {
-            connectorNotices.push(
-              `${connector.title} is switched off or not connected, so its tools were not used.`,
-            )
-          }
-
-          connectorsRun = await getConnectorTools({
-            db,
-            kv: useKV(),
+      if (sendBody.connectorIds && !isResume) {
+        try {
+          await persistChatConnectorSelection(db, {
             userId,
             chatPublicId: chat.id,
-            connectors: selection.selected,
-            existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
-            existingDefinitionBytes: besidkaToolsRun?.definitionBytes ?? 0,
-            hashArgs: hashConnectorArgs,
-            ...(toolApprovalsActive
-              ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
-              : {}),
-            ...(resume
-              ? {
-                approvedAuditRow: (toolCallId: string | undefined) => {
-                  return approvedAuditRows.get(toolCallId ?? '') ?? null
-                },
-                callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
-              }
-              : {}),
-            guard: chatSearchBudget,
+            selectedIds: selection.selected
+              .filter(connector => onConnectorIds.includes(connector.id))
+              .map(connector => connector.id),
+            connectors: userConnectors,
+            ...(sendBody.offConnectorIds ? { offIds: offConnectorIds } : {}),
+          })
+        } catch (exception) {
+          aiLogger.set({
+            attributes: {
+              connectors: {
+                selectionPersist: 'failed',
+                error: exceptionMessage(exception),
+              },
+            },
+          })
+        }
+      }
+
+      const hasConnectors = selection.selected.length > 0
+        || plan.catalog.length > 0
+
+      if (selection.selected.length > 0 && !toolCallingAllowed) {
+        connectorNotices.push('Connectors are off for this message.')
+      }
+
+      if (hasConnectors && toolCallingAllowed) {
+        for (const connector of selection.overCap) {
+          connectorNotices.push(
+            `${connector.title} was left out: a message can use at most 5 connectors.`,
+          )
+        }
+
+        for (const connector of plan.requestedSkipped) {
+          connectorNotices.push(
+            `${connector.title} is switched off or not connected, so its tools were not used.`,
+          )
+        }
+
+        connectorImageSaver = forwardsConnectorImages
+          ? createConnectorImageSaver({
+            db,
+            userId,
+            chatPublicId: chat.id,
             logger: aiLogger,
           })
-          connectorNotices.push(...connectorsRun.notices)
-
-          if (Object.keys(connectorsRun.tools).length > 0) {
-            parsedTools = {
-              ...parsedTools,
-              tools: { ...parsedTools.tools, ...connectorsRun.tools },
+          : null
+        connectorsRun = await getConnectorTools({
+          db,
+          kv: useKV(),
+          userId,
+          chatPublicId: chat.id,
+          connectors: selection.selected,
+          catalogConnectors: plan.catalog,
+          optionalConnectorIds: new Set(selection.selected
+            .filter((connector) => {
+              return resolveConnectorToolMode(connector.toolMode)
+                === 'always-on'
+            })
+            .map(connector => connector.id)),
+          existingToolCount: nativeToolCount,
+          reserve: toolIndexReserve,
+          hashArgs: hashConnectorArgs,
+          ...(toolApprovalsActive
+            ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
+            : {}),
+          ...(resume
+            ? {
+              approvedAuditRow: (toolCallId: string | undefined) => {
+                return approvedAuditRows.get(toolCallId ?? '') ?? null
+              },
+              callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
             }
+            : {}),
+          forwardImages: forwardsConnectorImages,
+          ...(keptConnectorImages
+            ? { reservedImages: keptConnectorImages.usage }
+            : {}),
+          ...(connectorImageSaver ? { imageSaver: connectorImageSaver } : {}),
+          guard: chatSearchBudget,
+          logger: aiLogger,
+          requestId: getRequestId(event),
+        })
+        connectorNotices.push(...connectorsRun.notices)
+
+        if (Object.keys(connectorsRun.tools).length > 0) {
+          parsedTools = {
+            ...parsedTools,
+            tools: { ...parsedTools.tools, ...connectorsRun.tools },
           }
         }
+      }
+    }
+
+    besidkaToolsRun = fitBesidkaUpFrontTools({
+      besidka: besidkaToolsRun,
+      connectors: connectorsRun,
+      nativeToolCount,
+      reserve: toolIndexReserve,
+    })
+    const fixedToolList = keepsFixedToolList({ gatewayId, modelProviderId })
+      ? selectFixedToolListEntries({
+        entries: [
+          ...besidkaToolsRun?.indexEntries ?? [],
+          ...connectorsRun?.indexEntries ?? [],
+        ],
+        room: toolIndexRoom({
+          besidka: besidkaToolsRun,
+          connectors: connectorsRun,
+          nativeToolCount,
+          loaderToolCount: 0,
+        }),
+      })
+      : null
+
+    if (fixedToolList) {
+      aiLogger.set({
+        attributes: {
+          toolIndex: {
+            fixedList: true,
+            fixedKept: fixedToolList.kept.length,
+            fixedDropped: fixedToolList.dropped.length,
+          },
+        },
+      })
+    }
+
+    toolIndex = fixedToolList
+      ? null
+      : attachToolIndex({
+        besidka: besidkaToolsRun,
+        connectors: connectorsRun,
+        nativeToolCount,
+        onConnectorOpened: (connectorId) => {
+          connectorsRun?.recordOpened(connectorId)
+
+          if (chatSearchBudget) {
+            chatSearchBudget.untrustedResultSeen = true
+          }
+
+          if (toolApprovalsActive) {
+            toolApprovalSend.recordConnectorOpened(connectorId)
+          }
+        },
+        logger: aiLogger,
+      })
+
+    if (toolIndex && !isResume && userMessageText) {
+      prefetchToolIndexEntries(toolIndex, userMessageText, aiLogger)
+    }
+
+    if (toolIndex) {
+      parsedTools = {
+        ...parsedTools,
+        tools: { ...parsedTools.tools, ...toolIndex.tools },
+      }
+    } else {
+      parsedTools = {
+        ...parsedTools,
+        tools: withoutDeferredTools(
+          parsedTools.tools,
+          fixedToolList?.dropped ?? [
+            ...besidkaToolsRun?.indexEntries ?? [],
+            ...connectorsRun?.indexEntries ?? [],
+          ],
+        ),
       }
     }
 
@@ -2247,6 +2560,8 @@ export default defineEventHandler(async (event) => {
     }
 
     if (resume) {
+      toolIndex?.replay(resume.assistant.parts)
+
       const besidkaToolNames = resume.loaded.answers
         .filter(answer => answer.record.family === 'besidka')
         .map(answer => answer.record.toolName)
@@ -2266,6 +2581,9 @@ export default defineEventHandler(async (event) => {
         messageId: resume.owner.messagePublicId,
         parts: resume.assistant.parts,
         decisions: resumeDecisions,
+        ...(keptConnectorImages
+          ? { shownAgain: keptConnectorImageLineIndexes(keptConnectorImages) }
+          : {}),
       })
       const resumeHistory = buildKnowledgeAwareMessagesForModel({
         messagesForAI,
@@ -2282,7 +2600,22 @@ export default defineEventHandler(async (event) => {
         ...resumeHistory,
         resumedMessages.modelMessage,
       ])
-      assertEndsWithApprovalResponse(resumeModelMessages)
+
+      if (keptConnectorImages) {
+        resumeModelMessages = attachKeptConnectorImages(
+          resumeModelMessages,
+          keptConnectorImages,
+        )
+      }
+
+      if (resume.round) {
+        resumeModelMessages = [
+          ...resumeModelMessages,
+          { role: 'user', content: TOOL_ROUND_CONTINUE_PROMPT },
+        ]
+      } else {
+        assertEndsWithApprovalResponse(resumeModelMessages)
+      }
     }
   } catch (exception) {
     await connectorsRun?.close()
@@ -2308,7 +2641,22 @@ export default defineEventHandler(async (event) => {
     hasBesidkaTools ? besidkaToolsRun?.instructions : null,
   ].filter(Boolean).join('\n\n') || null
 
+  const toolRound = resume?.round
+    ?? readLastToolRound(resume?.assistant.parts ?? []) + 1
+  const areToolRoundsActive = toolApprovalsActive
+    && (!!connectorToolsInstructionBlock || hasBesidkaTools)
   const toolLoop = resolveToolLoop(parsedTools.tools, {
+    ...(areToolRoundsActive
+      ? {
+        finalStepInstructions: () => {
+          const { counters } = toolApprovalSend.state
+
+          return counters.connectorCalls + counters.builtInCalls > 0
+            ? toolRoundFinalInstructions(toolRound)
+            : undefined
+        },
+      }
+      : {}),
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
       : 0,
@@ -2320,16 +2668,29 @@ export default defineEventHandler(async (event) => {
       ? CONNECTOR_STEPS_PER_TURN
       : 0,
     besidkaSteps: hasBesidkaTools ? TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN : 0,
+    toolIndexSteps: toolIndex
+      ? TOOL_INDEX_LOAD_STEPS
+      + (connectorsRun?.catalog.length ? TOOL_INDEX_CATALOG_STEPS : 0)
+      : 0,
     guard: chatSearchBudget,
   })
-  const containerToolLoopOptions = toolLoop
+  const forwardedToolLoopOptions = toolLoop
     && codeExecutionSession?.provider === 'anthropic'
     ? withAnthropicContainerForwarding(toolLoop.options)
     : toolLoop?.options
+  const containerToolLoopOptions = toolIndex && forwardedToolLoopOptions
+    ? {
+      ...forwardedToolLoopOptions,
+      prepareStep: toolIndex.withActivation({
+        base: forwardedToolLoopOptions.prepareStep,
+        toolNames: Object.keys(parsedTools.tools ?? {}),
+      }),
+    }
+    : forwardedToolLoopOptions
   const guardsProviderTools = toolApprovalsActive
     && !isAnthropicRoute
     && hasGuardedProviderTool(toolApprovalSend, parsedTools.tools)
-  const toolLoopOptions = guardsProviderTools
+  const guardedToolLoopOptions = guardsProviderTools
     ? {
       ...containerToolLoopOptions,
       prepareStep: withProviderToolEgressGuard({
@@ -2340,6 +2701,37 @@ export default defineEventHandler(async (event) => {
       }),
     }
     : containerToolLoopOptions
+  const resumeReplaysChangedTools = (toolIndex?.loadedNames().length ?? 0) > 0
+    || (toolIndex?.openedConnectors().length ?? 0) > 0
+  const bindThinkingFromStart = isResume
+    && !!anthropicThinkingBinding
+    && (!!reasoningEffort || resumeReplaysChangedTools)
+  const toolLoopOptions = anthropicThinkingBinding && guardedToolLoopOptions
+    ? {
+      ...guardedToolLoopOptions,
+      prepareStep: withAnthropicThinkingBinding({
+        base: guardedToolLoopOptions.prepareStep,
+        thinking: anthropicThinkingBinding,
+        toolNames: Object.keys(parsedTools.tools ?? {}),
+        bindFromStart: bindThinkingFromStart,
+        logger,
+      }),
+    }
+    : guardedToolLoopOptions
+
+  if (
+    bindThinkingFromStart
+    && !toolLoopOptions
+    && anthropicThinkingBinding
+    && hasSignedAnthropicReasoning(resumeModelMessages)
+  ) {
+    Object.assign(providerOptions, {
+      anthropic: {
+        ...providerOptions.anthropic,
+        thinking: anthropicThinkingBinding,
+      },
+    })
+  }
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
@@ -2353,7 +2745,9 @@ export default defineEventHandler(async (event) => {
   }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
-      return !isSkillToolName(toolName) && !isApprovalGatedToolName(toolName)
+      return !isSkillToolName(toolName)
+        && !isToolIndexLoadToolName(toolName)
+        && !isApprovalGatedToolName(toolName)
     }),
   )
   const persistenceFollowUpToolNames = new Set([
@@ -2362,18 +2756,19 @@ export default defineEventHandler(async (event) => {
   ])
 
   let claimHeartbeats: ClaimHeartbeats | null = null
+  const generationRunId = createGenerationRunId()
+  const generationAbort = new AbortController()
+
+  const continuationClaimIds = !resume
+    ? []
+    : resume.round
+      ? [toolRoundClaimId(resume.owner.messagePublicId, resume.round)]
+      : resumeDecisions.map(decision => decision.approvalId)
 
   if (resume) {
-    await putGenerationGuard(
-      useKV(),
-      generationInProgressKvKey(chat.id, resume.owner.messagePublicId),
-      'put',
-      logger,
-    )
-
     const isClaimed = await claimContinuation(
       db,
-      resumeDecisions.map(decision => decision.approvalId),
+      continuationClaimIds,
       resume.owner,
     )
 
@@ -2384,6 +2779,13 @@ export default defineEventHandler(async (event) => {
 
       return createGenerationPendingResponse()
     }
+
+    await putGenerationLease(
+      useKV(),
+      generationInProgressKvKey(chat.id, resume.owner.messagePublicId),
+      generationRunId,
+      logger,
+    )
 
     claimHeartbeats = startClaimHeartbeats({
       db,
@@ -2477,6 +2879,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const generationLeaseKv = useKV()
+  const generationLeaseKey = generationInProgressKvKey(
+    chat.id,
+    isResume ? assistantMessagePublicId : newMessage.id,
+  )
+  let activeGenerationRun: GenerationRun | null = null
   const stream = createUIMessageStream({
     onError(error) {
       return JSON.stringify(normalizeChatError({
@@ -2487,11 +2895,8 @@ export default defineEventHandler(async (event) => {
     },
     async execute({ writer }) {
       const messagePublicId = assistantMessagePublicId
-      const kv = useKV()
-      const generatingKey = generationInProgressKvKey(
-        chat.id,
-        isResume ? messagePublicId : newMessage.id,
-      )
+      const kv = generationLeaseKv
+      const generatingKey = generationLeaseKey
 
       // Mirrors the guard above: hold this flag for the lifetime of the
       // generation so a client retry of the same user message id (issue
@@ -2504,13 +2909,51 @@ export default defineEventHandler(async (event) => {
       // double-billing the provider for one user turn (caught by Codex's
       // automated review). Awaiting here guarantees the flag is visible
       // before any provider work begins.
-      await putGenerationGuard(kv, generatingKey, 'put', logger)
+      await putGenerationLease(kv, generatingKey, generationRunId, logger)
 
-      const generationGuardHeartbeat = startGenerationGuardHeartbeat(
+      const isLeaseHolder = supersededRunId === undefined
+        || await confirmLeaseHolder({
+          kv,
+          key: generatingKey,
+          runId: generationRunId,
+          logger,
+        })
+
+      if (!isLeaseHolder) {
+        logger.set({
+          stage: 'generation-in-progress',
+          attributes: { generationGuard: { takeoverLost: true } },
+        })
+        await closeConnectorClients()
+        await codeExecutionSession?.tracker.cleanup()
+        writeGenerationPending(writer)
+
+        return
+      }
+
+      const generationGuardHeartbeat = startGenerationRun({
         kv,
-        generatingKey,
+        key: generatingKey,
+        runId: generationRunId,
         logger,
-      )
+        supersededRunId,
+        onStopped: () => {
+          generationAbort.abort(GENERATION_STOPPED_REASON)
+        },
+      })
+
+      activeGenerationRun = generationGuardHeartbeat
+
+      let settleRun: () => void = () => undefined
+      const runSettled = new Promise<void>((resolve) => {
+        settleRun = resolve
+      })
+
+      cfCtx?.waitUntil?.(runSettled)
+
+      const streamHeartbeat = startStreamHeartbeat((chunk) => {
+        writer.write(chunk)
+      })
 
       try {
         const streamActivations = isResume ? [] : skillsSend.streamActivations
@@ -2711,13 +3154,6 @@ export default defineEventHandler(async (event) => {
         }
 
         try {
-          // No abortSignal here: the cloudflare_module preset (Nitro 2.13 /
-          // h3 v1 + node-mock-http) surfaces no client-disconnect signal to
-          // the handler, and fully draining on disconnect is intentional —
-          // it lets a reconnect replay the already-persisted reply. Don't
-          // wire one: on this stack it is a no-op, or would defeat that
-          // replay by skipping persist. (Providers also bill and omit usage
-          // on abort, so there is no cost to recover here either.)
           if (isResume) {
             modelMessages = resumeModelMessages
           } else {
@@ -2733,6 +3169,11 @@ export default defineEventHandler(async (event) => {
               codeExecutionSession.uploadedFileIds,
             )
           }
+
+          const streamTimeout = resolveStreamTimeout({
+            providerId: gatewayId ? undefined : telemetryProviderId,
+            base: toolLoopOptions?.timeout,
+          })
 
           result = streamText({
             model: instance,
@@ -2753,6 +3194,7 @@ export default defineEventHandler(async (event) => {
               documentsContextLine,
               skillsInstructionBlock,
               connectorsInstructionBlock,
+              toolIndexBlock: toolIndex?.instructions ?? null,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -2793,6 +3235,8 @@ export default defineEventHandler(async (event) => {
               ? { toolChoice: parsedTools.toolChoice }
               : {}),
             ...(toolLoopOptions ?? {}),
+            ...(streamTimeout ? { timeout: streamTimeout } : {}),
+            abortSignal: generationAbort.signal,
             providerOptions,
           })
         } catch (exception) {
@@ -2897,7 +3341,43 @@ export default defineEventHandler(async (event) => {
             ...(usage ? { usage } : {}),
           }
         }
-        const uiMessageStream = toUIMessageStream({
+        const timeoutErrorText = (
+          code: ChatErrorCode,
+          reason: string | undefined,
+        ): string => {
+          const chatError = normalizeChatError({
+            error: new Error(reason ?? 'stream timeout'),
+            event,
+            providerId: errorProviderId,
+            code,
+          })
+
+          logger.set({
+            message: chatError.message,
+            stage: 'stream-timeout',
+            errorCode: chatError.code,
+            errorMessage: reason,
+          })
+          recordStreamError({
+            chatError,
+            error: undefined,
+            stage: 'stream-timeout',
+          }, aiLogger)
+          emitChatErrorLog({
+            chatError,
+            event,
+            stage: 'stream-timeout',
+            userId,
+            chatId: chat.id,
+            projectId: chat.projectId,
+            modelId,
+            reasoning: reasoningLevel,
+            tools: requestedTools,
+          })
+
+          return JSON.stringify(chatError)
+        }
+        const uiMessageStream = withVisibleTimeoutErrors(toUIMessageStream({
           stream: result.stream,
           originalMessages: resumedStoredMessage
             ? [...messagesForAI, resumedStoredMessage]
@@ -2966,6 +3446,12 @@ export default defineEventHandler(async (event) => {
               providerRequestId: chatError.providerRequestId,
               errorMessage: chatError.why,
             })
+            recordStreamError({
+              chatError,
+              error,
+              stage: 'stream',
+              providerId: errorProviderId,
+            }, aiLogger)
             emitChatErrorLog({
               chatError,
               event,
@@ -2980,15 +3466,21 @@ export default defineEventHandler(async (event) => {
 
             return JSON.stringify(chatError)
           },
-        })
+        }), timeoutErrorText)
         const toolApprovalCollector = createToolApprovalStreamCollector(
           toolApprovalSend,
         )
+        const approvalUiMessageStream = toolApprovalsActive
+          ? toolApprovalCollector.apply(uiMessageStream)
+          : uiMessageStream
         const correctedUiMessageStream = emitSourcesForExternalSearchResults(
           insertParagraphBreakAfterNonTextGap(
-            toolApprovalsActive
-              ? toolApprovalCollector.apply(uiMessageStream)
-              : uiMessageStream,
+            connectorImageSaver
+              ? withConnectorImageParts(
+                approvalUiMessageStream,
+                connectorImageSaver,
+              ) as typeof approvalUiMessageStream
+              : approvalUiMessageStream,
           ),
         )
 
@@ -3017,7 +3509,11 @@ export default defineEventHandler(async (event) => {
             ),
             experimental_transform: smoothStream(),
             maxOutputTokens: gatewayMaxOutputTokens,
-            timeout: { totalMs: TOOL_LOOP_CONTINUATION_TIMEOUT_MS },
+            timeout: resolveStreamTimeout({
+              providerId: gatewayId ? undefined : telemetryProviderId,
+              base: { totalMs: TOOL_LOOP_CONTINUATION_TIMEOUT_MS },
+            }),
+            abortSignal: generationAbort.signal,
             providerOptions: omitPromptCacheControl(providerOptions),
           })
 
@@ -3057,6 +3553,10 @@ export default defineEventHandler(async (event) => {
               ])
               : undefined,
             forcedStepIndex: toolLoop.maxSteps - 1,
+            isRunStopped: async () => {
+              return generationAbort.signal.aborted
+                || await generationGuardHeartbeat.confirmState() !== 'current'
+            },
             startContinuation: startSearchAnswerContinuation,
             buildFinishMessageMetadata: (continuation) => {
               const steps = [...finishedSteps, ...continuation.steps]
@@ -3083,11 +3583,33 @@ export default defineEventHandler(async (event) => {
             logger: aiLogger,
           })
           : undefined
-        const answeredUiMessageStream = codeExecutionStream
+        const codeExecutedUiMessageStream = codeExecutionStream
           ? codeExecutionStream.apply(
             guaranteedUiMessageStream as ReadableStream<UIMessageChunk>,
           ) as typeof guaranteedUiMessageStream
           : guaranteedUiMessageStream
+        const answeredUiMessageStream = areToolRoundsActive
+          ? withToolBudgetPart(
+            codeExecutedUiMessageStream as ReadableStream<UIMessageChunk>,
+            (hadError) => {
+              return decideToolBudgetPart({
+                hadError,
+                round: toolRound,
+                toolLoopMaxSteps: toolLoop?.maxSteps,
+                outcome: searchAnswerGuarantee?.getOutcome(),
+                approval: toolApprovalSend,
+                isPaused: toolApprovalCollector.isPaused(),
+                snapshot: {
+                  model: modelId,
+                  gateway: gatewayId ?? null,
+                  reasoning: reasoningLevel,
+                  connectorIds: connectorsRun?.connectorIds ?? [],
+                },
+                logger: aiLogger,
+              })
+            },
+          ) as typeof codeExecutedUiMessageStream
+          : codeExecutedUiMessageStream
         const [clientStream, persistenceStream] = answeredUiMessageStream.tee()
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
@@ -3138,8 +3660,17 @@ export default defineEventHandler(async (event) => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
           getCodeExecutionFileIds: codeExecutionStream?.getSavedFileIds,
+          getRunState: generationGuardHeartbeat.confirmState,
+          userMessagePublicId: isResume ? undefined : newMessage.id,
         })
         const wasPersisted = persistResult.persisted
+
+        if (persistResult.stopped) {
+          aiLogger.set({
+            stage: 'stopped',
+            attributes: { assistantPersist: { stopped: true } },
+          })
+        }
 
         if (
           resume
@@ -3165,7 +3696,6 @@ export default defineEventHandler(async (event) => {
               model: modelId,
               gateway: gatewayId ?? null,
               reasoning: reasoningLevel,
-              toolNames: Object.keys(parsedTools.tools ?? {}),
               connectorIds: connectorsRun?.connectorIds ?? [],
             },
             hashArgs: hashConnectorArgs,
@@ -3191,6 +3721,11 @@ export default defineEventHandler(async (event) => {
             stage: 'assistant-empty-answer',
             errorCode: emptyAnswerError.code,
           })
+          recordStreamError({
+            chatError: emptyAnswerError,
+            error: undefined,
+            stage: 'assistant-empty-answer',
+          }, aiLogger)
           emitChatErrorLog({
             chatError: emptyAnswerError,
             event,
@@ -3223,6 +3758,7 @@ export default defineEventHandler(async (event) => {
         if (
           wasPersisted
           && !persistResult.emptyAnswerFailure
+          && !generationAbort.signal.aborted
           && cfCtx?.waitUntil
         ) {
           const runtimeConfig = useRuntimeConfig()
@@ -3277,6 +3813,14 @@ export default defineEventHandler(async (event) => {
           },
         })
 
+        const sendDenials = toolApprovalSend.getDenials()
+
+        if (Object.keys(sendDenials).length > 0) {
+          aiLogger.set({
+            attributes: { toolApproval: { sendDenied: sendDenials } },
+          })
+        }
+
         if (chatSearchBudget && chatSearchToolsRegistered) {
           aiLogger.set({
             attributes: {
@@ -3330,30 +3874,59 @@ export default defineEventHandler(async (event) => {
           }
         }
       } finally {
-        await closeConnectorClients()
-        await codeExecutionSession?.tracker.cleanup()
-        await generationGuardHeartbeat.stop()
-        claimHeartbeats?.stopAll()
-
         try {
-          await kv.delete(generatingKey)
-        } catch (exception) {
-          logger.set({
-            attributes: {
-              generationGuard: {
-                operation: 'delete',
-                error: exceptionMessage(exception),
-              },
-            },
-          })
+          streamHeartbeat.stop()
+          await closeConnectorClients()
+          await codeExecutionSession?.tracker.cleanup()
+          claimHeartbeats?.stopAll()
+
+          if (resume && generationGuardHeartbeat.isStopped()) {
+            await expireStoppedContinuationClaims({
+              db,
+              claimIds: continuationClaimIds,
+              userId,
+              logger: aiLogger,
+            })
+          }
+
+          await generationGuardHeartbeat.release()
+        } finally {
+          settleRun()
         }
       }
     },
   })
 
-  return createUIMessageStreamResponse({
-    stream,
-  })
+  return withClientDisconnectResponse(
+    createUIMessageStreamResponse({ stream }),
+    () => {
+      logClientDisconnect({
+        aiStreamPath,
+        parentRequestId,
+        chatId: chat.id,
+        userId,
+        modelId,
+        runId: generationRunId,
+        isStoppedRun: generationAbort.signal.aborted,
+        waitUntil: cfCtx?.waitUntil?.bind(cfCtx),
+        endRun: isResume
+          ? undefined
+          : async () => {
+            if (activeGenerationRun) {
+              activeGenerationRun.markStopped()
+            } else {
+              generationAbort.abort(GENERATION_STOPPED_REASON)
+            }
+
+            return await endDisconnectedRun({
+              kv: generationLeaseKv,
+              key: generationLeaseKey,
+              runId: generationRunId,
+            })
+          },
+      })
+    },
+  )
 })
 
 interface ContinuationChatRow {
@@ -3372,15 +3945,200 @@ interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
 }
 
 /**
+ * How many more tools and definition bytes a step may carry once the native
+ * tools, every tool offered up front and the index's own tools
+ * (`loaderToolCount`) are counted.
+ */
+function toolIndexRoom(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  loaderToolCount: number
+}): { tools: number, bytes: number } {
+  const upFrontCount = (input.besidka?.upFrontNames.length ?? 0)
+    + (input.connectors?.upFrontNames.length ?? 0)
+
+  return {
+    tools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - upFrontCount - input.loaderToolCount,
+    bytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
+      - (input.besidka?.definitionBytes ?? 0)
+      - (input.connectors?.definitionBytes ?? 0),
+  }
+}
+
+/**
+ * The tool index of a send (`server/utils/ai/tool-index.ts`): the Besidka
+ * and connector tools that were not offered up front, with the room a step
+ * has left for loading them once every up-front tool and the load tool are
+ * counted (40 tools, 32 KiB of Besidka and connector definitions). Null when
+ * nothing is deferred or no room is left.
+ */
+function attachToolIndex(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  onConnectorOpened?: (connectorId: string) => void
+  logger: { set: (data: Record<string, unknown>) => void }
+}): ToolIndex | null {
+  const entries = [
+    ...input.besidka?.indexEntries ?? [],
+    ...input.connectors?.indexEntries ?? [],
+  ]
+  const upFrontNames = [
+    ...input.besidka?.upFrontNames ?? [],
+    ...input.connectors?.upFrontNames ?? [],
+  ]
+  const catalogConnectors = input.connectors?.catalog ?? []
+  const room = toolIndexRoom({
+    besidka: input.besidka,
+    connectors: input.connectors,
+    nativeToolCount: input.nativeToolCount,
+    loaderToolCount: catalogConnectors.length > 0 ? 2 : 1,
+  })
+  const liveConnectorCount = input.connectors?.connectorIds.length ?? 0
+  const toolIndex = createToolIndex({
+    entries,
+    room,
+    upFrontNames: new Set(upFrontNames),
+    ...(catalogConnectors.length > 0
+      ? {
+        catalog: {
+          connectors: catalogConnectors,
+          maxOpen: Math.max(0, CONNECTORS_PER_SEND - liveConnectorCount),
+          maxOpenLegacySse: Math.max(
+            0,
+            CONNECTOR_SSE_PER_SEND
+            - (input.connectors?.liveLegacySseCount ?? 0),
+          ),
+          onOpen: (connector) => {
+            input.onConnectorOpened?.(connector.connectorId)
+          },
+        },
+      }
+      : {}),
+    logger: input.logger,
+  })
+
+  if (entries.length > 0 || catalogConnectors.length > 0) {
+    input.logger.set({
+      attributes: {
+        toolIndex: {
+          entries: entries.length,
+          catalogConnectors: catalogConnectors.length,
+          roomTools: room.tools,
+          roomBytes: room.bytes,
+          ...(toolIndex ? {} : { noRoom: true }),
+        },
+      },
+    })
+  }
+
+  return toolIndex
+}
+
+/**
+ * Loads the index entries the user's own latest message most likely needs
+ * (`matchToolIndexEntries`: an action verb and a thing, in several
+ * languages) before the first step, so a model that never calls
+ * `tool_index__load` still has them. They go through the same load, caps and
+ * approval path as a load the model makes.
+ */
+function prefetchToolIndexEntries(
+  toolIndex: ToolIndex,
+  userText: string,
+  logger: { set: (data: Record<string, unknown>) => void },
+): void {
+  const names = matchToolIndexEntries(userText, toolIndex.entries)
+
+  if (names.length === 0) {
+    return
+  }
+
+  const result = toolIndex.load(names)
+
+  logger.set({
+    attributes: {
+      toolIndex: {
+        prefetched: result.loaded.length,
+        prefetchRefused: result.tooLarge.length,
+      },
+    },
+  })
+}
+
+/**
+ * Gives an Always on connector's up-front tools priority over Besidka's:
+ * both were sized against the same room (40 tools and 32 KiB minus the
+ * native tools and the index reserve), so when together they do not fit,
+ * Besidka's last up-front tools move to the tool index, where they stay
+ * reachable.
+ */
+function fitBesidkaUpFrontTools(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  reserve: { tools: number, bytes: number }
+}): PreparedBesidkaChatTools | null {
+  const { besidka, connectors } = input
+
+  if (!besidka || !connectors || connectors.upFrontNames.length === 0) {
+    return besidka
+  }
+
+  const { upFront, demoted } = fitUpFrontTools({
+    keptTools: connectors.upFrontNames.length,
+    keptBytes: connectors.definitionBytes,
+    demotable: besidka.upFrontEntries,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - input.reserve.tools,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES - input.reserve.bytes,
+  })
+
+  if (demoted.length === 0) {
+    return besidka
+  }
+
+  return {
+    ...besidka,
+    upFrontNames: upFront.map(entry => entry.name),
+    upFrontEntries: upFront,
+    indexEntries: [...demoted, ...besidka.indexEntries],
+    definitionBytes: upFront.reduce((total, entry) => {
+      return total + entry.bytes
+    }, 0),
+  }
+}
+
+/**
+ * Removes the deferred tools from a send that has no room for the tool
+ * index, so a tool meant to wait for a load is never offered up front.
+ */
+function withoutDeferredTools(
+  tools: ToolSet | undefined,
+  entries: ReadonlyArray<{ name: string }>,
+): ToolSet | undefined {
+  if (!tools || entries.length === 0) {
+    return tools
+  }
+
+  const deferredNames = new Set(entries.map(entry => entry.name))
+
+  return Object.fromEntries(Object.entries(tools).filter(([toolName]) => {
+    return !deferredNames.has(toolName)
+  }))
+}
+
+/**
  * The Besidka tools of a send, loaded only once the gate passed (the
  * `besidka-tools` opt-in flag, `tool-approvals` and a tool-capable model):
  * the chat's Besidka row decides whether there are any (on by default; a
  * new chat's first send may carry the choice made before it had a slug,
  * which is stored here), then the user's mode for every tool is resolved in
- * one read before a tool is offered, and the tools are built within the
- * room the native tools left (at most 24, 40 tools and 32 KiB in all). A
- * tool that did not fit is only logged: the Labs permissions panel tells the
- * user when more tools are allowed than a message offers.
+ * one read before a tool is offered. The tools offered up front fit in the
+ * room the native tools and `reserve` (the room kept for the tool index)
+ * left: at most 24, 40 tools and 32 KiB in all. Every other tool that is
+ * not Blocked goes to the tool index, so none is out of reach.
  */
 async function prepareBesidkaChatTools(input: {
   db: ReturnType<typeof useDb>
@@ -3389,6 +4147,7 @@ async function prepareBesidkaChatTools(input: {
   chatSlug: string
   requestedEnabled: boolean | undefined
   existingToolCount: number
+  reserve: { tools: number, bytes: number }
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   guard: UntrustedContentGuard | undefined
   logger: { set: (data: Record<string, unknown>) => void }
@@ -3433,7 +4192,9 @@ async function prepareBesidkaChatTools(input: {
       tools: {},
       approvalEntries: new Map(),
       definitionBytes: 0,
-      leftOutCount: 0,
+      upFrontNames: [],
+      upFrontEntries: [],
+      indexEntries: [],
       instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
     }
   }
@@ -3455,8 +4216,9 @@ async function prepareBesidkaChatTools(input: {
     currentChatSlug: input.chatSlug,
     modes,
     chatGrants: settings.alwaysAllowTools,
-    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
-    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount
+      - input.reserve.tools,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES - input.reserve.bytes,
     consumeClearedCall: input.consumeClearedCall,
     limitCalls: adapter.createBesidkaCallLimiter(useKV()),
     ...(input.guard ? { guard: input.guard } : {}),
@@ -3477,16 +4239,26 @@ function createGenerationPendingResponse(): Response {
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       execute({ writer }) {
-        writer.write({ type: 'start' })
-        writer.write({
-          type: 'data-generation-pending',
-          data: {},
-          transient: true,
-        })
-        writer.write({ type: 'finish' })
+        writeGenerationPending(writer)
       },
     }),
   })
+}
+
+/**
+ * The "another run is generating this message" answer the client turns
+ * into its waiting state and resends a few seconds later.
+ */
+function writeGenerationPending(
+  writer: Pick<UIMessageStreamWriter, 'write'>,
+): void {
+  writer.write({ type: 'start' })
+  writer.write({
+    type: 'data-generation-pending',
+    data: {},
+    transient: true,
+  })
+  writer.write({ type: 'finish' })
 }
 
 async function enforceToolApprovalRateLimit(input: {
@@ -3543,6 +4315,253 @@ function readResumeTools(tools: string[] | null): ChatSendBody['tools'] {
       ? [parsed.data]
       : []
   })
+}
+
+/**
+ * A continuation the user stopped (or a retry took over) records no
+ * result, so its claims would read as "still working" for the full claim
+ * lease. Their lease ends now, and a retry of the same answers is told the
+ * call was interrupted; claims that already recorded a result replay as
+ * before. A failure is logged.
+ */
+async function expireStoppedContinuationClaims(input: {
+  db: ReturnType<typeof useDb>
+  claimIds: readonly string[]
+  userId: number
+  logger: { set: (fields: Record<string, unknown>) => void }
+}): Promise<void> {
+  try {
+    const expiredClaims = await expireUnfinishedClaims(
+      input.db,
+      input.claimIds,
+      input.userId,
+    )
+
+    input.logger.set({ attributes: { toolApproval: { expiredClaims } } })
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        toolApproval: { expireClaimsError: exceptionMessage(exception) },
+      },
+    })
+  }
+}
+
+/**
+ * Whether a live run holds the generation lease of `key`. A lease of a run
+ * the user stopped, or one whose holder missed its heartbeat window, does
+ * not count: the request takes it over (`readGenerationLeaseState`).
+ */
+async function isGenerationLive(key: string): Promise<boolean> {
+  const leaseState = await readGenerationLeaseState(useKV(), key)
+
+  return leaseState.state === 'live'
+}
+
+/**
+ * Everything a request that runs the next round of a long tool task checks
+ * before it may do any work: the `tool-approvals` flag (a round runs on the
+ * approval continuation's plumbing), the per-user answer limit (one unit),
+ * the message (this chat's last message and an assistant message), its
+ * generation lease, the round's claim (a round that already started once
+ * is interrupted and never re-run; the claim itself is taken right before
+ * the stream starts), and the budget part the reply ends with: below the
+ * round limit, the round the client asked for is the next one, and nothing
+ * in the reply waits for approval. Model, gateway, reasoning and connectors
+ * come from that part (written by the server, read from D1), the tools from
+ * the turn's stored user message, never from the request body. The round
+ * starts a fresh approval state that already counts the connector and
+ * Besidka results the reply holds as taint.
+ */
+async function prepareToolRoundContinuation(input: {
+  event: RequestEvent
+  db: ReturnType<typeof useDb>
+  userId: number
+  chat: { id: string, messages: ContinuationChatRow[] }
+  request: ToolRoundContinuationBody['continue']
+  logger: LoggerLike
+}): Promise<PreparedToolApprovalContinuation> {
+  const { event, db, userId, chat, request, logger } = input
+  const features = await resolveSendFeatures(event, ['tool-approvals'], logger)
+
+  if (!features.isFeatureActive('tool-approvals')) {
+    throw createError({
+      message: 'Not found',
+      status: 404,
+      why: 'Long tool tasks are not available for this account',
+    })
+  }
+
+  await enforceToolApprovalRateLimit({ event, userId, responses: 1, logger })
+
+  const turn = findContinuationTurn(chat.messages, request.messageId)
+
+  logger.set({
+    attributes: { toolRounds: { continuation: true, round: request.round } },
+  })
+
+  if (await isGenerationLive(
+    generationInProgressKvKey(chat.id, request.messageId),
+  )) {
+    return { response: createGenerationPendingResponse() }
+  }
+
+  const owner: ToolApprovalClaimOwner = {
+    userId,
+    chatPublicId: chat.id,
+    messagePublicId: request.messageId,
+  }
+  const roundClaims = await findExistingClaims(
+    db,
+    [toolRoundClaimId(request.messageId, request.round)],
+    owner,
+  )
+
+  if (roundClaims.length > 0) {
+    throw createError({
+      message: 'This round was interrupted',
+      status: 409,
+      code: TOOL_ROUND_STALE_CODE,
+      why: 'The round already started once and did not finish',
+      fix: 'Send a new message to go on',
+    })
+  }
+
+  const budget = readEndingToolBudget(turn.assistant.parts)
+
+  if (
+    !budget
+    || budget.round >= budget.maxRounds
+    || budget.round + 1 !== request.round
+    || hasAwaitingApprovalToolPart(turn.assistant.parts)
+  ) {
+    throw createError({
+      message: 'This task cannot continue here',
+      status: 409,
+      code: TOOL_ROUND_STALE_CODE,
+      why: 'The reply already continued, finished or reached its round limit',
+      fix: 'Send a new message to go on',
+    })
+  }
+
+  const gateway = budget.gateway === null
+    ? null
+    : z.enum(gatewayIds).safeParse(budget.gateway)
+  const reasoning = z.enum(['off', 'low', 'medium', 'high'])
+    .safeParse(budget.reasoning)
+
+  if ((gateway && !gateway.success) || !reasoning.success) {
+    throw createError({
+      message: 'This task cannot continue here',
+      status: 409,
+      code: TOOL_ROUND_STALE_CODE,
+      why: 'The reply used a gateway or setting that is no longer supported',
+      fix: 'Send a new message to go on',
+    })
+  }
+
+  return {
+    resume: {
+      owner,
+      assistant: {
+        id: turn.assistant.id,
+        publicId: turn.assistant.publicId,
+        parts: turn.assistant.parts as UIMessage['parts'],
+        usage: (turn.assistant.usage ?? null) as MessageUsage | null,
+      },
+      loaded: {
+        state: createToolRoundApprovalState(turn.assistant.parts),
+        answers: [],
+      },
+      round: request.round,
+    },
+    sendBody: {
+      model: budget.model,
+      gateway: gateway?.data,
+      tools: readResumeTools(turn.user.tools),
+      reasoning: reasoning.data,
+      exaSearchLevel: DEFAULT_EXA_SEARCH_LEVEL,
+      webSearchMode: 'always',
+      connectorIds: budget.connectorIds.slice(0, CONNECTORS_PER_USER),
+      messages: [{
+        id: turn.user.publicId ?? turn.user.id,
+        role: 'user',
+        parts: turn.user.parts as ChatSendBody['messages'][number]['parts'],
+      }],
+    },
+  }
+}
+
+/**
+ * The budget part a send ends with when it stopped on its step or call
+ * budget while the model was still working with connector or Besidka
+ * tools; null otherwise. It carries the round and the settings the next
+ * round runs with.
+ */
+function decideToolBudgetPart(input: {
+  hadError: boolean
+  round: number
+  toolLoopMaxSteps: number | undefined
+  outcome: { stepsCount: number } | undefined
+  approval: ReturnType<typeof createSendToolApproval>
+  isPaused: boolean
+  snapshot: Omit<ToolBudgetPartData, 'round' | 'maxRounds' | 'reason'>
+  logger: LoggerLike
+}): ToolBudgetPartData | null {
+  const denials = input.approval.getDenials()
+  const { counters } = input.approval.state
+  const reason = resolveToolBudgetReason({
+    isPaused: input.isPaused,
+    hadError: input.hadError,
+    reachedStepLimit: input.toolLoopMaxSteps !== undefined
+      && (input.outcome?.stepsCount ?? 0) >= input.toolLoopMaxSteps,
+    reachedCallLimit: (denials['connector-calls'] ?? 0) > 0
+      || (denials['built-in-calls'] ?? 0) > 0,
+    ranTaskTools: counters.connectorCalls + counters.builtInCalls > 0,
+  })
+
+  if (!reason) {
+    return null
+  }
+
+  input.logger.set({
+    attributes: { toolRounds: { round: input.round, budgetReason: reason } },
+  })
+
+  return {
+    ...input.snapshot,
+    round: input.round,
+    maxRounds: TOOL_ROUNDS_PER_MESSAGE,
+    reason,
+  }
+}
+
+/**
+ * The approval state a new round of a long tool task starts from: fresh
+ * counters (each round has its own call budget) and the taint of the
+ * connector and Besidka results the reply already holds, which the model
+ * reads again.
+ */
+function createToolRoundApprovalState(parts: unknown): ApprovalState {
+  const state = createApprovalState()
+
+  if (!Array.isArray(parts)) {
+    return state
+  }
+
+  for (const part of parts) {
+    const toolName = getConnectorToolPartName(part)
+
+    if (toolName && parseConnectorToolName(toolName)) {
+      recordTaint(state, 'connector')
+    }
+
+    if (hasBesidkaToolResult([part])) {
+      recordTaint(state, 'besidka')
+    }
+  }
+
+  return state
 }
 
 /**
@@ -3608,7 +4627,7 @@ async function prepareToolApprovalContinuation(input: {
   const generatingKey = generationInProgressKvKey(chat.id, request.messageId)
 
   if (claims.length > 0) {
-    if (await useKV().get(generatingKey)) {
+    if (await isGenerationLive(generatingKey)) {
       return { response: createGenerationPendingResponse() }
     }
 
@@ -3644,7 +4663,7 @@ async function prepareToolApprovalContinuation(input: {
     }
   }
 
-  if (await useKV().get(generatingKey)) {
+  if (await isGenerationLive(generatingKey)) {
     return { response: createGenerationPendingResponse() }
   }
 
@@ -4933,6 +5952,7 @@ interface PersistAssistantMessageResult {
   persisted: boolean
   emptyAnswerFailure: boolean
   answered: boolean
+  stopped?: boolean
 }
 
 async function persistAssistantMessageFromStream(input: {
@@ -4965,6 +5985,8 @@ async function persistAssistantMessageFromStream(input: {
   autoWebSearch?: AutoWebSearchOutcome
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
   getCodeExecutionFileIds?: () => string[]
+  getRunState?: () => Promise<GenerationRunState>
+  userMessagePublicId?: string
   pastChatChipPart?: UIMessage['parts'][number]
   skillActivationParts?: UIMessage['parts']
   getConnectorSecrets?: () => string[]
@@ -5008,12 +6030,23 @@ async function persistAssistantMessageFromStream(input: {
       responseMessage = message
     }
 
-    if (isAborted || !responseMessage) {
+    const runState = await input.getRunState?.() ?? 'current'
+    const storesStoppedReply = runState === 'stopped'
+      && !input.resume
+      && input.userMessagePublicId !== undefined
+
+    if (
+      !responseMessage
+      || runState === 'taken-over'
+      || (isAborted && !storesStoppedReply)
+      || (runState === 'stopped' && !storesStoppedReply)
+    ) {
       input.logger.set({
         attributes: {
           assistantPersist: {
             skipped: true,
             isAborted,
+            runState,
             hasResponseMessage: responseMessage !== null,
             streamErrorText,
           },
@@ -5052,7 +6085,8 @@ async function persistAssistantMessageFromStream(input: {
       normalizationInput,
     )
     const isAwaitingApproval = hasAwaitingApprovalToolPart(normalizedParts)
-    const ranFollowUpToolWithoutAnswer = input.followUpToolNames.size > 0
+    const ranFollowUpToolWithoutAnswer = !storesStoppedReply
+      && input.followUpToolNames.size > 0
       && !isAwaitingApproval
       && !hasVisibleTextAfterLastFollowUpTool({
         parts: normalizedParts,
@@ -5072,20 +6106,23 @@ async function persistAssistantMessageFromStream(input: {
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
-    const finalParts = redactConnectorToolPartsForPersistence(
-      redactSkillToolPartsForPersistence(
-        redactMemoryToolPartsForPersistence(
-          appendSkillActivationParts([
-            ...(input.skillActivationParts ?? []),
-            ...stripUndeliveredInlineDataParts(
-              partsBeforeSizeGuard,
-              input.logger,
-            ),
-          ]),
+    const persistedParts = stripUndeliveredInlineDataParts(
+      redactConnectorToolPartsForPersistence(
+        redactSkillToolPartsForPersistence(
+          redactMemoryToolPartsForPersistence(
+            appendSkillActivationParts([
+              ...(input.skillActivationParts ?? []),
+              ...partsBeforeSizeGuard,
+            ]),
+          ),
         ),
+        input.getConnectorSecrets?.() ?? [],
       ),
-      input.getConnectorSecrets?.() ?? [],
+      input.logger,
     )
+    const finalParts = storesStoppedReply
+      ? finalizeStoppedReplyParts(persistedParts)
+      : persistedParts
 
     if (!hasMeaningfulAssistantParts(finalParts)) {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
@@ -5195,6 +6232,20 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
+    const turn = input.resume || !input.userMessagePublicId
+      ? { isAnswered: false, stoppedReplies: [] }
+      : await readTurnBeforeReply({
+        db: input.db,
+        chatId: input.chatId,
+        userMessagePublicId: input.userMessagePublicId,
+        storesStoppedReply,
+        logger: input.logger,
+      })
+
+    if (turn.isAnswered) {
+      return { persisted: false, emptyAnswerFailure: false, answered: false }
+    }
+
     const assistantMessage = input.resume
       ? await updateResumedAssistantMessage({
         db: input.db,
@@ -5218,6 +6269,20 @@ async function persistAssistantMessageFromStream(input: {
         },
         publicId: input.publicId,
       })
+
+    if (assistantMessage && turn.stoppedReplies.length > 0) {
+      const replacedStoppedReplies = await deleteStoppedReplies({
+        db: input.db,
+        userId: input.userId,
+        chatId: input.chatId,
+        replies: turn.stoppedReplies,
+        logger: input.logger,
+      })
+
+      input.logger.set({
+        attributes: { assistantPersist: { replacedStoppedReplies } },
+      })
+    }
 
     if (
       assistantMessage
@@ -5265,6 +6330,16 @@ async function persistAssistantMessageFromStream(input: {
         documentIds,
         logger: input.logger,
       })
+    }
+
+    const connectorImageFileIds = collectConnectorImageFileIds(finalParts)
+
+    if (assistantMessage && connectorImageFileIds.length > 0) {
+      await linkConnectorImagesToMessage(input.db, {
+        userId: input.userId,
+        messagePublicId: input.publicId,
+        fileIds: connectorImageFileIds,
+      }, input.logger)
     }
 
     if (assistantMessage && generatedFileIds.length > 0) {
@@ -5332,6 +6407,7 @@ async function persistAssistantMessageFromStream(input: {
 
     return {
       persisted: true,
+      stopped: storesStoppedReply,
       emptyAnswerFailure: ranFollowUpToolWithoutAnswer,
       answered: !!assistantMessage
         && !streamErrorText
@@ -5423,6 +6499,85 @@ function isFailureOnlyAssistantReply(parts: UIMessage['parts']): boolean {
   return !hasMeaningfulAssistantParts(partsWithoutFailureText)
 }
 
+/**
+ * A stored reply that answers its user message: something meaningful that
+ * is neither a failure notice alone nor a reply the user stopped (both are
+ * replaced by the next send of that message).
+ */
+function isAnsweredAssistantReply(parts: UIMessage['parts']): boolean {
+  return hasMeaningfulAssistantParts(parts)
+    && !isFailureOnlyAssistantReply(parts)
+    && !hasReplyStoppedPart(parts)
+}
+
+/**
+ * Right before a send stores its reply, reads in D1 what its user message
+ * already has: a stopped reply is not stored once anything follows the user
+ * message, any other reply is not stored once an answered reply exists (a
+ * run that KV still showed as current). Otherwise it returns the turn's
+ * stopped replies, which the caller deletes only after its own reply is
+ * stored, so a failed insert never leaves the message with no reply. A D1
+ * failure is logged and lets the reply be stored.
+ */
+async function readTurnBeforeReply(input: {
+  db: ReturnType<typeof useDb>
+  chatId: string
+  userMessagePublicId: string
+  storesStoppedReply: boolean
+  logger: { set: (fields: Record<string, unknown>) => void }
+}): Promise<{
+  isAnswered: boolean
+  stoppedReplies: MessageAfterUserMessage[]
+}> {
+  try {
+    const laterMessages = await loadMessagesAfterUserMessage(input)
+
+    if (input.storesStoppedReply) {
+      if (laterMessages.length > 0) {
+        input.logger.set({
+          attributes: {
+            assistantPersist: { skipped: true, stoppedReplySuperseded: true },
+          },
+        })
+      }
+
+      return { isAnswered: laterMessages.length > 0, stoppedReplies: [] }
+    }
+
+    const turnReplies = takeTurnReplies(laterMessages)
+    const isAnswered = turnReplies.some((message) => {
+      return message.role === 'assistant'
+        && isAnsweredAssistantReply(message.parts as UIMessage['parts'])
+    })
+
+    if (isAnswered) {
+      input.logger.set({
+        attributes: {
+          assistantPersist: { skipped: true, turnAlreadyAnswered: true },
+        },
+      })
+
+      return { isAnswered: true, stoppedReplies: [] }
+    }
+
+    return {
+      isAnswered: false,
+      stoppedReplies: turnReplies.filter((message) => {
+        return message.role === 'assistant'
+          && hasReplyStoppedPart(message.parts)
+      }),
+    }
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        assistantPersist: { turnCheckError: exceptionMessage(exception) },
+      },
+    })
+
+    return { isAnswered: false, stoppedReplies: [] }
+  }
+}
+
 function findPersistedAssistantReply(
   messages: Array<{
     id: string
@@ -5450,8 +6605,7 @@ function findPersistedAssistantReply(
 
     if (
       message.role === 'assistant'
-      && hasMeaningfulAssistantParts(message.parts)
-      && !isFailureOnlyAssistantReply(message.parts)
+      && isAnsweredAssistantReply(message.parts)
     ) {
       return message
     }
@@ -5491,6 +6645,7 @@ function buildChatInstructions(input: {
   documentsContextLine?: string | null
   skillsInstructionBlock?: string | null
   connectorsInstructionBlock?: string | null
+  toolIndexBlock?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -5508,12 +6663,14 @@ function buildChatInstructions(input: {
     documentsContextLine,
     skillsInstructionBlock,
     connectorsInstructionBlock,
+    toolIndexBlock,
     codeExecutionInputNames,
     now = new Date(),
   } = input
   const instructions = [
     memoryInstructions,
     projectSystemPrompt,
+    toolIndexBlock,
     knowledgeSystemBlock,
   ]
 

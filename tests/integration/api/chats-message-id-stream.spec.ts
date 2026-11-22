@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { GENERATION_GUARD_LEASE_TTL_SECONDS } from '../../../server/utils/ai/generation-guard'
 import {
-  GENERATION_GUARD_HEARTBEAT_INTERVAL_MS,
-  GENERATION_GUARD_LEASE_TTL_SECONDS,
-} from '../../../server/utils/ai/generation-guard'
+  GENERATION_LEASE_STALE_MS,
+  GENERATION_STOP_CHECK_INTERVAL_MS,
+  generationStopKvKey,
+  serializeGenerationLease,
+} from '../../../server/utils/chats/generation-lease'
+import { REPLY_STOPPED_PART_TYPE } from '../../../shared/utils/chat-reply-stopped'
 import { IMAGE_GENERATION_FAILURE_TEXT } from '../../../shared/utils/chat-failure-text'
 
 vi.mock('~~/server/utils/legal/consent', () => {
@@ -26,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   aiLoggerEmit: vi.fn(() => null),
   trackFirstChatMessage: vi.fn(async () => undefined),
   stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
+  deleteChatMessage: vi.fn(async () => undefined),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -175,6 +180,10 @@ vi.mock('~~/server/utils/analytics/chat-activation', () => ({
   trackFirstChatMessage: mocks.trackFirstChatMessage,
 }))
 
+vi.mock('~~/server/utils/chats/lifecycle', () => ({
+  deleteChatMessage: mocks.deleteChatMessage,
+}))
+
 vi.mock('~~/server/utils/chats/share', () => ({
   getActiveShareForChat: mocks.getActiveShareForChat,
   syncChatShareFiles: mocks.syncChatShareFiles,
@@ -199,7 +208,20 @@ function createMessage(text: string) {
   }
 }
 
+function createSelectChain(rows: () => unknown[]) {
+  const chain: Record<string, unknown> = {
+    from: () => chain,
+    where: () => chain,
+    orderBy: () => chain,
+    limit: async () => rows(),
+    then: (resolve: (value: unknown[]) => unknown) => resolve(rows()),
+  }
+
+  return chain
+}
+
 function createDb() {
+  const selectRows = { current: [] as unknown[] }
   const insertValues = vi.fn()
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
@@ -254,12 +276,14 @@ function createDb() {
       },
       insert: insertCall,
       transaction,
+      select: vi.fn(() => createSelectChain(() => selectRows.current)),
       update: vi.fn(() => {
         return {
           set: updateSet,
         }
       }),
     },
+    selectRows,
     insertValues,
     insertGet,
     transaction,
@@ -269,9 +293,16 @@ function createDb() {
 }
 
 function createKv(isGenerating = false) {
-  const get = vi.fn(async () => (isGenerating ? '1' : null))
-  const put = vi.fn(async () => undefined)
-  const remove = vi.fn(async () => undefined)
+  const store = new Map<string, string>()
+  const get = vi.fn(async (key: string) => {
+    return store.get(key) ?? (isGenerating ? '1' : null)
+  })
+  const put = vi.fn(async (key: string, value: string) => {
+    store.set(key, value)
+  })
+  const remove = vi.fn(async (key: string) => {
+    store.delete(key)
+  })
 
   return {
     kv: { get, put, delete: remove },
@@ -1056,7 +1087,10 @@ describe('chat stream message ids', () => {
 
     await response.ready
 
-    expect(waitUntil).toHaveBeenCalledTimes(2)
+    expect(waitUntil).toHaveBeenCalledTimes(3)
+    await expect(Promise.all(
+      waitUntil.mock.calls.map(([promise]) => promise),
+    )).resolves.toBeDefined()
     expect(sendPushNotificationToUserMock).toHaveBeenCalledWith(
       db,
       1,
@@ -1269,7 +1303,7 @@ describe('chat stream message ids', () => {
 
     expect(put).toHaveBeenCalledWith(
       'chat-generating:chat-1:message-1',
-      '1',
+      expect.stringContaining('"runId"'),
       { expirationTtl: GENERATION_GUARD_LEASE_TTL_SECONDS },
     )
     expect(remove).toHaveBeenCalledWith('chat-generating:chat-1:message-1')
@@ -1298,7 +1332,7 @@ describe('chat stream message ids', () => {
     await response.ready
 
     const heartbeatCallIndex = setIntervalSpy.mock.calls.findIndex((call) => {
-      return call[1] === GENERATION_GUARD_HEARTBEAT_INTERVAL_MS
+      return call[1] === GENERATION_STOP_CHECK_INTERVAL_MS
     })
     const heartbeatTimer
       = setIntervalSpy.mock.results[heartbeatCallIndex]?.value
@@ -1360,6 +1394,357 @@ describe('chat stream message ids', () => {
     expect(response.writer.write).toHaveBeenCalledWith({ type: 'finish' })
     expect(mocks.generatedMessageIds).toHaveLength(0)
   })
+
+  describe('a lease left by a stopped or dead run', () => {
+    async function sendWithLease(
+      lease: string,
+      extra: Record<string, string>,
+      options: {
+        body?: Record<string, unknown>
+        messages?: unknown[]
+        rivalRunId?: string
+      } = {},
+    ) {
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+      const { kv, put } = createKv()
+
+      await kv.put('chat-generating:chat-1:message-1', lease)
+
+      if (options.rivalRunId) {
+        const rivalLease = serializeGenerationLease({
+          runId: options.rivalRunId,
+          renewedAt: Date.now(),
+        })
+        const writeLease = put.getMockImplementation()!
+
+        put.mockImplementation(async (key: string, value: string) => {
+          await writeLease(key, value)
+
+          if (key === 'chat-generating:chat-1:message-1') {
+            await writeLease(key, rivalLease)
+          }
+        })
+      }
+
+      for (const [key, value] of Object.entries(extra)) {
+        await kv.put(key, value)
+      }
+
+      db.query.chats.findFirst.mockResolvedValue({
+        id: 'chat-1',
+        projectId: null,
+        project: null,
+        messages: options.messages ?? [createPersistedUserMessage('Hello')],
+      })
+      vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useKV', () => kv)
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessage('Hello')],
+          ...options.body,
+        },
+      } as any)
+
+      await response.ready
+
+      return { response, insertValues }
+    }
+
+    function isPendingResponse(response: any): boolean {
+      return response.writer.write.mock.calls.some(([chunk]: any[]) => {
+        return chunk?.type === 'data-generation-pending'
+      })
+    }
+
+    it('takes over the lease of a run the user stopped', async () => {
+      const { response } = await sendWithLease(
+        serializeGenerationLease({ runId: 'run-old', renewedAt: Date.now() }),
+        { [generationStopKvKey('run-old')]: '1' },
+      )
+
+      expect(isPendingResponse(response)).toBe(false)
+      expect(mocks.generatedMessageIds.length).toBeGreaterThan(0)
+    })
+
+    it('takes over the run the stop route named, before KV shows the stop',
+      async () => {
+        const { response } = await sendWithLease(
+          serializeGenerationLease({
+            runId: '6f0c6b38-4f7e-4d8e-9a3c-1f2b3c4d5e6f',
+            renewedAt: Date.now(),
+          }),
+          {},
+          { body: { stoppedRunId: '6f0c6b38-4f7e-4d8e-9a3c-1f2b3c4d5e6f' } },
+        )
+
+        expect(isPendingResponse(response)).toBe(false)
+        expect(mocks.generatedMessageIds.length).toBeGreaterThan(0)
+      })
+
+    it('does not take over a live run with a stopped id of another run',
+      async () => {
+        const { response } = await sendWithLease(
+          serializeGenerationLease({ runId: 'run-live', renewedAt: Date.now() }),
+          {},
+          { body: { stoppedRunId: '6f0c6b38-4f7e-4d8e-9a3c-1f2b3c4d5e6f' } },
+        )
+
+        expect(isPendingResponse(response)).toBe(true)
+        expect(mocks.generatedMessageIds).toHaveLength(0)
+      })
+
+    it('gives way when another retry took the same stopped run over',
+      async () => {
+        const { response } = await sendWithLease(
+          serializeGenerationLease({ runId: 'run-old', renewedAt: Date.now() }),
+          { [generationStopKvKey('run-old')]: '1' },
+          { rivalRunId: 'run-rival' },
+        )
+
+        expect(isPendingResponse(response)).toBe(true)
+        expect(mocks.streamTextOptions).toHaveLength(0)
+      })
+
+    it('takes over a lease whose run missed its heartbeat window', async () => {
+      const { response } = await sendWithLease(
+        serializeGenerationLease({
+          runId: 'run-dead',
+          renewedAt: Date.now() - GENERATION_LEASE_STALE_MS - 1_000,
+        }),
+        {},
+      )
+
+      expect(isPendingResponse(response)).toBe(false)
+    })
+
+    it('refuses a second tab while the first run is live', async () => {
+      const { response } = await sendWithLease(
+        serializeGenerationLease({ runId: 'run-live', renewedAt: Date.now() }),
+        {},
+      )
+
+      expect(isPendingResponse(response)).toBe(true)
+      expect(mocks.generatedMessageIds).toHaveLength(0)
+    })
+
+    it('still waits for a run that renewed a minute ago', async () => {
+      const { response } = await sendWithLease(
+        serializeGenerationLease({
+          runId: 'run-slow-cache',
+          renewedAt: Date.now() - 60_000,
+        }),
+        {},
+      )
+
+      expect(isPendingResponse(response)).toBe(true)
+    })
+
+    it('retries a stopped reply instead of replaying it, and leaves it out '
+      + 'of the history', async () => {
+      const { response } = await sendWithLease(
+        serializeGenerationLease({ runId: 'run-old', renewedAt: Date.now() }),
+        { [generationStopKvKey('run-old')]: '1' },
+        {
+          messages: [
+            createPersistedUserMessage('Hello'),
+            {
+              id: 2,
+              publicId: 'assistant-stopped',
+              role: 'assistant' as const,
+              parts: [
+                { type: 'text', text: 'Half an answ' },
+                { type: REPLY_STOPPED_PART_TYPE, data: { stoppedAt: 'x' } },
+              ],
+              tools: [],
+              reasoning: 'off' as const,
+              createdAt: new Date(),
+            },
+          ],
+        },
+      )
+
+      expect(isPendingResponse(response)).toBe(false)
+      expect(mocks.generatedMessageIds.length).toBeGreaterThan(0)
+
+      const sentMessages = JSON.stringify(mocks.streamTextOptions[0]?.messages)
+
+      expect(sentMessages).not.toContain('Half an answ')
+    })
+  })
+
+  describe('a run the user stopped', () => {
+    async function sendStoppedRun(selectRows: unknown[] = []) {
+      const handler = await getHandler()
+      const { db, insertValues, selectRows: rows } = createDb()
+      const { kv, get } = createKv()
+
+      rows.current = selectRows
+      get.mockImplementation(async (key: string) => {
+        return key.startsWith('chat-generation-stop:') ? '1' : null
+      })
+      mocks.uiMessageStreamChunks = [
+        { type: 'start', messageId: 'assistant-1' },
+        { type: 'text-start', id: 'text-1' },
+        { type: 'text-delta', id: 'text-1', delta: 'Half an answ' },
+        { type: 'abort', reason: 'stopped-by-user' },
+      ]
+      vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useKV', () => kv)
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessage('Hello')],
+        },
+      } as any)
+
+      await response.ready
+
+      return insertValues.mock.calls
+        .map(([payload]) => payload)
+        .filter(payload => payload.role === 'assistant')
+    }
+
+    it('stores what it streamed as a stopped reply', async () => {
+      const assistantInserts = await sendStoppedRun()
+
+      expect(assistantInserts).toHaveLength(1)
+      expect(assistantInserts[0].parts).toEqual([
+        expect.objectContaining({ type: 'text', text: 'Half an answ' }),
+        expect.objectContaining({ type: REPLY_STOPPED_PART_TYPE }),
+      ])
+    })
+
+    it('stores nothing when a retry already answered the message', async () => {
+      const assistantInserts = await sendStoppedRun([{
+        id: 'later-row',
+        publicId: 'later-row',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Fresh answer' }],
+      }])
+
+      expect(assistantInserts).toHaveLength(0)
+    })
+  })
+
+  describe('a retry after a stopped reply', () => {
+    const stoppedRow = {
+      id: 'stopped-row',
+      publicId: 'assistant-stopped',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Half an answ' },
+        { type: REPLY_STOPPED_PART_TYPE, data: { stoppedAt: 'x' } },
+      ],
+    }
+
+    async function retry(failInsert: boolean) {
+      const handler = await getHandler()
+      const { db, insertValues, insertGet, selectRows } = createDb()
+      const order: string[] = []
+
+      selectRows.current = [stoppedRow]
+      insertValues.mockImplementation((payload: { role?: string }) => {
+        const get = async () => {
+          if (payload.role === 'assistant') {
+            if (failInsert) {
+              throw new Error('D1 write failed')
+            }
+
+            order.push('insert')
+          }
+
+          return await insertGet()
+        }
+
+        return {
+          returning: () => ({ get }),
+          onConflictDoNothing: () => ({ returning: () => ({ get }) }),
+        }
+      })
+      mocks.deleteChatMessage.mockImplementation(async () => {
+        order.push('delete')
+      })
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessage('Hello')],
+        },
+      } as any)
+
+      await Promise.resolve(response.ready).catch(() => undefined)
+
+      return { order, insertValues }
+    }
+
+    it('deletes the stopped reply only after its own reply is stored',
+      async () => {
+        const { order } = await retry(false)
+
+        expect(order.at(-1)).toBe('delete')
+        expect(order.indexOf('insert')).toBeLessThan(order.indexOf('delete'))
+        expect(mocks.deleteChatMessage).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.anything(),
+          'chat-1',
+          'assistant-stopped',
+          expect.anything(),
+        )
+      })
+
+    it('keeps the stopped reply when its own reply could not be stored',
+      async () => {
+        await retry(true)
+
+        expect(mocks.deleteChatMessage).not.toHaveBeenCalled()
+      })
+  })
+
+  it('stores no second reply when D1 already holds an answer for the message',
+    async () => {
+      const handler = await getHandler()
+      const { db, insertValues, selectRows } = createDb()
+
+      selectRows.current = [{
+        id: 'answer-row',
+        publicId: 'answer-row',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Answer of the run that took over' }],
+      }]
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessage('Hello')],
+        },
+      } as any)
+
+      await response.ready
+
+      const assistantInserts = insertValues.mock.calls.filter(
+        ([payload]) => payload.role === 'assistant',
+      )
+
+      expect(assistantInserts).toHaveLength(0)
+    })
 
   it('does not insert assistant row when the stream is aborted', async () => {
     const handler = await getHandler()

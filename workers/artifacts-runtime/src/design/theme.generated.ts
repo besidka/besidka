@@ -22,7 +22,7 @@ export const BESIDKA_THEME_CSS = `@plugin "daisyui/theme" {
   --color-info: var(--color-sky-700);
   --color-info-content: var(--color-sky-100);
   --color-success: var(--color-emerald-700);
-  --color-success-content: var(--color-white);
+  --color-success-content: var(--color-emerald-50);
   --color-warning: var(--color-amber-700);
   --color-warning-content: var(--color-amber-100);
   --color-error: var(--color-red-700);

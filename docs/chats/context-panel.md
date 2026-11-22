@@ -27,6 +27,14 @@ slot 5.
   User menu (`Sidebar/AuthCta.vue`). This is an owner-directed exception to
   the "User menu holds only Security and API keys" rule, for these two global
   toggles only. On other pages they stay in ⋯ More.
+- In an installed PWA (`display-mode: standalone`, or iOS
+  `navigator.standalone`; `useStandaloneDisplay()`) an owned chat's panel also
+  has a **Copy URL** action (`useCurrentUrlCopy()` copies the full URL of the
+  route). An iOS home-screen app has no URL bar, so the chat slug was
+  unreachable. A floating URL chip on the nav pill was tried and removed on
+  2026-11-20: the owner did not want it, and on phones it covered the
+  composer's tools button. Pair the action with `get_debug_info`
+  (`docs/besidka-tools.md`, "Debug info").
 - Branch, Share and Don't-use-for-memory left ⋯ More; they live in the panel
   header now.
 
@@ -40,9 +48,28 @@ slot 5.
   (links to `/chats/projects/<id>`), chat total cost (`formatMessageCost`, `~`
   when estimated, the same total the message menu shows), a Shared badge, the
   memory-excluded badge, and the actions Branch, Share (opens `ChatShareModal`),
-  Pin / Unpin and the memory exclusion toggle (same composable, copy and
-  confirmation as before). Shared pages show Branch only when `allowBranch` is
-  on.
+  Pin / Unpin, the memory exclusion toggle (same composable, copy and
+  confirmation as before) and **Copy debug info** (owned chats only). Shared
+  pages show Branch only when `allowBranch` is on.
+- **Copy debug info**: one click copies a plain-text report of ids and
+  statuses for support (chat slug and URL, newest 10 messages with model,
+  status, tool counts and failure refs, connectors, features, build id, the
+  generation guard state, the contact line). It never contains message text,
+  tool input or output, keys, tokens or connector addresses beyond the host.
+  `useChatDebugInfo()` (`app/composables/chat-debug-info.ts`) fetches
+  `GET /api/v1/chats/[slug]/support-info` and writes it with
+  `navigator.clipboard.write()` and a `ClipboardItem` that holds the fetch
+  promise, so iOS Safari still counts the write as part of the tap (a plain
+  `writeText` after the await is refused there); without `ClipboardItem` it
+  falls back to `writeText` (also tried once when the item write fails). On
+  success the button reads "Copied" with a check
+  for 2 seconds (like the PWA URL chip, with a screen-reader status); if the
+  browser still refuses, an error toast appears and the report is shown in a
+  read-only textarea that selects itself on focus, with a Hide button; the
+  textarea is also cleared when you move to another chat. Connectors show only
+  when the `connectors` feature is active. The same report is the
+  `get_debug_info` Besidka and MCP tool (`docs/besidka-tools.md`, "Debug
+  info"), which needs Labs flags; this route does not.
 - **Pin / Unpin** (BES-362, owned chats only): `useChatPin()`
   (`app/composables/chat-pin.ts`) posts to the existing
   `POST /api/v1/chats/history/pin` with the chat `id` that the context
@@ -53,7 +80,12 @@ slot 5.
   `setHistoryChatPinnedBySlug()` moves the chat between History's Pinned and
   chat lists in every loaded cache entry; a chat that is not loaded yet appears
   when History next refreshes on mount. The search modal reloads its Recent
-  list on every open. In the other direction, `setHistoryChatPinned()` (the
+  list on every open; on the first open after sign-in it reserves the space
+  with a three-row skeleton (`search-recent-skeleton`, outside the keyboard
+  options) so the groups below do not jump, swaps in the rows at the same
+  height, and collapses the skeleton over 200 ms when there are no recent
+  chats or the request fails. Later opens show the cached rows at once.
+  In the other direction, `setHistoryChatPinned()` (the
   search modal's pin toggle) also patches the panel's cached context, so a pin
   made in quick search shows in the panel without a reload. Icons match
   History and quick search: `lucide:pin` to pin, `lucide:pin-off` to unpin.

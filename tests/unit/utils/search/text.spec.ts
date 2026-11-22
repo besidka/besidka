@@ -14,6 +14,17 @@ describe('extractMessageSearchText', () => {
     expect(extractMessageSearchText({})).toBe('')
   })
 
+  it('indexes the messages of a built-in command as an empty body', () => {
+    expect(extractMessageSearchText([
+      { type: 'data-command-invocation', data: { command: 'stats' } },
+      { type: 'text', text: '7d' },
+    ])).toBe('')
+    expect(extractMessageSearchText([
+      { type: 'data-command-report', data: { command: 'cost' } },
+      { type: 'text', text: '```text\nChat cost (estimated)\n```' },
+    ])).toBe('')
+  })
+
   it('keeps only text parts and joins them with a newline', () => {
     const parts = [
       { type: 'text', text: 'Hello world' },

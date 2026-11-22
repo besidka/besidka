@@ -18,7 +18,7 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  ├─ preview-build.yml (pull_request, unprivileged)               │
 │  │   ├─ gate (PR open? build or reuse?)                          │
 │  │   ├─ static | unit | integration | build (full suite)         │
-│  │   ├─ e2e x3 shards (after build)                              │
+│  │   ├─ e2e x6 shards (after build)                              │
 │  │   └─ summary (PR comment + pending deploy status)             │
 │  │                                                               │
 │  ├─ scripts-check.yml (only when scripts/ or their tests change) │
@@ -40,7 +40,7 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  └─ production.yml                                               │
 │      ├─ gate (reuse the merged PR's full-suite result?)          │
 │      ├─ static | unit | integration (skipped when reused)        │
-│      ├─ build (always) → e2e x3 shards (skipped when reused)     │
+│      ├─ build (always) → e2e x6 shards (skipped when reused)     │
 │      ├─ deploy job (main only, after all of the above)           │
 │      │   Migrates the DBs and deploys main's own build           │
 │      │                                                           │
@@ -88,7 +88,7 @@ The jobs form a parallel graph instead of one long serial job:
 gate ─┬─ static ───────────────────────────────┐
       ├─ unit ─────────────────────────────────┤
       ├─ integration ──────────────────────────┼─ summary
-      └─ build ─── e2e (shard 1/3, 2/3, 3/3) ──┘
+      └─ build ─── e2e (shards 1/6 to 6/6) ───┘
 ```
 
 1. `gate` checks the PR is still open, then runs
@@ -109,8 +109,8 @@ gate ─┬─ static ───────────────────�
 4. `build` builds the application and uploads the `preview-build` and
    `preview-drizzle` artifacts. The `preview-drizzle` artifact holds the
    committed `.drizzle` directory; nothing generates migrations in CI
-5. `e2e` runs after `build` as three parallel shards of the full suite
-   (`playwright test --shard=i/3`). Each shard downloads the
+5. `e2e` runs after `build` as six parallel shards of the full suite
+   (`playwright test --shard=i/6`). Each shard downloads the
    `preview-build` artifact and has its own `wrangler dev`, local D1 and
    `auth.setup` user, so shards never share state. `workers` stays at 1 inside
    a shard because most specs share the single `auth.setup` user. Every shard
@@ -221,7 +221,7 @@ form a parallel graph:
 gate ─┬─ static ───────────────────┐
       ├─ unit ─────────────────────┤
       ├─ integration ──────────────┼─ deploy ─┬─ indexnow
-      ├─ build ─── e2e (3 shards) ─┘          └─ deploy-preview ─┐
+      ├─ build ─── e2e (6 shards) ─┘          └─ deploy-preview ─┐
       └─ playwright-cache                                       └─ cleanup
 ```
 
@@ -276,8 +276,8 @@ Playwright version, and a new PR branch can only restore the cache that `main`
 saved. It is `continue-on-error`, so a failed install never reddens the run.
 
 **e2e**: After a successful `build`, and skipped with the other test jobs when
-`gate` outputs `skip-tests=true`, three parallel shards of the full Playwright
-suite (`playwright test --shard=i/3`), each with its own `wrangler dev`, local
+`gate` outputs `skip-tests=true`, six parallel shards of the full Playwright
+suite (`playwright test --shard=i/6`), each with its own `wrangler dev`, local
 D1 and `auth.setup` user. Each shard downloads the `preview-build` artifact, so
 E2E tests the exact bundle that `deploy` ships. Shards upload
 `playwright-report-<i>` and, on failure, `wrangler-logs-<i>`.

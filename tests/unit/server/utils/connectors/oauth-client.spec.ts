@@ -143,6 +143,54 @@ describe('connector OAuth client', () => {
       })).rejects.toMatchObject({ code: 'CONNECTOR_OAUTH_REGISTRATION_FAILED' })
     })
 
+    it('says so when the server does not approve the redirect address',
+      async () => {
+        const logger = { set: vi.fn() }
+
+        fetchMock.mockResolvedValue(json({
+          error: 'invalid_redirect_uri',
+          error_description: 'The provided redirect URIs are not approved',
+        }, 400))
+
+        await expect(registerDynamicClient({
+          metadata,
+          clientMetadata: buildConnectorClientMetadata('https://besidka.com'),
+          resource: 'https://mcp.example.com/mcp',
+          logger,
+        })).rejects.toMatchObject({
+          code: 'CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED',
+        })
+        expect(logger.set).toHaveBeenCalledWith({
+          attributes: {
+            connectors: {
+              step: 'oauth-registration-refused',
+              status: 400,
+              error: 'invalid_redirect_uri',
+            },
+          },
+        })
+      })
+
+    it('never logs a crafted error code from the registration endpoint',
+      async () => {
+        const logger = { set: vi.fn() }
+
+        fetchMock.mockResolvedValue(json({
+          error: 'Bearer secret-token <script>',
+        }, 400))
+
+        await expect(registerDynamicClient({
+          metadata,
+          clientMetadata: buildConnectorClientMetadata('https://besidka.com'),
+          resource: 'https://mcp.example.com/mcp',
+          logger,
+        })).rejects.toMatchObject({
+          code: 'CONNECTOR_OAUTH_REGISTRATION_FAILED',
+        })
+        expect(JSON.stringify(logger.set.mock.calls))
+          .not.toContain('secret-token')
+      })
+
     it('never follows a redirect from the registration endpoint',
       async () => {
         fetchMock.mockResolvedValue(new Response(null, {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildConnectorCallErrorText } from '#shared/utils/connectors-errors'
 import {
   buildConnectorUsedMarkerPart,
   CONNECTOR_APPROVAL_DENIAL_TEXT,
@@ -59,7 +60,8 @@ describe('getConnectorToolCall', () => {
   it('returns null for parts that are not connector calls', () => {
     expect(getConnectorToolCall(null)).toBeNull()
     expect(getConnectorToolCall({ type: 'text', text: 'hi' })).toBeNull()
-    expect(getConnectorToolCall({ type: 'tool-mcp__a__b' })).toBeNull()
+    expect(getConnectorToolCall({ type: 'tool-mcp__a' })).toBeNull()
+    expect(getConnectorToolCall({ type: 'tool-other__a__b' })).toBeNull()
     expect(getConnectorToolCall(createPart({ toolName: 'other' }))).toBeNull()
   })
 
@@ -91,6 +93,53 @@ describe('getConnectorToolCall', () => {
       output: undefined,
       errorText: 'Timed out',
     }))).toMatchObject({ outcome: 'error', isFramed: false })
+  })
+
+  it('reads the category and reference of a failed call', () => {
+    const errorText = buildConnectorCallErrorText('auth', '7KQ2-M9XD')
+
+    expect(getConnectorToolCall(createPart({
+      state: 'output-error',
+      output: undefined,
+      errorText,
+    }))?.error).toMatchObject({
+      category: 'auth',
+      reference: '7KQ2-M9XD',
+      reason: 'the service rejected the credentials',
+    })
+    expect(getConnectorToolCall(createPart({
+      state: 'output-error',
+      output: undefined,
+      errorText: JSON.stringify({ message: errorText }),
+    }))?.error).toMatchObject({ category: 'auth' })
+  })
+
+  it('has no error line for the legacy fixed text or a successful call', () => {
+    expect(getConnectorToolCall(createPart({
+      state: 'output-error',
+      output: undefined,
+      errorText: 'The connector tool call failed.',
+    }))?.error).toBeNull()
+    expect(getConnectorToolCall(createPart())?.error).toBeNull()
+  })
+
+  it('models a static tool-<name> part like a dynamic one', () => {
+    expect(getConnectorToolCall({
+      type: 'tool-mcp__doop__list_canvases',
+      toolCallId: 'call-2',
+      state: 'output-error',
+      input: {},
+      errorText: buildConnectorCallErrorText('timeout', '7KQ2-M9XD'),
+    })).toMatchObject({
+      slug: 'doop',
+      tool: 'list_canvases',
+      outcome: 'error',
+      error: { category: 'timeout' },
+    })
+    expect(getConnectorToolCall({
+      type: 'tool-web_search',
+      state: 'output-error',
+    })).toBeNull()
   })
 
   it('reads a denial from the output sentence even though the state succeeded', () => {

@@ -75,3 +75,28 @@ export function hasGapBeforePart(
 
   return isTextMessagePart(previous) && isCardMessagePart(message, part)
 }
+
+/**
+ * `hasGapBeforePart` for every part of a message in one pass: each part is
+ * compared with the nearest earlier part that renders something.
+ */
+export function getPartGaps(
+  message: UIMessage,
+  parts: UIMessage['parts'],
+): boolean[] {
+  let previous: unknown = null
+
+  return parts.map((part) => {
+    const hasGap = previous === null
+      ? false
+      : isTextMessagePart(part)
+        ? isCardMessagePart(message, previous)
+        : isTextMessagePart(previous) && isCardMessagePart(message, part)
+
+    if (!rendersNothing(message, part)) {
+      previous = part
+    }
+
+    return hasGap
+  })
+}

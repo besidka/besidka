@@ -59,22 +59,66 @@ export async function resolveSkillCommand(input: {
     })
   }
 
-  const [taken] = await input.db.select({ id: schema.skills.id })
+  const taken = await findSkillUsingCommand({
+    db: input.db,
+    userId: input.userId,
+    command,
+    exceptSkillId: input.exceptSkillId,
+  })
+
+  if (taken) {
+    throw createSkillCommandTakenError(command, taken.name)
+  }
+
+  return command
+}
+
+/**
+ * The user's other skill that already has this command, if any. The write
+ * paths call it before they write, and again when the unique index
+ * `uq_skills_user_slash_name` refused a write that raced another one, so the
+ * error can name that skill.
+ */
+export async function findSkillUsingCommand(input: {
+  db: DbClient
+  userId: number
+  command: string
+  exceptSkillId?: string
+}): Promise<{ id: string, name: string } | null> {
+  const [taken] = await input.db.select({
+    id: schema.skills.id,
+    name: schema.skills.name,
+  })
     .from(schema.skills)
     .where(and(
       eq(schema.skills.userId, input.userId),
-      eq(schema.skills.slashName, command),
+      eq(schema.skills.slashName, input.command),
       input.exceptSkillId
         ? ne(schema.skills.id, input.exceptSkillId)
         : undefined,
     ))
     .limit(1)
 
-  if (taken) {
-    throw createSkillCommandTakenError(command)
-  }
+  return taken ?? null
+}
 
-  return command
+/**
+ * The `command-taken` error for a write the unique index refused, naming
+ * the skill that won the race when it can still be read.
+ */
+export async function createRacedCommandTakenError(input: {
+  db: DbClient
+  userId: number
+  command: string
+  exceptSkillId?: string
+}) {
+  try {
+    const taken = await findSkillUsingCommand(input)
+
+    return createSkillCommandTakenError(input.command, taken?.name ?? null)
+  } catch {
+    return createSkillCommandTakenError(input.command, null)
+  }
 }
 
 /**
@@ -167,7 +211,12 @@ export async function updateSkillSettings(input: {
       .returning()
   } catch (exception) {
     if (findUniqueViolation(exception)?.includes('slash_name')) {
-      throw createSkillCommandTakenError(changes.slashName ?? '')
+      throw await createRacedCommandTakenError({
+        db,
+        userId,
+        command: changes.slashName ?? '',
+        exceptSkillId: skill.id,
+      })
     }
 
     throw exception

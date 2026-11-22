@@ -10,7 +10,7 @@
       @close="onClose"
     >
       <div
-        class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3 [--text-file-sheet-bottom-padding:max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))] max-sm:pb-[var(--text-file-sheet-bottom-padding)]"
+        class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3 [--text-file-sheet-bottom-padding:var(--sheet-bottom-padding)] max-sm:pb-[var(--text-file-sheet-bottom-padding)]"
         :style="sheetBoxStyle"
         data-testid="text-file-modal-box"
       >

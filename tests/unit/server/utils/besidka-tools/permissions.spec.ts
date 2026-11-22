@@ -116,21 +116,22 @@ describe('Besidka tool permissions', () => {
       .every(entry => entry.mode === 'ask')).toBe(true)
   })
 
-  it('never stores "allow" for the ask-every-time tier', async () => {
+  it('stores "allow" for the ask-every-time tier (owner decision, '
+    + '2026-11-20)', async () => {
     const [askEveryTime] = listChatExposedBesidkaTools('ask-every-time')
 
-    expect((await failureOf(setBesidkaToolPermissions(
+    await setBesidkaToolPermissions(
       userId,
       { tool: askEveryTime!.name },
       'allow',
       testDb.db,
-    ))).status).toBe(400)
-    expect((await failureOf(setBesidkaToolPermissions(
+    )
+
+    expect(await resolveBesidkaPermissionMode(
       userId,
-      { tier: 'ask-every-time' },
-      'allow',
-      testDb.db,
-    ))).status).toBe(400)
+      askEveryTime!.name,
+      { db: testDb.db },
+    )).toBe('allow')
 
     await setBesidkaToolPermissions(
       userId,
@@ -160,23 +161,19 @@ describe('Besidka tool permissions', () => {
     }
   })
 
-  it('reads a stored "allow" on an ask-every-time tool as "ask"', async () => {
-    const [askEveryTime] = listChatExposedBesidkaTools('ask-every-time')
+  it('reads a stored "allow" on an ask-every-time tool as "allow"',
+    async () => {
+      const [askEveryTime] = listChatExposedBesidkaTools('ask-every-time')
 
-    await testDb.db.insert(schema.besidkaToolPermissions).values({
-      userId,
-      toolName: askEveryTime!.name,
-      mode: 'allow',
+      await testDb.db.insert(schema.besidkaToolPermissions).values({
+        userId,
+        toolName: askEveryTime!.name,
+        mode: 'allow',
+      })
+
+      expect((await listBesidkaToolPermissions(userId, testDb.db))
+        .find(entry => entry.name === askEveryTime!.name)?.mode).toBe('allow')
     })
-
-    expect(await resolveBesidkaPermissionMode(
-      userId,
-      askEveryTime!.name,
-      { db: testDb.db },
-    )).toBe('ask')
-    expect((await listBesidkaToolPermissions(userId, testDb.db))
-      .find(entry => entry.name === askEveryTime!.name)?.mode).toBe('ask')
-  })
 
   describe('resolveBesidkaPermissionMode', () => {
     it('defaults to "ask", reads the stored mode and accepts the chat name',

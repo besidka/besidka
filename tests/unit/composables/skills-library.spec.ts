@@ -2,6 +2,7 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildSkillSourceOptions,
+  buildUsedSkillCommands,
   estimateSkillCatalogTokens,
   filterSkills,
   formatSkillSource,
@@ -31,6 +32,14 @@ const counts = {
 }
 
 describe('skills-library helpers', () => {
+  it('maps the commands of the other skills to their names', () => {
+    expect(buildUsedSkillCommands([
+      { id: 'a', name: 'first', command: 'run' },
+      { id: 'b', name: 'second', command: null },
+      { id: 'c', name: 'third', command: 'go' },
+    ], 'c')).toEqual(new Map([['run', 'first']]))
+  })
+
   it('lists only the source groups the user has, after All sources', () => {
     expect(buildSkillSourceOptions(counts)).toEqual([
       { value: 'all', label: 'All sources', count: 5 },

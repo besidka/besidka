@@ -55,7 +55,23 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
       - dependency-name: "nuxt-studio"
-        versions: ["1.8.0"]
+        versions: [">1.7.0"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@stylistic/eslint-plugin"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "msw"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "nuxt-email-renderer"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vite-pwa/nuxt"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vue-router"
+        versions: [">=5.5.0"]
+      - dependency-name: "@nuxtjs/color-mode"
+        versions: [">=4.1.0"]
     labels:
       - "dependencies"
     commit-message:

@@ -70,7 +70,7 @@
           tabindex="-1"
           autofocus
           data-testid="models-picker-sheet-box"
-          class="modal-box flex flex-col h-[85dvh] p-0 overflow-hidden rounded-t-box rounded-b-none outline-none [--models-sheet-bottom-padding:max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))]"
+          class="modal-box flex flex-col h-[85dvh] p-0 overflow-hidden rounded-t-box rounded-b-none outline-none [--models-sheet-bottom-padding:var(--sheet-bottom-padding)]"
           :style="sheetBoxStyle"
         >
           <div class="shrink-0 px-3 pt-2">

@@ -19,6 +19,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 
 const {
   claimApproval,
+  expireUnfinishedClaims,
   findClaim,
   isClaimLeaseExpired,
   markClaimDone,
@@ -346,5 +347,37 @@ describe('tool approval claims', () => {
       expect(await sweepToolApprovalClaims({ db: testDb.db, now: NOW }))
         .toBe(0)
     })
+  })
+
+  describe('expireUnfinishedClaims', () => {
+    it('ends the lease of claimed calls only, for the owner only',
+      async () => {
+        await claimApproval(testDb.db, 'approval_running', owner)
+        await claimApproval(testDb.db, 'approval_done', owner)
+        await markClaimDone(testDb.db, 'approval_done', userId)
+
+        expect(await expireUnfinishedClaims(
+          testDb.db,
+          ['approval_running', 'approval_done'],
+          otherUserId,
+          NOW,
+        )).toBe(0)
+        expect(await expireUnfinishedClaims(
+          testDb.db,
+          ['approval_running', 'approval_done'],
+          userId,
+          NOW,
+        )).toBe(1)
+
+        const running = await findClaim(testDb.db, 'approval_running', userId)
+        const done = await findClaim(testDb.db, 'approval_done', userId)
+
+        expect(isClaimLeaseExpired(running!, NOW)).toBe(true)
+        expect(done!.status).toBe('done')
+        expect(await touchClaim(testDb.db, 'approval_running', userId, NOW))
+          .toBe(false)
+        expect(await expireUnfinishedClaims(testDb.db, [], userId, NOW))
+          .toBe(0)
+      })
   })
 })

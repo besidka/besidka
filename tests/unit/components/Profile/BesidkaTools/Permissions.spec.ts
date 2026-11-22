@@ -55,15 +55,36 @@ function seedTools(overrides: Partial<Record<string, ToolRow['mode']>> = {}) {
   }
 }
 
-async function selectValue(
-  wrapper: Awaited<ReturnType<typeof mountSuspended>>,
-  testId: string,
-  value: string,
-) {
+type Wrapper = Awaited<ReturnType<typeof mountSuspended>>
+
+async function selectValue(wrapper: Wrapper, testId: string, value: string) {
   const select = wrapper.get(`[data-testid="${testId}"]`)
 
   await select.setValue(value)
   await flushPromises()
+}
+
+function toolRow(wrapper: Wrapper, name: string) {
+  return wrapper.get(
+    `[data-testid="tool-permissions-row"][data-tool-name="${name}"]`,
+  )
+}
+
+function checkedMode(wrapper: Wrapper, name: string) {
+  return toolRow(wrapper, name)
+    .get('[role="radio"][aria-checked="true"]')
+    .attributes('data-mode')
+}
+
+async function chooseMode(wrapper: Wrapper, name: string, mode: string) {
+  await toolRow(wrapper, name)
+    .get(`[data-testid="tool-permission-option-${mode}"]`)
+    .trigger('click')
+  await flushPromises()
+}
+
+function groupSelect(wrapper: Wrapper, tier: string) {
+  return wrapper.get(`[data-testid="tool-permissions-group-select-${tier}"]`)
 }
 
 enableAutoUnmount(afterEach)
@@ -83,69 +104,66 @@ describe('Profile/BesidkaTools/Permissions', () => {
       const wrapper = await mountSuspended(Permissions)
 
       for (const tier of ['read', 'write', 'ask-every-time']) {
-        expect(wrapper.find(`[data-testid="besidka-tool-group-${tier}"]`)
+        expect(wrapper.find(`[data-testid="tool-permissions-group-${tier}"]`)
           .exists()).toBe(true)
       }
 
-      expect(wrapper.get('[data-testid="besidka-tool-group-read"]').text())
+      expect(wrapper.get('[data-testid="tool-permissions-group-read"]').text())
         .toContain('Read-only')
-      expect(wrapper.get('[data-testid="besidka-tool-group-write"]').text())
+      expect(wrapper.get('[data-testid="tool-permissions-group-write"]').text())
         .toContain('Write')
       expect(wrapper.get(
-        '[data-testid="besidka-tool-group-ask-every-time"]',
-      ).text()).toContain('Ask every time')
-      expect(wrapper.get('[data-testid="besidka-tool-row-list_files"]').text())
-        .toContain('list files')
+        '[data-testid="tool-permissions-group-ask-every-time"]',
+      ).text()).toContain('Delete and share')
+      expect(toolRow(wrapper, 'list_files').text()).toContain('list files')
     })
 
-  it('says when more tools are allowed than a message offers', async () => {
-    const wrapper = await mountSuspended(Permissions)
-
-    expect(wrapper.find(
-      '[data-testid="besidka-tool-permissions-over-limit"]',
-    ).exists()).toBe(false)
-
+  it('never warns about a per-message tool limit', async () => {
     tools.value = {
-      tools: Array.from({ length: 25 }, (_, index) => {
+      tools: Array.from({ length: 33 }, (_, index) => {
         return row(`tool_${index}`, 'read')
       }),
     }
-    await flushPromises()
 
-    expect(wrapper.get(
-      '[data-testid="besidka-tool-permissions-over-limit"]',
-    ).text()).toBe('Only 24 Besidka tools are offered per message; block the '
-      + 'ones you don\'t need.')
+    const wrapper = await mountSuspended(Permissions)
 
-    tools.value = {
-      tools: Array.from({ length: 25 }, (_, index) => {
-        return row(`tool_${index}`, 'read', index === 0 ? 'blocked' : 'ask')
-      }),
-    }
     await flushPromises()
 
     expect(wrapper.find(
       '[data-testid="besidka-tool-permissions-over-limit"]',
     ).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('offered per message')
   })
 
-  it('offers Always allow in Read-only and Write but not Ask every time',
+  it('offers Always allow in every group, with a warning on Delete and share',
     async () => {
       const wrapper = await mountSuspended(Permissions)
-      const optionsOf = (testId: string) => {
-        return wrapper.get(`[data-testid="${testId}"]`)
+      const optionsOf = (tier: string) => {
+        return groupSelect(wrapper, tier)
           .findAll('option')
           .map(option => option.text())
       }
 
-      expect(optionsOf('besidka-tool-group-select-read'))
+      expect(optionsOf('read'))
         .toEqual(['Blocked', 'Needs approval', 'Always allow'])
-      expect(optionsOf('besidka-tool-select-create_file'))
+      expect(optionsOf('ask-every-time'))
         .toEqual(['Blocked', 'Needs approval', 'Always allow'])
-      expect(optionsOf('besidka-tool-group-select-ask-every-time'))
-        .toEqual(['Blocked', 'Needs approval'])
-      expect(optionsOf('besidka-tool-select-delete_files'))
-        .toEqual(['Blocked', 'Needs approval'])
+      expect(toolRow(wrapper, 'create_file')
+        .get('[data-testid="tool-permission-option-allow"]')
+        .attributes('aria-disabled')).toBe('false')
+      expect(wrapper.get(
+        '[data-testid="tool-permissions-group-warning-ask-every-time"]',
+      ).text()).toContain('without asking you')
+
+      const deleteAllow = toolRow(wrapper, 'delete_files')
+        .get('[data-testid="tool-permission-option-allow"]')
+
+      expect(deleteAllow.attributes('aria-disabled')).toBe('false')
+
+      await deleteAllow.trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalled()
     })
 
   it('shows the shared mode of a group, and Custom when it is mixed',
@@ -153,16 +171,14 @@ describe('Profile/BesidkaTools/Permissions', () => {
       seedTools({ list_files: 'allow' })
 
       const wrapper = await mountSuspended(Permissions)
-      const readSelect = wrapper
-        .get('[data-testid="besidka-tool-group-select-read"]')
+      const readSelect = groupSelect(wrapper, 'read')
 
       expect((readSelect.element as HTMLSelectElement).value).toBe('custom')
       expect(readSelect.findAll('option').map(option => option.text()))
         .toContain('Custom')
-      expect((wrapper.get(
-        '[data-testid="besidka-tool-group-select-write"]',
-      ).element as HTMLSelectElement).value).toBe('ask')
-      expect(wrapper.get('[data-testid="besidka-tool-group-select-write"]')
+      expect((groupSelect(wrapper, 'write').element as HTMLSelectElement)
+        .value).toBe('ask')
+      expect(groupSelect(wrapper, 'write')
         .findAll('option').map(option => option.text()))
         .not.toContain('Custom')
     })
@@ -179,14 +195,13 @@ describe('Profile/BesidkaTools/Permissions', () => {
 
     const wrapper = await mountSuspended(Permissions)
 
-    await selectValue(wrapper, 'besidka-tool-group-select-read', 'allow')
+    await selectValue(wrapper, 'tool-permissions-group-select-read', 'allow')
 
     expect(mocks.fetch).toHaveBeenCalledWith(
       '/api/v1/besidka-tools/permissions',
       { method: 'PUT', body: { tier: 'read', mode: 'allow' } },
     )
-    expect((wrapper.get('[data-testid="besidka-tool-select-get_project"]')
-      .element as HTMLSelectElement).value).toBe('allow')
+    expect(checkedMode(wrapper, 'get_project')).toBe('allow')
   })
 
   it('saves one tool and turns its group to Custom', async () => {
@@ -201,14 +216,14 @@ describe('Profile/BesidkaTools/Permissions', () => {
 
     const wrapper = await mountSuspended(Permissions)
 
-    await selectValue(wrapper, 'besidka-tool-select-list_files', 'blocked')
+    await chooseMode(wrapper, 'list_files', 'blocked')
 
     expect(mocks.fetch).toHaveBeenCalledWith(
       '/api/v1/besidka-tools/permissions',
       { method: 'PUT', body: { tool: 'list_files', mode: 'blocked' } },
     )
-    expect((wrapper.get('[data-testid="besidka-tool-group-select-read"]')
-      .element as HTMLSelectElement).value).toBe('custom')
+    expect((groupSelect(wrapper, 'read').element as HTMLSelectElement).value)
+      .toBe('custom')
   })
 
   it('shows the change before the server answers', async () => {
@@ -220,11 +235,12 @@ describe('Profile/BesidkaTools/Permissions', () => {
 
     const wrapper = await mountSuspended(Permissions)
 
-    await wrapper.get('[data-testid="besidka-tool-select-create_file"]')
-      .setValue('blocked')
+    await toolRow(wrapper, 'create_file')
+      .get('[data-testid="tool-permission-option-blocked"]')
+      .trigger('click')
 
-    expect((wrapper.get('[data-testid="besidka-tool-group-select-write"]')
-      .element as HTMLSelectElement).value).toBe('blocked')
+    expect((groupSelect(wrapper, 'write').element as HTMLSelectElement).value)
+      .toBe('blocked')
 
     finish({
       tools: [
@@ -244,12 +260,11 @@ describe('Profile/BesidkaTools/Permissions', () => {
 
     const wrapper = await mountSuspended(Permissions)
 
-    await selectValue(wrapper, 'besidka-tool-select-create_file', 'blocked')
+    await chooseMode(wrapper, 'create_file', 'blocked')
 
     expect(mocks.error).toHaveBeenCalledTimes(1)
     expect(mocks.error.mock.calls[0]![0]).toEqual(expect.any(String))
-    expect((wrapper.get('[data-testid="besidka-tool-select-create_file"]')
-      .element as HTMLSelectElement).value).toBe('ask')
+    expect(checkedMode(wrapper, 'create_file')).toBe('ask')
   })
 
   it('shows an error with Retry when the list does not load', async () => {

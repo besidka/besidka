@@ -24,7 +24,7 @@ export const BESIDKA_TOOL_TIER_LABELS: Record<
 > = {
   'read': 'Read-only',
   'write': 'Write',
-  'ask-every-time': 'Ask every time',
+  'ask-every-time': 'Delete and share',
 }
 
 export const BESIDKA_TOOL_TIER_DESCRIPTIONS: Record<
@@ -33,7 +33,8 @@ export const BESIDKA_TOOL_TIER_DESCRIPTIONS: Record<
 > = {
   'read': 'Look things up in your Besidka data',
   'write': 'Create or change things in your Besidka data',
-  'ask-every-time': 'Delete, share or rewrite instructions. Always asks first.',
+  'ask-every-time': 'Delete, share or rewrite instructions. Asks first '
+    + 'unless you choose Always allow.',
 }
 
 export const BESIDKA_TOOL_MODE_LABELS: Record<ToolPermissionMode, string> = {
@@ -42,19 +43,18 @@ export const BESIDKA_TOOL_MODE_LABELS: Record<ToolPermissionMode, string> = {
   allow: 'Always allow',
 }
 
-const ASK_EVERY_TIME_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask']
-
 const ALL_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask', 'allow']
 
 /**
- * The modes a user may pick for a tool tier. A tool in the ask-every-time
- * tier never runs without a fresh answer, so "Always allow" is not offered
- * for it and the server refuses to store it.
+ * The modes a user may pick for a tool tier. Every tier takes all three
+ * since the owner decision of 2026-11-20: the ask-every-time tier asks by
+ * default, but the user may set it to Always allow, as on Claude's
+ * connector settings.
  */
 export function getAllowedBesidkaToolModes(
   tier: BesidkaToolPermissionTier,
 ): readonly ToolPermissionMode[] {
-  return tier === 'ask-every-time' ? ASK_EVERY_TIME_MODES : ALL_MODES
+  return BESIDKA_TOOL_TIERS.includes(tier) ? ALL_MODES : []
 }
 
 export function isBesidkaToolModeAllowed(

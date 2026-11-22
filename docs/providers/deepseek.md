@@ -264,3 +264,31 @@ Both `deepseek-flash` and `deepseek-v4-pro` now carry
   above remains unwired and its five open verification items are moot for
   search: the standalone Search API needs no second transport, no
   `@ai-sdk/anthropic`, and no reasoning/`top_p` parity work.
+
+## Queued requests and stalled streams (2026-11-20)
+
+DeepSeek's "Rate Limit & Isolation" page
+(https://api-docs.deepseek.com/quick_start/rate_limit, read 2026-11-20)
+says that while a request waits to be scheduled, a streaming request keeps
+receiving SSE `: keep-alive` comments, and the server closes the connection
+if inference has not started after 10 minutes. The AI SDK drops comments,
+so such a send produced nothing: on 2026-11-19 six `deepseek-v4-pro` sends of
+the owner's connector chats never logged `AI stream completed`, and one held
+the generation guard for over two minutes with nothing streamed.
+
+- Direct DeepSeek streams (no gateway) get `firstChunkMs` 120 s and
+  `chunkMs` 90 s on top of the tool loop's limits (`resolveStreamTimeout`
+  in `server/utils/ai/stream-stall.ts`). Reasoning deltas count as output,
+  and the tool execution between steps does not count, because the SDK
+  clears these timers at the end of each model call.
+- A first-chunk timeout ends the reply with the `provider-queued` error:
+  "The provider queued this request and did not start it", fix "The
+  provider is busy. Retry later or pick another model." The chunk timeout
+  ends it with `provider-stalled` ("The model stopped responding"), the
+  540 s total limit with `generation-time-limit`. All three are
+  `error` chunks the client shows like any failed reply; before, a timeout
+  was a silent `abort` and nothing was stored. See
+  `docs/connectors.md` section 6.6.
+- Not verified against a live queued request: the 120 s and 90 s values are
+  a judgment between "show the error early" and "let a busy queue start".
+  Revisit them with Axiom `stage: 'stream-timeout'` events.

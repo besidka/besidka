@@ -1,13 +1,13 @@
 <template>
   <div
-    ref="stepRoot"
     role="group"
-    class="js-tool-approval-step my-2.5 min-w-0 flex-1 rounded-field outline-offset-2 focus:outline-2 focus:outline-accent"
+    class="min-w-0 flex-1 rounded-box outline-offset-2 focus:outline-2 focus:outline-accent"
+    :class="isBubble ? 'js-tool-approval-step' : 'my-2.5'"
     :data-approval-id="model.approvalId"
     :data-state="state"
     :tabindex="isFocusable ? 0 : undefined"
     :aria-labelledby="titleId"
-    :aria-describedby="state === 'denied' ? undefined : reasonId"
+    :aria-describedby="state === 'denied' || isCompact ? undefined : reasonId"
     data-testid="reasoning-approval-step"
     @keydown.enter.self="onEnter"
     @keydown.esc="onEscape"
@@ -28,6 +28,22 @@
       data-testid="reasoning-approval-step-outcome"
     >
       {{ outcome }}
+    </p>
+    <p
+      v-else-if="isCompact"
+      class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-base-content/70"
+      data-testid="reasoning-approval-step-waiting"
+    >
+      <span>{{ compactText }}</span>
+      <button
+        v-if="state === 'pending' && controller"
+        type="button"
+        class="btn btn-link btn-xs min-h-6 px-0 text-base-content/70"
+        data-testid="reasoning-approval-step-review"
+        @click="controller.focusApproval(model.approvalId)"
+      >
+        Review
+      </button>
     </p>
     <template v-else>
       <p
@@ -57,7 +73,7 @@
           >· Full text in View details</span>
         </summary>
         <p
-          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-2 text-xs"
+          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-2 text-xs"
           data-testid="reasoning-approval-step-preview-text"
         >{{ clippedPreview.text }}</p>
       </details>
@@ -79,47 +95,12 @@
           >· Shown shortened</span>
         </summary>
         <pre
-          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-2 text-xs"
+          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-2 text-xs"
           data-testid="reasoning-approval-step-arguments-text"
         >{{ argumentsText }}</pre>
       </details>
       <div
-        v-if="hasButtons && isConfirmingAlways"
-        role="group"
-        :aria-labelledby="confirmId"
-        class="mt-2 grid gap-1.5 rounded-field bg-base-200 p-2"
-        data-testid="reasoning-approval-step-always-confirm"
-      >
-        <p
-          :id="confirmId"
-          class="min-w-0 break-words text-xs"
-        >
-          {{ alwaysConfirmText }}
-        </p>
-        <div class="flex flex-col gap-1.5 md:flex-row md:flex-wrap md:items-center">
-          <button
-            ref="confirmAlwaysButton"
-            type="button"
-            class="btn btn-primary btn-sm max-md:w-full"
-            :disabled="isBusy"
-            data-testid="reasoning-approval-step-always-confirm-allow"
-            @click="onConfirmAlways"
-          >
-            Always allow
-          </button>
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm max-md:w-full"
-            :disabled="isBusy"
-            data-testid="reasoning-approval-step-always-confirm-cancel"
-            @click="cancelAlways"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-      <div
-        v-else-if="hasButtons"
+        v-if="hasButtons"
         class="mt-2 flex flex-col gap-1.5 md:flex-row md:flex-wrap md:items-center"
         data-testid="reasoning-approval-step-actions"
       >
@@ -129,10 +110,10 @@
           type="button"
           class="btn btn-sm max-md:w-full"
           :class="button.remember === 'once' ? 'btn-primary' : 'btn-soft'"
-          :title="button.remember === 'chat' ? CHAT_GRANT_HINT : undefined"
+          :title="getButtonHint(button.remember)"
           :disabled="isBusy"
           :data-testid="`reasoning-approval-step-allow-${button.remember}`"
-          @click="onAllowClick(button.remember)"
+          @click="onAllow(button.remember)"
         >
           {{ button.label }}
         </button>
@@ -151,7 +132,7 @@
         class="mt-2 flex items-center gap-1.5 text-xs text-base-content/70"
         data-testid="reasoning-approval-step-sending"
       >
-        <SvgoLoader class="size-3.5 text-accent" />
+        <SvgoLoader class="size-3.5" />
         Sending your answer…
       </p>
       <div
@@ -233,11 +214,11 @@ import {
   clipApprovalPreview,
   formatApprovalArguments,
   getApprovalButtons,
-  getBesidkaAlwaysConfirmText,
+  getAlwaysAllowHint,
   isApprovalInputShortened,
 } from '~/utils/tool-approval-step'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   model: ApprovalStepModel
   state: ApprovalStepState
   title: string
@@ -248,7 +229,14 @@ const props = defineProps<{
   messageId: string
   connectorName?: string
   icon?: ReasoningStepIcon | null
-}>()
+  variant?: 'bubble' | 'step'
+  isInBubble?: boolean
+}>(), {
+  connectorName: '',
+  icon: null,
+  variant: 'bubble',
+  isInBubble: false,
+})
 
 const CHAT_GRANT_HINT = 'Runs this tool without asking in later messages '
   + 'of this chat, also after content from earlier messages.'
@@ -259,37 +247,51 @@ const sidePanel = useSidePanel()
 const isArgumentsOpen = shallowRef<boolean>(false)
 const isSubmitting = shallowRef<boolean>(false)
 const isAskAgainHintVisible = shallowRef<boolean>(false)
-const isConfirmingAlways = shallowRef<boolean>(false)
-const stepRoot = useTemplateRef<HTMLDivElement>('stepRoot')
-const confirmAlwaysButton = useTemplateRef<HTMLButtonElement>(
-  'confirmAlwaysButton',
-)
+
+const idPrefix = computed<string>(() => {
+  return `tool-approval-${props.variant}-${props.model.approvalId}`
+})
 
 const titleId = computed<string>(() => {
-  return `tool-approval-${props.model.approvalId}-title`
+  return `${idPrefix.value}-title`
 })
 
 const reasonId = computed<string>(() => {
-  return `tool-approval-${props.model.approvalId}-reason`
+  return `${idPrefix.value}-reason`
 })
 
-const confirmId = computed<string>(() => {
-  return `tool-approval-${props.model.approvalId}-always`
-})
-
-const alwaysConfirmText = computed<string>(() => {
-  if (props.model.isBesidka) {
-    return getBesidkaAlwaysConfirmText(props.model.tool)
+function getButtonHint(remember: ToolApprovalRemember): string | undefined {
+  if (remember === 'chat') {
+    return CHAT_GRANT_HINT
   }
 
-  const source = props.connectorName
-    ? `${props.model.tool} from ${props.connectorName}`
-    : props.model.tool
+  return remember === 'always'
+    ? getAlwaysAllowHint(props.model.isBesidka)
+    : undefined
+}
 
-  return `Always allow ${source}? Besidka will run it without asking in `
-    + 'every chat and in later messages, also after content from earlier '
-    + 'messages, until the tool changes. What the tool does is declared by '
-    + 'the service itself. You can remove this in the chat panel.'
+const isBubble = computed<boolean>(() => {
+  return props.variant === 'bubble'
+})
+
+const isCompact = computed<boolean>(() => {
+  return !isBubble.value && props.isInBubble
+})
+
+const compactText = computed<string>(() => {
+  if (props.state === 'pending') {
+    return 'Waiting for your approval below the message'
+  }
+
+  if (props.state === 'answered') {
+    return 'Answered. Waiting for the other answers.'
+  }
+
+  if (props.state === 'sending') {
+    return 'Sending your answer…'
+  }
+
+  return 'Could not finish. See below the message.'
 })
 
 const buttons = computed(() => {
@@ -297,7 +299,8 @@ const buttons = computed(() => {
 })
 
 const hasButtons = computed<boolean>(() => {
-  return !!controller
+  return isBubble.value
+    && !!controller
     && (props.state === 'pending' || props.state === 'sending')
 })
 
@@ -306,7 +309,7 @@ const isBusy = computed<boolean>(() => {
 })
 
 const isFocusable = computed<boolean>(() => {
-  return !!controller && props.state === 'pending'
+  return isBubble.value && !!controller && props.state === 'pending'
 })
 
 const argumentsText = computed<string>(() => {
@@ -335,30 +338,7 @@ const failureText = computed<string>(() => {
 
 watch(() => props.state, () => {
   isSubmitting.value = false
-  isConfirmingAlways.value = false
 })
-
-async function onAllowClick(remember: ToolApprovalRemember) {
-  if (remember !== 'always') {
-    await onAllow(remember)
-
-    return
-  }
-
-  isConfirmingAlways.value = true
-  await nextTick()
-  confirmAlwaysButton.value?.focus()
-}
-
-async function onConfirmAlways() {
-  await onAllow('always')
-}
-
-async function cancelAlways() {
-  isConfirmingAlways.value = false
-  await nextTick()
-  stepRoot.value?.focus()
-}
 
 async function onAllow(remember: ToolApprovalRemember) {
   if (!controller || isBusy.value) {
@@ -418,12 +398,6 @@ function onEnter(event: KeyboardEvent) {
 }
 
 function onEscape() {
-  if (isConfirmingAlways.value) {
-    cancelAlways()
-
-    return
-  }
-
   isArgumentsOpen.value = false
 }
 

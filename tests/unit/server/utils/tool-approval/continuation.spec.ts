@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { convertToModelMessages } from 'ai'
 import type { UIMessage } from 'ai'
 import {
-  TOOL_APPROVAL_DENIAL_TEXT,
+  applyRememberGrants,
   assertEndsWithApprovalResponse,
   buildResumedAssistantMessages,
   classifyDuplicateContinuation,
@@ -18,6 +18,8 @@ import type { ToolApprovalPendingRecord } from '~~/server/utils/tool-approval/kv
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { createApprovalState } from '~~/server/utils/tool-approval/state'
+import { TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
+import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 
 const claimMocks = vi.hoisted(() => ({
   markClaimDone: vi.fn(async () => true),
@@ -32,11 +34,15 @@ vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
   return { ...actual, ...claimMocks, touchClaim: vi.fn(async () => true) }
 })
 
-vi.mock('~~/server/utils/connectors/store', () => ({
-  listConnectorChatSettings: vi.fn(),
+const storeMocks = vi.hoisted(() => ({
   listConnectorToolSettings: vi.fn(),
-  upsertConnectorChatSettings: vi.fn(),
   upsertConnectorToolSettings: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/connectors/store', () => ({
+  ...storeMocks,
+  listConnectorChatSettings: vi.fn(),
+  upsertConnectorChatSettings: vi.fn(),
   recordConnectorToolCall: vi.fn(),
   settleConnectorToolCall: vi.fn(),
 }))
@@ -85,7 +91,6 @@ function pendingRecord(
       model: 'gpt-5-mini',
       gateway: null,
       reasoning: 'off',
-      toolNames: [TOOL_NAME],
       connectorIds: ['c1'],
     },
     ...overrides,
@@ -284,7 +289,7 @@ describe('decideContinuation', () => {
       denialReason: 'missing-tool',
     })
 
-    state.counters.connectorCalls = 11
+    state.counters.connectorCalls = TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN - 1
 
     const decisions = decideContinuation({
       answers: [answer, {
@@ -297,7 +302,8 @@ describe('decideContinuation', () => {
 
     expect(decisions.map(decision => decision.denialReason))
       .toEqual([null, 'over-cap'])
-    expect(state.counters.connectorCalls).toBe(11)
+    expect(state.counters.connectorCalls)
+      .toBe(TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN - 1)
   })
 
   it('carries the user note on a denial', () => {
@@ -401,6 +407,115 @@ describe('buildResumedAssistantMessages', () => {
   })
 })
 
+describe('buildResumedAssistantMessages connector images', () => {
+  const shownLine = '[image/png, 412 KB: shown to the model, not kept]'
+  const goneLine = '[image/png, 412 KB: no longer available; call the tool '
+    + 'again to see it]'
+  const framedOutput = '<untrusted_tool_result connector="doop" '
+    + `tool="get_frame_screenshot">\nFrame A\n${shownLine}\n`
+    + '</untrusted_tool_result>'
+
+  function resumed(
+    output: unknown,
+    shownAgain?: ReadonlyMap<string, ReadonlySet<number>>,
+  ) {
+    const [decision] = decideContinuation({
+      answers: [{
+        response: { approvalId: 'approval-1', approved: true, remember: 'once' },
+        record: pendingRecord(),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+
+    return buildResumedAssistantMessages({
+      messageId: 'assistant-1',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'dynamic-tool',
+          toolName: 'mcp__doop__get_frame_screenshot',
+          toolCallId: 'call-0',
+          state: 'output-available',
+          input: {},
+          output,
+        },
+        {
+          type: 'dynamic-tool',
+          toolName: TOOL_NAME,
+          toolCallId: 'call-1',
+          state: 'approval-requested',
+          input: { title: 'redacted' },
+          approval: { id: 'approval-1' },
+        },
+      ],
+      decisions: [decision!],
+      ...(shownAgain ? { shownAgain } : {}),
+    })
+  }
+
+  it('says a kept image is shown again only for the selected lines', () => {
+    const keptLine = '[image/png, 87 KB: shown to the model, kept with this '
+      + 'chat]'
+    const output = '<untrusted_tool_result connector="doop" '
+      + `tool="get_frame_screenshot">\n${keptLine}\n${keptLine}\n`
+      + `${shownLine}\n</untrusted_tool_result>`
+    const { modelMessage, storedMessage } = resumed(
+      output,
+      new Map([['call-0', new Set([1])]]),
+    )
+    const modelTool = modelMessage.parts[1] as { output: string }
+
+    expect(modelTool.output.split('\n').slice(1, 4)).toEqual([
+      '[image/png, 87 KB: kept with this chat, no longer available to the '
+      + 'model; call the tool again to see it]',
+      '[image/png, 87 KB: kept with this chat, shown to the model again]',
+      goneLine,
+    ])
+    expect((storedMessage.parts[1] as { output: string }).output)
+      .toBe(output)
+    expect(
+      (resumed(output, new Map([['call-9', new Set([0])]]))
+        .modelMessage.parts[1] as { output: string }).output,
+    ).not.toContain('shown to the model again')
+  })
+
+  it('tells the model a forwarded image is gone and keeps D1 as stored',
+    async () => {
+      const { modelMessage, storedMessage } = resumed(framedOutput)
+      const modelTool = modelMessage.parts[1] as { output: string }
+      const storedTool = storedMessage.parts[1] as { output: string }
+
+      expect(modelTool.output).toContain(goneLine)
+      expect(modelTool.output).not.toContain(shownLine)
+      expect(modelTool.output).toContain('Frame A')
+      expect(storedTool.output).toBe(framedOutput)
+
+      const modelMessages = await convertToModelMessages([
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Go' }] },
+        modelMessage,
+      ] as UIMessage[])
+
+      expect(JSON.stringify(modelMessages)).toContain(goneLine)
+      expect(() => assertEndsWithApprovalResponse(modelMessages))
+        .not.toThrow()
+    })
+
+  it('never throws on outputs that are not framed text', () => {
+    const outputs = [undefined, null, 42, { text: shownLine }, shownLine]
+
+    for (const output of outputs) {
+      expect(() => resumed(output)).not.toThrow()
+    }
+
+    const unframed = resumed(shownLine).modelMessage.parts[1] as {
+      output: string
+    }
+
+    expect(unframed.output).toBe(shownLine)
+  })
+})
+
 describe('buildResumedAssistantMessages provider metadata', () => {
   it('keeps thinking and thought signatures on the resumed turn', async () => {
     const [decision] = decideContinuation({
@@ -501,8 +616,7 @@ describe('decideContinuation with Besidka tool permissions', () => {
         summary: 'Create a file',
         taint: 'besidka',
         readSource: null,
-        alwaysGrant: null,
-        alwaysGrantWhenTainted: false,
+
         connector: null,
       },
     ]])
@@ -609,5 +723,149 @@ describe('wrapApprovedExecutions', () => {
     expect(onSettled).toHaveBeenCalledWith('call-1')
     expect(stop).toHaveBeenCalledWith('approval-1')
     expect(claimMocks.markClaimDone).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('applyRememberGrants Always allow', () => {
+  const READ_NAME = 'mcp__notion__notion-search'
+
+  function readEntries(annotations: Record<string, boolean>) {
+    return new Map<string, SendToolEntry>([[
+      READ_NAME,
+      buildConnectorApprovalEntry({
+        exposedName: READ_NAME,
+        connectorId: 'c1',
+        connectorTitle: 'Notion',
+        connectorHost: 'mcp.notion.example.com',
+        remoteToolName: 'notion-search',
+        definitionHash: HASH,
+        annotations,
+      }),
+    ]])
+  }
+
+  function setting(definitionHash = HASH) {
+    return {
+      toolName: 'notion-search',
+      definitionHash,
+      serverReadOnly: true,
+      enabled: true,
+      approval: 'ask',
+      approvedDefinitionHash: null,
+    }
+  }
+
+  async function apply(entries: Map<string, SendToolEntry>) {
+    await applyRememberGrants({
+      db: {} as never,
+      userId: 1,
+      chatPublicId: 'chat-1',
+      decisions: [{
+        approvalId: 'approval-1',
+        toolCallId: 'call-1',
+        toolName: READ_NAME,
+        approved: true,
+        remember: 'always',
+      } as never],
+      entries,
+      logger: { set: vi.fn() } as never,
+    })
+  }
+
+  it('sets a read-only tool to Always allow bound to the reviewed hash',
+    async () => {
+      storeMocks.upsertConnectorToolSettings.mockClear()
+      storeMocks.listConnectorToolSettings.mockResolvedValueOnce([setting()])
+
+      await apply(readEntries({ readOnlyHint: true }))
+
+      expect(storeMocks.upsertConnectorToolSettings).toHaveBeenCalledWith(
+        {},
+        1,
+        'c1',
+        [expect.objectContaining({
+          toolName: 'notion-search',
+          approval: 'always',
+          approvedDefinitionHash: HASH,
+        })],
+      )
+    })
+
+  it.each(['send_email', 'sendMessage', 'post-comment', 'forwardMessage',
+    'unshare_page'])('grants Always allow to %s from a chat answer (owner '
+      + 'decision, 2026-11-20)',
+  async (tool) => {
+    storeMocks.upsertConnectorToolSettings.mockClear()
+    storeMocks.listConnectorToolSettings.mockResolvedValue([{
+      ...setting(),
+      toolName: tool,
+    }])
+
+    await applyRememberGrants({
+      db: {} as never,
+      userId: 1,
+      chatPublicId: 'chat-1',
+      decisions: [{
+        approvalId: 'approval-1',
+        toolCallId: 'call-1',
+        toolName: `mcp__mail__${tool}`,
+        approved: true,
+        remember: 'always',
+      } as never],
+      entries: new Map<string, SendToolEntry>([[
+        `mcp__mail__${tool}`,
+        buildConnectorApprovalEntry({
+          exposedName: `mcp__mail__${tool}`,
+          connectorId: 'c1',
+          connectorTitle: 'Mail',
+          connectorHost: 'mcp.mail.example.com',
+          remoteToolName: tool,
+          definitionHash: HASH,
+          annotations: { readOnlyHint: true },
+        }),
+      ]]),
+      logger: { set: vi.fn() } as never,
+    })
+
+    expect(storeMocks.upsertConnectorToolSettings).toHaveBeenCalledWith(
+      {},
+      1,
+      'c1',
+      [expect.objectContaining({
+        toolName: tool,
+        approval: 'always',
+        approvedDefinitionHash: HASH,
+      })],
+    )
+    storeMocks.listConnectorToolSettings.mockReset()
+  })
+
+  it('grants a destructive tool bound to the reviewed hash', async () => {
+    storeMocks.upsertConnectorToolSettings.mockClear()
+    storeMocks.listConnectorToolSettings.mockResolvedValueOnce([setting()])
+
+    await apply(readEntries({ readOnlyHint: true, destructiveHint: true }))
+
+    expect(storeMocks.upsertConnectorToolSettings).toHaveBeenCalledWith(
+      {},
+      1,
+      'c1',
+      [expect.objectContaining({
+        approval: 'always',
+        approvedDefinitionHash: HASH,
+      })],
+    )
+  })
+
+  it('never grants a drifted definition', async () => {
+    storeMocks.upsertConnectorToolSettings.mockClear()
+    storeMocks.listConnectorToolSettings
+      .mockResolvedValue([setting('c'.repeat(64))])
+
+    await apply(readEntries({ readOnlyHint: true, destructiveHint: true }))
+    await apply(readEntries({ readOnlyHint: true }))
+
+    expect(storeMocks.upsertConnectorToolSettings).not.toHaveBeenCalled()
+    storeMocks.listConnectorToolSettings.mockReset()
   })
 })

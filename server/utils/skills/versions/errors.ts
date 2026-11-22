@@ -1,4 +1,5 @@
 import { createError } from 'evlog'
+import { formatSkillCommandTakenMessage } from '#shared/utils/skills-policy'
 
 export type SkillEditErrorCode
   = | 'skill-not-found'
@@ -117,9 +118,17 @@ export function createFilesMissingError() {
   })
 }
 
-export function createSkillCommandTakenError(command: string) {
+/**
+ * Names the other skill so the user knows where to clear the command. The
+ * name is the user's own skill name, shown only to that user; `why` stays
+ * free of it because error text ends up in logs.
+ */
+export function createSkillCommandTakenError(
+  command: string,
+  skillName: string | null,
+) {
   return createSkillEditError('command-taken', {
-    message: `/${command} is already a command`,
+    message: formatSkillCommandTakenMessage(command, skillName),
     why: 'Another of your skills already uses this command',
     fix: 'Pick another command, or clear it on the other skill first',
   })

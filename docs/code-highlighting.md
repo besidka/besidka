@@ -70,7 +70,8 @@ language, in one `loadLanguage` call, from:
 - the root's grammars;
 - `CODE_LANGUAGE_INJECTORS`: the modules whose grammars inject into the root
   in the old eager bundle (`ts-tags` for JavaScript, JSX, TypeScript and
-  Angular TS; Angular and Vue for HTML derivatives);
+  Angular TS; Angular and Vue for HTML derivatives; Vue for Markdown and
+  Pug since shiki 4.6.0);
 - `CODE_LANGUAGE_IMPLICIT_EMBEDS`: lazily embedded languages a root uses
   without naming them (inline HTML in Markdown and MDC, ESM and JSX in MDX);
 - the embedded languages the code names: fence info strings, `lang="…"`
@@ -127,7 +128,8 @@ compares the `codeToTokens` JSON byte for byte, with shiki's 500 ms per-line
 time limit off (the first line a big grammar such as C++ sees can hit it
 while its regular expressions compile, which made the old highlighter's own
 output vary between runs). Result on 2026-11-09: 4,104 comparisons, 0
-differences. It also checks that TypeScript after Vue and Markdown keeps its
+differences; again on 2026-11-21 with shiki 4.6.0, after adding the Vue
+injections into Markdown and Pug that its grammars now declare. It also checks that TypeScript after Vue and Markdown keeps its
 tagged-template colors, that `CODE_LANGUAGE_INJECTORS` matches the
 injections the eager highlighter collects (read from shiki's private
 registry fields, so a shiki upgrade that moves them fails the spec loudly),

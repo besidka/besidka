@@ -1344,36 +1344,45 @@ describe('memory send-path wiring', () => {
       mocks.activeFlags = new Set(['tool-approvals'])
     })
 
-    it('asks before a memory_write in the same step as search_chats',
-      async () => {
-        const searchCall = createToolCallChunks('call-1', 'search_chats', {
-          query: SEARCH_QUERY,
-        })
-        const writeCall = createToolCallChunks('call-2', 'memory_write', {
-          title: 'Pasta',
-        })
-        const { doStream, assistantInsert } = await runSend({
-          scenario: { settings: MEMORY_ON },
-          steps: [
-            [searchCall[0]!, writeCall[0]!, searchCall[1]!],
-            createTextChunks('Never reached.'),
-          ],
-        })
-        const parts = assistantInsert?.parts ?? []
-
-        expect(doStream).toHaveBeenCalledTimes(1)
-        expect(parts.find((part: any) => part.toolCallId === 'call-2'))
-          .toEqual(expect.objectContaining({
-            type: 'tool-memory_write',
-            state: 'approval-requested',
-          }))
-        expect(parts.find((part: any) => part.toolCallId === 'call-1'))
-          .toEqual(expect.objectContaining({ state: 'output-available' }))
-        expect(parts).toContainEqual(expect.objectContaining({
-          type: 'data-tool-approval',
-          data: expect.objectContaining({ reason: 'untrusted-output' }),
-        }))
+    it('judges a memory_write in the same step as search_chats against '
+      + 'the step start, and asks for one in the next step', async () => {
+      const searchCall = createToolCallChunks('call-1', 'search_chats', {
+        query: SEARCH_QUERY,
       })
+      const writeCall = createToolCallChunks('call-2', 'memory_write', {
+        title: 'Pasta',
+      })
+      const { doStream, assistantInsert } = await runSend({
+        scenario: { settings: MEMORY_ON },
+        steps: [
+          [searchCall[0]!, writeCall[0]!, searchCall[1]!],
+          createToolCallChunks('call-3', 'memory_write', { title: 'Soup' }),
+          createTextChunks('Never reached.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(parts.find((part: any) => part.toolCallId === 'call-1'))
+        .toEqual(expect.objectContaining({ state: 'output-available' }))
+      expect(parts.find((part: any) => part.toolCallId === 'call-2'))
+        .toEqual(expect.objectContaining({
+          type: 'tool-memory_write',
+          state: expect.stringMatching(/^output-available$/),
+        }))
+      expect(parts.find((part: any) => part.toolCallId === 'call-3'))
+        .toEqual(expect.objectContaining({
+          type: 'tool-memory_write',
+          state: 'approval-requested',
+        }))
+      expect(parts).toContainEqual(expect.objectContaining({
+        type: 'data-tool-approval',
+        data: expect.objectContaining({
+          toolCallId: 'call-3',
+          reason: 'untrusted-output',
+        }),
+      }))
+    })
 
     it('asks before a memory_write when the send requested web search',
       async () => {

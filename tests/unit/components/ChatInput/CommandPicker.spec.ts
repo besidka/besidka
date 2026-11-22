@@ -7,6 +7,7 @@ import type { ComposerCommand } from '../../../../app/utils/composer-command'
 enableAutoUnmount(afterEach)
 
 const MEETING_NOTES: ComposerCommand = {
+  kind: 'skill',
   skillId: 'skl1',
   command: 'meeting-notes',
   name: 'Meeting notes',
@@ -16,6 +17,7 @@ const MEETING_NOTES: ComposerCommand = {
 }
 
 const WRITE: ComposerCommand = {
+  kind: 'skill',
   skillId: 'skl2',
   command: 'write',
   name: 'Writing style',
@@ -51,7 +53,30 @@ function mountPicker(options: MountOptions = {}) {
   })
 }
 
+const STATS: ComposerCommand = {
+  kind: 'builtin',
+  command: 'stats',
+  name: 'Usage stats',
+  description: 'Your models, tokens, cost and active days',
+  argumentHint: '[7d|30d|all]',
+}
+
 describe('ChatInput/CommandPicker', () => {
+  it('marks a built-in command and shows its argument hint', async () => {
+    const wrapper = await mountPicker({ matches: [STATS, WRITE] })
+    const row = wrapper.get('[data-testid="command-picker-item-stats"]')
+
+    expect(row.text()).toContain('/stats')
+    expect(row.text()).toContain('[7d|30d|all]')
+    expect(row.text()).toContain('Usage stats')
+    expect(wrapper.get('[data-testid="command-picker-builtin-stats"]').text())
+      .toBe('Built-in')
+    expect(wrapper.find('[data-testid="command-picker-builtin-write"]')
+      .exists()).toBe(false)
+    expect(wrapper.get('[role="listbox"]').attributes('aria-label'))
+      .toBe('Commands')
+  })
+
   it('renders a row with the command, name, description and mode', async () => {
     const wrapper = await mountPicker()
     const first = wrapper.get('[data-testid="command-picker-item-meeting-notes"]')

@@ -8,6 +8,10 @@ import {
   readVercelGatewayCost,
   readVercelGenerationId,
 } from '../../../server/utils/gateways/index'
+import {
+  createMockMcpFetch,
+  createMockMcpServer,
+} from '../../setup/helpers/mock-mcp-server'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -419,6 +423,10 @@ async function runSend(input: {
   steps: Array<Array<Record<string, unknown>>>
   besidkaToolsEnabled?: boolean
   messageId?: string
+  tools?: string[]
+  text?: string
+  gateway?: 'openrouter' | 'vercel'
+  gatewayModel?: string
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -426,6 +434,13 @@ async function runSend(input: {
     instance: model,
     tools: {},
     providerOptions: {},
+  })))
+  vi.stubGlobal('useGateway', vi.fn(async () => ({
+    instance: model,
+    tools: {},
+    providerOptions: {},
+    toolCall: true,
+    supportsReasoning: false,
   })))
 
   const handler = (await import(
@@ -438,8 +453,9 @@ async function runSend(input: {
   const result = await handler({
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
-      model: MODEL_ID,
-      tools: [],
+      model: input.gatewayModel ?? MODEL_ID,
+      ...(input.gateway ? { gateway: input.gateway } : {}),
+      tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.besidkaToolsEnabled === undefined
         ? {}
@@ -447,7 +463,7 @@ async function runSend(input: {
       messages: [{
         id: input.messageId ?? USER_MESSAGE_ID,
         role: 'user',
-        parts: [{ type: 'text', text: 'Do the thing' }],
+        parts: [{ type: 'text', text: input.text ?? 'Do the thing' }],
       }],
     },
   } as any)
@@ -590,6 +606,7 @@ describe('Besidka tools in the chat send', () => {
       'list_shared_chats', 'list_projects', 'get_project',
       'read_project_knowledge_item', 'list_files', 'read_file',
       'get_settings', 'list_my_features', 'list_artifacts', 'get_artifact',
+      'get_debug_info', 'get_chat_cost', 'get_usage_stats',
       'list_artifact_shares', 'update_chat', 'move_chats_to_project',
       'branch_chat', 'create_project', 'update_project',
       'update_project_knowledge_item', 'create_file', 'rename_file',
@@ -716,48 +733,48 @@ describe('Besidka tools in the chat send', () => {
         })
     })
 
-  it('runs Always allow reads one after another and asks before a write',
-    async () => {
-      setModes({
-        list_projects: 'allow',
-        list_files: 'allow',
-        rename_file: 'allow',
-      })
-
-      const { assistantInsert } = await runSend({
-        steps: [
-          toolCallChunks('call-1', 'besidka__list_projects', {}),
-          toolCallChunks('call-2', 'besidka__list_files', {}),
-          toolCallChunks('call-3', 'besidka__rename_file', {
-            fileId: 'f1',
-            name: 'notes.txt',
-          }),
-          textChunks('Never reached.'),
-        ],
-      })
-      const parts = assistantInsert?.parts ?? []
-
-      expect(mocks.listMcpProjects).toHaveBeenCalledTimes(1)
-      expect(findPart(parts, 'tool-besidka__list_projects')).toMatchObject({
-        state: 'output-available',
-        output: expect.stringContaining(
-          '<untrusted_tool_result connector="besidka"',
-        ),
-      })
-      expect(findPart(parts, 'tool-besidka__list_files')).toMatchObject({
-        state: expect.stringMatching(/^output-/),
-      })
-      expect(findPart(parts, 'data-tool-grant')).toMatchObject({
-        data: { toolCallId: 'call-1', scope: 'always' },
-      })
-      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
-        data: {
-          toolCallId: 'call-3',
-          reason: 'untrusted-output',
-          rememberOptions: ['once'],
-        },
-      })
+  it('runs Always allow reads one after another and asks before a write '
+    + 'set to Needs approval, offering Always allow', async () => {
+    setModes({
+      list_projects: 'allow',
+      list_files: 'allow',
+      rename_file: 'ask',
     })
+
+    const { assistantInsert } = await runSend({
+      steps: [
+        toolCallChunks('call-1', 'besidka__list_projects', {}),
+        toolCallChunks('call-2', 'besidka__list_files', {}),
+        toolCallChunks('call-3', 'besidka__rename_file', {
+          fileId: 'f1',
+          name: 'notes.txt',
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(mocks.listMcpProjects).toHaveBeenCalledTimes(1)
+    expect(findPart(parts, 'tool-besidka__list_projects')).toMatchObject({
+      state: 'output-available',
+      output: expect.stringContaining(
+        '<untrusted_tool_result connector="besidka"',
+      ),
+    })
+    expect(findPart(parts, 'tool-besidka__list_files')).toMatchObject({
+      state: expect.stringMatching(/^output-/),
+    })
+    expect(findPart(parts, 'data-tool-grant')).toMatchObject({
+      data: { toolCallId: 'call-1', scope: 'always' },
+    })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: {
+        toolCallId: 'call-3',
+        reason: 'default',
+        rememberOptions: ['once', 'chat', 'always'],
+      },
+    })
+  })
 
   it('answers after a Besidka read without the search-answer continuation',
     async () => {
@@ -778,7 +795,7 @@ describe('Besidka tools in the chat send', () => {
       })
     })
 
-  it('asks Allow once or Deny only before a delete', async () => {
+  it('asks before a delete with every answer offered', async () => {
     setModes({ delete_chats: 'ask' })
 
     const { assistantInsert } = await runSend({
@@ -795,7 +812,7 @@ describe('Besidka tools in the chat send', () => {
         data: {
           reason: 'always-ask',
           summary: `Delete 1 chat: ${OTHER_SLUG}`,
-          rememberOptions: ['once'],
+          rememberOptions: ['once', 'chat', 'always'],
         },
       })
   })
@@ -844,41 +861,73 @@ describe('Besidka tools in the chat send', () => {
       })
     })
 
-  it('asks before a write when an earlier answer used Besidka tools',
-    async () => {
-      setModes({ list_projects: 'allow', rename_file: 'allow' })
-      mocks.chatMessages = [{
-        id: 'row-old',
-        publicId: 'old-assistant',
-        role: 'assistant',
-        parts: [{
-          type: 'tool-besidka__list_files',
-          toolCallId: 'old-call',
-          state: 'output-available',
-          input: {},
-          output: 'framed',
-        }],
-        tools: [],
-        reasoning: 'off',
-        usage: null,
-        createdAt: new Date(),
-      }]
+  it('asks before a Needs approval write after web content and an earlier '
+    + 'Besidka answer, with every answer offered', async () => {
+    setModes({ list_projects: 'allow', rename_file: 'ask' })
+    mocks.chatMessages = [{
+      id: 'row-old',
+      publicId: 'old-assistant',
+      role: 'assistant',
+      parts: [{
+        type: 'tool-besidka__list_files',
+        toolCallId: 'old-call',
+        state: 'output-available',
+        input: {},
+        output: 'framed',
+      }],
+      tools: [],
+      reasoning: 'off',
+      usage: null,
+      createdAt: new Date(),
+    }]
 
-      const { assistantInsert } = await runSend({
-        steps: [
-          toolCallChunks('call-1', 'besidka__rename_file', {
-            fileId: 'f1',
-            name: 'notes.txt',
-          }),
-          textChunks('Never reached.'),
-        ],
-      })
-
-      const parts = assistantInsert?.parts ?? []
-
-      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE))
-        .toMatchObject({ data: { reason: 'untrusted-output' } })
+    const { assistantInsert } = await runSend({
+      tools: ['web_search'],
+      steps: [
+        toolCallChunks('call-1', 'besidka__list_projects', {}),
+        toolCallChunks('call-2', 'besidka__rename_file', {
+          fileId: 'f1',
+          name: 'notes.txt',
+        }),
+        textChunks('Never reached.'),
+      ],
     })
+
+    const parts = assistantInsert?.parts ?? []
+
+    expect(findPart(parts, 'tool-besidka__list_projects'))
+      .toMatchObject({ state: 'output-available' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE))
+      .toMatchObject({
+        data: {
+          toolCallId: 'call-2',
+          reason: 'untrusted-output',
+          rememberOptions: ['once', 'chat', 'always'],
+        },
+      })
+  })
+
+  it('runs an Always allow write after web content (owner decision, '
+    + '2026-11-20)', async () => {
+    setModes({ list_projects: 'allow', rename_file: 'allow' })
+
+    const { assistantInsert } = await runSend({
+      tools: ['web_search'],
+      steps: [
+        toolCallChunks('call-1', 'besidka__list_projects', {}),
+        toolCallChunks('call-2', 'besidka__rename_file', {
+          fileId: 'f1',
+          name: 'notes.txt',
+        }),
+        textChunks('Renamed.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+    expect(findPart(parts, 'tool-besidka__rename_file')?.state)
+      .not.toBe('approval-requested')
+  })
 
   it('offers 24 tools at most, read first, with no notice in the chat',
     async () => {
@@ -890,7 +939,198 @@ describe('Besidka tools in the chat send', () => {
       expect(names).toHaveLength(24)
       expect(names).toContain('besidka__rename_file')
       expect(names).toContain('besidka__list_projects')
-      expect(names).toContain('besidka__delete_chats')
+      expect(names).toContain('besidka__add_project_note')
+      expect(names).not.toContain('besidka__delete_chat_message')
       expect(noticeLines()).toEqual([])
     })
+
+  it('offers an Always on connector up front ahead of Besidka\'s tail and '
+    + 'indexes the Besidka tools that no longer fit', async () => {
+    const connectorUrl = 'https://mcp.linear.example.com/mcp'
+    const now = new Date()
+    const server = createMockMcpServer({
+      url: connectorUrl,
+      tools: Array.from({ length: 12 }, (_unused, index) => ({
+        name: `tool_${String(index).padStart(2, '0')}`,
+        description: 'Tool.',
+        annotations: { readOnlyHint: true },
+      })),
+      respond: name => ({ text: `${name} result` }),
+    })
+
+    setModes({}, 'ask')
+    mocks.flags.add('connectors')
+    mocks.connectorUrls = { conn1: connectorUrl }
+    mocks.store.connectors = [{
+      id: 'conn1',
+      userId: 1,
+      slug: 'linear',
+      title: 'Linear',
+      origin: 'https://mcp.linear.example.com',
+      transport: 'streamable-http',
+      authType: 'none',
+      status: 'ready',
+      enabled: true,
+      createdVia: 'app',
+      consentOrigin: 'https://mcp.linear.example.com',
+      consentIssuer: null,
+      consentVersion: '2026-11-a',
+      consentedAt: now,
+      consentWithdrawnAt: null,
+      toolMode: 'always-on',
+      updatedAt: now,
+    }]
+    mocks.store.chatSettings = [{
+      connectorId: 'conn1',
+      enabled: true,
+      alwaysAllowTools: {},
+    }]
+    vi.stubGlobal('fetch', createMockMcpFetch([server]))
+
+    const { doStream } = await runSend({ steps: finalAnswer })
+    const names = readToolNames(doStream.mock.calls[0]?.[0])
+    const besidkaNames = names.filter(name => name.startsWith('besidka__'))
+    const connectorNames = names.filter(name => name.startsWith('mcp__'))
+    const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
+
+    expect(connectorNames).toHaveLength(12)
+    expect(besidkaNames.length).toBeGreaterThan(0)
+    expect(besidkaNames.length).toBeLessThan(24)
+    expect(names.length).toBeLessThanOrEqual(40 - 10)
+    expect(names).toContain('tool_index__load')
+    expect(system).toContain('besidka__delete_files | Besidka | always-ask')
+    expect(noticeLines()).toEqual([])
+  })
+
+  it('loads delete_files up front for a Ukrainian request to delete a file, '
+    + 'and still asks before it runs', async () => {
+    setModes({}, 'ask')
+
+    const { doStream, assistantInsert } = await runSend({
+      text: 'Видали файл kyiv-chestnut-leaf.jpg з моїх файлів',
+      steps: [
+        toolCallChunks('call-1', 'besidka__delete_files', {
+          fileIds: ['file-1'],
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const firstCall = doStream.mock.calls[0]?.[0] as any
+    const system = String(firstCall?.prompt?.find((message: any) => {
+      return message.role === 'system'
+    })?.content ?? '')
+
+    expect(readToolNames(firstCall)).toContain('besidka__delete_files')
+    expect(system).toContain('Never use a different tool to approximate')
+    expect(system.indexOf('<tool_index>'))
+      .toBeLessThan(system.indexOf('Tools whose names start with besidka__'))
+    expect(findPart(assistantInsert?.parts ?? [], TOOL_APPROVAL_DATA_PART_TYPE))
+      .toMatchObject({
+        data: {
+          reason: 'always-ask',
+          rememberOptions: ['once', 'chat', 'always'],
+        },
+      })
+  })
+
+  it('prefetches nothing for a request that names no action', async () => {
+    setModes({}, 'ask')
+
+    const { doStream } = await runSend({
+      text: 'Які файли в мене є?',
+      steps: finalAnswer,
+    })
+
+    expect(readToolNames(doStream.mock.calls[0]?.[0]))
+      .not.toContain('besidka__delete_files')
+  })
+
+  it('reaches delete_files past the up-front cap through the tool index and '
+    + 'still asks before the loaded delete', async () => {
+    setModes({}, 'ask')
+
+    const { doStream, assistantInsert } = await runSend({
+      steps: [
+        toolCallChunks('call-load', 'tool_index__load', {
+          names: ['besidka__delete_files'],
+        }),
+        toolCallChunks('call-1', 'besidka__delete_files', {
+          fileIds: ['file-1'],
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
+
+    expect(firstCallToolNames(doStream)).not.toContain('besidka__delete_files')
+    expect(system).toContain('besidka__delete_files | Besidka | always-ask')
+    expect(readToolNames(doStream.mock.calls[1]?.[0]))
+      .toContain('besidka__delete_files')
+    expect(findPart(assistantInsert?.parts ?? [], TOOL_APPROVAL_DATA_PART_TYPE))
+      .toMatchObject({
+        data: {
+          reason: 'always-ask',
+          rememberOptions: ['once', 'chat', 'always'],
+        },
+      })
+    expect(noticeLines()).toEqual([])
+  })
+  describe('a Claude model through a signed-thinking gateway', () => {
+    const loadThenAnswer = [
+      toolCallChunks('call-load', 'tool_index__load', {
+        names: ['besidka__delete_files'],
+      }),
+      toolCallChunks('call-list', 'besidka__list_projects', {}),
+      textChunks('Done.'),
+    ]
+
+    it.each([
+      ['openrouter', 'anthropic/claude-opus-5'],
+      ['vercel', 'anthropic/claude-opus-5'],
+    ] as const)('keeps one tool list across every step on %s', async (
+      gateway,
+      gatewayModel,
+    ) => {
+      setModes({}, 'ask')
+
+      const { doStream } = await runSend({
+        steps: loadThenAnswer,
+        gateway,
+        gatewayModel,
+      })
+      const toolLists = doStream.mock.calls.map(([callOptions]) => {
+        return readToolNames(callOptions)
+      })
+      const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
+
+      expect(toolLists.length).toBeGreaterThan(1)
+      expect(toolLists.every(names => names.length > 0)).toBe(true)
+
+      for (const names of toolLists) {
+        expect(names).toEqual(toolLists[0])
+      }
+
+      expect(toolLists[0]).not.toContain('tool_index__load')
+      expect(toolLists[0]).not.toContain('tool_index__use_connector')
+      expect(system).not.toContain('<tool_index>')
+    })
+
+    it('keeps on-demand loading for a non-Anthropic gateway model',
+      async () => {
+        setModes({}, 'ask')
+
+        const { doStream } = await runSend({
+          steps: loadThenAnswer,
+          gateway: 'openrouter',
+          gatewayModel: 'openai/gpt-5-mini',
+        })
+        const toolLists = doStream.mock.calls.map(([callOptions]) => {
+          return readToolNames(callOptions)
+        })
+
+        expect(toolLists[0]).toContain('tool_index__load')
+        expect(toolLists[0]).not.toContain('besidka__delete_files')
+        expect(toolLists[1]).toContain('besidka__delete_files')
+      })
+  })
 })

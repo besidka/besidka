@@ -362,11 +362,21 @@ export interface ToolApprovalController {
   change: (approvalId: string) => void
   askAgain: (messageId: string) => Promise<void>
   focusFirstPending: () => void
+  focusApproval: (approvalId: string) => void
 }
 
 export const TOOL_APPROVAL_CONTROLLER_KEY: InjectionKey<
   ToolApprovalController
 > = Symbol('tool-approval-controller')
+
+/**
+ * Whether the approval bubble of the last reply is on screen, above the
+ * composer. The "N actions waiting for approval" pill hides while it is, so
+ * it never covers the reply it points to.
+ */
+export function useToolApprovalBubbleInView() {
+  return useState<boolean>('tool-approval-bubble-in-view', () => false)
+}
 
 /**
  * The approval controller the chat page provides, or null where no chat can

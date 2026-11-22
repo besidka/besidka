@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TOOL_ROUNDS_PER_MESSAGE } from '#shared/utils/tool-rounds'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import {
@@ -12,6 +13,10 @@ import {
   SKILL_NAME_MAX,
 } from '#shared/utils/skills-policy'
 import { SKILL_INVOCATION_PART_TYPE } from '#shared/utils/skills/runtime'
+import {
+  BUILTIN_COMMAND_NAMES,
+  BUILTIN_COMMAND_PART_TYPE,
+} from '#shared/utils/builtin-commands'
 import {
   TOOL_APPROVAL_ID_PATTERN,
   TOOL_APPROVAL_PENDING_PER_MESSAGE,
@@ -77,7 +82,18 @@ export const userMessagePartSchema = z.union([
       version: z.number().int().min(1),
     }).strict(),
   }).strict(),
+  z.object({
+    type: z.literal(BUILTIN_COMMAND_PART_TYPE),
+    data: z.object({
+      command: z.enum(BUILTIN_COMMAND_NAMES),
+    }).strict(),
+  }).strict(),
 ])
+
+function isCommandPart(part: { type: string }): boolean {
+  return part.type === SKILL_INVOCATION_PART_TYPE
+    || part.type === BUILTIN_COMMAND_PART_TYPE
+}
 
 export const userMessagePartsSchema = z
   .array(userMessagePartSchema)
@@ -85,17 +101,15 @@ export const userMessagePartsSchema = z
   .max(MAX_USER_MESSAGE_PARTS)
   .refine((parts) => {
     return parts.some((part) => {
-      return part.type === 'text' || part.type === SKILL_INVOCATION_PART_TYPE
+      return part.type === 'text' || isCommandPart(part)
     })
   }, {
-    message: 'A message needs text or an attached skill.',
+    message: 'A message needs text, an attached skill or a command.',
   })
   .refine((parts) => {
-    return parts.filter((part) => {
-      return part.type === SKILL_INVOCATION_PART_TYPE
-    }).length <= SKILL_INVOCATIONS_PER_MESSAGE
+    return parts.filter(isCommandPart).length <= SKILL_INVOCATIONS_PER_MESSAGE
   }, {
-    message: 'A message can attach one skill.',
+    message: 'A message can attach one skill or run one command.',
   })
   .refine((parts) => {
     const artifactIds = parts.flatMap((part) => {
@@ -162,6 +176,23 @@ export const toolApprovalContinuationBodySchema = z.object({
       }),
   }).strict(),
 })
+
+/**
+ * The request that runs the next round of a long connector or Besidka task
+ * in the same reply (`docs/connectors.md`, "Long connector tasks"). Only
+ * the message and the round the client expects travel; model, tools and
+ * connectors come from the reply's stored budget part.
+ */
+export const toolRoundContinuationBodySchema = z.object({
+  continue: z.object({
+    messageId: z.string().regex(TOOL_APPROVAL_SUBJECT_ID_PATTERN),
+    round: z.number().int().min(2).max(TOOL_ROUNDS_PER_MESSAGE),
+  }).strict(),
+})
+
+export type ToolRoundContinuationBody = z.infer<
+  typeof toolRoundContinuationBodySchema
+>
 
 export type ToolApprovalContinuationBody = z.infer<
   typeof toolApprovalContinuationBodySchema

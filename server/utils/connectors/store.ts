@@ -1,12 +1,14 @@
 import {
-  and, asc, desc, eq, getTableColumns, gte, ne, sql,
+  and, asc, desc, eq, getTableColumns, gte, inArray, ne, sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   allocateConnectorSlug,
 } from '#shared/utils/connectors-slug'
+import { isConnectorNeverConnected } from '#shared/utils/connectors-connected'
 import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import {
+  CONNECTOR_NEW_TOOL_MODE,
   CONNECTOR_TITLE_MAX_LENGTH,
   CONNECTORS_MCP_DISABLED_MAX,
   CONNECTORS_PER_USER,
@@ -15,12 +17,16 @@ import type {
   ConnectorAuditApproval,
   ConnectorAuditOutcome,
   ConnectorAuditPath,
+  ConnectorAuthType,
   ConnectorCreatedVia,
   ConnectorRegistrationKind,
   ConnectorToolApproval,
+  ConnectorToolMode,
   ConnectorTransport,
 } from '#shared/utils/connectors-policy'
 import * as schema from '~~/server/db/schema'
+import type { ConnectorLastError } from '~~/server/db/schemas/connectors'
+import { createConnectorError } from '~~/server/utils/connectors/errors'
 import {
   decodePublicId,
   encodePublicId,
@@ -55,6 +61,7 @@ export type ConnectorPatch = Partial<Pick<
   | 'nativeOptInAt'
   | 'lastError'
   | 'lastConnectedAt'
+  | 'toolMode'
 >>
 
 const CONNECTOR_PATCH_KEYS = [
@@ -70,6 +77,7 @@ const CONNECTOR_PATCH_KEYS = [
   'nativeOptInAt',
   'lastError',
   'lastConnectedAt',
+  'toolMode',
 ] as const satisfies ReadonlyArray<keyof ConnectorPatch>
 
 export interface CreateConnectorInput {
@@ -81,6 +89,23 @@ export interface CreateConnectorInput {
   presetId?: string | null
   createdByClientId?: string | null
   transport?: ConnectorTransport
+  connected?: CreateConnectedConnectorState
+}
+
+/**
+ * The state of a connector that is created already connected (the app adds
+ * a connector only after a key was accepted or a sign-in finished): ready,
+ * with the consent given on the connect screen and the connect time.
+ */
+export interface CreateConnectedConnectorState {
+  authType: ConnectorAuthType
+  consent: {
+    issuerHost: string | null
+    version: string
+    givenAt: Date
+  }
+  toolMode?: ConnectorToolMode
+  lastError?: ConnectorLastError | null
 }
 
 export type ConnectorTokenEndpointAuthMethod
@@ -207,13 +232,7 @@ export interface DeleteConnectorResult {
 }
 
 function createConnectorLimitError() {
-  return createError({
-    message: 'Connector limit reached',
-    status: 409,
-    code: 'CONNECTOR_LIMIT_REACHED',
-    why: `An account can have at most ${CONNECTORS_PER_USER} connectors`,
-    fix: 'Delete a connector you no longer use',
-  })
+  return createConnectorError('CONNECTOR_LIMIT_REACHED')
 }
 
 function toConnectorRecord(row: ConnectorRow): ConnectorRecord {
@@ -325,7 +344,51 @@ function createConnectorMcpLimitError() {
 }
 
 /**
- * Inserts a disabled connector in `needs-auth`: defaults live here, not in
+ * Throws the connector-limit error when the user is already at the cap. A
+ * cheap early check for callers that do slow work (a probe) before
+ * `createConnector`; the atomic cap in `createConnector` stays the guard.
+ */
+export async function assertConnectorCapacity(
+  db: DbClient,
+  userId: number,
+): Promise<void> {
+  const [row] = await db.select({ total: sql<number>`count(*)` })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.userId, userId))
+
+  if ((row?.total ?? 0) >= CONNECTORS_PER_USER) {
+    throw createConnectorLimitError()
+  }
+}
+
+function initialConnectorState(input: CreateConnectorInput, origin: string) {
+  if (!input.connected) {
+    return {
+      authType: null,
+      status: 'needs-auth' as const,
+      toolMode: CONNECTOR_NEW_TOOL_MODE,
+    }
+  }
+
+  const { authType, consent, toolMode, lastError } = input.connected
+
+  return {
+    authType,
+    status: 'ready' as const,
+    toolMode: toolMode ?? CONNECTOR_NEW_TOOL_MODE,
+    consentOrigin: origin,
+    consentIssuer: consent.issuerHost,
+    consentVersion: consent.version,
+    consentedAt: consent.givenAt,
+    lastConnectedAt: consent.givenAt,
+    lastError: lastError ?? null,
+  }
+}
+
+/**
+ * Inserts a disabled connector, in `needs-auth` unless `connected` says the
+ * connect already succeeded (then `ready` with the consent and the connect
+ * time, see `CreateConnectedConnectorState`): defaults live here, not in
  * SQL. The origin is derived from the URL here, never taken from the caller.
  * The slug is the base, or the base with `-2`, `-3`, and is retried when a
  * concurrent insert takes the same one. The URL is stored encrypted, the
@@ -341,6 +404,7 @@ export async function createConnector(
 ): Promise<ConnectorRecord> {
   const origin = new URL(input.url).origin
   const urlEncrypted = await useEncryptText(input.url)
+  const initialState = initialConnectorState(input, origin)
 
   for (let attempt = 0; attempt < SLUG_ALLOCATION_ATTEMPTS; attempt++) {
     const slug = allocateConnectorSlug(
@@ -357,8 +421,7 @@ export async function createConnector(
           origin,
           urlEncrypted,
           transport: input.transport ?? 'streamable-http',
-          authType: null,
-          status: 'needs-auth',
+          ...initialState,
           enabled: false,
           presetId: input.presetId ?? null,
           createdVia: input.createdVia,
@@ -462,6 +525,50 @@ export async function readConnectorUrl(
   }
 
   return await useDecryptText(row.urlEncrypted)
+}
+
+export interface ConnectorUrlEntry {
+  id: string
+  url: string
+  isConnected: boolean
+}
+
+/**
+ * The full URLs of all of a user's connectors (at most 20), decrypted in
+ * memory, for comparing them with directory addresses, with whether each
+ * one was ever connected (a leftover or MCP-added row that never was does
+ * not count as added). Same rule as `readConnectorUrl`: never log or return
+ * the URLs to a client.
+ */
+export async function listConnectorUrls(
+  db: DbClient,
+  userId: number,
+): Promise<ConnectorUrlEntry[]> {
+  const rows = await db
+    .select({
+      id: schema.connectors.id,
+      urlEncrypted: schema.connectors.urlEncrypted,
+      status: schema.connectors.status,
+      lastConnectedAt: schema.connectors.lastConnectedAt,
+      consentedAt: schema.connectors.consentedAt,
+    })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.userId, userId))
+  const urls: ConnectorUrlEntry[] = []
+
+  for (const row of rows) {
+    try {
+      urls.push({
+        id: encodePublicId(row.id),
+        url: await useDecryptText(row.urlEncrypted),
+        isConnected: !isConnectorNeverConnected(row),
+      })
+    } catch {
+      continue
+    }
+  }
+
+  return urls
 }
 
 export async function updateConnector(
@@ -908,7 +1015,10 @@ export async function reduceConnectorToolSettings(
       .set({
         ...(reduction.disable ? { enabled: false } : {}),
         ...(reduction.askEveryTime
-          ? { approval: 'ask' as const, approvedDefinitionHash: null }
+          ? {
+            approval: 'needs-approval' as const,
+            approvedDefinitionHash: null,
+          }
           : {}),
         updatedAt: new Date(),
       })
@@ -994,6 +1104,121 @@ export async function readConnectorToolBaseline(
   }
 }
 
+/**
+ * Deletes the reviewed rows of tools the server no longer lists. The
+ * baseline marker row is never deleted here.
+ */
+export async function deleteConnectorToolSettings(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+  toolNames: readonly string[],
+): Promise<number> {
+  const names = toolNames.filter((name) => {
+    return name !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
+  })
+
+  if (names.length === 0) {
+    return 0
+  }
+
+  const rows = await db.delete(schema.connectorToolSettings)
+    .where(and(
+      eq(schema.connectorToolSettings.userId, userId),
+      eq(schema.connectorToolSettings.connectorId, connectorId),
+      inArray(schema.connectorToolSettings.toolName, names),
+    ))
+    .returning({ id: schema.connectorToolSettings.id })
+
+  return rows.length
+}
+
+export interface ConnectorToolSwitch {
+  toolName: string
+  enabled?: boolean
+  resetApproval?: boolean
+  needsApproval?: boolean
+  alwaysAllowHash?: string
+}
+
+/**
+ * Turns reviewed tools on or off, sets the approval back to the default
+ * (`resetApproval`, stored `ask`), to an explicit Needs approval
+ * (`needsApproval`), or to Always allow (`alwaysAllowHash`, the reviewed
+ * definition hash the caller checked), without touching the reviewed
+ * definition hash, so a page change can never accept a changed definition.
+ * An "Always allow" applies only while the stored hash equals the one it was
+ * given for. Rows of other users, unknown tools and the baseline marker are
+ * left alone. Returns the names that changed.
+ */
+function approvalOfSwitch(entry: ConnectorToolSwitch): {
+  approval: ConnectorToolApproval
+  approvedDefinitionHash: string | null
+} | null {
+  if (entry.alwaysAllowHash) {
+    return { approval: 'always', approvedDefinitionHash: entry.alwaysAllowHash }
+  }
+
+  if (entry.needsApproval) {
+    return { approval: 'needs-approval', approvedDefinitionHash: null }
+  }
+
+  return entry.resetApproval
+    ? { approval: 'ask', approvedDefinitionHash: null }
+    : null
+}
+
+export async function updateConnectorToolSwitches(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+  switches: readonly ConnectorToolSwitch[],
+): Promise<string[]> {
+  const statements = switches
+    .filter((entry) => {
+      return entry.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
+        && (
+          entry.enabled !== undefined
+          || entry.resetApproval
+          || entry.needsApproval
+          || entry.alwaysAllowHash
+        )
+    })
+    .map((entry) => {
+      const approval = approvalOfSwitch(entry)
+
+      return db.update(schema.connectorToolSettings)
+        .set({
+          ...(entry.enabled !== undefined ? { enabled: entry.enabled } : {}),
+          ...(approval ?? {}),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(schema.connectorToolSettings.userId, userId),
+          eq(schema.connectorToolSettings.connectorId, connectorId),
+          eq(schema.connectorToolSettings.toolName, entry.toolName),
+          ...(entry.alwaysAllowHash
+            ? [eq(
+              schema.connectorToolSettings.definitionHash,
+              entry.alwaysAllowHash,
+            )]
+            : []),
+        ))
+        .returning({ toolName: schema.connectorToolSettings.toolName })
+    })
+
+  if (statements.length === 0) {
+    return []
+  }
+
+  const [first, ...rest] = statements
+  const results = await db.batch([first!, ...rest])
+
+  return results.flatMap((rows) => {
+    return rows.map(row => row.toolName)
+  })
+}
+
 export async function upsertConnectorChatSettings(
   db: DbClient,
   input: ConnectorChatSettingInput,
@@ -1013,6 +1238,47 @@ export async function upsertConnectorChatSettings(
       },
       setWhere: eq(schema.connectorChatSettings.userId, input.userId),
     })
+}
+
+export async function deleteConnectorChatSetting(
+  db: DbClient,
+  input: { userId: number, chatPublicId: string, connectorId: string },
+): Promise<void> {
+  await db.delete(schema.connectorChatSettings)
+    .where(and(
+      eq(schema.connectorChatSettings.userId, input.userId),
+      eq(schema.connectorChatSettings.chatPublicId, input.chatPublicId),
+      eq(schema.connectorChatSettings.connectorId, input.connectorId),
+    ))
+}
+
+/**
+ * Resets every chat's on or off choice for one connector after its mode
+ * changed (docs/connectors.md section 6.3): rows with no "Allow in this
+ * chat" grant are deleted, and the rest keep their grants with `enabled`
+ * set to the new mode's default (`false` for Manual, `true`, which means
+ * "available", for Auto and Always on). So a connector switched to Manual
+ * is never still on in a chat because of a row written while it was Auto.
+ */
+export async function resetConnectorChatSettings(
+  db: DbClient,
+  input: { userId: number, connectorId: string, enabled: boolean },
+): Promise<void> {
+  const owned = and(
+    eq(schema.connectorChatSettings.userId, input.userId),
+    eq(schema.connectorChatSettings.connectorId, input.connectorId),
+  )
+
+  await db.batch([
+    db.delete(schema.connectorChatSettings)
+      .where(and(
+        owned,
+        sql`${schema.connectorChatSettings.alwaysAllowTools} = '{}'`,
+      )),
+    db.update(schema.connectorChatSettings)
+      .set({ enabled: input.enabled, updatedAt: new Date() })
+      .where(owned),
+  ])
 }
 
 export async function listConnectorChatSettings(

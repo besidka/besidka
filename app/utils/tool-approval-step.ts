@@ -303,14 +303,14 @@ export function humanizeBesidkaToolName(tool: string): string {
 }
 
 /**
- * What the "Always allow" confirmation says for a Besidka tool: the mode it
- * sets, and that a message that read untrusted content still asks.
+ * The tooltip of the "Always allow" button. One click answers; there is no
+ * second confirmation (owner decision of 2026-11-20).
  */
-export function getBesidkaAlwaysConfirmText(tool: string): string {
-  return `Always allow Besidka to ${humanizeBesidkaToolName(tool)}? Besidka `
-    + 'will run it without asking in every chat, except in a message that '
-    + 'read content from outside the conversation. You can change this in '
-    + 'Labs, under Tool permissions.'
+export function getAlwaysAllowHint(isBesidka: boolean): string {
+  return isBesidka
+    ? 'Runs without asking in every chat. Change it in Tool permissions.'
+    : 'Runs without asking in every chat until the tool changes. '
+      + 'Remove it in the chat panel.'
 }
 
 /**
@@ -382,6 +382,7 @@ export function getApprovalSourceLabel(
 export function getApprovalReasonText(
   reason: ToolApprovalReason,
   sourceLabel: string,
+  toolName = '',
 ): string {
   if (reason === 'untrusted-output') {
     return sourceLabel
@@ -399,6 +400,14 @@ export function getApprovalReasonText(
 
   if (reason === 'consent') {
     return 'Uploads the skill to your Anthropic workspace'
+  }
+
+  if (isBesidkaChatToolName(toolName)) {
+    return 'Asks before each use. Change it in Tool permissions in Labs.'
+  }
+
+  if (parseConnectorToolName(toolName)) {
+    return 'Asks before each use. Change it in the connector\'s tool settings.'
   }
 
   return 'Runs only after you allow it'
@@ -491,4 +500,24 @@ export function getGrantMarkerText(
   return isToolGrantDataPart(grantPart)
     ? GRANT_MARKER_TEXT[grantPart.data.scope]
     : ''
+}
+
+/**
+ * The grant line of every tool call of a message that ran under a grant,
+ * keyed by tool call id, read in one pass over the parts.
+ */
+export function getGrantMarkersByToolCallId(
+  parts: UIMessage['parts'],
+): Map<string, string> {
+  const markers = new Map<string, string>()
+
+  for (const part of parts) {
+    if (!isToolGrantDataPart(part) || markers.has(part.data.toolCallId)) {
+      continue
+    }
+
+    markers.set(part.data.toolCallId, GRANT_MARKER_TEXT[part.data.scope])
+  }
+
+  return markers
 }

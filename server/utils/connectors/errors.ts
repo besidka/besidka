@@ -6,6 +6,7 @@ interface ConnectorErrorText {
   status: number
   why: string
   fix: string
+  link?: string
 }
 
 /**
@@ -21,6 +22,14 @@ export const CONNECTOR_ERRORS = {
     status: 404,
     why: 'No connector with this id belongs to the account',
     fix: 'Check the connector id',
+  },
+  CONNECTOR_OWN_SERVER: {
+    message: 'This is Besidka\'s own MCP server',
+    status: 400,
+    why: 'Besidka does not call itself as a connector',
+    fix: 'To let the model use your Besidka data in chats, turn on Besidka '
+      + 'tools in Labs',
+    link: '/profile/labs',
   },
   CONNECTOR_DISCOVERY_FAILED: {
     message: 'The server did not answer as an MCP server',
@@ -61,6 +70,14 @@ export const CONNECTOR_ERRORS = {
     status: 502,
     why: 'Dynamic client registration failed',
     fix: 'Try again later, or ask the workspace admin to allow Besidka',
+  },
+  CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED: {
+    message: 'This service does not allow Besidka to sign in',
+    status: 502,
+    why: 'Its sign-in server only accepts redirect addresses it has '
+      + 'approved, and it refused the one Besidka sent',
+    fix: 'Use an API key if the server offers one. Besidka cannot sign in '
+      + 'to this service until it approves Besidka',
   },
   CONNECTOR_OAUTH_STATE_INVALID: {
     message: 'The sign-in link expired or was already used',
@@ -127,6 +144,31 @@ export const CONNECTOR_ERRORS = {
       + 'so it is hidden from the model',
     fix: 'Review the changed tools on the Connectors page',
   },
+  CONNECTOR_TOOLS_REVIEW_REQUIRED: {
+    message: 'Review the tools before turning this connector on',
+    status: 409,
+    why: 'The connector\'s tools were never reviewed, or some changed and '
+      + 'are not accepted yet',
+    fix: 'Review the tools first',
+  },
+  CONNECTOR_TOOLS_REVIEW_STALE: {
+    message: 'The tools changed again',
+    status: 409,
+    why: 'The server\'s tool list differs from the one you reviewed',
+    fix: 'Review the tools again',
+  },
+  CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED: {
+    message: 'This tool cannot be set to Always allow',
+    status: 400,
+    why: 'It changed since you reviewed it, or the service no longer lists it',
+    fix: 'Keep it on Needs approval, or review the changed tools first',
+  },
+  CONNECTOR_TOOL_NOT_FOUND: {
+    message: 'Tool not found',
+    status: 404,
+    why: 'No reviewed tool of this connector has this name',
+    fix: 'Reload the tool list',
+  },
   CONNECTOR_UNREACHABLE: {
     message: 'The connector could not be reached',
     status: 502,
@@ -138,6 +180,26 @@ export const CONNECTOR_ERRORS = {
     status: 409,
     why: 'Only a connected connector can be turned on',
     fix: 'Connect it first',
+  },
+  CONNECTOR_CREDENTIALS_REJECTED: {
+    message: 'The server did not accept this key',
+    status: 400,
+    why: 'The server answered the request that carried this header with an '
+      + 'authorization error',
+    fix: 'Check the key and its permissions, then try again. Nothing was '
+      + 'saved',
+  },
+  CONNECTOR_AUTH_REQUIRED: {
+    message: 'This server needs a sign-in or a key',
+    status: 409,
+    why: 'The server refused a request without credentials',
+    fix: 'Start again and sign in or paste a key. Nothing was saved',
+  },
+  CONNECTOR_LIMIT_REACHED: {
+    message: 'Connector limit reached',
+    status: 409,
+    why: 'An account has a limited number of connectors',
+    fix: 'Delete a connector you no longer use',
   },
   CONNECTOR_HEADER_INVALID: {
     message: 'This header cannot be used',
@@ -181,6 +243,7 @@ export function createConnectorError(
     code,
     why: text.why,
     fix: text.fix,
+    ...('link' in text ? { link: text.link } : {}),
     ...(data ? { data } : {}),
   })
 }

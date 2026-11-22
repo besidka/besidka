@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 const skillsActive = ref<boolean>(true)
 const importActive = ref<boolean>(true)
+const commandsActive = ref<boolean>(false)
 const list = ref<unknown>(null)
 const listStatus = ref<string>('success')
 const listError = ref<unknown>(null)
@@ -33,7 +34,9 @@ mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
     const active = key === 'skills'
       ? skillsActive.value
-      : key === 'skills.import-url' && importActive.value
+      : key === 'skills.commands'
+        ? commandsActive.value
+        : key === 'skills.import-url' && importActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -123,6 +126,7 @@ describe('chats skills page', () => {
     document.body.innerHTML = ''
     skillsActive.value = true
     importActive.value = true
+    commandsActive.value = false
     listStatus.value = 'success'
     listError.value = null
     list.value = null
@@ -428,6 +432,39 @@ describe('chats skills page', () => {
       expect(useSidePanel().viewKey.value).toBeNull()
       expect(useSkillEditSession().skillId.value).toBeNull()
       expect(useRoute().query.skill).toBeUndefined()
+    })
+  })
+
+  describe('built-in commands', () => {
+    function sectionOrder(wrapper: Awaited<ReturnType<typeof mountPage>>) {
+      return wrapper.findAll(
+        `${testId('skills-list')}, ${testId('skills-empty')}, `
+        + `${testId('skills-builtin')}`,
+      ).map(element => element.attributes('data-testid'))
+    }
+
+    it('lists them below the user\'s skills with the commands flag on', async () => {
+      commandsActive.value = true
+
+      const wrapper = await mountPage()
+
+      expect(sectionOrder(wrapper)).toEqual(['skills-list', 'skills-builtin'])
+      expect(wrapper.findAll(testId('skill-builtin-row'))).toHaveLength(3)
+    })
+
+    it('lists them first while the user has no skills', async () => {
+      commandsActive.value = true
+      setList([])
+
+      const wrapper = await mountPage()
+
+      expect(sectionOrder(wrapper)).toEqual(['skills-builtin', 'skills-empty'])
+    })
+
+    it('hides them without the commands flag', async () => {
+      const wrapper = await mountPage()
+
+      expect(wrapper.find(testId('skills-builtin')).exists()).toBe(false)
     })
   })
 })

@@ -2,6 +2,7 @@
   <div
     ref="scrollContainerRef"
     class="
+      js-chat-scroll-container
       overflow-y-auto overflow-x-hidden z-10
       flex-1
       pb-[var(--sab)]
@@ -89,11 +90,14 @@
           <ChatReasoning
             :message="m"
             :reasoning-level="getMessageReasoning(m, messageIndex)"
-            :status="chatSdk.status"
+            v-bind="getReasoningLiveProps(
+              isLastAssistantMessage(messageIndex),
+              chatSdk.status,
+              isTurnThinkingHeld,
+            )"
             :turn-started-at="currentTurnStartedAt"
             :reasoning-accumulated-ms="currentTurnReasoningAccumulatedMs"
             :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
-            :is-turn-thinking-held="isTurnThinkingHeld"
           />
           <div
             v-for="(part, index) in getRenderedMessageParts(m)"
@@ -102,11 +106,7 @@
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
-              'mt-4': hasGapBeforePart(
-                m,
-                getRenderedMessageParts(m),
-                index,
-              ),
+              'mt-4': getMessageRenderModel(m).gaps[index],
             }"
           >
             <ChatGeneratedImage
@@ -204,7 +204,21 @@
             v-if="m.role === 'assistant'"
             :message="m"
           />
+          <ChatToolRounds
+            v-if="m.role === 'assistant'"
+            :message="m"
+            :is-last="isLastAssistantMessage(messageIndex)"
+          />
+          <ChatReplyStopped
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
         </ChatMessage>
+        <ChatToolApprovalBubble
+          v-if="isLastAssistantMessage(messageIndex)"
+          :message="m"
+          :any-selected="selectedMessageId !== null"
+        />
       </div>
       <ChatMessage
         v-if="pendingClarification"
@@ -247,7 +261,10 @@
         />
       </ChatMessage>
       <LazyChatLoader
-        :show="(isLoading && !hasImageGenerationProgress) || isClarifying"
+        :show="(isLoading && !hasImageGenerationProgress) || isClarifying
+          || waitingLoaderSince > 0"
+        :waiting-since="waitingLoaderSince"
+        @cancel="cancelWaiting"
       />
       <div ref="messagesEndRef" />
     </ChatContainer>
@@ -317,7 +334,7 @@ import {
   isAssistantGeneratedImageFilePart,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
-import { hasGapBeforePart } from '~/utils/message-part-spacing'
+import { getPartGaps } from '~/utils/message-part-spacing'
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
@@ -456,6 +473,8 @@ const {
   regenerate,
   displayRegenerate,
   displayStop,
+  waitingLoaderSince,
+  cancelWaiting,
   reasoning,
   getMessageReasoning,
   isLastUserMessage,
@@ -812,18 +831,45 @@ const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 
-function getRenderedMessageParts(
-  message: Pick<UIMessage, 'role' | 'parts'>,
-): UIMessage['parts'] {
-  return orderOutputCardPartsLast(getDisplayMessageParts(message))
+interface MessageRenderModel {
+  parts: UIMessage['parts']
+  keys: string[]
+  gaps: boolean[]
 }
 
-function getRenderedPartKey(
-  message: Pick<UIMessage, 'role' | 'parts'>,
-  index: number,
-): string {
-  return getRenderedPartKeys(getDisplayMessageParts(message))[index]
-    ?? `part-${index}`
+const messageRenderModels = new WeakMap<object, MessageRenderModel>()
+
+/**
+ * The parts a message renders, their keys and gaps, built once per parts
+ * array: the template reads them for every part of every message on each
+ * streamed update, and earlier messages keep their parts array.
+ */
+function getMessageRenderModel(message: UIMessage): MessageRenderModel {
+  const cached = messageRenderModels.get(message.parts)
+
+  if (cached) {
+    return cached
+  }
+
+  const displayParts = getDisplayMessageParts(message)
+  const parts = orderOutputCardPartsLast(displayParts)
+  const model: MessageRenderModel = {
+    parts,
+    keys: getRenderedPartKeys(displayParts),
+    gaps: getPartGaps(message, parts),
+  }
+
+  messageRenderModels.set(message.parts, model)
+
+  return model
+}
+
+function getRenderedMessageParts(message: UIMessage): UIMessage['parts'] {
+  return getMessageRenderModel(message).parts
+}
+
+function getRenderedPartKey(message: UIMessage, index: number): string {
+  return getMessageRenderModel(message).keys[index] ?? `part-${index}`
 }
 
 function isTextUIPart(

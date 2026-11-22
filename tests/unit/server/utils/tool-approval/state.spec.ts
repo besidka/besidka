@@ -302,7 +302,7 @@ describe('read sources past the cap', () => {
     )).toEqual({ ok: true, state })
   })
 
-  it('makes every connector call ask cross-source, even one to its own source', () => {
+  it('makes every connector write ask cross-source, even one to its own source', () => {
     const state = fullState()
 
     recordRead(state, 'besidka')
@@ -310,7 +310,7 @@ describe('read sources past the cap', () => {
     const decision = resolveToolApproval({
       descriptor: {
         family: 'connector',
-        access: 'read',
+        access: 'write',
         toolName: 'search',
         connectorId: 'c0',
         definitionHash: 'a'.repeat(64),
