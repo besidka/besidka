@@ -1,3 +1,4 @@
+import { isGoogleOnceOnlyReadTool } from '#shared/utils/google-gmail-tools'
 import {
   TOOL_ACCESS_LEVELS,
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
@@ -414,9 +415,11 @@ export function isGoogleRead(descriptor: ToolApprovalDescriptor): boolean {
  * Rule 11, the whole decision for a built-in Google tool (Drive, Calendar,
  * Gmail). A read runs under an "Allow in this chat" grant whose tool name
  * and definition hash match; otherwise it asks with Allow once and Allow in
- * this chat. A write always asks with Allow once only, whatever grant,
- * permission mode or taint the send holds. Nothing here ever offers Always
- * allow (docs/legal/prechecks/google.md).
+ * this chat, except a once-only read (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`,
+ * the Gmail thread read), which asks every time with Allow once only,
+ * whatever grant exists. A write always asks with Allow once only, whatever
+ * grant, permission mode or taint the send holds. Nothing here ever offers
+ * Always allow (docs/legal/prechecks/google.md).
  */
 function resolveGoogleApproval(
   descriptor: ToolApprovalDescriptor,
@@ -424,6 +427,10 @@ function resolveGoogleApproval(
 ): ToolApprovalDecision {
   if (!isGoogleRead(descriptor)) {
     return ask(11, 'always-ask', GOOGLE_WRITE_REMEMBER_OPTIONS)
+  }
+
+  if (isGoogleOnceOnlyReadTool(descriptor.toolName)) {
+    return ask(11, 'default', GOOGLE_WRITE_REMEMBER_OPTIONS)
   }
 
   return grantMatches(chatGrant, descriptor)

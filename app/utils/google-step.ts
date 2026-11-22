@@ -1,8 +1,13 @@
 import type { UIMessage } from 'ai'
+import {
+  GOOGLE_GMAIL_DRAFT_REFERENCE_KIND,
+  GOOGLE_GMAIL_THREAD_REFERENCE_KIND,
+} from '#shared/utils/google-gmail-tools'
 import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 import type {
   GoogleStepData,
   GoogleStepReference,
+  GoogleStepReferenceLabel,
   GoogleStepState,
 } from '~/types/google-step.d'
 
@@ -41,9 +46,50 @@ function readReference(value: unknown): GoogleStepReference | null {
 
   return {
     id: record.id,
+    kind: typeof record.kind === 'string' ? record.kind : '',
     title: typeof record.title === 'string' ? record.title : '',
     link: isHttpsLink(record.link) ? record.link : '',
     date: typeof record.date === 'string' ? record.date : '',
+  }
+}
+
+function readDay(date: string): string {
+  return /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : ''
+}
+
+/**
+ * The line a reference shows after a reload. An email reference holds only
+ * a thread id, a link and Gmail's own timestamp (never a sender, a subject
+ * or a snippet), so it reads "Email thread" with its date; a draft reads
+ * "Draft"; a Drive reference shows the file name.
+ */
+export function describeGoogleStepReference(
+  reference: GoogleStepReference,
+): GoogleStepReferenceLabel {
+  if (reference.kind === GOOGLE_GMAIL_THREAD_REFERENCE_KIND) {
+    const day = readDay(reference.date)
+
+    return {
+      text: day ? `Email thread from ${day}` : 'Email thread',
+      linkText: 'Open in Gmail',
+      linkLabel: day
+        ? `Open the email thread from ${day} in Gmail`
+        : 'Open the email thread in Gmail',
+    }
+  }
+
+  if (reference.kind === GOOGLE_GMAIL_DRAFT_REFERENCE_KIND) {
+    return {
+      text: 'Draft saved in Gmail',
+      linkText: 'Open drafts in Gmail',
+      linkLabel: 'Open your drafts in Gmail',
+    }
+  }
+
+  return {
+    text: reference.title || 'Google Drive file',
+    linkText: 'Open in Google Drive',
+    linkLabel: `Open ${reference.title || 'file'} in Google Drive`,
   }
 }
 

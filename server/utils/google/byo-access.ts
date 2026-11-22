@@ -1,5 +1,9 @@
 import { GOOGLE_BYO_FEATURE_FLAG } from '#shared/utils/google-byo'
 import type { FeatureKv } from '~~/server/utils/features/evaluate'
+import type {
+  FeatureRules,
+  FeatureUserState,
+} from '~~/server/utils/features/provider'
 import {
   evaluateFeature,
   getFeatureEvaluationConfig,
@@ -17,23 +21,42 @@ import type { RequestEvent } from 'nuxt/server'
 
 type DbClient = ReturnType<typeof useDb>
 
+export interface GoogleByoFeatureState {
+  rules: FeatureRules
+  userState: FeatureUserState | null
+  userId: number | null
+}
+
 export interface GoogleByoAccessInput {
   db: DbClient
   userId: number
   kv?: FeatureKv
   logger?: LoggerLike
+  featureState?: GoogleByoFeatureState
+  requiredFlags?: readonly string[]
 }
 
 export type GoogleByoAccessVerdict = 'allowed' | 'not-admin' | 'flag-off'
+
+function sendFeatureStateOf(
+  input: GoogleByoAccessInput,
+): GoogleByoFeatureState | null {
+  return input.featureState?.userId === input.userId
+    ? input.featureState
+    : null
+}
 
 /**
  * The one gate of the bring-your-own Google client. It needs both: the
  * user is an admin right now (verified email, 2FA outside dev and CI, the
  * `admin` role or an env admin email), and `google.byo` is active for the
- * user (the flag and its parents resolved, and the Labs opt-in on). A flag
- * grant or a tester role alone is never enough. It runs without a request,
- * so the start and callback routes, the code exchange, every token refresh
- * and every later tool share it.
+ * user (the flag and its parents resolved, and the Labs opt-in on), plus
+ * every flag in `requiredFlags` (`google.gmail` for a Gmail tool call). A
+ * flag grant or a tester role alone is never enough. It runs without a
+ * request, so the start and callback routes, the code exchange, every token
+ * refresh and every later tool share it. `featureState` lets a send reuse
+ * the rules and user state it already loaded for this user (no extra D1
+ * read); without it, one fresh load serves every flag checked.
  */
 export async function checkGoogleByoAccess(
   input: GoogleByoAccessInput,
@@ -43,26 +66,27 @@ export async function checkGoogleByoAccess(
   }
 
   const config = getFeatureEvaluationConfig()
-  const userState = await loadUserFeatureState(input.db, input.userId)
+  const sendState = sendFeatureStateOf(input)
+  const userState = sendState
+    ? sendState.userState
+    : await loadUserFeatureState(input.db, input.userId)
 
   if (!isAdminUser(userState, config)) {
     return 'not-admin'
   }
 
-  const rules = await loadFeatureRules(
-    input.kv ?? useKV(),
-    input.db,
-    input.logger,
-  )
-  const resolution = await evaluateFeature(GOOGLE_BYO_FEATURE_FLAG, {
-    rules,
-    userState,
-    config,
-  })
+  const rules = sendState?.rules
+    ?? await loadFeatureRules(input.kv ?? useKV(), input.db, input.logger)
 
-  return isFeatureActive(GOOGLE_BYO_FEATURE_FLAG, resolution, userState)
-    ? 'allowed'
-    : 'flag-off'
+  for (const flag of [GOOGLE_BYO_FEATURE_FLAG, ...input.requiredFlags ?? []]) {
+    const resolution = await evaluateFeature(flag, { rules, userState, config })
+
+    if (!isFeatureActive(flag, resolution, userState)) {
+      return 'flag-off'
+    }
+  }
+
+  return 'allowed'
 }
 
 export async function isGoogleByoAllowed(

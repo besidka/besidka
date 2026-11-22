@@ -92,4 +92,36 @@ describe('Chat/Reasoning/GoogleStep', () => {
     expect(wrapper.get('[data-testid="reasoning-google-step-title"]').text())
       .toContain('…')
   })
+
+  it('shows an email thread by its date with an Open in Gmail link and no '
+    + 'mail text', async () => {
+    const threadLink = 'https://mail.google.com/mail/#all/18c0ffee'
+    const wrapper = await mountSuspended(GoogleStep, {
+      props: {
+        data: {
+          toolName: 'google__gmail_search',
+          state: 'done',
+          references: [{
+            id: '18c0ffee',
+            kind: 'gmail-thread',
+            title: '',
+            link: threadLink,
+            date: '2026-11-21T10:00:00.000Z',
+          }],
+        } as never,
+        title: 'Searched Gmail',
+        pending: false,
+        icon: { kind: 'iconify', name: 'logos:google-gmail' },
+      },
+    })
+    const link = wrapper.get('[data-testid="reasoning-google-step-link"]')
+
+    expect(wrapper.get('[data-testid="reasoning-google-step-reference"]')
+      .text()).toContain('Email thread from 2026-11-21')
+    expect(link.text()).toBe('Open in Gmail')
+    expect(link.attributes('href')).toBe(threadLink)
+    expect(link.attributes('aria-label'))
+      .toBe('Open the email thread from 2026-11-21 in Gmail')
+    expect(wrapper.text()).not.toContain('Google Drive')
+  })
 })

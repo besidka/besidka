@@ -255,9 +255,12 @@ const featureList = [
   internalFeature({
     key: 'google.gmail',
     title: 'Gmail',
-    description: 'Read Gmail in a chat through your own Google client.',
+    description: 'Search and read Gmail and write drafts in a chat through '
+      + 'your own Google client.',
     parent: 'google.byo',
     optIn: 'required',
+    available: true,
+    adminOnly: true,
   }),
   internalFeature({
     key: 'skills',

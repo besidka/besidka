@@ -20,6 +20,10 @@ import {
   googleDataRefusalReason,
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
+import {
+  GOOGLE_GMAIL_THREAD_REFERENCE_KIND,
+  describeGmailThreadDay,
+} from '#shared/utils/google-gmail-tools'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
@@ -595,7 +599,14 @@ export function isShareVisibleForGoogleData(input: {
 
 const GOOGLE_ITEM_NAMES_MAX = 20
 
-function googleReferenceTitlesOf(parts: unknown): string[] {
+interface StoredGoogleReference {
+  id?: unknown
+  title?: unknown
+  kind?: unknown
+  date?: unknown
+}
+
+function googleReferencesOf(parts: unknown): StoredGoogleReference[] {
   if (!Array.isArray(parts)) {
     return []
   }
@@ -611,13 +622,49 @@ function googleReferenceTitlesOf(parts: unknown): string[] {
       : undefined
 
     return Array.isArray(references)
-      ? references.flatMap((reference: unknown) => {
-        const title = (reference as { title?: unknown } | null)?.title
-
-        return typeof title === 'string' && title.trim() ? [title.trim()] : []
-      })
+      ? references.filter((reference: unknown) => {
+        return typeof reference === 'object' && reference !== null
+      }) as StoredGoogleReference[]
       : []
   })
+}
+
+/**
+ * Collects the names the share dialog shows for stored references: a
+ * reference's title, or for an email thread (which stores no subject)
+ * "Email thread from <day>" from Gmail's own timestamp. One thread is one
+ * name however often it was found, and two threads of the same day get
+ * distinct names ("Email thread from <day> (2)") without any mail text.
+ */
+function createReferenceNamer(names: Set<string>) {
+  const threadNames = new Map<string, string>()
+  const threadsPerLabel = new Map<string, number>()
+
+  return (reference: StoredGoogleReference) => {
+    if (typeof reference.title === 'string' && reference.title.trim()) {
+      names.add(reference.title.trim())
+
+      return
+    }
+
+    if (
+      reference.kind !== GOOGLE_GMAIL_THREAD_REFERENCE_KIND
+      || typeof reference.id !== 'string'
+      || threadNames.has(reference.id)
+    ) {
+      return
+    }
+
+    const label = describeGmailThreadDay(
+      typeof reference.date === 'string' ? reference.date : null,
+    )
+    const ordinal = (threadsPerLabel.get(label) ?? 0) + 1
+    const name = ordinal === 1 ? label : `${label} (${ordinal})`
+
+    threadsPerLabel.set(label, ordinal)
+    threadNames.set(reference.id, name)
+    names.add(name)
+  }
 }
 
 /**
@@ -636,11 +683,12 @@ export async function listChatGoogleItemNames(input: {
     columns: { parts: true },
   })
   const names = new Set<string>()
+  const nameReference = createReferenceNamer(names)
   const storageKeys: string[] = []
 
   for (const message of messages) {
-    for (const title of googleReferenceTitlesOf(message.parts)) {
-      names.add(title)
+    for (const reference of googleReferencesOf(message.parts)) {
+      nameReference(reference)
     }
 
     storageKeys.push(...fileStorageKeysOf(message.parts))

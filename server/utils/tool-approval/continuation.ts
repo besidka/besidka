@@ -67,6 +67,7 @@ import {
 } from '#shared/utils/google-tool-approvals'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
+import { isGoogleOnceOnlyReadTool } from '#shared/utils/google-gmail-tools'
 import { SKILL_SCRIPTS_GRANT_KEY } from '#shared/utils/skills/scripts'
 import { addBesidkaChatGrant } from '~~/server/utils/besidka-tools/chat-settings'
 import {
@@ -984,6 +985,7 @@ export async function applyRememberGrants(input: {
       if (
         decision.remember !== 'chat'
         || !isGoogleRead(entry.descriptor)
+        || isGoogleOnceOnlyReadTool(entry.descriptor.toolName)
         || decision.record.access !== 'read'
         || decision.record.definitionHash !== hash
       ) {

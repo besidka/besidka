@@ -7,7 +7,6 @@ import { createError } from 'evlog'
 import { z } from 'zod'
 import { buildDriveFileLink, sanitizeDriveFileName } from '#shared/utils/google-drive'
 import {
-  GOOGLE_DRIVE_CALLS_PER_MESSAGE,
   GOOGLE_DRIVE_FILE_ID_SHAPE,
   GOOGLE_DRIVE_FILE_REFERENCE_KIND,
   GOOGLE_DRIVE_LIST_TOOL_NAME,
@@ -19,11 +18,7 @@ import {
 } from '#shared/utils/google-drive-tools'
 import * as schema from '~~/server/db/schema'
 import { quoteText } from '~~/server/utils/besidka-tools/summary'
-import {
-  canonicalJson,
-  connectorSha256Hex,
-  frameUntrustedResult,
-} from '~~/server/utils/connectors/tool-definitions'
+import { frameUntrustedResult } from '~~/server/utils/connectors/tool-definitions'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import { truncateToByteBudget } from '~~/server/utils/skills/runtime/text'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -34,7 +29,13 @@ import {
 } from '~~/server/utils/google/drive-picked'
 import type { PickedDriveFile } from '~~/server/utils/google/drive-picked'
 import { saveFileToGoogleDrive } from '~~/server/utils/google/drive-save'
-import { fitGoogleToolOutput } from '~~/server/utils/google/tool-output'
+import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
+import type { GoogleSendGuard } from '~~/server/utils/google/send-guard'
+import {
+  fitGoogleToolOutput,
+  googleToolModelOutput as toModelOutput,
+  hashGoogleTool as hashTool,
+} from '~~/server/utils/google/tool-output'
 import type {
   GoogleToolOutput,
   GoogleToolReference,
@@ -127,6 +128,7 @@ export interface GoogleDriveToolsInput {
   userId: number
   chatGrantHashes: Readonly<Record<string, string>>
   priorCalls?: number
+  guard?: GoogleSendGuard
   logger: LoggerLike
 }
 
@@ -265,49 +267,6 @@ function buildReadOutput(input: {
   }
 }
 
-function withoutReferences(output: unknown): unknown {
-  if (typeof output !== 'object' || output === null || Array.isArray(output)) {
-    return output
-  }
-
-  const { references: _references, ...rest } = output as Record<
-    string,
-    unknown
-  >
-
-  return rest
-}
-
-/**
- * What the model receives for a Drive result: the output without its
- * references. File names live in the framed text only; the references keep
- * the name and the link for the stored part and the card, never for the
- * model, on the send that ran the tool and on a continuation that refills
- * the stashed output.
- */
-function toModelOutput(options: { output: unknown }) {
-  const value = withoutReferences(options.output)
-
-  return {
-    type: 'text' as const,
-    value: typeof value === 'string' ? value : JSON.stringify(value) ?? '',
-  }
-}
-
-async function hashTool(
-  name: string,
-  description: string,
-  schemaOfInput: z.ZodType,
-  kind: 'read' | 'write',
-): Promise<string> {
-  return await connectorSha256Hex(canonicalJson({
-    name,
-    description,
-    inputSchema: z.toJSONSchema(schemaOfInput),
-    kind,
-  }))
-}
-
 interface OwnedFileInfo {
   name: string
   size: number
@@ -419,33 +378,8 @@ export async function buildGoogleDriveTools(
       'write',
     ),
   }
-  let callsThisSend = 0
-  let chain: Promise<unknown> = Promise.resolve()
-
-  function serialized<Result>(run: () => Promise<Result>): Promise<Result> {
-    const next = chain.then(run, run)
-
-    chain = next.catch(() => undefined)
-
-    return next
-  }
-
-  function consumeCall(): void {
-    if (priorCalls + callsThisSend >= GOOGLE_DRIVE_CALLS_PER_MESSAGE) {
-      logger.set({
-        attributes: { googleDriveTools: { callCapReached: true } },
-      })
-
-      throw toolFailure(
-        'The limit of Google Drive tool calls for this message was reached '
-        + `(${GOOGLE_DRIVE_CALLS_PER_MESSAGE}). Tell the user what you have `
-        + 'done so far and that they can send a new message to go on.',
-        429,
-      )
-    }
-
-    callsThisSend += 1
-  }
+  const { serialized, consumeCall } = input.guard
+    ?? createGoogleSendGuard({ priorCalls, logger })
 
   const listTool = withFollowUpTurn(tool({
     description: LIST_DESCRIPTION,

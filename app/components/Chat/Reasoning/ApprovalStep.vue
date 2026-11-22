@@ -53,6 +53,16 @@
       >
         {{ summaryLine }}
       </p>
+      <a
+        v-if="model.link"
+        :href="model.link"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="link mt-0.5 inline-block text-xs text-base-content/80"
+        data-testid="reasoning-approval-step-link"
+      >
+        {{ approvalLinkLabel }}
+      </a>
       <p
         :id="reasonId"
         class="mt-0.5 min-w-0 break-words text-xs text-base-content/60"
@@ -60,6 +70,60 @@
       >
         {{ reasonText }}
       </p>
+      <div
+        v-if="gmailDraft"
+        class="mt-1.5 min-w-0 rounded-box bg-base-200 p-2 text-xs"
+        data-testid="reasoning-approval-step-gmail-draft"
+      >
+        <dl class="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]">
+          <template
+            v-for="row in gmailDraftRecipientRows"
+            :key="row.label"
+          >
+            <dt class="text-base-content/60">
+              {{ row.label }}
+            </dt>
+            <dd
+              class="min-w-0 break-all"
+              :data-testid="`reasoning-approval-step-gmail-draft-${row.key}`"
+            >
+              <span
+                v-for="address in row.addresses"
+                :key="address"
+                class="block"
+              >{{ address }}</span>
+            </dd>
+          </template>
+          <dt class="text-base-content/60">
+            Subject
+          </dt>
+          <dd
+            class="min-w-0 break-words font-medium"
+            data-testid="reasoning-approval-step-gmail-draft-subject"
+          >
+            {{ gmailDraft.subject }}
+          </dd>
+        </dl>
+        <p
+          class="mt-2 text-base-content/60"
+          data-testid="reasoning-approval-step-gmail-draft-lines"
+        >
+          Message{{ gmailDraftReplyNote }} · {{ gmailDraftLineCountText }}
+        </p>
+        <p
+          class="mt-0.5 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-box outline-offset-2 focus:outline-2 focus:outline-accent"
+          tabindex="0"
+          role="region"
+          aria-label="Draft message"
+          data-testid="reasoning-approval-step-gmail-draft-body"
+        >{{ gmailDraft.cardBody }}</p>
+        <p
+          class="mt-2 text-base-content/60"
+          data-testid="reasoning-approval-step-gmail-draft-note"
+        >
+          This only saves a draft in your Gmail. Besidka cannot send it.
+        </p>
+      </div>
       <details
         v-if="clippedPreview.text"
         class="mt-1 text-xs"
@@ -206,6 +270,10 @@
 import { LazyChatReasoningApprovalDetails } from '#components'
 import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
+import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
+import { isGoogleWriteToolName } from '#shared/utils/google-tool-approvals'
 import type {
   ApprovalStepModel,
   ApprovalStepState,
@@ -316,6 +384,52 @@ const argumentsText = computed<string>(() => {
   return formatApprovalArguments(props.model.input)
 })
 
+const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
+  const toolName = props.model.toolName.toLowerCase()
+
+  return toolName === GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME
+    ? readGmailDraftApprovalView(props.model.input)
+    : null
+})
+
+const gmailDraftReplyNote = computed<string>(() => {
+  return gmailDraft.value?.isReply
+    ? ' (a reply in the thread above)'
+    : ''
+})
+
+const gmailDraftLineCountText = computed<string>(() => {
+  const count = gmailDraft.value?.lineCount ?? 0
+
+  return count === 1 ? '1 line' : `${count} lines`
+})
+
+const approvalLinkLabel = computed<string>(() => {
+  const link = props.model.link ?? ''
+
+  return link.startsWith('https://mail.google.com/')
+    ? 'Open in Gmail'
+    : 'Open in Google Drive'
+})
+
+const isEnterApprovalBlocked = computed<boolean>(() => {
+  return isGoogleWriteToolName(props.model.toolName)
+})
+
+const gmailDraftRecipientRows = computed(() => {
+  const draft = gmailDraft.value
+
+  if (!draft) {
+    return []
+  }
+
+  return [
+    { key: 'to', label: 'To', addresses: draft.to },
+    { key: 'cc', label: 'Cc', addresses: draft.cc },
+    { key: 'bcc', label: 'Bcc', addresses: draft.bcc },
+  ].filter(row => row.addresses.length > 0)
+})
+
 const clippedPreview = computed(() => {
   return clipApprovalPreview(props.model.preview)
 })
@@ -386,6 +500,10 @@ async function onAskAgain() {
 
 function onEnter(event: KeyboardEvent) {
   if (event.repeat || event.isComposing || props.state !== 'pending') {
+    return
+  }
+
+  if (isEnterApprovalBlocked.value) {
     return
   }
 

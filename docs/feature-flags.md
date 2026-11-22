@@ -166,8 +166,11 @@ The four `google.*` flags (Phase 4b, `docs/google.md`) stay at stage
 `google.drive` is `available: true` since the connections child (the
 connection flow, the Google tab on API Keys and the routes under
 `/api/v1/google/`), and `google.byo` since the bring-your-own child (the
-owner's own OAuth client, `docs/google.md` section 10); `google.calendar`
-and `google.gmail` stay `available: false` until their children ship.
+owner's own OAuth client, `docs/google.md` section 10), and `google.gmail`
+since the Gmail tools child (`docs/google.md` section 14; also
+`adminOnly: true`, so Labs lists it only for an admin, and the Gmail tools
+still need the admin gate on the server); `google.calendar` stays
+`available: false` until its child ships.
 `google.byo` is never enough on its own: every bring-your-own route and
 every use of a bring-your-own token also requires the admin role on the
 server (`checkGoogleByoAccess` in `server/utils/google/byo-access.ts`), so

@@ -6,8 +6,10 @@ import {
 } from '#shared/utils/tool-approval-parts'
 import {
   buildConnectorApprovalEntry,
+  buildGoogleApprovalEntry,
   chatHasAwaitingApproval,
   classifyNativeTool,
+  countChatGrantRuns,
   createSendToolApproval,
   createToolApprovalStreamCollector,
   hasGuardedProviderTool,
@@ -1709,5 +1711,84 @@ describe('grants audit follow-ups', () => {
       expect(approval.toolApproval(call('call-1', 'mcp__drive__file_access')))
         .toEqual({ type: 'user-approval', reason: 'always-ask' })
     })
+  })
+})
+
+describe('the cap on searches under a chat grant', () => {
+  const SEARCH = 'google__gmail_search'
+
+  function grantedSearchApproval(priorRuns?: ReadonlyMap<string, number>) {
+    const approval = createSendToolApproval({
+      state: createApprovalState(),
+      ...(priorRuns ? { priorChatGrantRuns: priorRuns } : {}),
+    })
+
+    approval.registerTools({ [SEARCH]: {} } as never, new Map([[
+      SEARCH,
+      buildGoogleApprovalEntry({
+        toolName: SEARCH,
+        kind: 'read',
+        definitionHash: HASH,
+        summary: 'Search your Gmail',
+        chatGrantHash: HASH,
+        chatGrantRunsMax: 2,
+        toolApprovalsActive: true,
+      }),
+    ]]))
+
+    return approval
+  }
+
+  it('runs at most the capped number of granted calls, then asks again',
+    () => {
+      const approval = grantedSearchApproval()
+
+      expect(approval.toolApproval(call('c1', SEARCH))).toBe('not-applicable')
+      expect(approval.getGrantScope('c1')).toBe('chat')
+      expect(approval.toolApproval(call('c2', SEARCH))).toBe('not-applicable')
+      expect(approval.toolApproval(call('c3', SEARCH)))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+      expect(approval.getPendingDecision('c3')?.decision.rememberOptions)
+        .toEqual(['once', 'chat'])
+    })
+
+  it('keeps counting the granted runs a paused reply already holds', () => {
+    const approval = grantedSearchApproval(countChatGrantRuns([
+      { type: 'data-tool-grant', id: 'g1', data: {
+        toolCallId: 'a',
+        toolName: SEARCH,
+        scope: 'chat',
+      } },
+      { type: 'data-tool-grant', id: 'g2', data: {
+        toolCallId: 'b',
+        toolName: SEARCH,
+        scope: 'chat',
+      } },
+      { type: 'data-tool-grant', id: 'g3', data: {
+        toolCallId: 'c',
+        toolName: 'mcp__linear__list',
+        scope: 'always',
+      } },
+      { type: 'text', text: 'hi' },
+    ]))
+
+    expect(approval.toolApproval(call('c4', SEARCH)))
+      .toEqual({ type: 'user-approval', reason: 'default' })
+  })
+
+  it('counts only chat-scoped grant markers per tool', () => {
+    expect(countChatGrantRuns([
+      { type: 'data-tool-grant', id: 'g1', data: {
+        toolCallId: 'a',
+        toolName: SEARCH,
+        scope: 'chat',
+      } },
+      { type: 'data-tool-grant', id: 'g2', data: {
+        toolCallId: 'b',
+        toolName: SEARCH,
+        scope: 'always',
+      } },
+      { type: 'data-tool-grant', data: null },
+    ])).toEqual(new Map([[SEARCH, 1]]))
   })
 })

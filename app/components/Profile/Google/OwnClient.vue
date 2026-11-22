@@ -195,10 +195,13 @@
           : 'What Besidka may request' }}
       </legend>
       <p class="text-sm text-base-content/70">
-        Nothing is ticked for you. Besidka has no tools for full Google
-        Drive, Gmail or Google Calendar yet: what you tick is requested now
-        for tools that arrive later. You can add more later; to remove
-        access, disconnect and connect again.
+        Nothing is ticked for you. Gmail read access lets the model search
+        and read your mail when you allow it, Gmail drafts let it write
+        drafts you approve (Gmail tools need Gmail turned on in Labs), and
+        Google Drive read access lets it search your files and read the
+        ones it finds. Besidka has no tool for Google Calendar yet: what you
+        tick for it is requested now for a tool that arrives later. You can
+        add more later; to remove access, disconnect and connect again.
       </p>
       <label
         v-for="option in offeredOptions"
@@ -276,6 +279,42 @@
           </dd>
         </template>
       </dl>
+      <p
+        v-if="connectionState === 'connected'"
+        class="text-sm text-base-content/70"
+        data-testid="google-byo-tools-hint"
+      >
+        {{ toolsHint }}
+      </p>
+      <p
+        v-if="connectionState === 'connected' && isComposeGranted"
+        class="text-sm text-base-content/70"
+        data-testid="google-byo-compose-note"
+      >
+        {{ COMPOSE_SEND_NOTE }}
+      </p>
+      <div
+        v-if="missingToolNotes.length > 0"
+        class="alert alert-soft alert-info text-sm"
+        data-testid="google-byo-missing-tools"
+      >
+        <Icon
+          name="lucide:info"
+          size="16"
+          class="shrink-0"
+        />
+        <div>
+          <p>Some tools are off because that access was not granted:</p>
+          <ul class="mt-1 list-disc pl-5">
+            <li
+              v-for="note in missingToolNotes"
+              :key="note"
+            >
+              {{ note }}
+            </li>
+          </ul>
+        </div>
+      </div>
       <div>
         <button
           type="button"
@@ -299,6 +338,7 @@ import {
   isGoogleOAuthClientSecret,
 } from '#shared/utils/google-byo'
 import type { GoogleByoCapability } from '#shared/utils/google-byo'
+import { getGoogleByoToolsHint } from '#shared/utils/google-gmail-tools'
 import {
   GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
   GOOGLE_THIRD_PARTY_ACCESS_URL,
@@ -319,20 +359,47 @@ interface CapabilityOption {
   note?: string
 }
 
+const COMPOSE_SEND_NOTE = 'Google\'s gmail.compose permission technically '
+  + 'also allows sending mail. Besidka only ever creates drafts: it has no '
+  + 'code that sends mail.'
+
+const GMAIL_CAPABILITIES: ReadonlySet<GoogleByoCapability> = new Set([
+  'gmail-read',
+  'gmail-compose',
+])
+
 const CAPABILITY_OPTIONS: CapabilityOption[] = [
   { id: 'drive-read', label: 'All your Google Drive files, read only' },
   { id: 'gmail-read', label: 'Your Gmail, read only' },
   {
     id: 'gmail-compose',
     label: 'Gmail drafts',
-    note: 'Google\'s permission for this covers managing drafts and sending '
-      + 'mail. Besidka has no send tool: it only creates drafts.',
+    note: COMPOSE_SEND_NOTE,
   },
   {
     id: 'calendar',
     label: 'Your Google Calendar events',
     note: 'The Calendar scope is provisional until a narrower one is '
       + 'checked.',
+  },
+]
+
+const MISSING_TOOL_NOTES: ReadonlyArray<{
+  id: GoogleByoCapability
+  note: string
+}> = [
+  {
+    id: 'gmail-read',
+    note: 'Searching and reading Gmail needs Gmail read access.',
+  },
+  {
+    id: 'gmail-compose',
+    note: 'Writing Gmail drafts needs Gmail drafts access.',
+  },
+  {
+    id: 'drive-read',
+    note: 'Searching Google Drive and reading the files it finds needs '
+      + 'Google Drive read access.',
   },
 ]
 
@@ -385,6 +452,11 @@ const selectedCapabilities = ref<GoogleByoCapability[]>([])
 const heading = useTemplateRef<HTMLElement>('heading')
 
 const { data, refresh } = await useGoogleConnection()
+const gmailFeature = useFeature('google.gmail')
+
+const isGmailActive = computed<boolean>(() => {
+  return gmailFeature.value.active
+})
 
 const byo = computed<GoogleByoConnectionStatus | null>(() => {
   return data.value?.byo ?? null
@@ -420,6 +492,27 @@ const grantedCapabilities = computed<GoogleByoCapability[]>(() => {
     .filter((id) => {
       return connection.value?.capabilities.includes(id) === true
     })
+})
+
+const missingToolNotes = computed<string[]>(() => {
+  if (connectionState.value !== 'connected') {
+    return []
+  }
+
+  return MISSING_TOOL_NOTES
+    .filter((item) => {
+      return isGmailActive.value || !GMAIL_CAPABILITIES.has(item.id)
+    })
+    .filter(item => !grantedCapabilities.value.includes(item.id))
+    .map(item => item.note)
+})
+
+const toolsHint = computed<string>(() => {
+  return getGoogleByoToolsHint(isGmailActive.value)
+})
+
+const isComposeGranted = computed<boolean>(() => {
+  return grantedCapabilities.value.includes('gmail-compose')
 })
 
 const offeredOptions = computed<CapabilityOption[]>(() => {

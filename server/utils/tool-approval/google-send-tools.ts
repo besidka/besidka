@@ -4,6 +4,7 @@ import {
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
 import {
   buildGoogleSendToolCandidates,
   noGoogleSendTools,
@@ -36,26 +37,38 @@ function hasGoogleSendTools(google: GoogleSendTools): boolean {
  * Plans the Google part of one send before the provider or gateway is
  * built. No candidate unless tool approvals are active
  * (`canOfferGoogleTools`: without them no approval, cleared-call guard or
- * references-only rule would run) and `google.drive` is active.
+ * references-only rule would run) and `google.drive` or `google.byo` is
+ * active (`google.gmail` adds the Gmail tools).
  */
 export async function planGoogleSendTools(input: {
   toolApprovalsActive: boolean
   googleDriveActive: boolean
+  googleByoActive?: boolean
+  googleGmailActive?: boolean
   userId: number
   chatPublicId: string
   gatewayId: string | undefined
   holdsGoogleData: boolean
   priorGoogleCalls?: number
+  priorParts?: readonly unknown[]
+  featureState?: GoogleByoFeatureState
   logger: LoggerLike
 }): Promise<GoogleSendPlan> {
+  const hasGoogleFlag = input.googleDriveActive
+    || input.googleByoActive === true
   const mayHaveCandidates = canOfferGoogleTools(input)
-    && input.googleDriveActive
+    && hasGoogleFlag
     && (!input.gatewayId || input.holdsGoogleData)
   const candidates = mayHaveCandidates
     ? await buildGoogleSendToolCandidates({
       userId: input.userId,
       chatPublicId: input.chatPublicId,
       priorCalls: input.priorGoogleCalls ?? 0,
+      driveActive: input.googleDriveActive,
+      byoActive: input.googleByoActive === true,
+      gmailActive: input.googleGmailActive === true,
+      ...(input.featureState ? { featureState: input.featureState } : {}),
+      ...(input.priorParts ? { priorParts: input.priorParts } : {}),
       logger: input.logger,
     })
     : noGoogleSendTools()
@@ -65,7 +78,7 @@ export async function planGoogleSendTools(input: {
     && input.gatewayId
     && !input.holdsGoogleData
     && canOfferGoogleTools(input)
-    && input.googleDriveActive
+    && hasGoogleFlag
   ) {
     input.logger.set({
       attributes: { googleDataGuard: { googleTools: 'gateway-no-google-data' } },

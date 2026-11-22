@@ -352,6 +352,7 @@ import {
   rewriteArtifactToolParts,
 } from '~~/server/utils/artifacts/message-parts'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
+import { useFeatureContext } from '~~/server/utils/features/context'
 import { SKILL_TOOL_STEPS } from '#shared/utils/skills-policy'
 import {
   findSkillInvocation,
@@ -468,6 +469,7 @@ import {
 import { useToolApprovalSecret } from '~~/server/utils/tool-approval/secret'
 import {
   chatHasAwaitingApproval,
+  countChatGrantRuns,
   createSendToolApproval,
   createToolApprovalStreamCollector,
   hasGuardedProviderTool,
@@ -1539,6 +1541,8 @@ export default defineEventHandler(async (event) => {
       'tool-approvals',
       'besidka-tools',
       'google.drive',
+      'google.byo',
+      'google.gmail',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -1547,12 +1551,18 @@ export default defineEventHandler(async (event) => {
   const googleSendPlan = await planGoogleSendTools({
     toolApprovalsActive,
     googleDriveActive: sendFeatures.isFeatureActive('google.drive'),
+    googleByoActive: sendFeatures.isFeatureActive('google.byo'),
+    googleGmailActive: sendFeatures.isFeatureActive('google.gmail'),
     userId,
     chatPublicId: chat.id,
     gatewayId,
     holdsGoogleData,
     priorGoogleCalls: googleToolCallIdsOf(resume?.assistant.parts ?? [])
       .length,
+    priorParts: resume?.assistant.parts ?? [],
+    ...(sendFeatures.isFeatureActive('google.byo')
+      ? { featureState: await useFeatureContext(event) }
+      : {}),
     logger: aiLogger,
   })
   const gatewayGoogleSafeguards = googleSendPlan.gatewaySafeguards
@@ -2032,6 +2042,7 @@ export default defineEventHandler(async (event) => {
 
   const toolApprovalSend = createSendToolApproval({
     state: resume?.loaded.state ?? createApprovalState(),
+    priorChatGrantRuns: countChatGrantRuns(resume?.assistant.parts ?? []),
   })
 
   sendHoldsGoogleTaint = () => toolApprovalSend.state.taint.has('google')

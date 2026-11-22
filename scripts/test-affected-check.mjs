@@ -2057,6 +2057,35 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
   ]
 
+  const googleGmailToolsTests = [
+    'tests/unit/server/utils/google/gmail-message.spec.ts',
+    'tests/unit/server/utils/google/gmail-text.spec.ts',
+    'tests/unit/server/utils/google/gmail-boundary.spec.ts',
+    'tests/unit/server/utils/google/data-guard.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-gmail.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/utils/google-gmail-step.spec.ts',
+    'tests/unit/utils/google-step.spec.ts',
+    'tests/unit/utils/google-drive-tools.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/server/google-drive-tools.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/composables/chat-scroll-spacer.spec.ts',
+    'tests/e2e/chat/scroll-spacer.spec.ts',
+    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  ]
+
   const googleDriveTabTests = [
     'tests/integration/api/google-drive-refresh.spec.ts',
     'tests/integration/api/google-drive-import.spec.ts',
@@ -4072,6 +4101,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/google-drive-tools\.ts|server\/utils\/google\/(drive-tools|drive-picked|drive-save|drive-upload|drive-import|tool-output|drive|http|route|access-ended|send-flag)\.ts|shared\/utils\/google-tool-approvals\.ts|server\/api\/v1\/google\/drive\/saved-files\/.*\.ts|server\/utils\/tool-approval\/(google|google-send-candidates|google-send-tools|send|round-state)\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/composables\/auth\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/google-drive-save\.ts|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/(google-step|reasoning-step)\.d\.ts|app\/components\/Chat\/(SaveToGoogleDrive|Files|Document|GeneratedImage|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/(GoogleStep|Step)\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
       tests: googleDriveToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(mail-address|google-gmail-tools|google-gmail-draft-view|google-drive-tools|google-tool-approvals|google-byo|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(gmail-message|gmail-text|gmail-api|html-entities|chat-references|drive-found-read|drive-search|byo-tools|byo-access|tokens|send-guard|drive-tools|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleGmailToolsTests,
     },
     {
       pattern:

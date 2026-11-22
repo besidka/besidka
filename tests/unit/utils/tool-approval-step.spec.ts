@@ -77,6 +77,19 @@ describe('getApprovalStepModel', () => {
     })
   })
 
+  it('keeps only a Google link from the server data', () => {
+    const link = 'https://mail.google.com/mail/#all/t1'
+
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ link })),
+    )?.link).toBe(link)
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ link: 'https://evil.example/' })),
+    )).not.toHaveProperty('link')
+  })
+
   it('falls back to the default reason and Allow once without data', () => {
     const model = getApprovalStepModel(connectorPart(), new Map())
 
@@ -437,7 +450,7 @@ describe('getApprovalButtons for a Google Drive tool', () => {
   })
 
   it('leaves every other tool, and the write, with the generic labels', () => {
-    expect(getApprovalButtons(['once', 'chat'], 'google__drive_search')[1])
+    expect(getApprovalButtons(['once', 'chat'], 'google__docs_lookup')[1])
       .toMatchObject({ label: 'Allow in this chat' })
     expect(getApprovalButtons(['once'], 'google__drive_save_file'))
       .toEqual([{ remember: 'once', label: 'Allow once' }])

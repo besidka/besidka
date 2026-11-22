@@ -921,7 +921,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the Drive tools (`google__drive_list_picked`, `_read_file`, `_save_file`:
   when they are offered, the output cap, the multipart save and its atomic
   claim, `POST /api/v1/google/drive/saved-files`, the Save to Google Drive
-  button, and what is stored and shown after a reload)
+  button, and what is stored and shown after a reload), and section 14, the
+  Gmail tools and Drive search on the owner's own client
+  (`google__gmail_search`, `_read_thread`, `_create_draft`,
+  `google__drive_search`, `google__drive_read_found_file`: mail and shared
+  files as hostile input, thread ids and dates as the only stored mail
+  fields, reads and replies only for ids a search of the chat returned,
+  once-only reads, the cap of 5 granted searches per message, the draft
+  builder's refuse-never-repair rules and that nothing can send, the
+  read-and-store-nothing path for a found Drive file, the request bounds,
+  the legacy charsets, the differences from BES-295 and the owner's
+  real-account checklist)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
