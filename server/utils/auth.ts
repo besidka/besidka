@@ -80,6 +80,8 @@ const OAUTH_GRANT_TYPES = ['authorization_code', 'refresh_token'] as const
 
 export const DISABLED_AUTH_PATHS = [
   '/token',
+  '/get-access-token',
+  '/refresh-token',
   '/oauth2/get-client',
   '/oauth2/get-clients',
   '/oauth2/create-client',
@@ -499,6 +501,7 @@ function createAuth() {
       google: {
         clientId: config.googleClientId,
         clientSecret: config.googleClientSecret,
+        includeGrantedScopes: false,
       },
       github: {
         clientId: config.githubClientId,
