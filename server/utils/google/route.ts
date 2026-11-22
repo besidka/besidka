@@ -94,10 +94,14 @@ function assertNotCrossSiteRead(event: RequestEvent): void {
 
 /**
  * The gate of every Google connection route, in this order: the same-origin
- * guard (the full write guard for POST routes; for a GET only a refusal of
- * a cross-site `Sec-Fetch-Site`, because a same-origin GET sends no
- * `Origin`), a session, the `google.drive` flag active for this user
- * (enabled and opted in) unless `feature: false`, then the per-user rate
+ * guard (the full write guard for POST and DELETE routes; for a GET only a
+ * refusal of a cross-site `Sec-Fetch-Site`, because a same-origin GET sends
+ * no `Origin`; none for `navigation: true`, the OAuth callbacks, which
+ * Google reaches through a cross-site top-level redirect and which the
+ * single-use state bound to the user protects instead), a session, the
+ * `google.drive` flag active for this user (enabled and opted in) unless
+ * `feature: false`, the `authorize` check when given (the bring-your-own
+ * routes pass the admin and `google.byo` gate), then the per-user rate
  * limit. Disconnect and the status read pass `feature: false`: a user who
  * is connected must always be able to see and end the connection, even
  * after the flag is turned off or they opt out. Returns the user id.
@@ -108,11 +112,13 @@ export async function requireGoogleAccess(
     write: boolean
     rateLimit: GoogleRateLimitBucket
     feature?: boolean
+    navigation?: boolean
+    authorize?: (userId: number) => Promise<void>
   },
 ): Promise<number> {
   if (options.write) {
     assertConnectorWriteRequest(event)
-  } else {
+  } else if (!options.navigation) {
     assertNotCrossSiteRead(event)
   }
 
@@ -127,6 +133,10 @@ export async function requireGoogleAccess(
   }
 
   const userId = parseInt(session.user.id)
+
+  if (options.authorize) {
+    await options.authorize(userId)
+  }
 
   if (options.rateLimit !== 'none') {
     await enforceGoogleRateLimit(event, userId, options.rateLimit)

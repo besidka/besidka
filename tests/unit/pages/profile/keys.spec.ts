@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   shouldAutoExpand: true,
   googleDriveActive: false,
   googleConnected: false,
+  googleByo: false,
   openAtMount: {} as Record<string, boolean>,
   expandCard: {} as Record<string, (isExpanded?: boolean) => void>,
   resizeObservers: [] as Array<{
@@ -91,6 +92,14 @@ mockNuxtImport('useGoogleConnection', () => {
       connection: mocks.googleConnected ? { status: 'active' } : null,
       canConnect: mocks.googleDriveActive,
       dedicatedClient: false,
+      byo: mocks.googleByo
+        ? {
+          canManage: false,
+          redirectUri: null,
+          hasClient: false,
+          connection: {},
+        }
+        : null,
     })),
   })
 })
@@ -114,6 +123,9 @@ function stubs() {
   return {
     ProfileGoogleConnection: {
       template: '<section data-testid="google-drive-connection" />',
+    },
+    ProfileGoogleOwnClient: {
+      template: '<section data-testid="google-byo" />',
     },
     ProfileKeysTypesafeChecks: {
       template: '<section data-testid="typesafe-checks" />',
@@ -185,6 +197,7 @@ describe('profile keys page', () => {
     mocks.shouldAutoExpand = true
     mocks.googleDriveActive = false
     mocks.googleConnected = false
+    mocks.googleByo = false
     mocks.expandCard = {}
     mocks.openAtMount = {}
     mocks.resizeObservers = []
@@ -378,6 +391,37 @@ describe('profile keys page', () => {
     expect(wrapper.find('[data-testid="key-panel-google"]').exists())
       .toBe(false)
     expect(wrapper.get('[data-testid="key-tab-providers"]').classes())
+      .toContain('tab-active')
+  })
+
+  it('shows the own client card only when the status carries it',
+    async () => {
+      mocks.googleDriveActive = true
+      mockRoute.query = { tab: 'google' }
+
+      const withoutByo = await mountPage()
+
+      expect(withoutByo.find('[data-testid="google-byo"]').exists())
+        .toBe(false)
+
+      withoutByo.unmount()
+      mocks.googleByo = true
+
+      const withByo = await mountPage()
+      const panel = withByo.get('[data-testid="key-panel-google"]')
+
+      expect(panel.find('[data-testid="google-drive-connection"]').exists())
+        .toBe(true)
+      expect(panel.find('[data-testid="google-byo"]').exists()).toBe(true)
+    })
+
+  it('keeps the Google tab for an own-client connection alone', async () => {
+    mocks.googleByo = true
+    mockRoute.query = { tab: 'google' }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.get('[data-testid="key-tab-google"]').classes())
       .toContain('tab-active')
   })
 

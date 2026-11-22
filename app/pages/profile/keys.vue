@@ -181,6 +181,10 @@
   >
     <UiBubble>
       <ProfileGoogleConnection />
+      <template v-if="googleConnectionData?.byo">
+        <div class="divider my-0" />
+        <ProfileGoogleOwnClient />
+      </template>
     </UiBubble>
   </div>
 </template>
@@ -239,6 +243,7 @@ const { data: googleConnectionData } = await useGoogleConnection()
 const isGoogleTabVisible = computed<boolean>(() => {
   return googleDriveFeature.value.active
     || !!googleConnectionData.value?.connection
+    || !!googleConnectionData.value?.byo
 })
 
 const baseTabs: KeyTab[] = [

@@ -165,9 +165,17 @@ The four `google.*` flags (Phase 4b, `docs/google.md`) stay at stage
 `internal` and carry `optIn: 'required'` with `spend: 'none'`.
 `google.drive` is `available: true` since the connections child (the
 connection flow, the Google tab on API Keys and the routes under
-`/api/v1/google/`); the other three stay `available: false` until their
-children ship. Each one sends the user's Google data to Google or, through a
-chat, to a model provider, so the user opts in before any of it runs
+`/api/v1/google/`), and `google.byo` since the bring-your-own child (the
+owner's own OAuth client, `docs/google.md` section 10); `google.calendar`
+and `google.gmail` stay `available: false` until their children ship.
+`google.byo` is never enough on its own: every bring-your-own route and
+every use of a bring-your-own token also requires the admin role on the
+server (`checkGoogleByoAccess` in `server/utils/google/byo-access.ts`), so
+a flag grant or the tester role does not reach it. Its registry entry
+carries `adminOnly: true`, so Labs lists it only for an admin (a
+flag-granted tester would otherwise see a toggle with no card behind it).
+Each one sends the user's Google data to Google or, through a chat, to a
+model provider, so the user opts in before any of it runs
 (`docs/legal/prechecks/google.md`). `google.calendar` and `google.byo` are
 children of `google.drive`, and `google.gmail` is a child of `google.byo`, the
 first flag with a three-level parent chain; evaluation, `isFeatureActive`,

@@ -130,12 +130,12 @@ describe('feature registry', () => {
     }
   })
 
-  it('ships only the Google Drive connection flag', () => {
+  it('ships the Google Drive and bring-your-own client flags only', () => {
     expect(FEATURE_REGISTRY['google.drive'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.byo'].available).toBe(true)
 
     for (const key of [
       'google.calendar',
-      'google.byo',
       'google.gmail',
     ] as const) {
       expect(FEATURE_REGISTRY[key].available).toBe(false)

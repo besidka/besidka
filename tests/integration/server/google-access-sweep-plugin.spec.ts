@@ -98,6 +98,9 @@ describe('Google access sweep plugin', () => {
           staleChecked: 0,
           staleEnded: 0,
           staleFailed: 0,
+          byoGateChecked: 0,
+          byoGateEnded: 0,
+          byoGateFailed: 0,
         },
       },
     })

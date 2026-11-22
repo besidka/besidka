@@ -563,6 +563,12 @@ lock keys within one.
 - **Paid-tier confirmations come back.** A confirmation a user removed in the
   window returns on the Gemini key. Clear all of them (step 2d); users
   confirm again before a Google-data chat can use that key.
+- **The owner's own OAuth client comes back.** A client id and secret the
+  owner deleted or replaced in the window return in their `keys` row
+  (provider `google-oauth-client`). If the owner rotated the secret in the
+  Google Cloud console because it leaked, the restored row holds the old
+  secret, which Google then refuses (`invalid_client`); tell the owner to
+  save the current one again or delete the row.
 - **Deleted accounts return.** The account purge deletes the user's
   `google_connections` rows explicitly; a restored row of a deleted account
   has no user and is removed by the account replay of step 4

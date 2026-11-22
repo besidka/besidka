@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { GOOGLE_SCOPES, hasScopes } from '#shared/utils/google-scopes'
 import {
+  buildGoogleRedirectUri,
   getConnectionScopes,
   GOOGLE_CONNECTION_REQUIRED_SCOPES,
+  requiredConnectionScopes,
 } from '~~/server/utils/google/client'
 import {
   buildGoogleAuthorizationUrl,
@@ -57,6 +59,40 @@ describe('Google connection scopes', () => {
 
     expect(hasScopes('openid email profile', required)).toBe(false)
     expect(hasScopes(`openid email ${DRIVE_FILE_SCOPE}`, required)).toBe(true)
+  })
+
+  it('asks the own client for identity plus the ticked scopes only', () => {
+    expect(getConnectionScopes('byo', [GOOGLE_SCOPES.gmailReadonly]).sort())
+      .toEqual([
+        GOOGLE_SCOPES.openid,
+        GOOGLE_SCOPES.email,
+        GOOGLE_SCOPES.gmailReadonly,
+      ].sort())
+  })
+
+  it('never lets a stored scope list widen the own client\'s request', () => {
+    const scopes = getConnectionScopes('byo', [
+      GOOGLE_SCOPES.driveFile,
+      GOOGLE_SCOPES.profile,
+      'https://www.googleapis.com/auth/cloud-platform',
+      GOOGLE_SCOPES.driveReadonly,
+    ])
+
+    expect(scopes).toContain(GOOGLE_SCOPES.driveReadonly)
+    expect(scopes).not.toContain(GOOGLE_SCOPES.driveFile)
+    expect(scopes).not.toContain(GOOGLE_SCOPES.profile)
+    expect(scopes).not.toContain(
+      'https://www.googleapis.com/auth/cloud-platform',
+    )
+    expect(requiredConnectionScopes('byo', [GOOGLE_SCOPES.driveFile]))
+      .toEqual([])
+  })
+
+  it('gives each client its own callback path', () => {
+    expect(buildGoogleRedirectUri('https://besidka.com', 'besidka'))
+      .toBe('https://besidka.com/api/v1/google/oauth/callback')
+    expect(buildGoogleRedirectUri('https://besidka.com', 'byo'))
+      .toBe('https://besidka.com/api/v1/google/byo/callback')
   })
 })
 

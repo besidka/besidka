@@ -14,6 +14,7 @@ import {
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types'
 import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
+import type { GoogleClientMode } from '#shared/utils/google-scopes'
 import { withDerivedKeys } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
@@ -149,24 +150,32 @@ async function deleteKnowledgeTargets(
   }
 }
 
-export async function hasActiveGoogleConnection(
+/**
+ * The client modes whose connection Google file copies belong to. Files
+ * carry no client mode, so this is the rule instead: only Besidka's client
+ * makes copies (the Picker needs the project of Besidka's client, and the
+ * bring-your-own tools keep references only). A copy therefore lives
+ * exactly as long as a connection of these modes is active, whatever the
+ * bring-your-own connection does. A later tool that saves copies under the
+ * bring-your-own client must first mark them (its own `external_source`
+ * value) and add a rule for that value here.
+ */
+export const GOOGLE_COPY_CLIENT_MODES: readonly GoogleClientMode[] = [
+  'besidka',
+]
+
+export async function hasActiveCopyConnection(
   db: DbClient,
   userId: number,
-  excludeConnectionId: string | null = null,
 ): Promise<boolean> {
-  const conditions = [
-    eq(schema.googleConnections.userId, userId),
-    eq(schema.googleConnections.status, 'active'),
-  ]
-
-  if (excludeConnectionId) {
-    conditions.push(ne(schema.googleConnections.id, excludeConnectionId))
-  }
-
   const [row] = await db
     .select({ id: schema.googleConnections.id })
     .from(schema.googleConnections)
-    .where(and(...conditions))
+    .where(and(
+      eq(schema.googleConnections.userId, userId),
+      eq(schema.googleConnections.status, 'active'),
+      inArray(schema.googleConnections.clientMode, GOOGLE_COPY_CLIENT_MODES),
+    ))
     .limit(1)
 
   return !!row
@@ -176,9 +185,10 @@ export async function hasActiveGoogleConnection(
  * Deletes the files of a user whose `external_source` is a Google source
  * and that were created no later than `createdBefore` (the moment access
  * ended), so a file picked after a reconnect is never touched. Before
- * every batch it re-checks that the user has no active connection: files
- * carry no client mode, so a reconnect (or another active mode) stops the
- * cleanup and reports `skipped`. Each batch is one R2 batch delete (with
+ * every batch it re-checks that the user has no active connection of a
+ * copy-making mode (`GOOGLE_COPY_CLIENT_MODES`): a reconnect stops the
+ * cleanup and reports `skipped`, while an active bring-your-own connection
+ * does not keep Besidka's copies alive. Each batch is one R2 batch delete (with
  * the derived Office text keys), the KV file cache one key at a time, the
  * D1 rows, the documents and knowledge texts that pointed at them; an R2
  * failure stops before D1 so the sweep retries. `complete` is false when
@@ -199,7 +209,7 @@ export async function deleteGoogleDerivedFiles(
       break
     }
 
-    if (await hasActiveGoogleConnection(db, userId)) {
+    if (await hasActiveCopyConnection(db, userId)) {
       skipped = true
       complete = true
 
@@ -319,6 +329,7 @@ async function selectSweepUsers(
           .where(and(
             eq(activeConnection.userId, schema.files.userId),
             eq(activeConnection.status, 'active'),
+            inArray(activeConnection.clientMode, GOOGLE_COPY_CLIENT_MODES),
           )),
       ),
     ))
@@ -331,7 +342,8 @@ async function selectSweepUsers(
 /**
  * The hourly backup for access that ended without a finished cleanup:
  * clears any token left on a row that is not active, deletes the Google
- * copies of users who have Google files and no active connection, and
+ * copies of users who have Google files and no active connection of a
+ * copy-making mode (`GOOGLE_COPY_CLIENT_MODES`), and
  * deletes `revoked` rows once nothing of theirs is left to clean. A run
  * handles at most 25 users, 2,000 files and 20 seconds; it walks users in
  * id order from a KV cursor (`google:sweep-cursor`), so a user whose
@@ -431,9 +443,9 @@ export async function sweepGoogleAccessEnded(input: {
       .from(schema.files)
       .where(isGoogleFileOf(row.userId))
       .limit(1)
-    const otherActive = await hasActiveGoogleConnection(db, row.userId, row.id)
+    const copiesKept = await hasActiveCopyConnection(db, row.userId)
 
-    if (remainingFile && !otherActive) {
+    if (remainingFile && !copiesKept) {
       continue
     }
 

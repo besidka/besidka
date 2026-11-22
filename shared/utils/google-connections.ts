@@ -7,6 +7,7 @@ import type {
   GoogleCapability,
   GoogleClientMode,
 } from '#shared/utils/google-scopes'
+import type { GoogleByoStatus } from '#shared/utils/google-byo'
 
 export const GOOGLE_CONNECTION_STATUSES = [
   'active',
@@ -20,6 +21,7 @@ export const GOOGLE_CONNECT_RESULT_QUERY_KEY = 'google'
 
 export const GOOGLE_CONNECT_RESULTS = [
   'connected',
+  'partial',
   'denied',
   'missing_scope',
   'expired',
@@ -38,10 +40,15 @@ export interface GoogleConnectionSummary {
   connectedAt: string
 }
 
+export interface GoogleByoConnectionStatus extends GoogleByoStatus {
+  connection: GoogleConnectionSummary | null
+}
+
 export interface GoogleConnectionStatusResponse {
   connection: GoogleConnectionSummary | null
   canConnect: boolean
   dedicatedClient: boolean
+  byo: GoogleByoConnectionStatus | null
 }
 
 export const GOOGLE_THIRD_PARTY_ACCESS_URL

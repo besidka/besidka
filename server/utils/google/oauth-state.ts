@@ -13,6 +13,7 @@ export interface GoogleOAuthState {
   returnTo: string
   forcedConsent: boolean
   createdAt: number
+  requestedScopes?: string[]
 }
 
 function stateKey(state: string): string {
@@ -49,6 +50,17 @@ function isGoogleOAuthState(value: unknown): value is GoogleOAuthState {
     && typeof candidate.returnTo === 'string'
     && typeof candidate.forcedConsent === 'boolean'
     && typeof candidate.createdAt === 'number'
+    && isOptionalScopeList(candidate.requestedScopes)
+}
+
+function isOptionalScopeList(value: unknown): boolean {
+  if (value === undefined) {
+    return true
+  }
+
+  return Array.isArray(value) && value.every((scope) => {
+    return typeof scope === 'string'
+  })
 }
 
 /**

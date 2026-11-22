@@ -157,6 +157,61 @@ export async function useGoogleRuntimeConfig(
   }
 }
 
+export const BYO_CLIENT_ID = 'owner-test-client-abcd.apps.googleusercontent.com'
+export const BYO_CLIENT_SECRET = 'test-owner-secret-value-0123456789'
+
+interface ByoAccessSeedDb {
+  insert: (table: any) => { values: (values: any) => Promise<unknown> }
+  update: (table: any) => {
+    set: (values: any) => { where: (condition: any) => Promise<unknown> }
+  }
+}
+
+/**
+ * Seeds what the real feature evaluator needs for the bring-your-own gate:
+ * `admin` gives the `admin` role with 2FA on (the user is already
+ * verified), `grant` gives allow grants for `google.drive` and
+ * `google.byo` without any role (a flag grant to a non-admin), and
+ * `optIn` the Labs opt-in for both flags.
+ */
+export async function seedGoogleByoAccess(
+  db: ByoAccessSeedDb,
+  userId: number,
+  input: { admin?: boolean, grant?: boolean, optIn?: boolean } = {},
+): Promise<void> {
+  const schema = await import('~~/server/db/schema')
+  const { eq } = await import('drizzle-orm')
+  const flags = ['google.drive', 'google.byo']
+
+  await db.update(schema.users)
+    .set({ twoFactorEnabled: true })
+    .where(eq(schema.users.id, userId))
+
+  if (input.admin ?? true) {
+    await db.insert(schema.userRoles).values({ userId, role: 'admin' })
+  }
+
+  if (input.grant) {
+    for (const flag of flags) {
+      await db.insert(schema.featureGrants).values({
+        userId,
+        flag,
+        effect: 'allow',
+      })
+    }
+  }
+
+  if (input.optIn ?? true) {
+    for (const flag of flags) {
+      await db.insert(schema.featureOptIns).values({
+        userId,
+        flag,
+        optedInAt: new Date('2026-11-01T00:00:00.000Z'),
+      })
+    }
+  }
+}
+
 export function createFakeBucket() {
   const deletedBatches: string[][] = []
 
