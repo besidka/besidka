@@ -25,6 +25,7 @@ const SAVE_AS_HINT = 'Save it as .xlsx / .docx / .pptx and upload again.'
 const IMAGE_DOCUMENT_NAME = 'e2e-with-image.docx'
 const TEXT_ONLY_TITLE = 'The model gets this file\'s text only. '
   + 'Images, charts and formatting aren\'t sent.'
+const SPREADSHEET_MAP_NOTE = '1 sheet'
 const PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
@@ -254,7 +255,7 @@ test.describe('Office attachments', () => {
     expect(accept).toContain('.xls')
   })
 
-  test('uploads an xlsx and shows no badge when nothing is left out', async ({
+  test('uploads an xlsx and shows the sheet count note on its chip', async ({
     page,
   }) => {
     await signInWithOfficeAttachments(page)
@@ -270,7 +271,14 @@ test.describe('Office attachments', () => {
       timeout: 30_000,
     })
 
-    await expect(page.getByTestId('files-delivery-hint')).toHaveCount(0)
+    const hint = page.getByTestId('files-delivery-hint')
+
+    await expect(hint).toHaveText(SPREADSHEET_MAP_NOTE)
+    await expect(hint).toHaveAttribute('title', /map of this workbook/)
+    await expect(page.getByTestId('files-delivery-hint-note')).toHaveCount(0)
+    await hint.click()
+    await expect(page.getByTestId('files-delivery-hint-note'))
+      .toContainText('The model gets a map of this workbook')
 
     const files = await page.request.get('/api/v1/files?limit=50')
     const uploaded = (await files.json()).files.find(
@@ -338,7 +346,8 @@ test.describe('Office attachments', () => {
       page.getByLabel(`Remove ${CONVERTED_SPREADSHEET_NAME}`),
     ).toBeVisible({ timeout: 30_000 })
     await expect(page.getByTestId('files-upload-legacy-hint')).toHaveCount(0)
-    await expect(page.getByTestId('files-delivery-hint')).toHaveCount(0)
+    await expect(page.getByTestId('files-delivery-hint'))
+      .toHaveText(SPREADSHEET_MAP_NOTE)
 
     const note = page.getByTestId('files-converted-note')
 
