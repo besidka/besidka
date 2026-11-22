@@ -3947,15 +3947,6 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/composables\/chat-google-data\.ts$/,
-      tests: [
-        'tests/e2e/chat/scroll-spacer.spec.ts',
-        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
-        'tests/unit/composables/chat-scroll-spacer.spec.ts',
-      ],
-    },
-    {
-      pattern:
         /^(shared\/utils\/(google-tool-approvals|tool-approval-policy|tool-approval-parts)\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/connectors\/send-tools\.ts|server\/utils\/chats\/branch\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/(ContextPanelApprovals|Reasoning\/ApprovalStep)\.vue)$/,
       tests: googleToolApprovalTests,
     },

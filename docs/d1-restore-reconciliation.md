@@ -560,6 +560,21 @@ lock keys within one.
   until the flag is set again. Re-derive it from the chats that hold Google
   parts or tool results and set it before users can send; the rule that
   decides which parts count is the one the data guard uses.
+- **Derived marks revert.** `artifacts.google_derived_at`,
+  `files.google_derived_at` and `documents.google_derived_at` set in the
+  window are lost, so an artifact, file or document written in a flagged chat
+  after B reads as clean: MCP lists it, other chats read it, it can get a
+  public artifact link and become project knowledge. Re-mark every artifact,
+  file and document whose origin chat has `google_data_at` set (after the
+  flag re-derivation above) and whose `created_at` or `updated_at` is later
+  than that flag (step 2d).
+- **Share opt-ins come back or vanish.** `chat_shares.google_opt_in_at`
+  reverts: an opt-in the owner gave in the window is lost (the share pauses;
+  the owner shares again), and an opt-in that new Google content cleared in
+  the window returns, so a share shows Google content the owner never saw
+  named. Clear it for every share of a chat that has `google_data_at` set
+  (step 2d); owners opt in again. `indexable` cleared by new Google content
+  can return too: clear it for the same shares.
 - **Paid-tier confirmations come back.** A confirmation a user removed in the
   window returns on the Gemini key. Clear all of them (step 2d); users
   confirm again before a Google-data chat can use that key.
@@ -850,7 +865,18 @@ npx wrangler d1 execute besidka --env production --remote --command="UPDATE goog
 
 See "Google" above for why every connection is reset. Users reconnect and
 confirm the paid tier of their Gemini key again. Then set `chats.google_data_at`
-again for the chats that carry Google data, as described there.
+again for the chats that carry Google data, as described there, and after
+that pause their shares and re-mark derived items:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE chat_shares SET google_opt_in_at = NULL, indexable = 0 WHERE chat_id IN (SELECT id FROM chats WHERE google_data_at IS NOT NULL); UPDATE artifacts SET google_derived_at = unixepoch() WHERE google_derived_at IS NULL AND origin_chat_id IN (SELECT id FROM chats WHERE google_data_at IS NOT NULL AND artifacts.updated_at >= chats.google_data_at); UPDATE documents SET google_derived_at = unixepoch() WHERE google_derived_at IS NULL AND origin_chat_id IN (SELECT id FROM chats WHERE google_data_at IS NOT NULL AND documents.created_at >= chats.google_data_at);"
+```
+
+Files have no origin chat column: re-mark the files of those documents
+(`documents.file_id`) the same way, and list generated images and code
+execution files from the flagged chats' file parts (`messages.parts`, by
+storage key) for a one-off update. Verify the column names against
+`server/db/schemas/` before running; the timestamps are Unix seconds.
 
 After the wipe no connection is `active`, so the hourly access-ended sweep
 (`server/plugins/google-access-sweep.ts`, `sweepGoogleAccessEnded`) deletes
