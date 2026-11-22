@@ -352,15 +352,11 @@ async function importOne(
     }
   }
 
-  const fileData = new Uint8Array(copy.bytes.byteLength)
-
-  fileData.set(copy.bytes)
-
   const stored = await persistFile({
     userId: input.userId,
     fileName: copy.fileName,
     mediaType: copy.mediaType,
-    fileData,
+    fileData: copy.bytes,
     source: 'upload',
     externalSource: 'google',
     externalId: metadata.id,
@@ -409,6 +405,37 @@ async function importGuarded(
   }
 }
 
+type ItemToken
+  = | { status: 'ok', accessToken: string }
+    | { status: 'unavailable' | 'reauthorize' }
+
+/**
+ * A token for one item. A refresh that fails with a Google 5xx or a busy
+ * lock (the token module throws, and changes nothing) fails only this item,
+ * so copies already stored are still reported to the user.
+ */
+async function readItemToken(input: DriveImportInput): Promise<ItemToken> {
+  try {
+    const token = await getGoogleAccessToken({
+      userId: input.userId,
+      clientMode: 'besidka',
+      requiredScopes: [GOOGLE_SCOPES.driveFile],
+    }, { db: input.db, kv: input.kv, logger: input.logger })
+
+    return token.status === 'ok'
+      ? { status: 'ok', accessToken: token.accessToken }
+      : { status: 'reauthorize' }
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        googleDrive: { tokenError: exceptionMessage(exception) },
+      },
+    })
+
+    return { status: 'unavailable' }
+  }
+}
+
 /**
  * Copies the files the user picked into Besidka's own storage, one at a
  * time (Workers allow six simultaneous connections, and each copy holds
@@ -423,14 +450,13 @@ export async function importDriveFiles(
   const results: DriveImportItemResult[] = []
 
   for (const item of input.items) {
-    const token = await getGoogleAccessToken({
-      userId: input.userId,
-      clientMode: 'besidka',
-      requiredScopes: [GOOGLE_SCOPES.driveFile],
-    }, { db: input.db, kv: input.kv, logger: input.logger })
+    const token = await readItemToken(input)
 
     if (token.status !== 'ok') {
-      results.push(failed(item.id, 'reauthorize'))
+      results.push(failed(
+        item.id,
+        token.status === 'unavailable' ? 'failed' : 'reauthorize',
+      ))
 
       continue
     }

@@ -453,6 +453,46 @@ describe('useGooglePicker', () => {
       expect(picker.dispose).toHaveBeenCalled()
     })
 
+  it('asks for a reload when the page policy blocks Google\'s frame, '
+    + 'instead of waiting for the timeout', async () => {
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await finishScriptLoad()
+
+    const violation = new Event('securitypolicyviolation')
+
+    Object.assign(violation, {
+      violatedDirective: 'frame-src',
+      blockedURI: 'https://docs.google.com/picker?x=1',
+    })
+    document.dispatchEvent(violation)
+
+    const result = await pending
+
+    expect(result).toMatchObject({ status: 'error', code: 'blocked' })
+    expect(JSON.stringify(result)).toContain('Reload the page')
+    expect(picker.dispose).toHaveBeenCalled()
+  })
+
+  it('ignores a policy violation that is not Google\'s frame', async () => {
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await finishScriptLoad()
+
+    const violation = new Event('securitypolicyviolation')
+
+    Object.assign(violation, {
+      violatedDirective: 'frame-src',
+      blockedURI: 'https://tracker.example/frame',
+    })
+    document.dispatchEvent(violation)
+    pickerCallback({ action: 'cancel' })
+
+    expect(await pending).toEqual({ status: 'cancelled' })
+  })
+
   it('does not time out once the picker has loaded, until it sits idle',
     async () => {
       vi.useFakeTimers()

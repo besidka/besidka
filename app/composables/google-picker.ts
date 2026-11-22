@@ -16,6 +16,7 @@ export type GooglePickerFailure
     | 'reauthorize'
     | 'not-configured'
     | 'script-blocked'
+    | 'blocked'
     | 'not-signed-in'
     | 'timeout'
     | 'drive-error'
@@ -327,6 +328,8 @@ function showPicker(
         clearTimeout(timer)
       }
 
+      document.removeEventListener('securitypolicyviolation', onViolation)
+
       try {
         instance?.setVisible(false)
         instance?.dispose()
@@ -336,6 +339,26 @@ function showPicker(
 
       resolve(result)
     }
+
+    function onViolation(event: Event) {
+      const violation = event as Partial<SecurityPolicyViolationEvent>
+      const isFrameBlocked = !!violation.violatedDirective?.startsWith(
+        'frame-src',
+      )
+      const isGoogleFrame = !!violation.blockedURI?.includes('google.com')
+
+      if (!isFrameBlocked || !isGoogleFrame) {
+        return
+      }
+
+      finish(toFailure(
+        'blocked',
+        'This page does not allow Google\'s file picker',
+        'Reload the page and try again.',
+      ))
+    }
+
+    document.addEventListener('securitypolicyviolation', onViolation)
 
     function startTimer(milliseconds: number, result: GooglePickerResult) {
       if (timer) {

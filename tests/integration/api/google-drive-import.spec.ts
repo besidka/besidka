@@ -46,7 +46,32 @@ const mocks = vi.hoisted(() => ({
   logged: [] as unknown[],
   usedBytes: 0,
   maxStorageBytes: 100 * 1024 * 1024,
+  itemTokenCalls: 0,
+  itemTokensAllowed: Number.POSITIVE_INFINITY,
 }))
+
+vi.mock('~~/server/utils/google/tokens', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/google/tokens')
+  >()
+
+  return {
+    ...actual,
+    getGoogleAccessToken: vi.fn(async (
+      ...args: Parameters<typeof actual.getGoogleAccessToken>
+    ) => {
+      mocks.itemTokenCalls++
+
+      if (mocks.itemTokenCalls > mocks.itemTokensAllowed) {
+        throw Object.assign(new Error('Google did not refresh'), {
+          status: 502,
+        })
+      }
+
+      return await actual.getGoogleAccessToken(...args)
+    }),
+  }
+})
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -408,6 +433,8 @@ describe('POST /api/v1/google/drive/files', () => {
     mocks.flags = new Set(['google.drive'])
     mocks.logged = []
     mocks.usedBytes = 0
+    mocks.itemTokenCalls = 0
+    mocks.itemTokensAllowed = Number.POSITIVE_INFINITY
     mocks.maxStorageBytes = 100 * MEBIBYTE
     stored = []
     testDb = createMemoryExtractionTestDb()
@@ -939,6 +966,18 @@ describe('POST /api/v1/google/drive/files', () => {
         MISSING_ID,
       ])
       expect(await fileRows()).toHaveLength(2)
+    })
+
+    it('fails only the item whose token cannot be refreshed and reports '
+      + 'the copies already stored', async () => {
+      mocks.itemTokensAllowed = 1
+
+      const { result } = await importFiles([{ id: DOC_ID }, { id: PDF_ID }])
+
+      expect(result.results.map((item: any) => item.status))
+        .toEqual(['imported', 'failed'])
+      expect(result.results[1]).toMatchObject({ code: 'failed' })
+      expect(await fileRows()).toHaveLength(1)
     })
 
     it('imports the files one at a time', async () => {

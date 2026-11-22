@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildChatContext } from '~~/server/utils/chats/context/build-chat-context'
+import {
+  buildChatContext,
+  summarizeChatContextForMcp,
+} from '~~/server/utils/chats/context/build-chat-context'
 import type { ChatContextMessage } from '~~/server/utils/chats/context/sections'
 import { filterPublicParts } from '~~/server/utils/chats/share-public-parts'
 
@@ -75,6 +78,20 @@ describe('Google Drive files in the chat context', () => {
     expect(context.inputs[0]!.href).toBeUndefined()
     expect(serialized).not.toContain('drive.google.com')
     expect(serialized).not.toContain(FILE_ID)
+  })
+
+  it('leaves a Drive file out of the MCP summary except in the count', () => {
+    const summary = summarizeChatContextForMcp(buildChatContext([
+      userMessage(driveParts),
+    ], { visibility: 'private' }))
+    const serialized = JSON.stringify(summary)
+
+    expect(summary.inputs).toBe(1)
+    expect(summary.files).toEqual([])
+    expect(serialized).not.toContain('Plan')
+    expect(serialized).not.toContain('drive.google.com')
+    expect(serialized).not.toContain(FILE_ID)
+    expect(serialized).not.toContain('plan.md')
   })
 
   it('ignores a Drive reference on an assistant message', () => {

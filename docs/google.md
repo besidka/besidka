@@ -1362,6 +1362,13 @@ from `docs.google.com` with no "Refused to frame" message. Whether the Picker
 needs another frame host (for example `content.googleapis.com`) is NOT
 VERIFIED; a console message names the missing host.
 
+A known gap: a document loaded on a shared chat, an artifact link or an admin
+page keeps its own `frame-src` after a client-side navigation into a chat (for
+example after branching a share), so the Picker frame is blocked there. The
+composable listens for `securitypolicyviolation` during a pick and answers a
+`blocked` failure, "Reload the page and try again", at once, instead of
+waiting 20 seconds and blaming the Google sign-in.
+
 ### 11.9 UI states and the owner's real-account checklist
 
 Menu row and chips: the row is one line, "Google Drive", hint "Saves a copy in
@@ -1406,7 +1413,42 @@ account with `drive.file` consent, the consent screen "In production"):
    be picked and read (question 3).
 9. Disconnect: the copies are gone from Files and Storage.
 
-### 11.10 Not built, and known limits
+### 11.10 Against the pre-check, the ticket and the plan
+
+Pre-check rows 4, 8, 9 and 15 (`docs/legal/prechecks/google.md`): the
+attach-time label is the row 4 sentence verbatim, and deletion on disconnect or
+`invalid_grant` is section 9.6 (copies are also removed with the account);
+the label says 30 days, the default retention, and an account with another
+retention would see a different real period. There is no "keep as an ordinary
+file" option. Row 8: the key and project number are public values, the Picker
+runs only on Besidka's client, and the owner's client has no Picker. Row 9:
+"Google Drive" in full on the row and in every label; the mark is the
+one-color glyph (section 11.9), a point for the owner. Row 15 concerns Save
+to Drive and is not touched here.
+
+Where BES-278 differs from what was built, and the brief won:
+
+- The ticket sends a `data-drive-file` part from the client with an id and a
+  mode, and re-fetches metadata on send. Here the copy is made before the
+  send as a normal `file` part, and the server rebuilds the reference from
+  the stored row (section 11.6). There is no live sync, no link-only mode and
+  no pasted-link detection; those wait for the Drive tools child.
+- The ticket sets a 5 MB snapshot cap. This build uses 20 MiB, the Office
+  upload cap, because copies are normal files (section 11.4).
+- The ticket hides snapshots from the Uploaded list behind a `drive` source.
+  Copies stay in the Uploaded list here (nothing else lets a user see and
+  delete one before the file manager tab exists) and have their own storage
+  category. They stay out of MCP `list_files` and `read_file` as before
+  (`fileHoldsNoGoogleContent`).
+- The ticket and the plan mention a CSP with script, connect and image
+  sources. The app has no such directives, so only `frame-src` grows
+  (section 11.8).
+- The plan's default "Office binaries link-only" is not followed (section
+  11.4), and the brief's "download with the opt-in" for a share is not built
+  (section 11.7).
+- `version` is read from Drive but not stored (section 11.4).
+
+### 11.11 Not built, and known limits
 
 - No Drive tools for the model, no Drive tab in the file manager, no write to
   Drive, no Gmail or Calendar.

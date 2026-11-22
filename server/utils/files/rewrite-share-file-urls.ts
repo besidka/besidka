@@ -5,6 +5,7 @@ import {
   isGeneratedFilePart,
   markUrlAsGeneratedFile,
 } from '#shared/utils/files'
+import { DRIVE_FILE_PART_TYPE } from '#shared/utils/google-drive'
 import { SHARE_FILE_TOKEN_TTL_SECONDS } from '~~/server/utils/chats/share'
 import {
   extractStorageKeyFromFileUrl,
@@ -19,25 +20,31 @@ export function stripFileParts<
     return {
       ...message,
       parts: message.parts.filter((part) => {
-        return part.type !== 'file'
+        return part.type !== 'file' && part.type !== DRIVE_FILE_PART_TYPE
       }),
     }
   })
 }
 
+/**
+ * A share that hides files hides the Google Drive reference of a file too,
+ * so not even its name reaches a visitor.
+ */
 export function hideFileParts<
   TMessage extends { parts: UIMessage['parts'] },
 >(messages: TMessage[]): TMessage[] {
   return messages.map((message) => {
     return {
       ...message,
-      parts: message.parts.map((part) => {
-        if (part.type !== 'file') {
-          return part
-        }
+      parts: message.parts
+        .filter(part => part.type !== DRIVE_FILE_PART_TYPE)
+        .map((part) => {
+          if (part.type !== 'file') {
+            return part
+          }
 
-        return buildHiddenFilePart()
-      }),
+          return buildHiddenFilePart()
+        }),
     }
   })
 }
