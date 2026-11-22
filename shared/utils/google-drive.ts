@@ -1,5 +1,6 @@
 import type { FileMetadata } from '#shared/types/files.d'
 import type { WorkbookTextSummary } from '#shared/utils/office-files'
+import type { DriveSheetsFallback } from '#shared/utils/google-sheets'
 
 export const DRIVE_FILE_PART_TYPE = 'data-drive-file'
 
@@ -46,8 +47,7 @@ export const GOOGLE_DRIVE_EXPORTS: Readonly<Record<string, DriveExportChoice>>
     'application/vnd.google-apps.spreadsheet': {
       mimeType: 'text/csv',
       extension: 'csv',
-      nameSuffix: ' (first sheet)',
-      note: 'Only the first sheet is included.',
+      nameSuffix: ' (first tab)',
     },
     'application/vnd.google-apps.presentation': {
       mimeType: 'text/plain',
@@ -117,6 +117,7 @@ export type DriveImportItemResult
     status: 'imported' | 'reused'
     file: DriveImportedFile
     note?: string
+    sheets?: DriveSheetsFallback
   }
   | {
     id: string
@@ -144,6 +145,7 @@ export type DriveRefreshItemResult
     status: 'updated' | 'newer_copy'
     file: DriveImportedFile
     note?: string
+    sheets?: DriveSheetsFallback
   }
   | { id: string, status: 'up_to_date' }
   | {

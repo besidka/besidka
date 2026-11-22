@@ -3,6 +3,7 @@ import { useLogger } from 'evlog'
 import { fitWorkbookMap } from '@besidka/doc-renderer/workbook-map'
 import { normalizeMediaType } from '#shared/utils/files'
 import { resolveFileDelivery } from '#shared/utils/file-delivery'
+import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
 import type { FileDeliveryReason } from '#shared/utils/file-delivery'
 import {
   OFFICE_FORMAT_NOUNS,
@@ -60,6 +61,14 @@ const WORKBOOK_MAP_NOTE = 'Workbook map. Included: values, formulas, '
   + 'rules, merged cells and notes. Not included: colors, charts and images. '
   + 'Values are the results last calculated and saved in the file; they are '
   + 'not recalculated.'
+
+const GOOGLE_SHEET_NOUN = 'Google Sheet'
+const GOOGLE_WORKBOOK_MAP_NOTE = 'Workbook map of a Google Sheet. Included: '
+  + 'the values as displayed, formulas as written in the Sheet, number '
+  + 'formats, dropdown and validation rules, conditional formatting rules, '
+  + 'merged cells and notes. Not included: colors, charts and images. Values '
+  + 'are the ones the Sheet displayed when it was picked; they are not '
+  + 'recalculated.'
 
 const SHORTENED_MAP_NOTE = 'Values were shortened in this earlier '
   + 'attachment to fit: every formula and rule is included, and only the '
@@ -281,6 +290,25 @@ export async function convertFilesForAI(
               storageKey,
               filename: part.filename,
             })
+            continue
+          }
+
+          if (isGoogleWorkbookMapFile({ ...ownedFile, type: mediaType })) {
+            const text = isStructureOnly(options, message.id, storageKey)
+              ? fitWorkbookMap(textContent, CARRIED_TEXT_FILE_MAX_BYTES)
+              : textContent
+            const formatted = formatOfficeFilePart({
+              filename: part.filename,
+              mediaType,
+              text,
+              isWorkbookMap: true,
+              isShortened: text !== textContent,
+              isGoogleSheet: true,
+              remainingBytes: officeBytesRemaining,
+            })
+
+            officeBytesRemaining = formatted.remainingBytes
+            convertedParts.push({ type: 'text', text: formatted.text })
             continue
           }
 
@@ -577,12 +605,20 @@ function formatOfficeFilePart(input: {
   text: string
   isWorkbookMap: boolean
   isShortened: boolean
+  isGoogleSheet?: boolean
   remainingBytes: number
 }): FormattedOfficeFilePart {
   const format = getOfficeFormatByMediaType(input.mediaType) as OfficeFormat
-  const noun = OFFICE_FORMAT_NOUNS[format]
+  const noun = input.isGoogleSheet
+    ? GOOGLE_SHEET_NOUN
+    : OFFICE_FORMAT_NOUNS[format]
   const name = input.filename ? `**${input.filename}** (${noun})` : noun
-  const note = input.isWorkbookMap ? WORKBOOK_MAP_NOTE : EXTRACTED_TEXT_NOTE
+  let note = input.isWorkbookMap ? WORKBOOK_MAP_NOTE : EXTRACTED_TEXT_NOTE
+
+  if (input.isGoogleSheet) {
+    note = GOOGLE_WORKBOOK_MAP_NOTE
+  }
+
   const shortened = input.isShortened ? ` ${SHORTENED_MAP_NOTE}` : ''
   const header = `${name}\n\n${note}${shortened}\n\n`
 

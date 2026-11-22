@@ -125,6 +125,30 @@ Any icon used on a page that must load without extra requests follows the same
 route as `thesvg:zhipu`: install the `@iconify-json/<prefix>` package as a dev
 dependency and list the icon in `icon.clientBundle.icons`.
 
+## Icons of client-only Google components are in the client bundle (BES-449)
+
+The cards on the Google tab of API Keys (`Profile/Google/Connection.vue`,
+`OwnClient.vue`) and the workbook map chip render on the client after a lazy
+fetch, so their icons are not in the server-rendered HTML and a browser has
+to get each one from the same-origin `/api/_nuxt_icon/lucide.json` route.
+That route is the one described above (a Worker fetch of the whole collection
+from jsDelivr on the first request, one shared in-flight promise). The
+reading of the code, which was not reproduced on the preview: when that route
+does not answer, an `<Icon>` renders an empty box. On the preview the
+Disconnect button's `lucide:unplug` had a zero-width box, so only the 8 px
+`gap-2` of `ui/Button.vue` was left and pushed the label off center, while the
+Delete buttons of the API key cards, rendered on the server, showed theirs.
+The `lucide` prefix was already pinned and the icon exists in the installed
+collection, so the cause is most likely where the icon was resolved, not the
+prefix list. `icon.clientBundle.icons` now lists every
+`lucide:` icon those components use (`circle-alert`, `copy`, `info`,
+`key-round`, `trash`, `triangle-alert`, `unplug`) and `lucide:table-2`, the
+icon of a Google Sheet's workbook map chip; `@iconify-json/lucide` is
+already a dev dependency. `tests/unit/config/client-icons.spec.ts` reads every
+`icon-name` and `name` literal in `Profile/Google/*.vue` and fails when one is
+missing from the list, so a new icon there cannot reintroduce this. That the
+label is centered on the deployed preview is NOT VERIFIED by a unit test.
+
 ## `fallbackToApi` is `false`
 
 `icon.fallbackToApi` is pinned to `false`. Two reasons:

@@ -3,6 +3,10 @@ import {
   GOOGLE_DRIVE_PICK_MAX,
   GOOGLE_DRIVE_REFRESH_MAX,
 } from '#shared/utils/google-drive'
+import {
+  describeImportNotice,
+  withSheetsFallback,
+} from '#shared/utils/google-sheets'
 import type { AttachedFile } from '~/types/file-manager'
 import type { GooglePickerResult } from '~/composables/google-picker'
 
@@ -124,8 +128,10 @@ export function useGoogleDriveLibrary(options: {
 
         copiedCount++
 
-        if (result.note) {
-          useInfoMessage(result.note)
+        const notice = describeImportNotice(result)
+
+        if (notice) {
+          useInfoMessage(notice)
         }
       }
 
@@ -267,10 +273,12 @@ export function useGoogleDriveLibrary(options: {
             useWarningMessage(`${name} could not be refreshed`, result.reason)
           } else if (result.status === 'updated') {
             outcome.updated.push(name)
-            replaceAttachment(result.id, result.file, outcome)
+            replaceAttachment(result.id, withSheetsFallback(result), outcome)
 
-            if (result.note) {
-              useInfoMessage(result.note)
+            const notice = describeImportNotice(result)
+
+            if (notice) {
+              useInfoMessage(notice)
             }
           } else if (result.status === 'newer_copy') {
             outcome.newerCopy.push(name)

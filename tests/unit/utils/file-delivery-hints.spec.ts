@@ -9,6 +9,7 @@ import {
   OFFICE_TEXT_INLINE_MAX_BYTES,
 } from '../../../shared/utils/office-files'
 import {
+  GOOGLE_SPREADSHEET_MAP_DESCRIPTION,
   SPREADSHEET_MAP_DESCRIPTION,
   SPREADSHEET_MAP_LABEL,
   TEXT_ONLY_DESCRIPTION,
@@ -404,6 +405,128 @@ describe('getFileDeliveryHint', () => {
     })
     expect(unreadable?.description).toContain('No text could be read')
     expect(legacy).toMatchObject({ label: 'Old Office format', isBlocking: true })
+  })
+
+  describe('Google Sheets', () => {
+    const summary = {
+      sheets: 5,
+      sheetsTotal: 5,
+      formulas: 40,
+      rules: 4,
+      cut: [] as string[],
+      valuesCut: [] as Array<{ sheet: string, afterRow: number }>,
+    }
+    const mapFile: DeliveryFile = {
+      type: 'text/markdown',
+      textStatus: 'ready',
+      textVersion: 2,
+      externalSource: 'google',
+      workbookSummary: summary,
+    }
+
+    function hintOf(file: DeliveryFile) {
+      return getFileDeliveryHint(file, resolve, undefined, {
+        spreadsheetNote: true,
+      })
+    }
+
+    it('says tabs, not sheets, for the map of a Google Sheet on the chip',
+      () => {
+        expect(hintOf(mapFile)).toEqual({
+          label: '5 tabs · formulas',
+          description: GOOGLE_SPREADSHEET_MAP_DESCRIPTION,
+          isBlocking: false,
+        })
+        expect(GOOGLE_SPREADSHEET_MAP_DESCRIPTION).not.toMatch(/\bsheets?\b/i)
+      })
+
+    it('says how many tabs were sent and which were not read', () => {
+      const hint = hintOf({
+        ...mapFile,
+        workbookSummary: {
+          ...summary,
+          sheets: 20,
+          sheetsTotal: 24,
+          cut: ['sheets', 'not_read', 'values'],
+          valuesCut: [
+            { sheet: 'Lines', afterRow: 400 },
+            { sheet: 'Plan', afterRow: 300 },
+            { sheet: 'Notes', afterRow: 200 },
+          ],
+        },
+      })
+
+      expect(hint?.description).toContain('and on 1 more tab aren\'t sent.')
+      expect(hint?.label).toBe('20 tabs · formulas · shortened')
+      expect(hint?.description).toContain('Only the first 20 of 24 tabs')
+      expect(hint?.description).toContain('Some tabs could not be read in '
+        + 'full.')
+    })
+
+    it('shows one tab as a tab', () => {
+      expect(hintOf({
+        ...mapFile,
+        workbookSummary: { ...summary, sheets: 1, sheetsTotal: 1 },
+      })?.label).toBe('1 tab · formulas')
+    })
+
+    it('notes nothing outside the attach chip', () => {
+      expect(getFileDeliveryHint(mapFile, resolve)).toBeNull()
+    })
+
+    it('does not take Markdown for a map from its text, only from the '
+      + 'columns', () => {
+      for (const file of [
+        { ...mapFile, externalSource: null },
+        { ...mapFile, textVersion: null },
+        { ...mapFile, textStatus: null },
+        { ...mapFile, type: 'text/csv' },
+      ]) {
+        expect(hintOf({ ...file, workbookSummary: undefined })).toBeNull()
+      }
+    })
+
+    it('notes the first-tab fallback with its fixed sentence and code', () => {
+      const hint = hintOf({
+        type: 'text/csv',
+        externalSource: 'google',
+        sheetsFallback: {
+          code: 'sheets_no_access',
+          status: 403,
+          reason: 'PERMISSION_DENIED',
+        },
+      })
+
+      expect(hint?.label).toBe('First tab only')
+      expect(hint?.description).toBe(
+        'Only the first tab of this spreadsheet was imported. Google did '
+        + 'not let Besidka read this spreadsheet through the Google Sheets '
+        + 'API. Technical code: '
+        + 'sheets_no_access (HTTP 403, PERMISSION_DENIED).',
+      )
+      expect(hint?.isBlocking).toBe(false)
+    })
+
+    it('says only that the first tab could be read when the tab count is '
+      + 'unknown', () => {
+      const hint = hintOf({
+        type: 'text/csv',
+        externalSource: 'google',
+        sheetsFallback: {
+          code: 'sheets_api_off',
+          status: 403,
+          reason: 'SERVICE_DISABLED',
+          isTabCountUnknown: true,
+        },
+      })
+
+      expect(hint?.description).toBe(
+        'Only the first tab of this spreadsheet could be read. The Google '
+        + 'Sheets API is not turned on or not set up for Besidka\'s Google '
+        + 'project. Technical code: sheets_api_off (HTTP 403, '
+        + 'SERVICE_DISABLED).',
+      )
+    })
   })
 
   describe('with Run code', () => {

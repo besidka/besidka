@@ -25,7 +25,7 @@
         :key="tile.id"
         :tile="tile"
         :variant="hasAnyFiles ? 'square' : 'pill'"
-        @open="(section, origin) => emit('open-tile', section, origin)"
+        @open="(section, origin, id) => emit('open-tile', section, origin, id)"
         @remove="emit('remove-tile', $event)"
       />
       <div
@@ -84,7 +84,7 @@
           >
         </div>
         <div
-          v-else-if="isTextFileType(file.type)"
+          v-else-if="isTextFileType(file.type) && !hasChipNote(file)"
           class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
         >
           <ChatInputFilesAttachedTextCard
@@ -100,7 +100,7 @@
             class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
           >
             <Icon
-              :name="getFileIcon(file.type)"
+              :name="getChipIcon(file)"
               size="20"
               class="text-base-content/40"
             />
@@ -177,6 +177,24 @@
         @dismiss="dismissDriveImport(driveImport.id)"
       />
 
+      <div
+        v-for="placeholderIndex in checkingLinkCount"
+        :key="`checking-link-${placeholderIndex}`"
+        role="status"
+        aria-label="Checking Google link"
+        class="carousel-item flex items-center gap-1"
+        data-testid="google-link-skeleton"
+      >
+        <div
+          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
+        >
+          <div class="skeleton skeleton--default size-14 rounded-sm" />
+          <div class="flex flex-col items-start gap-1.5 min-w-0 w-24 pr-2">
+            <div class="skeleton skeleton--default h-3 w-20 rounded-sm" />
+            <div class="skeleton skeleton--default h-2.5 w-14 rounded-sm" />
+          </div>
+        </div>
+      </div>
       <!-- Uploading files -->
       <div
         v-for="uploadingFile in uploadingFilesArray"
@@ -393,6 +411,7 @@
 import type { FileMetadata } from '#shared/types/files.d'
 import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import { GOOGLE_DRIVE_BRAND_NAME } from '#shared/utils/google-drive'
+import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
 import type { DriveImportProgress } from '~/composables/chat-drive-files'
 import type { AttachedFile } from '~/types/file-manager'
 import type {
@@ -420,6 +439,7 @@ const props = withDefaults(defineProps<{
       | 'textOmittedCharts'
       | 'workbookSummary'
       | 'externalSource'
+      | 'sheetsFallback'
     >>
   )[]
   resolveDelivery?: FileDeliveryResolver
@@ -430,7 +450,9 @@ const props = withDefaults(defineProps<{
   driveImports?: DriveImportProgress[]
   tiles?: ChatInputTile[]
   pastedTexts?: PastedText[]
+  checkingLinkCount?: number
 }>(), {
+  checkingLinkCount: 0,
   resolveDelivery: undefined,
   resolveDeliveryWithRunCode: undefined,
   uploadingFiles: undefined,
@@ -451,9 +473,34 @@ const emit = defineEmits<{
   'open-text': [storageKey: string]
   'open-pasted': [id: PastedText['id']]
   'remove-pasted': [id: PastedText['id']]
-  'open-tile': [section: ToolsSection | null, origin: HTMLElement]
+  'open-tile': [
+    section: ToolsSection | null,
+    origin: HTMLElement,
+    id: ChatInputTileId,
+  ]
   'remove-tile': [id: ChatInputTileId]
 }>()
+
+const GOOGLE_WORKBOOK_MAP_ICON = 'lucide:table-2'
+
+type ChipFile = Pick<
+  AttachedFile,
+  | 'type'
+  | 'textStatus'
+  | 'textVersion'
+  | 'externalSource'
+  | 'sheetsFallback'
+>
+
+function hasChipNote(file: ChipFile): boolean {
+  return isGoogleWorkbookMapFile(file) || !!file.sheetsFallback
+}
+
+function getChipIcon(file: ChipFile): string {
+  return isGoogleWorkbookMapFile(file)
+    ? GOOGLE_WORKBOOK_MAP_ICON
+    : getFileIcon(file.type)
+}
 
 function driveCopyLabel(name: string): string {
   return `${name} is a copy of a ${GOOGLE_DRIVE_BRAND_NAME} file`
@@ -620,6 +667,7 @@ const hasAnyFiles = computed<boolean>(() => {
     || uploadingFilesArray.value.length > 0
     || props.driveImports.length > 0
     || props.pastedTexts.length > 0
+    || props.checkingLinkCount > 0
 })
 
 const hasAnyItems = computed<boolean>(() => {

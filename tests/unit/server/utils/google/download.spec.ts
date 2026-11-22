@@ -134,6 +134,52 @@ describe('googleFetchBytes', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts the Sheets host as a Google host on a redirect and keeps the '
+    + 'token there', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(redirectTo(
+        'https://sheets.googleapis.com/v4/spreadsheets/abc',
+        307,
+      ))
+      .mockResolvedValueOnce(new Response(bytesOf('body')))
+    const result = await googleFetchBytes(
+      FILE_URL,
+      { headers: { authorization: 'Bearer token-1' } },
+      { maxBytes: 1024, fetchImpl },
+    )
+    const [secondUrl, secondInit] = fetchImpl.mock.calls[1] as unknown as [
+      string,
+      RequestInit,
+    ]
+
+    expect(result.ok).toBe(true)
+    expect(secondUrl).toBe('https://sheets.googleapis.com/v4/spreadsheets/abc')
+    expect(secondInit.headers).toMatchObject({
+      authorization: 'Bearer token-1',
+    })
+  })
+
+  it.each([
+    'https://sheets.googleapis.com.evil.example/v4/spreadsheets/abc',
+    'https://evil-sheets.googleapis.com/v4/spreadsheets/abc',
+    'https://sheets.google.com/v4/spreadsheets/abc',
+    'https://evil.example.com/v4/spreadsheets/abc',
+  ])('never sends the token to %s after a redirect', async (target) => {
+    const fetchImpl = vi.fn(async () => redirectTo(target))
+
+    await failureOf(googleFetchBytes(
+      FILE_URL,
+      { headers: { authorization: 'Bearer token-1' } },
+      { maxBytes: 1024, fetchImpl },
+    ))
+
+    const requestedUrls = fetchImpl.mock.calls.map((call) => {
+      return (call as unknown as [string])[0]
+    })
+
+    expect(requestedUrls).toEqual([FILE_URL])
+  })
+
   it('refuses a second redirect and a redirect without a location',
     async () => {
       const chained = vi.fn(async () => redirectTo(CONTENT_URL))

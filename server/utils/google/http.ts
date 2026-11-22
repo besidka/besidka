@@ -10,12 +10,15 @@ export const GOOGLE_DOWNLOAD_TIMEOUT_MS = 60_000
  * `accounts.google.com` is opened by the browser, never fetched here, so it
  * is not listed. `www.googleapis.com` is the Drive API (metadata, export,
  * media download and search) and the Calendar API (`/calendar/v3/`);
- * `gmail.googleapis.com` is the Gmail API.
+ * `gmail.googleapis.com` is the Gmail API and `sheets.googleapis.com` the
+ * Sheets API. A download redirect may stay on any of these hosts, so the
+ * Sheets host is also a permitted redirect target.
  */
 export const GOOGLE_FETCH_HOSTS: ReadonlySet<string> = new Set([
   'oauth2.googleapis.com',
   'www.googleapis.com',
   'gmail.googleapis.com',
+  'sheets.googleapis.com',
 ])
 
 const FIRST_REDIRECT_STATUS = 300
@@ -44,6 +47,7 @@ export interface GoogleJsonResponse {
   status: number
   ok: boolean
   body: Record<string, unknown> | null
+  bytes: number
 }
 
 function refusedHost() {
@@ -157,8 +161,18 @@ export async function readCappedText(
   response: Response,
   maxBytes: number = GOOGLE_RESPONSE_MAX_BYTES,
 ): Promise<string> {
+  return (await readCappedTextCounted(response, maxBytes)).text
+}
+
+/**
+ * `readCappedText` that also says how many bytes were received.
+ */
+export async function readCappedTextCounted(
+  response: Response,
+  maxBytes: number = GOOGLE_RESPONSE_MAX_BYTES,
+): Promise<{ text: string, bytes: number }> {
   if (!response.body) {
-    return ''
+    return { text: '', bytes: 0 }
   }
 
   const reader = response.body.getReader()
@@ -184,7 +198,7 @@ export async function readCappedText(
     text += decoder.decode(value, { stream: true })
   }
 
-  return text + decoder.decode()
+  return { text: text + decoder.decode(), bytes: received }
 }
 
 export function linkSignals(
@@ -264,7 +278,7 @@ export async function googleFetchJson(
       throw redirectRefused()
     }
 
-    const text = await readCappedText(
+    const { text, bytes } = await readCappedTextCounted(
       response,
       options.maxResponseBytes ?? GOOGLE_RESPONSE_MAX_BYTES,
     )
@@ -273,6 +287,7 @@ export async function googleFetchJson(
       status: response.status,
       ok: response.ok,
       body: parseJsonObject(text),
+      bytes,
     }
   } catch (exception) {
     if (controller.signal.reason === timeoutReason) {

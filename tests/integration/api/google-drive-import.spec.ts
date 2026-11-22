@@ -5,6 +5,13 @@ import {
   GOOGLE_DRIVE_EXPORT_MAX_BYTES,
   GOOGLE_DRIVE_FILE_MAX_BYTES,
 } from '#shared/utils/google-drive'
+import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
+import {
+  SHEET_IDS,
+  estimateGridAnswers,
+  estimateMetadata,
+  gridAnswer,
+} from '../../fixtures/google/sheets-estimate'
 import {
   createMemoryExtractionTestDb,
   seedUser,
@@ -150,17 +157,39 @@ vi.mock('~~/server/utils/logging/request-logger', () => ({
 type Handler = (event: SkillsRouteEvent) => Promise<any>
 type BodySource = string | Uint8Array | (() => ReadableStream<Uint8Array>)
 
+type FakeSheets
+  = | { structure: object, grids: Record<string, BodySource | object> }
+    | { refuse: Response }
+
 interface FakeDriveFile {
   metadata: Record<string, unknown>
   media?: BodySource
   mediaRedirect?: string
   exports?: Record<string, BodySource | { status: number, reason: string }>
+  sheets?: FakeSheets
 }
 
 interface FakeDriveRequest {
-  kind: 'metadata' | 'export' | 'media' | 'content'
+  kind: 'metadata' | 'export' | 'media' | 'content' | 'sheets'
   url: string
   headers: Record<string, string>
+}
+
+function sheetsRefusal(
+  status: number,
+  googleStatus: string,
+  reason?: string,
+): FakeSheets {
+  return {
+    refuse: new Response(JSON.stringify({
+      error: {
+        code: status,
+        status: googleStatus,
+        message: 'Free text from Google',
+        ...(reason ? { details: [{ reason }] } : {}),
+      },
+    }), { status }),
+  }
 }
 
 function toBody(source: BodySource): BodyInit {
@@ -200,6 +229,34 @@ function createFakeDrive(files: Record<string, FakeDriveFile>) {
       return content
         ? new Response(toBody(content))
         : new Response('missing', { status: 404 })
+    }
+
+    if (url.hostname === 'sheets.googleapis.com') {
+      requests.push({ kind: 'sheets', url: input, headers })
+
+      const sheets = files[url.pathname.split('/').pop() ?? '']?.sheets
+
+      if (!sheets) {
+        return new Response(JSON.stringify({
+          error: { code: 403, status: 'PERMISSION_DENIED' },
+        }), { status: 403 })
+      }
+
+      if ('refuse' in sheets) {
+        return sheets.refuse.clone()
+      }
+
+      const range = url.searchParams.get('ranges')
+
+      if (!range) {
+        return new Response(JSON.stringify(sheets.structure))
+      }
+
+      const grid = sheets.grids[range.split('!')[0] as string]
+
+      return typeof grid === 'object' && !(grid instanceof Uint8Array)
+        ? new Response(JSON.stringify(grid))
+        : new Response(toBody(grid as BodySource))
     }
 
     const match = url.pathname.match(/^\/drive\/v3\/files\/([^/]+)(\/export)?$/)
@@ -387,7 +444,12 @@ describe('POST /api/v1/google/drive/files', () => {
   let userId: number
   let sessionUserId: number
   let restoreGoogleConfig: () => void = () => {}
-  let stored: Array<{ key: string, size: number, contentType: string }>
+  let stored: Array<{
+    key: string
+    size: number
+    contentType: string
+    text?: string
+  }>
   let missingKeys: Set<string>
 
   function useDrive(files: Record<string, FakeDriveFile> = standardFiles()) {
@@ -508,6 +570,7 @@ describe('POST /api/v1/google/drive/files', () => {
           key,
           size: data.byteLength,
           contentType: options.httpMetadata.contentType,
+          text: new TextDecoder().decode(data),
         })
 
         return { key }
@@ -646,7 +709,9 @@ describe('POST /api/v1/google/drive/files', () => {
           key: row!.storageKey,
           size: '# Plan\n\nBody'.length,
           contentType: 'text/markdown',
+          text: '# Plan\n\nBody',
         }])
+        expect(row!.textVersion).toBeNull()
         expect(drive.ofKind('export')[0]!.url)
           .toContain('mimeType=text%2Fmarkdown')
       })
@@ -668,16 +733,23 @@ describe('POST /api/v1/google/drive/files', () => {
       expect(drive.ofKind('export')).toHaveLength(2)
     })
 
-    it('exports a Sheet to CSV and says only the first sheet is included',
-      async () => {
-        const item = await importOne(SHEET_ID)
+    it('falls back to the first tab as CSV when the Sheets API refuses, and '
+      + 'says so', async () => {
+      const item = await importOne(SHEET_ID)
 
-        expect(item).toMatchObject({
-          status: 'imported',
-          file: { name: 'Budget (first sheet).csv', type: 'text/csv' },
-          note: 'Only the first sheet is included.',
-        })
+      expect(item).toMatchObject({
+        status: 'imported',
+        file: { name: 'Budget (first tab).csv', type: 'text/csv' },
+        note: 'Only the first tab of this spreadsheet could be read.',
+        sheets: {
+          code: 'sheets_no_access',
+          status: 403,
+          reason: null,
+          isTabCountUnknown: true,
+        },
       })
+      expect(drive.ofKind('export')).toHaveLength(1)
+    })
 
     it('exports Slides to plain text', async () => {
       expect(await importOne(SLIDES_ID)).toMatchObject({
@@ -1091,6 +1163,7 @@ describe('POST /api/v1/google/drive/files', () => {
         google: { stage: 'export', status: 404, reason: 'notFound' },
       })
       expect(drive.ofKind('metadata')).toHaveLength(1)
+      expect(drive.ofKind('sheets')).toHaveLength(1)
     })
 
     it('names the download as the stage for a binary file', async () => {
@@ -1579,6 +1652,441 @@ describe('POST /api/v1/google/drive/files', () => {
       await importFiles([{ id: DOC_ID }, { id: PDF_ID }, { id: SHEET_ID }])
 
       expect(maxInFlight).toBe(1)
+    })
+  })
+
+  describe('a Google Sheet as a workbook map', () => {
+    const TAB_TITLES = [
+      'Lists',
+      'Parameters',
+      'Lines',
+      '\'Extra\'\'s tab\'',
+      'Summary',
+    ]
+
+    function sheetsFile(
+      overrides: Partial<FakeDriveFile> = {},
+      sheets: FakeSheets = estimateSheets(),
+    ): Record<string, FakeDriveFile> {
+      return {
+        ...standardFiles(),
+        [SHEET_ID]: {
+          ...standardFiles()[SHEET_ID]!,
+          sheets,
+          ...overrides,
+        },
+      }
+    }
+
+    function estimateSheets(): FakeSheets {
+      const answers = estimateGridAnswers()
+      const ids = Object.values(SHEET_IDS)
+
+      return {
+        structure: estimateMetadata(),
+        grids: Object.fromEntries(TAB_TITLES.map((title, index) => {
+          return [title, answers[ids[index] as number] as object]
+        })),
+      }
+    }
+
+    function sheetsDetails(): string[] {
+      const logged = mocks.logged as Array<{
+        attributes?: { googleDrive?: { sheetsDetails?: string[] } }
+      }>
+
+      return logged.flatMap((entry) => {
+        return entry.attributes?.googleDrive?.sheetsDetails ?? []
+      })
+    }
+
+    it('stores the map of every tab as Markdown that the row itself calls a '
+      + 'map', async () => {
+      useDrive(sheetsFile())
+
+      const item = await importOne(SHEET_ID)
+
+      expect(item).toMatchObject({
+        status: 'imported',
+        file: {
+          name: 'Budget (workbook map).md',
+          type: 'text/markdown',
+          textStatus: 'ready',
+          textVersion: 2,
+          externalSource: 'google',
+          workbookSummary: { sheets: 5, sheetsTotal: 5 },
+        },
+      })
+      expect(item.note).toBeUndefined()
+      expect(item.sheets).toBeUndefined()
+      expect(drive.ofKind('sheets')).toHaveLength(6)
+      expect(drive.ofKind('export')).toHaveLength(0)
+
+      const [row] = await fileRows()
+      const text = stored.find(entry => entry.key === row?.storageKey)?.text
+
+      expect(row).toMatchObject({
+        type: 'text/markdown',
+        textStatus: 'ready',
+        textVersion: 2,
+        textBytes: row?.size,
+        externalSource: 'google',
+        externalId: SHEET_ID,
+      })
+      expect(text?.startsWith('# Workbook map')).toBe(true)
+      expect(text).toContain('## Sheet: Lines')
+      expect(text).toContain('Lists!$B$6:$B$45')
+      expect(text).not.toContain('Secret acquisition plan')
+      expect(isGoogleWorkbookMapFile(row as never)).toBe(true)
+    })
+
+    it('reuses an unchanged map with no request to the Sheets API',
+      async () => {
+        useDrive(sheetsFile())
+        await importOne(SHEET_ID)
+
+        const requestsBefore = drive.ofKind('sheets').length
+        const again = await importOne(SHEET_ID)
+
+        expect(again).toMatchObject({ status: 'reused' })
+        expect(drive.ofKind('sheets')).toHaveLength(requestsBefore)
+        expect(await fileRows()).toHaveLength(1)
+      })
+
+    it('does not reuse an old first-tab CSV of an unchanged Sheet once the '
+      + 'map can be read', async () => {
+      const first = await importOne(SHEET_ID)
+
+      expect(first).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/csv' },
+      })
+
+      useDrive(sheetsFile())
+
+      const second = await importOne(SHEET_ID)
+
+      expect(second).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/markdown', textVersion: 2 },
+      })
+      expect(await fileRows()).toHaveLength(2)
+    })
+
+    it('reuses the CSV copy, with the notice, while the map cannot be read',
+      async () => {
+        await importOne(SHEET_ID)
+
+        const again = await importOne(SHEET_ID)
+
+        expect(again).toMatchObject({
+          status: 'reused',
+          file: { type: 'text/csv' },
+          note: 'Only the first tab of this spreadsheet could be read.',
+          sheets: { code: 'sheets_no_access' },
+        })
+        expect(drive.ofKind('export')).toHaveLength(1)
+      })
+
+    it.each([
+      [
+        'the API is not turned on',
+        sheetsRefusal(403, 'PERMISSION_DENIED', 'SERVICE_DISABLED'),
+        { code: 'sheets_api_off', status: 403, reason: 'SERVICE_DISABLED' },
+        'structure:403:PERMISSION_DENIED:SERVICE_DISABLED',
+      ],
+      [
+        'the file is refused',
+        sheetsRefusal(403, 'PERMISSION_DENIED'),
+        { code: 'sheets_no_access', status: 403, reason: null },
+        'structure:403:PERMISSION_DENIED:none',
+      ],
+      [
+        'the file is not found',
+        sheetsRefusal(404, 'NOT_FOUND'),
+        { code: 'sheets_no_access', status: 404, reason: null },
+        'structure:404:NOT_FOUND:none',
+      ],
+      [
+        'Google answers 429',
+        sheetsRefusal(429, 'RESOURCE_EXHAUSTED', 'RATE_LIMIT_EXCEEDED'),
+        {
+          code: 'sheets_quota',
+          status: 429,
+          reason: 'RATE_LIMIT_EXCEEDED',
+        },
+        'structure:429:RESOURCE_EXHAUSTED:RATE_LIMIT_EXCEEDED',
+      ],
+    ] as const)('falls back to the CSV with its own code when %s',
+      async (_name, refusal, detail, logged) => {
+        useDrive(sheetsFile({}, refusal))
+
+        const item = await importOne(SHEET_ID)
+
+        expect(item).toMatchObject({
+          status: 'imported',
+          file: { type: 'text/csv' },
+          note: 'Only the first tab of this spreadsheet could be read.',
+          sheets: { ...detail, isTabCountUnknown: true },
+        })
+        expect(drive.ofKind('sheets')).toHaveLength(1)
+        expect(sheetsDetails().join(' ')).toContain(logged)
+        expect(sheetsDetails().join(' ')).toContain(
+          `fallback:${detail.code}`,
+        )
+        expect(JSON.stringify(mocks.logged)).not.toContain('Free text')
+      })
+
+    it('falls back as too large when the structure answer is over the cap',
+      async () => {
+        useDrive(sheetsFile({
+          sheets: {
+            structure: { padding: 'x'.repeat(13 * MEBIBYTE) },
+            grids: {},
+          },
+        }))
+
+        const item = await importOne(SHEET_ID)
+
+        expect(item).toMatchObject({
+          status: 'imported',
+          file: { type: 'text/csv' },
+          sheets: { code: 'sheets_too_large' },
+        })
+      })
+
+    it('says nothing about tabs when a one-tab spreadsheet falls back',
+      async () => {
+        useDrive(sheetsFile({}, {
+          structure: {
+            sheets: [{ properties: { sheetId: 1, title: 'Only' } }],
+          },
+          grids: { Only: 'x'.repeat(13 * MEBIBYTE) },
+        }))
+
+        const item = await importOne(SHEET_ID)
+
+        expect(item).toMatchObject({
+          status: 'imported',
+          file: { type: 'text/csv' },
+          sheets: { code: 'sheets_too_large' },
+        })
+        expect(item.note).toBeUndefined()
+      })
+
+    it('keeps the tabs it read and says how many of how many', async () => {
+      const sheets = estimateSheets()
+
+      if ('grids' in sheets) {
+        sheets.grids.Lines = `x${'y'.repeat(13 * MEBIBYTE)}`
+      }
+
+      useDrive(sheetsFile({}, sheets))
+
+      const item = await importOne(SHEET_ID)
+
+      expect(item).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/markdown' },
+        note: 'Only 4 of 5 tabs of this spreadsheet were imported.',
+      })
+      expect(item.sheets).toBeUndefined()
+    })
+
+    it('never reuses a partial map: it reads again, and a complete map from '
+      + 'a later try is stored and reused', async () => {
+      const partial = estimateSheets()
+
+      if ('grids' in partial) {
+        partial.grids.Lines = 'not json'
+      }
+
+      useDrive(sheetsFile({}, partial))
+
+      const first = await importOne(SHEET_ID)
+
+      expect(first).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/markdown', externalModifiedAt: null },
+        note: 'Only 4 of 5 tabs of this spreadsheet were imported.',
+      })
+      expect((await fileRows())[0]?.externalModifiedAt).toBeNull()
+
+      const requestsAfterFirst = drive.ofKind('sheets').length
+      const second = await importOne(SHEET_ID)
+
+      expect(second).toMatchObject({
+        status: 'imported',
+        note: 'Only 4 of 5 tabs of this spreadsheet were imported.',
+      })
+      expect(drive.ofKind('sheets').length).toBeGreaterThan(requestsAfterFirst)
+
+      useDrive(sheetsFile())
+
+      const third = await importOne(SHEET_ID)
+
+      expect(third).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/markdown', textVersion: 2 },
+      })
+      expect(third.note).toBeUndefined()
+      expect((await fileRows()).at(-1)?.externalModifiedAt).not.toBeNull()
+
+      const requestsAfterThird = drive.ofKind('sheets').length
+      const fourth = await importOne(SHEET_ID)
+
+      expect(fourth).toMatchObject({
+        status: 'reused',
+        file: { id: (third as { file: { id: string } }).file.id },
+      })
+      expect(drive.ofKind('sheets')).toHaveLength(requestsAfterThird)
+      expect(await fileRows()).toHaveLength(3)
+    })
+
+    it('does not reuse a map that is partial because a tab is too large, '
+      + 'and says so again', async () => {
+      const sheets = estimateSheets()
+
+      if ('grids' in sheets) {
+        sheets.grids.Lines = `x${'y'.repeat(13 * MEBIBYTE)}`
+      }
+
+      useDrive(sheetsFile({}, sheets))
+      await importOne(SHEET_ID)
+
+      const again = await importOne(SHEET_ID)
+
+      expect(again).toMatchObject({
+        status: 'imported',
+        note: 'Only 4 of 5 tabs of this spreadsheet were imported.',
+      })
+      expect(await fileRows()).toHaveLength(2)
+    })
+
+    it('does not reuse a map that the 20-tab limit cut', async () => {
+      const titles = Array.from({ length: 22 }, (_item, index) => {
+        return `Data${index + 1}`
+      })
+
+      useDrive(sheetsFile({}, {
+        structure: {
+          sheets: titles.map((title, index) => ({
+            properties: { sheetId: index + 1, title },
+          })),
+        },
+        grids: Object.fromEntries(titles.map((title, index) => {
+          return [title, gridAnswer(index + 1, title, {
+            A1: { text: title },
+          })]
+        })),
+      }))
+      await importOne(SHEET_ID)
+
+      const requestsAfterFirst = drive.ofKind('sheets').length
+      const again = await importOne(SHEET_ID)
+
+      expect(again.status).toBe('imported')
+      expect(drive.ofKind('sheets').length).toBeGreaterThan(requestsAfterFirst)
+      expect(await fileRows()).toHaveLength(2)
+    })
+
+    it('says the tab count when the structure is known but no tab\'s cells '
+      + 'arrive', async () => {
+      const sheets = estimateSheets()
+
+      if ('grids' in sheets) {
+        for (const title of Object.keys(sheets.grids)) {
+          sheets.grids[title] = `x${'y'.repeat(13 * MEBIBYTE)}`
+        }
+      }
+
+      useDrive(sheetsFile({}, sheets))
+
+      const item = await importOne(SHEET_ID)
+
+      expect(item).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/csv' },
+        note: 'Only the first tab of this spreadsheet was imported.',
+      })
+      expect(item.sheets).not.toHaveProperty('isTabCountUnknown')
+    })
+
+    it('says the first 20 tabs when only the limit cut the map', async () => {
+      const titles = Array.from({ length: 22 }, (_item, index) => {
+        return `Data${index + 1}`
+      })
+
+      useDrive(sheetsFile({}, {
+        structure: {
+          sheets: titles.map((title, index) => ({
+            properties: { sheetId: index + 1, title },
+          })),
+        },
+        grids: Object.fromEntries(titles.map((title, index) => {
+          return [title, gridAnswer(index + 1, title, {
+            A1: { text: title },
+          })]
+        })),
+      }))
+
+      const item = await importOne(SHEET_ID)
+
+      expect(item).toMatchObject({
+        status: 'imported',
+        note: 'Only the first 20 tabs of this spreadsheet were imported.',
+        file: { workbookSummary: { sheets: 20, sheetsTotal: 22 } },
+      })
+    })
+
+    it('falls back with a Besidka reason when the user\'s own bucket is '
+      + 'empty, without asking Google', async () => {
+      useDrive(sheetsFile())
+
+      const minute = Math.floor(Date.now() / 60_000)
+
+      await kv.put(
+        `google-sheets-rate-limit:user:${userId}:${minute}`,
+        '30',
+      )
+
+      const item = await importOne(SHEET_ID)
+
+      expect(item).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/csv' },
+        sheets: {
+          code: 'sheets_quota',
+          status: 0,
+          reason: 'besidka_user_limit',
+        },
+      })
+      expect(drive.ofKind('sheets')).toHaveLength(0)
+    })
+
+    it('answers storage_full before reading when the allowance is used up',
+      async () => {
+        useDrive(sheetsFile())
+        mocks.usedBytes = mocks.maxStorageBytes
+
+        expect(await importOne(SHEET_ID)).toMatchObject({
+          status: 'failed',
+          code: 'storage_full',
+        })
+        expect(drive.ofKind('sheets')).toHaveLength(0)
+      })
+
+    it('lets a pasted link read for 10 seconds at most', async () => {
+      useDrive(sheetsFile())
+
+      const result = await importLink(
+        `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`,
+      )
+
+      expect(result.results[0]).toMatchObject({
+        status: 'imported',
+        file: { type: 'text/markdown' },
+      })
     })
   })
 

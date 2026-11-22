@@ -104,7 +104,11 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  open: [section: ToolsSection | null, origin: HTMLElement]
+  open: [
+    section: ToolsSection | null,
+    origin: HTMLElement,
+    id: ChatInputTileId,
+  ]
   remove: [id: ChatInputTileId]
 }>()
 
@@ -143,6 +147,11 @@ const reasoningIconComponent = computed<string>(() => {
 })
 
 function onOpen(event: MouseEvent) {
-  emit('open', props.tile.section, event.currentTarget as HTMLElement)
+  emit(
+    'open',
+    props.tile.section,
+    event.currentTarget as HTMLElement,
+    props.tile.id,
+  )
 }
 </script>

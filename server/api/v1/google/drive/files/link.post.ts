@@ -6,6 +6,7 @@ import {
   parseGoogleDriveLink,
 } from '#shared/utils/google-drive-links'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
+import { GOOGLE_SHEETS_LINK_WALL_TIME_MS } from '#shared/utils/google-sheets'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import { importDriveFiles } from '~~/server/utils/google/drive-import'
 import { requireGoogleAccess } from '~~/server/utils/google/route'
@@ -27,7 +28,10 @@ const bodySchema = z.object({
  * One file per request, no retry (a file that was not just picked has no
  * grant that could still be on its way), its own 20 a minute rate bucket
  * (a probe that ends in 404 must not use up the Picker's import budget),
- * and Besidka's own Google client only, like the other Drive routes.
+ * and Besidka's own Google client only, like the other Drive routes. A
+ * Google Sheet is read through the Sheets API for at most 10 seconds here
+ * (20 for a Picker import), because the composer gives up on this request
+ * after 15; what is not read in time is named in the map.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireGoogleAccess(event, {
@@ -70,6 +74,7 @@ export default defineEventHandler(async (event) => {
     userId,
     items: [item],
     logger,
+    sheetsWallTimeMs: GOOGLE_SHEETS_LINK_WALL_TIME_MS,
   })
 
   logger.set({ attributes: { googleDrive: { fromLink: true } } })

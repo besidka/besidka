@@ -10,7 +10,10 @@ import type { GoogleExternalSource } from '#shared/utils/google-data-policy'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { createStorageFullError } from '~~/server/utils/storage/errors'
-import { isOfficeMediaType } from '#shared/utils/office-files'
+import {
+  WORKBOOK_MAP_TEXT_VERSION,
+  isOfficeMediaType,
+} from '#shared/utils/office-files'
 import type { WorkbookTextSummary } from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { extractAndStoreOfficeText } from '~~/server/utils/files/office-text'
@@ -44,6 +47,12 @@ export interface PersistFileInput {
   externalSource?: GoogleExternalSource | null
   externalId?: string | null
   externalModifiedAt?: Date | null
+  /**
+   * Marks the stored bytes as the workbook map of a Google Sheet: the row is
+   * written with a ready text status, the text size and the workbook map
+   * text version, which is how every reader tells it from other Markdown.
+   */
+  workbookMap?: { summary: WorkbookTextSummary }
   logger?: LoggerLike
   policy?: FilePolicy
   totalFilesSize?: number
@@ -209,6 +218,13 @@ export async function persistFile(
         externalSource: input.externalSource ?? null,
         externalId: input.externalId ?? null,
         externalModifiedAt: input.externalModifiedAt ?? null,
+        ...(input.workbookMap
+          ? {
+            textStatus: 'ready' as const,
+            textBytes: fileSize,
+            textVersion: WORKBOOK_MAP_TEXT_VERSION,
+          }
+          : {}),
       })
       .returning({
         id: schema.files.id,
@@ -303,6 +319,16 @@ export async function persistFile(
   }
 
   await invalidateStorageCache(input.userId)
+
+  if (input.workbookMap) {
+    return {
+      ...storedFile,
+      textStatus: 'ready',
+      textBytes: fileSize,
+      textVersion: WORKBOOK_MAP_TEXT_VERSION,
+      workbookSummary: input.workbookMap.summary,
+    }
+  }
 
   if (!isOfficeMediaType(normalizedMediaType)) {
     return storedFile

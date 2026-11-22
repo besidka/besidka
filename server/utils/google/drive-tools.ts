@@ -22,6 +22,8 @@ import { frameUntrustedResult } from '~~/server/utils/connectors/tool-definition
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import { truncateToByteBudget } from '~~/server/utils/skills/runtime/text'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { safeFileType } from '~~/server/utils/google/file-type'
+import { sanitizeMailText } from '~~/server/utils/google/gmail-text'
 import {
   createPickedDriveSendState,
   listPickedDriveFiles,
@@ -74,8 +76,10 @@ const READ_DESCRIPTION = 'Read the text of ONE file the user picked from '
   + 'user is asked before each read unless they allowed reading in this chat. '
   + 'Only picked files can be read. The first page refreshes the copy when '
   + 'the Drive original changed. Text, Markdown, CSV and JSON are returned '
-  + '(Docs as Markdown, Sheets as the first sheet in CSV, Slides as text), at '
-  + 'most 40 KiB at a time; to continue, call again with the fileId and the '
+  + '(Docs as Markdown, Sheets as a workbook map of every tab with its '
+  + 'values, formulas, dropdowns and rules, or as the first tab in CSV when '
+  + 'the Sheets API cannot be read, Slides as text), at most 40 KiB at a '
+  + 'time; to continue, call again with the fileId and the '
   + 'offset the answer names, so every page comes from the same version. A '
   + 'PDF, image or Office file is not readable here. '
   + GOOGLE_DRIVE_TOOLS_TRUST_NOTE
@@ -155,7 +159,7 @@ function describeFileLine(file: PickedDriveFile): string {
   return [
     `file_id: ${file.id}`,
     `name: ${file.name}`,
-    `type: ${file.type}`,
+    `type: ${safeFileType(file.type)}`,
     `size: ${file.size} bytes`,
     `copied: ${file.copiedAt.toISOString()}`,
     file.modifiedAt
@@ -215,6 +219,21 @@ function pageStartOf(text: string, offset: number): number {
   return offset
 }
 
+const UNSAFE_TEXT_CHARACTERS = /(?![\n\t])[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u
+
+/**
+ * The page of a stored copy cleaned the way mail text is (control, format
+ * and bidirectional characters removed, tabs and line breaks kept) before it
+ * is framed. Paging works on the raw text, so the offsets stay stable; the
+ * cleaning only shortens the page that is shown. The test first, because a
+ * copy of several megabytes rarely needs it.
+ */
+function cleanFileText(text: string): string {
+  return UNSAFE_TEXT_CHARACTERS.test(text)
+    ? sanitizeMailText(text, { keepTabs: true })
+    : text
+}
+
 const STALE_NOTES = {
   unreachable: 'Google Drive could not be reached to check for changes, so '
     + 'this is the last copy Besidka made. It may be out of date.',
@@ -236,7 +255,7 @@ function buildReadOutput(input: {
   const framed = frameUntrustedResult({
     slug: FRAME_SLUG,
     toolName: 'drive_read_file',
-    text: `name: ${input.file.name}\n\n${cut.text}`,
+    text: `name: ${input.file.name}\n\n${cleanFileText(cut.text)}`,
   })
   const nextOffset = cut.isTruncated ? input.start + cut.text.length : null
 
@@ -245,7 +264,7 @@ function buildReadOutput(input: {
     readable: true,
     file: {
       fileId: input.file.id,
-      type: input.file.type,
+      type: safeFileType(input.file.type),
       size: input.file.size,
       totalCharacters: input.text.length,
       ...(input.file.modifiedAt
@@ -436,11 +455,12 @@ export async function buildGoogleDriveTools(
         return {
           references: [referenceOf(read.file)],
           readable: false,
-          file: { fileId: read.file.id, type: read.file.type },
+          file: { fileId: read.file.id, type: safeFileType(read.file.type) },
           content: frameUntrustedResult({
             slug: FRAME_SLUG,
             toolName: 'drive_read_file',
-            text: `name: ${read.file.name}\ntype: ${read.file.type}`,
+            text: `name: ${read.file.name}\n`
+              + `type: ${safeFileType(read.file.type)}`,
           }).text,
           note: 'This file is not text (a PDF, image or Office file), so '
             + 'it cannot be read here. Ask the user to attach it to a '

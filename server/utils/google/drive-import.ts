@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray, isNull, or } from 'drizzle-orm'
 import type { KVNamespace } from '@cloudflare/workers-types'
 import type { RequestEvent } from 'nuxt/server'
 import {
@@ -27,6 +27,17 @@ import type {
 } from '#shared/utils/google-drive'
 import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
+import {
+  GOOGLE_FIRST_TAB_NOTE,
+  GOOGLE_FIRST_TAB_UNKNOWN_COUNT_NOTE,
+  GOOGLE_WORKBOOK_MAP_CHOICE,
+  GOOGLE_WORKBOOK_MAP_MEDIA_TYPE,
+  describeTabsImported,
+} from '#shared/utils/google-sheets'
+import type { DriveSheetsFallback } from '#shared/utils/google-sheets'
+import {
+  WORKBOOK_MAP_TEXT_VERSION,
+} from '#shared/utils/office-files'
 import type { OfficeFormat } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
@@ -37,6 +48,7 @@ import {
 } from '~~/server/utils/files/file-governance'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { assertOfficeUploadBytes } from '~~/server/utils/files/office-upload-check'
+import { toWorkbookTextSummary } from '~~/server/utils/files/office-text'
 import { persistFile } from '~~/server/utils/files/persist-file'
 import { resolveUploadFileType } from '~~/server/utils/files/upload-file-type'
 import {
@@ -53,6 +65,13 @@ import type {
 } from '~~/server/utils/google/drive'
 import { GOOGLE_DOWNLOAD_TOO_LARGE_CODE } from '~~/server/utils/google/download'
 import type { GoogleDownloadResult } from '~~/server/utils/google/download'
+import {
+  createSheetsRequestReserver,
+} from '~~/server/utils/google/sheets-rate-limit'
+import type {
+  SheetsRequestReserver,
+} from '~~/server/utils/google/sheets-rate-limit'
+import { readSpreadsheetMap } from '~~/server/utils/google/sheets-read'
 import { getGoogleAccessToken } from '~~/server/utils/google/tokens'
 import { isStorageFullError } from '~~/server/utils/storage/errors'
 
@@ -75,6 +94,8 @@ export interface DriveImportInput {
   maxBytes?: number
   retryFreshPick?: boolean
   wait?: (milliseconds: number) => Promise<void>
+  sheetsWallTimeMs?: number
+  sheetsReserve?: SheetsRequestReserver
 }
 
 interface ItemContext {
@@ -82,6 +103,15 @@ interface ItemContext {
   item: DriveImportRequestItem
   request: DriveRequestContext
   retryBudget?: { remainingMs: number }
+  sheetsLog?: string[]
+}
+
+const SPREADSHEET_MIME_TYPE = 'application/vnd.google-apps.spreadsheet'
+const CSV_MEDIA_TYPE = 'text/csv'
+
+interface SheetsFallbackInfo {
+  detail: DriveSheetsFallback
+  tabsTotal: number | null
 }
 
 class DriveItemFailure extends Error {
@@ -190,15 +220,28 @@ function isCopyNewerThanEdit(createdAt: Date, modifiedTime: Date): boolean {
  * `files.external_modified_at`
  * keeps whole seconds, so a copy made in the same second as the edit it
  * carries is never reused: a second edit in that second could not be told
- * apart from it.
+ * apart from it. A Sheet has two kinds of copy: the workbook map (Markdown
+ * with the workbook map text version) and the older first-tab CSV. `map`
+ * reuses only the first, `csv` only the second, so an unchanged Sheet that
+ * was copied as CSV before the map existed is copied again as a map, and a
+ * CSV copy is reused only when the map cannot be read. A partial map has no
+ * `external_modified_at` and never matches (see `copySpreadsheetAsMap`).
  */
 async function findReusableCopy(
   context: ItemContext,
   metadata: DriveFileMetadata,
+  kind: 'any' | 'map' | 'csv' = 'any',
 ): Promise<DriveImportedFile | null> {
   if (!metadata.modifiedTime) {
     return null
   }
+
+  const kindConditions = kind === 'map'
+    ? [
+      eq(schema.files.type, GOOGLE_WORKBOOK_MAP_MEDIA_TYPE),
+      gte(schema.files.textVersion, WORKBOOK_MAP_TEXT_VERSION),
+    ]
+    : kind === 'csv' ? [eq(schema.files.type, CSV_MEDIA_TYPE)] : []
 
   const rows = await context.input.db
     .select({
@@ -225,6 +268,7 @@ async function findReusableCopy(
       eq(schema.files.externalSource, 'google'),
       eq(schema.files.externalId, metadata.id),
       eq(schema.files.externalModifiedAt, metadata.modifiedTime),
+      ...kindConditions,
       or(
         isNull(schema.files.expiresAt),
         gt(
@@ -427,16 +471,31 @@ async function copyFromMetadata(
 ): Promise<DriveImportItemResult> {
   const { input, item } = context
   const plan = await planCopy(context, metadata)
-  const reusable = await findReusableCopy(context, metadata)
+  const isSpreadsheet = metadata.mimeType === SPREADSHEET_MIME_TYPE
+  let fallback: SheetsFallbackInfo | null = null
 
-  if (reusable) {
-    return { id: item.id, status: 'reused', file: reusable, note: plan.note }
+  if (isSpreadsheet) {
+    const mapCopy = await copySpreadsheetAsMap(context, metadata)
+
+    if (mapCopy.result) {
+      return mapCopy.result
+    }
+
+    fallback = mapCopy.fallback
   }
 
-  const [policy, usedBytes] = await Promise.all([
-    getEffectiveUserFilePolicy(input.userId, input.db),
-    getUserStorageUsageBytes(input.userId, input.db),
-  ])
+  const reusable = await findReusableCopy(
+    context,
+    metadata,
+    isSpreadsheet ? 'csv' : 'any',
+  )
+  const notice = copyNotice(plan, fallback)
+
+  if (reusable) {
+    return { id: item.id, status: 'reused', file: reusable, ...notice }
+  }
+
+  const { policy, usedBytes } = await loadQuota(input)
   const remainingBytes = Math.max(policy.maxStorageBytes - usedBytes, 0)
   const formatMaxBytes = plan.exportChoice
     ? GOOGLE_DRIVE_EXPORT_MAX_BYTES
@@ -515,7 +574,154 @@ async function copyFromMetadata(
       externalId: metadata.id,
       externalModifiedAt: metadata.modifiedTime,
     },
-    note: plan.note,
+    ...notice,
+  }
+}
+
+function copyNotice(
+  plan: CopyPlan,
+  fallback: SheetsFallbackInfo | null,
+): { note?: string, sheets?: DriveSheetsFallback } {
+  if (!fallback) {
+    return { note: plan.note }
+  }
+
+  if (fallback.tabsTotal === null) {
+    return {
+      note: GOOGLE_FIRST_TAB_UNKNOWN_COUNT_NOTE,
+      sheets: { ...fallback.detail, isTabCountUnknown: true },
+    }
+  }
+
+  return {
+    ...(fallback.tabsTotal === 1 ? {} : { note: GOOGLE_FIRST_TAB_NOTE }),
+    sheets: fallback.detail,
+  }
+}
+
+async function loadQuota(input: DriveImportInput) {
+  const [policy, usedBytes] = await Promise.all([
+    getEffectiveUserFilePolicy(input.userId, input.db),
+    getUserStorageUsageBytes(input.userId, input.db),
+  ])
+
+  return { policy, usedBytes }
+}
+
+type SpreadsheetMapCopy
+  = | { result: DriveImportItemResult, fallback?: undefined }
+    | { result?: undefined, fallback: SheetsFallbackInfo }
+
+function logSheetsRun(context: ItemContext, entry: string) {
+  context.sheetsLog?.push(entry)
+}
+
+/**
+ * The first try of a Google Sheet: an unchanged map copy is reused; if
+ * there is none, the Sheets API is read into a workbook map and stored as
+ * Markdown the row of which says, in its own columns, that it is a map. A
+ * map that cannot be read at all (the structure request fails, or no tab's
+ * cells arrive) is not an error: the result says why and the caller makes
+ * the first-tab CSV copy as before. Storage is checked before the read and
+ * again against the size of the map.
+ *
+ * A partial map (fewer tabs imported than the Sheet has: a Google error,
+ * the time budget, a rate limit, a tab that is too large or the 20-tab
+ * limit) is stored with no `external_modified_at`. The reuse query matches
+ * on that column, so a partial copy is never reused, and a refresh treats
+ * it as outdated. The next import of the unchanged Sheet reads again and
+ * tells the user "Only N of M tabs" again; a complete map from a later try
+ * is stored with the Sheet's version and reused from then on. The cost is
+ * that a Sheet with a tab that can never be read is read at every pick.
+ */
+async function copySpreadsheetAsMap(
+  context: ItemContext,
+  metadata: DriveFileMetadata,
+): Promise<SpreadsheetMapCopy> {
+  const { input, item } = context
+  const reusable = await findReusableCopy(context, metadata, 'map')
+
+  if (reusable) {
+    return {
+      result: { id: item.id, status: 'reused', file: reusable },
+    }
+  }
+
+  const { policy, usedBytes } = await loadQuota(input)
+  const remainingBytes = Math.max(policy.maxStorageBytes - usedBytes, 0)
+
+  if (remainingBytes <= 0) {
+    return { result: failed(item.id, 'storage_full') }
+  }
+
+  const read = await readSpreadsheetMap({
+    spreadsheetId: metadata.id,
+    accessToken: context.request.accessToken,
+    ...(context.request.resourceKey
+      ? { resourceKey: context.request.resourceKey }
+      : {}),
+    reserve: input.sheetsReserve
+      ?? createSheetsRequestReserver(input.kv, input.userId),
+    ...(input.sheetsWallTimeMs ? { wallTimeMs: input.sheetsWallTimeMs } : {}),
+    ...(context.request.fetchImpl
+      ? { fetchImpl: context.request.fetchImpl }
+      : {}),
+  })
+  const { diagnostics } = read
+
+  logSheetsRun(
+    context,
+    `${read.ok ? 'map' : `fallback:${read.fallback.code}`}`
+    + `:requests=${diagnostics.requests}:bytes=${diagnostics.bytes}`
+    + `:notRead=${diagnostics.tabsNotRead}:kv=${diagnostics.kvUnavailable}`
+    + (diagnostics.failures.length > 0
+      ? `:${diagnostics.failures.join('|')}`
+      : ''),
+  )
+
+  if (!read.ok) {
+    return {
+      fallback: { detail: read.fallback, tabsTotal: read.tabsTotal },
+    }
+  }
+
+  const bytes = new TextEncoder().encode(read.text)
+
+  if (bytes.byteLength > remainingBytes) {
+    return { result: failed(item.id, 'storage_full') }
+  }
+
+  const copiedModifiedAt = read.tabsImported < read.tabsTotal
+    ? null
+    : metadata.modifiedTime
+  const stored = await persistFile({
+    userId: input.userId,
+    fileName: buildDriveCopyName(metadata.name, GOOGLE_WORKBOOK_MAP_CHOICE),
+    mediaType: GOOGLE_WORKBOOK_MAP_MEDIA_TYPE,
+    fileData: bytes,
+    source: 'upload',
+    externalSource: 'google',
+    externalId: metadata.id,
+    externalModifiedAt: copiedModifiedAt,
+    workbookMap: { summary: toWorkbookTextSummary(read.summary) },
+    logger: input.logger,
+    policy,
+    totalFilesSize: usedBytes,
+  })
+  const note = describeTabsImported(read.tabsImported, read.tabsTotal)
+
+  return {
+    result: {
+      id: item.id,
+      status: 'imported',
+      file: {
+        ...stored,
+        externalSource: 'google',
+        externalId: metadata.id,
+        externalModifiedAt: copiedModifiedAt,
+      },
+      ...(note ? { note } : {}),
+    },
   }
 }
 
@@ -600,6 +806,7 @@ export async function importDriveFiles(
 ): Promise<DriveImportItemResult[]> {
   const results: DriveImportItemResult[] = []
   const retryBudget = { remainingMs: FRESH_PICK_RETRY_BUDGET_MS }
+  const sheetsLog: string[] = []
 
   for (const item of input.items) {
     const token = await readItemToken(input)
@@ -621,6 +828,7 @@ export async function importDriveFiles(
         resourceKey: item.resourceKey,
       },
       retryBudget,
+      sheetsLog,
     }))
   }
 
@@ -651,6 +859,9 @@ export async function importDriveFiles(
         reused: results.filter(result => result.status === 'reused').length,
         failures,
         failureDetails,
+        ...(sheetsLog.length > 0
+          ? { sheetsDetails: sheetsLog.slice(0, FAILURE_DETAILS_LOGGED_MAX) }
+          : {}),
       },
     },
   })
@@ -754,6 +965,7 @@ function toRefreshResult(
     status: result.status === 'imported' ? 'updated' : 'newer_copy',
     file: result.file,
     note: result.note,
+    ...(result.sheets ? { sheets: result.sheets } : {}),
   }
 }
 
@@ -819,6 +1031,7 @@ export async function refreshDriveCopies(
 ): Promise<DriveRefreshItemResult[]> {
   const targets = await findRefreshTargets(input)
   const results: DriveRefreshItemResult[] = []
+  const sheetsLog: string[] = []
 
   for (const fileId of input.fileIds) {
     const target = targets.get(fileId)
@@ -844,6 +1057,7 @@ export async function refreshDriveCopies(
       input: { ...input, items: [] },
       item: { id: target.driveId },
       request: { accessToken: token.accessToken },
+      sheetsLog,
     }, target))
   }
 
@@ -867,6 +1081,9 @@ export async function refreshDriveCopies(
           return result.status === 'up_to_date'
         }).length,
         refreshFailures: failures,
+        ...(sheetsLog.length > 0
+          ? { sheetsDetails: sheetsLog.slice(0, FAILURE_DETAILS_LOGGED_MAX) }
+          : {}),
       },
     },
   })

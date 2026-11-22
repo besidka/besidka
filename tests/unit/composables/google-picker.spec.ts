@@ -28,12 +28,14 @@ function notConnected() {
 
 function activeConnection(
   capabilities: string[] = ['identity', 'drive-picked'],
+  isWorkspaceAccount = false,
 ) {
   return {
     connection: {
       clientMode: 'besidka',
       status: 'active',
       email: 'user@example.com',
+      isWorkspaceAccount,
       capabilities,
       connectedAt: '2026-11-22T10:00:00.000Z',
     },
@@ -117,6 +119,12 @@ describe('useGooglePicker', () => {
 
       setFileIds(value: string) {
         this.config.fileIds = value
+
+        return this
+      }
+
+      setParent(value: string) {
+        this.config.parent = value
 
         return this
       }
@@ -328,39 +336,97 @@ describe('useGooglePicker', () => {
       await pending
     })
 
-  it('opens on Recent and offers Shared with me, Shared drives and Upload, '
-    + 'all in list mode', async () => {
+  const RECENT_VIEW = {
+    viewId: 'docs',
+    includeFolders: false,
+    mode: 'list',
+    label: 'Recent',
+  }
+  const SHARED_WITH_ME_VIEW = {
+    viewId: 'docs',
+    includeFolders: false,
+    ownedByMe: false,
+    mode: 'list',
+    label: 'Shared with me',
+  }
+  const MY_DRIVE_VIEW = {
+    viewId: 'docs',
+    includeFolders: true,
+    selectFolderEnabled: false,
+    parent: 'root',
+    mode: 'list',
+    label: 'My Drive',
+  }
+  const SHARED_DRIVES_VIEW = {
+    viewId: 'docs',
+    includeFolders: true,
+    selectFolderEnabled: false,
+    enableDrives: true,
+    mode: 'list',
+    label: 'Shared drives',
+  }
+  const UPLOAD_VIEW = { upload: true, label: 'Upload' }
+
+  it('opens on Recent files and offers Shared with me, My Drive and Upload '
+    + 'to a personal account, which has no Shared drives tab', async () => {
     const { pick } = await loadComposable()
     const pending = pick()
 
     await finishScriptLoad()
 
     expect(builderCall.views).toEqual([
-      {
-        viewId: 'docs',
-        includeFolders: true,
-        selectFolderEnabled: false,
-        mode: 'list',
-        label: 'Recent',
-      },
-      {
-        viewId: 'docs',
-        includeFolders: false,
-        ownedByMe: false,
-        mode: 'list',
-        label: 'Shared with me',
-      },
-      {
-        viewId: 'docs',
-        includeFolders: true,
-        selectFolderEnabled: false,
-        enableDrives: true,
-        mode: 'list',
-        label: 'Shared drives',
-      },
-      { upload: true, label: 'Upload' },
+      RECENT_VIEW,
+      SHARED_WITH_ME_VIEW,
+      MY_DRIVE_VIEW,
+      UPLOAD_VIEW,
     ])
     expect(builderCall.features).toContain('multiselect')
+
+    pickerCallback({ action: 'cancel' })
+    await pending
+  })
+
+  it('adds the Shared drives tab, between My Drive and Upload, for a '
+    + 'Workspace account', async () => {
+    statusMock.mockResolvedValue(
+      activeConnection(['identity', 'drive-picked'], true),
+    )
+
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await finishScriptLoad()
+
+    expect(builderCall.views).toEqual([
+      RECENT_VIEW,
+      SHARED_WITH_ME_VIEW,
+      MY_DRIVE_VIEW,
+      SHARED_DRIVES_VIEW,
+      UPLOAD_VIEW,
+    ])
+
+    pickerCallback({ action: 'cancel' })
+    await pending
+  })
+
+  it('hides the Shared drives tab when the server sends no flag', async () => {
+    const connection = activeConnection()
+
+    delete (connection.connection as Partial<typeof connection.connection>)
+      .isWorkspaceAccount
+    statusMock.mockResolvedValue(connection)
+
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await finishScriptLoad()
+
+    expect(builderCall.views.map(view => view.label)).toEqual([
+      'Recent',
+      'Shared with me',
+      'My Drive',
+      'Upload',
+    ])
 
     pickerCallback({ action: 'cancel' })
     await pending
@@ -401,6 +467,10 @@ describe('useGooglePicker', () => {
     })
 
   it('keeps the other tabs when one view cannot be built', async () => {
+    statusMock.mockResolvedValue(
+      activeConnection(['identity', 'drive-picked'], true),
+    )
+
     const { pick } = await loadComposable()
     const pending = pick()
 
@@ -422,8 +492,41 @@ describe('useGooglePicker', () => {
     expect(builderCall.views.map(view => view.label)).toEqual([
       'Recent',
       'Shared with me',
+      'My Drive',
       'Shared drives',
     ])
+
+    pickerCallback({ action: 'cancel' })
+    await pending
+  })
+
+  it('keeps the My Drive tab, without a parent, when setParent does not '
+    + 'exist any more', async () => {
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await settle()
+
+    const script = appended.at(-1)!
+
+    ;(window as any).gapi = {
+      load: vi.fn((_library: string, options: { callback: () => void }) => {
+        installPickerNamespace()
+        delete (window as any).google.picker.DocsView.prototype.setParent
+        options.callback()
+      }),
+    }
+    script.onload?.(new Event('load'))
+    await settle()
+
+    expect(builderCall.views[2]).toEqual({
+      viewId: 'docs',
+      includeFolders: true,
+      selectFolderEnabled: false,
+      mode: 'list',
+      label: 'My Drive',
+    })
+    expect(builderCall.views).toHaveLength(4)
 
     pickerCallback({ action: 'cancel' })
     await pending

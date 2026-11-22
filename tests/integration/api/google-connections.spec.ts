@@ -688,6 +688,7 @@ describe('Google connection routes', () => {
           clientMode: 'besidka',
           status: 'active',
           email: GOOGLE_EMAIL,
+          isWorkspaceAccount: true,
           capabilities: ['drive-picked'],
           connectedAt: expect.any(String),
         },

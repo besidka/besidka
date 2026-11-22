@@ -44,6 +44,7 @@ const CUT_REASONS: Record<WorkbookMapCut, TruncationReason> = {
   merged_cells: 'map_limit',
   notes: 'map_limit',
   names: 'map_limit',
+  not_read: 'map_limit',
 }
 
 /**

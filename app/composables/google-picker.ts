@@ -82,6 +82,7 @@ interface DocsViewLike extends PickerViewLike {
   setOwnedByMe: (isOwnedByMe: boolean) => DocsViewLike
   setMode: (mode: string) => DocsViewLike
   setFileIds: (fileIds: string) => DocsViewLike
+  setParent?: (parentId: string) => DocsViewLike
 }
 
 interface PickerBuilderLike {
@@ -269,34 +270,52 @@ async function fetchPickerToken(): Promise<PickerToken | GooglePickerResult> {
   }
 }
 
-async function checkDriveConnection(): Promise<GooglePickerResult | null> {
+interface DriveConnectionCheck {
+  failure: GooglePickerResult | null
+  hasSharedDrives: boolean
+}
+
+function refused(failure: GooglePickerResult): DriveConnectionCheck {
+  return { failure, hasSharedDrives: false }
+}
+
+/**
+ * The status check before the Picker loads. `hasSharedDrives` is the
+ * server's `isWorkspaceAccount` for the connection: a personal Google
+ * account has no shared drives, so the Picker gets that tab only for a
+ * Workspace account.
+ */
+async function checkDriveConnection(): Promise<DriveConnectionCheck> {
   try {
     const response = await $fetch('/api/v1/google/connections')
     const connection = response.connection
 
     if (!connection) {
-      return toFailure('not-connected', 'Google Drive is not connected')
+      return refused(toFailure('not-connected', 'Google Drive is not connected'))
     }
 
     if (
       connection.status !== 'active'
       || !connection.capabilities.includes('drive-picked')
     ) {
-      return toFailure(
+      return refused(toFailure(
         'reauthorize',
         'Google Drive needs to be connected again',
-      )
+      ))
     }
 
-    return null
+    return {
+      failure: null,
+      hasSharedDrives: connection.isWorkspaceAccount === true,
+    }
   } catch (exception) {
     const parsed = parseError(exception)
 
-    return toFailure(
+    return refused(toFailure(
       'failed',
       parsed.message || 'Google Drive could not be opened',
       parsed.why,
-    )
+    ))
   }
 }
 
@@ -356,6 +375,7 @@ function collectPickedItems(response: PickerResponseLike): GooglePickerResult {
 
 export const GOOGLE_PICKER_VIEW_LABELS = {
   recent: 'Recent',
+  myDrive: 'My Drive',
   sharedWithMe: 'Shared with me',
   sharedDrives: 'Shared drives',
   upload: 'Upload',
@@ -379,54 +399,81 @@ function listMode(
   return mode ? view.setMode(mode) : view
 }
 
+function startAtRoot(view: DocsViewLike): DocsViewLike {
+  return view.setParent?.('root') ?? view
+}
+
 type PickerViewFactory = (picker: GooglePickerNamespace) => PickerViewLike
 
-const PICKER_TAB_FACTORIES: readonly PickerViewFactory[] = [
-  (picker) => {
-    return labelView(
-      listMode(
-        picker,
+const recentView: PickerViewFactory = (picker) => {
+  return labelView(
+    listMode(
+      picker,
+      new picker.DocsView(picker.ViewId.DOCS).setIncludeFolders(false),
+    ),
+    GOOGLE_PICKER_VIEW_LABELS.recent,
+  )
+}
+
+const sharedWithMeView: PickerViewFactory = (picker) => {
+  return labelView(
+    listMode(
+      picker,
+      new picker.DocsView(picker.ViewId.DOCS)
+        .setIncludeFolders(false)
+        .setOwnedByMe(false),
+    ),
+    GOOGLE_PICKER_VIEW_LABELS.sharedWithMe,
+  )
+}
+
+const myDriveView: PickerViewFactory = (picker) => {
+  return labelView(
+    listMode(
+      picker,
+      startAtRoot(
         new picker.DocsView(picker.ViewId.DOCS)
           .setIncludeFolders(true)
           .setSelectFolderEnabled(false),
       ),
-      GOOGLE_PICKER_VIEW_LABELS.recent,
-    )
-  },
-  (picker) => {
-    return labelView(
-      listMode(
-        picker,
-        new picker.DocsView(picker.ViewId.DOCS)
-          .setIncludeFolders(false)
-          .setOwnedByMe(false),
-      ),
-      GOOGLE_PICKER_VIEW_LABELS.sharedWithMe,
-    )
-  },
-  (picker) => {
-    return labelView(
-      listMode(
-        picker,
-        new picker.DocsView(picker.ViewId.DOCS)
-          .setIncludeFolders(true)
-          .setSelectFolderEnabled(false)
-          .setEnableDrives(true),
-      ),
-      GOOGLE_PICKER_VIEW_LABELS.sharedDrives,
-    )
-  },
-  (picker) => {
-    if (!picker.DocsUploadView) {
-      throw new Error('upload-view-missing')
-    }
+    ),
+    GOOGLE_PICKER_VIEW_LABELS.myDrive,
+  )
+}
 
-    return labelView(
-      new picker.DocsUploadView(),
-      GOOGLE_PICKER_VIEW_LABELS.upload,
-    )
-  },
-]
+const sharedDrivesView: PickerViewFactory = (picker) => {
+  return labelView(
+    listMode(
+      picker,
+      new picker.DocsView(picker.ViewId.DOCS)
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(false)
+        .setEnableDrives(true),
+    ),
+    GOOGLE_PICKER_VIEW_LABELS.sharedDrives,
+  )
+}
+
+const uploadView: PickerViewFactory = (picker) => {
+  if (!picker.DocsUploadView) {
+    throw new Error('upload-view-missing')
+  }
+
+  return labelView(
+    new picker.DocsUploadView(),
+    GOOGLE_PICKER_VIEW_LABELS.upload,
+  )
+}
+
+function tabFactories(hasSharedDrives: boolean): PickerViewFactory[] {
+  return [
+    recentView,
+    sharedWithMeView,
+    myDriveView,
+    ...(hasSharedDrives ? [sharedDrivesView] : []),
+    uploadView,
+  ]
+}
 
 function buildSingleFileView(
   picker: GooglePickerNamespace,
@@ -441,10 +488,15 @@ function buildSingleFileView(
 /**
  * The tabs of the Picker, each built on its own so that a method Google
  * changed or removed drops one tab and never the Picker. Without file ids:
- * Recent (My Drive with folders, list mode), Shared with me
- * (`setOwnedByMe(false)`, no folders: Google ignores the owner filter when
- * folders are included), Shared drives (`setEnableDrives(true)`, which must
- * not be combined with the owner filter) and Upload (`DocsUploadView`).
+ * Recent (files only, no folders, no owner filter so files shared with the
+ * user are included, list mode), Shared with me (`setOwnedByMe(false)`, no
+ * folders: Google ignores the owner filter when folders are included), My
+ * Drive (folders shown but not selectable, opened at the root with
+ * `setParent('root')` when Google offers it), Shared drives
+ * (`setEnableDrives(true)`, which must not be combined with the owner filter;
+ * built only when `options.hasSharedDrives` is true, because a personal
+ * Google account has none and the tab would always be empty) and Upload
+ * (`DocsUploadView`).
  * With file ids, one view that holds only those files (`setFileIds`, which
  * Google says is overridden by `setEnableDrives` and `setParent`, so neither
  * is set): the user confirms the file once and the Picker grants Besidka
@@ -457,10 +509,11 @@ function buildSingleFileView(
 export function buildPickerViews(
   picker: GooglePickerNamespace,
   fileIds: readonly string[] = [],
+  options: { hasSharedDrives?: boolean } = {},
 ): PickerViewLike[] {
   const factories: readonly PickerViewFactory[] = fileIds.length > 0
     ? [pickerNamespace => buildSingleFileView(pickerNamespace, fileIds)]
-    : PICKER_TAB_FACTORIES
+    : tabFactories(options.hasSharedDrives === true)
   const views: PickerViewLike[] = []
 
   for (const factory of factories) {
@@ -482,6 +535,7 @@ function showPicker(
   token: PickerToken,
   maxItems: number,
   fileIds: readonly string[],
+  hasSharedDrives: boolean,
   registerCancel: (cancel: () => void) => void,
 ): Promise<GooglePickerResult> {
   const picker = readGlobals().google?.picker
@@ -566,7 +620,7 @@ function showPicker(
     let builder: PickerBuilderLike
 
     try {
-      builder = buildPickerViews(picker, fileIds).reduce(
+      builder = buildPickerViews(picker, fileIds, { hasSharedDrives }).reduce(
         (current, view) => current.addView(view),
         new picker.PickerBuilder(),
       )
@@ -656,7 +710,7 @@ export function useGooglePicker() {
   let isScopeDisposed = false
 
   async function checkConnectionWithIndicator(): Promise<
-    GooglePickerResult | null
+    DriveConnectionCheck
   > {
     const indicatorTimer = setTimeout(() => {
       isCheckingConnection.value = true
@@ -680,10 +734,10 @@ export function useGooglePicker() {
     isPicking.value = true
 
     try {
-      const connectionFailure = await checkConnectionWithIndicator()
+      const connection = await checkConnectionWithIndicator()
 
-      if (connectionFailure || isScopeDisposed) {
-        return connectionFailure ?? { status: 'canceled' }
+      if (connection.failure || isScopeDisposed) {
+        return connection.failure ?? { status: 'canceled' }
       }
 
       try {
@@ -717,9 +771,15 @@ export function useGooglePicker() {
 
       const fileIds = (options.fileIds ?? []).filter(isDriveFileId)
 
-      return await showPicker(token, maxItems, fileIds, (cancel) => {
-        cancelOpenPicker = cancel
-      })
+      return await showPicker(
+        token,
+        maxItems,
+        fileIds,
+        connection.hasSharedDrives,
+        (cancel) => {
+          cancelOpenPicker = cancel
+        },
+      )
     } finally {
       cancelOpenPicker = null
       isPicking.value = false

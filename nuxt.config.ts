@@ -798,7 +798,15 @@ export default defineNuxtConfig({
     },
     clientBundle: {
       icons: [
+        'lucide:circle-alert',
+        'lucide:copy',
         'lucide:git-branch-plus',
+        'lucide:info',
+        'lucide:key-round',
+        'lucide:table-2',
+        'lucide:trash',
+        'lucide:triangle-alert',
+        'lucide:unplug',
         'thesvg:zhipu',
         'logos:google-drive',
         'logos:google-gmail',

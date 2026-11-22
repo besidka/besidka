@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import {
   getGrantedCapabilities,
   getPartialCalendarAccess,
+  isWorkspaceAccountEmail,
 } from '#shared/utils/google-connections'
 import type {
   GoogleConnectionStatus,
@@ -68,6 +69,7 @@ export function toGoogleConnectionSummary(
     clientMode: record.clientMode,
     status: record.status,
     email: record.googleEmail,
+    isWorkspaceAccount: isWorkspaceAccountEmail(record.googleEmail),
     capabilities: record.status === 'active'
       ? getGrantedCapabilities(record.grantedScopes)
       : [],

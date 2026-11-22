@@ -28,7 +28,8 @@ export type ToolsSection
 export type ChatInputArtifactTileId = `artifact-${string}`
 
 export type ChatInputTileId
-  = | 'project'
+  = | 'google-file'
+    | 'project'
     | 'memory'
     | 'deep-research'
     | 'image'
