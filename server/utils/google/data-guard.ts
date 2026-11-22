@@ -20,9 +20,6 @@ import {
   googleDataRefusalReason,
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
-import { canOfferGoogleTools } from '#shared/utils/google-tool-approvals'
-import type { RequestEvent } from 'nuxt/server'
-import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
@@ -336,38 +333,6 @@ export function mayOfferConnectorsWithGoogleData(input: {
   toolApprovalsActive: boolean
 }): boolean {
   return !input.holdsGoogleData || input.toolApprovalsActive
-}
-
-/**
- * Whether a gateway call gets the gateway safeguards: in a chat that holds
- * Google data, and in any send where Google tools could be offered (tool
- * approvals and `google.drive` active). Without the second case a gateway
- * send would never pass the recipient check, so Google tools could never be
- * offered through a gateway at all.
- */
-export async function shouldSendGatewayGoogleSafeguards(input: {
-  event: Pick<RequestEvent, 'context'>
-  gatewayId: string | undefined
-  holdsGoogleData: boolean
-  logger: LoggerLike
-}): Promise<boolean> {
-  if (!input.gatewayId) {
-    return false
-  }
-
-  if (input.holdsGoogleData) {
-    return true
-  }
-
-  const features = await resolveSendFeatures(
-    input.event,
-    ['tool-approvals', 'google.drive'],
-    input.logger,
-  )
-
-  return features.isFeatureActive('google.drive') && canOfferGoogleTools({
-    toolApprovalsActive: features.isFeatureActive('tool-approvals'),
-  })
 }
 
 /**

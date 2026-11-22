@@ -489,6 +489,7 @@ import {
 } from '~~/server/utils/tool-approval/google'
 import {
   getGoogleSendTools,
+  planGoogleSendTools,
   withGoogleSendTools,
 } from '~~/server/utils/tool-approval/google-send-tools'
 import {
@@ -500,7 +501,6 @@ import {
   mayOfferConnectorsWithGoogleData,
   googleSafeguardGatewayErrorOverride,
   resolveSendGoogleContent,
-  shouldSendGatewayGoogleSafeguards,
   withGoogleTaintRerankStop,
   withoutWebSearchForGoogleData,
 } from '~~/server/utils/google/data-guard'
@@ -1509,12 +1509,35 @@ export default defineEventHandler(async (event) => {
     ...gatewayTelemetryAttributes,
   })
 
-  const gatewayGoogleSafeguards = await shouldSendGatewayGoogleSafeguards({
+  const sendFeatures = await resolveSendFeatures(
     event,
+    [
+      'artifacts',
+      'artifacts.react',
+      'artifacts.storage',
+      'artifacts.llm-bridge',
+      'documents',
+      'skills',
+      'skills.scripts',
+      'connectors',
+      'tool-approvals',
+      'besidka-tools',
+      'google.drive',
+      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
+    ],
+    aiLogger,
+  )
+  const toolApprovalsActive = sendFeatures.isFeatureActive('tool-approvals')
+  const googleSendPlan = await planGoogleSendTools({
+    toolApprovalsActive,
+    googleDriveActive: sendFeatures.isFeatureActive('google.drive'),
+    userId,
+    chatPublicId: chat.id,
     gatewayId,
     holdsGoogleData,
     logger: aiLogger,
   })
+  const gatewayGoogleSafeguards = googleSendPlan.gatewaySafeguards
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
@@ -1989,25 +2012,6 @@ export default defineEventHandler(async (event) => {
   const memoryToolsRegistered = isMemoryToolsEnabled(memorySettings)
     && toolCallingAllowed
 
-  const sendFeatures = await resolveSendFeatures(
-    event,
-    [
-      'artifacts',
-      'artifacts.react',
-      'artifacts.storage',
-      'artifacts.llm-bridge',
-      'documents',
-      'skills',
-      'skills.scripts',
-      'connectors',
-      'tool-approvals',
-      'besidka-tools',
-      'google.drive',
-      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
-    ],
-    aiLogger,
-  )
-  const toolApprovalsActive = sendFeatures.isFeatureActive('tool-approvals')
   const toolApprovalSend = createSendToolApproval({
     state: resume?.loaded.state ?? createApprovalState(),
   })
@@ -2641,10 +2645,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const googleSend = await getGoogleSendTools({
-      toolApprovalsActive,
-      googleDriveActive: sendFeatures.isFeatureActive('google.drive'),
-      userId,
-      chatPublicId: chat.id,
+      plan: googleSendPlan,
       mayReceiveGoogleData: async () => {
         const decision = await decideGoogleDataGuard({
           db,
