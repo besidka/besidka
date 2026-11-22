@@ -61,6 +61,10 @@ command below is for the operator, preview first.
 | Tool permissions set to Blocked in the window, or "Allow" set in the window to a Besidka tool (`besidka_tool_permissions`) | Rolled back: a Blocked tool is callable again, and rows are gone or back as they were at B | High (a switched-off or ask-first tool runs without a prompt) | No |
 | "Always allow" grants (`connector_tool_settings.approval`, `approved_definition_hash`) and "Allow in this chat" grants (`connector_chat_settings.always_allow_tools`, `besidka_chat_settings.always_allow_tools`) revoked in the window | Return, with the hash they were given for | High (a revoked grant runs a tool without asking) | No |
 | `tool_approval_claims` and the `tool-approval:` KV records | Claims are rolled back while KV keeps its state, so a claim can be missing for a record that still exists, and an old approval can execute a second time | Medium | Yes (KV expires in 24 hours, claims are swept after 48) |
+| Google connections revoked or disconnected in the window (`google_connections`) | Encrypted access and refresh tokens return, usable again unless Google revoked them; a `revoked` or `needs_reauth` row can return as `active` | **High (a revoked Google authorization works again)** | No |
+| Google files (`files.external_source`) deleted in the window, or whose Google access ended in it | Rows return with their metadata; the R2 objects stay gone (404, counted in quota), or the content is again readable without a live connection | High (Limited Use deletion promise) | Partly (the access-ended sweep) |
+| `chats.google_data_at` set in the window | Reverts, so a chat that carries Google data reads as clean and the provider allow-list does not apply to it | **High (Google data to a refused provider)** | No |
+| `keys.paid_tier_confirmed_at` cleared in the window | The paid-tier confirmation returns, so a Gemini key the user no longer confirms receives Google data | High | No |
 | Legal notice approvals withdrawn in the window (`legal_notice_approvals`) | Active again, so the sweep can email a notice the owner stopped | **High (mass email to every user)** | No |
 | Legal notice approvals given in the window | Gone; the notice stops being emailed | Low | No (the owner approves again) |
 | Consent version approved in the window (`legal_consent_version_approvals`) | Reverts to the older version once the `legal:consent-version:approved` KV cache (1 hour) and the isolate memo (1 minute) expire, so users who agreed to the newer version are asked again for the older one | Medium | No |
@@ -522,6 +526,48 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
   (`attributes.accountPurge`, `attributes.toolApprovals.cleanup.chatDelete`);
   a restored chat-settings row for a missing chat does nothing.
 
+## Google
+
+A restore rolls back `google_connections` (`server/db/schemas/google-connections.ts`),
+the new `files` columns (`external_source`, `external_id`,
+`external_modified_at`, `drive_copy_id`), `chats.google_data_at` and
+`keys.paid_tier_confirmed_at` to the bookmark B. `google_connections` has no
+foreign key, so nothing cascades. KV keeps its current state; the
+`google-oauth:` state and refresh-lock keys expire within minutes.
+
+- **Revoked tokens come back.** A user who disconnected Google, or whose
+  access ended (`invalid_grant`), in the window gets the row back with its
+  encrypted tokens and `status = 'active'`. Google may have revoked the token
+  already, in which case the next refresh answers `invalid_grant`, but that
+  is not guaranteed. Wipe every connection right after the restore and have
+  users reconnect (step 2d). Rows created in the window are lost with the
+  restore and need no repair; the connection row and the user's tokens at
+  Google are then out of step, and the user simply connects again. Say so in
+  the user notice (step 7).
+- **Google files whose access ended.** Restored `files` rows with
+  `external_source` set can belong to a connection that ended in the window.
+  Their R2 objects were deleted when access ended, so they answer 404 and
+  still count in quota (the `files` diff of step 5 removes them). Rows whose
+  objects still exist must not outlive the wipe of step 2d: once the
+  connection is `needs_reauth`, the access-ended sweep deletes every file with
+  `external_source` in `GOOGLE_EXTERNAL_SOURCES` and its R2 object within 24
+  hours, exactly as for a detected `invalid_grant`.
+- **The "carries Google data" flag reverts.** A chat flagged in the window
+  loses `google_data_at`, so the provider allow-list stops applying to it
+  until the flag is set again. Re-derive it from the chats that hold Google
+  parts or tool results and set it before users can send; the rule that
+  decides which parts count is the one the data guard uses.
+- **Paid-tier confirmations come back.** A confirmation a user removed in the
+  window returns on the Gemini key. Clear all of them (step 2d); users
+  confirm again before a Google-data chat can use that key.
+- **Deleted accounts return.** The account purge deletes the user's
+  `google_connections` rows explicitly; a restored row of a deleted account
+  has no user and is removed by the account replay of step 4
+  (`attributes.accountPurge`, `googleConnectionsDeleted`).
+- **Encryption key.** The key is not part of D1. A restore never needs it
+  rotated, and rotating it makes every stored Google token undecryptable
+  (wipe the tokens and have users reconnect).
+
 ## Migrations re-apply on the next deploy (blocking)
 
 `d1_migrations` lives in the same database, so a restore rolls it back too.
@@ -778,6 +824,26 @@ admin page shows the new recipient count before any approval. Then query
    guard of step 4),
 3. ask the owner which notices to approve again.
 
+### 2d. Wipe Google tokens and paid-tier confirmations
+
+Right after the session wipe, run on `besidka-preview` and then `besidka`:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE google_connections SET access_token = NULL, refresh_token = NULL, access_token_expires_at = NULL, status = 'needs_reauth'; UPDATE keys SET paid_tier_confirmed_at = NULL WHERE provider = 'google';"
+```
+
+See "Google" above for why every connection is reset. Users reconnect and
+confirm the paid tier of their Gemini key again. Then set `chats.google_data_at`
+again for the chats that carry Google data, as described there.
+
+Known gaps, owned by later children of the Google stack: the access-ended
+sweep that deletes the Google file copies of a `needs_reauth` connection (child
+2) does not exist yet, so until it ships the wipe above removes only the
+tokens and users' copies stay; once it ships, this step deletes every user's
+Drive copies within 24 hours, which the user notice (step 7) must say. The
+command that re-derives `chats.google_data_at` is written with the data guard
+(child 3), which defines what counts as a Google part.
+
 ### 3. Push id sequences past the pre-restore high-water marks
 
 For each table from step 0.3 whose restored `seq` is lower:
@@ -939,7 +1005,8 @@ npx wrangler d1 execute besidka --env production --remote --command="SELECT (SEL
 Send one notice to all users. It says that everything done after B was
 undone, that everyone was signed out, and that anyone who changed their
 password, 2FA, passkeys, email, linked accounts, BYOK keys or share settings
-after B must redo the change, and that they should re-check the tools they
+after B must redo the change, that they must reconnect Google and confirm
+the paid tier of their Gemini key again, and that they should re-check the tools they
 set to Blocked, because a Blocked setting made after B is gone and the tool
 can be called again. No ledger can do that last part for them.
 

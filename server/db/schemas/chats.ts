@@ -31,6 +31,7 @@ export const chats = snakeCase.table(
     memoryExtractionAttemptedAt: integer({ mode: 'timestamp' }),
     memoryExtractionFailures: integer({ mode: 'number' }),
     memoryExcluded: integer({ mode: 'boolean' }),
+    googleDataAt: integer({ mode: 'timestamp' }),
     activityAt: integer({ mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
