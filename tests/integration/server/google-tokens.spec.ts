@@ -119,6 +119,7 @@ describe('Google tokens', () => {
       type: 'application/pdf',
       externalSource: 'google',
       externalId: `drive-${storageKey}`,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
     })
   }
 
@@ -418,6 +419,191 @@ describe('Google tokens', () => {
       expect(await googleFileCount()).toBe(1)
       expect(google.fetch).not.toHaveBeenCalled()
     })
+
+  async function setRow(values: Record<string, unknown>) {
+    await testDb.db
+      .update(schema.googleConnections)
+      .set(values)
+      .where(eq(schema.googleConnections.userId, userId))
+  }
+
+  it('releases the refresh lock after refreshing', async () => {
+    const connectionId = await seedConnection({ expiresInMs: 0 })
+    const { getGoogleAccessToken } = await tokensModule()
+
+    await getGoogleAccessToken({ userId, clientMode: 'besidka' }, dependencies())
+
+    expect(kv.put).toHaveBeenCalledWith(
+      `google:refresh:${connectionId}`,
+      expect.any(String),
+      { expirationTtl: 60 },
+    )
+    expect(kv.values.has(`google:refresh:${connectionId}`)).toBe(false)
+  })
+
+  it('refreshes without the lock when KV fails', async () => {
+    await seedConnection({ expiresInMs: 0 })
+    kv.get.mockRejectedValue(new Error('kv down'))
+
+    const { getGoogleAccessToken } = await tokensModule()
+    const result = await getGoogleAccessToken(
+      { userId, clientMode: 'besidka' },
+      dependencies(),
+    )
+
+    expect(result.status).toBe('ok')
+    expect(google.tokenRequests()).toHaveLength(1)
+    expect(JSON.stringify(logger.set.mock.calls)).toContain('lock-unavailable')
+  })
+
+  it('skips the refresh when the row changed while the lock was taken',
+    async () => {
+      await seedConnection({ expiresInMs: 0 })
+
+      const put = kv.put.getMockImplementation()!
+
+      kv.put.mockImplementationOnce(async (key, value, putOptions) => {
+        await setRow({
+          accessToken: fakeEncrypt('access-from-other'),
+          accessTokenExpiresAt: new Date(NOW + 3_600_000),
+        })
+
+        return await put(key, value, putOptions)
+      })
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const result = await getGoogleAccessToken(
+        { userId, clientMode: 'besidka' },
+        dependencies(),
+      )
+
+      expect(result).toEqual(expect.objectContaining({
+        status: 'ok',
+        accessToken: 'access-from-other',
+      }))
+      expect(google.fetch).not.toHaveBeenCalled()
+    })
+
+  it('returns the winner\'s token when it loses the compare-and-set',
+    async () => {
+      useGoogle({
+        token: () => {
+          testDb.sqlite.prepare(
+            'update google_connections set refresh_token = ?, '
+            + 'access_token = ?, access_token_expires_at = ?',
+          ).run(
+            fakeEncrypt('refresh-winner'),
+            fakeEncrypt('access-winner'),
+            Math.floor((NOW + 3_600_000) / 1000),
+          )
+
+          return {
+            status: 200,
+            body: {
+              access_token: 'access-loser',
+              expires_in: 3599,
+              token_type: 'Bearer',
+            },
+          }
+        },
+      })
+      await seedConnection({ expiresInMs: 0 })
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const result = await getGoogleAccessToken(
+        { userId, clientMode: 'besidka' },
+        dependencies(),
+      )
+
+      expect(result).toEqual(expect.objectContaining({
+        accessToken: 'access-winner',
+      }))
+      expect(JSON.stringify(logger.set.mock.calls)).toContain('lost-race')
+      expect(fakeDecrypt((await connectionRow())!.refreshToken!))
+        .toBe('refresh-winner')
+    })
+
+  it('keeps a reconnect that landed during a failed refresh', async () => {
+    useGoogle({
+      token: () => {
+        testDb.sqlite.prepare(
+          'update google_connections set refresh_token = ?, '
+          + 'access_token = ?, access_token_expires_at = ?',
+        ).run(
+          fakeEncrypt('refresh-reconnected'),
+          fakeEncrypt('access-reconnected'),
+          Math.floor((NOW + 3_600_000) / 1000),
+        )
+
+        return { status: 400, body: { error: 'invalid_grant' } }
+      },
+    })
+    await seedConnection({ expiresInMs: 0 })
+    await seedGoogleFile('user/drive-a.pdf')
+
+    const { getGoogleAccessToken } = await tokensModule()
+    const result = await getGoogleAccessToken(
+      { userId, clientMode: 'besidka' },
+      dependencies(),
+    )
+
+    expect(result).toEqual(expect.objectContaining({
+      accessToken: 'access-reconnected',
+    }))
+    expect((await connectionRow())!.status).toBe('active')
+    expect(await googleFileCount()).toBe(1)
+    expect(JSON.stringify(logger.set.mock.calls)).toContain('superseded')
+  })
+
+  it('does not end access twice when another request already did',
+    async () => {
+      useGoogle({
+        token: () => {
+          testDb.sqlite.prepare(
+            'update google_connections set status = ?, refresh_token = NULL',
+          ).run('needs_reauth')
+
+          return { status: 400, body: { error: 'invalid_grant' } }
+        },
+      })
+      await seedConnection({ expiresInMs: 0 })
+      await seedGoogleFile('user/drive-a.pdf')
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const result = await getGoogleAccessToken(
+        { userId, clientMode: 'besidka' },
+        dependencies(),
+      )
+
+      expect(result).toEqual({ status: 'needs_reauth' })
+      expect(bucket.delete).not.toHaveBeenCalled()
+      expect(google.revokeRequests()).toHaveLength(0)
+    })
+
+  it('validates connections idle for more than a day', async () => {
+    useGoogle({
+      token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
+    })
+    await seedConnection({ expiresInMs: -2 * 24 * 60 * 60 * 1000 })
+    await seedGoogleFile('user/drive-a.pdf')
+
+    const { validateStaleGoogleConnections } = await tokensModule()
+    const result = await validateStaleGoogleConnections(dependencies())
+
+    expect(result).toEqual({ checked: 1, active: 0, ended: 1, failed: 0 })
+    expect((await connectionRow())!.status).toBe('needs_reauth')
+    expect(await googleFileCount()).toBe(0)
+  })
+
+  it('leaves recently used connections out of the validation', async () => {
+    await seedConnection({ expiresInMs: -60 * 60 * 1000 })
+
+    const { validateStaleGoogleConnections } = await tokensModule()
+    const result = await validateStaleGoogleConnections(dependencies())
+
+    expect(result.checked).toBe(0)
+    expect(google.fetch).not.toHaveBeenCalled()
+  })
 
   it('answers 409 through requireGoogleAccessToken after access ended',
     async () => {

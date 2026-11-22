@@ -1,11 +1,11 @@
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, or } from 'drizzle-orm'
 import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types'
 import { createError } from 'evlog'
 import { hasScopes } from '#shared/utils/google-scopes'
 import type { GoogleClientMode } from '#shared/utils/google-scopes'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { cleanupAfterGoogleAccessEnded } from '~~/server/utils/google/access-ended'
+import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
 import { resolveGoogleClient } from '~~/server/utils/google/client'
 import { GOOGLE_FETCH_TIMEOUT_MS } from '~~/server/utils/google/http'
 import type { GoogleFetchOptions } from '~~/server/utils/google/http'
@@ -215,10 +215,10 @@ async function endAccessAfterInvalidGrant(
   }
 
   try {
-    await cleanupAfterGoogleAccessEnded({
+    await deleteGoogleDerivedFiles({
       db: dependencies.db,
       userId: row.userId,
-      connectionId: row.id,
+      createdBefore: new Date(now),
       logger,
       storage: dependencies.storage,
     })
@@ -279,7 +279,7 @@ async function performRefresh(
     throw undecryptable()
   }
 
-  const client = await resolveGoogleClient(row.clientMode, row.userId)
+  const client = await resolveGoogleClient(row.clientMode)
   const result = await refreshGoogleAccessToken({
     client,
     refreshToken,
@@ -417,7 +417,41 @@ async function refreshUnderLock(
   }
 
   try {
-    return await performRefresh(row, dependencies)
+    if (!owner) {
+      return await performRefresh(row, dependencies)
+    }
+
+    const latest = await readTokenRow(
+      dependencies.db,
+      row.userId,
+      row.clientMode,
+    )
+
+    if (!latest) {
+      return { status: 'not_connected' }
+    }
+
+    if (latest.status !== 'active' || !latest.refreshToken) {
+      return { status: 'needs_reauth' }
+    }
+
+    if (
+      latest.accessToken !== row.accessToken
+      && isAccessTokenFresh(latest, now())
+    ) {
+      logToken(dependencies.logger, {
+        connectionId: row.id,
+        refresh: 'already-refreshed',
+      })
+
+      const fresh = await toOkResult(latest)
+
+      if (fresh) {
+        return fresh
+      }
+    }
+
+    return await performRefresh(latest, dependencies)
   } finally {
     if (owner) {
       await releaseGoogleRefreshLock(dependencies.kv, row.id, owner)
@@ -566,19 +600,39 @@ export async function saveGoogleConnection(
   return row!.id
 }
 
+export interface GoogleConnectionTokenState extends GoogleConnectionRecord {
+  hasRefreshToken: boolean
+}
+
 /**
- * Whether the stored connection of a mode still has a refresh token,
- * without decrypting it: the start route asks Google for consent again
- * only when it does not.
+ * The connection of a mode plus whether it still holds a refresh token,
+ * in one read and without decrypting anything: the start route asks for
+ * consent again only when it does not, and the callback keeps the stored
+ * refresh token on a reconnect of the same account.
  */
-export async function hasStoredRefreshToken(
+export async function readGoogleConnectionTokenState(
   db: DbClient,
   userId: number,
   clientMode: GoogleClientMode,
-): Promise<boolean> {
+): Promise<GoogleConnectionTokenState | null> {
   const row = await readTokenRow(db, userId, clientMode)
 
-  return row?.status === 'active' && !!row.refreshToken
+  if (!row) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    userId: row.userId,
+    clientMode: row.clientMode,
+    googleSubject: row.googleSubject,
+    googleEmail: row.googleEmail,
+    grantedScopes: row.grantedScopes,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    hasRefreshToken: row.status === 'active' && !!row.refreshToken,
+  }
 }
 
 async function revokeTokenRow(
@@ -594,7 +648,7 @@ async function revokeTokenRow(
   const token = await decryptToken(cipher)
 
   if (!token) {
-    return { attempted: false, revoked: false }
+    return { attempted: true, revoked: false }
   }
 
   return {
@@ -684,6 +738,73 @@ export async function revokeAllGoogleConnectionsOfUser(
     }
   } catch {
     return result
+  }
+
+  return result
+}
+
+export const GOOGLE_STALE_CONNECTION_AGE_MS = 24 * 60 * 60 * 1000
+export const GOOGLE_STALE_CONNECTION_LIMIT = 10
+
+export interface GoogleStaleConnectionResult {
+  checked: number
+  active: number
+  ended: number
+  failed: number
+}
+
+/**
+ * Detects a revoke made at Google, which Besidka is never told about: the
+ * hourly sweep refreshes up to ten active connections whose access token
+ * expired more than a day ago, oldest first. A refresh that answers
+ * `invalid_grant` runs the normal access-ended path; a successful one moves
+ * the connection out of the list for another day. Refreshing costs the
+ * user nothing. Failures are counted, never thrown.
+ */
+export async function validateStaleGoogleConnections(
+  dependencies: GoogleTokenDependencies & { limit?: number },
+): Promise<GoogleStaleConnectionResult> {
+  const now = (dependencies.now ?? Date.now)()
+  const connections = schema.googleConnections
+  const result: GoogleStaleConnectionResult = {
+    checked: 0,
+    active: 0,
+    ended: 0,
+    failed: 0,
+  }
+  const rows = await dependencies.db
+    .select({
+      userId: connections.userId,
+      clientMode: connections.clientMode,
+    })
+    .from(connections)
+    .where(and(
+      eq(connections.status, 'active'),
+      or(
+        isNull(connections.accessTokenExpiresAt),
+        lt(
+          connections.accessTokenExpiresAt,
+          new Date(now - GOOGLE_STALE_CONNECTION_AGE_MS),
+        ),
+      ),
+    ))
+    .orderBy(asc(connections.accessTokenExpiresAt))
+    .limit(dependencies.limit ?? GOOGLE_STALE_CONNECTION_LIMIT)
+
+  for (const row of rows) {
+    result.checked += 1
+
+    try {
+      const outcome = await getGoogleAccessToken(row, dependencies)
+
+      if (outcome.status === 'ok') {
+        result.active += 1
+      } else {
+        result.ended += 1
+      }
+    } catch {
+      result.failed += 1
+    }
   }
 
   return result

@@ -17,6 +17,7 @@ import {
 import {
   completeGoogleConnection,
   GoogleConnectionError,
+  startGoogleConnection,
 } from '~~/server/utils/google/connection'
 import { isWellFormedOAuthState } from '~~/server/utils/connectors/oauth-state'
 import { consumeGoogleOAuthState } from '~~/server/utils/google/oauth-state'
@@ -25,6 +26,7 @@ import {
   requireGoogleAccess,
 } from '~~/server/utils/google/route'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origin'
 
 const FOUND = 302
 const URL_PARSE_BASE = 'http://localhost'
@@ -59,7 +61,10 @@ function finish(
  * return path plus `?google=<result>`, a fixed value, never Google's text,
  * a token, the code or an email. The state must exist, be unused, be under
  * ten minutes old and belong to the signed-in user; it is deleted on first
- * read. Failures count against a per-IP budget (a SHA-256 of the IP). The
+ * read. When Google sent no refresh token and none can be kept, it sends
+ * the user back to Google once with `prompt=consent` (a new state) instead
+ * of changing anything. Failures count against a per-IP budget (a SHA-256
+ * of the IP). The
  * request path is logged without its query
  * (`server/plugins/evlog-request-observability.ts`).
  */
@@ -122,14 +127,36 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const result = await completeGoogleConnection({
-      db: useDb(),
+    const db = useDb()
+    const logger = useRequestLogger(event)
+    const completion = await completeGoogleConnection({
+      db,
       oauthState,
       code,
-      logger: useRequestLogger(event),
+      logger,
     })
 
-    return finish(event, oauthState.returnTo, result, result)
+    if (completion.kind === 'done') {
+      return finish(
+        event,
+        oauthState.returnTo,
+        completion.result,
+        completion.result,
+      )
+    }
+
+    const restart = await startGoogleConnection({
+      db,
+      kv,
+      userId,
+      clientMode: oauthState.clientMode,
+      origin: resolveRequestPublicOrigin(event),
+      returnTo: oauthState.returnTo,
+      logger,
+      forceConsent: true,
+    })
+
+    return sendRedirect(event, restart.authorizationUrl, FOUND)
   } catch (exception) {
     await recordCallbackFailure(kv, clientKey)
 

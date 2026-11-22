@@ -38,6 +38,15 @@ export interface GoogleConnectionSummary {
   connectedAt: string
 }
 
+export interface GoogleConnectionStatusResponse {
+  connection: GoogleConnectionSummary | null
+  canConnect: boolean
+  dedicatedClient: boolean
+}
+
+export const GOOGLE_THIRD_PARTY_ACCESS_URL
+  = 'https://myaccount.google.com/connections'
+
 export function getGrantedCapabilities(
   grantedScopes: readonly string[],
 ): GoogleCapability[] {

@@ -89,11 +89,21 @@ export async function markGoogleConnectionRevoked(
     .where(eq(schema.googleConnections.id, connectionId))
 }
 
-export async function deleteGoogleConnection(
+/**
+ * Deletes a connection row only while it is still `revoked`: a reconnect
+ * upserts the same row back to `active`, and that row must survive.
+ */
+export async function deleteRevokedGoogleConnection(
   db: DbClient,
   connectionId: string,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const deleted = await db
     .delete(schema.googleConnections)
-    .where(eq(schema.googleConnections.id, connectionId))
+    .where(and(
+      eq(schema.googleConnections.id, connectionId),
+      eq(schema.googleConnections.status, 'revoked'),
+    ))
+    .returning({ id: schema.googleConnections.id })
+
+  return deleted.length > 0
 }

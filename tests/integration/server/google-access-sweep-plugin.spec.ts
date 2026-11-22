@@ -67,6 +67,7 @@ describe('Google access sweep plugin', () => {
       size: 1,
       type: 'application/pdf',
       externalSource: 'google',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
     })
 
     const { set, emit, createLogger } = createLoggerDouble()
@@ -76,6 +77,7 @@ describe('Google access sweep plugin', () => {
       controller: { cron: HOURLY_CRON, scheduledTime: SCHEDULED_TIME },
       createLogger,
       db: testDb.db,
+      kv: createFakeConnectorKv() as never,
       storage: bucket,
     })
 
@@ -93,6 +95,9 @@ describe('Google access sweep plugin', () => {
           filesDeleted: 1,
           incompleteUsers: 0,
           revokedRowsDeleted: 0,
+          staleChecked: 0,
+          staleEnded: 0,
+          staleFailed: 0,
         },
       },
     })
@@ -102,7 +107,7 @@ describe('Google access sweep plugin', () => {
 
   it('emits 500 and logs the error when the database fails', async () => {
     const failingDb = {
-      update: () => {
+      select: () => {
         throw new Error('d1 down')
       },
     }
@@ -113,6 +118,7 @@ describe('Google access sweep plugin', () => {
       controller: { cron: HOURLY_CRON, scheduledTime: SCHEDULED_TIME },
       createLogger,
       db: failingDb as never,
+      kv: createFakeConnectorKv() as never,
     })
 
     expect(set).toHaveBeenCalledWith({

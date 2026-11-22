@@ -21,6 +21,7 @@ function stateValue(overrides: Partial<GoogleOAuthState> = {}) {
     codeVerifier: 'verifier',
     redirectUri: 'https://besidka.com/api/v1/google/oauth/callback',
     returnTo: '/profile/keys?tab=google',
+    forcedConsent: false,
     createdAt: NOW,
     ...overrides,
   }

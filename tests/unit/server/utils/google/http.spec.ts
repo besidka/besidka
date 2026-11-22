@@ -73,9 +73,11 @@ describe('googleFetchJson', () => {
     })
   })
 
-  it('never follows a redirect', async () => {
+  it('never follows a redirect and cancels its body', async () => {
+    const cancel = vi.fn()
+    const body = new ReadableStream({ cancel })
     const fetchImpl = vi.fn(async () => {
-      return new Response(null, {
+      return new Response(body, {
         status: 302,
         headers: { location: 'https://evil.example.com/' },
       })
@@ -87,6 +89,7 @@ describe('googleFetchJson', () => {
     expect(failure.status).toBe(502)
     expect(failure.message).toBe('Google answered with a redirect')
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(cancel).toHaveBeenCalled()
   })
 
   it('returns Google error bodies without throwing', async () => {
@@ -153,6 +156,28 @@ describe('googleFetchJson', () => {
     )
 
     expect(failure.status).toBe(502)
+  })
+
+  it('stops reading a stream once it passes the cap', async () => {
+    const chunk = new Uint8Array(16 * 1024)
+    let pulls = 0
+    const cancel = vi.fn()
+    const fetchImpl = vi.fn(async () => {
+      return new Response(new ReadableStream({
+        pull(controller) {
+          pulls += 1
+          controller.enqueue(chunk)
+        },
+        cancel,
+      }))
+    })
+    const failure = await failureOf(
+      googleFetchJson(TOKEN_URL, { method: 'GET' }, { fetchImpl }),
+    )
+
+    expect(failure.status).toBe(502)
+    expect(cancel).toHaveBeenCalled()
+    expect(pulls).toBeLessThan(10)
   })
 
   it('refuses an answer over the size cap', async () => {

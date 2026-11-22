@@ -1,6 +1,18 @@
-import { and, eq, inArray, isNotNull, ne, notExists, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  lte,
+  ne,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
-import type { R2Bucket } from '@cloudflare/workers-types'
+import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types'
 import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
 import { withDerivedKeys } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
@@ -21,17 +33,24 @@ type DbClient = ReturnType<typeof useDb>
 type FileStorage = Pick<R2Bucket, 'delete'>
 
 export const GOOGLE_FILE_CLEANUP_BATCH_SIZE = 50
-export const GOOGLE_FILE_CLEANUP_MAX_BATCHES = 20
+export const GOOGLE_FILE_CLEANUP_MAX_FILES = 1000
 export const GOOGLE_SWEEP_USER_LIMIT = 25
+export const GOOGLE_SWEEP_FILE_BUDGET = 2000
+export const GOOGLE_SWEEP_TIME_BUDGET_MS = 20_000
+export const GOOGLE_SWEEP_CURSOR_KEY = 'google:sweep-cursor'
+export const GOOGLE_SWEEP_CURSOR_TTL_SECONDS = 7 * 24 * 60 * 60
 
 const googleSources = [...GOOGLE_EXTERNAL_SOURCES]
+
+export interface GoogleFileCleanupBudget {
+  remainingFiles: number
+  deadline: number
+  now: () => number
+}
 
 export interface GoogleFileCleanupResult {
   deleted: number
   complete: boolean
-}
-
-export interface GoogleAccessEndedResult extends GoogleFileCleanupResult {
   skipped: boolean
 }
 
@@ -46,8 +65,10 @@ export interface GoogleAccessEndedSweepResult {
 interface CleanupInput {
   db: DbClient
   userId: number
+  createdBefore: Date
   logger: LoggerLike
   storage?: FileStorage
+  budget?: GoogleFileCleanupBudget
 }
 
 function logCleanup(logger: LoggerLike, values: Record<string, unknown>) {
@@ -59,6 +80,14 @@ function isGoogleFileOf(userId: number) {
     eq(schema.files.userId, userId),
     inArray(schema.files.externalSource, googleSources),
   )
+}
+
+function defaultBudget(): GoogleFileCleanupBudget {
+  return {
+    remainingFiles: GOOGLE_FILE_CLEANUP_MAX_FILES,
+    deadline: Number.POSITIVE_INFINITY,
+    now: Date.now,
+  }
 }
 
 async function collectKnowledgeTargets(
@@ -120,29 +149,71 @@ async function deleteKnowledgeTargets(
   }
 }
 
+export async function hasActiveGoogleConnection(
+  db: DbClient,
+  userId: number,
+  excludeConnectionId: string | null = null,
+): Promise<boolean> {
+  const conditions = [
+    eq(schema.googleConnections.userId, userId),
+    eq(schema.googleConnections.status, 'active'),
+  ]
+
+  if (excludeConnectionId) {
+    conditions.push(ne(schema.googleConnections.id, excludeConnectionId))
+  }
+
+  const [row] = await db
+    .select({ id: schema.googleConnections.id })
+    .from(schema.googleConnections)
+    .where(and(...conditions))
+    .limit(1)
+
+  return !!row
+}
+
 /**
- * Deletes every file of a user whose `external_source` is a Google source:
- * in batches of 50, one R2 batch delete per batch (with the derived Office
- * text keys), then the KV file cache one key at a time, the D1 rows, the
- * documents that pointed at them and the knowledge text objects the row
- * cascade would orphan. An R2 failure stops before D1 so the rows stay
- * and the hourly sweep retries; `complete` is false then, and also when
- * more than 20 batches remain. Logs ids and counts only, never names.
+ * Deletes the files of a user whose `external_source` is a Google source
+ * and that were created no later than `createdBefore` (the moment access
+ * ended), so a file picked after a reconnect is never touched. Before
+ * every batch it re-checks that the user has no active connection: files
+ * carry no client mode, so a reconnect (or another active mode) stops the
+ * cleanup and reports `skipped`. Each batch is one R2 batch delete (with
+ * the derived Office text keys), the KV file cache one key at a time, the
+ * D1 rows, the documents and knowledge texts that pointed at them; an R2
+ * failure stops before D1 so the sweep retries. `complete` is false when
+ * R2 failed or the file or time budget ran out. Logs ids and counts only.
  */
 export async function deleteGoogleDerivedFiles(
   input: CleanupInput,
 ): Promise<GoogleFileCleanupResult> {
   const { db, userId, logger } = input
   const storage = input.storage ?? useFileStorage()
+  const budget = input.budget ?? defaultBudget()
   let deleted = 0
   let complete = false
+  let skipped = false
 
-  for (let batch = 0; batch < GOOGLE_FILE_CLEANUP_MAX_BATCHES; batch++) {
+  while (true) {
+    if (budget.remainingFiles <= 0 || budget.now() >= budget.deadline) {
+      break
+    }
+
+    if (await hasActiveGoogleConnection(db, userId)) {
+      skipped = true
+      complete = true
+
+      break
+    }
+
     const rows = await db
       .select({ id: schema.files.id, storageKey: schema.files.storageKey })
       .from(schema.files)
-      .where(isGoogleFileOf(userId))
-      .limit(GOOGLE_FILE_CLEANUP_BATCH_SIZE)
+      .where(and(
+        isGoogleFileOf(userId),
+        lte(schema.files.createdAt, input.createdBefore),
+      ))
+      .limit(Math.min(GOOGLE_FILE_CLEANUP_BATCH_SIZE, budget.remainingFiles))
 
     if (rows.length === 0) {
       complete = true
@@ -187,92 +258,107 @@ export async function deleteGoogleDerivedFiles(
     )
 
     deleted += rows.length
+    budget.remainingFiles -= rows.length
   }
 
   if (deleted > 0) {
     await invalidateStorageCache(userId, logger)
   }
 
-  return { deleted, complete }
+  logCleanup(logger, { phase: 'files', userId, deleted, complete, skipped })
+
+  return { deleted, complete, skipped }
 }
 
-export async function hasOtherActiveGoogleConnection(
-  db: DbClient,
-  userId: number,
-  excludeConnectionId: string | null,
-): Promise<boolean> {
-  const conditions = [
-    eq(schema.googleConnections.userId, userId),
-    eq(schema.googleConnections.status, 'active'),
-  ]
-
-  if (excludeConnectionId) {
-    conditions.push(ne(schema.googleConnections.id, excludeConnectionId))
+async function readSweepCursor(kv: KVNamespace | undefined): Promise<number> {
+  if (!kv) {
+    return 0
   }
 
-  const [row] = await db
-    .select({ id: schema.googleConnections.id })
-    .from(schema.googleConnections)
-    .where(and(...conditions))
-    .limit(1)
+  try {
+    const value = Number(await kv.get(GOOGLE_SWEEP_CURSOR_KEY))
 
-  return !!row
+    return Number.isInteger(value) && value > 0 ? value : 0
+  } catch {
+    return 0
+  }
 }
 
-/**
- * Runs when Google access ends for one connection: the user disconnected,
- * a refresh returned `invalid_grant`, or a different Google account
- * replaced it. Files carry no client mode, so the copies are deleted only
- * when no other connection of the user is still active; otherwise they
- * stay with that connection and the call reports `skipped`.
- */
-export async function cleanupAfterGoogleAccessEnded(
-  input: CleanupInput & { connectionId: string | null },
-): Promise<GoogleAccessEndedResult> {
-  const otherActive = await hasOtherActiveGoogleConnection(
-    input.db,
-    input.userId,
-    input.connectionId,
-  )
+async function writeSweepCursor(
+  kv: KVNamespace | undefined,
+  cursor: number,
+): Promise<void> {
+  if (!kv) {
+    return
+  }
 
-  if (otherActive) {
-    logCleanup(input.logger, {
-      phase: 'skipped-other-active',
-      userId: input.userId,
+  try {
+    await kv.put(GOOGLE_SWEEP_CURSOR_KEY, String(cursor), {
+      expirationTtl: GOOGLE_SWEEP_CURSOR_TTL_SECONDS,
     })
-
-    return { skipped: true, deleted: 0, complete: true }
+  } catch {
+    return
   }
+}
 
-  const result = await deleteGoogleDerivedFiles(input)
+async function selectSweepUsers(
+  db: DbClient,
+  afterUserId: number,
+  limit: number,
+): Promise<number[]> {
+  const activeConnection = alias(schema.googleConnections, 'active_connection')
+  const rows = await db
+    .selectDistinct({ userId: schema.files.userId })
+    .from(schema.files)
+    .where(and(
+      inArray(schema.files.externalSource, googleSources),
+      gt(schema.files.userId, afterUserId),
+      notExists(
+        db.select({ value: sql`1` })
+          .from(activeConnection)
+          .where(and(
+            eq(activeConnection.userId, schema.files.userId),
+            eq(activeConnection.status, 'active'),
+          )),
+      ),
+    ))
+    .orderBy(asc(schema.files.userId))
+    .limit(limit)
 
-  logCleanup(input.logger, {
-    phase: 'files-deleted',
-    userId: input.userId,
-    deleted: result.deleted,
-    complete: result.complete,
-  })
-
-  return { skipped: false, ...result }
+  return rows.map(row => row.userId)
 }
 
 /**
  * The hourly backup for access that ended without a finished cleanup:
  * clears any token left on a row that is not active, deletes the Google
- * copies of every user (25 per run) who has Google files and no active
- * connection, and deletes `revoked` rows once nothing of theirs is left
- * to clean. A user with an active connection is never touched, so a
- * lingering row of one mode cannot delete the copies of another.
+ * copies of users who have Google files and no active connection, and
+ * deletes `revoked` rows once nothing of theirs is left to clean. A run
+ * handles at most 25 users, 2,000 files and 20 seconds; it walks users in
+ * id order from a KV cursor (`google:sweep-cursor`), so a user whose
+ * cleanup keeps failing never starves the rest. Every batch re-checks that
+ * the user still has no active connection and only touches files created
+ * before the run started.
  */
 export async function sweepGoogleAccessEnded(input: {
   db: DbClient
   logger: LoggerLike
+  kv?: KVNamespace
   storage?: FileStorage
+  now?: () => number
   userLimit?: number
+  fileBudget?: number
+  timeBudgetMs?: number
 }): Promise<GoogleAccessEndedSweepResult> {
   const { db, logger } = input
+  const now = input.now ?? Date.now
+  const startedAt = now()
+  const userLimit = input.userLimit ?? GOOGLE_SWEEP_USER_LIMIT
   const connections = schema.googleConnections
-  const activeConnection = alias(schema.googleConnections, 'active_connection')
+  const budget: GoogleFileCleanupBudget = {
+    remainingFiles: input.fileBudget ?? GOOGLE_SWEEP_FILE_BUDGET,
+    deadline: startedAt + (input.timeBudgetMs ?? GOOGLE_SWEEP_TIME_BUDGET_MS),
+    now,
+  }
   const result: GoogleAccessEndedSweepResult = {
     tokensCleared: 0,
     usersCleaned: 0,
@@ -295,43 +381,49 @@ export async function sweepGoogleAccessEnded(input: {
 
   result.tokensCleared = cleared.length
 
-  const users = await db
-    .selectDistinct({ userId: schema.files.userId })
-    .from(schema.files)
-    .where(and(
-      inArray(schema.files.externalSource, googleSources),
-      notExists(
-        db.select({ value: sql`1` })
-          .from(activeConnection)
-          .where(and(
-            eq(activeConnection.userId, schema.files.userId),
-            eq(activeConnection.status, 'active'),
-          )),
-      ),
-    ))
-    .limit(input.userLimit ?? GOOGLE_SWEEP_USER_LIMIT)
+  const cursor = await readSweepCursor(input.kv)
+  let users = await selectSweepUsers(db, cursor, userLimit)
 
-  for (const { userId } of users) {
+  if (users.length === 0 && cursor > 0) {
+    users = await selectSweepUsers(db, 0, userLimit)
+  }
+
+  let lastUserId = 0
+  let stoppedEarly = false
+
+  for (const userId of users) {
+    if (budget.remainingFiles <= 0 || now() >= budget.deadline) {
+      stoppedEarly = true
+
+      break
+    }
+
     const cleanup = await deleteGoogleDerivedFiles({
       db,
       userId,
+      createdBefore: new Date(startedAt),
       logger,
       storage: input.storage,
+      budget,
     })
 
+    lastUserId = userId
     result.usersCleaned += 1
     result.filesDeleted += cleanup.deleted
     result.incompleteUsers += cleanup.complete ? 0 : 1
   }
 
+  await writeSweepCursor(
+    input.kv,
+    stoppedEarly || users.length === userLimit ? lastUserId : 0,
+  )
+
   const revokedRows = await db
-    .select({
-      id: connections.id,
-      userId: connections.userId,
-    })
+    .select({ id: connections.id, userId: connections.userId })
     .from(connections)
     .where(eq(connections.status, 'revoked'))
-    .limit(input.userLimit ?? GOOGLE_SWEEP_USER_LIMIT)
+    .orderBy(asc(connections.updatedAt))
+    .limit(userLimit)
 
   for (const row of revokedRows) {
     const [remainingFile] = await db
@@ -339,11 +431,7 @@ export async function sweepGoogleAccessEnded(input: {
       .from(schema.files)
       .where(isGoogleFileOf(row.userId))
       .limit(1)
-    const otherActive = await hasOtherActiveGoogleConnection(
-      db,
-      row.userId,
-      row.id,
-    )
+    const otherActive = await hasActiveGoogleConnection(db, row.userId, row.id)
 
     if (remainingFile && !otherActive) {
       continue

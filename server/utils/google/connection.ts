@@ -8,7 +8,7 @@ import {
 } from '~~/server/utils/connectors/oauth-client'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { cleanupAfterGoogleAccessEnded } from '~~/server/utils/google/access-ended'
+import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
 import {
   buildGoogleRedirectUri,
   getConnectionScopes,
@@ -26,12 +26,11 @@ import type { GoogleTokenSet } from '~~/server/utils/google/oauth'
 import { saveGoogleOAuthState } from '~~/server/utils/google/oauth-state'
 import type { GoogleOAuthState } from '~~/server/utils/google/oauth-state'
 import {
-  deleteGoogleConnection,
+  deleteRevokedGoogleConnection,
   markGoogleConnectionRevoked,
-  readGoogleConnection,
 } from '~~/server/utils/google/store'
 import {
-  hasStoredRefreshToken,
+  readGoogleConnectionTokenState,
   revokeStoredGoogleConnection,
   saveGoogleConnection,
 } from '~~/server/utils/google/tokens'
@@ -45,6 +44,10 @@ export class GoogleConnectionError extends Error {
   }
 }
 
+export type GoogleCompletion
+  = | { kind: 'done', result: GoogleConnectResult }
+    | { kind: 'restart-with-consent' }
+
 function logConnection(logger: LoggerLike, values: Record<string, unknown>) {
   logger.set({ attributes: { google: values } })
 }
@@ -53,8 +56,9 @@ function logConnection(logger: LoggerLike, values: Record<string, unknown>) {
  * Creates the single-use state (KV, ten minutes, bound to the user and the
  * client mode, holding the PKCE verifier, the exact redirect URI and the
  * checked return path) and returns Google's consent URL. Consent is asked
- * again only when no refresh token is stored for the mode; a reconnect
- * passes the stored email as `login_hint`.
+ * again when no refresh token is stored for the mode or when the caller
+ * forces it; a reconnect passes the stored Google subject as `login_hint`,
+ * never the email.
  */
 export async function startGoogleConnection(input: {
   db: DbClient
@@ -64,20 +68,18 @@ export async function startGoogleConnection(input: {
   origin: string
   returnTo: string
   logger: LoggerLike
+  forceConsent?: boolean
   now?: number
 }): Promise<{ authorizationUrl: string }> {
-  const client = await resolveGoogleClient(input.clientMode, input.userId)
+  const client = await resolveGoogleClient(input.clientMode)
   const redirectUri = buildGoogleRedirectUri(input.origin, input.clientMode)
-  const existing = await readGoogleConnection(
+  const existing = await readGoogleConnectionTokenState(
     input.db,
     input.userId,
     input.clientMode,
   )
-  const promptConsent = !await hasStoredRefreshToken(
-    input.db,
-    input.userId,
-    input.clientMode,
-  )
+  const forcedConsent = input.forceConsent === true
+  const promptConsent = forcedConsent || !existing?.hasRefreshToken
   const state = createOAuthState()
   const pkce = await createPkcePair()
 
@@ -87,6 +89,7 @@ export async function startGoogleConnection(input: {
     codeVerifier: pkce.verifier,
     redirectUri,
     returnTo: input.returnTo,
+    forcedConsent,
     createdAt: input.now ?? Date.now(),
   })
 
@@ -95,6 +98,8 @@ export async function startGoogleConnection(input: {
     clientMode: input.clientMode,
     reconnect: !!existing,
     promptConsent,
+    forcedConsent,
+    dedicatedClient: client.dedicated,
   })
 
   return {
@@ -104,7 +109,7 @@ export async function startGoogleConnection(input: {
       scopes: getConnectionScopes(input.clientMode),
       state,
       codeChallenge: pkce.challenge,
-      loginHint: existing?.googleEmail ?? null,
+      loginHint: forcedConsent ? null : existing?.googleSubject ?? null,
       promptConsent,
     }),
   }
@@ -124,10 +129,12 @@ async function revokeFreshTokens(
  * Finishes a connection after the callback checked the state: exchanges
  * the code with the PKCE verifier and the stored redirect URI, refuses a
  * grant without `drive.file` (revoking the fresh tokens), reads the Google
- * account from the ID token and saves the connection. When a different
- * Google account replaces the connection, the old grant is revoked and its
- * copies are deleted first; if that cleanup cannot finish, the new grant
- * is revoked and the user is asked to try again.
+ * account from the ID token and saves the connection. Nothing is changed
+ * before the grant is known to be usable: when Google sent no refresh token
+ * and none can be kept, the user is sent back to Google once with
+ * `prompt=consent` instead. Only then does a different Google account
+ * replace the old one: its grant is revoked and its copies are deleted
+ * first, and if that cleanup cannot finish the new grant is revoked.
  */
 export async function completeGoogleConnection(input: {
   db: DbClient
@@ -137,13 +144,10 @@ export async function completeGoogleConnection(input: {
   storage?: FileStorage
   fetchOptions?: GoogleFetchOptions
   now?: number
-}): Promise<GoogleConnectResult> {
+}): Promise<GoogleCompletion> {
   const { db, oauthState, logger } = input
   const now = input.now ?? Date.now()
-  const client = await resolveGoogleClient(
-    oauthState.clientMode,
-    oauthState.userId,
-  )
+  const client = await resolveGoogleClient(oauthState.clientMode)
   const exchange = await exchangeGoogleCode({
     client,
     code: input.code,
@@ -176,7 +180,7 @@ export async function completeGoogleConnection(input: {
       grantedScopeCount: tokens.scopes.length,
     })
 
-    return 'missing_scope'
+    return { kind: 'done', result: 'missing_scope' }
   }
 
   const identity = readGoogleIdentity(tokens.idToken, client.clientId, now)
@@ -187,29 +191,30 @@ export async function completeGoogleConnection(input: {
     throw new GoogleConnectionError('GOOGLE_IDENTITY_INVALID')
   }
 
-  const existing = await readGoogleConnection(
+  const existing = await readGoogleConnectionTokenState(
     db,
     oauthState.userId,
     oauthState.clientMode,
   )
   const isSameAccount = existing?.googleSubject === identity.subject
+  const canKeepRefreshToken = isSameAccount && !!existing?.hasRefreshToken
 
-  if (existing && !isSameAccount) {
-    await replaceDifferentAccount(input, existing.id, tokens)
+  if (!tokens.refreshToken && !canKeepRefreshToken) {
+    logConnection(logger, {
+      step: 'refresh-token',
+      outcome: oauthState.forcedConsent ? 'missing' : 'restart',
+      differentAccount: !!existing && !isSameAccount,
+    })
+
+    if (oauthState.forcedConsent) {
+      throw new GoogleConnectionError('GOOGLE_NO_REFRESH_TOKEN')
+    }
+
+    return { kind: 'restart-with-consent' }
   }
 
-  const keepStoredRefreshToken = !tokens.refreshToken
-    && isSameAccount
-    && await hasStoredRefreshToken(
-      db,
-      oauthState.userId,
-      oauthState.clientMode,
-    )
-
-  if (!tokens.refreshToken && !keepStoredRefreshToken) {
-    await revokeFreshTokens(tokens, input.fetchOptions)
-
-    throw new GoogleConnectionError('GOOGLE_NO_REFRESH_TOKEN')
+  if (existing && !isSameAccount) {
+    await replaceDifferentAccount(input, existing.id, tokens, now)
   }
 
   const connectionId = await saveGoogleConnection(db, {
@@ -231,7 +236,7 @@ export async function completeGoogleConnection(input: {
     grantedScopeCount: tokens.scopes.length,
   })
 
-  return 'connected'
+  return { kind: 'done', result: 'connected' }
 }
 
 async function replaceDifferentAccount(
@@ -244,6 +249,7 @@ async function replaceDifferentAccount(
   },
   connectionId: string,
   freshTokens: GoogleTokenSet,
+  now: number,
 ): Promise<void> {
   const { db, oauthState, logger } = input
 
@@ -258,10 +264,10 @@ async function replaceDifferentAccount(
   let complete = false
 
   try {
-    const cleanup = await cleanupAfterGoogleAccessEnded({
+    const cleanup = await deleteGoogleDerivedFiles({
       db,
       userId: oauthState.userId,
-      connectionId,
+      createdBefore: new Date(now),
       logger,
       storage: input.storage,
     })
@@ -291,10 +297,11 @@ export interface GoogleDisconnectResult {
 
 /**
  * Disconnects one client mode: revokes the grant at Google (best effort;
- * a failure is logged with ids only), clears the tokens and marks the row
- * `revoked`, deletes the Google copies synchronously, and deletes the row
- * only when that cleanup finished. Otherwise the `revoked` row stays for
- * the hourly sweep, which finishes the cleanup and removes it.
+ * a failure is logged with ids only and reported to the caller), clears
+ * the tokens and marks the row `revoked`, deletes the Google copies made
+ * before this moment, and deletes the row only when that cleanup finished
+ * and the row is still `revoked`. Otherwise the row stays for the hourly
+ * sweep, which finishes the cleanup and removes it.
  */
 export async function disconnectGoogleConnection(input: {
   db: DbClient
@@ -303,6 +310,7 @@ export async function disconnectGoogleConnection(input: {
   logger: LoggerLike
   storage?: FileStorage
   fetchOptions?: GoogleFetchOptions
+  now?: number
 }): Promise<GoogleDisconnectResult> {
   const { db, userId, clientMode, logger } = input
   const revocation = await revokeStoredGoogleConnection(
@@ -322,6 +330,7 @@ export async function disconnectGoogleConnection(input: {
   }
 
   const connectionId = revocation.connectionId
+  const endedAt = new Date(input.now ?? Date.now())
 
   await markGoogleConnectionRevoked(db, connectionId)
 
@@ -329,10 +338,10 @@ export async function disconnectGoogleConnection(input: {
   let complete = false
 
   try {
-    const cleanup = await cleanupAfterGoogleAccessEnded({
+    const cleanup = await deleteGoogleDerivedFiles({
       db,
       userId,
-      connectionId,
+      createdBefore: endedAt,
       logger,
       storage: input.storage,
     })
@@ -348,21 +357,23 @@ export async function disconnectGoogleConnection(input: {
   }
 
   if (complete) {
-    await deleteGoogleConnection(db, connectionId)
+    await deleteRevokedGoogleConnection(db, connectionId)
   }
+
+  const revoked = revocation.revoked || !revocation.attempted
 
   logConnection(logger, {
     step: 'disconnect',
     connectionId,
     revokeAttempted: revocation.attempted,
-    revoked: revocation.revoked,
+    revoked,
     filesDeleted,
     filesPending: !complete,
   })
 
   return {
     disconnected: true,
-    revoked: revocation.revoked,
+    revoked,
     filesDeleted,
     filesPending: !complete,
   }

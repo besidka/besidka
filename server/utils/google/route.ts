@@ -1,7 +1,9 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
+import { getRequestHeader } from 'nuxt/server'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { assertConnectorWriteRequest } from '~~/server/utils/connectors/route'
+import { evaluateFeatureForEvent } from '~~/server/utils/features/context'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -72,18 +74,46 @@ async function enforceGoogleRateLimit(
   }
 }
 
+const CROSS_SITE_FETCH_SITES: ReadonlySet<string> = new Set([
+  'cross-site',
+  'same-site',
+])
+
+function assertNotCrossSiteRead(event: RequestEvent): void {
+  const fetchSite = getRequestHeader(event, 'sec-fetch-site')
+
+  if (fetchSite && CROSS_SITE_FETCH_SITES.has(fetchSite)) {
+    throw createError({
+      message: 'Forbidden',
+      status: 403,
+      why: 'The request did not come from the same origin',
+      fix: 'Open the page in the Besidka app',
+    })
+  }
+}
+
 /**
  * The gate of every Google connection route, in this order: the same-origin
- * write guard (skipped only for GET routes), a session, the `google.drive`
- * flag active for this user (enabled and opted in), then the per-user rate
- * limit. Returns the user id.
+ * guard (the full write guard for POST routes; for a GET only a refusal of
+ * a cross-site `Sec-Fetch-Site`, because a same-origin GET sends no
+ * `Origin`), a session, the `google.drive` flag active for this user
+ * (enabled and opted in) unless `feature: false`, then the per-user rate
+ * limit. Disconnect and the status read pass `feature: false`: a user who
+ * is connected must always be able to see and end the connection, even
+ * after the flag is turned off or they opt out. Returns the user id.
  */
 export async function requireGoogleAccess(
   event: RequestEvent,
-  options: { write: boolean, rateLimit: GoogleRateLimitBucket },
+  options: {
+    write: boolean
+    rateLimit: GoogleRateLimitBucket
+    feature?: boolean
+  },
 ): Promise<number> {
   if (options.write) {
     assertConnectorWriteRequest(event)
+  } else {
+    assertNotCrossSiteRead(event)
   }
 
   const session = await useUserSession()
@@ -92,7 +122,9 @@ export async function requireGoogleAccess(
     throw useUnauthorizedError()
   }
 
-  await requireFeature(event, GOOGLE_FEATURE_FLAG)
+  if (options.feature !== false) {
+    await requireFeature(event, GOOGLE_FEATURE_FLAG)
+  }
 
   const userId = parseInt(session.user.id)
 
@@ -103,6 +135,16 @@ export async function requireGoogleAccess(
   useRequestLogger(event).set({ userId })
 
   return userId
+}
+
+export async function isGoogleFeatureActive(
+  event: RequestEvent,
+): Promise<boolean> {
+  try {
+    return (await evaluateFeatureForEvent(event, GOOGLE_FEATURE_FLAG)).active
+  } catch {
+    return false
+  }
 }
 
 /**

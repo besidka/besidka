@@ -69,6 +69,14 @@ vi.mock('~~/server/utils/features/guards', () => ({
   },
 }))
 
+vi.mock('~~/server/utils/features/context', () => ({
+  evaluateFeatureForEvent: async (_event: unknown, flag: string) => {
+    const isOn = mocks.flags.has(flag)
+
+    return { value: isOn, active: isOn }
+  },
+}))
+
 vi.mock('~~/server/utils/logging/request-logger', () => ({
   useRequestLogger: () => ({
     set: (values: unknown) => {
@@ -190,6 +198,7 @@ describe('Google connection routes', () => {
       size: 1,
       type: 'application/pdf',
       externalSource: 'google',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
     })
   }
 
@@ -247,7 +256,7 @@ describe('Google connection routes', () => {
       },
     )
 
-    it.each(Object.keys(ROUTES) as (keyof typeof ROUTES)[])(
+    it.each(['start', 'callback'] as const)(
       '%s answers 404 while google.drive is not active',
       async (route) => {
         mocks.flags = new Set()
@@ -260,12 +269,110 @@ describe('Google connection routes', () => {
       '%s refuses a cross-origin request',
       async (route) => {
         const failure = await failureOf(call(route, {
-          headers: { 'origin': 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+          headers: {
+            'origin': 'https://evil.example',
+            'sec-fetch-site': 'cross-site',
+          },
         }))
 
         expect(failure.status).toBe(403)
       },
     )
+
+    it('refuses a cross-site status read', async () => {
+      const failure = await failureOf(call('status', {
+        headers: { 'sec-fetch-site': 'cross-site' },
+      }))
+
+      expect(failure.status).toBe(403)
+    })
+
+    it('answers 429 after ten writes a minute', async () => {
+      for (let index = 0; index < 10; index++) {
+        await call('start', { body: {} })
+      }
+
+      const failure = await failureOf(call('start', { body: {} }))
+
+      expect(failure.status).toBe(429)
+    })
+
+    it('fails closed when the rate limit cannot be counted', async () => {
+      kv.get.mockImplementation(async (key: string) => {
+        if (key.startsWith('google-rate-limit')) {
+          throw new Error('kv down')
+        }
+
+        return kv.values.get(key) ?? null
+      })
+
+      const { event } = await call('status')
+      const failure = await failureOf(call('start', { body: {} }))
+
+      expect(event.res.headers.get('cache-control')).toBe('private, no-store')
+      expect(failure.status).toBe(429)
+    })
+
+    it('answers a clean 503 when no Google client is configured',
+      async () => {
+        restoreRuntimeConfig()
+        restoreRuntimeConfig = await useGoogleRuntimeConfig({
+          googleClientId: '',
+          googleClientSecret: '',
+        })
+
+        expect((await failureOf(call('start', { body: {} }))).status)
+          .toBe(503)
+      })
+  })
+
+  describe('flag off for a connected user', () => {
+    it('still shows the connection without offering to connect',
+      async () => {
+        await connect()
+        mocks.flags = new Set()
+
+        const { result } = await call('status')
+
+        expect(result.canConnect).toBe(false)
+        expect(result.connection.status).toBe('active')
+      })
+
+    it('still disconnects', async () => {
+      await connect()
+      mocks.flags = new Set()
+
+      const { result } = await call('disconnect')
+
+      expect(result.disconnected).toBe(true)
+      expect(await connectionRows()).toEqual([])
+    })
+  })
+
+  describe('dedicated Drive client', () => {
+    it('uses the dedicated client when it is configured', async () => {
+      restoreRuntimeConfig()
+      restoreRuntimeConfig = await useGoogleRuntimeConfig({
+        googleDriveClientId: 'drive-client.apps.googleusercontent.com',
+        googleDriveClientSecret: 'drive-secret',
+      })
+
+      const url = await start()
+      const { result } = await call('status')
+
+      expect(url.searchParams.get('client_id'))
+        .toBe('drive-client.apps.googleusercontent.com')
+      expect(result.dedicatedClient).toBe(true)
+    })
+
+    it('falls back to the sign-in client and says so', async () => {
+      const url = await start()
+      const { result } = await call('status')
+
+      expect(url.searchParams.get('client_id')).toBe(GOOGLE_CLIENT_ID)
+      expect(result.dedicatedClient).toBe(false)
+      expect(JSON.stringify(result)).not.toContain(GOOGLE_CLIENT_ID)
+    })
   })
 
   describe('start', () => {
@@ -409,7 +516,8 @@ describe('Google connection routes', () => {
       expect(await connectionRows()).toEqual([])
     })
 
-    it('refuses a first connection without a refresh token', async () => {
+    it('sends the user back once with prompt=consent when no refresh '
+      + 'token came', async () => {
       useGoogle({
         token: () => ({
           status: 200,
@@ -423,9 +531,82 @@ describe('Google connection routes', () => {
         }),
       })
 
-      expect(await connect()).toBe('/profile/keys?tab=google&google=error')
+      const location = await connect()
+      const restart = new URL(location)
+
+      expect(restart.origin).toBe('https://accounts.google.com')
+      expect(restart.searchParams.get('prompt')).toContain('consent')
+      expect(await connectionRows()).toEqual([])
+      expect(google.revokeRequests()).toHaveLength(0)
+
+      codeChallenge = restart.searchParams.get('code_challenge')
+
+      expect(await callback({
+        state: restart.searchParams.get('state')!,
+        code: 'auth-code',
+      })).toBe('/profile/keys?tab=google&google=error')
       expect(await connectionRows()).toEqual([])
     })
+
+    it('destroys nothing when another account comes without a refresh '
+      + 'token', async () => {
+      await connect()
+      await seedGoogleFile('u/old-account.pdf')
+      useGoogle({
+        token: () => ({
+          status: 200,
+          body: {
+            access_token: 'access-other',
+            expires_in: 3599,
+            token_type: 'Bearer',
+            scope: DRIVE_FILE_SCOPE,
+            id_token: makeIdToken({ sub: 'other-subject' }),
+          },
+        }),
+      })
+
+      const location = await connect()
+      const [row] = await connectionRows()
+
+      expect(new URL(location).searchParams.get('prompt'))
+        .toContain('consent')
+      expect(row!.status).toBe('active')
+      expect(row!.googleSubject).toBe(GOOGLE_SUBJECT)
+      expect(fakeDecrypt(row!.refreshToken!)).toBe('refresh-initial')
+      expect(await fileCount()).toBe(1)
+      expect(google.revokeRequests()).toHaveLength(0)
+    })
+
+    it('revokes the new grant when the old copies cannot be deleted',
+      async () => {
+        await connect()
+        await seedGoogleFile('u/old-account.pdf')
+        bucket.delete.mockRejectedValueOnce(new Error('r2 down'))
+        useGoogle({
+          token: (form) => {
+            const reply = defaultTokenReply(form)
+
+            return {
+              ...reply,
+              body: {
+                ...(reply.body as object),
+                refresh_token: 'refresh-second',
+                id_token: makeIdToken({ sub: 'second-subject' }),
+              },
+            }
+          },
+        })
+
+        expect(await connect()).toBe('/profile/keys?tab=google&google=error')
+
+        const [row] = await connectionRows()
+
+        expect(row!.status).toBe('revoked')
+        expect(google.revokeRequests().map((request) => {
+          return request.form.get('token')
+        })).toEqual(['refresh-initial', 'refresh-second'])
+        expect(JSON.stringify(mocks.logged)).toContain('GOOGLE_CLEANUP_PENDING')
+      })
 
     it('replaces a different Google account after deleting its copies',
       async () => {
@@ -461,19 +642,24 @@ describe('Google connection routes', () => {
           .toBe('refresh-initial')
       })
 
-    it('reconnects the same account with a login hint', async () => {
+    it('reconnects the same account with the subject as hint', async () => {
       await connect()
 
       const url = await start()
 
-      expect(url.searchParams.get('login_hint')).toBe(GOOGLE_EMAIL)
+      expect(url.searchParams.get('login_hint')).toBe(GOOGLE_SUBJECT)
+      expect(url.toString()).not.toContain('example.test')
       expect(url.searchParams.has('prompt')).toBe(false)
     })
   })
 
   describe('status', () => {
     it('reports no connection', async () => {
-      expect((await call('status')).result).toEqual({ connection: null })
+      expect((await call('status')).result).toEqual({
+        connection: null,
+        canConnect: true,
+        dedicatedClient: false,
+      })
     })
 
     it('reports the connection without tokens', async () => {
@@ -486,9 +672,11 @@ describe('Google connection routes', () => {
           clientMode: 'besidka',
           status: 'active',
           email: GOOGLE_EMAIL,
-          capabilities: ['identity', 'drive-picked'],
+          capabilities: ['drive-picked'],
           connectedAt: expect.any(String),
         },
+        canConnect: true,
+        dedicatedClient: false,
       })
       expect(JSON.stringify(result)).not.toContain('enc:')
     })
@@ -503,6 +691,7 @@ describe('Google connection routes', () => {
 
       expect(result).toEqual({
         disconnected: true,
+        revoked: true,
         filesDeleted: 1,
         filesPending: false,
       })
@@ -519,8 +708,27 @@ describe('Google connection routes', () => {
       const { result } = await call('disconnect')
 
       expect(result.disconnected).toBe(true)
+      expect(result.revoked).toBe(false)
       expect(await connectionRows()).toEqual([])
     })
+
+    it('keeps a row a reconnect brought back during the cleanup',
+      async () => {
+        await connect()
+        await seedGoogleFile('u/drive.pdf')
+        bucket.delete.mockImplementationOnce(async () => {
+          await testDb.db
+            .update(schema.googleConnections)
+            .set({ status: 'active' })
+            .where(eq(schema.googleConnections.userId, userId))
+        })
+
+        await call('disconnect')
+
+        const [row] = await connectionRows()
+
+        expect(row!.status).toBe('active')
+      })
 
     it('leaves a revoked row for the sweep when R2 fails', async () => {
       await connect()
@@ -536,7 +744,8 @@ describe('Google connection routes', () => {
         refreshToken: null,
         accessToken: null,
       }))
-      expect((await call('status')).result).toEqual({ connection: null })
+      expect((await call('status')).result)
+        .toEqual(expect.objectContaining({ connection: null }))
     })
 
     it('answers 404 when nothing is connected', async () => {

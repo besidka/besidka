@@ -7,13 +7,16 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 /**
  * Disconnects Google Drive: revokes the grant at Google (best effort),
  * clears the tokens and deletes the Drive files copied into Besidka
- * before answering. `filesPending` is true when that deletion could not
- * finish; the hourly sweep completes it within the next hour.
+ * before answering. Needs a session and the same-origin guard but not the
+ * `google.drive` flag, so a user can always end a connection. `revoked`
+ * is false when Google did not confirm the revoke; `filesPending` is true
+ * when the deletion could not finish and the hourly sweep completes it.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireGoogleAccess(event, {
     write: true,
     rateLimit: 'write',
+    feature: false,
   })
   const result = await disconnectGoogleConnection({
     db: useDb(),
@@ -35,6 +38,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     disconnected: true,
+    revoked: result.revoked,
     filesDeleted: result.filesDeleted,
     filesPending: result.filesPending,
   }

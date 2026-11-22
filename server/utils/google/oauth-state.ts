@@ -11,6 +11,7 @@ export interface GoogleOAuthState {
   codeVerifier: string
   redirectUri: string
   returnTo: string
+  forcedConsent: boolean
   createdAt: number
 }
 
@@ -46,6 +47,7 @@ function isGoogleOAuthState(value: unknown): value is GoogleOAuthState {
     && typeof candidate.codeVerifier === 'string'
     && typeof candidate.redirectUri === 'string'
     && typeof candidate.returnTo === 'string'
+    && typeof candidate.forcedConsent === 'boolean'
     && typeof candidate.createdAt === 'number'
 }
 

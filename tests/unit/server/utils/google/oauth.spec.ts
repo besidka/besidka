@@ -43,13 +43,13 @@ function authorizationUrl(overrides: {
 }
 
 describe('Google connection scopes', () => {
-  it('asks for drive.file and identity only on Besidka\'s client', () => {
+  it('asks for drive.file, openid and email only on Besidka\'s client', () => {
     expect(getConnectionScopes('besidka').sort()).toEqual([
       GOOGLE_SCOPES.driveFile,
       GOOGLE_SCOPES.openid,
       GOOGLE_SCOPES.email,
-      GOOGLE_SCOPES.profile,
     ].sort())
+    expect(getConnectionScopes('besidka')).not.toContain(GOOGLE_SCOPES.profile)
   })
 
   it('refuses a grant without drive.file', () => {
@@ -80,13 +80,14 @@ describe('buildGoogleAuthorizationUrl', () => {
     })
   })
 
-  it('passes the stored email as a hint on reconnect', () => {
+  it('passes the Google subject, never the email, as a hint', () => {
     const url = authorizationUrl({
-      loginHint: GOOGLE_EMAIL,
+      loginHint: GOOGLE_SUBJECT,
       promptConsent: false,
     })
 
-    expect(url.searchParams.get('login_hint')).toBe(GOOGLE_EMAIL)
+    expect(url.searchParams.get('login_hint')).toBe(GOOGLE_SUBJECT)
+    expect(url.toString()).not.toContain(encodeURIComponent(GOOGLE_EMAIL))
     expect(url.searchParams.has('prompt')).toBe(false)
   })
 })

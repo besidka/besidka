@@ -8,7 +8,6 @@ export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 export const GRANTED_SCOPE_STRING = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile',
   DRIVE_FILE_SCOPE,
 ].join(' ')
 
@@ -130,16 +129,28 @@ export type FakeGoogle = ReturnType<typeof createFakeGoogle>
  * setup, not a global, so the Google client values are written onto it and
  * the returned function puts the previous values back.
  */
-export async function useGoogleRuntimeConfig(): Promise<() => void> {
+export async function useGoogleRuntimeConfig(
+  overrides: Record<string, string> = {},
+): Promise<() => void> {
   const runtimeConfig = (await import('#app/nuxt')).useRuntimeConfig() as
     unknown as Record<string, unknown>
-  const previous = {
-    googleClientId: runtimeConfig.googleClientId,
-    googleClientSecret: runtimeConfig.googleClientSecret,
-  }
+  const keys = [
+    'googleClientId',
+    'googleClientSecret',
+    'googleDriveClientId',
+    'googleDriveClientSecret',
+  ]
+  const previous = Object.fromEntries(keys.map((key) => {
+    return [key, runtimeConfig[key]]
+  }))
 
-  runtimeConfig.googleClientId = GOOGLE_CLIENT_ID
-  runtimeConfig.googleClientSecret = GOOGLE_CLIENT_SECRET
+  Object.assign(runtimeConfig, {
+    googleClientId: GOOGLE_CLIENT_ID,
+    googleClientSecret: GOOGLE_CLIENT_SECRET,
+    googleDriveClientId: '',
+    googleDriveClientSecret: '',
+    ...overrides,
+  })
 
   return () => {
     Object.assign(runtimeConfig, previous)
