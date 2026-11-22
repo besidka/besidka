@@ -2966,19 +2966,23 @@ holds an attendee, conference, recurrence, reminder or attachment.
 **An insert that is safe to repeat.** The approved call can run twice (a
 Worker that died after Google answered, or a lease that expired), so the
 insert carries an `id` that is derived, not random: `buildCalendarEventId`
-hashes the user id and the tool call id (SHA-256) and writes the digest in
-base32hex, 52 lowercase characters. A tool call has exactly one approval, so
-the tool call id that the approval wrapper replays stands for the approval id
-(the approval id itself is known only to `wrapApprovedExecutions`, not to the
-tool, so it is not used directly). Google's reference for `events.insert`
+hashes the user id and the approval id (SHA-256) and writes the digest in
+base32hex, 52 lowercase characters. The approval id is the one the owner
+answered; `wrapApprovedExecutions` (`continuation.ts`) now passes it to the
+approved call as `approvalId` in the `execute` options, for that call only.
+It is not the provider's tool call id, which is unique only within one reply
+and could repeat for the same user (a repeat would make Google answer 409 and
+the tool report an event that was never created). A call with no approval id
+(never the case for a write that went through an approval) sends a random id,
+which can never give a false success. Google's reference for `events.insert`
 (read 2026-11-22) says of the id: "characters allowed in the ID are those
 used in base32hex encoding, i.e. lowercase letters a-v and digits 0-9", "the
 length of the ID must be between 5 and 1024 characters" and "the ID must be
 unique per calendar", and adds that "we cannot guarantee that ID collisions
 will be detected at event creation time". Google's Calendar error guide
 documents the answer for an id that already exists: HTTP 409, reason
-`duplicate`, "The requested identifier already exists". A 409 is therefore
-counted as success (the reference is built from the id that was sent and the
+`duplicate`, "The requested identifier already exists". A 409 with the reason
+`duplicate` (and no other 409) is therefore counted as success (the reference is built from the id that was sent and the
 validated start, with the day view link, since a 409 carries no event). What
 is not verified: the 409 against the real API, and that a collision is always
 detected (Google says it is not guaranteed), so a rare double insert is still
@@ -3080,14 +3084,16 @@ Calendar" or "Created an event in Google Calendar" with Google's official
 Calendar mark (`GOOGLE_CALENDAR_ICON` from
 `shared/utils/google-brand-icons.ts`, unmodified, no color class), and each
 reference is one line with "Open in Google Calendar". The Calendar mark is
-256 by 275, Gmail's 256 by 204 and Drive's 256 by 238; in the step icon's
-square box the icon's CSS (`background-size: 100% 100%`, from Iconify) with the
-box's `size-full` stretched all three (Gmail by about 25 percent, Drive and
-Calendar by about 7 to 8 percent), so `StepIcon.vue` now adds `bg-contain!`
-and `bg-center!` (and the mask forms) to an icon, which keeps the aspect
-ratio. The owner card's mark is not stretched: it is sized by `size="16"`
-(a font size), and Iconify gives a non-square icon its own width. The owner
-card (`OwnClient.vue`) lists Calendar access like Gmail, under the label
+256 by 275, Gmail's 256 by 204 and Drive's 256 by 238, and the step icon puts
+it in a square box with `size-full`. Iconify's CSS for such an icon says
+`background-size: 100% 100%`, which suggests the marks were stretched (Gmail
+by about 25 percent, Drive and Calendar by about 7 to 8 percent). That was
+read from the CSS and never rendered, so it is NOT VERIFIED (an SVG
+background normally keeps its own aspect ratio); `StepIcon.vue` now adds
+`bg-contain!` and `bg-center!` (and the mask forms) to an icon, which is
+harmless either way and keeps the aspect ratio. The owner card's mark is
+sized by `size="16"` (a font size), and Iconify gives a non-square icon its
+own width. The owner card (`OwnClient.vue`) lists Calendar access like Gmail, under the label
 "Your Google Calendar events", only while `google.calendar` is active, with
 the same mark beside the box (no color class, no opacity) and a short note
 about what the two permissions allow, in short sentences. While
