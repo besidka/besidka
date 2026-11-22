@@ -240,15 +240,16 @@ reads, for each sheet:
 | `<dimension ref>` | `usedRange` |
 | first `<sheetView>`, `<pane state="frozen|frozenSplit" xSplit ySplit>` | `frozenColumns`, `frozenRows` |
 | `<f>` plain | `formula` |
-| `<f t="shared" ref si>` master, followers `<f t="shared" si/>` | master text; each follower gets the master shifted by its distance (the fill Excel does). A master with structured or external references, or text the tokenizer cannot read whole, leaves followers as `formulaKind: 'shared-copy'` with `sharedFrom`, never a made-up text |
-| `<f t="array" ref>`, `<f t="dataTable" r1 r2>` | `formulaKind: 'array'`, `arrayRange`; a data table as `TABLE(r1,r2)` |
+| `<f t="shared" ref si>` master, followers `<f t="shared" si/>` | master text; each follower is `formulaKind: 'shared'` with `sharedFrom` (the master's address) and no text of its own, so a group of any size costs one formula and no derivation. The group is built from the followers actually read, never from the master's `ref`. A master is registered only once its text fits the formula budget, and a redefined `si` starts a new group. A master with structured or external references, or text the tokenizer cannot read whole, leaves followers as `formulaKind: 'shared-copy'` |
+| `<f t="array" ref>` | `formulaKind: 'array'`, `arrayRange` |
+| `<f t="dataTable" ref r1 r2 dt2D dtr>` | `formulaKind: 'data-table'`, `arrayRange`, `dataTable: { rowInput?, columnInput? }` (two-variable: `r1` row and `r2` column input; one-variable: `r1` is the row input when `dtr` is set, otherwise the column input) |
 | `s` style index through `cellXfs` `numFmtId` | `numberFormat`: the custom `numFmt` code or the built-in code for ids 1-4, 9-22, 37-40, 45-49, `built-in format N` for the locale-dependent ids, nothing for General |
 | `<mergeCell ref>` | `mergedRanges` |
 | `<dataValidation>` and `x14:dataValidation` (`x14:formula1/xm:f`, `xm:sqref`) | `validations`: `list` with a quoted list as `list-of-values`, any other source as `list-from-range`; `whole`, `decimal`, `date`, `time`, `textLength` with the operator; `custom`; `strict` is `showErrorMessage` with `errorStyle` stop; `promptTitle`, `prompt`, `error` as messages |
-| `<conditionalFormatting>` and `x14:conditionalFormatting` | `conditionalRules`: `expression`, `cellIs`, the text rules, blanks, errors, duplicates, unique, `top10`, `aboveAverage`, `timePeriod`; no colors and no `dxf` |
+| `<conditionalFormatting>` and `x14:conditionalFormatting` | `conditionalRules`: `expression`, `cellIs`, the text rules, blanks, errors, duplicates, unique, `top10`, `aboveAverage`, `timePeriod`; no colors and no `dxf`. Sorted by the `priority` attribute (lowest first, stable; rules without one last) |
 | `colorScale`, `dataBar`, `iconSet` rules (main section only) | counted in `notRead` |
 | `<hyperlink>` | counted |
-| sheet rels: legacy `comments` part | `notes` (a threaded-comment placeholder is cut to its text and marked `(threaded)`) |
+| sheet rels: legacy `comments` part | `notes` (a threaded-comment placeholder loses the explanation for old Excel versions and its `Comment:` and `Reply:` labels: `(threaded) text (reply: text)`) |
 | sheet rels: `drawing` then its `chart` and `image` rels, `pivotTable` | counted |
 
 Not read at all: cell styles other than the number format, colors, fonts,
@@ -300,13 +301,18 @@ plain text never needed: the structure after `</sheetData>`, the comments
 parts and the drawing relationships. Those reads run inside `readOptional()`
 and charge `extraInflatedBytesMax` (160 MiB) and `extraEventsMax` (3,000,000)
 instead of the main budgets; any failure in them, a spent budget, a corrupt
-or malformed part, gives "not read" and never fails the file, so every
-workbook version 1 reads is still `ready` in version 2 (a spec bisects the
-main event budget to prove it). The tail of a sheet is found by
-`readPartTail()`: one forward inflate of the part that searches the bytes as
-they arrive for the end tag of `sheetData` (any prefix, carried across
-chunks), drops everything before it, and keeps at most `tailBytesMax` (4 MiB)
-after it. A row-capped 40 MB sheet therefore reaches its rules without being
+or malformed part, or any other exception a reader did not expect, gives
+"not read" and never fails the file, so every workbook version 1 reads is
+still `ready` in version 2 (a spec bisects the main event budget to prove
+it, and a seeded random-tail spec checks the statuses agree). The tail of a
+sheet is found by `readPartTail()`: one forward inflate of the part whose
+`ClosingTagFinder` searches the bytes as they arrive for the end tag of
+`sheetData` (any prefix), skipping comments, CDATA sections and processing
+instructions the way the XML parser does, with its state and at most one
+tag's worth of bytes carried across chunks, so an end tag written inside a
+comment or a CDATA value cannot forge where the cells stop. It drops
+everything before the tag and keeps at most `tailBytesMax` (4 MiB) after
+it. A row-capped 40 MB sheet therefore reaches its rules without being
 held in memory. A part the optional budget cannot cover, or a tail cut at
 4 MiB, is reported in the map as "Rules, merged cells and links stored after
 the cell data were not read". The adapter's own stored caps (50 ranges per
@@ -460,7 +466,7 @@ extractor (version 2 above) today, a Google Sheets adapter later. The code is
 `@besidka/doc-renderer/workbook-map`, which has no dependencies at all (a
 boundary spec asserts it), so the app server can import it without the
 extractor or the renderer libraries (`renderWorkbookMap` costs about 24 KB
-minified, 9 KB gzip; the app imports only `WORKBOOK_MAP_TITLE` today).
+minified, 9 KB gzip; the app imports only `fitWorkbookMap` today).
 
 ### The model
 
@@ -470,6 +476,7 @@ interface WorkbookModel {
   sheets: WorkbookSheet[]          // in tab order, at most what was read
   sheetsTotal: number              // all sheets in the file
   hiddenNamesSkipped?: number
+  namesNotRead?: number            // names past the cap of 500
 }
 
 interface WorkbookSheet {
@@ -484,8 +491,9 @@ interface WorkbookSheet {
   conditionalRules: WorkbookConditionalRule[]   // in priority order
   notes: Array<{ address: string, text: string }>
   notRead: { charts, images, pivotTables, colorScales, dataBars, iconSets,
-             hyperlinks, threadedComments: number }
-  cuts: Array<'rows' | 'columns' | 'cells' | 'formulas' | 'structure' | 'part'>
+             hyperlinks: number }
+  cuts: Array<'rows' | 'columns' | 'cells' | 'formulas' | 'structure'
+    | 'limits' | 'part'>
   rowsRead?: number                // the row cap, printed with the 'rows' cut
 }
 
@@ -494,12 +502,18 @@ interface WorkbookCell {
   column: number                   // 1-based, A is 1
   value?: string                   // the displayed or cached value as text
   formula?: string                 // without the leading '=' (one is stripped)
-  formulaKind?: 'normal' | 'array' | 'shared-copy'
-  arrayRange?: string              // for 'array'
-  sharedFrom?: string              // for 'shared-copy': the master's address
+  formulaKind?: 'normal' | 'array' | 'data-table' | 'shared' | 'shared-copy'
+  arrayRange?: string              // for 'array' and 'data-table'
+  sharedFrom?: string              // for 'shared' and 'shared-copy': the
+                                   // master's address
+  dataTable?: { rowInput?: string, columnInput?: string }
   numberFormat?: string            // an Excel format code; 'General' is skipped
 }
 ```
+
+A `shared` cell carries no text: its formula is the master's shifted by the
+distance between them. Readers of the model get the cells back with
+`collapseSheetFormulas` plus `expandPattern`.
 
 Validation rules (`WorkbookValidationRule`): `ranges` (A1 strings), `kind`
 (`list-from-range` with `source`, a formula such as `Lists!$B$6:$B$45`;
@@ -563,13 +577,17 @@ Used range A1:H25. Frozen: rows 1-6 and columns A-B. Hidden.
 Not read: 1 chart, 2 color scales, 1 link (count only).
 Only the first 1000 rows were read; later formulas and values are not included.
 
+3 formula cells have no saved value.
+
 ### Formulas
 - F7:F24 ↓ =INDEX(Parameters!$D$7:$D$11, MATCH(E7, Parameters!$B$7:$B$11, 0)) · except F19
 - H19 =SUM(OFFSET(H19,-12,0,12,1))
 - Q20:AN20 → =SUM(OFFSET(Q20,-19,0,19,1))
+- Q22:AN171 ↘ =P22*$C$2
 - D3:D4 {array} =Parameters!B7:B8
+- K2:L5 data table: row input A1, column input A2
 - C1:C3, B2:B3: copies of the shared formula in B1 (not written out: …)
-(12 more formula lines not shown)
+(12 more formula lines not shown; cells they cover may look typed in)
 
 ### Dropdowns and validation
 - E7:E24: dropdown of the values in Lists!$B$6:$B$45 (strict); input message "…"
@@ -620,6 +638,29 @@ Rules of the format:
   string literals that look like references, lowercase references, inner
   spaces, `LOG10(`, `#REF!`, whole rows and columns and structured
   references). Lines are sorted by their first cell, row first.
+- Collapse is bounded (`collapseSheetFormulas`): formula cells sit in typed
+  columns, never one token array per cell; only a run's current master is
+  tokenized, and every tokenize and comparison is charged to a budget of
+  24 Mi characters, after which the rest stay single lines. At most
+  `formulaCellsMax` (200,000, the extractor's cell cap) formula cells enter
+  per sheet, with the line "(N formula cells not shown: …)" past it. A
+  shared group is already a pattern: its members form runs without any text
+  being derived, down runs over the same rows join into a block printed
+  with `↘` (filled down and right), groups Excel split at a subtotal row are
+  joined when their masters are fill copies, and plain cells that continue
+  the fill join the run after one exact check against the group's master.
+  Only the first cell of a pattern that does not start at the master gets
+  derived text, charged to a budget of 512 KiB; both corners are checked
+  against the master's `shiftBounds`, so every cell between them shifts.
+  What does not fit becomes a "copies of the shared formula" line.
+- `shiftFormula` returns null whenever a reference cannot be classified with
+  certainty: a name is a sheet prefix only when it cannot also be a cell,
+  column or row reference (`Q1!A1`, `A1:B2!C3`, `Jan:Mar!D4` are refused),
+  and a cell before `:` followed by `Sheet!` is a cell, so
+  `Sheet1!A1:Sheet1!B2` shifts both corners. An independent reference
+  shifter in the specs fuzzes sheet-qualified corners on both sides.
+- A data table is labeled with its input cells, and the heading says how
+  many formula cells have no saved value; an empty sheet prints `Empty.`.
 - Rules print one line per distinct rule; identical rules on several ranges
   share a line, touching rectangles are joined (`C7:C171, D7:D171` becomes
   `C7:D171`), and conditional rules on the same ranges that differ only in
@@ -630,10 +671,28 @@ Rules of the format:
   left out.
 - Every workbook string (sheet and defined names, formulas, values, notes,
   messages, number formats, ranges) goes through `cleanLine`: control,
-  zero-width and bidirectional characters become one space, a backtick becomes
-  `ˋ` (U+02CB), and the length is capped with `…`. So no workbook text can
-  start a line, add a heading or end the Markdown fence the app wraps it in;
-  the app's fence is also one backtick longer than any run in the text.
+  zero-width and bidirectional characters become one space, invisible format
+  characters that sit inside words are removed (soft hyphen, U+034F,
+  U+061C, U+180E, U+2060 to U+2064, variation selectors, U+FFF9 to U+FFFB,
+  tag characters U+E0000 to U+E007F and the selectors U+E0100 to U+E01EF),
+  a backtick becomes `ˋ` (U+02CB), and the length is capped with `…`. So no
+  workbook text can start a line, add a heading or end the Markdown fence
+  the app wraps it in; the app's fence is also one backtick longer than any
+  run in the text. A quoted note or message escapes inner `"` and `\`.
+
+### `fitWorkbookMap(text, maxBytes)`
+
+Shortens a map to `maxBytes` of UTF-8 using the text alone (the app keeps no
+model): the title, legend, named ranges and every sheet's structure stay,
+then whole Values blocks are added smallest first while they fit, so small
+lists and parameter tabs that dropdowns and lookups point at survive; each
+dropped block becomes "(values of this sheet were left out of this earlier
+turn: N rows)". If even the structure is too big, sheets are left out from
+the end with a note naming them. It parses only the headings the renderer
+writes (`## Sheet: `, `### Values`); since every field is flattened to one
+line, no cell value can forge one (a spec keeps this invariant). It accepts
+a map that was already cut, keeping its truncation marker. The app uses it
+for spreadsheets carried into later turns (see `docs/files.md`).
 
 ## Local development
 

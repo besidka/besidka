@@ -88,7 +88,25 @@ Rules, applied newest first:
    `text_bytes` (the extracted text, passed in as
    `officeTextBytesByStorageKey`) replace its file size in rule 2, rule 3 and
    this cap, and an Office file without ready text is omitted as
-   `unsupported-by-model` instead of being carried.
+   `unsupported-by-model` instead of being carried. A spreadsheet is the
+   exception (BES-448): an estimate's workbook map is often 90 KB, and
+   dropping it would leave the model with neither formulas nor values on
+   the next turn. A spreadsheet with ready text (`text_version` passed as
+   `spreadsheetTextVersionsByStorageKey`) whose text is a workbook map of
+   at most `OFFICE_TEXT_INLINE_MAX_BYTES` (200 KB), or a version 1 text of
+   at most 64 KB that the send may upgrade to a map, is carried
+   "structure only": it is charged a fixed 64 KB in rules 2 and 3 whenever
+   its text is over 64 KB or still version 1 (so the estimate is never
+   lower than what is sent), and `buildModelContextMessages()` returns it in
+   `structureOnlyFiles` as `{ messageId, storageKey }`.
+   `convertFilesForAI()` then fits that message's map with `fitWorkbookMap()`
+   to 64 KB: every sheet's formulas, rules, formats, merged cells and notes
+   stay, whole Values blocks are kept smallest first while they fit (so
+   lists and parameter tabs survive), and each dropped block says how many
+   rows it had. The wrapper adds that values were shortened in this earlier
+   attachment and that the user can attach the file again for the full
+   values. The same file attached to the newest message is sent whole. A
+   map over 200 KB, or a version 1 text over 64 KB, is still `over-limit`.
 5. Modality gate: carried files are checked against the selected model, which
    only the request's own attachments were checked against before.
    `createCarriedMediaTypePredicate()`
@@ -369,11 +387,25 @@ decision list are in BES-370.
   it (`rendererOffersWorkbookMap()`); otherwise it sends the version 1
   request. The stored `text_version` follows the result, not the request: 2
   when the result carries `workbookMap`, 2 for a failure of a version 2 read
-  (so it is not read again on every send), 1 otherwise. A stored version 1
-  spreadsheet (`isOfficeTextUpgradable()`) is still usable: on a send,
+  (so it is not read again on every send), 1 otherwise. That failure rule
+  applies to a fresh upload only. A stored version 1 spreadsheet
+  (`isOfficeTextUpgradable()`) is still usable: on a send,
   `ensureOfficeTextState()` reads it again only while the bound renderer
-  offers version 2, and keeps the version 1 text when it does not or when the
-  new read cannot finish. So after this change reaches production, each
+  offers version 2, and the upgrade stores only a ready map (sidecar first,
+  then the row). Any other answer leaves the row and the version 1 sidecar
+  untouched and the send uses the version 1 text: a renderer failure for
+  the file (`failed` such as `extract_crashed` or `extract_error`,
+  `too_large`, `empty`, or a map too large to store) is remembered in KV as
+  `office-text-upgrade-failed:<storageKey>` for 7 days, and while that key
+  exists the upgrade is skipped; a renderer that is down, a thrown call or
+  an answer without a map is not remembered, so it is tried again on the
+  next send. The key is deleted with the file by `invalidateFileCache()`,
+  which every file delete path calls. A row update that fails after the new
+  sidecar is written keeps that sidecar, because the version 1 text is
+  already overwritten. `loadOfficeText()` returns the effective text
+  version, and `convertFilesForAI()` picks the workbook map note from the
+  format and that version, never from the text, so a document whose first
+  heading is "Workbook map" gets the plain note. So after this change reaches production, each
   `.xlsx` that a send touches (the newest message through
   `assertFilesDeliverable()`, and the earlier files carried into the context
   through `convertFilesForAI()`) is read again once, and nothing else is.
