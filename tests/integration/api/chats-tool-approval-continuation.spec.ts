@@ -49,6 +49,12 @@ const mocks = vi.hoisted(() => ({
     tools: Record<string, unknown>
     entries: Map<string, unknown>
   },
+  googleSendFactory: null as null | ((input: {
+    priorParts?: readonly unknown[]
+  }) => Promise<{
+    tools: Record<string, unknown>
+    entries: Map<string, unknown>
+  }>),
   pickedRead: null as null | Record<string, any>,
   saveFile: null as null | ((...args: unknown[]) => unknown),
   failRateLimitRead: false,
@@ -241,7 +247,13 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
 
   return {
     ...actual,
-    buildGoogleSendToolCandidates: async () => {
+    buildGoogleSendToolCandidates: async (input: {
+      priorParts?: readonly unknown[]
+    }) => {
+      if (mocks.googleSendFactory) {
+        return await mocks.googleSendFactory(input)
+      }
+
       return mocks.googleSend ?? actual.noGoogleSendTools()
     },
   }
@@ -898,6 +910,7 @@ describe('tool approval continuation', () => {
     mocks.memoryToolsEnabled = false
     mocks.providerTools = {}
     mocks.googleSend = null
+    mocks.googleSendFactory = null
     mocks.failRateLimitRead = false
     mocks.chatGoogleDataAt = null
     mocks.memoryWrites = []
@@ -2433,8 +2446,17 @@ describe('tool approval continuation', () => {
       const MAIL_SUBJECT = 'SECRET MERGER SUBJECT'
       const MAIL_SENDER = 'eve@evil.example'
       const MAIL_SNIPPET = 'SECRET MERGER SNIPPET'
+      const MAIL_BODY = 'SECRET MERGER BODY'
       const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
       let gmailFetch: ReturnType<typeof vi.fn>
+      let buildByo: (
+        grants: Record<string, string>,
+        priorParts?: readonly unknown[],
+      ) => Promise<{
+        tools: Record<string, unknown>
+        entries: Map<string, unknown>
+      }>
+      let searchGrantHash = ''
 
       function outsideFrames(prompt: string): string {
         return prompt.replace(FRAME, '')
@@ -2460,23 +2482,45 @@ describe('tool approval continuation', () => {
         gmailFetch = vi.fn(async (input: string) => {
           const url = new URL(input)
 
-          if (url.pathname === '/gmail/v1/users/me/messages') {
-            return Response.json({ messages: [{ id: 'm1', threadId: 't1' }] })
+          if (url.pathname === '/gmail/v1/users/me/threads') {
+            return Response.json({ threads: [{ id: 't1' }] })
           }
 
-          if (url.pathname === '/gmail/v1/users/me/messages/m1') {
+          if (
+            url.pathname === '/gmail/v1/users/me/threads/t1'
+            && url.searchParams.get('format') === 'full'
+          ) {
             return Response.json({
-              id: 'm1',
-              threadId: 't1',
-              internalDate: '1763719200000',
-              snippet: MAIL_SNIPPET,
-              payload: {
-                headers: [
-                  { name: 'From', value: `Eve <${MAIL_SENDER}>` },
-                  { name: 'Subject', value: MAIL_SUBJECT },
-                  { name: 'Date', value: 'Fri, 21 Nov 2025 10:00:00 +0000' },
-                ],
-              },
+              id: 't1',
+              messages: [{
+                id: 'm1',
+                internalDate: '1763719200000',
+                payload: {
+                  mimeType: 'text/plain',
+                  headers: [{ name: 'Subject', value: MAIL_SUBJECT }],
+                  body: {
+                    data: Buffer.from(MAIL_BODY).toString('base64url'),
+                  },
+                },
+              }],
+            })
+          }
+
+          if (url.pathname === '/gmail/v1/users/me/threads/t1') {
+            return Response.json({
+              id: 't1',
+              messages: [{
+                id: 'm1',
+                internalDate: '1763719200000',
+                snippet: MAIL_SNIPPET,
+                payload: {
+                  headers: [
+                    { name: 'From', value: `Eve <${MAIL_SENDER}>` },
+                    { name: 'Subject', value: MAIL_SUBJECT },
+                    { name: 'Date', value: 'Fri, 21 Nov 2025 10:00:00 +0000' },
+                  ],
+                },
+              }],
             })
           }
 
@@ -2490,11 +2534,15 @@ describe('tool approval continuation', () => {
           return new Response('{}', { status: 404 })
         })
 
-        const build = (grants: Record<string, string> = {}) => {
+        const build = (
+          grants: Record<string, string> = {},
+          priorParts: readonly unknown[] = [],
+        ) => {
           return buildGoogleByoTools({
             db: {} as never,
             kv: {} as never,
             userId: 1,
+            priorParts,
             grantedScopes: [
               'https://www.googleapis.com/auth/gmail.readonly',
               'https://www.googleapis.com/auth/gmail.compose',
@@ -2508,7 +2556,66 @@ describe('tool approval continuation', () => {
         const hash = (await build()).entries
           .get('google__gmail_search')!.descriptor.definitionHash!
 
+        buildByo = build as typeof buildByo
+        searchGrantHash = hash
         mocks.googleSend = await build({ google__gmail_search: hash })
+      })
+
+      it('reads a thread that the paused reply\'s own search found, once the '
+        + 'user approves, with tools rebuilt for the continuation', async () => {
+        const builtWith: Array<readonly unknown[]> = []
+
+        mocks.googleSendFactory = async (input) => {
+          const priorParts = input.priorParts ?? []
+
+          builtWith.push(priorParts)
+
+          return await buildByo(
+            { google__gmail_search: searchGrantHash },
+            priorParts,
+          )
+        }
+
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-g', 'google__gmail_search', {
+              query: 'merger',
+            }),
+            toolCallChunks('call-r', 'google__gmail_read_thread', {
+              threadId: 't1',
+            }),
+          ],
+        })
+        const [approvalId] = paused.approvalIds
+
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          toolName: 'google__gmail_read_thread',
+          rememberOptions: ['once'],
+          summary: 'Read the email thread from 2025-11-21 in your Gmail',
+        })
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Read it.')])
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+        const update = mocks.updates.at(-1)!
+
+        expect(builtWith.at(-1)!.some((part: any) => {
+          return part?.type === 'tool-google__gmail_search'
+        })).toBe(true)
+        expect(prompt).toContain(MAIL_BODY)
+        expect(outsideFrames(prompt)).not.toContain(MAIL_BODY)
+        expect(findPart(update.parts, 'tool-google__gmail_read_thread'))
+          .toMatchObject({
+            state: 'output-available',
+            output: { references: [{ id: 't1', kind: 'gmail-thread' }] },
+          })
+        expect(JSON.stringify(update.parts)).not.toContain(MAIL_BODY)
       })
 
       async function pauseAfterSearch() {
@@ -2530,7 +2637,7 @@ describe('tool approval continuation', () => {
 
       function draftPosts() {
         return gmailFetch.mock.calls.filter((call) => {
-          return String(call[0]).endsWith('/drafts')
+          return new URL(String(call[0])).pathname.endsWith('/drafts')
         })
       }
 

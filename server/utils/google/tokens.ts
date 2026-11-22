@@ -44,6 +44,7 @@ export interface GoogleAccessTokenRequest {
   userId: number
   clientMode: GoogleClientMode
   requiredScopes?: readonly string[]
+  requiredFeatureFlags?: readonly string[]
 }
 
 export type GoogleAccessTokenResult
@@ -496,7 +497,9 @@ async function refreshUnderLock(
  * Google errors throw and never end the connection. A token is never
  * logged or returned to a browser by this function. A bring-your-own
  * token, cached or refreshed, is handed out only after the admin and
- * `google.byo` gate (`assertGoogleByoAllowed`), which throws a 404.
+ * `google.byo` gate (`assertGoogleByoAllowed`, plus the
+ * `requiredFeatureFlags`, such as `google.gmail` for a Gmail tool, in the
+ * same fresh feature read), which throws a 404.
  */
 export async function getGoogleAccessToken(
   request: GoogleAccessTokenRequest,
@@ -508,6 +511,9 @@ export async function getGoogleAccessToken(
       userId: request.userId,
       kv: dependencies.kv,
       logger: dependencies.logger,
+      ...(request.requiredFeatureFlags
+        ? { requiredFlags: request.requiredFeatureFlags }
+        : {}),
     })
   }
 

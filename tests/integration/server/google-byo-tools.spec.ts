@@ -8,6 +8,7 @@ import {
   GOOGLE_GMAIL_SEARCH_TOOL_NAME,
 } from '#shared/utils/google-gmail-tools'
 import {
+  GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
   GOOGLE_DRIVE_READ_TOOL_NAME,
   GOOGLE_DRIVE_SEARCH_TOOL_NAME,
 } from '#shared/utils/google-drive-tools'
@@ -15,6 +16,8 @@ import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
 import { GOOGLE_TOOL_OUTPUT_MAX_BYTES } from '#shared/utils/google-tool-approvals'
 import {
   createMemoryExtractionTestDb,
+  seedChat,
+  seedMessage,
   seedUser,
 } from '../../setup/helpers/memory-extraction-db'
 import type {
@@ -81,8 +84,26 @@ interface FakeApis {
   list: { status: number, body: Record<string, unknown> }
   drafts: { status: number, body: Record<string, unknown> }
   driveFiles: { status: number, body: Record<string, unknown> }
+  driveMetadata: Record<string, Record<string, unknown>>
+  driveContent: Record<string, string>
   oversizedThread: boolean
+  oversizedMetadata: Set<string>
+  oversizedMessages: Set<string>
   failure: { status: number, reason: string } | null
+}
+
+const OVERSIZED_BODY = 'x'.repeat(3 * 1024 * 1024 + 10)
+
+function threadIdsOfList(
+  body: Record<string, unknown>,
+  maxResults: number,
+): string[] {
+  const messages = Array.isArray(body.messages)
+    ? body.messages as Array<{ threadId: string }>
+    : []
+
+  return [...new Set(messages.map(message => message.threadId))]
+    .slice(0, maxResults)
 }
 
 function createFakeApis(): FakeApis {
@@ -98,8 +119,26 @@ function createFakeApis(): FakeApis {
       body: { id: 'r-1234', message: { id: 'm-9', threadId: 't-9' } },
     },
     driveFiles: { status: 200, body: { files: [] } },
+    driveMetadata: {},
+    driveContent: {},
     oversizedThread: false,
+    oversizedMetadata: new Set(),
+    oversizedMessages: new Set(),
     failure: null,
+  }
+
+  const metadataThread = (threadId: string) => {
+    const stored = apis.threads[threadId]
+
+    if (stored) {
+      return stored
+    }
+
+    const messages = Object.values(apis.messages).filter((message) => {
+      return message.threadId === threadId
+    })
+
+    return messages.length > 0 ? { id: threadId, messages } : null
   }
 
   apis.fetch.mockImplementation(async (input: string, init?: RequestInit) => {
@@ -130,6 +169,27 @@ function createFakeApis(): FakeApis {
       return json(apis.driveFiles.status, apis.driveFiles.body)
     }
 
+    const driveMatch = url.host === 'www.googleapis.com'
+      ? url.pathname.match(/^\/drive\/v3\/files\/([^/]+)(\/export)?$/)
+      : null
+
+    if (driveMatch) {
+      const fileId = driveMatch[1]!
+      const isContent = !!driveMatch[2] || url.searchParams.get('alt') === 'media'
+
+      if (isContent) {
+        const content = apis.driveContent[fileId]
+
+        return content === undefined
+          ? json(404, {})
+          : new Response(content, { status: 200 })
+      }
+
+      const metadata = apis.driveMetadata[fileId]
+
+      return metadata ? json(200, metadata) : json(404, {})
+    }
+
     if (url.host !== 'gmail.googleapis.com') {
       return json(404, {})
     }
@@ -138,11 +198,26 @@ function createFakeApis(): FakeApis {
       return json(apis.list.status, apis.list.body)
     }
 
+    if (url.pathname === '/gmail/v1/users/me/threads') {
+      const maxResults = Number(url.searchParams.get('maxResults') ?? 100)
+
+      return json(apis.list.status, {
+        threads: threadIdsOfList(apis.list.body, maxResults).map((id) => {
+          return { id }
+        }),
+      })
+    }
+
     const messageMatch = url.pathname
       .match(/^\/gmail\/v1\/users\/me\/messages\/([^/]+)$/)
 
     if (messageMatch) {
-      const message = apis.messages[messageMatch[1]!]
+      const messageId = messageMatch[1]!
+      const message = apis.messages[messageId]
+
+      if (apis.oversizedMessages.has(messageId)) {
+        return new Response(OVERSIZED_BODY)
+      }
 
       return message ? json(200, message) : json(404, {})
     }
@@ -151,14 +226,42 @@ function createFakeApis(): FakeApis {
       .match(/^\/gmail\/v1\/users\/me\/threads\/([^/]+)$/)
 
     if (threadMatch) {
-      const thread = apis.threads[threadMatch[1]!]
+      const threadId = threadMatch[1]!
+      const format = url.searchParams.get('format')
+
+      if (format === 'metadata') {
+        const thread = metadataThread(threadId)
+
+        if (apis.oversizedMetadata.has(threadId)) {
+          return new Response(OVERSIZED_BODY)
+        }
+
+        return thread ? json(200, thread) : json(404, {})
+      }
+
+      const thread = apis.threads[threadId]
 
       if (!thread) {
         return json(404, {})
       }
 
+      if (format === 'minimal') {
+        const messages = (thread.messages ?? []) as Array<{
+          id?: string
+          internalDate?: string
+        }>
+
+        return json(200, {
+          id: threadId,
+          messages: messages.map(message => ({
+            id: message.id,
+            internalDate: message.internalDate,
+          })),
+        })
+      }
+
       return apis.oversizedThread
-        ? new Response('x'.repeat(3 * 1024 * 1024 + 10))
+        ? new Response(OVERSIZED_BODY)
         : json(200, thread)
     }
 
@@ -179,12 +282,12 @@ function header(name: string, value: string) {
 function metadataMessage(
   id: string,
   threadId: string,
-  overrides: { subject?: string, snippet?: string } = {},
+  overrides: { subject?: string, snippet?: string, internalDate?: string } = {},
 ) {
   return {
     id,
     threadId,
-    internalDate: '1763719200000',
+    internalDate: overrides.internalDate ?? '1763719200000',
     snippet: overrides.snippet ?? 'Meet &#39;tomorrow&#39;',
     payload: {
       headers: [
@@ -269,6 +372,8 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
     gmail?: boolean
     drive?: boolean
     priorCalls?: number
+    chatPublicId?: string
+    priorParts?: unknown[]
   } = {}) {
     const { buildGoogleSendToolCandidates } = await import(
       '~~/server/utils/tool-approval/google-send-candidates'
@@ -276,17 +381,44 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
 
     return await buildGoogleSendToolCandidates({
       userId: input.owner ?? userId,
-      chatPublicId: 'chat-1',
+      chatPublicId: input.chatPublicId ?? 'chat-1',
       priorCalls: input.priorCalls ?? 0,
       driveActive: input.drive ?? false,
       byoActive: true,
       gmailActive: input.gmail ?? true,
+      ...(input.priorParts ? { priorParts: input.priorParts } : {}),
       logger: { set: (values: unknown) => mocks.logged.push(values) },
     })
   }
 
   async function tools(input: Parameters<typeof candidates>[0] = {}) {
     return (await candidates(input)).tools as unknown as ToolMap
+  }
+
+  function forgetRequests() {
+    apis.requests.length = 0
+    apis.fetch.mockClear()
+  }
+
+  /**
+   * Tools whose send already ran a Gmail search that returned these
+   * threads, so the thread read and a reply accept them.
+   */
+  async function toolsKnowingThreads(
+    threadIds: string[] = ['t1'],
+    input: Parameters<typeof candidates>[0] = {},
+  ) {
+    const built = await tools(input)
+    const saved = apis.list.body
+
+    apis.list.body = {
+      messages: threadIds.map(id => ({ id: `seed-${id}`, threadId: id })),
+    }
+    await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'seed' }, built)
+    apis.list.body = saved
+    forgetRequests()
+
+    return built
   }
 
   async function run(name: string, input: unknown, built?: ToolMap) {
@@ -342,7 +474,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
   })
 
   describe('when they are offered', () => {
-    it('offers all four tools to the admin owner with every scope', async () => {
+    it('offers all five tools to the admin owner with every scope', async () => {
       const built = await candidates({ gmail: true })
 
       expect([...built.entries.keys()].sort()).toEqual(
@@ -363,6 +495,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         [GOOGLE_GMAIL_READ_THREAD_TOOL_NAME]: 'read',
         [GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME]: 'write',
         [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: 'read',
+        [GOOGLE_DRIVE_READ_FOUND_TOOL_NAME]: 'read',
       })
       expect(
         [...built.entries.values()].every((entry) => {
@@ -382,23 +515,32 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         [GOOGLE_GMAIL_READ_THREAD_TOOL_NAME]: 'google',
         [GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME]: null,
         [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: 'google',
+        [GOOGLE_DRIVE_READ_FOUND_TOOL_NAME]: 'google',
       })
     })
 
-    it('offers only Drive search without the Gmail flag', async () => {
+    it('offers only the Drive tools without the Gmail flag', async () => {
       const built = await candidates({ gmail: false })
 
-      expect([...built.entries.keys()]).toEqual([GOOGLE_DRIVE_SEARCH_TOOL_NAME])
+      expect([...built.entries.keys()]).toEqual([
+        GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+        GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+      ])
     })
 
     it.each([
       ['gmail.readonly', [GOOGLE_SCOPES.gmailCompose, GOOGLE_SCOPES.driveReadonly],
-        [GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME, GOOGLE_DRIVE_SEARCH_TOOL_NAME]],
+        [
+          GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
+          GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+        ]],
       ['gmail.compose', [GOOGLE_SCOPES.gmailReadonly, GOOGLE_SCOPES.driveReadonly],
         [
           GOOGLE_GMAIL_SEARCH_TOOL_NAME,
           GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
           GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
         ]],
       ['drive.readonly', [GOOGLE_SCOPES.gmailReadonly, GOOGLE_SCOPES.gmailCompose],
         [
@@ -514,7 +656,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           })).tools).length
         }
 
-        expect(await register()).toBe(4)
+        expect(await register()).toBe(5)
         expect(await register({ toolCallingAllowed: false })).toBe(0)
         expect(await register({
           providerToolsStayCallable: true,
@@ -523,7 +665,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         expect(await register({
           providerToolsStayCallable: true,
           holdsGoogleData: true,
-        })).toBe(4)
+        })).toBe(5)
         expect(await register({
           mayReceiveGoogleData: async () => false,
         })).toBe(0)
@@ -575,7 +717,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
 
         expect(without.candidates.entries.size).toBe(0)
         expect(without.gatewaySafeguards).toBe(false)
-        expect(withData.candidates.entries.size).toBe(4)
+        expect(withData.candidates.entries.size).toBe(5)
         expect(withData.gatewaySafeguards).toBe(true)
       })
   })
@@ -590,8 +732,11 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         ],
       }
       apis.messages = {
-        m1: metadataMessage('m1', 't1', { snippet: `${CLOSING_TAG} ${ATTACKER_TEXT}` }),
-        m2: metadataMessage('m2', 't1'),
+        m1: metadataMessage('m1', 't1', {
+          snippet: `${CLOSING_TAG} ${ATTACKER_TEXT}`,
+          internalDate: '1763719200000',
+        }),
+        m2: metadataMessage('m2', 't1', { internalDate: '1763719100000' }),
         m3: metadataMessage('m3', 't2', { subject: `=?UTF-8?B?${
           Buffer.from('Привіт 🍕').toString('base64')
         }?=` }),
@@ -645,17 +790,77 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
       expect(model.value).toContain(SECRET_SUBJECT)
     })
 
-    it('asks Gmail for a small page, without spam or trash', async () => {
-      await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'q', limit: 3 })
+    it('lists threads, not messages, without spam or trash, with field masks',
+      async () => {
+        await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'q', limit: 3 })
 
-      const listUrl = new URL(gmailUrls()[0]!)
+        const [listUrl, ...metadataUrls] = gmailUrls().map(url => new URL(url))
 
-      expect(listUrl.pathname).toBe('/gmail/v1/users/me/messages')
-      expect(listUrl.searchParams.get('q')).toBe('q')
-      expect(listUrl.searchParams.get('maxResults')).toBe('3')
-      expect(listUrl.searchParams.get('includeSpamTrash')).toBe('false')
-      expect(apis.requests[0]!.authorization).toBe('Bearer byo-access-token')
-      expect(apis.requests.every(request => request.method === 'GET')).toBe(true)
+        expect(listUrl!.pathname).toBe('/gmail/v1/users/me/threads')
+        expect(listUrl!.searchParams.get('q')).toBe('q')
+        expect(listUrl!.searchParams.get('maxResults')).toBe('3')
+        expect(listUrl!.searchParams.get('includeSpamTrash')).toBe('false')
+        expect(listUrl!.searchParams.get('fields')).toBe('threads(id)')
+        expect(metadataUrls.map(url => url.pathname)).toEqual([
+          '/gmail/v1/users/me/threads/t1',
+          '/gmail/v1/users/me/threads/t2',
+        ])
+        expect(metadataUrls.every((url) => {
+          return url.searchParams.get('format') === 'metadata'
+            && url.searchParams.get('fields')?.startsWith('id,messages(')
+        })).toBe(true)
+        expect(apis.requests[0]!.authorization).toBe('Bearer byo-access-token')
+        expect(apis.requests.every(request => request.method === 'GET'))
+          .toBe(true)
+      })
+
+    it('returns as many threads as asked even when one thread has many hits',
+      async () => {
+        apis.list.body = {
+          messages: [
+            ...Array.from({ length: 6 }, (_, index) => {
+              return { id: `x${index}`, threadId: 'busy' }
+            }),
+            { id: 'y1', threadId: 'quiet1' },
+            { id: 'y2', threadId: 'quiet2' },
+          ],
+        }
+
+        for (const message of apis.list.body.messages as Array<{
+          id: string
+          threadId: string
+        }>) {
+          apis.messages[message.id] = metadataMessage(
+            message.id,
+            message.threadId,
+          )
+        }
+
+        const output = await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, {
+          query: 'q',
+          limit: 3,
+        })
+
+        expect(output.references.map((reference: { id: string }) => {
+          return reference.id
+        })).toEqual(['busy', 'quiet1', 'quiet2'])
+      })
+
+    it('names the newest message of each thread by Gmail\'s own timestamp',
+      async () => {
+        const output = await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'q' })
+
+        expect(output.threads).toContain('message_id: m1')
+        expect(output.threads).not.toContain('message_id: m2')
+      })
+
+    it('skips a thread whose listing is too large and says so', async () => {
+      apis.oversizedMetadata.add('t2')
+
+      const output = await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'q' })
+
+      expect(output.count).toBe(1)
+      expect(output.note).toContain('too long to list here')
     })
 
     it('rejects an empty query, a long query and a page over the cap',
@@ -697,7 +902,10 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         })
       }
 
-      const output = await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'big' })
+      const output = await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, {
+        query: 'big',
+        limit: 10,
+      })
 
       expect(
         new TextEncoder().encode(JSON.stringify(output)).byteLength,
@@ -707,6 +915,16 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
   })
 
   describe('gmail read thread', () => {
+    async function readThread(threadId = 't1') {
+      const built = await toolsKnowingThreads([threadId])
+
+      return await run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId },
+        built,
+      )
+    }
+
     const html = '<html><head><style>p{color:red}</style></head><body>'
       + '<p>Hi <b>there</b></p><script>alert(1)</script><!-- hidden -->'
       + '<a href="https://x.example/pay">pay here</a>'
@@ -744,9 +962,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           }],
         }
 
-        const output = await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-          threadId: 't1',
-        })
+        const output = await readThread()
         const content = output.content as string
 
         expect(content).toContain('Hi there')
@@ -786,9 +1002,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           )],
         }
 
-        const output = await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-          threadId: 't1',
-        })
+        const output = await readThread()
         const content = output.content as string
 
         expect(content).toContain('Hello world gpj.exe')
@@ -818,9 +1032,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         }],
       }
 
-      const content = (await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-        threadId: 't1',
-      })).content as string
+      const content = (await readThread()).content as string
 
       expect(content).toContain('subject: Café menu')
       expect(content).toContain('café au lait')
@@ -835,9 +1047,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           }),
         }
 
-        const output = await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-          threadId: 't1',
-        })
+        const output = await readThread()
 
         expect(output.isTruncated).toBe(true)
         expect(output.thread.messageCount).toBe(30)
@@ -856,22 +1066,99 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         messages: [fullMessage(1, 'w'.repeat(20_000))],
       }
 
-      const output = await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-        threadId: 't1',
-      })
+      const output = await readThread()
 
       expect(output.isTruncated).toBe(true)
       expect(output.content).toContain('This message was cut at 8000')
     })
 
-    it('answers a thread over the size cap with a fixed sentence', async () => {
-      apis.threads.t1 = { id: 't1', messages: [fullMessage(1, 'a')] }
-      apis.oversizedThread = true
+    it('says so when the newest message alone overflows the answer',
+      async () => {
+        const attachments = Array.from({ length: 20 }, (_, index) => {
+          return {
+            mimeType: 'application/pdf',
+            filename: `${index}${'🍕'.repeat(119)}`,
+            body: { size: 10 },
+          }
+        })
 
-      expect(await rejectionOf(run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-        threadId: 't1',
-      }))).toContain('too large to read here')
-    })
+        apis.threads.t1 = {
+          id: 't1',
+          messages: [fullMessage(1, '🍕'.repeat(8000), attachments)],
+        }
+
+        const built = await toolsKnowingThreads(['t1'])
+        const output = await run(
+          GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+          { threadId: 't1' },
+          built,
+        )
+
+        expect(output.isTruncated).toBe(true)
+        expect(output.truncationNote).toContain('newest message was longer')
+        expect(
+          new TextEncoder().encode(JSON.stringify(output)).byteLength,
+        ).toBeLessThanOrEqual(GOOGLE_TOOL_OUTPUT_MAX_BYTES)
+      })
+
+    it('reads a thread over the size cap message by message, newest first',
+      async () => {
+        const messages = Array.from({ length: 25 }, (_, index) => {
+          return fullMessage(index + 1, `message-${index + 1} ${'y'.repeat(200)}`)
+        })
+
+        apis.threads.t1 = { id: 't1', messages }
+
+        for (const message of messages) {
+          apis.messages[message.id] = message
+        }
+
+        apis.oversizedMessages.add('m24')
+
+        const built = await toolsKnowingThreads(['t1'])
+
+        apis.oversizedThread = true
+
+        const output = await run(
+          GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+          { threadId: 't1' },
+          built,
+        )
+        const paths = gmailUrls().map(url => new URL(url))
+        const messageReads = paths.filter((url) => {
+          return url.pathname.startsWith('/gmail/v1/users/me/messages/')
+        })
+
+        expect(paths[0]!.searchParams.get('format')).toBe('full')
+        expect(paths[1]!.searchParams.get('format')).toBe('minimal')
+        expect(messageReads.map(url => url.pathname.split('/').at(-1)))
+          .toEqual(Array.from({ length: 20 }, (_, index) => `m${25 - index}`))
+        expect(paths.length).toBeLessThanOrEqual(22)
+        expect(output.content).toContain('message-25')
+        expect(output.content).not.toContain('message-24 ')
+        expect(output.content).not.toContain('message-5 ')
+        expect(output.thread).toMatchObject({
+          messageCount: 25,
+          skippedMessages: 1,
+        })
+        expect(output.truncationNote).toContain('too large to read here')
+        expect(output.truncationNote).toContain('older messages')
+        expect((output.content as string).indexOf('message-23'))
+          .toBeLessThan((output.content as string).indexOf('message-25'))
+      })
+
+    it('sorts messages by Gmail\'s timestamp, not by the answer order',
+      async () => {
+        apis.threads.t1 = {
+          id: 't1',
+          messages: [fullMessage(3, 'third'), fullMessage(1, 'first')],
+        }
+
+        const content = (await readThread()).content as string
+
+        expect(content.indexOf('first')).toBeLessThan(content.indexOf('third'))
+        expect(content).toContain('message 2 of 2')
+      })
 
     it('refuses an id of the wrong shape before any request', async () => {
       const message = await rejectionOf(run(
@@ -883,10 +1170,164 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
       expect(apis.fetch).not.toHaveBeenCalled()
     })
 
-    it('answers a missing thread with a sentence', async () => {
-      expect(await rejectionOf(run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, {
-        threadId: 'nope',
-      }))).toContain('no message or thread')
+    it('refuses a thread id no search of this chat returned, before any '
+      + 'request', async () => {
+      apis.threads.t1 = { id: 't1', messages: [fullMessage(1, 'secret')] }
+
+      const message = await rejectionOf(run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId: 't1' },
+      ))
+
+      expect(message).toContain('Search first with google__gmail_search')
+      expect(apis.fetch).not.toHaveBeenCalled()
+    })
+
+    it('answers a thread that vanished after the search with a sentence',
+      async () => {
+        apis.threads.t9 = { id: 't9', messages: [fullMessage(1, 'gone')] }
+
+        const built = await toolsKnowingThreads(['t9'])
+
+        delete apis.threads.t9
+
+        expect(await rejectionOf(run(
+          GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+          { threadId: 't9' },
+          built,
+        ))).toContain('no message or thread')
+      })
+  })
+
+  describe('which thread ids a read accepts', () => {
+    const searchPart = (threadId: string, date = '2026-11-20T08:00:00.000Z') => {
+      return {
+        type: `tool-${GOOGLE_GMAIL_SEARCH_TOOL_NAME}`,
+        toolCallId: `search-${threadId}`,
+        state: 'output-available',
+        input: { query: 'x' },
+        output: {
+          references: [{ id: threadId, kind: 'gmail-thread', date }],
+          bodyRemoved: true,
+          note: 'kept',
+        },
+      }
+    }
+
+    beforeEach(() => {
+      apis.threads.t7 = { id: 't7', messages: [fullMessage(1, 'stored')] }
+    })
+
+    it('accepts a thread a stored search of this chat returned', async () => {
+      const chat = await seedChat(testDb.db, userId)
+
+      await seedMessage(
+        testDb.db,
+        chat.id,
+        'assistant',
+        [searchPart('t7')],
+        new Date('2026-11-20T08:00:00.000Z'),
+      )
+
+      const built = await tools({ chatPublicId: chat.id })
+      const output = await run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId: 't7' },
+        built,
+      )
+
+      expect(output.content).toContain('stored')
+    })
+
+    it('never accepts a thread from another user\'s chat', async () => {
+      const chat = await seedChat(testDb.db, otherUserId)
+
+      await seedMessage(
+        testDb.db,
+        chat.id,
+        'assistant',
+        [searchPart('t7')],
+        new Date('2026-11-20T08:00:00.000Z'),
+      )
+
+      const built = await tools({ chatPublicId: chat.id })
+
+      expect(await rejectionOf(run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId: 't7' },
+        built,
+      ))).toContain('Search first')
+    })
+
+    it('accepts a thread a search of the resumed reply returned', async () => {
+      const built = await tools({ priorParts: [searchPart('t7')] })
+      const output = await run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId: 't7' },
+        built,
+      )
+
+      expect(output.content).toContain('stored')
+    })
+
+    it('ignores a thread id that only a read, a draft or a Drive part holds',
+      async () => {
+        const built = await tools({
+          priorParts: [{
+            ...searchPart('t7'),
+            type: `tool-${GOOGLE_GMAIL_READ_THREAD_TOOL_NAME}`,
+          }, {
+            ...searchPart('t7'),
+            type: `tool-${GOOGLE_DRIVE_SEARCH_TOOL_NAME}`,
+          }],
+        })
+
+        expect(await rejectionOf(run(
+          GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+          { threadId: 't7' },
+          built,
+        ))).toContain('Search first')
+      })
+
+    it('names the thread by its day and links it for the connected account',
+      async () => {
+        const built = await candidates({ priorParts: [searchPart('t7')] })
+        const entry = built.entries.get(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME)!
+
+        expect(await entry.describe!({ threadId: 't7' }))
+          .toBe('Read the email thread from 2026-11-20 in your Gmail')
+        expect(await entry.describeLink!({ threadId: 't7' })).toBe(
+          'https://mail.google.com/mail/?authuser=owner%40example.test#all/t7',
+        )
+        expect(entry.failsWithoutRunning!({ threadId: 't7' })).toBe(false)
+        expect(await entry.describe!({ threadId: 'zz' })).toBeNull()
+        expect(await entry.describeLink!({ threadId: 'zz' })).toBeNull()
+      })
+
+    it('refuses without asking an unknown id, even if a search in the same '
+      + 'step returns it before the read runs', async () => {
+      const built = await candidates()
+      const entry = built.entries.get(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME)!
+      const toolMap = built.tools as unknown as ToolMap
+
+      expect(entry.failsWithoutRunning!({ threadId: 't7' })).toBe(true)
+
+      apis.list.body = { messages: [{ id: 'm7', threadId: 't7' }] }
+      await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'x' }, toolMap)
+
+      expect(await rejectionOf(run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId: 't7' },
+        toolMap,
+      ))).toContain('Search first')
+
+      const output = await run(
+        GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+        { threadId: 't7' },
+        toolMap,
+      )
+
+      expect(output.content).toContain('stored')
     })
   })
 
@@ -976,6 +1417,28 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         ))).toContain('not available for this account')
         expect(apis.fetch).not.toHaveBeenCalled()
       })
+
+    it('checks the Gmail flag again on every Gmail call', async () => {
+      const built = await tools()
+
+      await testDb.db.delete(schema.featureOptIns)
+        .where(eq(schema.featureOptIns.flag, 'google.gmail'))
+
+      expect(await rejectionOf(run(
+        GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+        { query: 'x' },
+        built,
+      ))).toContain('not available for this account')
+      expect(apis.fetch).not.toHaveBeenCalled()
+
+      const output = await run(
+        GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+        { query: 'x' },
+        built,
+      )
+
+      expect(output.count).toBe(0)
+    })
   })
 
   describe('gmail create draft', () => {
@@ -1005,8 +1468,13 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
 
         expect(draftRequests()).toHaveLength(1)
         expect(request!.method).toBe('POST')
-        expect(request!.url)
+
+        const draftUrl = new URL(request!.url)
+
+        expect(draftUrl.origin + draftUrl.pathname)
           .toBe('https://gmail.googleapis.com/gmail/v1/users/me/drafts')
+        expect(draftUrl.searchParams.get('fields'))
+          .toBe('id,message(id,threadId)')
         expect(request!.authorization).toBe('Bearer byo-access-token')
 
         const message = decodeRaw(request!)
@@ -1066,10 +1534,12 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           ],
         }
 
+        const built = await toolsKnowingThreads(['t1'])
+
         await run(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME, {
           ...draft,
           replyToThreadId: 't1',
-        })
+        }, built)
 
         const lookup = new URL(gmailUrls()[0]!)
         const message = decodeRaw(draftRequests()[0]!)
@@ -1081,7 +1551,8 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         expect(JSON.parse(draftRequests()[0]!.body).message.threadId).toBe('t1')
       })
 
-    it('leaves out a hostile Message-ID instead of copying it', async () => {
+    it('refuses a reply whose thread has no usable Message-ID instead of '
+      + 'drafting it unthreaded', async () => {
       apis.threads.t1 = {
         id: 't1',
         messages: [{
@@ -1094,32 +1565,59 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         }],
       }
 
-      await run(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME, {
-        ...draft,
-        replyToThreadId: 't1',
-      })
-
-      const message = decodeRaw(draftRequests()[0]!)
-
-      expect(message).not.toContain('In-Reply-To')
-      expect(message).not.toContain('evil@example.com')
-      expect(message).not.toMatch(/^Bcc:/m)
-    })
-
-    it('needs the Gmail read scope as well to reply in a thread', async () => {
-      await testDb.db.delete(schema.googleConnections)
-      await seedConnection({ scopes: ['openid', GOOGLE_SCOPES.gmailCompose] })
-
-      const built = await tools()
+      const built = await toolsKnowingThreads(['t1'])
       const message = await rejectionOf(run(
         GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
         { ...draft, replyToThreadId: 't1' },
         built,
       ))
 
-      expect(message).toContain('without the access this tool needs')
-      expect(apis.fetch).not.toHaveBeenCalled()
+      expect(message).toContain('no message id Besidka can reply to safely')
+      expect(draftRequests()).toHaveLength(0)
+      expect(JSON.stringify(apis.requests)).not.toContain('evil@example.com')
     })
+
+    it('refuses a reply to a thread no search of this chat returned',
+      async () => {
+        apis.threads.t1 = { id: 't1', messages: [fullMessage(1, 'x')] }
+
+        const built = await candidates()
+        const entry = built.entries.get(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME)!
+
+        expect(entry.failsWithoutRunning!({ ...draft, replyToThreadId: 't1' }))
+          .toBe(true)
+        expect(entry.failsWithoutRunning!(draft)).toBe(false)
+        expect(await rejectionOf(run(
+          GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
+          { ...draft, replyToThreadId: 't1' },
+          built.tools as unknown as ToolMap,
+        ))).toContain('replyToThreadId must be a thread_id')
+        expect(apis.fetch).not.toHaveBeenCalled()
+      })
+
+    it('names the thread a reply goes to, with a link, on the card',
+      async () => {
+        apis.threads.t1 = { id: 't1', messages: [fullMessage(1, 'x')] }
+
+        const built = await candidates()
+        const toolMap = built.tools as unknown as ToolMap
+
+        apis.list.body = { messages: [{ id: 'm1', threadId: 't1' }] }
+        await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: 'x' }, toolMap)
+
+        const entry = built.entries.get(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME)!
+        const reply = { ...draft, replyToThreadId: 't1' }
+
+        expect(await entry.describe!(reply)).toBe(
+          'Create a Gmail draft "Lunch plans – Friday" to Alice Ünal '
+          + `<${DRAFT_RECIPIENT}> and 1 more, a reply in the email thread `
+          + 'from 2025-11-21',
+        )
+        expect(await entry.describeLink!(reply)).toBe(
+          'https://mail.google.com/mail/?authuser=owner%40example.test#all/t1',
+        )
+        expect(await entry.describeLink!(draft)).toBeNull()
+      })
 
     it.each([
       ['CRLF in the subject', { subject: 'Hi\r\nBcc: evil@example.com' }],
@@ -1141,6 +1639,22 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
       }],
       ['an unknown field', { send: true }],
       ['an over-long body', { body: 'a'.repeat(10_001) }],
+      ['an over-long subject', { subject: 'a'.repeat(201) }],
+      ['a subject of 101 emoji (202 UTF-16 units)', {
+        subject: '🍕'.repeat(101),
+      }],
+      ['the same address twice in another letter case', {
+        cc: [{ email: DRAFT_RECIPIENT.toUpperCase() }],
+      }],
+      ['a subject with a trailing space', { subject: 'Lunch ' }],
+      ['a blank display name', { to: [{ email: DRAFT_RECIPIENT, name: ' ' }] }],
+      ['a display name made of a Hangul filler', {
+        to: [{ email: DRAFT_RECIPIENT, name: String.fromCodePoint(0x3164) }],
+      }],
+      ['an encoded-word look-alike in an address', {
+        to: [{ email: '=?utf-8?q?x?=@example.com' }],
+      }],
+      ['a lone CR in the body', { body: 'a\rb' }],
     ])('refuses %s before any approval', async (_name, change) => {
       const schemaOf = (await tools())[GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME]!
         .inputSchema
@@ -1164,6 +1678,11 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         expect(schemaOf.safeParse(largest).success).toBe(true)
         expect(new TextEncoder().encode(JSON.stringify(largest)).byteLength)
           .toBeLessThan(64 * 1024)
+        expect(schemaOf.safeParse({
+          ...largest,
+          subject: '🍕'.repeat(100),
+          body: '🍕'.repeat(5000),
+        }).success).toBe(true)
       })
 
     it('summarizes a draft for the approval with its subject and recipient',
@@ -1229,7 +1748,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           date: '2026-11-20T10:00:00.000Z',
         })
         expect((output.files as string).split(CLOSING_TAG)).toHaveLength(2)
-        expect(output.note).toContain('cannot read')
+        expect(output.note).toContain(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME)
       })
 
     it('gives the model the names inside the frame only', async () => {
@@ -1294,6 +1813,159 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
     })
   })
 
+  describe('drive read found file', () => {
+    const docId = 'FILEID_ONE_1234'
+    const joiner = String.fromCodePoint(0x200D)
+
+    beforeEach(() => {
+      apis.driveFiles.body = {
+        files: [{
+          id: docId,
+          name: 'Plan.gdoc',
+          mimeType: 'application/vnd.google-apps.document',
+          modifiedTime: '2026-11-20T10:00:00.000Z',
+        }],
+      }
+      apis.driveMetadata[docId] = {
+        id: docId,
+        name: 'Plan',
+        mimeType: 'application/vnd.google-apps.document',
+        modifiedTime: '2026-11-20T10:00:00.000Z',
+      }
+      apis.driveContent[docId] = `# Plan\n\nKeep ${CLOSING_TAG.replace(
+        '_tool',
+        `${joiner}_tool`,
+      )} ${ATTACKER_TEXT}`
+    })
+
+    async function toolsKnowingFile() {
+      const built = await tools()
+
+      await run(GOOGLE_DRIVE_SEARCH_TOOL_NAME, { query: 'plan' }, built)
+      forgetRequests()
+
+      return built
+    }
+
+    it('reads an exported Doc into the frame and stores only a reference',
+      async () => {
+        const built = await toolsKnowingFile()
+        const output = await run(
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+          { fileId: docId },
+          built,
+        )
+        const content = output.content as string
+        const [metadataUrl, exportUrl] = gmailUrls().map(url => new URL(url))
+
+        expect(metadataUrl!.host).toBe('www.googleapis.com')
+        expect(metadataUrl!.searchParams.get('supportsAllDrives')).toBe('true')
+        expect(exportUrl!.pathname).toBe(`/drive/v3/files/${docId}/export`)
+        expect(exportUrl!.searchParams.get('mimeType')).toBe('text/markdown')
+        expect(content.startsWith('<untrusted_tool_result')).toBe(true)
+        expect(content).toContain('# Plan')
+        expect(content).not.toContain(joiner)
+        expect(content.split(CLOSING_TAG)).toHaveLength(2)
+        expect(output.references).toEqual([{
+          id: docId,
+          kind: 'drive-file',
+          title: 'Plan',
+          link: `https://drive.google.com/open?id=${docId}`,
+          date: '2026-11-20T10:00:00.000Z',
+        }])
+        expect(built[GOOGLE_DRIVE_READ_FOUND_TOOL_NAME]!
+          .toModelOutput({ output }).value).not.toContain('drive.google.com')
+      })
+
+    it('cuts a long file at the output cap with a note and no paging',
+      async () => {
+        apis.driveContent[docId] = '🍕'.repeat(30_000)
+
+        const built = await toolsKnowingFile()
+        const output = await run(
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+          { fileId: docId },
+          built,
+        )
+
+        expect(output.isTruncated).toBe(true)
+        expect(output.truncationNote).toContain('only its start is shown')
+        expect(output.nextOffset).toBeUndefined()
+        expect(
+          new TextEncoder().encode(JSON.stringify(output)).byteLength,
+        ).toBeLessThanOrEqual(GOOGLE_TOOL_OUTPUT_MAX_BYTES)
+      })
+
+    it('answers a binary file as not readable without downloading it',
+      async () => {
+        apis.driveMetadata[docId] = {
+          id: docId,
+          name: 'scan.pdf',
+          mimeType: 'application/pdf',
+        }
+
+        const built = await toolsKnowingFile()
+        const output = await run(
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+          { fileId: docId },
+          built,
+        )
+
+        expect(output.readable).toBe(false)
+        expect(gmailUrls()).toHaveLength(1)
+      })
+
+    it('refuses an id no Drive search of this chat returned, also a picked '
+      + 'file id, before any request', async () => {
+      const built = await candidates({
+        priorParts: [{
+          type: 'tool-google__drive_read_file',
+          state: 'output-available',
+          output: { references: [{ id: docId, kind: 'drive-file' }] },
+        }],
+      })
+      const entry = built.entries.get(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME)!
+
+      expect(entry.failsWithoutRunning!({ fileId: docId })).toBe(true)
+      expect(await rejectionOf(run(
+        GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+        { fileId: docId },
+        built.tools as unknown as ToolMap,
+      ))).toContain('Search first with google__drive_search')
+      expect(apis.fetch).not.toHaveBeenCalled()
+    })
+
+    it('names the found file on the card and asks every time', async () => {
+      const built = await candidates()
+      const toolMap = built.tools as unknown as ToolMap
+
+      await run(GOOGLE_DRIVE_SEARCH_TOOL_NAME, { query: 'plan' }, toolMap)
+
+      const entry = built.entries.get(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME)!
+
+      expect(entry.userGrants?.chat ?? null).toBeNull()
+      expect(entry.taint).toBe('google')
+      expect(await entry.describe!({ fileId: docId })).toBe(
+        'Read "Plan.gdoc", found by a Google Drive search, from your Google '
+        + 'Drive',
+      )
+      expect(await entry.describeLink!({ fileId: docId }))
+        .toBe(`https://drive.google.com/open?id=${docId}`)
+    })
+
+    it('answers a Drive failure with a fixed sentence', async () => {
+      const built = await toolsKnowingFile()
+
+      apis.driveMetadata = {}
+
+      expect(await rejectionOf(run(
+        GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+        { fileId: docId },
+        built,
+      ))).toContain('no longer returns this file')
+    })
+  })
+
   describe('pacing and logs', () => {
     it('shares one call count with the Drive tools of the send', async () => {
       await seedConnection({
@@ -1354,13 +2026,15 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           messages: [fullMessage(1, 'Body text that is private')],
         }
 
-        await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: SECRET_QUERY })
-        await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, { threadId: 't1' })
+        const built = await tools()
+
+        await run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, { query: SECRET_QUERY }, built)
+        await run(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME, { threadId: 't1' }, built)
         await run(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME, {
           to: [{ email: DRAFT_RECIPIENT }],
           subject: 'Private subject',
           body: 'Private body',
-        })
+        }, built)
         apis.failure = { status: 500, reason: 'backendError' }
         await rejectionOf(run(GOOGLE_GMAIL_SEARCH_TOOL_NAME, {
           query: SECRET_QUERY,
@@ -1380,6 +2054,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         }
 
         expect(logged).toContain('gmailSearch')
+        expect(logged).toContain('gmailReadThread')
         expect(logged).toContain('gmailDraft')
       })
   })

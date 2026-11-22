@@ -177,11 +177,20 @@ interface ByoAccessSeedDb {
 export async function seedGoogleByoAccess(
   db: ByoAccessSeedDb,
   userId: number,
-  input: { admin?: boolean, grant?: boolean, optIn?: boolean } = {},
+  input: {
+    admin?: boolean
+    grant?: boolean
+    optIn?: boolean
+    gmail?: boolean
+  } = {},
 ): Promise<void> {
   const schema = await import('~~/server/db/schema')
   const { eq } = await import('drizzle-orm')
-  const flags = ['google.drive', 'google.byo']
+  const flags = [
+    'google.drive',
+    'google.byo',
+    ...(input.gmail ?? true ? ['google.gmail'] : []),
+  ]
 
   await db.update(schema.users)
     .set({ twoFactorEnabled: true })

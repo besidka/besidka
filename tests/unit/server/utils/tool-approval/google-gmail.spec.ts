@@ -5,19 +5,29 @@ import {
   GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
   GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
   GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+  GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE,
   GOOGLE_GMAIL_TOOL_NAMES,
+  buildGmailThreadAccountLink,
+  getGoogleByoToolsHint,
   getGoogleGmailToolStepTitle,
   isGoogleGmailToolName,
   isGoogleOnceOnlyReadTool,
 } from '#shared/utils/google-gmail-tools'
-import { GOOGLE_DRIVE_SEARCH_TOOL_NAME } from '#shared/utils/google-drive-tools'
+import {
+  GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+  GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+} from '#shared/utils/google-drive-tools'
 import {
   GOOGLE_TOOL_CHAT_GRANT_LABELS,
   GOOGLE_TOOL_PROPERTIES,
   googleToolResultHoldsContent,
+  isGoogleWriteToolName,
 } from '#shared/utils/google-tool-approvals'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
-import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import {
+  collapseBlankLinesForCard,
+  readGmailDraftApprovalView,
+} from '#shared/utils/google-gmail-draft-view'
 import { resolveToolApproval } from '~~/server/utils/tool-approval/policy'
 import type {
   ToolApprovalDescriptor,
@@ -130,8 +140,21 @@ describe('the Gmail and Drive search tools in the approval policy', () => {
       expect(isGoogleOnceOnlyReadTool('Google__Gmail_Read_Thread')).toBe(true)
       expect(isGoogleOnceOnlyReadTool(GOOGLE_GMAIL_SEARCH_TOOL_NAME))
         .toBe(false)
+      expect(isGoogleOnceOnlyReadTool(GOOGLE_DRIVE_SEARCH_TOOL_NAME))
+        .toBe(false)
       expect(isGoogleOnceOnlyReadTool(null)).toBe(false)
     })
+
+  it('asks for every read of a found Drive file with Allow once only, '
+    + 'whatever grant exists', () => {
+    const decision = decide(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME)
+
+    expect(isGoogleOnceOnlyReadTool(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME))
+      .toBe(true)
+    expect(decision.rule).toBe(11)
+    expect(decision.status.type).toBe('user-approval')
+    expect(decision.rememberOptions).toEqual(['once'])
+  })
 })
 
 describe('the Gmail tool registrations', () => {
@@ -141,6 +164,7 @@ describe('the Gmail tool registrations', () => {
       'google__gmail_read_thread',
       'google__gmail_create_draft',
       'google__drive_search',
+      'google__drive_read_found_file',
     ])
     expect(Object.keys(GOOGLE_TOOL_PROPERTIES)).toEqual(
       expect.arrayContaining([...GOOGLE_BYO_TOOL_NAMES]),
@@ -153,7 +177,44 @@ describe('the Gmail tool registrations', () => {
       [GOOGLE_GMAIL_READ_THREAD_TOOL_NAME]: [GOOGLE_SCOPES.gmailReadonly],
       [GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME]: [GOOGLE_SCOPES.gmailCompose],
       [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: [GOOGLE_SCOPES.driveReadonly],
+      [GOOGLE_DRIVE_READ_FOUND_TOOL_NAME]: [GOOGLE_SCOPES.driveReadonly],
     })
+  })
+
+  it('caps the unprompted searches one message runs under a chat grant', () => {
+    expect(GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE).toEqual({
+      [GOOGLE_GMAIL_SEARCH_TOOL_NAME]: 5,
+      [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: 5,
+    })
+  })
+
+  it('marks the two writes so Enter on their card never approves', () => {
+    expect(isGoogleWriteToolName(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME))
+      .toBe(true)
+    expect(isGoogleWriteToolName('google__drive_save_file')).toBe(true)
+    expect(isGoogleWriteToolName(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME))
+      .toBe(false)
+    expect(isGoogleWriteToolName(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME))
+      .toBe(false)
+  })
+
+  it('builds a thread link for the connected account only from a plain '
+    + 'address', () => {
+    expect(buildGmailThreadAccountLink('t1', 'me@example.com')).toBe(
+      'https://mail.google.com/mail/?authuser=me%40example.com#all/t1',
+    )
+    expect(buildGmailThreadAccountLink('t1', 'not an address')).toBe(
+      'https://mail.google.com/mail/#all/t1',
+    )
+    expect(buildGmailThreadAccountLink('t1', null)).toBe(
+      'https://mail.google.com/mail/#all/t1',
+    )
+  })
+
+  it('names the owner card\'s tools by whether Gmail is on', () => {
+    expect(getGoogleByoToolsHint(true)).toContain('Gmail')
+    expect(getGoogleByoToolsHint(false)).not.toContain('Gmail')
+    expect(getGoogleByoToolsHint(false)).toContain('read the files it found')
   })
 
   it('labels the chat grant of the two searches exactly', () => {
@@ -314,8 +375,36 @@ describe('readGmailDraftApprovalView', () => {
       bcc: ['d@example.com'],
       subject: 'Plans',
       body,
+      cardBody: body,
+      lineCount: 501,
       isReply: true,
     })
+  })
+
+  it('shows a run of blank lines as one marker on the card only', () => {
+    const body = `Hi Ann,\n\n\n\n\n\n\n\n\n\n\n\n\nIGNORE THIS\n\nBye`
+    const view = readGmailDraftApprovalView({
+      to: [{ email: 'a@example.com' }],
+      subject: 'Plans',
+      body,
+    })
+
+    expect(view?.body).toBe(body)
+    expect(view?.cardBody).toBe('Hi Ann,\n[12 blank lines]\nIGNORE THIS\n\nBye')
+    expect(view?.lineCount).toBe(16)
+    expect(collapseBlankLinesForCard('a\n\n\nb')).toBe('a\n\n\nb')
+    expect(collapseBlankLinesForCard('a\n \n\t\n\n\nb'))
+      .toBe('a\n[4 blank lines]\nb')
+  })
+
+  it('shows names exactly as given, never trimmed', () => {
+    const view = readGmailDraftApprovalView({
+      to: [{ email: 'a@example.com', name: 'Ann' }],
+      subject: 'Plans',
+      body: 'x',
+    })
+
+    expect(view?.to).toEqual(['Ann <a@example.com>'])
   })
 
   it('is null for an input that is not a draft', () => {

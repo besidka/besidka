@@ -43,8 +43,24 @@ describe('the share dialog names for Gmail references', () => {
                         },
                         { id: 't2', kind: 'gmail-thread' },
                         { id: 't3', kind: 'gmail-thread', date: 'not a date' },
+                        {
+                          id: 't4',
+                          kind: 'gmail-thread',
+                          date: '2026-11-21T18:00:00.000Z',
+                        },
                         { id: 'r-1', kind: 'gmail-draft' },
                       ],
+                    },
+                  },
+                  {
+                    type: 'tool-google__gmail_read_thread',
+                    state: 'output-available',
+                    output: {
+                      references: [{
+                        id: 't1',
+                        kind: 'gmail-thread',
+                        date: '2026-11-21T10:00:00.000Z',
+                      }],
                     },
                   },
                   {
@@ -68,6 +84,8 @@ describe('the share dialog names for Gmail references', () => {
       expect(names).toEqual([
         'Email thread from 2026-11-21',
         'Email thread',
+        'Email thread (2)',
+        'Email thread from 2026-11-21 (2)',
         'Budget.xlsx',
       ])
     })

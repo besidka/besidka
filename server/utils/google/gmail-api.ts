@@ -1,5 +1,6 @@
 import {
   GOOGLE_GMAIL_ID_SHAPE,
+  GOOGLE_GMAIL_SEARCH_THREAD_RESPONSE_MAX_BYTES,
   GOOGLE_GMAIL_THREAD_RESPONSE_MAX_BYTES,
 } from '#shared/utils/google-gmail-tools'
 import { readReason } from '~~/server/utils/google/drive'
@@ -15,9 +16,15 @@ import type {
 const GMAIL_MESSAGES_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages'
 const GMAIL_THREADS_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/threads'
 const GMAIL_DRAFTS_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/drafts'
-const MESSAGE_METADATA_FIELDS = 'id,threadId,internalDate,snippet,'
-  + 'payload/headers'
-const REPLY_METADATA_FIELDS = 'messages(payload/headers)'
+const THREAD_LIST_FIELDS = 'threads(id)'
+const THREAD_METADATA_FIELDS = 'id,messages(id,internalDate,snippet,'
+  + 'payload/headers)'
+const THREAD_FULL_FIELDS = 'id,messages(id,internalDate,payload)'
+const THREAD_MINIMAL_FIELDS = 'id,messages(id,internalDate)'
+const MESSAGE_FULL_FIELDS = 'id,internalDate,payload'
+const REPLY_METADATA_FIELDS = 'messages(internalDate,payload/headers)'
+const DRAFT_FIELDS = 'id,message(id,threadId)'
+const SEARCH_HEADERS = ['From', 'Subject', 'Date'] as const
 const MESSAGE_ID_HEADERS = ['Message-ID', 'References'] as const
 
 export interface GmailRequestContext {
@@ -94,6 +101,19 @@ export function classifyGmailFailure(
   return status === 400 ? 'bad_request' : 'failed'
 }
 
+/**
+ * The failure code of a Google request that threw instead of answering:
+ * an answer over its byte cap is `too_large`, anything else (a timeout, a
+ * refused redirect, no connection) is `failed`.
+ */
+export function classifyGoogleRequestException(
+  exception: unknown,
+): GmailFailureCode {
+  const message = exception instanceof Error ? exception.message : ''
+
+  return message === GOOGLE_RESPONSE_TOO_LARGE_MESSAGE ? 'too_large' : 'failed'
+}
+
 function toFetchOptions(
   context: GmailRequestContext,
   extra: GoogleFetchOptions = {},
@@ -111,6 +131,14 @@ function assertSafeId(id: string): void {
   if (!GOOGLE_GMAIL_ID_SHAPE.test(id)) {
     throw new TypeError('Invalid Gmail id')
   }
+}
+
+function queryOf(entries: ReadonlyArray<readonly [string, string]>): string {
+  return entries
+    .map(([key, value]) => {
+      return `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+    })
+    .join('&')
 }
 
 async function requestJson(
@@ -132,36 +160,110 @@ async function requestJson(
 
     return { ok: true, value: response.body }
   } catch (exception) {
-    const message = exception instanceof Error ? exception.message : ''
-
-    return {
-      ok: false,
-      code: message === GOOGLE_RESPONSE_TOO_LARGE_MESSAGE
-        ? 'too_large'
-        : 'failed',
-    }
+    return { ok: false, code: classifyGoogleRequestException(exception) }
   }
 }
 
+async function getJson(
+  url: string,
+  context: GmailRequestContext,
+  extra: GoogleFetchOptions = {},
+): Promise<GmailResult<Record<string, unknown>>> {
+  return await requestJson(
+    url,
+    { method: 'GET', headers: headersOf(context) },
+    toFetchOptions(context, extra),
+  )
+}
+
 /**
- * `users.messages.list` with the user's search words in `q` and a small
- * `maxResults`. Spam and trash stay out (`includeSpamTrash` false).
+ * `users.threads.list` with the user's search words in `q`: exactly up to
+ * `maxResults` thread ids, spam and trash left out, only the ids
+ * requested.
  */
-export async function listGmailMessages(
+export async function listGmailThreads(
   query: string,
   maxResults: number,
   context: GmailRequestContext,
-): Promise<GmailResult<Array<{ id: string, threadId: string }>>> {
-  const url = `${GMAIL_MESSAGES_URL}?${new URLSearchParams({
-    q: query,
-    maxResults: String(maxResults),
-    includeSpamTrash: 'false',
-    fields: 'messages(id,threadId)',
-  }).toString()}`
-  const result = await requestJson(
-    url,
-    { method: 'GET', headers: headersOf(context) },
-    toFetchOptions(context),
+): Promise<GmailResult<string[]>> {
+  const result = await getJson(`${GMAIL_THREADS_URL}?${queryOf([
+    ['q', query],
+    ['maxResults', String(maxResults)],
+    ['includeSpamTrash', 'false'],
+    ['fields', THREAD_LIST_FIELDS],
+  ])}`, context)
+
+  if (!result.ok) {
+    return result
+  }
+
+  const threads = Array.isArray(result.value.threads)
+    ? result.value.threads
+    : []
+  const ids = threads.flatMap((thread: unknown) => {
+    const id = (thread as { id?: unknown } | null)?.id
+
+    return typeof id === 'string' && GOOGLE_GMAIL_ID_SHAPE.test(id) ? [id] : []
+  })
+
+  return { ok: true, value: [...new Set(ids)].slice(0, maxResults) }
+}
+
+/**
+ * `users.threads.get` with `format=metadata`, the From, Subject and Date
+ * headers and only the fields a search line needs, read with a larger cap
+ * than the default because a long thread lists every message.
+ */
+export async function getGmailThreadMetadata(
+  threadId: string,
+  context: GmailRequestContext,
+): Promise<GmailResult<Record<string, unknown>>> {
+  assertSafeId(threadId)
+
+  return await getJson(`${GMAIL_THREADS_URL}/${encodeURIComponent(threadId)}?${
+    queryOf([
+      ['format', 'metadata'],
+      ...SEARCH_HEADERS.map(name => ['metadataHeaders', name] as const),
+      ['fields', THREAD_METADATA_FIELDS],
+    ])
+  }`, context, {
+    maxResponseBytes: GOOGLE_GMAIL_SEARCH_THREAD_RESPONSE_MAX_BYTES,
+  })
+}
+
+/**
+ * `users.threads.get` with `format=full` and a `fields` mask (message id,
+ * timestamp and payload only). The answer may be large (the bodies are
+ * base64), so it is read with its own cap and a thread over it is a
+ * `too_large` failure; the caller then reads it message by message.
+ */
+export async function getGmailThread(
+  threadId: string,
+  context: GmailRequestContext,
+): Promise<GmailResult<Record<string, unknown>>> {
+  assertSafeId(threadId)
+
+  return await getJson(`${GMAIL_THREADS_URL}/${encodeURIComponent(threadId)}?${
+    queryOf([['format', 'full'], ['fields', THREAD_FULL_FIELDS]])
+  }`, context, { maxResponseBytes: GOOGLE_GMAIL_THREAD_RESPONSE_MAX_BYTES })
+}
+
+/**
+ * The message ids and timestamps of a thread (`format=minimal`), for
+ * reading a thread too large for one answer message by message.
+ */
+export async function getGmailThreadMessageIds(
+  threadId: string,
+  context: GmailRequestContext,
+): Promise<GmailResult<Array<{ id: string, internalDate: number }>>> {
+  assertSafeId(threadId)
+
+  const result = await getJson(
+    `${GMAIL_THREADS_URL}/${encodeURIComponent(threadId)}?${
+      queryOf([['format', 'minimal'], ['fields', THREAD_MINIMAL_FIELDS]])
+    }`,
+    context,
+    { maxResponseBytes: GOOGLE_GMAIL_SEARCH_THREAD_RESPONSE_MAX_BYTES },
   )
 
   if (!result.ok) {
@@ -175,66 +277,39 @@ export async function listGmailMessages(
   return {
     ok: true,
     value: messages.flatMap((message: unknown) => {
-      const record = message as { id?: unknown, threadId?: unknown }
+      const record = message as { id?: unknown, internalDate?: unknown } | null
+      const internalDate = Number(record?.internalDate)
 
       return typeof record?.id === 'string'
-        && typeof record.threadId === 'string'
         && GOOGLE_GMAIL_ID_SHAPE.test(record.id)
-        && GOOGLE_GMAIL_ID_SHAPE.test(record.threadId)
-        ? [{ id: record.id, threadId: record.threadId }]
+        ? [{
+          id: record.id,
+          internalDate: Number.isFinite(internalDate) ? internalDate : 0,
+        }]
         : []
     }),
   }
 }
 
 /**
- * `users.messages.get` with `format=metadata` and only the From, Subject
- * and Date headers.
+ * One message with `format=full` and the same `fields` mask as a thread,
+ * under the thread cap.
  */
-export async function getGmailMessageMetadata(
+export async function getGmailMessage(
   messageId: string,
   context: GmailRequestContext,
 ): Promise<GmailResult<Record<string, unknown>>> {
   assertSafeId(messageId)
 
-  const url = `${GMAIL_MESSAGES_URL}/${encodeURIComponent(messageId)}?${[
-    'format=metadata',
-    'metadataHeaders=From',
-    'metadataHeaders=Subject',
-    'metadataHeaders=Date',
-    `fields=${encodeURIComponent(MESSAGE_METADATA_FIELDS)}`,
-  ].join('&')}`
-
-  return await requestJson(
-    url,
-    { method: 'GET', headers: headersOf(context) },
-    toFetchOptions(context),
-  )
-}
-
-/**
- * `users.threads.get` with `format=full`. The answer may be large (the
- * bodies are base64), so it is read with its own cap and a thread over it
- * is a `too_large` failure.
- */
-export async function getGmailThread(
-  threadId: string,
-  context: GmailRequestContext,
-): Promise<GmailResult<Record<string, unknown>>> {
-  assertSafeId(threadId)
-
-  return await requestJson(
-    `${GMAIL_THREADS_URL}/${encodeURIComponent(threadId)}?format=full`,
-    { method: 'GET', headers: headersOf(context) },
-    toFetchOptions(context, {
-      maxResponseBytes: GOOGLE_GMAIL_THREAD_RESPONSE_MAX_BYTES,
-    }),
-  )
+  return await getJson(`${GMAIL_MESSAGES_URL}/${encodeURIComponent(messageId)}?${
+    queryOf([['format', 'full'], ['fields', MESSAGE_FULL_FIELDS]])
+  }`, context, { maxResponseBytes: GOOGLE_GMAIL_THREAD_RESPONSE_MAX_BYTES })
 }
 
 /**
  * The headers of a thread that a reply needs (`Message-ID` and
- * `References` of every message), as `format=metadata` returns them.
+ * `References` of every message, with its timestamp), as
+ * `format=metadata` returns them.
  */
 export async function getGmailThreadReplyHeaders(
   threadId: string,
@@ -242,17 +317,15 @@ export async function getGmailThreadReplyHeaders(
 ): Promise<GmailResult<Record<string, unknown>>> {
   assertSafeId(threadId)
 
-  const url = `${GMAIL_THREADS_URL}/${encodeURIComponent(threadId)}?${[
-    'format=metadata',
-    ...MESSAGE_ID_HEADERS.map(header => `metadataHeaders=${header}`),
-    `fields=${encodeURIComponent(REPLY_METADATA_FIELDS)}`,
-  ].join('&')}`
-
-  return await requestJson(
-    url,
-    { method: 'GET', headers: headersOf(context) },
-    toFetchOptions(context),
-  )
+  return await getJson(`${GMAIL_THREADS_URL}/${encodeURIComponent(threadId)}?${
+    queryOf([
+      ['format', 'metadata'],
+      ...MESSAGE_ID_HEADERS.map(name => ['metadataHeaders', name] as const),
+      ['fields', REPLY_METADATA_FIELDS],
+    ])
+  }`, context, {
+    maxResponseBytes: GOOGLE_GMAIL_SEARCH_THREAD_RESPONSE_MAX_BYTES,
+  })
 }
 
 export interface CreatedGmailDraft {
@@ -282,7 +355,7 @@ export async function createGmailDraft(
     },
   })
   const result = await requestJson(
-    GMAIL_DRAFTS_URL,
+    `${GMAIL_DRAFTS_URL}?${queryOf([['fields', DRAFT_FIELDS]])}`,
     {
       method: 'POST',
       headers: headersOf(context),

@@ -4,6 +4,7 @@ import {
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
 import {
   buildGoogleSendToolCandidates,
   noGoogleSendTools,
@@ -49,6 +50,8 @@ export async function planGoogleSendTools(input: {
   gatewayId: string | undefined
   holdsGoogleData: boolean
   priorGoogleCalls?: number
+  priorParts?: readonly unknown[]
+  featureState?: GoogleByoFeatureState
   logger: LoggerLike
 }): Promise<GoogleSendPlan> {
   const hasGoogleFlag = input.googleDriveActive
@@ -64,6 +67,8 @@ export async function planGoogleSendTools(input: {
       driveActive: input.googleDriveActive,
       byoActive: input.googleByoActive === true,
       gmailActive: input.googleGmailActive === true,
+      ...(input.featureState ? { featureState: input.featureState } : {}),
+      ...(input.priorParts ? { priorParts: input.priorParts } : {}),
       logger: input.logger,
     })
     : noGoogleSendTools()

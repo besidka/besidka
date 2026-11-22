@@ -1,6 +1,9 @@
 import { GOOGLE_DRIVE_FILE_ID_PATTERN } from '#shared/utils/google-drive'
 import type { GoogleDriveSearchKind } from '#shared/utils/google-gmail-tools'
-import { classifyGmailFailure } from '~~/server/utils/google/gmail-api'
+import {
+  classifyGmailFailure,
+  classifyGoogleRequestException,
+} from '~~/server/utils/google/gmail-api'
 import type {
   GmailFailureCode,
   GmailRequestContext,
@@ -161,7 +164,7 @@ export async function searchDriveFiles(
         }]
       }),
     }
-  } catch {
-    return { ok: false, code: 'failed' }
+  } catch (exception) {
+    return { ok: false, code: classifyGoogleRequestException(exception) }
   }
 }

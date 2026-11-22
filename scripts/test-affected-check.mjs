@@ -2077,6 +2077,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
     'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
     'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
     'tests/unit/composables/chat-scroll-spacer.spec.ts',
     'tests/e2e/chat/scroll-spacer.spec.ts',
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
@@ -4100,7 +4103,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(mail-address|google-gmail-tools|google-gmail-draft-view|google-drive-tools|google-tool-approvals|features\/registry)\.ts|server\/utils\/google\/(gmail-message|gmail-text|gmail-api|drive-search|byo-tools|send-guard|drive-tools|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/google-step\.d\.ts)$/,
+        /^(shared\/utils\/(mail-address|google-gmail-tools|google-gmail-draft-view|google-drive-tools|google-tool-approvals|google-byo|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(gmail-message|gmail-text|gmail-api|html-entities|chat-references|drive-found-read|drive-search|byo-tools|byo-access|tokens|send-guard|drive-tools|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
       tests: googleGmailToolsTests,
     },
     {
