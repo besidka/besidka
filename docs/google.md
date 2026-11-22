@@ -4,10 +4,10 @@ Status: **design, not built yet** (2026-11-22). Only the contracts exist on
 the umbrella branch `feat/google-connectors`: the four `google.*` flags in
 `shared/utils/features/registry.ts` (all `available: false`, stage
 `internal`, `optIn: 'required'`), `shared/utils/google-scopes.ts` and
-`shared/utils/google-data-policy.ts`, and the approval, taint and
-references-only rules Google tools register into (section 5.2). No route,
-no UI, no D1 table and no legal text exists. This file grows with every child of the umbrella; each
-child replaces a "design" marker below with what was built.
+`shared/utils/google-data-policy.ts`, the schema child's single migration
+(section 8), and the approval, taint and references-only rules Google tools
+register into (section 5.2). No route, no UI and no legal text exists. This
+file grows with every child of the umbrella; each child replaces a "design" marker below with what was built.
 
 Binding inputs: `docs/legal/prechecks/google.md` (G-11, BES-313) and
 `docs/agentic-capabilities-roadmap.md`. Where this file and the pre-check
@@ -182,8 +182,7 @@ stored tokens, and deletes every file with `external_source` in
 - the hourly sweep finds either of the above that was missed.
 
 A D1 Time Travel restore brings connections back; the post-restore runbook
-gets a "wipe Google tokens" step in `docs/d1-restore-reconciliation.md`
-(design, written by the schema child).
+has a "wipe Google tokens" step (2d) in `docs/d1-restore-reconciliation.md`.
 
 ### 5.2 Google tools: approvals, taint and references-only results
 
@@ -303,3 +302,50 @@ There is no public BYO guide page and no video: a page under
   decides whether and when to announce it in `/admin/legal`. An agent never
   schedules, approves or sends a notice.
 - A `beta` stage or percentage rollout for any `google.*` flag.
+
+## 8. Data model
+
+One migration owns the whole phase; no other child generates one. Every
+addition is `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN` (nullable, no SQL
+default) or `CREATE INDEX`, so no existing table is rebuilt. Nothing here has
+a foreign key to `users`; account deletion removes the rows explicitly.
+
+`google_connections` (`server/db/schemas/google-connections.ts`), one row per
+user and client mode (unique `(user_id, client_mode)`, index on `user_id`):
+
+| Column | Type | Consumer |
+|---|---|---|
+| `user_id` | integer, not null | every lookup; purge |
+| `client_mode` | text `besidka` or `byo`, not null | the connection flow and the client resolver |
+| `google_subject` | text | the callback: a different subject for the same mode revokes the old grant and replaces the row |
+| `google_email` | text | the connection card in the Google tab and `login_hint` on reconnect; never returned by MCP |
+| `granted_scopes` | JSON array of strings, not null | `hasScopes` after every callback and before every token use; the picker-token gate |
+| `refresh_token`, `access_token` | text, encrypted with `useEncryptText`, null after revoke | `server/utils/google/tokens.ts` only |
+| `access_token_expires_at` | timestamp | lazy refresh under the KV lock |
+| `status` | text `active`, `needs_reauth` or `revoked`, not null | the access-ended sweep and the reconnect prompt |
+
+Columns on existing tables:
+
+| Column | Type | Consumer |
+|---|---|---|
+| `chats.google_data_at` | timestamp | the provider allow-list guard (child 3): set from the first Google part or tool result, never cleared |
+| `files.external_source` | text, one of `GOOGLE_EXTERNAL_SOURCES` | Drive snapshots (child 5); deletion when access ends (child 2) |
+| `files.external_id` | text | the Drive file id of a snapshot; reuse of an unchanged snapshot |
+| `files.external_modified_at` | timestamp | live sync: re-export when Drive's `modifiedTime` is newer |
+| `files.drive_copy_id` | text | the id of the copy saved to Drive, so a second "Open in Google" or "Save to Google Drive" opens the same copy (BES-283 owner addendum); kept apart from `external_*`, which describe files imported from Google |
+| `keys.paid_tier_confirmed_at` | timestamp | the `gemini-paid-tier-confirmed` condition of the allow-list |
+
+`idx_files_user_external` is a partial index on
+`(user_id, external_source, external_id) WHERE external_source IS NOT NULL`,
+so the rows of ordinary uploads add nothing to it. A query that selects Google
+files must compare `external_source` with a value (`=` or `IN`), which implies
+the predicate.
+
+A connection's `connectedAt` is `created_at`. The end of access has no
+timestamp of its own; `status` and `updated_at` carry it. How the access-ended
+sweep reads them is the connections child's design: with two modes per user,
+a lingering `needs_reauth` row of one mode must not make it delete the files
+of the other, still active, mode.
+
+Rotating `NUXT_ENCRYPTION_KEY` without re-encrypting breaks every stored
+Google token; users reconnect.
