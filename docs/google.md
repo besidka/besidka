@@ -329,6 +329,13 @@ once, so no grant is stored.
 | Google read, Allow in this chat | `besidka_chat_settings.alwaysAllowTools` | The exposed `google__` name | Definition hash |
 | Google egress, Allow in this chat | The connector's `connector_chat_settings.alwaysAllowTools` | `google-egress:<exposed connector tool name>` | Definition hash |
 
+The approval card shows the grant as the same short primary button "Allow in
+this chat" for every tool (BES-462). What a Google read grant covers (for
+example "Allow reading events on your Google Calendar in this chat", the
+`GOOGLE_TOOL_CHAT_GRANT_LABELS` strings) is the button's `aria-label` and the
+card's title line says the rest, so the label stays on one line at 360px. The
+sentences in the tool tables below are those accessible names.
+
 The chat panel lists both under Approvals (`listChatToolApprovalGrants`):
 a Google read grant as "Google · Allowed in this chat", an egress grant as
 the connector tool with "May receive Google content in this chat". Reset

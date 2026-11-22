@@ -250,6 +250,32 @@ Now:
   covers the reply; it shows only when the bubble is scrolled away, as a
   way back to it.
 
+The pin is kept while the continuation runs (BES-462). The pin sizes the
+spacer from the layout at the moment the request starts, when the approval
+bubble is still under the reply in its `sending` state. The bubble leaves as
+soon as the tool part settles, which can be seconds before any text arrives,
+because the server runs the tool first. `messagesEnd.offsetTop` then drops by
+the bubble's height, `scrollHeight` shrinks, the browser clamps `scrollTop`,
+and the pinned user message slid down by that height (343px on a 390x844
+viewport with a short reply, measured with a per-frame sampler) until
+`adjustSpacerAfterResponse()` placed the finished reply. Nothing recomputed
+the spacer in between: it ran only on submit, continue, regenerate, input
+height changes and once per reply at `ready`.
+
+`keepContinuationPinned()` closes that gap. `pinUserMessageForContinuation()`
+stores its scroll target; a `ResizeObserver` on the messages container
+(`messagesEnd`'s parent) then recomputes the spacer the pin needs after every
+content resize. When it needs more than the current spacer, it grows the
+spacer, waits a tick and scrolls instantly back to the stored target. A
+`wheel` or `touchmove` on the scroll container during the continuation marks
+a user takeover: the spacer still grows, but the view is left where the user
+put it. Content growth never shrinks the spacer. The stored target is cleared
+by `adjustSpacerAfterResponse()`, `pushUserMessageToTop()`, `chat:submit` and
+an `error` status, so a settled layout is never touched. One frame at the
+displaced position can still occur: the resize notification arrives after the
+layout that clamped. Do not replace this with a falling-edge
+`scrollIntoView()` (see the image-generation section for why).
+
 Covered by `tests/unit/composables/chat-scroll-spacer.spec.ts`
 ("continuations and approval pauses") and
 `tests/e2e/chat/approval-scroll.spec.ts` (mobile 390x844 and desktop

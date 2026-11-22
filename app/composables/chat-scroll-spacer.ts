@@ -66,6 +66,11 @@ export function useChatScrollSpacer(
   const inputHeightTimer = shallowRef<NodeJS.Timeout | null>(null)
   const spacerComputedByPush = shallowRef<boolean>(false)
   const isInitialPageLoad = shallowRef<boolean>(true)
+  let continuationScrollTarget: number | null = null
+  let hasUserTakenOverContinuationScroll: boolean = false
+  const messagesContentElement = computed<HTMLElement | null>(() => {
+    return messagesEndRef.value?.parentElement ?? null
+  })
 
   function getPushUserMessageBehaviorForLoad(): ScrollBehavior {
     if (!isInitialPageLoad.value) {
@@ -184,6 +189,8 @@ export function useChatScrollSpacer(
   }
 
   async function adjustSpacerAfterResponse() {
+    continuationScrollTarget = null
+
     if (chatSdk.messages.length <= 1) {
       return
     }
@@ -363,9 +370,12 @@ export function useChatScrollSpacer(
 
     userMessageData.value = userMessage
     spacerComputedByPush.value = true
-    spacerHeight.value = Math.max(
-      scrollTarget - messagesEnd.offsetTop + container.clientHeight,
-      inputHeight.value + INITIAL_SPACER_PADDING,
+    continuationScrollTarget = scrollTarget
+    hasUserTakenOverContinuationScroll = false
+    spacerHeight.value = getSpacerHeightForScrollTarget(
+      scrollTarget,
+      container,
+      messagesEnd,
     )
 
     await nextTick()
@@ -375,7 +385,76 @@ export function useChatScrollSpacer(
     rebroadcastSpacerChange(spacerHeight.value)
   }
 
+  function getSpacerHeightForScrollTarget(
+    scrollTarget: number,
+    container: HTMLElement,
+    messagesEnd: HTMLElement,
+  ): number {
+    return Math.max(
+      scrollTarget - messagesEnd.offsetTop + container.clientHeight,
+      inputHeight.value + INITIAL_SPACER_PADDING,
+    )
+  }
+
+  /**
+   * The continuation pin sizes the spacer from the layout at the moment the
+   * request starts, when the approval bubble is still under the reply. The
+   * bubble leaves as soon as the tool part settles, which moves
+   * `messagesEnd` up and shrinks `scrollHeight`, so the browser clamps
+   * `scrollTop` and the pinned user message slides down until the finished
+   * reply is placed. A content resize while a continuation is pending
+   * grows the spacer back to what the pin needs and returns to the pin
+   * target, unless the user scrolled in the meantime.
+   */
+  async function keepContinuationPinned() {
+    const scrollTarget = continuationScrollTarget
+    const container = scrollContainerRef.value
+    const messagesEnd = messagesEndRef.value
+
+    if (scrollTarget === null || !container || !messagesEnd) {
+      return
+    }
+
+    const neededSpacer = getSpacerHeightForScrollTarget(
+      scrollTarget,
+      container,
+      messagesEnd,
+    )
+
+    if (neededSpacer <= spacerHeight.value) {
+      return
+    }
+
+    spacerHeight.value = neededSpacer
+
+    await nextTick()
+
+    if (continuationScrollTarget === null) {
+      return
+    }
+
+    if (!hasUserTakenOverContinuationScroll) {
+      container.scrollTo({ top: scrollTarget, behavior: 'instant' })
+    }
+
+    rebroadcastSpacerChange(neededSpacer)
+  }
+
+  function markUserTakeoverOfContinuationScroll() {
+    hasUserTakenOverContinuationScroll = true
+  }
+
+  useResizeObserver(messagesContentElement, keepContinuationPinned)
+  useEventListener(
+    scrollContainerRef,
+    ['wheel', 'touchmove'],
+    markUserTakeoverOfContinuationScroll,
+    { passive: true },
+  )
+
   async function pushUserMessageToTop(behavior: ScrollBehavior = 'smooth') {
+    continuationScrollTarget = null
+
     const container = scrollContainerRef.value
     const messagesEnd = messagesEndRef.value
 
@@ -509,7 +588,14 @@ export function useChatScrollSpacer(
     return lastPairHeight > scrollableSpace
   }
 
+  watch(() => chatSdk.status, (status) => {
+    if (status === 'error') {
+      continuationScrollTarget = null
+    }
+  })
+
   nuxtApp.hook('chat:submit', () => {
+    continuationScrollTarget = null
     spacerComputedByPush.value = false
     waitingForDimensions.value = true
   })
