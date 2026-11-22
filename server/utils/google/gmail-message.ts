@@ -14,6 +14,7 @@ export const GMAIL_DRAFT_MESSAGE_MAX_BYTES = 100_000
 const MESSAGE_ID_PATTERN
   = /^<[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]{1,200}@[A-Za-z0-9.-]{1,200}>$/
 const PRINTABLE_ASCII_PATTERN = /^[ -~]*$/
+const ADDRESS_SIGNS_PATTERN = /[<>@]/
 const ENCODED_WORD_MARKER = '=?'
 const PLAIN_TEXT_MAX_LENGTH = 60
 const ENCODED_WORD_MAX_BYTES = 45
@@ -213,12 +214,15 @@ function validateRecipient(
 
   if (
     hasUnsafeHeaderCharacter(recipient.name)
+    || ADDRESS_SIGNS_PATTERN.test(recipient.name)
     || recipient.name.length > MAIL_DISPLAY_NAME_MAX_LENGTH
   ) {
     throw new GmailDraftError(
       'invalid_name',
       'A recipient name has a line break, a control or invisible character, '
-      + `or is longer than ${MAIL_DISPLAY_NAME_MAX_LENGTH} characters.`,
+      + 'an at sign or an angle bracket (a name must not look like an '
+      + `address), or is longer than ${MAIL_DISPLAY_NAME_MAX_LENGTH} `
+      + 'characters.',
     )
   }
 

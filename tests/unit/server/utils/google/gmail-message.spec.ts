@@ -134,6 +134,9 @@ describe('buildGmailDraftMessage', () => {
     ['CRLF', 'Eve\r\nBcc: evil@example.com'],
     ['LF', 'Eve\nBcc: evil@example.com'],
     ['a bidi override', `Eve${RIGHT_TO_LEFT_OVERRIDE}exe.txt`],
+    ['a name that looks like an address', 'CEO <ceo@corp.example>'],
+    ['an at sign', 'ceo@corp.example'],
+    ['an angle bracket', 'Eve>'],
   ])('refuses %s in a display name', (_label, name) => {
     expectRefused(
       { ...BASE, to: [{ address: 'eve@example.com', name }] },

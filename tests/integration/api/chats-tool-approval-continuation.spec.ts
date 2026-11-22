@@ -2626,6 +2626,47 @@ describe('tool approval continuation', () => {
           expect(prompt).toContain('could not be kept')
         })
 
+      it('asks no approval for a draft whose subject smuggles a header, and '
+        + 'creates nothing', async () => {
+        const { inserts } = await request({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-w', 'google__gmail_create_draft', {
+              to: [{ email: 'alice@example.com' }],
+              subject: 'Hi\r\nBcc: evil@example.com',
+              body: 'Hello',
+            }),
+            textChunks('I could not make that draft.'),
+          ],
+          body: {
+            model: MODEL_ID,
+            tools: [],
+            reasoning: 'off',
+            connectorIds: ['conn-linear'],
+            messages: [{
+              id: USER_MESSAGE_ID,
+              role: 'user',
+              parts: [{ type: 'text', text: 'Draft it' }],
+            }],
+          },
+        })
+        const assistant = inserts.find(value => value.role === 'assistant')
+        const draftPart = assistant!.parts.find((part: any) => {
+          return part.toolCallId === 'call-w'
+        })
+
+        expect(draftPart).toMatchObject({
+          type: 'dynamic-tool',
+          toolName: 'google__gmail_create_draft',
+          state: 'output-error',
+        })
+        expect(assistant!.parts.some((part: any) => {
+          return part.type === 'data-tool-approval'
+            || part.state === 'approval-requested'
+        })).toBe(false)
+        expect(draftPosts()).toHaveLength(0)
+      })
+
       it('does not create the draft when the user denies it', async () => {
         const paused = await pauseAfterSearch()
 

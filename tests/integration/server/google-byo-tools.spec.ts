@@ -909,6 +909,26 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         expect(message).not.toContain(SECRET_QUERY)
       })
 
+    it.each([
+      [401, 'authError', 'no longer accepts'],
+      [403, 'accessNotConfigured', 'Google Drive API is not turned on'],
+      [403, 'insufficientPermissions', 'Google Drive refused the search'],
+      [429, 'rateLimitExceeded', 'Google Drive asked Besidka to slow down'],
+      [400, 'invalid', 'Google Drive did not accept the search'],
+      [500, 'backendError', 'Google Drive could not be reached'],
+    ])('answers a Drive search %s %s in words about Drive, never Gmail',
+      async (status, reason, expected) => {
+        apis.failure = { status, reason }
+
+        const message = await rejectionOf(run(GOOGLE_DRIVE_SEARCH_TOOL_NAME, {
+          query: SECRET_QUERY,
+        }))
+
+        expect(message).toContain(expected)
+        expect(message).not.toContain('Gmail')
+        expect(message).not.toContain(SECRET_QUERY)
+      })
+
     it('tells the model when the own client needs to be reconnected',
       async () => {
         await testDb.db.update(schema.googleConnections)
@@ -1137,8 +1157,8 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           to: Array.from({ length: 20 }, (_, index) => {
             return { email: `${'l'.repeat(60)}${index}@${'d'.repeat(60)}.com` }
           }),
-          subject: '🍕'.repeat(100),
-          body: '🍕'.repeat(5000),
+          subject: '日'.repeat(200),
+          body: '日'.repeat(10_000),
         }
 
         expect(schemaOf.safeParse(largest).success).toBe(true)

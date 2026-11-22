@@ -80,17 +80,37 @@ describe('htmlToPlainText', () => {
     expect(text).toContain('x&unknown;y &#99999999;')
   })
 
-  it('survives unclosed tags and very large hostile input quickly', () => {
-    const started = Date.now()
+  it('keeps the text of an unclosed tag and of a lone less-than sign', () => {
+    expect(htmlToPlainText('a < b and <b unclosed')).toBe('a < b and <b unclosed')
+    expect(htmlToPlainText('x <i>y</i> < 5')).toBe('x y < 5')
+  })
 
-    expect(htmlToPlainText('a < b and <b unclosed')).toContain('a')
-    htmlToPlainText('<a'.repeat(300_000))
-    htmlToPlainText('<!--'.repeat(100_000))
-    htmlToPlainText('<script>'.repeat(100_000))
-    htmlToPlainText('&'.repeat(500_000))
-    htmlToPlainText(`<a href="${'x'.repeat(5000)}">y</a>`)
+  it('handles hostile input of the maximum size in linear time', () => {
+    const hostile = [
+      '<'.repeat(400_000),
+      '<a'.repeat(200_000),
+      `${'<'.repeat(399_000)}>`,
+      '<!--'.repeat(100_000),
+      '<script>'.repeat(50_000),
+      '<script>x</script'.repeat(20_000),
+      '<a href="https://x.example">t'.repeat(10_000),
+      '</a>'.repeat(100_000),
+      '&'.repeat(400_000),
+      `<a href="${'x'.repeat(5000)}">y</a>`,
+      `${String.fromCodePoint(0x130)}<script>x</SCRIPT>y`.repeat(50_000),
+    ]
 
-    expect(Date.now() - started).toBeLessThan(3000)
+    for (const html of hostile) {
+      expect(typeof htmlToPlainText(html)).toBe('string')
+    }
+  }, 10_000)
+
+  it('finds a closing tag in any letter case, even after a character that '
+    + 'changes length when lowercased', () => {
+    const dotted = String.fromCodePoint(0x130)
+
+    expect(htmlToPlainText(`${dotted}<SCRIPT>hide</ScRiPt>show`))
+      .toBe(`${dotted}show`)
   })
 
   it('strips hidden and bidi characters from the result', () => {

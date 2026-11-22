@@ -29,6 +29,12 @@ const SKIPPED_ELEMENTS: ReadonlySet<string> = new Set([
   'svg',
 ])
 
+const CLOSING_PATTERNS: ReadonlyMap<string, RegExp> = new Map(
+  [...SKIPPED_ELEMENTS].map((name) => {
+    return [name, new RegExp(`</${name}`, 'gi')]
+  }),
+)
+
 const BLOCK_ELEMENTS: ReadonlySet<string> = new Set([
   'br',
   'p',
@@ -279,11 +285,11 @@ function readSafeHref(tag: string): string | null {
  */
 export function htmlToPlainText(html: string): string {
   const source = html.slice(0, HTML_MAX_CHARACTERS)
-  const lower = source.toLowerCase()
   let output = ''
   let index = 0
   let linkHref: string | null = null
   let linkStart = 0
+  let closePosition = -2
 
   while (index < source.length) {
     const open = source.indexOf('<', index)
@@ -304,9 +310,19 @@ export function htmlToPlainText(html: string): string {
       continue
     }
 
-    const end = source.indexOf('>', open + 1)
+    if (closePosition !== -1 && closePosition <= open) {
+      closePosition = source.indexOf('>', open + 1)
+    }
 
-    if (end === -1 || end - open > TAG_MAX_CHARACTERS) {
+    if (closePosition === -1) {
+      output += decodeEntities(source.slice(open))
+
+      break
+    }
+
+    const end = closePosition
+
+    if (end - open > TAG_MAX_CHARACTERS) {
       index = open + 1
 
       continue
@@ -318,11 +334,13 @@ export function htmlToPlainText(html: string): string {
 
     index = end + 1
 
-    if (!isClosing && SKIPPED_ELEMENTS.has(name) && !tag.endsWith('/')) {
-      const closeStart = lower.indexOf(`</${name}`, index)
-      const closeEnd = closeStart === -1
-        ? -1
-        : source.indexOf('>', closeStart)
+    const closingPattern = CLOSING_PATTERNS.get(name)
+
+    if (!isClosing && closingPattern && !tag.endsWith('/')) {
+      closingPattern.lastIndex = index
+
+      const closing = closingPattern.exec(source)
+      const closeEnd = closing ? source.indexOf('>', closing.index) : -1
 
       index = closeEnd === -1 ? source.length : closeEnd + 1
 
@@ -331,7 +349,7 @@ export function htmlToPlainText(html: string): string {
 
     if (name === 'a') {
       if (isClosing) {
-        const text = output.slice(linkStart).trim()
+        const text = linkHref ? output.slice(linkStart).trim() : ''
 
         if (linkHref && text && text !== linkHref) {
           output += ` (${linkHref})`

@@ -47,7 +47,10 @@ import { frameUntrustedResult } from '~~/server/utils/connectors/tool-definition
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import { truncateToByteBudget } from '~~/server/utils/skills/runtime/text'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { searchDriveFiles } from '~~/server/utils/google/drive-search'
+import {
+  DRIVE_SEARCH_FAILURE_TEXT,
+  searchDriveFiles,
+} from '~~/server/utils/google/drive-search'
 import type { DriveSearchHit } from '~~/server/utils/google/drive-search'
 import {
   GMAIL_FAILURE_TEXT,
@@ -285,8 +288,11 @@ function toolFailure(message: string, status: number) {
   })
 }
 
-function failureOf(code: GmailFailureCode) {
-  return toolFailure(GMAIL_FAILURE_TEXT[code], FAILURE_STATUS[code])
+function failureOf(
+  code: GmailFailureCode,
+  texts: Readonly<Record<GmailFailureCode, string>> = GMAIL_FAILURE_TEXT,
+) {
+  return toolFailure(texts[code], FAILURE_STATUS[code])
 }
 
 function toRecipients(
@@ -986,7 +992,7 @@ export async function buildGoogleByoTools(
       }, context)
 
       if (!result.ok) {
-        throw failureOf(result.code)
+        throw failureOf(result.code, DRIVE_SEARCH_FAILURE_TEXT)
       }
 
       logger.set({

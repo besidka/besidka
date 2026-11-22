@@ -21,6 +21,29 @@ const KIND_MEDIA_TYPES: Readonly<
   pdf: 'application/pdf',
 }
 
+/**
+ * The sentences for a failed Drive search. Same codes as Gmail, worded for
+ * Drive, so a disabled Drive API never says "Gmail".
+ */
+export const DRIVE_SEARCH_FAILURE_TEXT: Readonly<
+  Record<GmailFailureCode, string>
+> = {
+  reauthorize: 'Google no longer accepts the connection to your own Google '
+    + 'client. Reconnect it on the API Keys page, Google tab.',
+  api_disabled: 'The Google Drive API is not turned on in the Google Cloud '
+    + 'project of your own Google client. Turn it on there and try again.',
+  no_access: 'Google Drive refused the search. Reconnect your own Google '
+    + 'client on the API Keys page and allow Google Drive read access.',
+  not_found: 'Google Drive has nothing for that search.',
+  rate_limited: 'Google Drive asked Besidka to slow down. Try again in a '
+    + 'moment.',
+  too_large: 'Google Drive answered with more than fits here. Narrow the '
+    + 'search.',
+  bad_request: 'Google Drive did not accept the search. Try different words.',
+  failed: 'Google Drive could not be reached or answered with an error. Try '
+    + 'again in a moment.',
+}
+
 export interface DriveSearchHit {
   id: string
   name: string
