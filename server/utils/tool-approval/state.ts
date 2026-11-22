@@ -5,7 +5,10 @@ import {
   TOOL_APPROVAL_READ_SOURCES_MAX,
   TOOL_APPROVAL_READ_SOURCE_MAX_LENGTH,
   TOOL_APPROVAL_READ_SOURCE_OVERFLOW,
+  TOOL_APPROVAL_SERIALIZED_TAINT_MAX,
+  TOOL_APPROVAL_STRICTEST_TAINT_KIND,
   TOOL_APPROVAL_TAINT_KINDS,
+  TOOL_APPROVAL_TAINT_KIND_MAX_LENGTH,
 } from '#shared/utils/tool-approval-policy'
 import type {
   ToolApprovalTaintKind,
@@ -48,9 +51,27 @@ export type DeserializedApprovalState
 
 const counterSchema = z.number().int().min(0).max(COUNTER_MAX)
 
+/**
+ * A taint kind read back from a stored turn. A kind this version does not
+ * know (a record written by a newer or older deploy) becomes the strictest
+ * known kind instead of failing the record or being dropped: dropping it
+ * would let a later write skip its approval, failing it would turn a paused
+ * turn into "expired" for the length of a deploy.
+ */
+export function toKnownTaintKind(value: string): ToolApprovalTaintKind {
+  return isKnownTaintKind(value) ? value : TOOL_APPROVAL_STRICTEST_TAINT_KIND
+}
+
+const storedTaintSchema = z.array(
+  z.string().min(1).max(TOOL_APPROVAL_TAINT_KIND_MAX_LENGTH),
+)
+  .max(TOOL_APPROVAL_SERIALIZED_TAINT_MAX)
+  .transform((kinds) => {
+    return [...new Set(kinds.map(toKnownTaintKind))]
+  })
+
 export const serializedApprovalStateSchema = z.object({
-  taint: z.array(z.enum(TOOL_APPROVAL_TAINT_KINDS))
-    .max(TOOL_APPROVAL_TAINT_KINDS.length),
+  taint: storedTaintSchema,
   readSources: z.array(
     z.string().min(1).max(TOOL_APPROVAL_READ_SOURCE_MAX_LENGTH),
   ).max(TOOL_APPROVAL_READ_SOURCES_MAX),
@@ -231,11 +252,12 @@ export function serializeApprovalState(
 }
 
 /**
- * Restores a state written by `serializeApprovalState`. A value that does
- * not match the schema returns `{ ok: false }`. For a continuation that is
- * a hard refusal: it must never start from a fresh, empty state, because
- * that would drop the taint and the reads of the paused turn and let the
- * resumed turn skip its approvals.
+ * Restores a state written by `serializeApprovalState`. An unknown taint
+ * kind is read as the strictest known kind (`toKnownTaintKind`). A value
+ * that does not match the schema returns `{ ok: false }`. For a
+ * continuation that is a hard refusal: it must never start from a fresh,
+ * empty state, because that would drop the taint and the reads of the
+ * paused turn and let the resumed turn skip its approvals.
  */
 export function deserializeApprovalState(
   value: unknown,

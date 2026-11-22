@@ -31,6 +31,28 @@ const TOOL_LIST_MAX = 200
 
 const subjectIdSchema = z.string().min(1).max(SUBJECT_ID_MAX_LENGTH)
 
+/**
+ * A family this version does not know (a record written by a newer or
+ * older deploy) reads as null: the record still loads, and the replay
+ * denies that one call (`invalid-input`) instead of the whole continuation
+ * failing as expired. A null family never matches a live tool.
+ */
+const storedFamilySchema = z.union([
+  z.enum(TOOL_FAMILIES),
+  z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => null),
+])
+
+/**
+ * A reason this version does not know reads as `default`. The reason only
+ * labels the prompt; the remember options are stored on their own.
+ */
+const storedReasonSchema = z.union([
+  z.enum(TOOL_APPROVAL_REASONS),
+  z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => {
+    return 'default' as const
+  }),
+])
+
 const pendingSnapshotSchema = z.object({
   model: z.string().min(1).max(TOOL_NAME_MAX_LENGTH),
   gateway: z.string().max(SUBJECT_ID_MAX_LENGTH).nullable(),
@@ -44,7 +66,7 @@ const pendingApprovalSchema = z.object({
   chatPublicId: subjectIdSchema,
   messagePublicId: subjectIdSchema,
   toolCallId: z.string().min(1).max(TOOL_CALL_ID_MAX_LENGTH),
-  family: z.enum(TOOL_FAMILIES),
+  family: storedFamilySchema,
   access: z.enum(TOOL_ACCESS_LEVELS),
   toolName: z.string().min(1).max(TOOL_NAME_MAX_LENGTH),
   connectorId: subjectIdSchema.nullable(),
@@ -55,7 +77,7 @@ const pendingApprovalSchema = z.object({
     z.record(z.string(), z.unknown()),
   ).nullable().optional(),
   signature: z.string().min(1).max(SIGNATURE_MAX_LENGTH),
-  reason: z.enum(TOOL_APPROVAL_REASONS),
+  reason: storedReasonSchema,
   rememberOptions: z.array(z.enum(TOOL_APPROVAL_REMEMBER_OPTIONS))
     .max(TOOL_APPROVAL_REMEMBER_OPTIONS.length),
   summary: z.string().max(TOOL_APPROVAL_SUMMARY_MAX_LENGTH),
@@ -202,10 +224,12 @@ function addBounded(
 }
 
 /**
- * Adds an approval id and/or a message id to the per-chat index
+ * Adds approval ids and/or a message id to the per-chat index
  * `tool-approval:chat:<chatPublicId>`, which is how deleting a chat finds
- * the keys it has to remove: the pending, turn and result keys are named by
- * approval or message id, and nothing else ties them to a chat. The index
+ * the keys it has to remove: the pending keys are named by approval id, the
+ * turn keys by message id and the result keys by a result id
+ * (`toolApprovalResultIdOf`) listed with the approval ids, and nothing else
+ * ties them to a chat. The index
  * lives 24 hours like the records it lists and is refreshed on every write.
  * It is bounded; past the bound the oldest ids fall off, and the record they
  * name expires on its own within 24 hours. The read-modify-write is not
@@ -216,7 +240,7 @@ function addBounded(
 async function indexChatRecord(
   kv: KVNamespace,
   chatPublicId: string,
-  ids: { approvalId?: string, messageId?: string },
+  ids: { approvalIds?: readonly string[], messageId?: string },
 ): Promise<void> {
   const key = toolApprovalChatKey(chatPublicId)
   const current = await readRecord(kv, key, chatIndexSchema)
@@ -226,10 +250,10 @@ async function indexChatRecord(
     messageIds: current?.messageIds ?? [],
   }
 
-  if (ids.approvalId) {
+  for (const approvalId of ids.approvalIds ?? []) {
     index.approvalIds = addBounded(
       index.approvalIds,
-      ids.approvalId,
+      assertApprovalId(approvalId),
       TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS,
     )
   }
@@ -294,7 +318,7 @@ export async function putToolApproval(
   }
 
   assertReadable(pendingApprovalSchema, record)
-  await indexChatRecord(kv, record.chatPublicId, { approvalId })
+  await indexChatRecord(kv, record.chatPublicId, { approvalIds: [approvalId] })
   await putRecord(kv, key, record)
 }
 
@@ -356,32 +380,127 @@ export async function deleteToolApprovalTurn(
   await kv.delete(toolApprovalTurnKey(messagePublicId))
 }
 
+function cappedResultRecord(record: ToolApprovalResultRecord): {
+  stored: ToolApprovalResultRecord
+  truncated: boolean
+} {
+  const outputBytes = payloadBytes(record.output)
+  const truncated = outputBytes > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
+
+  if (!truncated) {
+    return { stored: record, truncated }
+  }
+
+  return {
+    stored: {
+      ...record,
+      output: `[Output omitted: ${outputBytes} bytes is over the `
+        + `${TOOL_APPROVAL_PAYLOAD_MAX_BYTES} byte limit]`,
+    },
+    truncated,
+  }
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = ''
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+
+  return btoa(binary)
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
+}
+
 /**
- * Stores the result record and lists it in the per-chat index. A result
- * whose serialized output is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES` is
- * stored with the output replaced by a short marker string, and the return
- * value says so: a continuation replays a marker rather than megabytes.
+ * The id a stashed tool result is stored and indexed under: the SHA-256 of
+ * the message public id and the tool call id, base64url. Tool call ids are
+ * provider strings that need not match `TOOL_APPROVAL_ID_PATTERN` and are
+ * not unique across users or messages, so they are never used as a key on
+ * their own. The 43 characters always match the pattern.
+ */
+export async function toolApprovalResultIdOf(
+  messagePublicId: string,
+  toolCallId: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${messagePublicId}\n${toolCallId}`),
+  )
+
+  return toBase64Url(new Uint8Array(digest))
+}
+
+/**
+ * Stores one result record under `tool-approval:result:<id>` and lists the
+ * id in the per-chat index, like `putToolApprovalResults` with one entry.
  */
 export async function putToolApprovalResult(
   kv: KVNamespace,
   approvalId: string,
   record: ToolApprovalResultRecord,
 ): Promise<PutToolApprovalResultOutcome> {
-  const key = toolApprovalResultKey(approvalId)
-  const outputBytes = payloadBytes(record.output)
-  const truncated = outputBytes > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
-  const stored = truncated
-    ? {
-      ...record,
-      output: `[Output omitted: ${outputBytes} bytes is over the `
-        + `${TOOL_APPROVAL_PAYLOAD_MAX_BYTES} byte limit]`,
+  const [outcome] = await putToolApprovalResults(kv, [
+    { resultId: approvalId, record },
+  ])
+
+  return outcome ?? { truncated: false }
+}
+
+/**
+ * Stores the bodies of tool results a paused turn must give back to the
+ * model on its continuation (today: Google tool results, which D1 keeps as
+ * references only). All ids go into the per-chat index in one index write,
+ * then each record is written, one KV connection at a time, for 24 hours.
+ * A result whose serialized output is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES`
+ * is stored with the output replaced by a short marker, and its outcome says
+ * so. Every entry must name the same chat.
+ */
+export async function putToolApprovalResults(
+  kv: KVNamespace,
+  entries: ReadonlyArray<{
+    resultId: string
+    record: ToolApprovalResultRecord
+  }>,
+): Promise<PutToolApprovalResultOutcome[]> {
+  const first = entries[0]
+
+  if (!first) {
+    return []
+  }
+
+  const isOneChat = entries.every((entry) => {
+    return entry.record.chatPublicId === first.record.chatPublicId
+  })
+
+  if (!isOneChat) {
+    throw createError({
+      message: 'Approval results name different chats',
+      status: 500,
+      why: 'One batch of stashed results must belong to one chat',
+    })
+  }
+
+  const keyed = entries.map((entry) => {
+    assertReadable(resultRecordSchema, entry.record)
+
+    return {
+      key: toolApprovalResultKey(entry.resultId),
+      ...cappedResultRecord(entry.record),
     }
-    : record
+  })
 
-  await indexChatRecord(kv, record.chatPublicId, { approvalId })
-  await putRecord(kv, key, stored)
+  await indexChatRecord(kv, first.record.chatPublicId, {
+    approvalIds: entries.map(entry => entry.resultId),
+  })
 
-  return { truncated }
+  for (const entry of keyed) {
+    await putRecord(kv, entry.key, entry.stored)
+  }
+
+  return keyed.map(entry => ({ truncated: entry.truncated }))
 }
 
 export async function getToolApprovalResult(

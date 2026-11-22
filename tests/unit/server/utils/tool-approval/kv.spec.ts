@@ -195,10 +195,36 @@ describe('pending approval records', () => {
 
     kv.values.set(
       toolApprovalKey(APPROVAL_ID),
-      JSON.stringify({ ...pendingRecord(), family: 'unknown' }),
+      JSON.stringify({ ...pendingRecord(), family: 7 }),
     )
 
     expect(await getToolApproval(kv as never, APPROVAL_ID)).toBeNull()
+  })
+
+  it('reads a family from another deploy as null instead of failing', async () => {
+    const kv = createFakeKv()
+
+    kv.values.set(
+      toolApprovalKey(APPROVAL_ID),
+      JSON.stringify({ ...pendingRecord(), family: 'future-family' }),
+    )
+
+    const record = await getToolApproval(kv as never, APPROVAL_ID)
+
+    expect(record).not.toBeNull()
+    expect(record?.family).toBeNull()
+  })
+
+  it('reads a reason from another deploy as default', async () => {
+    const kv = createFakeKv()
+
+    kv.values.set(
+      toolApprovalKey(APPROVAL_ID),
+      JSON.stringify({ ...pendingRecord(), reason: 'future-reason' }),
+    )
+
+    expect((await getToolApproval(kv as never, APPROVAL_ID))?.reason)
+      .toBe('default')
   })
 
   it('requires a signature', async () => {
@@ -358,12 +384,32 @@ describe('turn records', () => {
       toolApprovalTurnKey(record.messagePublicId),
       JSON.stringify({
         ...record,
-        state: { ...record.state, taint: ['made-up'] },
+        state: { ...record.state, taint: [7] },
       }),
     )
 
     expect(await getToolApprovalTurn(kv as never, record.messagePublicId))
       .toBeNull()
+  })
+
+  it('reads a taint kind from another deploy as google taint', async () => {
+    const kv = createFakeKv()
+    const record = turnRecord()
+
+    kv.values.set(
+      toolApprovalTurnKey(record.messagePublicId),
+      JSON.stringify({
+        ...record,
+        state: { ...record.state, taint: ['web', 'future-kind'] },
+      }),
+    )
+
+    const stored = await getToolApprovalTurn(
+      kv as never,
+      record.messagePublicId,
+    )
+
+    expect(stored?.state.taint).toEqual(['web', 'google'])
   })
 
   it('refuses more than ten pending ids', async () => {

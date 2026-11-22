@@ -385,7 +385,10 @@ import {
   CONNECTOR_TOOLS_PER_REQUEST,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
-import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
+import {
+  TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
+  TOOL_APPROVAL_GOOGLE_READ_SOURCE,
+} from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import { findBuiltinCommandInvocation } from '#shared/utils/builtin-commands'
 import {
@@ -480,8 +483,16 @@ import {
 import {
   createApprovalState,
   recordTaint,
+  recordToolRead,
 } from '~~/server/utils/tool-approval/state'
 import type { ApprovalState } from '~~/server/utils/tool-approval/state'
+import {
+  chatHoldsGoogleData,
+  deleteGoogleToolResults,
+  loadGoogleToolResults,
+  redactGoogleToolPartsForPersistence,
+  stashGoogleToolResults,
+} from '~~/server/utils/tool-approval/google'
 import {
   TOOL_ROUND_CONTINUE_PROMPT,
   TOOL_ROUND_STALE_CODE,
@@ -517,6 +528,7 @@ import type {
   ClaimHeartbeats,
   ContinuationDecision,
   LoadedContinuation,
+  StashedResult,
 } from '~~/server/utils/tool-approval/continuation'
 import type { ToolApprovalClaimOwner } from '~~/server/utils/tool-approval/claims'
 import { expireUnfinishedClaims } from '~~/server/utils/tool-approval/claims'
@@ -575,6 +587,7 @@ interface ToolApprovalResume {
     usage: MessageUsage | null
   }
   loaded: Pick<LoadedContinuation, 'state' | 'answers'>
+  stashedResults?: ReadonlyMap<string, StashedResult>
   round?: number
 }
 
@@ -2224,6 +2237,7 @@ export default defineEventHandler(async (event) => {
       holdsBesidkaToolHistory: chat.messages.some((message) => {
         return hasBesidkaToolResult(message.parts)
       }),
+      holdsGoogleData: chatHoldsGoogleData(chat.messages),
     })
   }
 
@@ -2583,6 +2597,9 @@ export default defineEventHandler(async (event) => {
         decisions: resumeDecisions,
         ...(keptConnectorImages
           ? { shownAgain: keptConnectorImageLineIndexes(keptConnectorImages) }
+          : {}),
+        ...(resume.stashedResults
+          ? { stashedResults: resume.stashedResults }
           : {}),
       })
       const resumeHistory = buildKnowledgeAwareMessagesForModel({
@@ -3677,7 +3694,11 @@ export default defineEventHandler(async (event) => {
           && wasPersisted
           && !toolApprovalCollector.isPaused()
         ) {
-          await deleteResumedTurn(messagePublicId, aiLogger)
+          await deleteResumedTurn(
+            messagePublicId,
+            resume.assistant.parts,
+            aiLogger,
+          )
         }
 
         if (
@@ -4539,8 +4560,9 @@ function decideToolBudgetPart(input: {
 /**
  * The approval state a new round of a long tool task starts from: fresh
  * counters (each round has its own call budget) and the taint of the
- * connector and Besidka results the reply already holds, which the model
- * reads again.
+ * connector, Besidka and Google results the reply already holds, which the
+ * model reads again. A Google result also counts as a tool read of the
+ * turn, so web search stays withheld in the new round.
  */
 function createToolRoundApprovalState(parts: unknown): ApprovalState {
   const state = createApprovalState()
@@ -4559,6 +4581,11 @@ function createToolRoundApprovalState(parts: unknown): ApprovalState {
     if (hasBesidkaToolResult([part])) {
       recordTaint(state, 'besidka')
     }
+  }
+
+  if (chatHoldsGoogleData([{ parts }])) {
+    recordTaint(state, 'google')
+    recordToolRead(state, TOOL_APPROVAL_GOOGLE_READ_SOURCE)
   }
 
   return state
@@ -4687,6 +4714,13 @@ async function prepareToolApprovalContinuation(input: {
     })
   }
 
+  const stashedResults = await loadGoogleToolResults({
+    kv: useKV(),
+    owner,
+    parts: turn.assistant.parts as UIMessage['parts'],
+    logger,
+  })
+
   return {
     resume: {
       owner,
@@ -4697,6 +4731,7 @@ async function prepareToolApprovalContinuation(input: {
         usage: (turn.assistant.usage ?? null) as MessageUsage | null,
       },
       loaded,
+      ...(stashedResults.size > 0 ? { stashedResults } : {}),
     },
     sendBody: {
       model: snapshot.model,
@@ -4716,16 +4751,28 @@ async function prepareToolApprovalContinuation(input: {
 }
 
 /**
- * Removes the turn record once a continuation finished without a new pause:
- * nothing in the turn waits any more. A failure is logged; the record
- * expires within 24 hours and its pending ids are already claimed.
+ * Removes the turn record once a continuation finished without a new pause,
+ * and the Google tool result bodies stashed for the paused message
+ * (`deleteGoogleToolResults`): nothing in the turn waits any more. A
+ * failure is logged; the records expire within 24 hours and the pending
+ * ids are already claimed.
  */
 async function deleteResumedTurn(
   messagePublicId: string,
+  resumedParts: readonly unknown[],
   logger: LoggerLike,
 ): Promise<void> {
+  const kv = useKV()
+
+  await deleteGoogleToolResults({
+    kv,
+    messagePublicId,
+    parts: resumedParts,
+    logger,
+  })
+
   try {
-    await deleteToolApprovalTurn(useKV(), messagePublicId)
+    await deleteToolApprovalTurn(kv, messagePublicId)
   } catch (exception) {
     logger.set({
       attributes: {
@@ -6107,16 +6154,18 @@ async function persistAssistantMessageFromStream(input: {
       }]
       : normalizedParts
     const persistedParts = stripUndeliveredInlineDataParts(
-      redactConnectorToolPartsForPersistence(
-        redactSkillToolPartsForPersistence(
-          redactMemoryToolPartsForPersistence(
-            appendSkillActivationParts([
-              ...(input.skillActivationParts ?? []),
-              ...partsBeforeSizeGuard,
-            ]),
+      redactGoogleToolPartsForPersistence(
+        redactConnectorToolPartsForPersistence(
+          redactSkillToolPartsForPersistence(
+            redactMemoryToolPartsForPersistence(
+              appendSkillActivationParts([
+                ...(input.skillActivationParts ?? []),
+                ...partsBeforeSizeGuard,
+              ]),
+            ),
           ),
+          input.getConnectorSecrets?.() ?? [],
         ),
-        input.getConnectorSecrets?.() ?? [],
       ),
       input.logger,
     )
@@ -6269,6 +6318,19 @@ async function persistAssistantMessageFromStream(input: {
         },
         publicId: input.publicId,
       })
+
+    if (assistantMessage && isAwaitingApproval) {
+      await stashGoogleToolResults({
+        kv: useKV(),
+        owner: {
+          userId: input.userId,
+          chatPublicId: input.chatId,
+          messagePublicId: input.publicId,
+        },
+        parts: partsBeforeSizeGuard,
+        logger: input.logger,
+      })
+    }
 
     if (assistantMessage && turn.stoppedReplies.length > 0) {
       const replacedStoppedReplies = await deleteStoppedReplies({

@@ -1877,6 +1877,22 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/tool-approval-spike.spec.ts',
   ]
 
+  const googleToolApprovalTests = [
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/state.spec.ts',
+    'tests/unit/server/utils/tool-approval/kv.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/tool-approval/cleanup.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+  ]
+
   const toolApprovalContinuationTests = [
     'tests/unit/server/utils/tool-approval/continuation.spec.ts',
     'tests/unit/server/utils/connectors/kept-images.spec.ts',
@@ -3820,6 +3836,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/tool-approval-policy\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/hkdf\.ts|server\/utils\/connectors\/audit\.ts|server\/db\/schemas\/tool-approvals\.ts|server\/plugins\/(tool-approval-claim-sweep|connector-audit-prune)\.ts|shared\/utils\/connectors-policy\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/(memory-extraction-db|skills-public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_chunky_gabe_jones\/.*)$/,
       tests: toolApprovalPolicyTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tool-approvals|tool-approval-policy|tool-approval-parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue)$/,
+      tests: googleToolApprovalTests,
     },
     {
       pattern:
