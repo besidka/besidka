@@ -1,7 +1,22 @@
 import type { ModelRef } from 'vue'
 import { parseError } from 'evlog'
 import type { FileMetadata } from '#shared/types/files.d'
-import { GOOGLE_DRIVE_PICK_MAX } from '#shared/utils/google-drive'
+import {
+  GOOGLE_DRIVE_PICK_MAX,
+  formatDriveGoogleDetail,
+} from '#shared/utils/google-drive'
+import type {
+  DriveGoogleDetail,
+  DriveImportFailureCode,
+} from '#shared/utils/google-drive'
+import {
+  GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX,
+  extractGoogleDriveLinks,
+} from '#shared/utils/google-drive-links'
+import type {
+  GoogleDriveLinkKind,
+  GoogleDriveLinkMatch,
+} from '#shared/utils/google-drive-links'
 import type { AttachedFile } from '~/types/file-manager'
 import type { PickedDriveItem } from '~/composables/google-picker'
 
@@ -11,11 +26,39 @@ export const GOOGLE_DRIVE_CONNECT_SENTENCE
 export const GOOGLE_DRIVE_BUSY_REASON
   = 'Google Drive files are still being copied. Wait a moment, then send.'
 
+const LINK_IMPORT_BLOCKING_STATUSES: ReadonlySet<number> = new Set([
+  401,
+  404,
+  409,
+  429,
+])
+const SILENT_LINK_FAILURE_CODES: ReadonlySet<DriveImportFailureCode>
+  = new Set(['reauthorize', 'rate_limited', 'failed'])
+const NO_ACCESS_LINK_FAILURE_CODES: ReadonlySet<DriveImportFailureCode>
+  = new Set(['not_found', 'no_access'])
+
 export interface DriveImportProgress {
   id: string
   name: string
   status: 'importing' | 'failed'
   error?: string
+  code?: DriveImportFailureCode
+  detail?: string
+}
+
+export interface DriveLinkSuggestion {
+  id: string
+  resourceKey?: string
+  kind: GoogleDriveLinkKind
+}
+
+interface DriveAttachOptions {
+  fileIds?: readonly string[]
+}
+
+interface QueuedLink {
+  link: GoogleDriveLinkMatch
+  startedGeneration: number
 }
 
 /**
@@ -30,6 +73,18 @@ export interface DriveImportProgress {
  * what comes next (a generation counter), and the Picker is not opened
  * again for a result nobody will use. The Google script is loaded only
  * inside `attachFromDrive()`.
+ *
+ * `pickAgain(id)` and `acceptLinkSuggestion(id)` open the Picker on that one
+ * file, which is how a user grants Besidka access to a file it cannot read
+ * (the `drive.file` permission cannot read a file from its link alone).
+ * `detectLinks(text)` looks for Google Doc, Sheet, Slides and Drive file
+ * links in the composer text while Google Drive is active for the user:
+ * for each new link (at most five a message, one request at a time, only to
+ * Besidka's own link route) Besidka copies the file when it can already read
+ * it, and otherwise offers the Picker for that file as a suggestion. Nothing
+ * is shown or asked for a link that fails for any other reason than missing
+ * access, and nothing is requested at all once Besidka answered that Google
+ * is not connected, until the next message.
  */
 export function useChatDriveFiles(
   attachedFiles: ModelRef<FileMetadata[]>,
@@ -40,14 +95,23 @@ export function useChatDriveFiles(
   const { pick, isCheckingConnection } = useGooglePicker()
   const { routeSlug } = useChatRoute()
   const { rememberChatGoogleData } = useChatGoogleData()
+  const googleDriveFeature = useFeature('google.drive')
   const driveImports = ref<DriveImportProgress[]>([])
+  const linkSuggestions = ref<DriveLinkSuggestion[]>([])
   const isPicking = shallowRef<boolean>(false)
+  const isLinkProbing = shallowRef<boolean>(false)
+  const handledLinkIds = new Set<string>()
+  const linkQueue: QueuedLink[] = []
+  let isLinkImportBlocked = false
+  let isLinkQueueRunning = false
   let generation = 0
 
   const isDriveBusy = computed<boolean>(() => {
-    return isPicking.value || driveImports.value.some((item) => {
-      return item.status === 'importing'
-    })
+    return isPicking.value
+      || isLinkProbing.value
+      || driveImports.value.some((item) => {
+        return item.status === 'importing'
+      })
   })
 
   const importingCount = computed<number>(() => {
@@ -95,9 +159,21 @@ export function useChatDriveFiles(
     driveImports.value = driveImports.value.filter(item => item.id !== id)
   }
 
-  function failProgress(id: string, error: string) {
+  function failProgress(
+    id: string,
+    error: string,
+    extras: Pick<DriveImportProgress, 'code' | 'detail'> = {},
+  ) {
     driveImports.value = driveImports.value.map((item) => {
-      return item.id === id ? { ...item, status: 'failed', error } : item
+      return item.id === id
+        ? { ...item, status: 'failed', error, ...extras }
+        : item
+    })
+  }
+
+  function removeSuggestions(ids: readonly string[]) {
+    linkSuggestions.value = linkSuggestions.value.filter((suggestion) => {
+      return !ids.includes(suggestion.id)
     })
   }
 
@@ -115,11 +191,35 @@ export function useChatDriveFiles(
     })
   }
 
+  function attachCopies(copies: AttachedFile[]) {
+    if (copies.length === 0) {
+      return
+    }
+
+    const existingKeys = new Set(attachedFiles.value.map((file) => {
+      return file.storageKey
+    }))
+    const attachedCount = attach(copies.filter((copy) => {
+      return !existingKeys.has(copy.storageKey)
+    }))
+
+    if (attachedCount === 0) {
+      return
+    }
+
+    if (routeSlug.value) {
+      rememberChatGoogleData(routeSlug.value, true)
+    }
+
+    nuxtApp.callHook('files:uploaded')
+  }
+
   async function importPicked(
     items: PickedDriveItem[],
     startedGeneration: number,
   ) {
     setProgress(items)
+    removeSuggestions(items.map(item => item.id))
 
     let response: Awaited<ReturnType<typeof requestImport>>
 
@@ -155,13 +255,10 @@ export function useChatDriveFiles(
 
     for (const result of response.results) {
       if (result.status === 'failed') {
-        const name = items.find(item => item.id === result.id)?.name
-
-        failProgress(result.id, result.reason)
-        useWarningMessage(
-          `${name ?? 'A Google Drive file'} could not be attached`,
-          result.reason,
-        )
+        failProgress(result.id, result.reason, {
+          code: result.code,
+          detail: formatDriveGoogleDetail(result.google) ?? undefined,
+        })
 
         continue
       }
@@ -174,29 +271,13 @@ export function useChatDriveFiles(
       }
     }
 
-    if (copies.length === 0) {
-      return
-    }
-
-    const existingKeys = new Set(attachedFiles.value.map((file) => {
-      return file.storageKey
-    }))
-    const attachedCount = attach(copies.filter((copy) => {
-      return !existingKeys.has(copy.storageKey)
-    }))
-
-    if (attachedCount === 0) {
-      return
-    }
-
-    if (routeSlug.value) {
-      rememberChatGoogleData(routeSlug.value, true)
-    }
-
-    nuxtApp.callHook('files:uploaded')
+    attachCopies(copies)
   }
 
-  async function runPick(startedGeneration: number) {
+  async function runPick(
+    startedGeneration: number,
+    options: DriveAttachOptions,
+  ) {
     if (!await ensureSendConsent(null)) {
       return
     }
@@ -214,6 +295,7 @@ export function useChatDriveFiles(
 
     const result = await pick({
       maxItems: Math.min(remainingSlots, GOOGLE_DRIVE_PICK_MAX),
+      ...(options.fileIds ? { fileIds: options.fileIds } : {}),
     })
 
     if (generation !== startedGeneration || result.status === 'canceled') {
@@ -244,7 +326,7 @@ export function useChatDriveFiles(
     await importPicked(result.items, startedGeneration)
   }
 
-  async function attachFromDrive() {
+  async function attachFromDrive(options: DriveAttachOptions = {}) {
     if (isDriveBusy.value) {
       return
     }
@@ -252,9 +334,162 @@ export function useChatDriveFiles(
     isPicking.value = true
 
     try {
-      await runPick(generation)
+      await runPick(generation, options)
     } finally {
       isPicking.value = false
+    }
+  }
+
+  async function pickAgain(id: string) {
+    await attachFromDrive({ fileIds: [id] })
+  }
+
+  async function acceptLinkSuggestion(id: string) {
+    await attachFromDrive({ fileIds: [id] })
+  }
+
+  function dismissLinkSuggestion(id: string) {
+    removeSuggestions([id])
+  }
+
+  function isAlreadyAttached(id: string): boolean {
+    const isCopyAttached = attachedFiles.value.some((file) => {
+      return file.externalSource === 'google' && file.externalId === id
+    })
+
+    return isCopyAttached || driveImports.value.some((item) => {
+      return item.id === id
+    })
+  }
+
+  function showLinkFailureChip(
+    link: GoogleDriveLinkMatch,
+    result: { reason: string, code: DriveImportFailureCode },
+    google: DriveGoogleDetail | undefined,
+  ) {
+    setProgress([{
+      id: link.id,
+      name: 'Google Drive file',
+      mimeType: '',
+    }])
+    failProgress(link.id, result.reason, {
+      code: result.code,
+      detail: formatDriveGoogleDetail(google) ?? undefined,
+    })
+  }
+
+  async function probeLink(
+    link: GoogleDriveLinkMatch,
+    startedGeneration: number,
+  ) {
+    let response: Awaited<ReturnType<typeof requestLinkImport>>
+
+    try {
+      response = await requestLinkImport(link)
+    } catch (exception) {
+      const status = (exception as { status?: unknown }).status
+
+      if (
+        typeof status === 'number'
+        && LINK_IMPORT_BLOCKING_STATUSES.has(status)
+      ) {
+        isLinkImportBlocked = true
+      }
+
+      return
+    }
+
+    const result = response.results[0]
+
+    if (generation !== startedGeneration || !result) {
+      return
+    }
+
+    if (result.status !== 'failed') {
+      attachCopies([result.file])
+
+      if (result.note) {
+        useInfoMessage(result.note)
+      }
+
+      return
+    }
+
+    if (NO_ACCESS_LINK_FAILURE_CODES.has(result.code)) {
+      linkSuggestions.value = [
+        ...linkSuggestions.value,
+        {
+          id: link.id,
+          ...(link.resourceKey ? { resourceKey: link.resourceKey } : {}),
+          kind: link.kind,
+        },
+      ]
+
+      return
+    }
+
+    if (!SILENT_LINK_FAILURE_CODES.has(result.code)) {
+      showLinkFailureChip(link, result, result.google)
+    }
+  }
+
+  function requestLinkImport(link: GoogleDriveLinkMatch) {
+    return $fetch('/api/v1/google/drive/files/link', {
+      method: 'POST',
+      body: { link: link.url },
+    })
+  }
+
+  async function runLinkQueue() {
+    if (isLinkQueueRunning) {
+      return
+    }
+
+    isLinkQueueRunning = true
+    isLinkProbing.value = true
+
+    try {
+      while (linkQueue.length > 0) {
+        const queued = linkQueue.shift()
+
+        if (isLinkImportBlocked) {
+          linkQueue.length = 0
+
+          break
+        }
+
+        if (queued && queued.startedGeneration === generation) {
+          await probeLink(queued.link, queued.startedGeneration)
+        }
+      }
+    } finally {
+      isLinkQueueRunning = false
+      isLinkProbing.value = false
+    }
+  }
+
+  async function detectLinks(text: string) {
+    if (!googleDriveFeature.value.active || isLinkImportBlocked) {
+      return
+    }
+
+    const startedGeneration = generation
+
+    for (const link of extractGoogleDriveLinks(text)) {
+      if (handledLinkIds.size >= GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX) {
+        break
+      }
+
+      if (handledLinkIds.has(link.id) || isAlreadyAttached(link.id)) {
+        continue
+      }
+
+      handledLinkIds.add(link.id)
+      linkQueue.push({ link, startedGeneration })
+    }
+
+    if (linkQueue.length > 0) {
+      await runLinkQueue()
     }
   }
 
@@ -269,6 +504,10 @@ export function useChatDriveFiles(
   function invalidatePendingWork() {
     generation++
     isPicking.value = false
+    isLinkImportBlocked = false
+    handledLinkIds.clear()
+    linkQueue.length = 0
+    linkSuggestions.value = []
     dismissAllDriveImports()
   }
 
@@ -280,10 +519,15 @@ export function useChatDriveFiles(
 
   return {
     driveImports,
+    linkSuggestions,
     importingCount,
     isDriveBusy,
     isCheckingGoogleConnection: isCheckingConnection,
     attachFromDrive,
+    pickAgain,
+    detectLinks,
+    acceptLinkSuggestion,
+    dismissLinkSuggestion,
     dismissDriveImport,
     dismissAllDriveImports,
   }

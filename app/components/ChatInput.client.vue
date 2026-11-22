@@ -69,6 +69,12 @@
               || pastedTexts.length
           }"
         >
+          <ChatInputFilesAttachedGoogleLinkSuggestions
+            :suggestions="linkSuggestions"
+            :is-busy="isDriveBusy"
+            @accept="acceptLinkSuggestion"
+            @dismiss="dismissLinkSuggestion"
+          />
           <!-- Attached Files Preview with Upload Progress -->
           <LazyChatInputFilesAttachedPreview
             :files="files"
@@ -81,6 +87,7 @@
             :tiles="tiles"
             :pasted-texts="pastedTexts"
             @dismiss-drive-import="dismissDriveImport"
+            @pick-again-drive-import="pickAgain"
             @open-tile="openToolsMenu"
             @open-text="openTextFile"
             @open-pasted="openPastedText"
@@ -675,9 +682,20 @@ const {
   importingCount: driveImportingCount,
   isDriveBusy,
   isCheckingGoogleConnection,
+  linkSuggestions,
   attachFromDrive,
+  pickAgain,
+  detectLinks,
+  acceptLinkSuggestion,
+  dismissLinkSuggestion,
   dismissDriveImport,
 } = useChatDriveFiles(files, onFilesAttached)
+
+const GOOGLE_LINK_DETECTION_DELAY_MS = 800
+
+watchDebounced(message, async (text) => {
+  await detectLinks(text)
+}, { debounce: GOOGLE_LINK_DETECTION_DELAY_MS })
 
 watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {

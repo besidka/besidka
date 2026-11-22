@@ -7,8 +7,12 @@ import {
   GOOGLE_PICKER_FRAME_SOURCES,
   buildDriveCopyName,
   buildDriveFileLink,
+  canPickDriveFileAgain,
+  describeDriveFailure,
   driveFilePartFromFile,
+  formatDriveGoogleDetail,
   getDriveRefreshFailureReason,
+  readDriveGoogleReason,
   isDriveFilePart,
   isDriveFileReference,
   isDriveFileId,
@@ -197,6 +201,77 @@ describe('Picker page and frame sources', () => {
     expect(isGooglePickerPagePath('/admin/legal')).toBe(false)
     expect(isGooglePickerPagePath('/artifacts/token')).toBe(false)
     expect(isGooglePickerPagePath('/profile/keys')).toBe(false)
+  })
+})
+
+describe('what Google said about a failed file', () => {
+  it('accepts only a short machine string as a reason', () => {
+    expect(readDriveGoogleReason('notFound')).toBe('notFound')
+    expect(readDriveGoogleReason('appNotAuthorizedToFile'))
+      .toBe('appNotAuthorizedToFile')
+    expect(readDriveGoogleReason('Quarterly plan')).toBeNull()
+    expect(readDriveGoogleReason('a/b')).toBeNull()
+    expect(readDriveGoogleReason(`1${'a'.repeat(80)}`)).toBeNull()
+    expect(readDriveGoogleReason('1abc')).toBeNull()
+    expect(readDriveGoogleReason(null)).toBeNull()
+    expect(readDriveGoogleReason(404)).toBeNull()
+  })
+
+  it('gives a different sentence to each reason that asks for a '
+    + 'different action', () => {
+    const sentences = [
+      describeDriveFailure('not_found', { reason: 'notFound' }),
+      describeDriveFailure('no_access', { reason: 'appNotAuthorizedToFile' }),
+      describeDriveFailure('no_access', {
+        reason: 'insufficientFilePermissions',
+      }),
+      describeDriveFailure('no_access', { reason: 'forbidden' }),
+    ]
+
+    expect(new Set(sentences).size).toBe(4)
+    expect(sentences[3]).toBe(GOOGLE_DRIVE_FAILURE_REASONS.no_access)
+  })
+
+  it('keeps the sentence of the code for other codes and no reason', () => {
+    expect(describeDriveFailure('too_large', { reason: 'notFound' }))
+      .toBe(GOOGLE_DRIVE_FAILURE_REASONS.too_large)
+    expect(describeDriveFailure('not_found'))
+      .toBe(GOOGLE_DRIVE_FAILURE_REASONS.not_found)
+  })
+
+  it('writes the technical code the chip shows', () => {
+    expect(formatDriveGoogleDetail({
+      stage: 'export',
+      status: 404,
+      reason: 'notFound',
+    })).toBe('Google: notFound, export')
+    expect(formatDriveGoogleDetail({
+      stage: 'metadata',
+      status: 502,
+      reason: null,
+    })).toBe('Google: HTTP 502, metadata')
+    expect(formatDriveGoogleDetail(undefined)).toBeNull()
+  })
+
+  it('offers the Picker again only where it can help', () => {
+    for (const code of ['not_found', 'no_access', 'rate_limited', 'failed']) {
+      expect(canPickDriveFileAgain(code as never)).toBe(true)
+    }
+
+    for (const code of [
+      'too_large',
+      'empty',
+      'folder',
+      'unsupported_type',
+      'storage_full',
+      'reauthorize',
+      'not_downloadable',
+      'export_too_large',
+    ]) {
+      expect(canPickDriveFileAgain(code as never)).toBe(false)
+    }
+
+    expect(canPickDriveFileAgain(undefined)).toBe(true)
   })
 })
 

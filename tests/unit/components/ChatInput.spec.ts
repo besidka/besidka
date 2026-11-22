@@ -30,6 +30,15 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const driveBusy = shallowRef<boolean>(false)
+const driveLinkSuggestions = shallowRef<
+  Array<{ id: string, kind: string }>
+>([])
+const driveLinkMocks = vi.hoisted(() => ({
+  detectLinks: vi.fn(async () => {}),
+  acceptLinkSuggestion: vi.fn(async () => {}),
+  dismissLinkSuggestion: vi.fn(),
+  pickAgain: vi.fn(async () => {}),
+}))
 
 const googleDataMocks = vi.hoisted(() => ({ remember: vi.fn() }))
 
@@ -45,7 +54,12 @@ mockNuxtImport('useChatDriveFiles', () => () => ({
   importingCount: shallowRef(0),
   isDriveBusy: driveBusy,
   isCheckingGoogleConnection: shallowRef(false),
+  linkSuggestions: driveLinkSuggestions,
   attachFromDrive: vi.fn(),
+  pickAgain: driveLinkMocks.pickAgain,
+  detectLinks: driveLinkMocks.detectLinks,
+  acceptLinkSuggestion: driveLinkMocks.acceptLinkSuggestion,
+  dismissLinkSuggestion: driveLinkMocks.dismissLinkSuggestion,
   dismissDriveImport: vi.fn(),
   dismissAllDriveImports: vi.fn(),
 }))
@@ -4580,6 +4594,65 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
+    })
+  })
+
+  describe('a Google link in the message', () => {
+    const LINK_TEXT = 'https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01/edit '
+
+    afterEach(() => {
+      driveLinkSuggestions.value = []
+      vi.useRealTimers()
+    })
+
+    it('looks for links after the user stops typing, not on every key',
+      async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        driveLinkMocks.detectLinks.mockClear()
+
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+        await textarea.setValue('see https://docs.google.com/doc')
+        await textarea.setValue('see https://docs.google.com/document/d/1')
+        await vi.advanceTimersByTimeAsync(300)
+
+        expect(driveLinkMocks.detectLinks).not.toHaveBeenCalled()
+
+        await textarea.setValue(`see ${LINK_TEXT}`)
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(driveLinkMocks.detectLinks).toHaveBeenCalledTimes(1)
+        expect(driveLinkMocks.detectLinks).toHaveBeenCalledWith(
+          `see ${LINK_TEXT}`,
+        )
+      })
+
+    it('shows one suggestion that opens the Picker for the file, and one '
+      + 'that dismisses it', async () => {
+      driveLinkSuggestions.value = [{ id: 'abc', kind: 'spreadsheet' }]
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.get('[data-testid="google-link-suggestion-attach"]')
+        .text()).toBe('Attach this Google file')
+
+      await wrapper.get('[data-testid="google-link-suggestion-attach"]')
+        .trigger('click')
+
+      expect(driveLinkMocks.acceptLinkSuggestion).toHaveBeenCalledWith('abc')
+
+      await wrapper.get('[data-testid="google-link-suggestion-dismiss"]')
+        .trigger('click')
+
+      expect(driveLinkMocks.dismissLinkSuggestion).toHaveBeenCalledWith('abc')
+    })
+
+    it('shows no suggestion row without a suggestion', async () => {
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[data-testid="google-link-suggestions"]').exists())
+        .toBe(false)
     })
   })
 

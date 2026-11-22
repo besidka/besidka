@@ -160,79 +160,15 @@
         </button>
       </div>
 
-      <div
+      <ChatInputFilesAttachedDriveImport
         v-for="driveImport in driveImports"
         :key="`drive-${driveImport.id}`"
-        :data-drive-import-id="driveImport.id"
-        role="group"
-        :aria-label="driveCopyingLabel(driveImport.name, driveImport.status)"
-        class="carousel-item flex items-center gap-1 relative"
-        data-testid="drive-import-item"
-      >
-        <div
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1 relative"
-        >
-          <div
-            class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
-          >
-            <Icon
-              :name="GOOGLE_DRIVE_ICON"
-              size="20"
-            />
-          </div>
-          <div class="flex flex-col gap-1 min-w-0 max-w-40">
-            <p
-              class="pr-2 text-xs font-medium truncate"
-              :title="driveImport.name"
-            >
-              {{ truncateFilename(driveImport.name) }}
-            </p>
-            <span
-              v-if="driveImport.status === 'importing'"
-              class="text-[10px] flex items-center gap-0.5 text-base-content/60"
-              data-testid="drive-import-status"
-            >
-              <Icon
-                name="lucide:loader-circle"
-                size="10"
-                class="text-info animate-spin"
-              />
-              Copying
-            </span>
-            <span
-              v-else
-              class="text-[10px] flex items-center gap-0.5 text-error line-clamp-2"
-              :title="driveImport.error"
-              data-testid="drive-import-error"
-            >
-              <Icon
-                name="lucide:circle-alert"
-                size="10"
-                class="shrink-0"
-              />
-              {{ driveImport.error || 'Failed' }}
-            </span>
-          </div>
-          <progress
-            v-if="driveImport.status === 'importing'"
-            class="progress progress-info w-full h-1 absolute bottom-0 left-0 rounded-none rounded-b-box"
-            :aria-label="driveCopyingLabel(driveImport.name)"
-          />
-        </div>
-        <button
-          v-if="driveImport.status === 'failed'"
-          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
-          :aria-label="`Dismiss ${driveImport.name}`"
-          title="Dismiss"
-          data-testid="drive-import-dismiss"
-          @click="emit('dismiss-drive-import', driveImport.id)"
-        >
-          <Icon
-            name="lucide:x"
-            size="10"
-          />
-        </button>
-      </div>
+        :item="driveImport"
+        :note-id="driveImportNoteId(driveImport.id)"
+        :is-note-open="openDriveImport?.id === driveImport.id"
+        @toggle-note="toggleDriveImportNote(driveImport.id)"
+        @dismiss="emit('dismiss-drive-import', driveImport.id)"
+      />
 
       <!-- Uploading files -->
       <div
@@ -424,6 +360,13 @@
         </button>
       </div>
     </div>
+    <ChatInputFilesAttachedDriveImportNote
+      v-if="openDriveImport"
+      :id="driveImportNoteId(openDriveImport.id)"
+      :item="openDriveImport"
+      @pick-again="pickDriveImportAgain(openDriveImport.id)"
+      @dismiss="emit('dismiss-drive-import', openDriveImport.id)"
+    />
   </div>
 </template>
 
@@ -479,6 +422,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'dismiss-drive-import': [id: string]
+  'pick-again-drive-import': [id: string]
   'remove': [fileId: string]
   'removeAll': []
   'cancel': [fileId: string]
@@ -494,13 +438,25 @@ function driveCopyLabel(name: string): string {
   return `${name} is a copy of a ${GOOGLE_DRIVE_BRAND_NAME} file`
 }
 
-function driveCopyingLabel(
-  name: string,
-  status: DriveImportProgress['status'] = 'importing',
-): string {
-  return status === 'importing'
-    ? `${name}, copying from ${GOOGLE_DRIVE_BRAND_NAME}`
-    : `${name} could not be attached`
+const openDriveImportId = shallowRef<string | null>(null)
+
+const openDriveImport = computed<DriveImportProgress | null>(() => {
+  return props.driveImports.find((item) => {
+    return item.id === openDriveImportId.value && item.status === 'failed'
+  }) ?? null
+})
+
+function driveImportNoteId(id: string): string {
+  return `drive-import-note-${id}`
+}
+
+function toggleDriveImportNote(id: string) {
+  openDriveImportId.value = openDriveImportId.value === id ? null : id
+}
+
+function pickDriveImportAgain(id: string) {
+  openDriveImportId.value = null
+  emit('pick-again-drive-import', id)
 }
 
 const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {

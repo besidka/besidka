@@ -393,6 +393,25 @@ export function describeDriveFailure(
   return GOOGLE_DRIVE_FAILURE_REASONS[code]
 }
 
+const PICK_AGAIN_CODES: ReadonlySet<DriveImportFailureCode> = new Set([
+  'not_found',
+  'no_access',
+  'rate_limited',
+  'failed',
+])
+
+/**
+ * Whether opening the Picker on the file again can fix the failure. A file
+ * that is too large, empty, a folder or of a kind that cannot be attached
+ * fails the same way however often it is picked, and a lost connection is
+ * fixed on the API Keys page.
+ */
+export function canPickDriveFileAgain(
+  code: DriveImportFailureCode | undefined,
+): boolean {
+  return code === undefined || PICK_AGAIN_CODES.has(code)
+}
+
 export function formatDriveGoogleDetail(
   google: DriveGoogleDetail | undefined,
 ): string | null {

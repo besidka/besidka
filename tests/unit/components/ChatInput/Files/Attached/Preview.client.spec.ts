@@ -553,7 +553,44 @@ describe('ChatInput/Files/Attached/Preview', () => {
           .toBe(false)
       })
 
-    it('shows the reason a file failed and lets the user dismiss it',
+    it('shows one short line for a failed file, the sentence behind a click, '
+      + 'and lets the user dismiss it', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [],
+          driveImports: [{
+            id: 'd1',
+            name: 'Plan',
+            status: 'failed',
+            error: 'This file is too large to attach.',
+            code: 'too_large',
+            detail: 'Google: notFound, export',
+          }],
+        },
+      })
+      const line = wrapper.get('[data-testid="drive-import-error"]')
+
+      expect(line.text()).toBe('Could not import')
+      expect(line.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('[data-testid="drive-import-note"]').exists())
+        .toBe(false)
+      expect(wrapper.find('progress').exists()).toBe(false)
+
+      await line.trigger('click')
+
+      expect(line.attributes('aria-expanded')).toBe('true')
+      expect(wrapper.get('[data-testid="drive-import-note-text"]').text())
+        .toBe('This file is too large to attach.')
+      expect(wrapper.get('[data-testid="drive-import-note-detail"]').text())
+        .toBe('(Google: notFound, export)')
+
+      await wrapper.get('[data-testid="drive-import-dismiss"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('dismiss-drive-import')).toEqual([['d1']])
+    })
+
+    it('asks to pick the file again from the note, only where it can help',
       async () => {
         const wrapper = await mountSuspended(Preview, {
           props: {
@@ -562,20 +599,78 @@ describe('ChatInput/Files/Attached/Preview', () => {
               id: 'd1',
               name: 'Plan',
               status: 'failed',
-              error: 'This file is too large to attach.',
+              error: 'Pick it again.',
+              code: 'not_found',
             }],
           },
         })
 
-        expect(wrapper.get('[data-testid="drive-import-error"]').text())
-          .toContain('This file is too large to attach.')
-        expect(wrapper.find('progress').exists()).toBe(false)
-
-        await wrapper.get('[data-testid="drive-import-dismiss"]')
+        await wrapper.get('[data-testid="drive-import-error"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="drive-import-pick-again"]')
           .trigger('click')
 
-        expect(wrapper.emitted('dismiss-drive-import')).toEqual([['d1']])
+        expect(wrapper.emitted('pick-again-drive-import')).toEqual([['d1']])
+        expect(wrapper.find('[data-testid="drive-import-note"]').exists())
+          .toBe(false)
+
+        await wrapper.setProps({
+          driveImports: [{
+            id: 'd2',
+            name: 'Huge',
+            status: 'failed',
+            error: 'Too large.',
+            code: 'too_large',
+          }],
+        })
+        await wrapper.get('[data-testid="drive-import-error"]')
+          .trigger('click')
+
+        expect(wrapper.find('[data-testid="drive-import-pick-again"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="drive-import-remove"]').exists())
+          .toBe(true)
       })
+
+    it('closes the note when its file is removed', async () => {
+      const failed = {
+        id: 'd1',
+        name: 'Plan',
+        status: 'failed' as const,
+        error: 'Nope.',
+      }
+      const wrapper = await mountSuspended(Preview, {
+        props: { files: [], driveImports: [failed] },
+      })
+
+      await wrapper.get('[data-testid="drive-import-error"]').trigger('click')
+      await wrapper.get('[data-testid="drive-import-remove"]').trigger('click')
+
+      expect(wrapper.emitted('dismiss-drive-import')).toEqual([['d1']])
+
+      await wrapper.setProps({ driveImports: [] })
+
+      expect(wrapper.find('[data-testid="drive-import-note"]').exists())
+        .toBe(false)
+    })
+
+    it('keeps a failed chip as tall as a normal file chip', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [],
+          driveImports: [{
+            id: 'd1',
+            name: 'Plan',
+            status: 'failed',
+            error: 'A long sentence '.repeat(20),
+          }],
+        },
+      })
+      const chip = wrapper.get('[data-testid="drive-import-item"]')
+
+      expect(chip.html()).toContain('size-14')
+      expect(chip.text()).not.toContain('A long sentence')
+    })
 
     it('does not count a file being copied in Detach all', async () => {
       const wrapper = await mountSuspended(Preview, {
