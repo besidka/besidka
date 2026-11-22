@@ -1030,6 +1030,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/utils/ai/current-date-instruction.spec.ts',
+    'tests/unit/utils/ai/chat-instructions.spec.ts',
     'tests/unit/utils/ai/native-search-instruction.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
     'tests/integration/api/chats-model-context-real-sanitizer.spec.ts',
@@ -2894,6 +2895,16 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/ai\/native-search-instruction\.ts$/,
       tests: [
         'tests/unit/utils/ai/native-search-instruction.spec.ts',
+        'tests/unit/utils/ai/chat-instructions.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/chat-instructions\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/chat-instructions.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
       ],
     },
@@ -2902,6 +2913,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/ai/native-search-instruction.spec.ts',
         'tests/unit/utils/ai/current-date-instruction.spec.ts',
+        'tests/unit/utils/ai/chat-instructions.spec.ts',
         'tests/unit/utils/ai/search-answer-continuation.spec.ts',
         'tests/integration/api/chats-external-search.spec.ts',
       ],
@@ -2980,6 +2992,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-new.spec.ts',
         'tests/unit/utils/chats/request-schema.spec.ts',
         'tests/integration/api/chats-external-search-validation.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
       ],
     },
     {
@@ -3027,6 +3040,14 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-title.spec.ts',
         ...messageUsageTests,
         ...modelsTriggerTests,
+      ],
+    },
+    {
+      pattern: /^app\/utils\/client-time-zone\.ts$/,
+      tests: [
+        'tests/unit/utils/client-time-zone.spec.ts',
+        'tests/unit/composables/chat.spec.ts',
+        'tests/unit/composables/chat.tool-approvals.spec.ts',
       ],
     },
     {

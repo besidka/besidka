@@ -3310,6 +3310,11 @@ its `references`.
 | `google__calendar_free_busy` | read | the same window | `references` (one), `window`, `count`, `busy` (UTC start and end times, sorted, merged and cut to the window, at most 100 intervals), `note` | `freeBusy.query` for `primary` only, one request, a `fields` mask, a 256 KiB cap; times only, no event text | Allow once, "Allow checking when you are busy in your Google Calendar in this chat" (at most 5 granted calls per message) |
 | `google__calendar_create_event` | write | `title` (1 to 200 characters), `start` and `end` (RFC 3339 with an explicit offset, or two dates for an all-day event), `timeZone` (an IANA name), optional `description` (4,000 characters) and `location` (300) | `references` (the event id, its start day and its Google link, for the card only), `created`, a fixed message with the day that nobody was invited and no email was sent; no Google link | One `events.insert` on the primary calendar with `sendUpdates=none` and a client-supplied `id` | Allow once only |
 
+The three descriptions carry no date and no year in their examples: they say
+that relative days such as tomorrow come from the date given in the system
+text (`docs/providers/general.md`, "The current-date line"), so the tool
+definitions stay byte-stable in the cached prefix.
+
 There are no attendees, no video call, no repeat, no reminders and no
 attachments in a created event, and no tool edits, moves or deletes one, reads
 another calendar or reads one event by id. A refusal or a Google failure is a

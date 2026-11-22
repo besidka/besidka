@@ -7,6 +7,9 @@ import {
   MAX_USER_MESSAGE_ID_LENGTH,
   MAX_USER_MESSAGE_PARTS,
   MAX_USER_MESSAGE_FILE_URL_LENGTH,
+  requestTimeZoneSchema,
+  toolApprovalContinuationBodySchema,
+  toolRoundContinuationBodySchema,
   userMessagePartsSchema,
 } from '../../../../server/utils/chats/request-schema'
 
@@ -518,5 +521,45 @@ describe('userMessagePartsSchema artifact attachments', () => {
         },
       ]).success).toBe(false)
     })
+  })
+})
+
+describe('requestTimeZoneSchema', () => {
+  it('keeps a time zone string', () => {
+    expect(requestTimeZoneSchema.parse('Europe/Warsaw'))
+      .toBe('Europe/Warsaw')
+  })
+
+  it.each([
+    ['a missing value', undefined],
+    ['a number', 42],
+    ['an object', { zone: 'UTC' }],
+    ['null', null],
+    ['a string over the length cap', 'x'.repeat(65)],
+  ])('drops %s instead of failing', (_label, value) => {
+    expect(requestTimeZoneSchema.safeParse(value)).toEqual({
+      success: true,
+      data: undefined,
+    })
+  })
+
+  it('rides on the approval and the tool round bodies', () => {
+    const approval = toolApprovalContinuationBodySchema.parse({
+      approval: {
+        messageId: 'message-1',
+        responses: [{
+          approvalId: 'approval-1',
+          approved: true,
+        }],
+      },
+      timeZone: 'Europe/Warsaw',
+    })
+    const toolRound = toolRoundContinuationBodySchema.parse({
+      continue: { messageId: 'message-1', round: 2 },
+      timeZone: 'Europe/Warsaw',
+    })
+
+    expect(approval.timeZone).toBe('Europe/Warsaw')
+    expect(toolRound.timeZone).toBe('Europe/Warsaw')
   })
 })

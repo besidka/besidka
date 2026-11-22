@@ -13,6 +13,8 @@ import { TOOL_APPROVAL_CONTROLLER_KEY } from '~/composables/tool-approvals'
 import type { ToolRoundController } from '~/composables/tool-rounds'
 import { TOOL_ROUND_CONTROLLER_KEY } from '~/composables/tool-rounds'
 
+const CLIENT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 interface SdkOptions {
   transport: {
     prepareSendMessagesRequest: (context: {
@@ -271,6 +273,7 @@ describe('useChat tool approval controller', () => {
             { approvalId: 'approval-2', approved: true, remember: 'once' },
           ],
         },
+        timeZone: CLIENT_TIME_ZONE,
       })
       expect(controller.sendingApprovalIds.value)
         .toEqual(['approval-1', 'approval-2'])
@@ -490,7 +493,10 @@ describe('useChat long tool tasks', () => {
       expect(sdk.options!.sendAutomaticallyWhen({ messages })).toBe(true)
       expect(sdk.options!.sendAutomaticallyWhen({ messages })).toBe(false)
       expect(sdk.options!.transport.prepareSendMessagesRequest({ messages })
-        .body).toEqual({ continue: { messageId: 'assistant-1', round: 2 } })
+        .body).toEqual({
+        continue: { messageId: 'assistant-1', round: 2 },
+        timeZone: CLIENT_TIME_ZONE,
+      })
       expect(controller.activeRound.value).toBe(2)
     })
 
@@ -510,7 +516,10 @@ describe('useChat long tool tasks', () => {
       expect(sdk.sendMessage).toHaveBeenCalled()
       expect(sdk.options!.transport.prepareSendMessagesRequest({
         messages: sdk.messages!.value,
-      }).body).toEqual({ continue: { messageId: 'assistant-1', round: 2 } })
+      }).body).toEqual({
+        continue: { messageId: 'assistant-1', round: 2 },
+        timeZone: CLIENT_TIME_ZONE,
+      })
     })
 
   it('stops at the round limit', async () => {

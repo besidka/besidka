@@ -163,6 +163,20 @@ export const incomingUserMessageSchema = z.object({
   ).optional(),
 })
 
+export const MAX_REQUEST_TIME_ZONE_LENGTH = 64
+
+/**
+ * The browser's IANA time zone, sent with every request that can start a
+ * model call. It is read only to state today's date in the system text, never
+ * stored, and a value that is missing, too long or not a string is dropped
+ * instead of failing the request.
+ */
+export const requestTimeZoneSchema = z
+  .string()
+  .max(MAX_REQUEST_TIME_ZONE_LENGTH)
+  .optional()
+  .catch(undefined)
+
 export const toolApprovalResponseSchema = z.object({
   approvalId: z.string().regex(TOOL_APPROVAL_ID_PATTERN),
   approved: z.boolean(),
@@ -189,6 +203,7 @@ export const toolApprovalContinuationBodySchema = z.object({
         message: 'Each approval can be answered once.',
       }),
   }).strict(),
+  timeZone: requestTimeZoneSchema,
 })
 
 /**
@@ -202,6 +217,7 @@ export const toolRoundContinuationBodySchema = z.object({
     messageId: z.string().regex(TOOL_APPROVAL_SUBJECT_ID_PATTERN),
     round: z.number().int().min(2).max(TOOL_ROUNDS_PER_MESSAGE),
   }).strict(),
+  timeZone: requestTimeZoneSchema,
 })
 
 export type ToolRoundContinuationBody = z.infer<

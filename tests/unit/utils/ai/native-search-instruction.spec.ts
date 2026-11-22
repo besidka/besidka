@@ -49,18 +49,18 @@ describe('shouldNudgeNativeWebSearch', () => {
 
 describe('buildNativeSearchInstruction', () => {
   it('tells the model to search before answering', () => {
-    const instruction = buildNativeSearchInstruction(new Date(0))
+    const instruction = buildNativeSearchInstruction()
 
     expect(instruction).toContain('Web search is available via the web search')
     expect(instruction).toContain('Search the web before answering')
   })
 
-  it('appends the current date instruction once', () => {
-    const instruction = buildNativeSearchInstruction(
-      new Date('2026-10-05T12:00:00Z'),
-    )
+  it('tells the model not to search for the date and names none', () => {
+    const instruction = buildNativeSearchInstruction()
 
-    expect(instruction.match(/Today's date is/g)).toHaveLength(1)
-    expect(instruction).toContain('2026-10-05')
+    expect(instruction.match(/do not search for the current date/g))
+      .toHaveLength(1)
+    expect(instruction).not.toMatch(/\d{4}/)
+    expect(instruction).not.toContain('Today')
   })
 })
