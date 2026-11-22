@@ -5,6 +5,7 @@ import {
   defineEventHandler,
   readValidatedBody,
 } from 'nuxt/server'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { assertSameOriginAdminRequest } from '~~/server/utils/features/admin-request'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 

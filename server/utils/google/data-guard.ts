@@ -28,7 +28,8 @@ import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
 import { collectReferencedArtifactIds } from '~~/server/utils/artifacts/message-parts'
 import { decodeArtifactId } from '~~/server/utils/artifacts/store'
-import { extractStorageKeyFromFileUrl } from '~~/server/utils/files/file-governance'
+import { extractLocalFileStorageKey } from '#shared/utils/files'
+import { getOwnedFilesByStorageKeys } from '~~/server/utils/files/file-governance'
 import { isGoogleToolPart } from '~~/server/utils/tool-approval/google'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { unwrapRetryError } from '~~/server/utils/chats/provider-error-summary'
@@ -489,20 +490,13 @@ export async function findSendGoogleContent(input: {
   const storageKeys = [...new Set(input.storageKeys)]
   const artifactIds = [...new Set(input.artifactIds)]
 
-  for (const chunk of chunkValues(storageKeys)) {
-    const rows = await input.db.select({ storageKey: schema.files.storageKey })
-      .from(schema.files)
-      .where(and(
-        eq(schema.files.userId, input.userId),
-        inArray(schema.files.storageKey, chunk),
-        or(
-          inArray(schema.files.externalSource, [...GOOGLE_EXTERNAL_SOURCES]),
-          isNotNull(schema.files.googleDerivedAt),
-        ),
-      ))
+  const ownedFiles = storageKeys.length > 0
+    ? await getOwnedFilesByStorageKeys(input.userId, storageKeys)
+    : new Map()
 
-    for (const row of rows) {
-      markedKeys.add(row.storageKey)
+  for (const [storageKey, file] of ownedFiles) {
+    if (isGoogleContentFile(file)) {
+      markedKeys.add(storageKey)
     }
   }
 
@@ -544,7 +538,7 @@ function fileStorageKeysOf(parts: unknown): string[] {
       return []
     }
 
-    const storageKey = extractStorageKeyFromFileUrl(record.url)
+    const storageKey = extractLocalFileStorageKey(record.url)
 
     return storageKey ? [storageKey] : []
   })
