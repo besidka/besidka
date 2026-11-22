@@ -28,7 +28,6 @@ import {
 import {
   OFFICE_TEXT_INLINE_MAX_BYTES,
   WORKBOOK_MAP_TEXT_VERSION,
-  getOfficeFormatByMediaType,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
 import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
@@ -177,32 +176,6 @@ export function getModelContextFileStorageKeys(
   }
 
   return [...storageKeys]
-}
-
-/**
- * The stored text version of every spreadsheet with ready text, for the
- * carry-over rules of `buildModelContextMessages`.
- */
-export function getSpreadsheetTextVersions(
-  files: ReadonlyMap<string, {
-    type?: string
-    textStatus?: string | null
-    textVersion?: number | null
-  }>,
-): Map<string, number> {
-  const versions = new Map<string, number>()
-
-  for (const [storageKey, file] of files) {
-    const isReadySpreadsheet = !!file.type
-      && getOfficeFormatByMediaType(file.type) === 'xlsx'
-      && file.textStatus === 'ready'
-
-    if (isReadySpreadsheet) {
-      versions.set(storageKey, file.textVersion ?? 1)
-    }
-  }
-
-  return versions
 }
 
 function getUserFileParts(message: UIMessage): FileMessagePart[] {

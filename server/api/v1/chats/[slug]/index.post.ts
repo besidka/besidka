@@ -119,7 +119,10 @@ import {
   assertOnlyDeliverableFileParts,
 } from '~~/server/utils/chats/file-delivery-check'
 import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
-import { isOfficeMediaType } from '#shared/utils/office-files'
+import {
+  OFFICE_MEDIA_TYPES,
+  isOfficeMediaType,
+} from '#shared/utils/office-files'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
   appendTextAsLastUserTurn,
@@ -160,7 +163,6 @@ import {
   buildModelContextMessages,
   getGeneratedImageFileIds,
   getModelContextFileStorageKeys,
-  getSpreadsheetTextVersions,
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
   stripUndeliveredInlineDataParts,
@@ -1347,8 +1349,7 @@ export default defineEventHandler(async (event) => {
   )
   const fileSizesByStorageKey = new Map<string, number>()
   const officeTextBytesByStorageKey = new Map<string, number>()
-  const spreadsheetTextVersionsByStorageKey
-    = getSpreadsheetTextVersions(ownedContextFiles)
+  const spreadsheetTextVersionsByStorageKey = new Map<string, number>()
 
   for (const [storageKey, file] of ownedContextFiles) {
     fileSizesByStorageKey.set(storageKey, file.size)
@@ -1360,6 +1361,11 @@ export default defineEventHandler(async (event) => {
       && typeof file.textBytes === 'number'
     ) {
       officeTextBytesByStorageKey.set(storageKey, file.textBytes)
+
+      if (file.type === OFFICE_MEDIA_TYPES.xlsx) {
+        spreadsheetTextVersionsByStorageKey
+          .set(storageKey, file.textVersion ?? 1)
+      }
     }
   }
 
