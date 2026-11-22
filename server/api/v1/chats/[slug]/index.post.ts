@@ -390,6 +390,7 @@ import {
 } from '#shared/utils/connectors-policy'
 import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 import { findBuiltinCommandInvocation } from '#shared/utils/builtin-commands'
 import {
   createBuiltinCommandUnavailableError,
@@ -2911,6 +2912,7 @@ export default defineEventHandler(async (event) => {
   const isApprovalGatedToolName = (toolName: string) => {
     return isConnectorToolName(toolName)
       || isBesidkaChatToolName(toolName)
+      || isGoogleToolName(toolName)
       || toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
   }
   const answerGuaranteeToolNames = new Set(

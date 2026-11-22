@@ -1544,6 +1544,75 @@ describe('tool approval requests in the chat send', () => {
     }])
   })
 
+  it('runs the real Drive list tool once the user allowed it in this chat, '
+    + 'stores references only and sets the chat flag', async () => {
+    const { buildGoogleDriveTools } = await import(
+      '~~/server/utils/google/drive-tools'
+    )
+    const rows = [{
+      id: 'file-1',
+      name: 'Budget.md',
+      type: 'text/markdown',
+      size: 12,
+      storageKey: 'key-1',
+      externalId: '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+      externalModifiedAt: new Date('2026-11-20T09:00:00.000Z'),
+      createdAt: new Date('2026-11-20T10:00:00.000Z'),
+    }]
+    const listQuery = {
+      from: () => listQuery,
+      where: () => listQuery,
+      orderBy: () => listQuery,
+      limit: async () => rows,
+    }
+    const build = (grants: Record<string, string> = {}) => {
+      return buildGoogleDriveTools({
+        db: { select: () => listQuery } as never,
+        kv: {} as never,
+        event: { context: {} } as never,
+        userId: 1,
+        chatGrantHashes: grants,
+        logger: { set: vi.fn() },
+      })
+    }
+    const hash = (await build()).entries.get('google__drive_list_picked')!
+      .descriptor.definitionHash!
+
+    mocks.googleSend = await build({ google__drive_list_picked: hash })
+
+    const { assistantInsert, doStream } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-d', 'google__drive_list_picked', {}),
+        textChunks('You picked Budget.md.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+    const offered = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+      .map((offeredTool: { name: string }) => offeredTool.name)
+
+    expect(offered).toEqual(expect.arrayContaining([
+      'google__drive_list_picked',
+      'google__drive_read_file',
+      'google__drive_save_file',
+    ]))
+    expect(findPart(parts, 'tool-google__drive_list_picked'))
+      .toMatchObject({
+        state: 'output-available',
+        output: {
+          bodyRemoved: true,
+          references: [expect.objectContaining({
+            id: '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+            title: 'Budget.md',
+          })],
+        },
+      })
+    expect(JSON.stringify(parts)).not.toContain('untrusted_tool_result')
+    expect(mocks.chatUpdates).toContainEqual({
+      googleDataAt: expect.anything(),
+    })
+  })
+
   it('hands the writers a mark that is off in an ordinary send and on in a '
     + 'flagged chat', async () => {
     mocks.flags.add('artifacts')

@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
     tools: Record<string, unknown>
     entries: Map<string, unknown>
   },
+  pickedRead: null as null | Record<string, any>,
+  saveFile: null as null | ((...args: unknown[]) => unknown),
   failRateLimitRead: false,
   chatGoogleDataAt: null as Date | null,
   memoryToolsEnabled: false,
@@ -244,6 +246,19 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
     },
   }
 })
+
+vi.mock('~~/server/utils/google/drive-picked', async (importOriginal) => {
+  return {
+    ...await importOriginal<
+      typeof import('~~/server/utils/google/drive-picked')
+    >(),
+    readPickedDriveFile: async () => mocks.pickedRead,
+  }
+})
+
+vi.mock('~~/server/utils/google/drive-save', () => ({
+  saveFileToGoogleDrive: (...args: unknown[]) => mocks.saveFile!(...args),
+}))
 
 vi.mock('~~/server/utils/tool-approval/secret', () => ({
   useToolApprovalSecret: async () => 'test-tool-approval-secret',
@@ -2258,6 +2273,132 @@ describe('tool approval continuation', () => {
         expect(prompt).not.toContain('SECRET GOOGLE BODY')
         expect(prompt).toContain('could not be kept')
       })
+
+    describe('with the real Drive tools', () => {
+      const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
+
+      beforeEach(async () => {
+        const { buildGoogleDriveTools } = await import(
+          '~~/server/utils/google/drive-tools'
+        )
+        const build = (grants: Record<string, string> = {}) => {
+          return buildGoogleDriveTools({
+            db: {} as never,
+            kv: {} as never,
+            event: { context: {} } as never,
+            userId: 1,
+            chatGrantHashes: grants,
+            logger: { set: vi.fn() },
+          })
+        }
+        const hash = (await build()).entries
+          .get('google__drive_read_file')!.descriptor.definitionHash!
+
+        mocks.googleSend = await build({ google__drive_read_file: hash })
+        mocks.pickedRead = {
+          status: 'ok',
+          isStale: false,
+          text: 'SECRET DRIVE BODY',
+          file: {
+            id: 'file-1',
+            driveFileId: DRIVE_ID,
+            name: 'Plan.md',
+            type: 'text/markdown',
+            size: 17,
+            copiedAt: new Date('2026-11-20T10:00:00.000Z'),
+            modifiedAt: new Date('2026-11-20T09:00:00.000Z'),
+          },
+        }
+        mocks.saveFile = vi.fn(async () => ({
+          status: 'saved',
+          saved: {
+            fileId: 'file-2',
+            driveFileId: 'saved-drive-id-0000',
+            name: 'Report.md',
+            link: 'https://drive.google.com/open?id=saved-drive-id-0000',
+            isAlreadySaved: false,
+          },
+        }))
+      })
+
+      async function pauseAfterDriveRead() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-g', 'google__drive_read_file', {
+              fileId: 'file-1',
+            }),
+            toolCallChunks('call-w', 'google__drive_save_file', {
+              fileId: 'file-2',
+            }),
+          ],
+        })
+      }
+
+      it('stores the file as a reference only, keeps the framed body in KV '
+        + 'while the save waits, and runs the save once approved', async () => {
+        const paused = await pauseAfterDriveRead()
+        const key = await stashKey(paused.messagePublicId)
+        const [approvalId] = paused.approvalIds
+
+        expect(findPart(paused.assistantParts, 'tool-google__drive_read_file'))
+          .toMatchObject({
+            state: 'output-available',
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: DRIVE_ID,
+                kind: 'drive-file',
+                title: 'Plan.md',
+                link: `https://drive.google.com/open?id=${DRIVE_ID}`,
+              }],
+            },
+          })
+        expect(JSON.stringify(paused.assistantParts))
+          .not.toContain('SECRET DRIVE BODY')
+        expect(mocks.kv.get(key)).toContain('SECRET DRIVE BODY')
+        expect(mocks.kv.get(key)).toContain('<untrusted_tool_result')
+        expect(mocks.saveFile).not.toHaveBeenCalled()
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__drive_save_file',
+          rememberOptions: ['once'],
+        })
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Saved it.')])
+        const update = mocks.updates.at(-1)!
+
+        expect(mocks.saveFile).toHaveBeenCalledTimes(1)
+        expect(mocks.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+          target: { fileId: 'file-2' },
+        }))
+        expect(JSON.stringify((doStream.mock.calls[0]?.[0] as any)?.prompt))
+          .toContain('SECRET DRIVE BODY')
+        expect(JSON.stringify(update.parts))
+          .not.toContain('SECRET DRIVE BODY')
+        expect(findPart(update.parts, 'tool-google__drive_save_file'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{ id: 'saved-drive-id-0000' }],
+            },
+          })
+        expect(mocks.kv.has(key)).toBe(false)
+      })
+
+      it('does not run the save when the user denies it', async () => {
+        const paused = await pauseAfterDriveRead()
+        const [approvalId] = paused.approvalIds
+
+        await answer(paused, [{ approvalId, approved: false }])
+
+        expect(mocks.saveFile).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('a chat that came to hold Google data while paused', () => {

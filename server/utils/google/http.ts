@@ -28,6 +28,7 @@ export interface GoogleFetchRequest {
   method: 'GET' | 'POST'
   headers?: Record<string, string>
   form?: Record<string, string>
+  rawBody?: { contentType: string, data: Uint8Array<ArrayBuffer> }
   signal?: AbortSignal
 }
 
@@ -244,6 +245,9 @@ export async function googleFetchJson(
   if (request.form) {
     headers['content-type'] = 'application/x-www-form-urlencoded'
     init.body = new URLSearchParams(request.form).toString()
+  } else if (request.rawBody) {
+    headers['content-type'] = request.rawBody.contentType
+    init.body = request.rawBody.data
   }
 
   try {

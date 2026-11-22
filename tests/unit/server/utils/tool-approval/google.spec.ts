@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
@@ -89,6 +89,13 @@ const chatSettingsMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('~~/server/utils/besidka-tools/chat-settings', () => chatSettingsMocks)
+
+vi.mock('~~/server/utils/google/store', async (importOriginal) => {
+  return {
+    ...await importOriginal<typeof import('~~/server/utils/google/store')>(),
+    readGoogleConnection: vi.fn(async () => null),
+  }
+})
 
 const HASH = 'c'.repeat(64)
 const OTHER_HASH = 'd'.repeat(64)
@@ -546,6 +553,16 @@ describe('Besidka writes after Google content (rule 13)', () => {
 })
 
 describe('the Google tool gate (tool approvals required)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('useDb', () => ({}))
+    vi.stubGlobal('useKV', () => createFakeKv())
+    vi.stubGlobal('useEvent', () => ({ context: {} }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('refuses to build a Google entry without tool approvals', () => {
     expect(() => buildStrictGoogleApprovalEntry({
       toolName: GOOGLE_READ,

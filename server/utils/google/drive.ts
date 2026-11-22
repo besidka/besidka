@@ -65,7 +65,9 @@ function toFetchOptions(context: DriveRequestContext): GoogleFetchOptions {
   return context.fetchImpl ? { fetchImpl: context.fetchImpl } : {}
 }
 
-function readReason(body: Record<string, unknown> | null): string | null {
+export function readReason(
+  body: Record<string, unknown> | null,
+): string | null {
   const error = body?.error
 
   if (typeof error !== 'object' || error === null) {
