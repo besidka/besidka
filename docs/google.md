@@ -330,11 +330,15 @@ once, so no grant is stored.
 | Google egress, Allow in this chat | The connector's `connector_chat_settings.alwaysAllowTools` | `google-egress:<exposed connector tool name>` | Definition hash |
 
 The approval card shows the grant as the same short primary button "Allow in
-this chat" for every tool (BES-462). What a Google read grant covers (for
-example "Allow reading events on your Google Calendar in this chat", the
-`GOOGLE_TOOL_CHAT_GRANT_LABELS` strings) is the button's `aria-label` and the
-card's title line says the rest, so the label stays on one line at 360px. The
-sentences in the tool tables below are those accessible names.
+this chat" for every tool (BES-462); "Always allow" is the quieter
+`btn-soft`. What a Google read grant covers is the button's `aria-label` and
+its `title` (hover), "Allow in this chat: reading events on your Google
+Calendar": the `GOOGLE_TOOL_CHAT_GRANT_LABELS` sentence without its leading
+"Allow " and trailing " in this chat", behind the visible label so the label
+is a prefix of the accessible name (WCAG 2.5.3), and the whole sentence when
+an entry does not have that shape. The card's title line says the rest, so
+the label stays on one line at 360px. The sentences in the tool tables below
+are the `GOOGLE_TOOL_CHAT_GRANT_LABELS` strings those names derive from.
 
 The chat panel lists both under Approvals (`listChatToolApprovalGrants`):
 a Google read grant as "Google · Allowed in this chat", an egress grant as
