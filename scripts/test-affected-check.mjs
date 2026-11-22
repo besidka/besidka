@@ -1633,6 +1633,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-redirect.spec.ts',
     'tests/unit/server/plugins/evlog-request-observability.spec.ts',
     'tests/unit/server/routes/waf-blocked-paths.spec.ts',
+    'tests/unit/components/Profile/Google/Connection.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
   ]
 
   const connectorsStorageTests = [
@@ -3791,7 +3793,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/google\/.*\.ts|server\/api\/v1\/google\/.*\.ts|server\/plugins\/(google-access-sweep|evlog-request-observability)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|shared\/utils\/(google-connections|google-scopes|google-data-policy|auth-redirect|features\/registry)\.ts|server\/utils\/connectors\/(oauth-client|oauth-state|callback-limit|route|body)\.ts|server\/utils\/(files\/(delete-files|convert-files-for-ai)|documents\/cleanup|knowledge\/(linked-files|text-store|version))\.ts|tests\/setup\/helpers\/(google-connections|connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+        /^(server\/utils\/google\/.*\.ts|server\/api\/v1\/google\/.*\.ts|server\/plugins\/(google-access-sweep|evlog-request-observability)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|shared\/utils\/(google-connections|google-scopes|google-data-policy|auth-redirect|features\/registry)\.ts|server\/utils\/connectors\/(oauth-client|oauth-state|callback-limit|route|body)\.ts|server\/utils\/(files\/(delete-files|convert-files-for-ai)|documents\/cleanup|knowledge\/(linked-files|text-store|version))\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|tests\/setup\/helpers\/(google-connections|connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
       tests: googleConnectionsTests,
     },
     {

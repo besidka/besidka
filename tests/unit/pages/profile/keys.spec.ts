@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   providers: [] as Array<{ id: string, models: [] }>,
   guides: [] as Array<{ provider: string, title: string }>,
   shouldAutoExpand: true,
+  googleDriveActive: false,
   openAtMount: {} as Record<string, boolean>,
   expandCard: {} as Record<string, (isExpanded?: boolean) => void>,
   resizeObservers: [] as Array<{
@@ -75,6 +76,14 @@ mockNuxtImport('useUserKeys', () => {
   }
 })
 
+mockNuxtImport('useFeature', () => {
+  return (key: string) => computed(() => {
+    const active = key === 'google.drive' && mocks.googleDriveActive
+
+    return { enabled: active, active, variant: null }
+  })
+})
+
 mockNuxtImport('useRuntimeConfig', () => {
   return () => ({
     app: { baseURL: '/' },
@@ -92,6 +101,9 @@ mockNuxtImport('useRoute', () => {
 
 function stubs() {
   return {
+    ProfileGoogleConnection: {
+      template: '<section data-testid="google-drive-connection" />',
+    },
     ProfileKeysTypesafeChecks: {
       template: '<section data-testid="typesafe-checks" />',
     },
@@ -160,6 +172,7 @@ describe('profile keys page', () => {
     clearNuxtData()
     mocks.guides = []
     mocks.shouldAutoExpand = true
+    mocks.googleDriveActive = false
     mocks.expandCard = {}
     mocks.openAtMount = {}
     mocks.resizeObservers = []
@@ -342,6 +355,35 @@ describe('profile keys page', () => {
       'key-tab-gateways',
       'key-tab-memory-checks',
     ])
+  })
+
+  it('hides the Google tab while google.drive is not active', async () => {
+    mockRoute.query = { tab: 'google' }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('[data-testid="key-tab-google"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="key-panel-google"]').exists())
+      .toBe(false)
+    expect(wrapper.get('[data-testid="key-tab-providers"]').classes())
+      .toContain('tab-active')
+  })
+
+  it('adds the Google tab last and opens it for tab=google', async () => {
+    mocks.googleDriveActive = true
+    mockRoute.query = { tab: 'google' }
+
+    const wrapper = await mountPage()
+    const tabIds = wrapper.findAll('[class~="tab"]').map((tab: any) => {
+      return tab.attributes('id')
+    })
+    const panel = wrapper.get('[data-testid="key-panel-google"]')
+
+    expect(tabIds.at(-1)).toBe('key-tab-google')
+    expect(wrapper.get('[data-testid="key-tab-google"]').classes())
+      .toContain('tab-active')
+    expect(panel.find('[data-testid="google-drive-connection"]').exists())
+      .toBe(true)
   })
 
   it('renders the memory checks blurb and the TypeSafe AI card in its own '
