@@ -1989,6 +1989,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/google/download.spec.ts',
     'tests/unit/server/utils/google/drive.spec.ts',
     'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/google/picker-frame.spec.ts',
+    'tests/integration/api/chats-new-google-data.spec.ts',
+    'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
     'tests/integration/api/google-drive-picker-token.spec.ts',
     'tests/integration/api/google-drive-import.spec.ts',
     'tests/integration/server/google-drive-parts.spec.ts',
@@ -4006,7 +4010,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-drive|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/Preview\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
+        /^(shared\/utils\/(google-drive|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/Preview\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
       tests: googleDrivePickerTests,
     },
     {

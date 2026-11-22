@@ -504,7 +504,7 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
     `modifiedTime` in whole seconds). Written in the same insert as the row by
     `persistFile`, so a copy is never a plain upload. The copy has
     `source = 'upload'`, counts in the `googleDrive` storage category and is
-    deleted when Google access ends. See `docs/google.md`, section 11.
+    deleted when Google access ends. See `docs/google.md`, section 12.
   - `originMessageId`: nullable FK to `messages` for provenance.
   - `originProvider`: nullable provider id for provenance.
   - `textStatus`, `textBytes`, `textVersion`: nullable. The state of the text
@@ -568,7 +568,7 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
 - `PUT /api/v1/files/upload` upload one file.
 - `POST /api/v1/google/drive/files` copy up to 5 picked Google Drive files into
   storage through `persistFile` (per-file results; `docs/google.md`,
-  section 11). A sent copy adds a `data-drive-file` reference part after its
+  section 12). A sent copy adds a `data-drive-file` reference part after its
   `file` part, rebuilt on the server from the stored row.
 - `PATCH /api/v1/files/[id]/name` rename one file.
 - `DELETE /api/v1/files/[id]` delete one file.

@@ -12,7 +12,8 @@ panel rows), the data guard of the allow-list (section 5.3), the connection
 flow of the connections child (section 9: connect and disconnect Google
 Drive, the token store, and deletion when Google access ends), and the
 owner-only bring-your-own client (section 10: the stored client, the admin
-gate, its own callback), and the Drive Picker (section 11: the token route,
+gate, its own callback), the MCP status and disconnect tools (section 11),
+and the Drive Picker (section 12: the token route,
 the import into Besidka storage, the composer row, the `data-drive-file`
 part). Not built yet: the Drive, Calendar and Gmail tools themselves, and the
 legal text. This file grows with every
@@ -30,7 +31,7 @@ only, work with mail and calendar:
 
 | Capability | Flag | Client | Scopes | State |
 |---|---|---|---|---|
-| Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Connection (section 9) and Picker (section 11) built; tools design |
+| Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Connection (section 9) and Picker (section 12) built; tools design |
 | Calendar text: list events, find free time, create an event | `google.calendar` | Either client | `calendar.events` (provisional) | Design |
 | Connect Google with the owner's own OAuth client | `google.byo` plus the admin role | Owner's own client | Identity plus what the owner ticks: `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events` | Built (section 10), owner-only; no tool uses it yet |
 | Gmail: search, read a thread, create a draft | `google.gmail` | Owner's own client | `gmail.readonly`, `gmail.compose` | Design, owner-only |
@@ -77,7 +78,7 @@ The answers below come from Google's documentation, read by a researcher on
 2026-11-22. **None of them has been run against a real Google account.**
 Each answer is marked: documented (the docs say it), inferred (the docs imply
 it, or show it only for a neighbouring case) or NOT VERIFIED (nothing
-documented; a real run settles it, see the owner checklist in section 11.9).
+documented; a real run settles it, see the owner checklist in section 12.9).
 The Picker child built on the documented and inferred answers and put every
 NOT VERIFIED one behind a clear failure path.
 
@@ -194,7 +195,8 @@ Rules that go with the table:
 - Copies of Google files live in the user's files with
   `external_source = 'google'` (`GOOGLE_EXTERNAL_SOURCES`, one value, as the
   pre-check says) and are labeled at attach time ("Saves a copy in your
-  Besidka files for 30 days"). They are kept out of MCP `list_files` and
+  Besidka files"; section 12.10 on why the number of days is gone). They
+  are kept out of MCP `list_files` and
   `read_file`, and a flagged chat is withheld or marked in `get_chat`.
 - Save to Drive is per file and user-initiated, never automatic or bulk.
 
@@ -465,7 +467,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
   in: the opt-in covers replies that repeat Google content, and these files
   are such replies. Google copies stay ungranted.
 - Names-only rendering of Google items in the shared view is built by the
-  Picker child (section 11.7): the `data-drive-file` part reaches a share as a
+  Picker child (section 12.7): the `data-drive-file` part reaches a share as a
   name, and the Google copy itself stays without a grant.
 - The Gemini paid-tier confirmation is cleared when the Gemini key is
   replaced, because a new key can sit on another project.
@@ -788,7 +790,7 @@ errors (for example `invalid_client` after a secret rotation) throw 502 or
 calls Google: HTTPS on an exact host of `GOOGLE_FETCH_HOSTS`
 (`oauth2.googleapis.com` and, since the Picker child, `www.googleapis.com`;
 `accounts.google.com` is opened by the browser only; the Drive downloads use
-the byte fetcher of section 11.4), `redirect: 'manual'` with any 3xx refused and its body
+the byte fetcher of section 12.4), `redirect: 'manual'` with any 3xx refused and its body
 canceled, a 15 s timeout that covers the body, a 64 KiB cap enforced while
 the body streams in, form bodies (the revoke token goes in the body, never
 the URL). Every caller awaits each call before the next, so a request holds
@@ -1171,298 +1173,6 @@ bring-your-own one.
   > myaccount.google.com/connections. While the client is owner-only, the
   > owner is the only affected Google account.
 
-## 12. The Drive Picker (Picker child, G-4)
-
-Built on `feat/google-drive-picker`. A connected user picks files in Google's
-own Picker; Besidka copies each into its own storage as a snapshot and
-attaches it to the message like an uploaded file. Code:
-`server/api/v1/google/drive/`, `server/utils/google/{download,drive,
-drive-import,drive-parts,picker-token}.ts`, `shared/utils/google-drive.ts`,
-`app/composables/{google-picker,chat-drive-files}.ts`,
-`app/components/Chat/DriveFiles.vue`.
-
-### 11.1 The flow
-
-1. The user opens "+", Add, "Google Drive" (shown while `google.drive` is
-   active and the model takes files). Nothing from Google has loaded yet.
-2. `useChatDriveFiles().attachFromDrive()` asks for send consent, reads the
-   file limit of the account and computes how many files still fit.
-3. `useGooglePicker().pick()` calls the token route, then loads
-   `https://apis.google.com/js/api.js` and `gapi.load('picker')` (only now),
-   and opens the classic `google.picker.PickerBuilder` with the server's
-   access token, the public key and the project number.
-4. The picked files go to `POST /api/v1/google/drive/files`, which copies them
-   one by one. Each result becomes a chip, or stays beside the chips with its
-   reason.
-5. On send, the message holds the usual `file` part for each copy and a
-   `data-drive-file` reference after it.
-
-### 11.2 Routes
-
-| Method and path | What it does | Gate |
-|---|---|---|
-| `POST /api/v1/google/drive/picker-token` | Answers `{ accessToken, expiresInSeconds, apiKey, appId }` with `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer` | Same-origin write guard, session, `google.drive` active, 30 per minute (`google-picker-rate-limit:<userId>`) |
-| `POST /api/v1/google/drive/files` | Body `{ items: [{ id, resourceKey? }] }`, 1 to 5 items, unique ids; answers `{ results }`, one per file | Same gate, 10 per minute (`google-drive-import-rate-limit:<userId>`), body at most 8 KiB, legal consent; 404 or 409 before any read when Google is not connected or needs re-authorization |
-
-Ids match `^[A-Za-z0-9_-]{10,128}$` and resource keys `^[A-Za-z0-9_-]{1,128}$`
-(both go into a URL or a header), checked by the route and again before every
-Drive call. Both routes keep a flat name for the token (`picker-token.post.ts`)
-and a directory for the files route, as the layout rule says.
-
-### 11.3 The picker token, and why only Besidka's client
-
-`createGooglePickerToken` (`server/utils/google/picker-token.ts`) is the one
-place a Google token leaves the server. It:
-
-- refuses any client mode but `besidka` in code (403
-  `google_picker_client_refused`), so the owner's own client, whose grant can
-  carry restricted scopes, never reaches a browser; the route also hard-codes
-  `besidka`;
-- hands out the access token only, never the refresh token, minted through
-  `getGoogleAccessToken` (refresh lock and all), at pick time, with no
-  caching on any layer; the client keeps it for the one Picker call;
-- refuses a stored grant that holds any scope besides identity and
-  `drive.file` (409 `google_picker_scope_too_wide`), because an access token
-  cannot be narrowed;
-- answers the specific cases: 404 `google_not_connected`, 409
-  `google_reauthorize` (needs re-authorization, or `drive.file` missing), 503
-  `google_picker_not_configured` (key or project number empty);
-- logs `attributes.googlePicker` (`issued` or the refusal), never the token.
-
-### 11.4 Import: export choices, limits and downloads
-
-| Drive file | Stored as | Note |
-|---|---|---|
-| Google Doc | `<name>.md`, `text/markdown` (export `text/markdown`); on a 400 from Drive, `<name>.txt`, `text/plain` | |
-| Google Sheet | `<name> (first sheet).csv`, `text/csv` | Google exports the first sheet only; the name and a toast say so |
-| Google Slides | `<name>.txt`, `text/plain` | |
-| Other Google-native types (Forms, Drawings, Sites, Maps) and folders | not copied | `unsupported_type` and `folder` |
-| PDF, PNG, JPEG, WebP, text, Markdown, CSV, TSV | as is, through `alt=media` | needs `capabilities.canDownload`; images are not transformed |
-| Word, Excel, PowerPoint (`.docx`, `.xlsx`, `.pptx`) | as is, through `alt=media` | only while `files.office` is active, and only after the same ZIP and main-part checks as an upload; legacy and macro files are `unsupported_type` |
-
-Decision: Docs, Sheets and Slides go out as text exports, not as Office
-binaries. A text export needs no `files.office` and no `DOC_RENDERER`, and a
-Sheet export to XLSX would not be the first sheet only. The plan's "Office
-binaries link-only" default is therefore not what Office files do here:
-Office files that already sit in Drive are copied as bytes (when
-`files.office` is on), because the existing upload extraction handles them
-without a new dependency.
-
-Limits, each enforced twice (from the metadata when Drive reports a size, and
-while the body streams in):
-
-| Limit | Value | Where |
-|---|---|---|
-| Files per pick | 5 (`GOOGLE_DRIVE_PICK_MAX`), further capped by the message's free file slots | Picker `setMaxItems`, route schema |
-| One file | 20 MiB (`GOOGLE_DRIVE_FILE_MAX_BYTES`, the Office upload cap) | `too_large` |
-| One export | 10 MiB (`GOOGLE_DRIVE_EXPORT_MAX_BYTES`, Google's own `files.export` cap) | `export_too_large`; Drive's own `exportSizeLimitExceeded` maps to the same code |
-| The account's storage | what is left of the allowance, checked before the download and as the stream cap | `storage_full` (a refused write never deletes anything) |
-| A download | 60 s (`GOOGLE_DOWNLOAD_TIMEOUT_MS`), covering the body | 504 becomes `failed` |
-
-Files are copied one at a time, each with a fresh `getGoogleAccessToken`, so a
-slow import never uses a token past its life and a request holds one Google
-connection at a time.
-
-**Redirects.** `googleFetchBytes` (`server/utils/google/download.ts`) uses
-`redirect: 'manual'`. A 3xx is followed at most once, only to HTTPS without
-credentials or a port, and only to an exact host of `GOOGLE_FETCH_HOSTS` (the
-bearer token stays) or a `*.googleusercontent.com` host (the bearer token is
-dropped: such links carry their own authorization, and the token must never
-reach a content host). A second redirect, a missing `Location` or any other
-host fails the file with 502. Whether Drive answers `alt=media` or
-`files.export` with such a redirect at all, and whether the content host
-needs the bearer token, is NOT VERIFIED: the Drive download guide could not be
-read during this build (the research tool was out of quota). The code covers
-both outcomes and fails closed; the owner checklist settles it.
-
-**Reuse.** A file already copied by this user, with the same `external_id`
-and the same `modifiedTime` (whole seconds, as `files.external_modified_at`
-stores it) and not expired, is returned as `reused` and not downloaded again
-(the metadata call still runs, so access is checked). Drive's `version` is
-read but not stored: no schema change was allowed, so two edits inside one
-second look the same.
-
-### 11.5 What a copy is in storage
-
-A normal `files` row and R2 object, made by `persistFile` (the upload path:
-quota check before and after, `storage-stats` cache, retention, text
-extraction for Office files, deletion hooks). `persistFile` takes
-`externalSource`, `externalId` and `externalModifiedAt` and writes them in the
-same insert, so there is no window where a copy is a plain upload. `source` is
-`upload`. A copy expires with the account's retention (30 days by default),
-like any upload; the attach-time label says so ("Saves a copy in your Besidka
-files for 30 days"). Disconnect, `invalid_grant` and account deletion delete
-copies as section 9.6 describes; nothing new was needed.
-
-The Storage page and `get_settings` show one extra category,
-`googleDrive` ("Google Drive copies"): `files.source = 'upload'` and
-`external_source IS NOT NULL`. `uploads` now excludes those rows, so the
-categories still partition `files` and the total is unchanged
-(`docs/storage.md`).
-
-### 11.6 In a message
-
-A sent copy is a normal `file` part, so models receive it by the usual
-modality and text rules, and a `data-drive-file` reference part:
-`{ driveFileId, name, mimeType (the copy's media type), link }`, no content.
-The link is built on `https://drive.google.com/open?id=<id>`. The server never
-trusts the client's part: both `POST /api/v1/chats/[slug]` and
-`PUT /api/v1/chats/new` drop every `data-drive-file` part of the request and
-rebuild one after each `file` part whose stored row is the sender's own
-Google copy (`resolveDriveFileParts`, one more `getOwnedFilesByStorageKeys`
-lookup only when the message has file parts). So a copy attached later from
-the library gets its reference too, and a forged id, name or link never
-reaches storage. The composer builds the same parts (`withDriveFileParts`) so
-the live message shows the link before a reload.
-
-The data rules (section 5.3) are unchanged and tested end to end:
-`resolveSendGoogleContent` finds the Google copy at send start and flags the
-chat before the guard, so a send on a refused model answers 403 before the
-file is converted or any message is stored, and on an allowed model the chat
-becomes flagged (`tests/integration/api/chats-google-data-guard.spec.ts`).
-When a copy is attached in an existing chat the composer also marks the chat
-as holding Google data (`useChatGoogleData`), so the model picker greys the
-refused models at once. In a new chat there is no slug yet, so the picker
-updates after the first send; the server refuses a refused model with the same
-reason either way.
-
-### 11.7 Shared chats and the context panel
-
-- A public share shows a Drive file by its name only: `filterPublicParts`
-  rewrites the reference to `{ driveFileId: '', name, mimeType: '', link: '' }`,
-  so a visitor gets no id and no link, and `Chat/DriveFiles.vue` renders no
-  anchor. The Google copy itself is never granted to a share (section 5.3), so
-  there is no file download in a share even with the stored Google opt-in; the
-  brief that asked for a download with the opt-in contradicts section 5.3 and
-  that section was kept.
-- The chat context panel lists a Drive file under Inputs as kind
-  `drive-file` (the `drive-files` section, `public`): the Drive mark, the name,
-  and for the owner a link that opens it in Google Drive. The plain
-  "Attached file" row of the same copy is skipped. In a share the item is the
-  name only.
-
-### 11.8 Content Security Policy
-
-The app sends one policy on chat pages, `frame-src` (artifact frames, section
-`docs/artifacts/panel.md`), and no `script-src`, `connect-src` or `img-src`.
-Adding any of those would restrict every script and request of the app, so
-none was added; the Picker's script, its API calls and its images already
-work. What blocks the Picker is the existing `frame-src`, so only that
-directive grows: `https://docs.google.com https://drive.google.com`, on
-`/chats/` responses only (`applyArtifactFrameSrc` in
-`server/plugins/artifacts-frame-src.ts`), only while
-`NUXT_PUBLIC_GOOGLE_PICKER_API_KEY` is set, and in the meta tag the artifact
-frame adds on a client-side navigation into a chat
-(`ensureArtifactFramePolicy`, which cannot be loosened once added). Shared
-chats, `/artifacts/<token>` and the admin pages do not get the Google frames.
-
-To verify: open `/chats/new` on a preview with the key set, open DevTools,
-Console and Network, press "+", Google Drive. The Picker's frame must load
-from `docs.google.com` with no "Refused to frame" message. Whether the Picker
-needs another frame host (for example `content.googleapis.com`) is NOT
-VERIFIED; a console message names the missing host.
-
-A known gap: a document loaded on a shared chat, an artifact link or an admin
-page keeps its own `frame-src` after a client-side navigation into a chat (for
-example after branching a share), so the Picker frame is blocked there. The
-composable listens for `securitypolicyviolation` during a pick and answers a
-`blocked` failure, "Reload the page and try again", at once, instead of
-waiting 20 seconds and blaming the Google sign-in.
-
-### 11.9 UI states and the owner's real-account checklist
-
-Menu row and chips: the row is one line, "Google Drive", hint "Saves a copy in
-your Besidka files for 30 days", with a badge while files are being copied.
-Not connected or needing re-authorization: one dialog, "Connect Google Drive on
-the API Keys page to attach files from it.", with Open API Keys (the Google
-tab) and Not now. A file being copied shows a chip with the Drive mark and an
-indeterminate progress bar; a failed file stays beside the chips with its
-plain reason and a dismiss button (also reported in a toast); a copy shows the
-Drive mark and can be detached like any attachment. A sheet adds a toast that
-only the first sheet is included. Failures of the Picker itself (script
-blocked or timed out, the Picker not opening, which is how a missing Google
-sign-in in this browser shows, a Drive refusal, idle for 15 minutes) are
-toasts with what to check.
-
-Branding: the text is always "Google Drive" in full. The mark is the
-`simple-icons:googledrive` glyph from the pinned collection
-(`docs/nuxt-icon-collections.md`; no collection was added), which is a
-one-color glyph, not the multicolor official logo. Google asks for the logo
-unmodified; shipping the official SVG as a local asset is an owner decision.
-
-NOT VERIFIED without a real Google account, to check on the preview (a test
-account with `drive.file` consent, the consent screen "In production"):
-
-1. Connect, press "+", Google Drive: the Picker opens, and no
-   "Refused to frame" message appears (section 11.8).
-2. Pick a Doc, a Sheet, a PDF, a PNG, a file someone shared with you, a file
-   from a shared drive: each becomes a chip; the Sheet says "first sheet".
-3. Pick a file you have no access to, or one the owner locked from download:
-   a plain per-file reason, the others still attach.
-4. Ask about each file; check the Drive link under the message and in the
-   context panel.
-5. In the Network tab, note whether a download answers with a redirect and to
-   which host (section 11.4); a failure shows as a file that "could not be
-   copied".
-6. iOS Safari and the installed PWA: signed in to Google, signed out, and with
-   a second Google account in the browser; does the Picker open, return to the
-   chat, and keep the draft? Then Web Inspector, Storage, for cookies the
-   Picker leaves (for G-10).
-7. Wrong or missing app id: what the Picker shows (question 1).
-8. After a revoke at Google and a reconnect, whether an earlier file can still
-   be picked and read (question 3).
-9. Disconnect: the copies are gone from Files and Storage.
-
-### 11.10 Against the pre-check, the ticket and the plan
-
-Pre-check rows 4, 8, 9 and 15 (`docs/legal/prechecks/google.md`): the
-attach-time label is the row 4 sentence verbatim, and deletion on disconnect or
-`invalid_grant` is section 9.6 (copies are also removed with the account);
-the label says 30 days, the default retention, and an account with another
-retention would see a different real period. There is no "keep as an ordinary
-file" option. Row 8: the key and project number are public values, the Picker
-runs only on Besidka's client, and the owner's client has no Picker. Row 9:
-"Google Drive" in full on the row and in every label; the mark is the
-one-color glyph (section 11.9), a point for the owner. Row 15 concerns Save
-to Drive and is not touched here.
-
-Where BES-278 differs from what was built, and the brief won:
-
-- The ticket sends a `data-drive-file` part from the client with an id and a
-  mode, and re-fetches metadata on send. Here the copy is made before the
-  send as a normal `file` part, and the server rebuilds the reference from
-  the stored row (section 11.6). There is no live sync, no link-only mode and
-  no pasted-link detection; those wait for the Drive tools child.
-- The ticket sets a 5 MB snapshot cap. This build uses 20 MiB, the Office
-  upload cap, because copies are normal files (section 11.4).
-- The ticket hides snapshots from the Uploaded list behind a `drive` source.
-  Copies stay in the Uploaded list here (nothing else lets a user see and
-  delete one before the file manager tab exists) and have their own storage
-  category. They stay out of MCP `list_files` and `read_file` as before
-  (`fileHoldsNoGoogleContent`).
-- The ticket and the plan mention a CSP with script, connect and image
-  sources. The app has no such directives, so only `frame-src` grows
-  (section 11.8).
-- The plan's default "Office binaries link-only" is not followed (section
-  11.4), and the brief's "download with the opt-in" for a share is not built
-  (section 11.7).
-- `version` is read from Drive but not stored (section 11.4).
-
-### 11.11 Not built, and known limits
-
-- No Drive tools for the model, no Drive tab in the file manager, no write to
-  Drive, no Gmail or Calendar.
-- When the Calendar child adds `calendar.events` to Besidka's client, the
-  Picker token route will refuse every grant that holds it (section 11.3):
-  an access token cannot be narrowed, so that child must give the Picker a
-  Drive-only grant (a second client or a separate consent), not widen this
-  route.
-- A copy is a snapshot: Drive edits show up only when the file is picked again
-  (a new `modifiedTime` makes a new copy; the older copy stays with the
-  messages that used it).
-- A resource key is used for the copy but not stored, so a later "Open in
-  Google Drive" for a file shared only by link may ask for access.
-
 ## 11. MCP and the Besidka tools (status and disconnect, child 11)
 
 Built (2026-11-22, MCP 5.5.0). The user's Google connection is visible and
@@ -1509,3 +1219,426 @@ design, the scope choice and the guard rails are in `docs/mcp-server.md`,
 - **Open owner item.** The Privacy Policy sentence about what a connected app
   can reach still names connectors only. It stays an owner item for the
   Google legal text (legal files are not changed here).
+
+## 12. The Drive Picker (Picker child, G-4)
+
+Built on `feat/google-drive-picker`. A connected user picks files in Google's
+own Picker; Besidka copies each into its own storage as a snapshot and
+attaches it to the message like an uploaded file. Code:
+`server/api/v1/google/drive/`, `server/utils/google/{download,drive,
+drive-import,drive-parts,picker-token}.ts`, `shared/utils/google-drive.ts`,
+`app/composables/{google-picker,chat-drive-files}.ts`,
+`app/components/Chat/DriveFiles.vue`.
+
+### 12.1 The flow
+
+1. The user opens "+", Add, "Google Drive" (shown while `google.drive` is
+   active and the model takes files). Nothing from Google has loaded yet.
+2. `useChatDriveFiles().attachFromDrive()` asks for send consent, reads the
+   file limit of the account and computes how many files still fit.
+3. `useGooglePicker().pick()` loads `https://apis.google.com/js/api.js` and
+   `gapi.load('picker')` first (only now, with `referrerPolicy =
+   'no-referrer'` on the script tag), and only when that worked calls the
+   token route, so a token is never minted for a page whose script is
+   blocked. It then opens the classic `google.picker.PickerBuilder` with the
+   server's access token, the public key and the project number.
+4. The picked files go to `POST /api/v1/google/drive/files`, which copies them
+   one by one. Each result becomes a chip, or stays beside the chips with its
+   reason. While a pick or a copy is in flight the composer's send button is
+   disabled with the reason "Google Drive files are still being copied", and
+   a send that gets past it (Enter) answers with the same warning.
+5. On send, the message holds the usual `file` part for each copy and a
+   `data-drive-file` reference after it. A pick or copy still running when the
+   message is sent, or when the composer is torn down, is dropped (a
+   generation counter in `useChatDriveFiles`): its result never attaches to
+   the next message, and the Picker is closed when its component goes away.
+
+Ordinary uploads are not blocked while they upload: `useChatFiles` aborts
+them on `chat:submit` instead. A Drive copy cannot be aborted server-side once
+the request has started, so a copy that finishes after the send is an
+orphan row that counts against the allowance until it expires or the user
+deletes it from Files.
+
+### 12.2 Routes
+
+| Method and path | What it does | Gate |
+|---|---|---|
+| `POST /api/v1/google/drive/picker-token` | Answers `{ accessToken, expiresInSeconds, apiKey, appId }` with `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer` | Same-origin write guard, session, `google.drive` active, 30 per minute (`google-picker-rate-limit:<userId>`) |
+| `POST /api/v1/google/drive/files` | Body `{ items: [{ id, resourceKey? }] }`, 1 to 5 items, unique ids; answers `{ results }`, one per file | Same gate, 10 per minute (`google-drive-import-rate-limit:<userId>`), body at most 8 KiB, legal consent; 404 or 409 before any read when Google is not connected or needs re-authorization |
+
+Ids match `^[A-Za-z0-9_-]{10,128}$` and resource keys `^[A-Za-z0-9_-]{1,128}$`
+(both go into a URL or a header), checked by the route and again before every
+Drive call. Both routes keep a flat name for the token (`picker-token.post.ts`)
+and a directory for the files route, as the layout rule says.
+
+### 12.3 The picker token, and why only Besidka's client
+
+`createGooglePickerToken` (`server/utils/google/picker-token.ts`) is the one
+place a Google token leaves the server. It:
+
+- refuses any client mode but `besidka` in code (403
+  `google_picker_client_refused`), so the owner's own client, whose grant can
+  carry restricted scopes, never reaches a browser; the route also hard-codes
+  `besidka`;
+- hands out the access token only, never the refresh token, minted through
+  `getGoogleAccessToken` (refresh lock and all), at pick time, with no
+  caching on any layer; the client keeps it for the one Picker call and drops
+  it when the call ends;
+- refuses a stored grant that holds any scope besides identity and
+  `drive.file` (409 `google_picker_scope_too_wide`), because an access token
+  cannot be narrowed. The scopes are read before the mint and again after
+  it, because a refresh can store a different set; the log says which stage
+  refused (`stage: before-mint` or `after-mint`);
+- answers the specific cases: 404 `google_not_connected`, 409
+  `google_reauthorize` (needs re-authorization, or `drive.file` missing), 503
+  `google_picker_not_configured` (key or project number empty);
+- logs `attributes.googlePicker` (`issued` or the refusal), never the token.
+
+**Lifetime.** The token is the cached one while it has more than two minutes
+left, else a fresh one (about an hour, Google's fixed life; a Google access
+token cannot be minted shorter). That is the shortest lifetime available
+without an extra Google call per pick. The route answers `expiresInSeconds`,
+and the client's idle timeout for an open Picker is the smaller of 15 minutes
+and that remaining life, so the Picker is never left open on an expired
+token.
+
+**Residual risk: the route is a token oracle.** Any script that runs on the
+app's origin can call this same-origin POST (30 per minute) and read a token
+that can read and write the files the user picked through Besidka so far
+(`drive.file` is per-file and per-app: no file the user did not pick with
+Besidka, and nothing else in Drive). A CSP `script-src` is the real
+mitigation and the app sends none (section 12.8, "Content Security Policy");
+what the route does itself is the same-origin guard, the session, the flag,
+the rate limit, the Besidka-client-only rule and the scope check, and the
+token never reaches a log or a stored value.
+
+### 12.4 Import: export choices, limits and downloads
+
+| Drive file | Stored as | Note |
+|---|---|---|
+| Google Doc | `<name>.md`, `text/markdown` (export `text/markdown`); on a 400 from Drive, `<name>.txt`, `text/plain` | |
+| Google Sheet | `<name> (first sheet).csv`, `text/csv` | Google exports the first sheet only; the name and a toast say so |
+| Google Slides | `<name>.txt`, `text/plain` | |
+| Other Google-native types (Forms, Drawings, Sites, Maps) and folders | not copied | `unsupported_type` and `folder` |
+| PDF, PNG, JPEG, WebP, text, Markdown, CSV, TSV | as is, through `alt=media` | needs `capabilities.canDownload`; images are not transformed |
+| Word, Excel, PowerPoint (`.docx`, `.xlsx`, `.pptx`) | as is, through `alt=media` | only while `files.office` is active, and only after the same ZIP and main-part checks as an upload; legacy and macro files are `unsupported_type` |
+
+Decision: Docs, Sheets and Slides go out as text exports, not as Office
+binaries. A text export needs no `files.office` and no `DOC_RENDERER`, and a
+Sheet export to XLSX would not be the first sheet only. The plan's "Office
+binaries link-only" default is therefore not what Office files do here:
+Office files that already sit in Drive are copied as bytes (when
+`files.office` is on), because the existing upload extraction handles them
+without a new dependency.
+
+Limits, each enforced twice (from the metadata when Drive reports a size, and
+while the body streams in):
+
+| Limit | Value | Where |
+|---|---|---|
+| Files per pick | 5 (`GOOGLE_DRIVE_PICK_MAX`), further capped by the message's free file slots | Picker `setMaxItems`, route schema |
+| One file | 20 MiB (`GOOGLE_DRIVE_FILE_MAX_BYTES`, the Office upload cap) | `too_large` |
+| One export | 10 MiB (`GOOGLE_DRIVE_EXPORT_MAX_BYTES`, Google's own `files.export` cap) | `export_too_large`; Drive's own `exportSizeLimitExceeded` maps to the same code |
+| The account's storage | what is left of the allowance, checked before the download and as the stream cap | `storage_full` (a refused write never deletes anything) |
+| A download | 60 s (`GOOGLE_DOWNLOAD_TIMEOUT_MS`), covering the body | 504 becomes `failed` |
+
+Files are copied one at a time, each with a fresh `getGoogleAccessToken`, so a
+slow import never uses a token past its life and a request holds one Google
+connection at a time.
+
+**Redirects.** `googleFetchBytes` (`server/utils/google/download.ts`) uses
+`redirect: 'manual'`. A 3xx is followed at most once, only to HTTPS without
+credentials or a port, and only to an exact host of `GOOGLE_FETCH_HOSTS` (the
+bearer token stays) or a `*.googleusercontent.com` host (the bearer token and
+the `X-Goog-Drive-Resource-Keys` header are both dropped: such links carry
+their own authorization, and neither credential may reach a content host). A
+second redirect, a missing `Location` or any other
+host fails the file with 502. Whether Drive answers `alt=media` or
+`files.export` with such a redirect at all, and whether the content host
+needs the bearer token, is NOT VERIFIED: the Drive download guide could not be
+read during this build (the research tool was out of quota). The code covers
+both outcomes and fails closed; the owner checklist settles it.
+
+**Names.** A copy's name is cleaned before it is stored
+(`sanitizeDriveFileName`): control and invisible direction characters and
+path separators become spaces, runs of whitespace collapse, and a name over
+255 characters is cut in its base so a short extension survives. Export
+names go through the same cleaning before `buildDriveCopyName` adds the
+suffix and extension.
+
+**What the user is told.** Drive answers map to plain reasons
+(`GOOGLE_DRIVE_FAILURE_REASONS`): `too_large` and `export_too_large` state
+the real limit (20 MB, 10 MB); 403 without a known reason is `no_access`
+("Besidka has no access to this file. Pick it again in Google Drive to give
+access."); 429 or a rate-limit reason is `rate_limited`; a zero-byte file is
+`empty`.
+
+**Reuse.** A file already copied by this user, with the same `external_id`
+and the same `modifiedTime` (whole seconds, as `files.external_modified_at`
+stores it), is returned as `reused` and not downloaded again (the metadata
+call still runs, so access is checked) only when all of these hold: the copy
+has more than an hour of retention left, its R2 object still exists (a
+`head` call; up to three candidates are tried, newest first), and the copy
+was made after the second of the edit it carries. The last rule exists
+because the stored time has one-second resolution: a copy made in the same
+second as an edit could not be told apart from a second edit in that second,
+so it is copied again once. Drive's `version` is read but not stored: no
+schema change was allowed.
+
+### 12.5 What a copy is in storage
+
+A normal `files` row and R2 object, made by `persistFile` (the upload path:
+quota check before and after, `storage-stats` cache, retention, text
+extraction for Office files, deletion hooks). `persistFile` takes
+`externalSource`, `externalId` and `externalModifiedAt` and writes them in the
+same insert, so there is no window where a copy is a plain upload. `source` is
+`upload`. A copy expires with the account's retention, like any upload. The
+attach-time label no longer names a number ("Saves a copy in your Besidka
+files"): the period is the account's own retention setting, and a fixed "30
+days" was wrong for an account with another one. Disconnect, `invalid_grant`
+and account deletion delete
+copies as section 9.6 describes; nothing new was needed.
+
+The Storage page and `get_settings` show one extra category,
+`googleDrive` ("Google Drive copies"): `files.source = 'upload'` and
+`external_source IS NOT NULL`. `uploads` now excludes those rows, so the
+categories still partition `files` and the total is unchanged
+(`docs/storage.md`).
+
+### 12.6 In a message
+
+A sent copy is a normal `file` part, so models receive it by the usual
+modality and text rules, and a `data-drive-file` reference part:
+`{ driveFileId, name, mimeType (the copy's media type), link }`, no content.
+The link is built on `https://drive.google.com/open?id=<id>`. The server never
+trusts the client's part: both `POST /api/v1/chats/[slug]` and
+`PUT /api/v1/chats/new` drop every `data-drive-file` part of the request and
+rebuild one after each `file` part whose stored row is the sender's own
+Google copy (`resolveDriveFileParts`, one more `getOwnedFilesByStorageKeys`
+lookup only when the message has file parts). So a copy attached later from
+the library gets its reference too, and a forged id, name or link never
+reaches storage. The composer builds the same parts (`withDriveFileParts`) so
+the live message shows the link before a reload.
+
+The data rules (section 5.3) are unchanged and tested end to end:
+`resolveSendGoogleContent` finds the Google copy at send start and flags the
+chat before the guard, so a send on a refused model answers 403 before the
+file is converted or any message is stored, and on an allowed model the chat
+becomes flagged (`tests/integration/api/chats-google-data-guard.spec.ts`).
+When a copy is attached in an existing chat the composer also marks the chat
+as holding Google data (`useChatGoogleData`), so the model picker greys the
+refused models at once. In a new chat there is no slug yet, so the picker
+updates after the first send; the server refuses a refused model with the same
+reason either way.
+
+`PUT /api/v1/chats/new` runs the same resolvers as the send route: it calls
+`resolveSendGoogleContent` on the new message and inserts the chat with
+`google_data_at` already set when the message holds a Google copy, so a chat
+created with a Drive file is flagged from its first row (it was not before,
+and the flag then waited for a second send). It also refuses a research send
+(`research: true`) whose message has file parts, with 400 "Deep research only
+supports text-only prompts for now", so a Google copy is never put in a
+research job.
+
+### 12.7 Shared chats and the context panel
+
+- A public share shows a Drive file by its name only: `filterPublicParts`
+  rewrites the reference to `{ driveFileId: '', name, mimeType: '', link: '' }`,
+  so a visitor gets no id and no link, and `Chat/DriveFiles.vue` renders no
+  anchor. The Google copy itself is never granted to a share (section 5.3), so
+  there is no file download in a share even with the stored Google opt-in; the
+  brief that asked for a download with the opt-in contradicts section 5.3 and
+  that section was kept.
+- The chat context panel lists a Drive file under Inputs as kind
+  `drive-file` (the `drive-files` section, `public`): the Drive icon, the name,
+  and for the owner a link that opens it in Google Drive. The plain
+  "Attached file" row of the same copy is skipped. In a share the item is the
+  name only.
+- Matching is by id, not by position. A public share drops the copy's `file`
+  part (it is never granted) and keeps the reference with an empty id, so the
+  part before such a reference is another file. The context builder pairs a
+  reference with the `file` part before it only while the reference carries
+  its Drive id (the send routes insert it there from the stored row with that
+  id); a name-only reference neither borrows the previous file's tokened URL
+  nor hides that file's own row (`isPairedDriveReference` in
+  `server/utils/chats/context/sections.ts`).
+
+### 12.8 Content Security Policy
+
+The app sends one policy on chat pages, `frame-src` (artifact frames, section
+`docs/artifacts/panel.md`), and no `script-src`, `connect-src` or `img-src`.
+Adding any of those would restrict every script and request of the app, so
+none was added; the Picker's script, its API calls and its images already
+work. What blocks the Picker is the existing `frame-src`, so only that
+directive grows, and only by a path:
+
+```
+frame-src 'self' <artifacts origin> https://challenges.cloudflare.com https://docs.google.com/picker https://docs.google.com/picker/
+```
+
+`GOOGLE_PICKER_FRAME_SOURCES` holds the last two. In CSP, a source with a
+path and no trailing slash matches that exact path, and one with a trailing
+slash matches everything below it; the query is ignored in both. So the
+Picker page (`https://docs.google.com/picker?...`) and anything under
+`/picker/` load, and the rest of `docs.google.com` (Forms and its
+`formResponse`, Docs, Sheets) and `drive.google.com` do not. A page with no
+trailing-slash form would not match `picker?foo=bar`, and one with only the
+slash form would not match the Picker page itself; both are listed for that
+reason, and a matcher spec pins both outcomes (`formResponse` not matched,
+`picker?foo=bar` matched).
+
+Who gets it: only a response for `/chats/...` (`applyArtifactFrameSrc` in
+`server/plugins/artifacts-frame-src.ts`), only while
+`NUXT_PUBLIC_GOOGLE_PICKER_API_KEY` is set, and only for a user whose
+`google.drive` flag is active when the render already loaded the user's
+feature state (`isGooglePickerFrameAllowed`, which never loads the state
+itself, so there is no extra D1 or KV read). The SSR features plugin
+normally loads that state through the page's own event context, which
+memoizes it on `event.context.features`; that this holds for every render
+path of a chat page is NOT VERIFIED. When the render left no state on the
+event, the answer falls back to the key alone, which is the earlier
+behavior. Shared chats, `/artifacts/<token>` and the admin pages never get
+the Google source.
+
+The same sources are added by the meta tag the artifact frame inserts on a
+client-side navigation into a chat (`ensureArtifactFramePolicy`, which can
+only add restrictions after it is inserted), under the same conditions: the
+public key is set, the `google.drive` feature is active for the user, and
+the route is a chat route. The server header and the client tag agree
+because both read the same `GOOGLE_PICKER_FRAME_SOURCES` and
+`isGooglePickerPagePath`. A meta policy that was inserted without the Google
+sources stays for the life of the document, so a user who gains access
+mid-session needs a reload (the `blocked` message says so).
+
+To verify: open `/chats/new` on a preview with the key set, open DevTools,
+Console and Network, press "+", Google Drive. The Picker's frame must load
+from `docs.google.com/picker` with no "Refused to frame" message. Whether
+the Picker loads its UI from another frame host (for example
+`content.googleapis.com`) is NOT VERIFIED; a console message names the
+missing host, and the owner checklist below lists it.
+
+A known gap: a document loaded on a shared chat, an artifact link or an admin
+page keeps its own `frame-src` after a client-side navigation into a chat (for
+example after branching a share), so the Picker frame is blocked there. The
+composable listens for `securitypolicyviolation` during a pick and answers a
+`blocked` failure, "Reload the page and try again", at once, instead of
+waiting 20 seconds and blaming the Google sign-in. A related residue: a meta
+policy inserted on a chat page persists after a client-side navigation to
+`/shared/...`, where the Google source stays allowed until the next full
+load. The source is path-scoped, no Google script runs there, and a
+public viewer never has the Picker, so this is accepted.
+
+### 12.9 UI states and the owner's real-account checklist
+
+Menu row and chips: the row is one line, "Google Drive", hint "Saves a copy in
+your Besidka files", with a badge while files are being copied.
+Not connected or needing re-authorization: one dialog, "Connect Google Drive on
+the API Keys page to attach files from it.", with Open API Keys (the Google
+tab) and Not now. A file being copied shows a chip with the Drive icon and an
+indeterminate progress bar; a failed file stays beside the chips with its
+plain reason and a dismiss button (also reported in a toast); a copy shows the
+Drive icon and can be detached like any attachment. A sheet adds a toast that
+only the first sheet is included. Failures of the Picker itself (script
+blocked or timed out, the Picker not opening, which is how a missing Google
+sign-in in this browser shows, a Drive refusal, idle for 15 minutes) are
+toasts with what to check.
+
+Branding: the text is always "Google Drive" in full. The mark is a generic
+`lucide:hard-drive` icon, not Google's logo: the earlier
+`simple-icons:googledrive` glyph was a one-color recoloring of the logo,
+and Google's branding rules ask for the logo unmodified (all four colors,
+no tint). The official multicolor logo can be added later as an unmodified
+local SVG asset; that is an owner decision (it also needs the brand
+guidelines checked), and `GOOGLE_DRIVE_ICON` in
+`shared/utils/google-drive.ts` is the one place to swap.
+
+NOT VERIFIED without a real Google account, to check on the preview (a test
+account with `drive.file` consent, the consent screen "In production"):
+
+1. Connect, press "+", Google Drive: the Picker opens, and no
+   "Refused to frame" message appears (section 12.8).
+2. Pick a Doc, a Sheet, a PDF, a PNG, a file someone shared with you, a file
+   from a shared drive: each becomes a chip; the Sheet says "first sheet".
+3. Pick a file you have no access to, or one the owner locked from download:
+   a plain per-file reason, the others still attach.
+4. Ask about each file; check the Drive link under the message and in the
+   context panel.
+5. In the Network tab, note whether a download answers with a redirect and to
+   which host (section 12.4); a failure shows as a file that "could not be
+   copied".
+6. iOS Safari and the installed PWA: signed in to Google, signed out, and with
+   a second Google account in the browser; does the Picker open, return to the
+   chat, and keep the draft? Then Web Inspector, Storage, for cookies the
+   Picker leaves (for G-10).
+7. Wrong or missing app id: what the Picker shows (question 1).
+8. After a revoke at Google and a reconnect, whether an earlier file can still
+   be picked and read (question 3).
+9. Disconnect: the copies are gone from Files and Storage.
+10. The exact frame URL the Picker loads, in DevTools, Network, filter
+    "picker": it should be `https://docs.google.com/picker?...` (matched by
+    the path-scoped source). If it is another path or host (for example
+    `docs.google.com/picker/v2/...` is fine, but `content.googleapis.com` or
+    `docs.google.com/static/...` is not covered), add that exact path to
+    `GOOGLE_PICKER_FRAME_SOURCES` and nothing broader.
+11. The 20 s "the picker did not open" timer: a slow network or a first
+    Google sign-in can take longer to show the frame. If real users hit it,
+    raise `GOOGLE_PICKER_LOAD_TIMEOUT_MS` in
+    `app/composables/google-picker.ts`; the timer stops at the Picker's own
+    `loaded` event, so it only covers the time before the frame reports in.
+12. Frame hosts, once more with the browser console open on a full pick and
+    import: no "Refused to frame" for any host other than the Picker path.
+    This is the item that decides whether `frame-src` needs one more entry.
+
+### 12.10 Against the pre-check, the ticket and the plan
+
+Pre-check rows 4, 8, 9 and 15 (`docs/legal/prechecks/google.md`): the
+attach-time label keeps the row 4 sentence but no longer the number of days
+("Saves a copy in your Besidka files"): the retention is the account's own
+setting and the number was wrong for an account with another one, so the
+label is now shorter than the row 4 sentence, a point for the owner to
+settle with the pre-check (reading the real period client-side is possible
+through the file policy route and was not built). Deletion on disconnect or
+`invalid_grant` is section 9.6 (copies are also removed with the account).
+There is no "keep as an ordinary
+file" option. Row 8: the key and project number are public values, the Picker
+runs only on Besidka's client, and the owner's client has no Picker. Row 9:
+"Google Drive" in full on the row and in every label; the mark is a generic
+icon, not the logo (section 12.9), a point for the owner. Row 15 concerns Save
+to Drive and is not touched here.
+
+Where BES-278 differs from what was built, and the brief won:
+
+- The ticket sends a `data-drive-file` part from the client with an id and a
+  mode, and re-fetches metadata on send. Here the copy is made before the
+  send as a normal `file` part, and the server rebuilds the reference from
+  the stored row (section 12.6). There is no live sync, no link-only mode and
+  no pasted-link detection; those wait for the Drive tools child.
+- The ticket sets a 5 MB snapshot cap. This build uses 20 MiB, the Office
+  upload cap, because copies are normal files (section 12.4).
+- The ticket hides snapshots from the Uploaded list behind a `drive` source.
+  Copies stay in the Uploaded list here (nothing else lets a user see and
+  delete one before the file manager tab exists) and have their own storage
+  category. They stay out of MCP `list_files` and `read_file` as before
+  (`fileHoldsNoGoogleContent`).
+- The ticket and the plan mention a CSP with script, connect and image
+  sources. The app has no such directives, so only `frame-src` grows
+  (section 12.8).
+- The plan's default "Office binaries link-only" is not followed (section
+  12.4), and the brief's "download with the opt-in" for a share is not built
+  (section 12.7).
+- `version` is read from Drive but not stored (section 12.4).
+
+### 12.11 Not built, and known limits
+
+- No Drive tools for the model, no Drive tab in the file manager, no write to
+  Drive, no Gmail or Calendar.
+- When the Calendar child adds `calendar.events` to Besidka's client, the
+  Picker token route will refuse every grant that holds it (section 12.3):
+  an access token cannot be narrowed, so that child must give the Picker a
+  Drive-only grant (a second client or a separate consent), not widen this
+  route.
+- A copy is a snapshot: Drive edits show up only when the file is picked again
+  (a new `modifiedTime` makes a new copy; the older copy stays with the
+  messages that used it).
+- A resource key is used for the copy but not stored, so a later "Open in
+  Google Drive" for a file shared only by link may ask for access.

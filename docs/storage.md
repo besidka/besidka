@@ -15,7 +15,7 @@ for a user; the total is their sum.
 | --- | --- | --- |
 | `aiImages` | Images the models generated | `files.source = 'assistant'` and `files.type like 'image/%'` |
 | `uploads` | Files the user uploaded or created through MCP | `files.source = 'upload'` and `files.external_source is null` |
-| `googleDrive` | Copies of the Google Drive files the user picked (`docs/google.md`, section 11) | `files.source = 'upload'` and `files.external_source is not null` |
+| `googleDrive` | Copies of the Google Drive files the user picked (`docs/google.md`, section 12) | `files.source = 'upload'` and `files.external_source is not null` |
 | `generatedFiles` | Rendered documents, code-execution output and other generated files | `files.source = 'assistant'` and `files.type not like 'image/%'` |
 | `connectorImages` | Images connectors returned in chats and Besidka kept with those chats (C-15, BES-406) | `files.source = 'connector'` |
 | `artifacts` | Every stored version of every artifact | `sum(artifacts.total_bytes)`, counting rows with `current_version > 0` (a pending header from an interrupted write has `0` bytes and no version) |
