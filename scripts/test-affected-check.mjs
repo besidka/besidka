@@ -1607,6 +1607,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
   ]
 
+  const googleContractsTests = [
+    'tests/unit/utils/google-scopes.spec.ts',
+    'tests/unit/utils/google-data-policy.spec.ts',
+  ]
+
   const connectorsStorageTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
     'tests/unit/utils/connectors-slug.spec.ts',
@@ -3750,6 +3755,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/connectors-policy\.ts|server\/utils\/net\/(safe-url|safe-fetch|own-hosts)\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/skills\/import\/github\.ts)$/,
       tests: connectorsSafeFetchTests,
+    },
+    {
+      pattern:
+        /^shared\/utils\/google-(scopes|data-policy)\.ts$/,
+      tests: googleContractsTests,
     },
     {
       pattern:

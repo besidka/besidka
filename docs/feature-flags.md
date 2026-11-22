@@ -161,6 +161,14 @@ behaves exactly as before C-6 (`docs/connectors.md` section 7.6).
 and `spend: 'none'`: it spends nothing, and the opt-in is the user's consent
 to let a model use their Besidka tools, with a permission for each tool
 (`docs/besidka-tools.md`).
+The four `google.*` flags (Phase 4b, `docs/google.md`) stay
+`available: false` at stage `internal` and carry `optIn: 'required'` with
+`spend: 'none'`: each one sends the user's Google data to Google or, through a
+chat, to a model provider, so the user opts in before any of it runs
+(`docs/legal/prechecks/google.md`). `google.calendar` and `google.byo` are
+children of `google.drive`, and `google.gmail` is a child of `google.byo`, the
+first flag with a three-level parent chain; evaluation, `isFeatureActive`,
+the global check and the Labs grouping all walk the chain to its root.
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
 `FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is
@@ -171,6 +179,8 @@ Seed choices, each to be confirmed by the ticket that builds the feature:
 - `spend: 'foreground'` (so `optIn: 'required'`): `artifacts.llm-bridge`,
   `research.custom`, `research.custom.max`. Everything else spends nothing
   beyond a normal chat.
+- `optIn: 'required'` with `spend: 'none'`: `besidka-tools` and the four
+  `google.*` flags. The opt-in is consent to a data flow, not to spend.
 - `exposeToClient: false`: the `*.mcp` flags (`artifacts.mcp`,
   `documents.mcp`, `research.mcp`), which have no UI. Every other flag is
   exposed so later UI can gate on it.

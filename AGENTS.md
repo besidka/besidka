@@ -868,6 +868,20 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
+- `docs/google.md` - Google Drive, Calendar and Gmail design (Phase 4b, not
+  built yet, 2026-11-22): the umbrella `feat/google-connectors` and what
+  exists on it so far (the four `google.*` flags with `optIn: 'required'`,
+  `google.gmail` under `google.byo`; `shared/utils/google-scopes.ts` with
+  `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`
+  with the provider allow-list as data and `GOOGLE_EXTERNAL_SOURCES`), the
+  two client modes (Besidka's client with `drive.file` and the Picker, the
+  owner-only bring-your-own client), the G-1 Picker and token question table
+  with empty answers, the Google Cloud console configuration for project
+  `chernenko-chat` (redirect URI forms for localhost, the long-lived preview,
+  `pr-<n>` and production; Picker key referrers), the data rule (allow-list,
+  references-only persistence, deletion within 24 hours when access ends),
+  the BYO owner runbook outline, and what is not in the phase (legal notices
+  stay the owner's decision)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes

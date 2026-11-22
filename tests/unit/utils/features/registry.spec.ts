@@ -112,6 +112,32 @@ describe('feature registry', () => {
     expect(FEATURE_REGISTRY['documents.mcp'].available).toBe(true)
   })
 
+  it('requires an opt-in on every Google flag and keeps it not shipped', () => {
+    for (const key of [
+      'google.drive',
+      'google.calendar',
+      'google.byo',
+      'google.gmail',
+    ] as const) {
+      expect(FEATURE_REGISTRY[key]).toEqual(expect.objectContaining({
+        stage: 'internal',
+        available: false,
+        default: false,
+        allowRoles: ['admin'],
+        spend: 'none',
+        optIn: 'required',
+        exposeToClient: true,
+      }))
+    }
+  })
+
+  it('nests Gmail under the bring-your-own Google client', () => {
+    expect(FEATURE_REGISTRY['google.drive'].parent).toBeUndefined()
+    expect(FEATURE_REGISTRY['google.calendar'].parent).toBe('google.drive')
+    expect(FEATURE_REGISTRY['google.byo'].parent).toBe('google.drive')
+    expect(FEATURE_REGISTRY['google.gmail'].parent).toBe('google.byo')
+  })
+
   it('treats prototype keys as unknown', () => {
     expect(isFeatureKey('constructor')).toBe(false)
     expect(getFeatureDefinition('toString')).toBeUndefined()
