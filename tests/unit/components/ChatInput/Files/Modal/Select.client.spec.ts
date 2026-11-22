@@ -55,7 +55,7 @@ const FakeDriveSource = defineComponent({
     canAttachMediaType: { type: Function, default: undefined },
     resolveDelivery: { type: Function, default: undefined },
   },
-  emits: ['attach', 'detach', 'changed'],
+  emits: ['attach', 'detach', 'changed', 'replace'],
   setup() {
     return () => h('div', { 'data-testid': 'fake-drive-source' })
   },
@@ -979,10 +979,47 @@ describe('ChatInput/Files/Modal/Select', () => {
 
     driveSource.vm.$emit('detach', ['drive-1'])
     driveSource.vm.$emit('changed')
+    driveSource.vm.$emit('replace', 'drive-1', { id: 'drive-2' })
 
     expect(wrapper.emitted('detach')?.[0]).toEqual([['drive-1']])
     expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(wrapper.emitted('replace')?.[0]).toEqual([
+      'drive-1',
+      { id: 'drive-2' },
+    ])
   })
+
+  it('loads nothing for an extra source that is disabled or not opened',
+    async () => {
+      const isDriveEnabled = shallowRef<boolean>(false)
+
+      mocks.getFileManagerExtraSourceTabs.mockReturnValue([
+        createExtraTab({ isEnabled: () => isDriveEnabled.value }),
+      ])
+      mocks.useFileManager.mockClear()
+      mocks.useLazyFetch.mockClear()
+
+      const wrapper = await mountSuspended(Select, {
+        props: { attachedIds: new Set<string>() },
+        shallow: true,
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="files-source-drive"]').exists())
+        .toBe(false)
+      expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+
+      isDriveEnabled.value = true
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="files-source-drive"]').exists())
+        .toBe(true)
+      expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+      expect(mocks.useFileManager).toHaveBeenCalledTimes(1)
+      expect(mocks.useLazyFetch.mock.calls.map(([url]) => url))
+        .toEqual(['/api/v1/files/policy'])
+    })
 
   it('reloads the list on return only when the extra source changed files', async () => {
     mocks.getFileManagerExtraSourceTabs.mockReturnValue([createExtraTab()])

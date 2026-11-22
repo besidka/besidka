@@ -2033,6 +2033,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/google-drive.spec.ts',
     'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/unit/composables/google-drive-library.spec.ts',
+    'tests/unit/composables/file-touch-select.spec.ts',
     'tests/unit/composables/google-picker.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
@@ -4036,7 +4037,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/google-drive\.ts|server\/utils\/files\/source-filter\.ts|server\/utils\/google\/drive-import\.ts|server\/api\/v1\/google\/drive\/files\/refresh\.post\.ts|server\/api\/v1\/files\/index\.get\.ts|tests\/setup\/helpers\/knowledge-db\.ts|app\/composables\/google-drive-library\.ts|app\/utils\/(file-manager-dialog|google-drive-tab|file-manager-sources)\.ts|app\/types\/file-manager\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\.client)?(\/.*)?\.vue)$/,
+        /^(shared\/utils\/google-drive\.ts|server\/utils\/files\/source-filter\.ts|server\/utils\/google\/drive-import\.ts|server\/api\/v1\/google\/drive\/files\/refresh\.post\.ts|server\/api\/v1\/files\/index\.get\.ts|tests\/setup\/helpers\/knowledge-db\.ts|app\/composables\/(google-drive-library|file-touch-select)\.ts|app\/utils\/(file-manager-dialog|google-drive-tab|file-manager-sources)\.ts|app\/types\/file-manager\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\.client)?(\/.*)?\.vue)$/,
       tests: googleDriveTabTests,
     },
     {

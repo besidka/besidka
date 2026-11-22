@@ -120,10 +120,11 @@
       <template v-else>
         <LazyChatInputFilesModalSelectGridView
           v-if="viewMode === 'grid'"
+          ref="gridViewRef"
           :files="files"
           :selected-ids="selectedIds"
-          :is-touch-selecting="false"
-          :touched-indices="noTouchedIndices"
+          :is-touch-selecting="isTouchSelecting"
+          :touched-indices="touchedIndices"
           :unsupported-reasons="unsupportedReasons"
           :unsupported-captions="unsupportedCaptions"
           :text-notes="textNotes"
@@ -135,10 +136,11 @@
         />
         <LazyChatInputFilesModalSelectListView
           v-else
+          ref="listViewRef"
           :files="files"
           :selected-ids="selectedIds"
-          :is-touch-selecting="false"
-          :touched-indices="noTouchedIndices"
+          :is-touch-selecting="isTouchSelecting"
+          :touched-indices="touchedIndices"
           :all-selected="allSelected"
           :has-selection="hasSelection"
           :unsupported-reasons="unsupportedReasons"
@@ -199,7 +201,11 @@
 
 <script setup lang="ts">
 import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-drive'
-import type { FileManagerFile, ViewMode } from '~/types/file-manager'
+import type {
+  AttachedFile,
+  FileManagerFile,
+  ViewMode,
+} from '~/types/file-manager'
 import type {
   FileDeliveryHint,
   FileDeliveryResolver,
@@ -225,12 +231,12 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
   detach: [fileIds: string[]]
+  replace: [previousId: string, file: AttachedFile]
   changed: []
 }>()
 
 const nuxtApp = useNuxtApp()
 const dialog = inject(FILE_MANAGER_DIALOG_KEY, noopFileManagerDialogControls)
-const noTouchedIndices = new Set<number>()
 
 const {
   data: connectionResponse,
@@ -254,6 +260,7 @@ const {
   fetchFiles,
   loadMore,
   handleSelect,
+  selectRange,
   toggleSelectAll,
   deselectAll,
   renameFile,
@@ -264,6 +271,14 @@ const {
 } = useFileManager()
 
 source.value = 'google'
+
+const {
+  isTouchSelecting,
+  touchedIndices,
+  touchSwipeHandled,
+  attachTouchListeners,
+  detachTouchListeners,
+} = useFileTouchSelect({ selectRange })
 
 watch(() => props.search, (value) => {
   managerSearch.value = value
@@ -401,6 +416,10 @@ const {
   refreshCopies,
 } = useGoogleDriveLibrary({
   getFileName,
+  isAttached: fileId => props.attachedIds.has(fileId),
+  onReplaceAttached: (previousId, file) => {
+    emit('replace', previousId, file)
+  },
   onChanged: afterLibraryChange,
   onConnectionIssue: () => {
     refreshConnection()
@@ -426,6 +445,10 @@ async function openConnectionSettings() {
 }
 
 function onFileClick(event: MouseEvent, file: FileManagerFile, index: number) {
+  if (touchSwipeHandled.value) {
+    return
+  }
+
   const unsupportedReason = unsupportedReasons.value[file.id]
 
   if (unsupportedReason) {
@@ -597,5 +620,52 @@ function syncAttachedSelection() {
 watch(files, syncAttachedSelection, { flush: 'post' })
 watch(() => props.attachedIds, syncAttachedSelection, { flush: 'post' })
 
-onUnmounted(resetFileManager)
+const gridViewRef = shallowRef<{
+  containerRef: HTMLDivElement | null
+} | null>(null)
+const listViewRef = shallowRef<{
+  containerRef: HTMLTableElement | null
+} | null>(null)
+
+function getViewContainers(): HTMLElement[] {
+  const containers: Array<HTMLElement | null | undefined> = [
+    gridViewRef.value?.containerRef,
+    listViewRef.value?.containerRef,
+  ]
+
+  return containers.filter((container): container is HTMLElement => {
+    return !!container
+  })
+}
+
+const boundContainers = new Set<HTMLElement>()
+
+function unbindTouchListeners() {
+  for (const container of boundContainers) {
+    detachTouchListeners(container)
+  }
+
+  boundContainers.clear()
+}
+
+async function rebindTouchListeners() {
+  await nextTick()
+  unbindTouchListeners()
+
+  for (const container of getViewContainers()) {
+    attachTouchListeners(container)
+    boundContainers.add(container)
+  }
+}
+
+watch([files, () => props.viewMode, connectionState], rebindTouchListeners, {
+  flush: 'post',
+})
+
+onMounted(rebindTouchListeners)
+
+onUnmounted(() => {
+  unbindTouchListeners()
+  resetFileManager()
+})
 </script>

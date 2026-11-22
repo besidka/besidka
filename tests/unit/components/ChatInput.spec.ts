@@ -1535,6 +1535,65 @@ describe('ChatInput.client', () => {
         expect(googleDataMocks.remember).toHaveBeenCalledWith('abc123', true)
       })
 
+      describe('after a refresh from the Drive tab', () => {
+        const otherFile = {
+          ...textFile,
+          id: '5',
+          storageKey: 'other-key',
+          name: 'b.txt',
+        }
+        const refreshedCopy = {
+          ...driveCopy,
+          id: '6',
+          storageKey: 'refreshed-key',
+          name: 'Plan v2.md',
+        }
+
+        async function mountWithThreeFiles() {
+          useSelection(textOnly)
+
+          const wrapper = await mountChatInput()
+          const filesModal = wrapper.findComponent(filesModalStub)
+
+          filesModal.vm.$emit('attach', [textFile, driveCopy, otherFile])
+          await nextTick()
+
+          return { wrapper, filesModal }
+        }
+
+        it('swaps the attached copy in the same position', async () => {
+          const { wrapper, filesModal } = await mountWithThreeFiles()
+
+          filesModal.vm.$emit('replace', driveCopy.id, refreshedCopy)
+          await nextTick()
+
+          expect(attachedFileNames(wrapper))
+            .toEqual(['a.txt', 'Plan v2.md', 'b.txt'])
+        })
+
+        it('keeps one chip when the new copy is already attached', async () => {
+          const { wrapper, filesModal } = await mountWithThreeFiles()
+
+          filesModal.vm.$emit('replace', driveCopy.id, {
+            ...refreshedCopy,
+            storageKey: otherFile.storageKey,
+          })
+          await nextTick()
+
+          expect(attachedFileNames(wrapper)).toEqual(['a.txt', 'b.txt'])
+        })
+
+        it('ignores a copy that is not attached', async () => {
+          const { wrapper, filesModal } = await mountWithThreeFiles()
+
+          filesModal.vm.$emit('replace', 'unknown', refreshedCopy)
+          await nextTick()
+
+          expect(attachedFileNames(wrapper))
+            .toEqual(['a.txt', 'Plan.md', 'b.txt'])
+        })
+      })
+
       it('does not mark the chat for an ordinary file', async () => {
         useSelection(textOnly)
 

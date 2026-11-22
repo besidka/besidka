@@ -201,7 +201,9 @@ describe('Picker page and frame sources', () => {
 })
 
 describe('Drive refresh failure reasons', () => {
-  it('has a reason for the two refresh-only codes', () => {
+  it('has a reason for the refresh-only codes', () => {
+    expect(getDriveRefreshFailureReason('unknown_version'))
+      .toContain('cannot tell whether your copy is current')
     expect(getDriveRefreshFailureReason('deleted')).toContain('in the trash')
     expect(getDriveRefreshFailureReason('not_a_copy'))
       .toContain('not a copy')

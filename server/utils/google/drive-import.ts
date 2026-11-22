@@ -660,9 +660,14 @@ async function refreshOne(
     )
 
     if (!metadataResult.ok) {
+      const code = classifyDriveFailure(
+        metadataResult.status,
+        metadataResult.reason,
+      )
+
       return refreshFailed(
         target.fileId,
-        classifyDriveFailure(metadataResult.status, metadataResult.reason),
+        code === 'not_found' ? 'no_access' : code,
       )
     }
 
@@ -670,6 +675,10 @@ async function refreshOne(
 
     if (metadata.trashed) {
       return refreshFailed(target.fileId, 'deleted')
+    }
+
+    if (!metadata.modifiedTime) {
+      return refreshFailed(target.fileId, 'unknown_version')
     }
 
     if (isSameModifiedSecond(target.copiedModifiedAt, metadata.modifiedTime)) {

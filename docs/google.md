@@ -1702,9 +1702,11 @@ copies stay out of MCP by `fileHoldsNoGoogleContent`, out of shares and out of
 project knowledge (section 5.3). The tab uses its own `useFileManager()`
 instance with `source = 'google'`, so the rows, selection (click, Shift range,
 select all), pagination, search, skeletons, `Load more`, rename and the delete
-and bulk-delete routes are the Uploaded tab's own code; the touch-swipe range
-selection and the `/` shortcut's search field belong to `Select.client.vue` and
-are not repeated in the tab. A row is the existing row: in the list view the
+and bulk-delete routes are the Uploaded tab's own code. Touch-swipe range
+selection is the same code too: `useFileTouchSelect`
+(`app/composables/file-touch-select.ts`), extracted from `Select.client.vue`
+and used by both. The `/` shortcut and the search field belong to
+`Select.client.vue`, which hands the tab its search text. A row is the existing row: in the list view the
 name, type and size, the date it was copied ("Added", from `lg` up) and the
 expiry; the grid tile shows the icon or image and the name, with no type, size
 or date. That is a deviation from "name, type, size, when copied" on every
@@ -1751,7 +1753,17 @@ metadata call and:
 | `up_to_date` | The Drive `modifiedTime` equals the one stored with this copy, to the second. Nothing is downloaded. |
 | `updated` | It differs: the file is copied again through the import code (same limits, export choices, Office checks and storage rules). The answer carries the new file. |
 | `newer_copy` | It differs, but a copy of the current version already exists (the reuse rule of section 12.4 found one), so nothing is copied and that copy is returned. This is what refreshing an older row again answers. |
-| `failed` | With `code` and `reason`: `deleted` (in the trash in Drive), `not_found` (Drive did not return it), `no_access`, `not_downloadable`, `too_large`, `export_too_large`, `storage_full`, `unsupported_type`, `rate_limited`, `reauthorize`, `empty`, `failed`, `not_a_copy` |
+| `failed` | With `code` and `reason`: `deleted` (in the trash in Drive), `unknown_version`, `no_access`, `not_downloadable`, `too_large`, `export_too_large`, `storage_full`, `unsupported_type`, `rate_limited`, `reauthorize`, `empty`, `failed`, `not_a_copy` |
+
+The two null cases of the time comparison. Drive gives no `modifiedTime`: the
+version is unknown, so nothing is copied (a copy could be a duplicate of up to
+20 MiB each time) and the file fails as `unknown_version` ("Google Drive did
+not say when this file last changed, so Besidka cannot tell whether your copy
+is current. Your copy is unchanged."). The copy has no stored time (made when
+Drive gave none): Drive's `version` is not stored (no schema change was
+allowed), so there is nothing to compare it with, and the file is copied once;
+the new copy carries the time, so refreshing the older row again answers
+`newer_copy` and nothing more is downloaded.
 
 Decision: a refresh never rewrites a copy in place. The R2 object, the
 extracted Office text, the KV file cache, the storage statistics and a possible
@@ -1761,16 +1773,35 @@ new copy and the selected one stays: old messages keep showing (and sending
 to models) the earlier snapshot, as section 12.11 says, and new attachments use
 the new copy. The toast says "Copied the new version of <name>" with "The
 earlier copy stays in your files for the messages that used it." The list then
-shows both copies, newest first, and the user can remove the older one. A
-change within the same second as the stored time is not noticed (the stored
-time has one-second resolution, as in section 12.4). A copy of a file that was
-shared only by link was made with a resource key that is not stored, so its
-refresh may answer "no access"; and whether Drive answers a file whose access
-was lost under `drive.file` with 404 or 403 is NOT VERIFIED, so a bare 404 keeps
-the `not_found` wording ("Google Drive did not return this file. It may have
-been deleted or moved, or not shared with this Google account."). Requests from
-the UI carry at most 5 ids and go one after the other (a larger selection is
-split); results are reported per file by name.
+shows both copies, newest first.
+
+Each refresh of a changed file adds one more copy; earlier copies stay until
+the user deletes them (the trash button on the row, or select them and press
+Delete, in the Drive tab or in Uploaded) or retention removes them (the
+account's file retention, as for any upload). Copies count against the storage
+allowance until then. A change within the same second as the stored time is not
+noticed (the stored time has one-second resolution, as in section 12.4).
+
+An attached copy is swapped. When the refreshed (or already newer) copy
+replaces one that is currently attached in the composer, the tab emits
+`replace`, `Select.client.vue` and `Modal.client.vue` forward it, and
+`ChatInput.client.vue` puts the new file in the same position of the attached
+files (one assignment, so the chip does not flicker; if the new copy is already
+attached, the old chip is dropped; a copy the model cannot read is not
+swapped). Copies in earlier, sent messages are never touched. The toast says
+"It replaced the copy attached to your message." before the earlier-copy
+sentence.
+
+A copy of a file that was shared only by link was made with a resource key that
+is not stored (no column, and no schema change was allowed), so refresh asks
+Drive without it and Drive may answer "not found" for such a file. A refresh
+cannot tell that case from a file whose access was lost, so every metadata 404
+is reported as `no_access`: "Besidka has no access to this file. Pick it again
+in Google Drive to give access." Picking it again stores a copy with the key
+the Picker returns. Whether Drive answers a file whose access was lost under
+`drive.file` with 404 or 403 is NOT VERIFIED; both give `no_access`. Requests
+from the UI carry at most 5 ids and go one after the other (a larger selection
+is split); results are reported per file by name.
 
 **Attach and remove.** "Attach" in the footer attaches the selected copies
 through the same `attach` event as the Select tab, so they become ordinary
@@ -1815,9 +1846,13 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
    copy appears above the old one, the old one is still attachable, and an
    older chat message still shows the earlier version. Refresh again: "<name> is
    up to date" (or "A newer copy of <name> is already in your files" on the old
-   row).
+   row). With the old copy attached to the message before refreshing, its chip
+   becomes the new copy in the same position.
 5. Trash a file in Drive and refresh it; remove a file's sharing and refresh it
-   (404 or 403 wording); refresh a file that was shared only by a link.
+   (the "no access" wording either way); refresh a file that was shared only by
+   a link (picked with a resource key).
+5a. Touch-swipe over several rows in the Drive tab on a phone, in the list and
+   the grid view, on iOS Safari and in the installed PWA.
 6. Select copies and "Attach": they become chips; the model picker greys the
    models the data rule refuses; send once.
 7. Delete one copy and a selection: the confirmation names the Drive original,

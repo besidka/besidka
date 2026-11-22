@@ -61,6 +61,7 @@
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
+              @replace="onFileReplaced"
               @preview="onFilePreview"
               @deleted="storageUsage?.fetch()"
               @changed="storageUsage?.fetch()"
@@ -116,6 +117,7 @@ withDefaults(defineProps<{
 const emit = defineEmits<{
   attach: [files: AttachedFile[]]
   detach: [fileIds: string[]]
+  replace: [previousId: string, file: AttachedFile]
   upload: [files: File[]]
 }>()
 
@@ -176,6 +178,8 @@ async function refreshSelectTabIfNeeded() {
 }
 
 function open(tab: Tab, source?: FileSourceFilter): void {
+  isSuspended.value = false
+
   const isAbandoningPreviewReturn = stopPreviewReturnWatch.value !== null
 
   if (isAbandoningPreviewReturn) {
@@ -373,6 +377,10 @@ function onFilePreview(file: FileManagerFile) {
 
 function onFilesDetached(fileIds: string[]) {
   emit('detach', fileIds)
+}
+
+function onFileReplaced(previousId: string, file: AttachedFile) {
+  emit('replace', previousId, file)
 }
 
 function onFilesUploaded(files: File[]) {

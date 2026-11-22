@@ -20,5 +20,8 @@ export const GOOGLE_DRIVE_TAB_CONNECT_LABEL = 'Open API Keys'
 export const GOOGLE_DRIVE_TAB_RECONNECT_LABEL = 'Reconnect'
 export const GOOGLE_DRIVE_TAB_ORIGINAL_KEPT
   = 'The original in Google Drive is not deleted.'
+export const GOOGLE_DRIVE_TAB_REFRESH_SWAPPED
+  = 'It replaced the copy attached to your message. The earlier copy stays '
+    + 'in your files for the messages that used it.'
 export const GOOGLE_DRIVE_TAB_REFRESH_KEPT_EARLIER
   = 'The earlier copy stays in your files for the messages that used it.'

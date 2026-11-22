@@ -3,12 +3,14 @@ import {
   GOOGLE_DRIVE_PICK_MAX,
   GOOGLE_DRIVE_REFRESH_MAX,
 } from '#shared/utils/google-drive'
+import type { AttachedFile } from '~/types/file-manager'
 import type { GooglePickerResult } from '~/composables/google-picker'
 
 interface RefreshOutcome {
   updated: string[]
   newerCopy: string[]
   upToDate: string[]
+  replacedAttachments: number
 }
 
 function chunkIds(ids: readonly string[], size: number): string[][] {
@@ -47,6 +49,8 @@ function describeFiles(names: readonly string[]): string {
  */
 export function useGoogleDriveLibrary(options: {
   getFileName: (fileId: string) => string
+  isAttached: (fileId: string) => boolean
+  onReplaceAttached: (previousId: string, file: AttachedFile) => void
   onChanged: () => void | Promise<void>
   onConnectionIssue: () => void
 }) {
@@ -191,20 +195,38 @@ export function useGoogleDriveLibrary(options: {
     await importPicked(result.items)
   }
 
+  function replaceAttachment(
+    previousId: string,
+    file: AttachedFile,
+    outcome: RefreshOutcome,
+  ) {
+    if (!options.isAttached(previousId)) {
+      return
+    }
+
+    options.onReplaceAttached(previousId, file)
+    outcome.replacedAttachments++
+  }
+
   function reportRefresh(outcome: RefreshOutcome) {
     if (outcome.updated.length > 0) {
       useSuccessMessage(
         outcome.updated.length === 1
           ? `Copied the new version of ${outcome.updated[0]}`
           : `Copied new versions of ${outcome.updated.length} files`,
-        GOOGLE_DRIVE_TAB_REFRESH_KEPT_EARLIER,
+        outcome.replacedAttachments > 0
+          ? GOOGLE_DRIVE_TAB_REFRESH_SWAPPED
+          : GOOGLE_DRIVE_TAB_REFRESH_KEPT_EARLIER,
       )
     }
 
     if (outcome.newerCopy.length > 0) {
       useInfoMessage(
         `A newer copy of ${describeFiles(outcome.newerCopy)} is already `
-        + 'in your files',
+        + 'in your files'
+        + (outcome.updated.length === 0 && outcome.replacedAttachments > 0
+          ? '. It replaced the copy attached to your message.'
+          : ''),
       )
     }
 
@@ -228,6 +250,7 @@ export function useGoogleDriveLibrary(options: {
       updated: [],
       newerCopy: [],
       upToDate: [],
+      replacedAttachments: 0,
     }
 
     try {
@@ -244,12 +267,14 @@ export function useGoogleDriveLibrary(options: {
             useWarningMessage(`${name} could not be refreshed`, result.reason)
           } else if (result.status === 'updated') {
             outcome.updated.push(name)
+            replaceAttachment(result.id, result.file, outcome)
 
             if (result.note) {
               useInfoMessage(result.note)
             }
           } else if (result.status === 'newer_copy') {
             outcome.newerCopy.push(name)
+            replaceAttachment(result.id, result.file, outcome)
           } else {
             outcome.upToDate.push(name)
           }

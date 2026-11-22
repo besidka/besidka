@@ -124,6 +124,7 @@ export type DriveRefreshFailureCode
   = | DriveImportFailureCode
     | 'deleted'
     | 'not_a_copy'
+    | 'unknown_version'
 
 export type DriveRefreshItemResult
   = | {
@@ -348,17 +349,20 @@ export const GOOGLE_DRIVE_FAILURE_REASONS: Readonly<
 }
 
 export const GOOGLE_DRIVE_REFRESH_REASONS: Readonly<
-  Record<'deleted' | 'not_a_copy', string>
+  Record<'deleted' | 'not_a_copy' | 'unknown_version', string>
 > = {
   deleted: 'This file is in the trash in Google Drive. Your copy is '
     + 'unchanged.',
   not_a_copy: 'This file is not a copy of a Google Drive file.',
+  unknown_version: 'Google Drive did not say when this file last changed, '
+    + 'so Besidka cannot tell whether your copy is current. Your copy is '
+    + 'unchanged.',
 }
 
 export function getDriveRefreshFailureReason(
   code: DriveRefreshFailureCode,
 ): string {
-  if (code === 'deleted' || code === 'not_a_copy') {
+  if (code === 'deleted' || code === 'not_a_copy' || code === 'unknown_version') {
     return GOOGLE_DRIVE_REFRESH_REASONS[code]
   }
 

@@ -29,7 +29,7 @@ const SelectStub = defineComponent({
     isImageInputSupported: { type: Boolean, default: true },
     resolveDelivery: { type: Function, default: undefined },
   },
-  emits: ['attach', 'detach', 'deleted', 'changed', 'preview'],
+  emits: ['attach', 'detach', 'replace', 'deleted', 'changed', 'preview'],
   setup(_props, { expose }) {
     scrollMocks.controls = inject(FILE_MANAGER_DIALOG_KEY, null)
 
@@ -225,6 +225,63 @@ describe('ChatInput/Files/Modal.client', () => {
       await flushPromises()
 
       expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+    })
+
+    it('shows the dialog once after two suspends in a row', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]').element
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+      vi.mocked(HTMLDialogElement.prototype.showModal).mockClear()
+      scrollMocks.controls!.suspend()
+      scrollMocks.controls!.suspend()
+      dialog.dispatchEvent(new Event('close'))
+      await flushPromises()
+
+      expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+
+      scrollMocks.controls!.resume()
+      scrollMocks.controls!.resume()
+
+      expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+    })
+
+    it('ends the suspension when the modal is opened again', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]').element
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+      scrollMocks.controls!.suspend()
+      vi.mocked(HTMLDialogElement.prototype.showModal).mockClear()
+      exposed.open('select', 'upload')
+      await wrapper.vm.$nextTick()
+
+      expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+
+      scrollMocks.controls!.resume()
+
+      expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+
+      dialog.dispatchEvent(new Event('close'))
+      await flushPromises()
+
+      expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+    })
+
+    it('forwards a replaced attachment to the composer', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const file = { id: 'new', storageKey: 'new.md', name: 'A.md' }
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+      wrapper.findComponent(SelectStub).vm.$emit('replace', 'old', file)
+
+      expect(wrapper.emitted('replace')?.[0]).toEqual(['old', file])
     })
 
     it('does nothing on resume when it was not suspended', async () => {

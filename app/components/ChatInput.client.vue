@@ -225,6 +225,7 @@
       :resolve-delivery="resolveDelivery"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
+      @replace="onAttachedFileReplaced"
       @upload="uploadFiles"
     />
     <LazyChatInputArtifactPicker
@@ -1576,6 +1577,24 @@ function onFilesDetached(fileIds: string[]) {
   const idsToDetach = new Set(fileIds)
 
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
+}
+
+function onAttachedFileReplaced(previousId: string, file: AttachedFile) {
+  const isAttached = files.value.some(candidate => candidate.id === previousId)
+
+  if (!isAttached || getFileRejection(file, resolveDelivery.value)) {
+    return
+  }
+
+  const isAlreadyAttached = files.value.some((candidate) => {
+    return candidate.storageKey === file.storageKey
+  })
+
+  files.value = isAlreadyAttached
+    ? files.value.filter(candidate => candidate.id !== previousId)
+    : files.value.map((candidate) => {
+      return candidate.id === previousId ? file as FileMetadata : candidate
+    })
 }
 
 const pastedTexts = usePastedTexts()

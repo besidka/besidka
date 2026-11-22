@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
   flags: new Set<string>(['google.drive']),
   logged: [] as unknown[],
   tokenCalls: 0,
+  usedBytes: 0,
+  maxStorageBytes: 100 * 1024 * 1024,
 }))
 
 vi.mock('~~/server/utils/google/tokens', async (importOriginal) => {
@@ -86,14 +88,14 @@ vi.mock('~~/server/utils/files/file-governance', async (importOriginal) => {
     ...actual,
     getEffectiveUserFilePolicy: vi.fn(async () => ({
       tier: 'free',
-      maxStorageBytes: 100 * 1024 * 1024,
+      maxStorageBytes: mocks.maxStorageBytes,
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024,
       fileRetentionDays: 30,
       imageTransformLimitTotal: 0,
       imageTransformUsedTotal: 0,
     })),
-    getUserStorageUsageBytes: vi.fn(async () => 0),
+    getUserStorageUsageBytes: vi.fn(async () => mocks.usedBytes),
   }
 })
 
@@ -327,6 +329,7 @@ describe('POST /api/v1/google/drive/files/refresh', () => {
     mocks.flags = new Set(['google.drive'])
     mocks.logged = []
     mocks.tokenCalls = 0
+    mocks.usedBytes = 0
     stored = []
     testDb = createMemoryExtractionTestDb()
     kv = createFakeConnectorKv()
@@ -519,15 +522,73 @@ describe('POST /api/v1/google/drive/files/refresh', () => {
         expect(await fileRows()).toHaveLength(1)
       })
 
-    it('reports a file Drive no longer returns', async () => {
+    it('reports a file Drive does not return as no access, with the hint',
+      async () => {
+        const copy = await importCopy(PDF_ID)
+
+        useDrive({ [DOC_ID]: standardFiles()[DOC_ID]! })
+
+        const [result] = await refresh([copy.file.id])
+
+        expect(result).toMatchObject({ status: 'failed', code: 'no_access' })
+        expect(result!.reason).toContain('Pick it again in Google Drive')
+        expect(await fileRows()).toHaveLength(1)
+      })
+
+    it('fails without copying when Drive gives no modified time', async () => {
       const copy = await importCopy(PDF_ID)
 
-      useDrive({ [DOC_ID]: standardFiles()[DOC_ID]! })
+      delete driveFiles[PDF_ID]!.metadata.modifiedTime
+      drive.requests.length = 0
 
       const [result] = await refresh([copy.file.id])
 
-      expect(result).toMatchObject({ status: 'failed', code: 'not_found' })
+      expect(result).toMatchObject({
+        id: copy.file.id,
+        status: 'failed',
+        code: 'unknown_version',
+      })
+      expect(drive.ofKind('media')).toHaveLength(0)
+      expect(await fileRows()).toHaveLength(1)
     })
+
+    it('copies once when the copy has no stored time, then reuses it',
+      async () => {
+        const copy = await importCopy(PDF_ID)
+
+        await testDb.db.update(schema.files)
+          .set({ externalModifiedAt: null })
+          .where(eq(schema.files.userId, userId))
+        drive.requests.length = 0
+
+        const [first] = await refresh([copy.file.id])
+
+        expect(first).toMatchObject({ status: 'updated' })
+        expect(drive.ofKind('media')).toHaveLength(1)
+
+        const [second] = await refresh([copy.file.id])
+
+        expect(second).toMatchObject({ status: 'newer_copy' })
+        expect(drive.ofKind('media')).toHaveLength(1)
+        expect(await fileRows()).toHaveLength(2)
+      })
+
+    it('reports storage_full when there is no room for the new copy',
+      async () => {
+        const copy = await importCopy(PDF_ID)
+
+        editInDrive(PDF_ID, SECOND_EDIT)
+        mocks.usedBytes = mocks.maxStorageBytes
+
+        const [result] = await refresh([copy.file.id])
+
+        expect(result).toMatchObject({
+          status: 'failed',
+          code: 'storage_full',
+        })
+        expect(drive.ofKind('media')).toHaveLength(1)
+        expect(await fileRows()).toHaveLength(1)
+      })
 
     it('reports a file Besidka lost access to', async () => {
       const copy = await importCopy(PDF_ID)
@@ -658,6 +719,28 @@ describe('POST /api/v1/google/drive/files/refresh', () => {
       expect(drive.fetch).not.toHaveBeenCalled()
       expect(mocks.tokenCalls).toBe(0)
     })
+
+    it('answers another user id with the same body as a missing id',
+      async () => {
+        const strangerId = await seedUser(testDb.db)
+        const ownerId = userId
+
+        userId = strangerId
+        sessionUserId = strangerId
+        await seedConnection()
+
+        const strangerCopy = await importCopy(PDF_ID)
+
+        userId = ownerId
+        sessionUserId = ownerId
+
+        const [foreign] = await refresh([strangerCopy.file.id])
+        const [missing] = await refresh(['skl987654'])
+
+        expect({ ...foreign, id: 'x' }).toEqual({ ...missing, id: 'x' })
+        expect(Object.keys(foreign!).sort())
+          .toEqual(Object.keys(missing!).sort())
+      })
 
     it('refuses an id that is not a file and a file that is not a Drive copy',
       async () => {

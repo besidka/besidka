@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
   onChanged: vi.fn(),
   onConnectionIssue: vi.fn(),
+  onReplaceAttached: vi.fn(),
+  attachedIds: new Set<string>(),
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
@@ -50,6 +52,8 @@ const Consumer = defineComponent({
   setup() {
     holder.library = useGoogleDriveLibrary({
       getFileName: fileId => `name-of-${fileId}`,
+      isAttached: fileId => mocks.attachedIds.has(fileId),
+      onReplaceAttached: mocks.onReplaceAttached,
       onChanged: mocks.onChanged,
       onConnectionIssue: mocks.onConnectionIssue,
     })
@@ -103,6 +107,7 @@ describe('useGoogleDriveLibrary', () => {
       }
     })
     mocks.calls.length = 0
+    mocks.attachedIds = new Set()
     mocks.ensureSendConsent.mockImplementation(async () => {
       mocks.calls.push('consent')
 
@@ -453,6 +458,74 @@ describe('useGoogleDriveLibrary', () => {
         )
         expect(mocks.onChanged).toHaveBeenCalledOnce()
       })
+
+    it('swaps an attached copy for the new one and says so', async () => {
+      mocks.attachedIds = new Set(['a'])
+      refreshed({ id: 'a', status: 'updated', file: { id: 'new-a' } })
+
+      const library = await mountLibrary()
+
+      await library.refreshCopies(['a'])
+
+      expect(mocks.onReplaceAttached).toHaveBeenCalledOnce()
+      expect(mocks.onReplaceAttached).toHaveBeenCalledWith(
+        'a',
+        { id: 'new-a' },
+      )
+      expect(mocks.success).toHaveBeenCalledWith(
+        'Copied the new version of name-of-a',
+        'It replaced the copy attached to your message. The earlier copy '
+        + 'stays in your files for the messages that used it.',
+      )
+    })
+
+    it('leaves a copy that is not attached alone', async () => {
+      mocks.attachedIds = new Set(['other'])
+      refreshed({ id: 'a', status: 'updated', file: { id: 'new-a' } })
+
+      const library = await mountLibrary()
+
+      await library.refreshCopies(['a'])
+
+      expect(mocks.onReplaceAttached).not.toHaveBeenCalled()
+      expect(mocks.success).toHaveBeenCalledWith(
+        'Copied the new version of name-of-a',
+        expect.stringContaining('The earlier copy stays in your files'),
+      )
+    })
+
+    it('swaps an attached older copy for the newer one that exists',
+      async () => {
+        mocks.attachedIds = new Set(['a'])
+        refreshed({ id: 'a', status: 'newer_copy', file: { id: 'new-a' } })
+
+        const library = await mountLibrary()
+
+        await library.refreshCopies(['a'])
+
+        expect(mocks.onReplaceAttached).toHaveBeenCalledWith(
+          'a',
+          { id: 'new-a' },
+        )
+        expect(mocks.info).toHaveBeenCalledWith(
+          'A newer copy of name-of-a is already in your files. It replaced '
+          + 'the copy attached to your message.',
+        )
+      })
+
+    it('does not swap when the file is up to date or failed', async () => {
+      mocks.attachedIds = new Set(['a', 'b'])
+      refreshed(
+        { id: 'a', status: 'up_to_date' },
+        { id: 'b', status: 'failed', code: 'deleted', reason: 'Trash' },
+      )
+
+      const library = await mountLibrary()
+
+      await library.refreshCopies(['a', 'b'])
+
+      expect(mocks.onReplaceAttached).not.toHaveBeenCalled()
+    })
 
     it('reports a newer copy that already exists without reloading',
       async () => {

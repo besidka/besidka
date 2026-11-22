@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   fetchFiles: vi.fn(),
   loadMore: vi.fn(),
   handleSelect: vi.fn(),
+  selectRange: vi.fn(),
   toggleSelectAll: vi.fn(),
   deselectAll: vi.fn(),
   renameFile: vi.fn(),
@@ -30,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   refreshCopies: vi.fn(),
   libraryOptions: null as null | {
     getFileName: (fileId: string) => string
+    isAttached: (fileId: string) => boolean
+    onReplaceAttached: (previousId: string, file: unknown) => void
     onChanged: () => Promise<void>
     onConnectionIssue: () => void
   },
@@ -93,6 +96,7 @@ mockNuxtImport('useFileManager', () => () => ({
   fetchFiles: mocks.fetchFiles,
   loadMore: mocks.loadMore,
   handleSelect: mocks.handleSelect,
+  selectRange: mocks.selectRange,
   toggleSelectAll: mocks.toggleSelectAll,
   deselectAll: mocks.deselectAll,
   renameFile: mocks.renameFile,
@@ -129,7 +133,13 @@ mockComponent('ChatInputFilesModalSelectListView', async () => {
     name: 'ListViewStub',
     props: fileViewProps,
     emits: fileViewEmits,
-    setup: () => () => h('div'),
+    setup(_props, { expose }) {
+      const containerRef = ref<HTMLElement | null>(null)
+
+      expose({ containerRef })
+
+      return () => h('div', { ref: containerRef, class: 'js-list-stub' })
+    },
   })
 })
 mockComponent('ChatInputFilesModalSelectGridView', async () => {
@@ -139,7 +149,13 @@ mockComponent('ChatInputFilesModalSelectGridView', async () => {
     name: 'GridViewStub',
     props: fileViewProps,
     emits: fileViewEmits,
-    setup: () => () => h('div'),
+    setup(_props, { expose }) {
+      const containerRef = ref<HTMLElement | null>(null)
+
+      expose({ containerRef })
+
+      return () => h('div', { ref: containerRef, class: 'js-grid-stub' })
+    },
   })
 })
 mockComponent('ChatInputFilesModalSelectListSkeleton', async () => {
@@ -529,6 +545,116 @@ describe('ChatInput/Files/Modal/Select/Drive', () => {
 
       expect(mocks.refreshCopies).toHaveBeenCalledWith(['copy-1', 'copy-2'])
     })
+  })
+
+  describe('touch-swipe selection', () => {
+    function touchEvent(type: string) {
+      const event = new Event(type, { cancelable: true })
+
+      Object.defineProperty(event, 'touches', {
+        value: [{ clientX: 1, clientY: 1 }],
+      })
+
+      return event
+    }
+
+    function createRow(index: number): HTMLElement {
+      const row = document.createElement('div')
+
+      row.setAttribute('data-file-index', String(index))
+
+      return row
+    }
+
+    it('selects the swiped range in the list view', async () => {
+      connect()
+      files.value = [copy(), copy({ id: 'copy-2' }), copy({ id: 'copy-3' })]
+
+      const wrapper = await mountDrive({ viewMode: 'list' })
+      const container = wrapper.get('.js-list-stub').element
+
+      document.elementFromPoint = () => createRow(0)
+      container.dispatchEvent(touchEvent('touchstart'))
+      document.elementFromPoint = () => createRow(2)
+      container.dispatchEvent(touchEvent('touchmove'))
+      container.dispatchEvent(touchEvent('touchend'))
+
+      expect(mocks.selectRange).toHaveBeenCalledWith(0, 2)
+    })
+
+    it('selects the swiped range in the grid view', async () => {
+      connect()
+      files.value = [copy(), copy({ id: 'copy-2' })]
+
+      const wrapper = await mountDrive({ viewMode: 'grid' })
+      const container = wrapper.get('.js-grid-stub').element
+
+      document.elementFromPoint = () => createRow(0)
+      container.dispatchEvent(touchEvent('touchstart'))
+      document.elementFromPoint = () => createRow(1)
+      container.dispatchEvent(touchEvent('touchmove'))
+      container.dispatchEvent(touchEvent('touchend'))
+
+      expect(mocks.selectRange).toHaveBeenCalledWith(0, 1)
+    })
+
+    it('ignores the click that follows a swipe', async () => {
+      connect()
+      files.value = [copy(), copy({ id: 'copy-2' })]
+
+      const wrapper = await mountDrive({ viewMode: 'list' })
+      const container = wrapper.get('.js-list-stub').element
+
+      document.elementFromPoint = () => createRow(0)
+      container.dispatchEvent(touchEvent('touchstart'))
+      document.elementFromPoint = () => createRow(1)
+      container.dispatchEvent(touchEvent('touchmove'))
+      container.dispatchEvent(touchEvent('touchend'))
+      findListView(wrapper).vm.$emit(
+        'file-click',
+        new MouseEvent('click'),
+        files.value[1],
+        1,
+      )
+
+      expect(mocks.handleSelect).not.toHaveBeenCalled()
+    })
+
+    it('stops listening when the tab goes away', async () => {
+      connect()
+      files.value = [copy(), copy({ id: 'copy-2' })]
+
+      const wrapper = await mountDrive({ viewMode: 'list' })
+      const container = wrapper.get('.js-list-stub').element
+
+      wrapper.unmount()
+      document.elementFromPoint = () => createRow(0)
+      container.dispatchEvent(touchEvent('touchstart'))
+      document.elementFromPoint = () => createRow(1)
+      container.dispatchEvent(touchEvent('touchmove'))
+      container.dispatchEvent(touchEvent('touchend'))
+
+      expect(mocks.selectRange).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('refreshing an attached copy', () => {
+    it('asks the host to swap the attachment and knows what is attached',
+      async () => {
+        connect()
+
+        const wrapper = await mountDrive({
+          attachedIds: new Set(['copy-1']),
+        })
+        const newFile = { id: 'copy-9', storageKey: 'copy-9.md' }
+
+        expect(mocks.libraryOptions!.isAttached('copy-1')).toBe(true)
+        expect(mocks.libraryOptions!.isAttached('copy-2')).toBe(false)
+
+        mocks.libraryOptions!.onReplaceAttached('copy-1', newFile)
+
+        expect(wrapper.emitted('replace')?.[0]).toEqual(['copy-1', newFile])
+      })
   })
 
   describe('attach', () => {
