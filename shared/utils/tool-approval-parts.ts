@@ -42,17 +42,35 @@ export interface ToolApprovalPartData {
 }
 
 const APPROVAL_LINK_MAX_LENGTH = 2048
-const APPROVAL_LINK_HOSTS: ReadonlySet<string> = new Set([
-  'mail.google.com',
-  'drive.google.com',
-  'docs.google.com',
-])
+const GMAIL_LINK_HOST = 'mail.google.com'
+const GMAIL_LINK_PATH = '/mail/'
+const GMAIL_LINK_QUERY_PATTERN = /^(?:\?authuser=[A-Za-z0-9._%+@-]{1,300})?$/
+const GMAIL_LINK_HASH_PATTERN = /^#all\/[A-Za-z0-9_-]{1,64}$/
+const DRIVE_LINK_HOST = 'drive.google.com'
+const DRIVE_LINK_PATH = '/open'
+const DRIVE_LINK_QUERY_PATTERN = /^\?id=[A-Za-z0-9_-]{10,128}$/
+
+function isGmailThreadLink(url: URL): boolean {
+  return url.hostname === GMAIL_LINK_HOST
+    && url.pathname === GMAIL_LINK_PATH
+    && GMAIL_LINK_QUERY_PATTERN.test(url.search)
+    && GMAIL_LINK_HASH_PATTERN.test(url.hash)
+}
+
+function isDriveFileLink(url: URL): boolean {
+  return url.hostname === DRIVE_LINK_HOST
+    && url.pathname === DRIVE_LINK_PATH
+    && DRIVE_LINK_QUERY_PATTERN.test(url.search)
+    && url.hash === ''
+}
 
 /**
- * The one link an approval card may show next to its summary (the Gmail
- * thread or Drive file the call names): plain HTTPS on a Gmail or Google
- * Drive host, no credentials and no port. Anything else is null, on the
- * server before it is stored and in the browser before it is shown.
+ * The one link an approval card may show next to its summary: plain HTTPS
+ * with no credentials and no port, in exactly one of the two shapes the
+ * server builds, the Gmail thread (`/mail/`, an optional `authuser` and
+ * `#all/<thread id>`) or the Drive file (`/open?id=<file id>`). Any other
+ * host, path, parameter or fragment is null, on the server before it is
+ * stored and in the browser before it is shown.
  */
 export function readApprovalLink(value: unknown): string | null {
   if (
@@ -69,7 +87,7 @@ export function readApprovalLink(value: unknown): string | null {
     && !url.password
     && !url.port
 
-  return isPlainHttps && APPROVAL_LINK_HOSTS.has(url.hostname)
+  return isPlainHttps && (isGmailThreadLink(url) || isDriveFileLink(url))
     ? url.toString()
     : null
 }

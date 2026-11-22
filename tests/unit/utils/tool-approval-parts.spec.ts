@@ -13,10 +13,30 @@ import { sanitizeMessagesForModelContext } from '~~/server/utils/files/assistant
 describe('readApprovalLink', () => {
   it.each([
     'https://mail.google.com/mail/?authuser=me%40example.com#all/t1',
-    'https://drive.google.com/open?id=abc',
-    'https://docs.google.com/document/d/abc',
+    'https://mail.google.com/mail/?authuser=me%2Bnews%40example.com#all/T_1-x',
+    'https://mail.google.com/mail/#all/t1',
+    'https://drive.google.com/open?id=FILEID_ONE_1234',
   ])('accepts the Google link %s', (link) => {
     expect(readApprovalLink(link)).toBe(link)
+  })
+
+  it.each([
+    'https://docs.google.com/viewer?url=https%3A%2F%2Fevil.example%2Fx',
+    'https://docs.google.com/document/d/abc',
+    'https://mail.google.com/mail/u/0/#all/t1',
+    'https://mail.google.com/mail/?authuser=me%40example.com',
+    'https://mail.google.com/mail/?redirect=evil#all/t1',
+    'https://mail.google.com/mail/?authuser=me%40example.com&x=1#all/t1',
+    'https://mail.google.com/mail/#all/t1/extra',
+    'https://mail.google.com/mail/#drafts',
+    'https://mail.google.com/url?q=https%3A%2F%2Fevil.example%2F',
+    'https://drive.google.com/open?id=abc',
+    'https://drive.google.com/open?id=FILEID_ONE_1234&usp=sharing',
+    'https://drive.google.com/open?id=FILEID_ONE_1234#frag',
+    'https://drive.google.com/file/d/FILEID_ONE_1234/view',
+    'https://drive.google.com/open',
+  ])('refuses the Google link with an unexpected shape %s', (link) => {
+    expect(readApprovalLink(link)).toBeNull()
   })
 
   it.each([

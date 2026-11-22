@@ -1304,6 +1304,24 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
         expect(await entry.describeLink!({ threadId: 'zz' })).toBeNull()
       })
 
+    it.each([' t7', 't7 ', ' t7\n', '\tt7'])(
+      'refuses before asking a known id with white space around it: %j',
+      async (paddedId) => {
+        const built = await candidates({ priorParts: [searchPart('t7')] })
+        const entry = built.entries.get(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME)!
+
+        expect(entry.failsWithoutRunning!({ threadId: 't7' })).toBe(false)
+        expect(entry.failsWithoutRunning!({ threadId: paddedId })).toBe(true)
+        expect(await entry.describe!({ threadId: paddedId })).toBeNull()
+        expect(await entry.describeLink!({ threadId: paddedId })).toBeNull()
+        expect(await rejectionOf(run(
+          GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+          { threadId: paddedId },
+          built.tools as unknown as ToolMap,
+        ))).toContain('not a Gmail thread_id')
+      },
+    )
+
     it('refuses without asking an unknown id, even if a search in the same '
       + 'step returns it before the read runs', async () => {
       const built = await candidates()
@@ -1963,6 +1981,91 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
       )
       expect(await entry.describeLink!({ fileId: docId }))
         .toBe(`https://drive.google.com/open?id=${docId}`)
+    })
+
+    it.each([` ${'FILEID_ONE_1234'}`, 'FILEID_ONE_1234\n', '\tFILEID_ONE_1234 '])(
+      'refuses before asking a found id with white space around it: %j',
+      async (paddedId) => {
+        const built = await candidates()
+        const toolMap = built.tools as unknown as ToolMap
+
+        await run(GOOGLE_DRIVE_SEARCH_TOOL_NAME, { query: 'plan' }, toolMap)
+
+        const entry = built.entries.get(GOOGLE_DRIVE_READ_FOUND_TOOL_NAME)!
+
+        expect(entry.failsWithoutRunning!({ fileId: docId })).toBe(false)
+        expect(entry.failsWithoutRunning!({ fileId: paddedId })).toBe(true)
+        expect(await entry.describe!({ fileId: paddedId })).toBeNull()
+        expect(await entry.describeLink!({ fileId: paddedId })).toBeNull()
+        expect(await rejectionOf(run(
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+          { fileId: paddedId },
+          toolMap,
+        ))).toContain('not a Google Drive file_id')
+      },
+    )
+
+    it('names a readable file by its lowercase type without parameters',
+      async () => {
+        apis.driveMetadata[docId] = {
+          id: docId,
+          name: 'notes.txt',
+          mimeType: 'Text/Plain; charset=UTF-8',
+          size: '10',
+          capabilities: { canDownload: true },
+        }
+        apis.driveContent[docId] = 'plain notes'
+
+        const output = await run(
+          GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+          { fileId: docId },
+          await toolsKnowingFile(),
+        )
+
+        expect(output.readable).toBe(true)
+        expect(output.file).toMatchObject({ type: 'text/plain' })
+      })
+
+    it.each([
+      [
+        'a type with a line break and an instruction',
+        `application/pdf\n${ATTACKER_TEXT}`,
+      ],
+      ['a type with a space', 'application/x pdf'],
+      ['a type with markup', 'application/<b>pdf</b>'],
+      ['no slash', 'pdf'],
+      ['a type over 100 characters', `application/${'x'.repeat(100)}`],
+    ])('names an unreadable file by the generic type for %s', async (
+      _name,
+      mimeType,
+    ) => {
+      apis.driveMetadata[docId] = { id: docId, name: 'scan', mimeType }
+
+      const output = await run(
+        GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+        { fileId: docId },
+        await toolsKnowingFile(),
+      )
+
+      expect(output.readable).toBe(false)
+      expect(output.file).toMatchObject({ type: 'application/octet-stream' })
+      expect(JSON.stringify(output.file)).not.toContain('IGNORE')
+    })
+
+    it('keeps a clean binary type and drops its parameters', async () => {
+      apis.driveMetadata[docId] = {
+        id: docId,
+        name: 'scan.pdf',
+        mimeType: 'Application/PDF; name="a"',
+      }
+
+      const output = await run(
+        GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+        { fileId: docId },
+        await toolsKnowingFile(),
+      )
+
+      expect(output.file).toMatchObject({ type: 'application/pdf' })
     })
 
     it('answers a Drive failure with a fixed sentence', async () => {

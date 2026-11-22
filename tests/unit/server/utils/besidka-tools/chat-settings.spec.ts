@@ -309,3 +309,77 @@ describe('Besidka chat settings', () => {
         .map(grant => grant.scope)).toEqual(['chat'])
     })
 })
+
+describe('remember choices for Google reads', () => {
+  let testDb: MemoryExtractionTestDb
+  let userId: number
+
+  beforeEach(async () => {
+    testDb = createMemoryExtractionTestDb()
+    userId = await seedUser(testDb.db, null)
+  })
+
+  afterEach(() => {
+    testDb.close()
+  })
+
+  function googleEntry(toolName: string) {
+    return {
+      descriptor: {
+        family: 'google' as const,
+        access: 'read' as const,
+        toolName,
+        definitionHash: HASH,
+        destructiveHint: false,
+      },
+      summary: toolName,
+      taint: 'google' as const,
+      readSource: 'google',
+      connector: null,
+    }
+  }
+
+  function googleDecision(toolName: string) {
+    return decision(toolName, 'chat', {
+      access: 'read',
+      definitionHash: HASH,
+    })
+  }
+
+  it.each([
+    'google__gmail_read_thread',
+    'google__drive_read_found_file',
+  ])('stores no chat grant for the once-only read %s', async (toolName) => {
+    await applyRememberGrants({
+      db: testDb.db,
+      userId,
+      chatPublicId: CHAT,
+      decisions: [googleDecision(toolName)],
+      entries: new Map([[toolName, googleEntry(toolName)]]),
+      logger: { set: vi.fn() },
+    })
+
+    expect(await readBesidkaChatSettings(testDb.db, userId, CHAT)).toEqual({
+      enabled: true,
+      alwaysAllowTools: {},
+    })
+  })
+
+  it('still stores a chat grant for a Google search', async () => {
+    await applyRememberGrants({
+      db: testDb.db,
+      userId,
+      chatPublicId: CHAT,
+      decisions: [googleDecision('google__gmail_search')],
+      entries: new Map([
+        ['google__gmail_search', googleEntry('google__gmail_search')],
+      ]),
+      logger: { set: vi.fn() },
+    })
+
+    expect(await readBesidkaChatSettings(testDb.db, userId, CHAT)).toEqual({
+      enabled: true,
+      alwaysAllowTools: { google__gmail_search: HASH },
+    })
+  })
+})

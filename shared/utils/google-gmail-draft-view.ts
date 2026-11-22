@@ -10,12 +10,16 @@ export interface GmailDraftApprovalView {
 }
 
 const BLANK_RUN_SHOWN_MAX = 2
+const INVISIBLE_ONLY_LINE_PATTERN
+  = /^[\s\p{Cf}\p{Mn}ㅤ⠀ᅟᅠﾠ]*$/u
 
 /**
  * The body as the approval card shows it: every run of more than two blank
  * lines becomes one visible "[N blank lines]" line, so text cannot hide
- * below a screen of empty lines in the scrolling box. Only the card view
- * changes; the draft keeps the body exactly as given.
+ * below a screen of empty lines in the scrolling box. A line counts as
+ * blank when it holds only white space, format characters, combining marks
+ * and the letters that draw nothing (Hangul fillers, Braille blank). Only
+ * the card view changes; the draft keeps the body exactly as given.
  */
 export function collapseBlankLinesForCard(body: string): string {
   const lines = body.split(/\r\n|\n/)
@@ -33,7 +37,7 @@ export function collapseBlankLinesForCard(body: string): string {
   }
 
   for (const line of lines) {
-    if (!line.trim()) {
+    if (INVISIBLE_ONLY_LINE_PATTERN.test(line)) {
       blankRun += 1
 
       continue

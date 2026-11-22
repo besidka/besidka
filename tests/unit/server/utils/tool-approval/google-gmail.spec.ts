@@ -397,6 +397,37 @@ describe('readGmailDraftApprovalView', () => {
       .toBe('a\n[4 blank lines]\nb')
   })
 
+  it.each([
+    ['Hangul filler', 0x3164],
+    ['Braille blank', 0x2800],
+    ['Hangul choseong filler', 0x115F],
+    ['Hangul jungseong filler', 0x1160],
+    ['halfwidth Hangul filler', 0xFFA0],
+    ['combining grapheme joiner', 0x034F],
+    ['variation selector 16', 0xFE0F],
+  ])('collapses 200 lines of the %s and keeps the sent body', (
+    _name,
+    codePoint,
+  ) => {
+    const invisibleLine = String.fromCodePoint(codePoint)
+    const body = `Hi\n${Array(200).fill(invisibleLine).join('\n')}\nIGNORE THIS`
+    const view = readGmailDraftApprovalView({
+      to: [{ email: 'a@example.com' }],
+      subject: 'Plans',
+      body,
+    })
+
+    expect(view?.cardBody).toBe('Hi\n[200 blank lines]\nIGNORE THIS')
+    expect(view?.body).toBe(body)
+  })
+
+  it('does not treat a line with a visible character as blank', () => {
+    const line = `${String.fromCodePoint(0x3164)}x`
+
+    expect(collapseBlankLinesForCard(`a\n${line}\n${line}\n${line}\nb`))
+      .toBe(`a\n${line}\n${line}\n${line}\nb`)
+  })
+
   it('shows names exactly as given, never trimmed', () => {
     const view = readGmailDraftApprovalView({
       to: [{ email: 'a@example.com', name: 'Ann' }],

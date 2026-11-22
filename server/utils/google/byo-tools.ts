@@ -158,6 +158,10 @@ const UNAVAILABLE_TEXT = 'Your own Google client is not available for this '
 const UNREACHABLE_TEXT = 'Besidka could not get a Google access token. Try '
   + 'again in a moment.'
 
+const SAFE_FILE_TYPE_PATTERN = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/
+const GENERIC_FILE_TYPE = 'application/octet-stream'
+const FILE_TYPE_MAX_LENGTH = 100
+
 const UNKNOWN_THREAD_TEXT = 'That thread_id was not returned by '
   + `${GOOGLE_GMAIL_SEARCH_TOOL_NAME} in this chat. Search first with `
   + `${GOOGLE_GMAIL_SEARCH_TOOL_NAME} and pass a thread_id from its answer.`
@@ -749,7 +753,7 @@ function buildFoundFileOutput(input: {
     readable: true,
     file: {
       fileId: input.fileId,
-      type: input.mimeType,
+      type: safeFileType(input.mimeType),
       totalCharacters: input.totalCharacters,
       ...(input.modifiedTime
         ? { modified: input.modifiedTime.toISOString() }
@@ -843,6 +847,31 @@ function asText(value: unknown, key: string): string | null {
   const text = (value as Record<string, unknown> | null)?.[key]
 
   return typeof text === 'string' && text.trim() ? text.trim() : null
+}
+
+function asRawText(value: unknown, key: string): string | null {
+  const text = (value as Record<string, unknown> | null)?.[key]
+
+  return typeof text === 'string' && text ? text : null
+}
+
+/**
+ * A Drive `mimeType` is attacker-controlled text, and the type next to a
+ * file sits outside the untrusted frame. Only a plain lowercase
+ * `type/subtype` of at most 100 characters is passed on, with any
+ * parameters after `;` dropped; everything else becomes the generic type.
+ */
+function safeFileType(mimeType: unknown): string {
+  if (typeof mimeType !== 'string') {
+    return GENERIC_FILE_TYPE
+  }
+
+  const essence = mimeType.split(';')[0]!.trim().toLowerCase()
+
+  return essence.length <= FILE_TYPE_MAX_LENGTH
+    && SAFE_FILE_TYPE_PATTERN.test(essence)
+    ? essence
+    : GENERIC_FILE_TYPE
 }
 
 /**
@@ -1446,7 +1475,10 @@ export async function buildGoogleByoTools(
             read.file.modifiedTime,
           )],
           readable: false,
-          file: { fileId: callInput.fileId, type: read.file.mimeType },
+          file: {
+            fileId: callInput.fileId,
+            type: safeFileType(read.file.mimeType),
+          },
           content: frameUntrustedResult({
             slug: FRAME_SLUG,
             toolName: 'drive_read_found_file',
@@ -1530,20 +1562,20 @@ export async function buildGoogleByoTools(
       null,
     ),
     describe: async (callInput) => {
-      const threadId = asText(callInput, 'threadId')
+      const threadId = asRawText(callInput, 'threadId')
       const item = threadId ? index.threads.get(threadId) : undefined
 
       return item ? `Read ${threadPhrase(item)} in your Gmail` : null
     },
     describeLink: async (callInput) => {
-      const threadId = asText(callInput, 'threadId')
+      const threadId = asRawText(callInput, 'threadId')
 
       return threadId && index.threads.has(threadId)
         ? buildGmailThreadAccountLink(threadId, input.accountEmail)
         : null
     },
     failsWithoutRunning: (callInput) => {
-      const threadId = asText(callInput, 'threadId')
+      const threadId = asRawText(callInput, 'threadId')
 
       return !isKnownOrMark(
         GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
@@ -1611,7 +1643,7 @@ export async function buildGoogleByoTools(
       null,
     ),
     describe: async (callInput) => {
-      const fileId = asText(callInput, 'fileId')
+      const fileId = asRawText(callInput, 'fileId')
       const item = fileId ? index.foundFiles.get(fileId) : undefined
 
       return item?.title
@@ -1620,14 +1652,14 @@ export async function buildGoogleByoTools(
         : null
     },
     describeLink: async (callInput) => {
-      const fileId = asText(callInput, 'fileId')
+      const fileId = asRawText(callInput, 'fileId')
 
       return fileId && index.foundFiles.has(fileId)
         ? buildDriveFileLink(fileId)
         : null
     },
     failsWithoutRunning: (callInput) => {
-      const fileId = asText(callInput, 'fileId')
+      const fileId = asRawText(callInput, 'fileId')
 
       return !isKnownOrMark(
         GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,

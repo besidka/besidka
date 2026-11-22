@@ -2228,7 +2228,7 @@ thread ids, dates and file names it works with come from the framed text only.
 | `google__gmail_read_thread` | read | `threadId`: only a `thread_id` that a `google__gmail_search` result of this chat holds (shape `[A-Za-z0-9_-]{1,64}` and membership checked before any request; any other id is refused without asking, see below) | `references`, `thread` (`threadId`, `messageCount`, `shownMessages`, `omittedMessages`, `skippedMessages`), `content` (framed: for each message the from, to, cc, date and subject headers, an attachment line and the plain text, oldest to newest by `internalDate`), `isTruncated`, `truncationNote` | One `users.threads.get` with `format=full` and `fields=id,messages(id,internalDate,payload)`, read with a 3 MiB cap; over the cap, one `format=minimal` call for the ids and then `users.messages.get` newest first, one at a time, until 36 KiB of text or 20 messages (a message over 3 MiB is skipped and named); the newest 20 messages; 8,000 characters per message; older ones counted and named as left out; a newest message that alone overflows is cut and says so; no paging | Allow once only |
 | `google__gmail_create_draft` | write | `to` (1 to 20), `cc`, `bcc` (20 recipients in total, each address once in any letter case), each `{ email, name? }`; `subject` (200 UTF-16 units); `body` (10,000 UTF-16 units, plain text); optional `replyToThreadId` (only a `thread_id` a search of this chat returned) | `references` (the draft id, kind `gmail-draft`, the Drafts link), `created`, `draftId`, `link`, a message that says it was not sent | One `users.drafts.create` (`fields=id,message(id,threadId)`); for a reply one `users.threads.get` with `format=metadata` first, and a reply whose thread holds no valid `Message-ID` is refused instead of drafted unthreaded | Allow once only |
 | `google__drive_search` | read | `query` (1 to 200), optional `kind` (`any`, `document`, `spreadsheet`, `presentation`, `pdf`), `modifiedAfter` (`YYYY-MM-DD`), `limit` (1 to 15, default 8) | `references` (file id, name, link, modified time), `count`, `files` (framed lines: `file_id`, name, type, modified), `note` (pass a `file_id` to `google__drive_read_found_file`) | One `files.list` over My Drive and shared drives; 24 KiB of text; the 64 KiB cap | Allow once, "Allow searching any file in your Google Drive in this chat" (at most 5 granted calls per message, then it asks again) |
-| `google__drive_read_found_file` | read | `fileId`: only a `file_id` that a `google__drive_search` result of this chat holds (never a picked, read or saved file, which share the `drive-file` kind) | `references` (file id, cleaned name, link, modified time), `readable`, `file` (`fileId`, `type`, `totalCharacters`, `modified`), `content` (framed: the name and the text), `isTruncated`, `truncationNote`, `note` | `files.get` metadata, then `files.export` (Docs as Markdown with a plain-text fallback, Sheets as the first sheet in CSV, Slides as text) or `files.get?alt=media` for a text type only; 8 MB streaming cap; 40 KiB of text from the start; no paging; nothing stored but the reference (section 14.8) | Allow once only |
+| `google__drive_read_found_file` | read | `fileId`: only a `file_id` that a `google__drive_search` result of this chat holds (never a picked, read or saved file, which share the `drive-file` kind) | `references` (file id, cleaned name, link, modified time), `readable`, `file` (`fileId`, `type` (only a plain lowercase `type/subtype` of at most 100 characters, parameters dropped, else `application/octet-stream`), `totalCharacters`, `modified`), `content` (framed: the name and the text), `isTruncated`, `truncationNote`, `note` | `files.get` metadata, then `files.export` (Docs as Markdown with a plain-text fallback, Sheets as the first sheet in CSV, Slides as text) or `files.get?alt=media` for a text type only; 8 MB streaming cap; 40 KiB of text from the start; no paging; nothing stored but the reference (section 14.8) | Allow once only |
 
 A refusal or a Google failure is a thrown sentence the model can read, never a
 result, and never repeats Google's own message text (it can echo the request,
@@ -2387,9 +2387,11 @@ model; the day is Gmail's own timestamp from the stored reference). The thread
 read and the reply word their card with `describe` from the reference index
 only, so no Gmail call is made to word a card and no subject can reach a
 stored summary. The part also carries one `link` (`describeLink`, kept only by
-`readApprovalLink`: HTTPS on `mail.google.com`, `drive.google.com` or
-`docs.google.com`, no credentials or port, checked on the server and again in
-the browser): the thread link names the connected account with
+`readApprovalLink`: HTTPS with no credentials or port in exactly one of two
+shapes, `https://mail.google.com/mail/` with an optional `?authuser=` and
+`#all/<thread id>`, or `https://drive.google.com/open?id=<file id>`, so a path
+such as a `docs.google.com` viewer URL is refused; checked on the server and
+again in the browser by the same function): the thread link names the connected account with
 `?authuser=<email>` (`buildGmailThreadAccountLink`, from the `byo`
 connection's stored address; the stored references keep the plain link), so
 the owner can look at the thread before approving. Approval parts are private
@@ -2431,8 +2433,9 @@ recipient address with its display name (To, Cc and Bcc rows), the subject, the
 whole body (a scrolling box, never clipped, as text and never as markup) and
 the line "This only saves a draft in your Gmail. Besidka cannot send it." Above
 the body the card says how many lines it has, and in the card view only a run
-of more than two blank (or whitespace-only) lines becomes one "[N blank
-lines]" line (`collapseBlankLinesForCard`), so text cannot hide below a screen
+of more than two blank lines (a line of only white space, format characters,
+combining marks and the blank letters U+3164, U+2800, U+115F, U+1160 and
+U+FFA0) becomes one "[N blank lines]" line (`collapseBlankLinesForCard`), so text cannot hide below a screen
 of empty lines; the draft keeps the body exactly as given (tested). The
 scrolling body is a keyboard-reachable region (`tabindex="0"`, `role="region"`,
 `aria-label="Draft message"`). A reply's card names its thread like a thread
