@@ -371,6 +371,16 @@ describe('Google Calendar tools on the owner\'s own client', () => {
       }
     })
 
+    it('shows no copyable YYYY placeholder in a description', async () => {
+      const built = await tools({ gmail: true })
+
+      expect(Object.keys(built).length).toBeGreaterThan(0)
+
+      for (const tool of Object.values(built)) {
+        expect(tool.description).not.toContain('YYYY')
+      }
+    })
+
     it('points the three tools at the date in the system text', async () => {
       const built = await tools()
 

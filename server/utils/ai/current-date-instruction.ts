@@ -5,8 +5,8 @@ const RELATIVE_DATE_RULE = 'Use this for "today", "tomorrow", "this week" and '
   + 'every other relative date. Never take the current date from your own '
   + 'knowledge.'
 
-export const CURRENT_DATE_SEARCH_HINT = 'Use the current date given at the '
-  + 'end of these instructions for "latest" questions and for freshness '
+export const CURRENT_DATE_SEARCH_HINT = 'Use the current date given in '
+  + 'these instructions for "latest" questions and for freshness '
   + 'filters; do not search for the current date.'
 
 interface LocalDay {

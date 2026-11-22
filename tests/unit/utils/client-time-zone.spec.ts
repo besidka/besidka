@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getClientTimeZoneField } from '../../../app/utils/client-time-zone'
+import { getClientTimeZoneField } from '~/utils/client-time-zone'
 
 function stubResolvedTimeZone(timeZone: string | undefined) {
   vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function () {

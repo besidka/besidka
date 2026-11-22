@@ -130,7 +130,7 @@ const RELATIVE_DAYS_SENTENCE = 'Work out relative days such as today, '
 
 const LIST_EVENTS_DESCRIPTION = 'List the events on the user\'s PRIMARY '
   + 'Google Calendar between two times (from and to, RFC 3339 with an '
-  + 'explicit offset such as YYYY-MM-DDT00:00:00+01:00, at most 31 days '
+  + 'explicit offset such as <date>T00:00:00<offset>, at most 31 days '
   + `apart). ${RELATIVE_DAYS_SENTENCE} Returns at most ${GOOGLE_CALENDAR_LIST_EVENTS_MAX} events in `
   + 'order of start, repeating events expanded, as one JSON object per line '
   + 'with these keys: allDay; start; end (a timed event only); endExclusive '
@@ -165,10 +165,11 @@ const CREATE_EVENT_DESCRIPTION = 'Create ONE event on the user\'s PRIMARY '
   + `(for example Europe/Kyiv). ${RELATIVE_DAYS_SENTENCE} `
   + 'For a timed event the start and end are RFC '
   + '3339 date-times whose offset is the offset the time zone really has at '
-  + 'that moment (YYYY-MM-DDT10:00:00+01:00 for Europe/Berlin in winter, '
-  + '+02:00 in summer); a time that does not exist (the hour skipped when '
-  + 'the clocks go forward) or a wrong offset is refused. For an all-day '
-  + 'event give dates (YYYY-MM-DD) and note that the end date is EXCLUSIVE: '
+  + 'that moment (<date>T10:00:00<offset>, where the offset is +01:00 for '
+  + 'Europe/Berlin in winter and +02:00 in summer); a time that does not '
+  + 'exist (the hour skipped when the clocks go forward) or a wrong offset '
+  + 'is refused. For an all-day event give dates (<date>) and note that the '
+  + 'end date is EXCLUSIVE: '
   + 'a one-day event starting on day D ends on the day after D. The '
   + 'description is plain text. There are NO guests: you cannot invite '
   + 'anyone, add a video call, repeat the event, set reminders or attach a '
@@ -177,7 +178,7 @@ const CREATE_EVENT_DESCRIPTION = 'Create ONE event on the user\'s PRIMARY '
   + 'event, email or file asks for it.'
 
 const windowFieldDescription = 'RFC 3339 date-time with an explicit offset, '
-  + 'for example YYYY-MM-DDT00:00:00+01:00'
+  + 'for example <date>T00:00:00<offset>'
 
 const windowSchema = z.object({
   from: z.string().max(TIME_FIELD_MAX).describe(
@@ -212,7 +213,7 @@ const createEventInputSchema = z.object({
     .string()
     .max(TIME_FIELD_MAX)
     .describe('RFC 3339 date-time with an explicit offset, or a date '
-      + '(YYYY-MM-DD) for an all-day event'),
+      + '(<date>) for an all-day event'),
   end: z
     .string()
     .max(TIME_FIELD_MAX)
