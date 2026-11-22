@@ -5,6 +5,7 @@ import {
   GOOGLE_PICKER_FRAME_SOURCES,
   isGooglePickerPagePath,
 } from '#shared/utils/google-drive'
+import { isGooglePickerFrameAllowed } from '~~/server/utils/google/picker-frame'
 
 const CSP_HEADER = 'content-security-policy'
 const FRAME_SRC = 'frame-src'
@@ -17,13 +18,17 @@ const ARTIFACT_PAGE_PREFIXES = [
 ]
 
 export default defineNitroPlugin((nitroApp) => {
-  nitroApp.hooks.hook('render:response', (response, context) => {
+  nitroApp.hooks.hook('render:response', async (response, context) => {
     const publicConfig = useRuntimeConfig(context.event).public
 
     applyArtifactFrameSrc(response, context, {
       artifactsOrigin: publicConfig.artifactsOrigin,
       eventPolicy: readEventPolicy(context.event),
-      googlePickerApiKey: publicConfig.googlePickerApiKey,
+      allowsGooglePicker: isGooglePickerPagePath(context.event.path)
+        && await isGooglePickerFrameAllowed(
+          context.event,
+          publicConfig.googlePickerApiKey,
+        ),
     })
   })
 })
@@ -67,14 +72,14 @@ export function applyArtifactFrameSrc(
   options: {
     artifactsOrigin: unknown
     eventPolicy?: string
-    googlePickerApiKey?: unknown
+    allowsGooglePicker?: boolean
   },
 ): void {
   if (!isArtifactPagePath(context.event.path)) {
     return
   }
 
-  const allowsGooglePicker = !!options.googlePickerApiKey
+  const allowsGooglePicker = options.allowsGooglePicker === true
     && isGooglePickerPagePath(context.event.path)
   const directive = buildArtifactFrameSrc(
     options.artifactsOrigin,

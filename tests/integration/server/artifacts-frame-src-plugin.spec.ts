@@ -237,7 +237,7 @@ describe('artifacts frame-src plugin', () => {
 
       const response = { headers: {} as Record<string, string> }
 
-      hooks['render:response']!(response, createContext('/chats/new'))
+      await hooks['render:response']!(response, createContext('/chats/new'))
 
       expect(response.headers['content-security-policy'])
         .toMatch(new RegExp(
@@ -246,9 +246,10 @@ describe('artifacts frame-src plugin', () => {
     })
 
   describe('Google Drive Picker', () => {
-    const PICKER_FRAMES = 'https://docs.google.com https://drive.google.com'
+    const PICKER_FRAMES
+      = 'https://docs.google.com/picker https://docs.google.com/picker/'
 
-    it('lets a chat page frame the Picker once it is configured',
+    it('lets a chat page frame the Picker path once it is allowed',
       async () => {
         const { applyArtifactFrameSrc } = await loadPlugin()
         const response = { headers: {} as Record<string, string> }
@@ -258,16 +259,18 @@ describe('artifacts frame-src plugin', () => {
           createContext('/chats/01JCHAT') as never,
           {
             artifactsOrigin: ARTIFACTS_ORIGIN,
-            googlePickerApiKey: 'public-key',
+            allowsGooglePicker: true,
           },
         )
 
         expect(response.headers['content-security-policy']).toBe(
           `frame-src ${SELF} ${ARTIFACTS_ORIGIN} ${TURNSTILE} ${PICKER_FRAMES}`,
         )
+        expect(response.headers['content-security-policy'])
+          .not.toContain('drive.google.com')
       })
 
-    it('adds no Google frame while the Picker is not configured',
+    it('adds no Google frame while the Picker is not allowed',
       async () => {
         const { applyArtifactFrameSrc } = await loadPlugin()
         const response = { headers: {} as Record<string, string> }
@@ -275,7 +278,7 @@ describe('artifacts frame-src plugin', () => {
         applyArtifactFrameSrc(
           response as never,
           createContext('/chats/01JCHAT') as never,
-          { artifactsOrigin: ARTIFACTS_ORIGIN, googlePickerApiKey: '' },
+          { artifactsOrigin: ARTIFACTS_ORIGIN, allowsGooglePicker: false },
         )
 
         expect(response.headers['content-security-policy'])
@@ -295,7 +298,7 @@ describe('artifacts frame-src plugin', () => {
         createContext(path) as never,
         {
           artifactsOrigin: ARTIFACTS_ORIGIN,
-          googlePickerApiKey: 'public-key',
+          allowsGooglePicker: true,
         },
       )
 
@@ -312,12 +315,145 @@ describe('artifacts frame-src plugin', () => {
         createContext('/chats/new') as never,
         {
           artifactsOrigin: ARTIFACTS_ORIGIN,
-          googlePickerApiKey: 'public-key',
+          allowsGooglePicker: true,
         },
       )
 
       expect(response.headers['content-security-policy'])
         .not.toMatch(/script-src|connect-src|img-src|default-src/)
     })
+
+    it('matches the Picker URL and no other docs.google.com URL', async () => {
+      const { applyArtifactFrameSrc } = await loadPlugin()
+      const response = { headers: {} as Record<string, string> }
+
+      applyArtifactFrameSrc(
+        response as never,
+        createContext('/chats/new') as never,
+        { artifactsOrigin: ARTIFACTS_ORIGIN, allowsGooglePicker: true },
+      )
+
+      const sources = cspSources(
+        response.headers['content-security-policy']!,
+        'frame-src',
+      )
+
+      expect(matchesCspSources(
+        sources,
+        'https://docs.google.com/picker?foo=bar',
+      )).toBe(true)
+      expect(matchesCspSources(
+        sources,
+        'https://docs.google.com/picker/embed?foo=bar',
+      )).toBe(true)
+      expect(matchesCspSources(
+        sources,
+        'https://docs.google.com/forms/d/e/x/formResponse?entry.1=chat',
+      )).toBe(false)
+      expect(matchesCspSources(
+        sources,
+        'https://docs.google.com/pickerx',
+      )).toBe(false)
+      expect(matchesCspSources(
+        sources,
+        'https://docs.google.com/',
+      )).toBe(false)
+      expect(matchesCspSources(
+        sources,
+        'https://drive.google.com/picker',
+      )).toBe(false)
+      expect(matchesCspSources(
+        sources,
+        'https://evil.example/picker',
+      )).toBe(false)
+    })
+  })
+
+  describe('whether a chat document may frame the Picker', () => {
+    async function allowed(event: unknown, key: unknown) {
+      const { isGooglePickerFrameAllowed } = await import(
+        '~~/server/utils/google/picker-frame'
+      )
+
+      return await isGooglePickerFrameAllowed(event as never, key)
+    }
+
+    it('is never allowed without the public Picker key', async () => {
+      expect(await allowed({ context: {} }, '')).toBe(false)
+      expect(await allowed({ context: {} }, undefined)).toBe(false)
+    })
+
+    it('falls back to the key alone when the render left no feature state',
+      async () => {
+        expect(await allowed({ context: {} }, 'public-key')).toBe(true)
+      })
+
+    it('answers from the memoized feature state, with no new read',
+      async () => {
+        const active = await allowed({
+          context: {
+            features: Promise.resolve({
+              rules: {},
+              userState: null,
+              config: {},
+              userId: null,
+              isAdmin: false,
+              exposures: new Set(),
+            }),
+          },
+        }, 'public-key')
+
+        expect(active).toBe(false)
+      })
+
+    it('answers no when the memoized state cannot be read', async () => {
+      const rejected = Promise.reject(new Error('feature state failed'))
+
+      rejected.catch(() => undefined)
+
+      expect(await allowed({ context: { features: rejected } }, 'public-key'))
+        .toBe(false)
+    })
   })
 })
+
+/**
+ * A small matcher for host-source expressions with a path, as CSP Level 3
+ * defines them: scheme and host must match, a path ending in `/` matches
+ * every path below it, any other path must match exactly, and the query is
+ * ignored. It checks the directive string only: real browser enforcement is
+ * not tested here (the Picker frame in a real browser is on the owner
+ * checklist, `docs/google.md`).
+ */
+function cspSources(policy: string, directive: string): string[] {
+  const entry = policy
+    .split(';')
+    .map(part => part.trim())
+    .find(part => part.split(/\s+/)[0] === directive)
+
+  return entry ? entry.split(/\s+/).slice(1) : []
+}
+
+function matchesCspSources(sources: string[], rawUrl: string): boolean {
+  const url = new URL(rawUrl)
+
+  return sources.some((source) => {
+    if (!source.startsWith('https://')) {
+      return false
+    }
+
+    const expression = new URL(source)
+
+    if (expression.origin !== url.origin) {
+      return false
+    }
+
+    if (expression.pathname === '/') {
+      return true
+    }
+
+    return expression.pathname.endsWith('/')
+      ? url.pathname.startsWith(expression.pathname)
+      : url.pathname === expression.pathname
+  })
+}

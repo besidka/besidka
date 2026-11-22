@@ -267,10 +267,11 @@ const bridgeFeature = useFeature('artifacts.llm-bridge')
 const { isFullWidth } = useSidePanel()
 const layout = useSidePanelLayout()
 const runtimeOrigin = String(useRuntimeConfig().public.artifactsOrigin ?? '')
+  .replace(/\/+$/, '')
 const googlePickerApiKey = String(
   useRuntimeConfig().public.googlePickerApiKey ?? '',
 )
-  .replace(/\/+$/, '')
+const googleDriveFeature = useFeature('google.drive')
 
 const host = useTemplateRef<HTMLDivElement>('host')
 const status = shallowRef<FrameStatus>('loading')
@@ -678,6 +679,7 @@ function mountFrame() {
     runtimeOrigin,
     isGooglePickerPagePath(window.location.pathname)
     && googlePickerApiKey
+    && googleDriveFeature.value.active
       ? GOOGLE_PICKER_FRAME_SOURCES
       : [],
   )
