@@ -101,6 +101,7 @@ export interface WorkbookConditionalRule {
   percent?: boolean
   period?: string
   stopIfTrue?: boolean
+  priority?: number
 }
 
 export interface SheetNotRead {
@@ -111,7 +112,6 @@ export interface SheetNotRead {
   dataBars: number
   iconSets: number
   hyperlinks: number
-  threadedComments: number
 }
 
 export type SheetCut

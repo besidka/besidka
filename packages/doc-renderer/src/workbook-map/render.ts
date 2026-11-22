@@ -131,7 +131,6 @@ function emptyNotRead(): SheetNotRead {
     dataBars: 0,
     iconSets: 0,
     hyperlinks: 0,
-    threadedComments: 0,
   }
 }
 
@@ -456,13 +455,6 @@ function notReadLine(notRead: SheetNotRead): string | null {
       : null,
     notRead.iconSets > 0
       ? plural(notRead.iconSets, 'icon set rule', 'icon set rules')
-      : null,
-    notRead.threadedComments > 0
-      ? plural(
-        notRead.threadedComments,
-        'threaded comment',
-        'threaded comments',
-      )
       : null,
     notRead.hyperlinks > 0
       ? `${plural(notRead.hyperlinks, 'link', 'links')} (count only)`

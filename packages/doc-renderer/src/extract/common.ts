@@ -82,7 +82,6 @@ const PART_GROWTH_FACTOR = 4
 export const ATTRIBUTES_MAX = 128
 const BUDGET_EXCEEDED_CODE = 'extract_budget_exceeded'
 const EXTRAS_EXCEEDED_CODE = 'extract_extras_exceeded'
-const TAIL_CARRY_BYTES = 160
 const GREATER_THAN = 0x3E
 const LESS_THAN = 0x3C
 const SLASH = 0x2F
@@ -373,8 +372,9 @@ function chargeInflated(officePackage: OfficePackage, bytes: number): void {
 /**
  * Runs an optional read (workbook structure the plain text never needed)
  * against its own budget, so it can never use up the budget the cells rely
- * on. Any failure inside it, a spent budget, a malformed or corrupt part,
- * gives null instead of failing the extraction.
+ * on. Any failure inside it, a spent budget, a malformed or corrupt part
+ * or an unexpected shape a reader did not handle, gives null ("not read")
+ * instead of failing the extraction.
  */
 export function readOptional<Result>(
   officePackage: OfficePackage,
@@ -387,12 +387,8 @@ export function readOptional<Result>(
 
   try {
     return read()
-  } catch (exception) {
-    if (exception instanceof ExtractError || exception instanceof XmlError) {
-      return null
-    }
-
-    throw exception
+  } catch {
+    return null
   } finally {
     budget.isExtraMode = wasExtraMode
   }
@@ -725,6 +721,158 @@ function indexAfterClosing(
   return -1
 }
 
+type MarkupState = 'text' | 'comment' | 'cdata' | 'instruction'
+
+const EXCLAMATION_BYTE = 0x21
+const QUESTION_BYTE = 0x3F
+const COMMENT_OPENER = [0x3C, 0x21, 0x2D, 0x2D]
+const CDATA_OPENER_BYTES = Array.from('<![CDATA[', (character) => {
+  return character.charCodeAt(0)
+})
+const MARKUP_CLOSERS: Record<Exclude<MarkupState, 'text'>, number[]> = {
+  comment: [0x2D, 0x2D, 0x3E],
+  cdata: [0x5D, 0x5D, 0x3E],
+  instruction: [0x3F, 0x3E],
+}
+
+function startsWithBytes(
+  data: Uint8Array,
+  offset: number,
+  bytes: readonly number[],
+): boolean {
+  for (let index = 0; index < bytes.length; index += 1) {
+    if (data[offset + index] !== bytes[index]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function indexOfBytes(
+  data: Uint8Array,
+  bytes: readonly number[],
+  from: number,
+): number {
+  let index = data.indexOf(bytes[0] as number, from)
+
+  while (index !== -1 && index + bytes.length <= data.length) {
+    if (startsWithBytes(data, index, bytes)) {
+      return index
+    }
+
+    index = data.indexOf(bytes[0] as number, index + 1)
+  }
+
+  return -1
+}
+
+/**
+ * Finds the end tag of one element in a part that arrives in chunks, the
+ * way the XML parser reads it: text inside comments, CDATA sections and
+ * processing instructions is skipped, so an end tag written inside them
+ * cannot forge where the cells stop. The state and at most a tag's worth of
+ * bytes carry over between chunks, so a delimiter split on a chunk boundary
+ * is still seen.
+ */
+export class ClosingTagFinder {
+  private readonly name: number[]
+  private readonly tagBytesMax: number
+  private state: MarkupState = 'text'
+  private carry = new Uint8Array(0)
+
+  constructor(name: number[]) {
+    this.name = name
+    this.tagBytesMax = name.length + MAX_PREFIX_BYTES + 4
+  }
+
+  /**
+   * Feeds one chunk. Returns the bytes seen so far (carry plus chunk) and
+   * the offset right after the end tag in them, or null while not found.
+   */
+  feed(chunk: Uint8Array): { data: Uint8Array, end: number } | null {
+    const total = this.carry.length + chunk.length
+    const data = concatBytes([this.carry, chunk], total)
+    let index = 0
+
+    this.carry = new Uint8Array(0)
+
+    while (index < data.length) {
+      if (this.state !== 'text') {
+        const closer = MARKUP_CLOSERS[this.state]
+        const found = indexOfBytes(data, closer, index)
+
+        if (found === -1) {
+          this.keep(data, Math.max(index, data.length - closer.length + 1))
+
+          return null
+        }
+
+        index = found + closer.length
+        this.state = 'text'
+        continue
+      }
+
+      const open = data.indexOf(LESS_THAN, index)
+
+      if (open === -1) {
+        return null
+      }
+
+      if (data.length - open < CDATA_OPENER_BYTES.length) {
+        this.keep(data, open)
+
+        return null
+      }
+
+      const next = data[open + 1]
+
+      if (next === EXCLAMATION_BYTE) {
+        if (startsWithBytes(data, open, COMMENT_OPENER)) {
+          this.state = 'comment'
+          index = open + COMMENT_OPENER.length
+          continue
+        }
+
+        if (startsWithBytes(data, open, CDATA_OPENER_BYTES)) {
+          this.state = 'cdata'
+          index = open + CDATA_OPENER_BYTES.length
+          continue
+        }
+      } else if (next === QUESTION_BYTE) {
+        this.state = 'instruction'
+        index = open + 2
+        continue
+      } else if (next === SLASH) {
+        const close = data.indexOf(GREATER_THAN, open)
+
+        if (close === -1) {
+          if (data.length - open <= this.tagBytesMax) {
+            this.keep(data, open)
+          }
+
+          return null
+        }
+
+        if (
+          close - open <= this.tagBytesMax
+          && closesElement(data, close, this.name)
+        ) {
+          return { data, end: close + 1 }
+        }
+      }
+
+      index = open + 1
+    }
+
+    return null
+  }
+
+  private keep(data: Uint8Array, from: number): void {
+    this.carry = data.slice(from)
+  }
+}
+
 function lastIndexAfterClosing(
   data: Uint8Array,
   name: number[],
@@ -860,7 +1008,8 @@ function concatBytes(chunks: readonly Uint8Array[], total: number): Uint8Array {
 /**
  * Reads what a part holds after the end tag of `afterElement` (any namespace
  * prefix) without keeping the bytes before it: the part is inflated forward
- * once, the bytes are searched as they arrive and dropped, and at most
+ * once, the bytes are searched as they arrive and dropped (skipping
+ * comments, CDATA and processing instructions), and at most
  * `limits.tailBytesMax` bytes after the tag are kept and parsed. It runs
  * against the optional budget (call it inside `readOptional`), and returns
  * null when that budget cannot cover the part or the tag never appears.
@@ -881,8 +1030,8 @@ export function readPartTail(
     entry.dataOffset + entry.compressedSize,
   )
   const kept: Uint8Array[] = []
+  const finder = new ClosingTagFinder(name)
   let keptBytes = 0
-  let carry = new Uint8Array(0)
   let isFound = false
   let isFull = false
   let produced = 0
@@ -905,17 +1054,14 @@ export function readPartTail(
     let data = chunk
 
     if (!isFound) {
-      const combined = concatBytes([carry, chunk], carry.length + chunk.length)
-      const end = indexAfterClosing(combined, name, 0)
+      const found = finder.feed(chunk)
 
-      if (end === -1) {
-        carry = combined.slice(Math.max(0, combined.length - TAIL_CARRY_BYTES))
-
+      if (found === null) {
         return
       }
 
       isFound = true
-      data = combined.subarray(end)
+      data = found.data.subarray(found.end)
     }
 
     const room = tailBytesMax - keptBytes

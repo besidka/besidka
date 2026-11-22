@@ -85,6 +85,7 @@ const IMAGE_TYPE_SUFFIX = '/image'
 const PIVOT_TYPE_SUFFIX = '/pivotTable'
 const THREADED_PLACEHOLDER = '[Threaded comment]'
 const THREADED_TEXT_MARKER = 'Comment:'
+const THREADED_REPLY_PATTERN = /\n\s*Reply:/
 
 const OPERATORS: Record<string, ComparisonOperator> = {
   between: 'between',
@@ -131,7 +132,6 @@ export function emptyNotRead(): SheetNotRead {
     dataBars: 0,
     iconSets: 0,
     hyperlinks: 0,
-    threadedComments: 0,
   }
 }
 
@@ -255,6 +255,7 @@ export class SheetTailReader {
         break
       case 'cfRule':
         this.rule = { attributes, formulas: [] }
+        this.isInRuleFormula = false
         break
       case 'formula':
       case 'f':
@@ -294,9 +295,9 @@ export class SheetTailReader {
       return
     }
 
-    if (this.rule && this.isInRuleFormula) {
-      const last = this.rule.formulas.length - 1
+    const last = (this.rule?.formulas.length ?? 0) - 1
 
+    if (this.rule && this.isInRuleFormula && last >= 0) {
       this.rule.formulas[last] = appendCapped(
         this.rule.formulas[last] as string,
         text,
@@ -510,12 +511,39 @@ function buildConditional(
     rule.stopIfTrue = true
   }
 
+  const priority = Number.parseInt(attributes.priority ?? '', 10)
+
+  if (Number.isFinite(priority)) {
+    rule.priority = priority
+  }
+
   return rule
 }
 
 /**
- * A threaded comment reaches the legacy notes part as a placeholder with an
- * explanation for old Excel versions before the real text; keep the text.
+ * Orders conditional rules the way Excel applies them, by their `priority`
+ * (lowest first); rules without one keep their place after the rest, and
+ * equal priorities keep the order of the file.
+ */
+function sortByPriority(
+  rules: WorkbookConditionalRule[],
+): WorkbookConditionalRule[] {
+  return rules
+    .map((rule, index) => ({ rule, index }))
+    .sort((first, second) => {
+      const firstPriority = first.rule.priority ?? Number.POSITIVE_INFINITY
+      const secondPriority = second.rule.priority ?? Number.POSITIVE_INFINITY
+
+      return firstPriority - secondPriority || first.index - second.index
+    })
+    .map(({ rule }) => rule)
+}
+
+/**
+ * A threaded comment reaches the legacy notes part as a placeholder: an
+ * explanation for old Excel versions, then `Comment:` and each `Reply:`
+ * with its text indented. Keep the comment and the replies, without the
+ * explanation and the labels.
  */
 function noteText(text: string): string {
   const trimmed = text.trim()
@@ -530,7 +558,15 @@ function noteText(text: string): string {
     return trimmed
   }
 
-  return `(threaded) ${trimmed.slice(marker + THREADED_TEXT_MARKER.length).trim()}`
+  const [comment, ...replies] = trimmed
+    .slice(marker + THREADED_TEXT_MARKER.length)
+    .split(THREADED_REPLY_PATTERN)
+    .map(part => part.replace(/\s+/g, ' ').trim())
+  const replyText = replies.filter(reply => reply.length > 0)
+    .map(reply => ` (reply: ${reply})`)
+    .join('')
+
+  return `(threaded) ${comment ?? ''}${replyText}`
 }
 
 function readCommentsPart(
@@ -694,6 +730,7 @@ export function readSheetStructure(
   })
 
   structure.isTailCut = tailRead !== true
+  structure.conditionalRules = sortByPriority(structure.conditionalRules)
 
   readOptional(officePackage, () => {
     for (const relationship of readRelationships(officePackage, partName)) {

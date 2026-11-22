@@ -56,7 +56,6 @@ const MAP_SUMMARY = {
     dataBars: 0,
     iconSets: 0,
     hyperlinks: 0,
-    threadedComments: 0,
   },
   sheetSummaries: [
     { name: 'Lines', visibility: 'visible', valuesCutAfterRow: 400 },

@@ -33,7 +33,6 @@ function sheet(overrides: Partial<WorkbookSheet> = {}): WorkbookSheet {
       dataBars: 0,
       iconSets: 0,
       hyperlinks: 0,
-      threadedComments: 0,
     },
     cuts: [],
     ...overrides,
