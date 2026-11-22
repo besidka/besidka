@@ -569,6 +569,21 @@ describe('knowledge ingestion', () => {
       expect(harness.bucket.calls).toEqual([])
     })
 
+    it('refuses a file made in a chat that holds Google data', async () => {
+      harness.testDb.insertFile({ id: 8, userId: OWNER })
+      harness.testDb.sqlite
+        .prepare('update files set google_derived_at = 1 where id = ?')
+        .run(8)
+
+      await expectRejection(
+        ingest([fileItem({ fileId: encodePublicId(8), text: 'derived' })]),
+        { status: 400 },
+      )
+
+      expect(harness.testDb.countItems()).toBe(0)
+      expect(harness.bucket.calls).toEqual([])
+    })
+
     it('rejects a file that is already linked to the project with 409', async () => {
       harness.testDb.insertFile({ id: 5, userId: OWNER })
       await ingest([fileItem({ fileId: encodePublicId(5) })])

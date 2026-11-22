@@ -6,18 +6,25 @@ import {
   GOOGLE_DATA_RECIPIENT_REFUSED_CODE,
   GOOGLE_DATA_SHARE_OPT_IN_CODE,
   assertGoogleDataRecipient,
+  buildGoogleContentPersistStatements,
+  createGoogleDataRecipientError,
   createGoogleDataShareOptInError,
   decideGoogleDataGuard,
   disabledRerankModelResolver,
-  fileIsNotGoogleCopy,
+  fileHoldsNoGoogleContent,
+  googleSafeguardGatewayErrorOverride,
+  isGoogleContentFile,
   isShareVisibleForGoogleData,
   mayOfferConnectorsWithGoogleData,
   mayRunWithGoogleData,
+  resolveSendGoogleContent,
+  shouldSendGatewayGoogleSafeguards,
   withGoogleTaintRerankStop,
-  readArtifactHoldsGoogleData,
   readGeminiPaidTierConfirmed,
   withoutWebSearchForGoogleData,
 } from '~~/server/utils/google/data-guard'
+import { encodeArtifactId } from '~~/server/utils/artifacts/store'
+import { createKnowledgeTestDb } from '~~/tests/setup/helpers/knowledge-db'
 
 const dialect = drizzle(new Database(':memory:')).dialect
 
@@ -301,31 +308,93 @@ describe('isShareVisibleForGoogleData', () => {
   it('shows every share of a chat without Google data', () => {
     expect(isShareVisibleForGoogleData({
       googleDataAt: null,
-      shareUpdatedAt: new Date(1_000),
+      googleOptInAt: null,
     })).toBe(true)
   })
 
-  it('hides a share made before the flag, or in the same second', () => {
+  it('hides a share of a flagged chat without the stored opt-in', () => {
     expect(isShareVisibleForGoogleData({
       googleDataAt: new Date(2_000),
-      shareUpdatedAt: new Date(1_000),
-    })).toBe(false)
-    expect(isShareVisibleForGoogleData({
-      googleDataAt: new Date(2_000),
-      shareUpdatedAt: new Date(2_000),
-    })).toBe(false)
-    expect(isShareVisibleForGoogleData({
-      googleDataAt: new Date(2_000),
-      shareUpdatedAt: null,
+      googleOptInAt: null,
     })).toBe(false)
   })
 
-  it('shows a share made after the flag, with the opt-in', () => {
+  it('shows a share of a flagged chat while the opt-in is stored', () => {
     expect(isShareVisibleForGoogleData({
       googleDataAt: new Date(2_000),
-      shareUpdatedAt: new Date(3_000),
+      googleOptInAt: new Date(1_000),
     })).toBe(true)
   })
+})
+
+describe('createGoogleDataRecipientError', () => {
+  const decision = {
+    allowed: false,
+    reason: 'refused',
+    recipientId: 'deepseek',
+    unmetConditions: [],
+    message: 'This provider may train on your Google data.',
+    fix: 'Pick a model from Anthropic, OpenAI or xAI for this chat, or start '
+      + 'a new chat.',
+  } as unknown as Parameters<typeof createGoogleDataRecipientError>[0]
+
+  it('tells a continuation that the paused reply cannot go on', () => {
+    expect(createGoogleDataRecipientError(decision, true)).toMatchObject({
+      status: 403,
+      message: expect.stringContaining('This reply cannot continue'),
+      fix: expect.stringContaining('Send a new message'),
+    })
+  })
+
+  it('keeps the model fix on an ordinary send', () => {
+    expect(createGoogleDataRecipientError(decision)).toMatchObject({
+      message: 'This model cannot be used in a chat with Google data.',
+      fix: decision.fix,
+    })
+  })
+})
+
+describe('googleSafeguardGatewayErrorOverride', () => {
+  it('names the zero data retention reason for a Vercel 403', () => {
+    expect(googleSafeguardGatewayErrorOverride({
+      gatewayId: 'vercel',
+      safeguardsSent: true,
+      error: Object.assign(new Error('Forbidden'), { statusCode: 403 }),
+    })).toMatchObject({
+      status: 403,
+      message: expect.stringContaining('zero data retention'),
+      why: expect.stringContaining('Hobby'),
+    })
+  })
+
+  it('names zdr_not_attested', () => {
+    expect(googleSafeguardGatewayErrorOverride({
+      gatewayId: 'vercel',
+      safeguardsSent: true,
+      error: new Error('upstream zdr_not_attested'),
+    })).toMatchObject({ why: expect.stringContaining('zdr_not_attested') })
+  })
+
+  it('leaves other gateways, other errors and unsafeguarded calls alone',
+    () => {
+      const forbidden = Object.assign(new Error('x'), { statusCode: 403 })
+
+      expect(googleSafeguardGatewayErrorOverride({
+        gatewayId: 'openrouter',
+        safeguardsSent: true,
+        error: forbidden,
+      })).toEqual({})
+      expect(googleSafeguardGatewayErrorOverride({
+        gatewayId: 'vercel',
+        safeguardsSent: false,
+        error: forbidden,
+      })).toEqual({})
+      expect(googleSafeguardGatewayErrorOverride({
+        gatewayId: 'vercel',
+        safeguardsSent: true,
+        error: Object.assign(new Error('x'), { statusCode: 429 }),
+      })).toEqual({})
+    })
 })
 
 describe('createGoogleDataShareOptInError', () => {
@@ -338,44 +407,164 @@ describe('createGoogleDataShareOptInError', () => {
   })
 })
 
-describe('fileIsNotGoogleCopy', () => {
-  it('keeps uploads and drops every Google external source', () => {
-    const query = dialect.sqlToQuery(fileIsNotGoogleCopy() as SQL)
+describe('fileHoldsNoGoogleContent', () => {
+  it('drops Google copies and marked files', () => {
+    const query = dialect.sqlToQuery(fileHoldsNoGoogleContent() as SQL)
 
     expect(query.sql).toContain('"files"."external_source" is null')
     expect(query.sql).toContain('"files"."external_source" not in (?)')
+    expect(query.sql).toContain('"files"."google_derived_at" is null')
     expect(query.params).toEqual(['google'])
   })
 })
 
-describe('readArtifactHoldsGoogleData', () => {
-  function createSelectDb(row: unknown) {
-    const get = vi.fn(async () => row)
-    const chain = {
-      from: vi.fn(() => chain),
-      innerJoin: vi.fn(() => chain),
-      where: vi.fn(() => chain),
-      get,
+describe('isGoogleContentFile', () => {
+  it('counts a Google copy and a marked file, nothing else', () => {
+    expect(isGoogleContentFile({ externalSource: 'google' })).toBe(true)
+    expect(isGoogleContentFile({ googleDerivedAt: new Date(1_000) }))
+      .toBe(true)
+    expect(isGoogleContentFile({ externalSource: null, googleDerivedAt: null }))
+      .toBe(false)
+  })
+})
+
+describe('buildGoogleContentPersistStatements', () => {
+  it('sets the flag once and pauses the share in the same batch', () => {
+    const { db } = createKnowledgeTestDb()
+    const [flag, pause] = buildGoogleContentPersistStatements(db, 'chat1')
+    const flagSql = flag.toSQL().sql
+    const pauseSql = pause.toSQL().sql
+
+    expect(flagSql).toContain('"google_data_at" = coalesce("chats"')
+    expect(pauseSql).toContain('update "chat_shares"')
+    expect(pauseSql).toContain('"google_opt_in_at" = ?')
+    expect(pauseSql).toContain('"indexable" = ?')
+    expect(pause.toSQL().params).toEqual(
+      expect.arrayContaining([null, 0]),
+    )
+  })
+})
+
+describe('resolveSendGoogleContent', () => {
+  const userId = 7
+
+  function seed() {
+    const store = createKnowledgeTestDb()
+    const now = Math.floor(Date.now() / 1000)
+
+    vi.stubGlobal('useDb', () => store.db)
+
+    store.insertFile({ id: 1, userId, storageKey: 'plain.pdf' })
+    store.insertFile({ id: 2, userId, storageKey: 'copy.pdf' })
+    store.insertFile({ id: 3, userId, storageKey: 'marked.png' })
+    store.insertFile({ id: 4, userId: 99, storageKey: 'other.pdf' })
+    store.sqlite.prepare(
+      'update files set external_source = ? where id = ?',
+    ).run('google', 2)
+    store.sqlite.prepare(
+      'update files set google_derived_at = ? where id in (3, 4)',
+    ).run(now)
+
+    for (const [id, derived] of [[10, null], [11, now]] as const) {
+      store.sqlite.prepare(
+        'insert into artifacts (id, created_at, updated_at, user_id, kind,'
+        + ' title, current_version, total_bytes, created_via,'
+        + ' google_derived_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(id, now, now, userId, 'html', 'A', 1, 10, 'chat', derived)
     }
 
+    return store
+  }
+
+  function fileParts(...storageKeys: string[]) {
+    return storageKeys.map((storageKey) => {
+      return { type: 'file', mediaType: 'image/png', url: `/files/${storageKey}` }
+    })
+  }
+
+  function artifactPart(id: number) {
     return {
-      db: { select: vi.fn(() => chain) } as unknown as Parameters<
-        typeof readArtifactHoldsGoogleData
-      >[0],
-      chain,
+      type: 'data-artifact-attachment',
+      data: {
+        artifactId: encodeArtifactId(id),
+        version: 1,
+        kind: 'html',
+        title: 'A',
+      },
     }
   }
 
-  it('is true when the artifact\'s origin chat holds Google data',
-    async () => {
-      const { db, chain } = createSelectDb({ id: 3 })
+  it('finds nothing in ordinary files and artifacts, with no query when '
+    + 'there is nothing to look up', async () => {
+    const { db } = seed()
 
-      expect(await readArtifactHoldsGoogleData(db, 3)).toBe(true)
-      expect(chain.innerJoin).toHaveBeenCalled()
-    })
-
-  it('is false for an artifact of an ordinary chat', async () => {
-    expect(await readArtifactHoldsGoogleData(createSelectDb(undefined).db, 3))
-      .toBe(false)
+    expect(await resolveSendGoogleContent({
+      db,
+      userId,
+      chatMessages: [],
+      newMessageParts: [{ type: 'text', text: 'hi' }],
+    })).toEqual({ holdsGoogleContent: false, newMessage: false })
+    expect(await resolveSendGoogleContent({
+      db,
+      userId,
+      chatMessages: [{ role: 'user', parts: fileParts('plain.pdf') }],
+      newMessageParts: [artifactPart(10)],
+    })).toEqual({ holdsGoogleContent: false, newMessage: false })
   })
+
+  it('counts an attached Google copy in the new message', async () => {
+    expect(await resolveSendGoogleContent({
+      db: seed().db,
+      userId,
+      chatMessages: [],
+      newMessageParts: fileParts('copy.pdf'),
+    })).toEqual({ holdsGoogleContent: true, newMessage: true })
+  })
+
+  it('counts a marked file in an earlier message, not as new', async () => {
+    expect(await resolveSendGoogleContent({
+      db: seed().db,
+      userId,
+      chatMessages: [{ role: 'user', parts: fileParts('marked.png') }],
+      newMessageParts: [{ type: 'text', text: 'again' }],
+    })).toEqual({ holdsGoogleContent: true, newMessage: false })
+  })
+
+  it('counts a marked artifact attached to the new message', async () => {
+    expect(await resolveSendGoogleContent({
+      db: seed().db,
+      userId,
+      chatMessages: [],
+      newMessageParts: [artifactPart(11)],
+    })).toEqual({ holdsGoogleContent: true, newMessage: true })
+  })
+
+  it('ignores another user\'s marked file', async () => {
+    expect(await resolveSendGoogleContent({
+      db: seed().db,
+      userId,
+      chatMessages: [],
+      newMessageParts: fileParts('other.pdf'),
+    })).toEqual({ holdsGoogleContent: false, newMessage: false })
+  })
+})
+
+describe('shouldSendGatewayGoogleSafeguards', () => {
+  it('sends nothing without a gateway and always in a flagged chat',
+    async () => {
+      const logger = createLogger()
+
+      expect(await shouldSendGatewayGoogleSafeguards({
+        event: { context: {} },
+        gatewayId: undefined,
+        holdsGoogleData: true,
+        logger,
+      })).toBe(false)
+      expect(await shouldSendGatewayGoogleSafeguards({
+        event: { context: {} },
+        gatewayId: 'vercel',
+        holdsGoogleData: true,
+        logger,
+      })).toBe(true)
+    })
 })

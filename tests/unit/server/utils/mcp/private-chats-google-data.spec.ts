@@ -76,7 +76,7 @@ describe('withheldForGoogleData', () => {
 })
 
 describe('mergeChatSearchResults', () => {
-  it('drops the content snippet of a chat that holds Google data', () => {
+  it('drops a content-only hit in a chat that holds Google data', () => {
     const flagged = chatRow(new Date(1_500))
     const plain = chatRow(null)
     const merged = mergeChatSearchResults(
@@ -88,15 +88,14 @@ describe('mergeChatSearchResults', () => {
       new Map([[flagged.id, flagged], [plain.id, plain]]),
     )
 
-    expect(merged.find(chat => chat.slug === 'slug-google'))
-      .toMatchObject({ matchedIn: 'content' })
-    expect(merged.find(chat => chat.slug === 'slug-google'))
-      .not.toHaveProperty('snippet')
-    expect(merged.find(chat => chat.slug === 'slug-plain'))
-      .toMatchObject({ snippet: 'launch party' })
+    expect(merged.map(chat => chat.slug)).toEqual(['slug-plain'])
+    expect(merged[0]).toMatchObject({
+      matchedIn: 'content',
+      snippet: 'launch party',
+    })
   })
 
-  it('drops the snippet of a title match in such a chat too', () => {
+  it('lists a flagged title match as a title match only', () => {
     const flagged = chatRow(new Date(1_500))
     const merged = mergeChatSearchResults(
       [flagged],
@@ -106,7 +105,8 @@ describe('mergeChatSearchResults', () => {
       new Map(),
     )
 
-    expect(merged[0]).toMatchObject({ matchedIn: 'both' })
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({ matchedIn: 'title' })
     expect(merged[0]).not.toHaveProperty('snippet')
   })
 })

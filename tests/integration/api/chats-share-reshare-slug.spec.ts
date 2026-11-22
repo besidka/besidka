@@ -102,7 +102,8 @@ function createSqlite(): SqliteDatabase {
       show_files integer NOT NULL DEFAULT true,
       show_metadata integer NOT NULL DEFAULT true,
       show_author_avatar integer NOT NULL DEFAULT true,
-      allow_branch integer NOT NULL DEFAULT true
+      allow_branch integer NOT NULL DEFAULT true,
+      google_opt_in_at integer
     );
     CREATE UNIQUE INDEX uq_chat_share_slug ON chat_shares (slug);
     CREATE UNIQUE INDEX uq_chat_share_chat_id ON chat_shares (chat_id);

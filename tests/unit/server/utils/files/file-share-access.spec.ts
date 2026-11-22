@@ -7,7 +7,7 @@ import {
 const event = {} as Parameters<typeof createFileAccessToken>[1]
 
 function stubGrant(share: {
-  updatedAt: Date
+  googleOptInAt: Date | null
   googleDataAt: Date | null
 }) {
   vi.stubGlobal('useDb', () => ({
@@ -19,7 +19,7 @@ function stubGrant(share: {
             revoked: false,
             expiresAt: null,
             showFiles: true,
-            updatedAt: share.updatedAt,
+            googleOptInAt: share.googleOptInAt,
             chat: { googleDataAt: share.googleDataAt },
           },
         })),
@@ -43,7 +43,7 @@ describe('hasShareTokenFileAccess and chats that hold Google data', () => {
   })
 
   it('serves a granted file of an ordinary chat', async () => {
-    stubGrant({ updatedAt: new Date(1_000_000), googleDataAt: null })
+    stubGrant({ googleOptInAt: null, googleDataAt: null })
 
     expect(await hasShareTokenFileAccess(
       await tokenFor('file-1'),
@@ -52,11 +52,8 @@ describe('hasShareTokenFileAccess and chats that hold Google data', () => {
     )).toBe(true)
   })
 
-  it('refuses a file of a share paused by the Google data flag', async () => {
-    stubGrant({
-      updatedAt: new Date(1_000_000),
-      googleDataAt: new Date(2_000_000),
-    })
+  it('refuses a file of a flagged chat whose share has no opt-in', async () => {
+    stubGrant({ googleOptInAt: null, googleDataAt: new Date(2_000_000) })
 
     expect(await hasShareTokenFileAccess(
       await tokenFor('file-1'),
@@ -65,9 +62,9 @@ describe('hasShareTokenFileAccess and chats that hold Google data', () => {
     )).toBe(false)
   })
 
-  it('serves it again once the owner shared with the opt-in', async () => {
+  it('serves it while the share carries the stored opt-in', async () => {
     stubGrant({
-      updatedAt: new Date(3_000_000),
+      googleOptInAt: new Date(3_000_000),
       googleDataAt: new Date(2_000_000),
     })
 

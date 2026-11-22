@@ -112,7 +112,7 @@ describe('read_file tool', () => {
     expect(mocks.readMcpFile).toHaveBeenCalledWith(
       { marker: 'db' },
       42,
-      { fileId: 'file1', offset: 0 },
+      { fileId: 'file1', offset: 0, googleContent: 'hidden' },
     )
     expect(payload).toMatchObject({ text: 'hello', nextOffset: null })
     expect(mocks.logger.set).toHaveBeenCalledWith({

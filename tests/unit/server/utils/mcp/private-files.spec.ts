@@ -148,6 +148,63 @@ describe('mcp file tools', () => {
     })
   })
 
+  describe('files made in a chat that holds Google data', () => {
+    function markDerived(id: number) {
+      testDb.sqlite
+        .prepare('update files set google_derived_at = 1 where id = ?')
+        .run(id)
+    }
+
+    it('never lists a marked file over MCP', async () => {
+      markDerived(3)
+
+      const { listMcpFiles } = await load()
+      const result = await listMcpFiles(testDb.db, OWNER, {})
+
+      expect(result.files.map(file => file.name)).toEqual([
+        'scan.pdf',
+        'notes.md',
+      ])
+      expect(result.total).toBe(2)
+    })
+
+    it('answers 404 over MCP and a withheld 403 in a chat without Google '
+      + 'data', async () => {
+      markDerived(1)
+      storeObject('derived text')
+
+      const { readMcpFile } = await load()
+
+      await expect(readMcpFile(testDb.db, OWNER, { fileId: fileId(1) }))
+        .rejects.toMatchObject({ status: 404 })
+      await expect(readMcpFile(testDb.db, OWNER, {
+        fileId: fileId(1),
+        googleContent: 'withheld',
+      })).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining('holds content from Google'),
+      })
+      expect(mocks.getObject).not.toHaveBeenCalled()
+    })
+
+    it('lists and reads a marked file in a send that holds Google data',
+      async () => {
+        markDerived(1)
+        storeObject('derived text')
+
+        const { listMcpFiles, readMcpFile } = await load()
+        const listed = await listMcpFiles(testDb.db, OWNER, {
+          googleContent: 'allowed',
+        })
+
+        expect(listed.total).toBe(3)
+        await expect(readMcpFile(testDb.db, OWNER, {
+          fileId: fileId(1),
+          googleContent: 'allowed',
+        })).resolves.toMatchObject({ text: 'derived text' })
+      })
+  })
+
   describe('listMcpFiles', () => {
     it('lists the files the web list shows, newest first', async () => {
       const { listMcpFiles } = await load()

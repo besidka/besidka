@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => ({
   skillsInstructionBlock: null as string | null,
   chatGoogleDataAt: null as Date | null,
   chatUpdates: [] as Array<Record<string, unknown>>,
+  batches: [] as unknown[][],
+  failBatch: false,
   googleSend: null as null | {
     tools: Record<string, unknown>
     entries: Map<string, unknown>
@@ -358,6 +360,21 @@ function createDb() {
       },
       insert: vi.fn(() => ({ values: insertValues })),
       update: vi.fn(() => ({ set: updateSet })),
+      batch: vi.fn(async (statements: unknown[]) => {
+        mocks.batches.push(statements)
+
+        if (mocks.failBatch) {
+          throw new Error('D1 batch failed')
+        }
+
+        return await Promise.all(statements.map(async (statement) => {
+          const withGet = statement as { get?: () => Promise<unknown> }
+
+          return typeof withGet.get === 'function'
+            ? [await withGet.get()]
+            : await statement
+        }))
+      }),
     },
     insertValues,
   }
@@ -567,6 +584,8 @@ describe('tool approval requests in the chat send', () => {
     mocks.connectorUrls = {}
     mocks.chatGoogleDataAt = null
     mocks.chatUpdates = []
+    mocks.batches = []
+    mocks.failBatch = false
     mocks.googleSend = null
     Object.assign(mocks.store, {
       connectors: [],
@@ -1487,8 +1506,53 @@ describe('tool approval requests in the chat send', () => {
     })
     expect(JSON.stringify(parts)).not.toContain('SECRET GOOGLE BODY')
     expect(mocks.chatUpdates).toContainEqual({
-      googleDataAt: expect.any(Date),
+      googleDataAt: expect.anything(),
     })
+    expect(mocks.chatUpdates).toContainEqual({
+      googleOptInAt: null,
+      indexable: false,
+    })
+    expect(mocks.batches).toHaveLength(1)
+    expect(mocks.batches[0]).toHaveLength(3)
+  })
+
+  it('fails the persist when the batch with the chat flag fails', async () => {
+    const { buildGoogleApprovalEntry } = await import(
+      '~~/server/utils/tool-approval/send'
+    )
+
+    mocks.failBatch = true
+    mocks.googleSend = {
+      tools: {
+        google__drive_search: tool({
+          description: 'Search Drive.',
+          inputSchema: z.object({ query: z.string() }),
+          execute: vi.fn(async () => ({
+            references: [{ id: 'file-1', title: 'Budget' }],
+            text: 'SECRET GOOGLE BODY',
+          })),
+        }),
+      },
+      entries: new Map([['google__drive_search', buildGoogleApprovalEntry({
+        toolName: 'google__drive_search',
+        kind: 'read',
+        definitionHash: 'g'.repeat(64),
+        summary: 'Search Google Drive',
+        toolApprovalsActive: true,
+        chatGrantHash: 'g'.repeat(64),
+      })]]),
+    }
+
+    await expect(runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+        textChunks('Found the budget file.'),
+      ],
+    })).rejects.toMatchObject({
+      message: 'The response could not be saved.',
+    })
+    expect(mocks.batches).toHaveLength(1)
   })
 
   it('keeps the egress ask in a flagged chat whose Google part is gone',

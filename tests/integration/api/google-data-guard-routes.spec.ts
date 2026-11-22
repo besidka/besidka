@@ -268,10 +268,18 @@ describe('Gemini paid-tier route', () => {
   async function post(
     body: unknown,
     key: { provider: string } | null = { provider: 'google' },
+    fetchSite = 'same-origin',
   ) {
     const created = createKeysDb(key)
 
     vi.stubGlobal('useDb', () => created.db)
+    vi.stubGlobal('getRequestHeader', (
+      event: { headers: Record<string, string> },
+      name: string,
+    ) => {
+      return event.headers[name]
+    })
+    vi.stubGlobal('getRequestURL', () => new URL('http://localhost:3000'))
 
     const { default: handler } = await import(
       '../../../server/api/v1/profiles/keys/google/paid-tier.post'
@@ -280,13 +288,40 @@ describe('Gemini paid-tier route', () => {
     let response: unknown = null
 
     try {
-      response = await handler({ body } as any)
+      response = await handler({
+        body,
+        context: {},
+        headers: { 'sec-fetch-site': fetchSite },
+      } as any)
     } catch (exception) {
       error = exception
     }
 
     return { ...created, error, response }
   }
+
+  it.each(['cross-site', 'same-site'])(
+    'refuses a %s request before the session or the body',
+    async (fetchSite) => {
+      const session = vi.fn().mockResolvedValue({ user: { id: '1' } })
+
+      vi.stubGlobal('useUserSession', session)
+
+      const result = await post({ confirmed: true }, undefined, fetchSite)
+
+      expect(result.error).toMatchObject({ status: 403 })
+      expect(session).not.toHaveBeenCalled()
+      expect(result.db.update).not.toHaveBeenCalled()
+    },
+  )
+
+  it('checks the session before it reads the body', async () => {
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+    const result = await post('not json')
+
+    expect(result.error).toMatchObject({ status: 401 })
+  })
 
   beforeEach(() => {
     vi.resetModules()

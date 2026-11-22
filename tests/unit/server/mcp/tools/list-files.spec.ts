@@ -115,7 +115,7 @@ describe('list_files tool', () => {
     expect(mocks.listMcpFiles).toHaveBeenCalledWith(
       { marker: 'db' },
       42,
-      { source: 'upload', search: 'report' },
+      { source: 'upload', search: 'report', googleContent: 'hidden' },
     )
     expect(payload.files).toEqual([{ id: 'file1' }])
     expect(mocks.logger.set).toHaveBeenCalledWith({

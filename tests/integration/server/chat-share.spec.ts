@@ -136,15 +136,15 @@ describe('resolveActiveShareBySlug', () => {
     mocks.chatsFindFirst.mockResolvedValue({ googleDataAt: null })
   })
 
-  it('hides a share made before the chat held Google data', async () => {
+  it('hides a share of a flagged chat without the stored opt-in, in one '
+    + 'query', async () => {
     mocks.chatSharesFindFirst.mockResolvedValue({
       id: 'share-1',
       slug: 'abc123',
       chatId: 'chat-1',
-      updatedAt: new Date(1_000_000),
-    })
-    mocks.chatsFindFirst.mockResolvedValue({
-      googleDataAt: new Date(2_000_000),
+      indexable: true,
+      googleOptInAt: null,
+      chat: { googleDataAt: new Date(2_000_000) },
     })
 
     const db = createDb()
@@ -152,26 +152,37 @@ describe('resolveActiveShareBySlug', () => {
     vi.stubGlobal('useEvent', () => ({}))
 
     expect(await resolveActiveShareBySlug('abc123')).toBeNull()
+    expect(mocks.chatsFindFirst).not.toHaveBeenCalled()
+    expect(mocks.chatSharesFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        with: { chat: { columns: { googleDataAt: true } } },
+      }),
+    )
   })
 
-  it('shows a share made with the opt-in after the chat held Google data',
-    async () => {
-      mocks.chatSharesFindFirst.mockResolvedValue({
-        id: 'share-1',
-        slug: 'abc123',
-        chatId: 'chat-1',
-        updatedAt: new Date(3_000_000),
-      })
-      mocks.chatsFindFirst.mockResolvedValue({
-        googleDataAt: new Date(2_000_000),
-      })
-
-      const db = createDb()
-      vi.stubGlobal('useDb', () => db)
-      vi.stubGlobal('useEvent', () => ({}))
-
-      expect((await resolveActiveShareBySlug('abc123'))?.id).toBe('share-1')
+  it('shows it with the opt-in and never as indexable', async () => {
+    mocks.chatSharesFindFirst.mockResolvedValue({
+      id: 'share-1',
+      slug: 'abc123',
+      chatId: 'chat-1',
+      indexable: true,
+      googleOptInAt: new Date(3_000_000),
+      chat: { googleDataAt: new Date(2_000_000) },
     })
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useEvent', () => ({}))
+
+    const share = await resolveActiveShareBySlug('abc123')
+
+    expect(share).toMatchObject({
+      id: 'share-1',
+      indexable: false,
+      holdsGoogleData: true,
+    })
+    expect(share).not.toHaveProperty('chat')
+  })
 
   it('returns the active share row when found', async () => {
     mocks.chatSharesFindFirst.mockResolvedValue({

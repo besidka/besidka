@@ -25,7 +25,20 @@ const mocks = vi.hoisted(() => ({
   resolveJevRoleModel: vi.fn(),
   resolveJevRoleApiKey: vi.fn(),
   listChatConnectorStates: vi.fn(),
+  getOwnedFilesByStorageKeys: vi.fn(),
 }))
+
+vi.mock('~~/server/utils/files/file-governance', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/files/file-governance')
+  >()
+
+  return {
+    ...actual,
+    validateMessageFilePolicy: vi.fn(async () => undefined),
+    getOwnedFilesByStorageKeys: mocks.getOwnedFilesByStorageKeys,
+  }
+})
 
 vi.mock('~~/server/utils/jev/roles', async (importOriginal) => {
   const actual = await importOriginal<
@@ -163,8 +176,10 @@ function createDb(input: {
   googleDataAt: Date | null
   paidTierConfirmedAt?: Date | null
   storedMessages?: unknown[]
+  markedArtifactIds?: number[]
 }) {
   const updateSets: unknown[] = []
+  const batch = createBatch()
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
     publicId: 'db-generated-public-id',
@@ -211,10 +226,34 @@ function createDb(input: {
           return { where: updateWhere }
         }),
       })),
+      batch: batch.run,
+      select: vi.fn(() => ({
+        from: () => ({
+          where: async () => {
+            return (input.markedArtifactIds ?? []).map((id) => {
+              return { id }
+            })
+          },
+        }),
+      })),
     },
     insertValues,
     keysFindFirst,
     updateSets,
+    batches: batch.calls,
+  }
+}
+
+function createBatch() {
+  const calls: unknown[][] = []
+
+  return {
+    calls,
+    run: vi.fn(async (statements: unknown[]) => {
+      calls.push(statements)
+
+      return await Promise.all(statements)
+    }),
   }
 }
 
@@ -300,6 +339,8 @@ async function runSend(input: {
   webSearchMode?: 'auto' | 'always'
   gatewayProviderOptions?: Record<string, unknown>
   storedMessages?: unknown[]
+  newMessageParts?: unknown[]
+  markedArtifactIds?: number[]
 }) {
   const directModel = input.directModel ?? OPENAI_MODEL
   const { model, doStream } = createTextModel()
@@ -321,6 +362,7 @@ async function runSend(input: {
     googleDataAt: input.googleDataAt,
     paidTierConfirmedAt: input.paidTierConfirmedAt,
     storedMessages: input.storedMessages,
+    markedArtifactIds: input.markedArtifactIds,
   })
 
   vi.stubGlobal('useDb', () => created.db)
@@ -340,7 +382,8 @@ async function runSend(input: {
         messages: [{
           id: 'user-public-1',
           role: 'user',
-          parts: [{ type: 'text', text: 'Summarize the plan.' }],
+          parts: input.newMessageParts
+            ?? [{ type: 'text', text: 'Summarize the plan.' }],
         }],
       },
     } as any)
@@ -363,10 +406,20 @@ async function runSend(input: {
     keysFindFirst: created.keysFindFirst,
     insertValues: created.insertValues,
     updateSets: created.updateSets,
+    batches: created.batches,
     firstCallProviderOptions: firstCallOptions?.providerOptions,
     offeredToolNames: (firstCallOptions?.tools ?? []).map((tool) => {
       return tool.name
     }),
+  }
+}
+
+function textFilePart(storageKey: string) {
+  return {
+    type: 'file',
+    mediaType: 'text/plain',
+    filename: storageKey,
+    url: `/files/${storageKey}`,
   }
 }
 
@@ -392,6 +445,7 @@ describe('chat send data guard', () => {
     mocks.listChatConnectorStates.mockRejectedValue(
       new Error('stop after the connector gate'),
     )
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
   })
 
   describe('connectors', () => {
@@ -538,9 +592,162 @@ describe('chat send data guard', () => {
 
         expect(result.error).toMatchObject({ status: 403 })
         expect(result.updateSets).toContainEqual({
-          googleDataAt: expect.any(Date),
+          googleDataAt: expect.anything(),
         })
+        expect(result.batches).toHaveLength(1)
       })
+
+    it('flags the chat before the guard for an attached Google copy',
+      async () => {
+        mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([[
+          'drive-copy.txt',
+          {
+            id: 'file-1',
+            storageKey: 'drive-copy.txt',
+            size: 10,
+            externalSource: 'google',
+          },
+        ]]))
+
+        const result = await runSend({
+          googleDataAt: null,
+          directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+          newMessageParts: [
+            { type: 'text', text: 'Summarize this.' },
+            textFilePart('drive-copy.txt'),
+          ],
+        })
+
+        expect(result.error).toMatchObject({ status: 403 })
+        expect(result.doStream).not.toHaveBeenCalled()
+        expect(result.updateSets).toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+        expect(result.batches).toHaveLength(1)
+        expect(result.batches[0]).toHaveLength(2)
+      })
+
+    it('flags the chat for a marked file, and not for an ordinary one',
+      async () => {
+        mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([[
+          'plain.txt',
+          { id: 'file-2', storageKey: 'plain.txt', size: 10 },
+        ]]))
+
+        const plain = await runSend({
+          googleDataAt: null,
+          directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+          newMessageParts: [
+            { type: 'text', text: 'Read it.' },
+            textFilePart('plain.txt'),
+          ],
+        })
+
+        expect(plain.updateSets).not.toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+
+        mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([[
+          'plain.txt',
+          {
+            id: 'file-2',
+            storageKey: 'plain.txt',
+            size: 10,
+            googleDerivedAt: new Date(1_000),
+          },
+        ]]))
+
+        const marked = await runSend({
+          googleDataAt: null,
+          directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+          newMessageParts: [
+            { type: 'text', text: 'Read it.' },
+            textFilePart('plain.txt'),
+          ],
+        })
+
+        expect(marked.error).toMatchObject({ status: 403 })
+        expect(marked.doStream).not.toHaveBeenCalled()
+      })
+
+    it('flags the chat before the guard for a marked artifact in the '
+      + 'artifact context, without pausing the share', async () => {
+      const { encodeArtifactId } = await import(
+        '~~/server/utils/artifacts/store'
+      )
+      const result = await runSend({
+        googleDataAt: null,
+        directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+        markedArtifactIds: [11],
+        storedMessages: [{
+          id: 'user-0',
+          publicId: 'user-public-0',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Improve this page.' },
+            {
+              type: 'data-artifact-attachment',
+              data: {
+                artifactId: encodeArtifactId(11),
+                version: 1,
+                kind: 'html',
+                title: 'Plan',
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(1_000),
+        }],
+      })
+
+      expect(result.error).toMatchObject({ status: 403 })
+      expect(result.doStream).not.toHaveBeenCalled()
+      expect(result.updateSets).toContainEqual({
+        googleDataAt: expect.anything(),
+      })
+      expect(result.batches).toHaveLength(1)
+      expect(result.batches[0]).toHaveLength(1)
+    })
+
+    it('sends the gateway safeguards where Google tools could be offered, '
+      + 'in a chat without Google data', async () => {
+      mocks.flags.add('tool-approvals')
+      mocks.flags.add('google.drive')
+
+      const offered = await runSend({
+        googleDataAt: null,
+        gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
+      })
+
+      expect(offered.useGatewayMock).toHaveBeenCalledWith(
+        'openrouter',
+        expect.anything(),
+        'openai/gpt-5',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        { googleDataSafeguards: true },
+      )
+
+      mocks.flags.delete('google.drive')
+
+      const notOffered = await runSend({
+        googleDataAt: null,
+        gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
+      })
+
+      expect(notOffered.useGatewayMock).toHaveBeenCalledWith(
+        'openrouter',
+        expect.anything(),
+        'openai/gpt-5',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        { googleDataSafeguards: false },
+      )
+    })
 
     it('stops a refused upstream behind a gateway', async () => {
       const result = await runSend({
