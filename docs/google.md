@@ -1156,3 +1156,42 @@ bring-your-own one.
   > owner's own Google Cloud project, and check
   > myaccount.google.com/connections. While the client is owner-only, the
   > owner is the only affected Google account.
+
+## 11. MCP and the Besidka tools (status and disconnect, child 11)
+
+Built (2026-11-22, MCP 5.5.0). The user's Google connection is visible and
+removable through the `/mcp` server, and Google data stays out of it
+(pre-check row 5: a user-authorized MCP app is a third party). The tool
+design, the scope choice and the guard rails are in `docs/mcp-server.md`,
+"Google connections (5.5.0)".
+
+| Tool | Scope | Destructive | Chat |
+|---|---|---|---|
+| `list_google_connections` | `connectors:read` | no | Read tier |
+| `disconnect_google` | `connectors:write` | yes | Excluded |
+
+- **Status.** One entry per client mode: `clientMode`, `connected`, `status`
+  (`active` or `needs_reauth`), `capabilities` (names such as `identity` and
+  `drive-picked`, never scope URLs) and `connectedAt`. Never the Google
+  account's email or subject, the connection id, a token, the client id or
+  secret, a file name or any Google content. Besidka's mode is always listed;
+  the owner's own client only for a caller who passes `isGoogleByoAllowed`
+  (section 10.3), so no other caller learns that the mode exists. Unlike the
+  Google tab, a former admin does not see a leftover connection over MCP.
+- **Disconnect.** `{ clientMode, confirm: true }` calls
+  `disconnectGoogleConnection`, the function behind the disconnect route
+  (section 9.6), so revoke, cleanup and logging are the same. It needs no flag
+  and no admin role, so a former admin can still end the owner's connection
+  (section 10.6). The description says the copies of Drive files are deleted
+  and that the user connects again in the app.
+- **What MCP does not do.** It cannot connect Google (OAuth needs the browser
+  and a consent screen) and cannot store, replace or delete the owner's
+  client secret.
+- **Chat.** The status read is a Besidka read in the read tier: no Google
+  taint, not a Google read, not in the tools withheld for a Google-derived
+  send. `disconnect_google` is excluded from chats: in a chat that holds
+  Google data it would delete the copies the chat is using.
+- **Open owner item.** `connectors:write` now also covers a Google
+  disconnect for apps that already hold it. The consent label of that scope
+  and the Privacy Policy list of what a connected app can reach name
+  connectors only; wording changes there are the owner's decision.
