@@ -2977,6 +2977,9 @@ describe('tool approval continuation', () => {
           await toolApprovalResultIdOf(paused.messagePublicId, 'call-l'),
         )
         const [approvalId] = paused.approvalIds
+        const { buildCalendarEventId } = await import(
+          '~~/server/utils/google/calendar-api'
+        )
 
         expect(findPart(paused.assistantParts, 'tool-google__calendar_list_events'))
           .toMatchObject({
@@ -3018,7 +3021,7 @@ describe('tool approval continuation', () => {
         expect(JSON.parse(Buffer.from(
           eventPosts()[0]![1].body as Uint8Array,
         ).toString())).toEqual({
-          id: expect.stringMatching(/^[a-v0-9]{52}$/),
+          id: await buildCalendarEventId(`1:${approvalId}`),
           summary: 'Planning',
           start: { dateTime: NEW_EVENT.start, timeZone: 'Europe/Berlin' },
           end: { dateTime: NEW_EVENT.end, timeZone: 'Europe/Berlin' },

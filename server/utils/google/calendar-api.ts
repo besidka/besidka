@@ -33,6 +33,7 @@ const BITS_PER_BASE32_CHARACTER = 5
 const EVENT_ID_SEED_PREFIX = 'besidka:calendar-event:'
 const RANDOM_EVENT_ID_BYTES = 16
 const SERVICE_DISABLED_REASON = 'SERVICE_DISABLED'
+const DUPLICATE_REASON = 'duplicate'
 
 export interface CalendarRequestContext {
   accessToken: string
@@ -138,7 +139,7 @@ export function classifyCalendarFailure(
   }
 
   if (status === 409) {
-    return 'already_exists'
+    return reason === DUPLICATE_REASON ? 'already_exists' : 'failed'
   }
 
   if (status === 429 || (reason && RATE_LIMIT_REASONS.has(reason))) {

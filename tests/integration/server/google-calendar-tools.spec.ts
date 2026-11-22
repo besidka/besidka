@@ -202,7 +202,10 @@ function event(id: string, overrides: Record<string, unknown> = {}) {
 
 type ToolMap = Record<string, {
   description: string
-  execute: (input: unknown, options: { toolCallId: string }) => Promise<any>
+  execute: (
+    input: unknown,
+    options: { toolCallId: string, approvalId?: string },
+  ) => Promise<any>
   inputSchema: { safeParse: (value: unknown) => { success: boolean } }
   toModelOutput: (options: { output: unknown }) => { value: string }
 }>
@@ -1350,25 +1353,50 @@ describe('Google Calendar tools on the owner\'s own client', () => {
         expect(model.value).toContain('2026-12-01')
       })
 
-    it('sends a client id of base32hex characters derived from the call, so '
-      + 'the same approved call sends the same id', async () => {
+    it('sends a client id of base32hex characters derived from the approval, '
+      + 'so the same approved call sends the same id', async () => {
       const built = await tools()
       const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
-      const sendWith = async (toolCallId: string) => {
+      const sendWith = async (approvalId: string, toolCallId = 'call-1') => {
         apis.requests.length = 0
-        await create.execute(NEW_EVENT, { toolCallId })
+        await create.execute(NEW_EVENT, { toolCallId, approvalId })
 
         return lastBody().id as string
       }
-      const first = await sendWith('call-1')
-      const again = await sendWith('call-1')
-      const other = await sendWith('call-2')
+      const first = await sendWith('approval-1')
+      const again = await sendWith('approval-1')
+      const sameApprovalOtherCall = await sendWith('approval-1', 'call-9')
+      const other = await sendWith('approval-2')
 
       expect(first).toMatch(CLIENT_EVENT_ID)
       expect(first).toHaveLength(52)
       expect(again).toBe(first)
+      expect(sameApprovalOtherCall).toBe(first)
       expect(other).not.toBe(first)
       expect(other).toMatch(CLIENT_EVENT_ID)
+    })
+
+    it('never reuses an id for the same tool call id of another approval, '
+      + 'and sends a random id when there is no approval', async () => {
+      const built = await tools()
+      const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
+      const sendWith = async (options: {
+        toolCallId: string
+        approvalId?: string
+      }) => {
+        apis.requests.length = 0
+        await create.execute(NEW_EVENT, options)
+
+        return lastBody().id as string
+      }
+      const withoutFirst = await sendWith({ toolCallId: 'call-1' })
+      const withoutSecond = await sendWith({ toolCallId: 'call-1' })
+
+      expect(withoutFirst).toMatch(CLIENT_EVENT_ID)
+      expect(withoutSecond).toMatch(CLIENT_EVENT_ID)
+      expect(withoutFirst).not.toBe(withoutSecond)
+      expect(await sendWith({ toolCallId: 'call-1', approvalId: 'a-1' }))
+        .not.toBe(await sendWith({ toolCallId: 'call-1', approvalId: 'a-2' }))
     })
 
     it('derives the id from the user as well, so two users never share one',
@@ -1379,16 +1407,27 @@ describe('Google Calendar tools on the owner\'s own client', () => {
         const sendFor = async (owner: number) => {
           apis.requests.length = 0
 
-          await run(
-            GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
+          const built = await tools({ owner })
+
+          await built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!.execute(
             NEW_EVENT,
-            await tools({ owner }),
+            { toolCallId: 'call-1', approvalId: 'approval-1' },
           )
 
           return lastBody().id as string
         }
 
         expect(await sendFor(otherUserId)).not.toBe(await sendFor(userId))
+      })
+
+    it('counts only a 409 duplicate as success: another 409 is unconfirmed',
+      async () => {
+        apis.failure = { status: 409, reason: 'conflict' }
+
+        expect(await rejectionOf(run(
+          GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
+          NEW_EVENT,
+        ))).toContain('may or may not have been created')
       })
 
     it('counts a 409 duplicate as success and answers with the id it sent',

@@ -833,8 +833,11 @@ export async function buildGoogleCalendarTools(
       const context = await readContext(
         GOOGLE_CALENDAR_TOOL_SCOPES[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!,
       )
+      const approvalId = (options as { approvalId?: unknown }).approvalId
       const eventId = await buildCalendarEventId(
-        `${userId}:${options.toolCallId}`,
+        typeof approvalId === 'string' && approvalId
+          ? `${userId}:${approvalId}`
+          : undefined,
       )
       const created = await createCalendarEvent(event.body, eventId, context)
 

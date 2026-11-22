@@ -47,6 +47,8 @@ describe('classifyCalendarFailure', () => {
     [403, 'forbidden', 'no_access'],
     [404, null, 'not_found'],
     [409, 'duplicate', 'already_exists'],
+    [409, 'conflict', 'failed'],
+    [409, null, 'failed'],
     [429, null, 'rate_limited'],
     [400, null, 'bad_request'],
     [500, null, 'failed'],
