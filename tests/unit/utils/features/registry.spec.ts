@@ -112,7 +112,7 @@ describe('feature registry', () => {
     expect(FEATURE_REGISTRY['documents.mcp'].available).toBe(true)
   })
 
-  it('requires an opt-in on every Google flag and keeps it not shipped', () => {
+  it('requires an opt-in on every Google flag and keeps it internal', () => {
     for (const key of [
       'google.drive',
       'google.calendar',
@@ -121,13 +121,24 @@ describe('feature registry', () => {
     ] as const) {
       expect(FEATURE_REGISTRY[key]).toEqual(expect.objectContaining({
         stage: 'internal',
-        available: false,
         default: false,
         allowRoles: ['admin'],
         spend: 'none',
         optIn: 'required',
         exposeToClient: true,
       }))
+    }
+  })
+
+  it('ships the Google Drive and bring-your-own client flags only', () => {
+    expect(FEATURE_REGISTRY['google.drive'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.byo'].available).toBe(true)
+
+    for (const key of [
+      'google.calendar',
+      'google.gmail',
+    ] as const) {
+      expect(FEATURE_REGISTRY[key].available).toBe(false)
     }
   })
 

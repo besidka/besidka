@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { purgeUserGoogleConnections } from '~~/server/utils/account/purge-google-connections'
 
 const migrationsDirectory = new URL(
@@ -75,6 +75,37 @@ describe('purgeUserGoogleConnections', () => {
     expect(sqlite.prepare(
       'select count(*) as total from google_connections',
     ).get()).toEqual({ total: 3 })
+  })
+
+  it('revokes the stored grants before it deletes the rows', async () => {
+    const order: string[] = []
+    const revoke = vi.fn(async () => {
+      const remaining = sqlite.prepare(
+        'select count(*) as total from google_connections where user_id = 7',
+      ).get() as { total: number }
+
+      order.push(`revoke:${remaining.total}`)
+
+      return { attempted: 2, revoked: 1 }
+    })
+    const logger = { set: vi.fn() }
+
+    await purgeUserGoogleConnections(7, database as never, { revoke, logger })
+
+    expect(revoke).toHaveBeenCalledWith(database, 7)
+    expect(order).toEqual(['revoke:2'])
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: { googlePurge: { revokeAttempted: 2, revoked: 1 } },
+    })
+  })
+
+  it('still deletes the rows when Google revokes nothing', async () => {
+    const revoke = vi.fn(async () => ({ attempted: 2, revoked: 0 }))
+    const result = await purgeUserGoogleConnections(7, database as never, {
+      revoke,
+    })
+
+    expect(result).toEqual({ googleConnectionsDeleted: 2 })
   })
 
   it('keeps one connection per user and client mode', () => {

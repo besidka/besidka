@@ -25,6 +25,7 @@ export interface FeatureDefinition {
   variants?: string[]
   exposeToClient: boolean
   parent?: string
+  adminOnly?: boolean
 }
 
 export const FEATURE_ROLES: readonly FeatureRole[] = ['admin', 'tester']
@@ -233,6 +234,7 @@ const featureList = [
     title: 'Google Drive',
     description: 'Attach files from Google Drive.',
     optIn: 'required',
+    available: true,
   }),
   internalFeature({
     key: 'google.calendar',
@@ -247,6 +249,8 @@ const featureList = [
     description: 'Connect Google with your own OAuth client.',
     parent: 'google.drive',
     optIn: 'required',
+    available: true,
+    adminOnly: true,
   }),
   internalFeature({
     key: 'google.gmail',

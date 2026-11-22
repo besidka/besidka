@@ -75,13 +75,15 @@ export function moveMcpContextToAttributes(event: Record<string, unknown>) {
 const QUERY_FREE_PATH_PREFIXES = [
   '/api/v1/admin/',
   '/api/v1/connectors/oauth/callback',
+  '/api/v1/google/oauth/callback',
+  '/api/v1/google/byo/callback',
 ]
 
 /**
  * Drops the query string from admin API paths, so an admin's user search
  * text (`?q=`) never reaches the wide event (compliance pre-check C15), and
- * from the connector OAuth callback, whose query carries the authorization
- * code and the state.
+ * from the connector and Google OAuth callbacks, whose query carries the
+ * authorization code and the state.
  */
 export function toLoggedPath(path: unknown): unknown {
   if (typeof path !== 'string' || !path.includes('?')) {

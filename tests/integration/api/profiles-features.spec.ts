@@ -222,6 +222,33 @@ describe('profile features routes', () => {
         })
       })
 
+    it('lists the own Google client only for an admin', async () => {
+      const grants = {
+        'google.drive': { effect: 'allow', variant: null },
+        'google.byo': { effect: 'allow', variant: null },
+      }
+
+      function keysOf(payload: { features: Array<{ key: string }> }) {
+        return payload.features.map((feature) => {
+          return feature.key
+        })
+      }
+
+      mocks.featureContext.mockResolvedValue(createFeatureContext({
+        userState: createUserState({ grants }),
+      }))
+
+      expect(keysOf(await callRoute('index.get.ts'))).toEqual(['google.drive'])
+
+      mocks.featureContext.mockResolvedValue(createFeatureContext({
+        userState: createUserState({ grants }),
+        isAdmin: true,
+      }))
+
+      expect(keysOf(await callRoute('index.get.ts')))
+        .toEqual(['google.drive', 'google.byo'])
+    })
+
     it('reports a non-spending feature as on until the user switches it off',
       async () => {
         mocks.featureContext.mockResolvedValue(createFeatureContext({

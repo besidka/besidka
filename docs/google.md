@@ -2,14 +2,18 @@
 
 Status: **partly built** (2026-11-22), on the umbrella branch
 `feat/google-connectors`. Built so far: the four `google.*` flags in
-`shared/utils/features/registry.ts` (all `available: false`, stage
-`internal`, `optIn: 'required'`), `shared/utils/google-scopes.ts`,
+`shared/utils/features/registry.ts` (stage `internal`, `optIn: 'required'`;
+`google.drive` and `google.byo` are `available: true`),
+`shared/utils/google-scopes.ts`,
 `shared/utils/google-data-policy.ts`, the schema child's single migration
-(section 8), and the chat runtime every Google tool registers into
-(section 5.2: approvals, taint, the chat flag, references-only results and
-the approval panel rows), and the data guard of the allow-list (section
-5.3). Not built yet: the Google connection routes and OAuth, the Picker,
-the Drive, Calendar and Gmail tools themselves, and the legal text. This file grows with every
+(section 8), the chat runtime every Google tool registers into (section 5.2:
+approvals, taint, the chat flag, references-only results and the approval
+panel rows), the data guard of the allow-list (section 5.3), the connection
+flow of the connections child (section 9: connect and disconnect Google
+Drive, the token store, and deletion when Google access ends), and the
+owner-only bring-your-own client (section 10: the stored client, the admin
+gate, its own callback). Not built yet: the Picker, the Drive, Calendar and
+Gmail tools themselves, and the legal text. This file grows with every
 child of the umbrella; each child replaces a "design" marker below with
 what was built.
 
@@ -24,9 +28,9 @@ only, work with mail and calendar:
 
 | Capability | Flag | Client | Scopes | State |
 |---|---|---|---|---|
-| Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Design |
+| Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Connection built (section 9); Picker and tools design |
 | Calendar text: list events, find free time, create an event | `google.calendar` | Either client | `calendar.events` (provisional) | Design |
-| Connect Google with the user's own OAuth client | `google.byo` | Owner's own client | `drive.readonly` and identity | Design, owner-only |
+| Connect Google with the owner's own OAuth client | `google.byo` plus the admin role | Owner's own client | Identity plus what the owner ticks: `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events` | Built (section 10), owner-only; no tool uses it yet |
 | Gmail: search, read a thread, create a draft | `google.gmail` | Owner's own client | `gmail.readonly`, `gmail.compose` | Design, owner-only |
 
 `google.gmail` is a child of `google.byo`, which is a child of `google.drive`:
@@ -43,7 +47,7 @@ in the agentic program starts until Phase 4b is finished.
 
 | | Besidka's client (`besidka`) | Bring your own client (`byo`) |
 |---|---|---|
-| Who | Every user the flag reaches | The owner only, behind `internal` |
+| Who | Every user the flag reaches | Admins only (role checked on the server, never the flag alone), behind `internal` |
 | OAuth client | The Google Cloud project `chernenko-chat` | A project the owner creates and publishes "In production" |
 | Scopes | `drive.file`, identity, later `calendar.events` | `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events`, identity |
 | Picker | Yes: the Picker needs the API key and project number of the project that owns the client | No |
@@ -109,6 +113,14 @@ because on a preview the base URL points at the long-lived preview, which runs
 JavaScript origins are added only if question 2 above says the Picker needs
 Google Identity Services. After the merge the `pr-<n>` URI is removed.
 
+These URIs go on the client Drive actually uses: the dedicated Drive client
+(`NUXT_GOOGLE_DRIVE_CLIENT_ID`, `NUXT_GOOGLE_DRIVE_CLIENT_SECRET`) when it is
+set, otherwise the sign-in client (`NUXT_GOOGLE_CLIENT_ID`), which then keeps
+its existing `/api/auth/callback/google` URIs too. The dedicated client is
+required before `google.drive` leaves `internal` (section 9.12). Put it in
+the same project `chernenko-chat`, so the Picker key and project number stay
+valid, and give it only the Drive redirect URIs above.
+
 ### 4.2 Picker API key
 
 | Setting | Preview key | Production key |
@@ -122,7 +134,7 @@ The Picker also needs the project number as its app id (question 1).
 
 | Step | Needed for | State |
 |---|---|---|
-| Add `drive.file` under Data access and confirm it is non-sensitive | Connections child | Owner, open |
+| Add `drive.file`, `openid` and `userinfo.email` under Data access and confirm `drive.file` is non-sensitive (`userinfo.profile` is not requested) | Connections child | Owner, open |
 | Brand verification with Search Console proof of the authorized domain | Leaving test users with `drive.file` | After the legal child is live |
 | `calendar.events` verification: Limited Use statement live, demo video in English with a test account, consent screen app name and client id visible | Calendar for the public | After the legal child is live |
 | Check the Calendar scope table for a narrower scope | Calendar child | Open (question 10) |
@@ -432,25 +444,76 @@ the TypeSafe AI memory check. Native artifact and document writes run
 unasked when tool approvals are off; their content stays in the user's
 account until one of the exits above.
 
-## 6. Owner runbook outline: bring your own client
+## 6. Owner runbook: bring your own client
 
-Design only. Written in full by the BYO child. The values are pasted into the
-app and never into chat, files or tickets.
+For the owner only, in a Google Cloud project of the owner's own (never
+`chernenko-chat`, which carries Besidka's sign-in and the Picker). The client
+id and secret are pasted into the app and never into chat, files, tickets or
+a terminal.
 
-1. Create a Google Cloud project of your own and enable the Gmail, Drive and
-   Calendar APIs.
-2. Configure the consent screen with a name that shows both the owner and
-   Besidka, a homepage and a privacy policy on `besidka.com`, and publish it
-   "In production" (Testing mode expires refresh tokens after seven days).
-3. Create a Web client with the redirect URI for the host in use, path
-   `/api/v1/google/byo/callback`: localhost, the long-lived preview, `pr-<n>`
-   or production.
-4. Paste the client id and secret into the app as a key of the Google kind.
-5. Connect, approve the scopes, and check that the granted set equals the
-   requested set.
-6. To stop: disconnect in Besidka, then remove the project's client or its
-   secret in the Cloud console; breach handling rotates the secret there
-   (`docs/legal/breach-runbook.md`, to be extended).
+Before you start: your Besidka account is an admin right now (verified
+email, two-factor authentication on, the `admin` role or your email in
+`NUXT_ADMIN_EMAILS`), and you turned on "Google Drive" and "Your own Google
+client" under Labs. Without all of that the card does not appear and every
+bring-your-own route answers 404.
+
+1. **Project.** In the Google Cloud console create a new project (or pick
+   one you own). Under APIs and services, Library, enable the APIs for what
+   you will tick: Google Drive API, Gmail API, Google Calendar API. The
+   OpenID and email scopes need no API.
+2. **Consent screen** (Google Auth Platform, Branding and Audience). User
+   type External (a personal Google account cannot pick Internal). App name
+   that shows both you and Besidka, for example "<your name>'s client for
+   Besidka", never a name that suggests Google or Besidka itself made it.
+   Support and developer email: yours. Homepage `https://besidka.com` and
+   privacy policy `https://besidka.com/privacy-policy`. Then **Publish app**
+   so the status is "In production": in "Testing" Google expires refresh
+   tokens after seven days, and every expiry ends the connection. Leave the
+   app unverified; it is for your personal use, and Google shows its
+   "unverified app" screen, which you accept for your own account.
+3. **Scopes** (Data access). Add `openid`, `.../auth/userinfo.email` and
+   only the scopes of what you will tick in Besidka:
+   `.../auth/drive.readonly`, `.../auth/gmail.readonly`,
+   `.../auth/gmail.compose`, `.../auth/calendar.events`. The Gmail and full
+   Drive scopes are restricted; that is why this client stays yours and
+   never serves other users.
+4. **Client** (Clients, Create client). Type "Web application". Authorized
+   redirect URIs: copy the exact URI the Besidka card shows (it is built
+   from the address you opened the page on, path
+   `/api/v1/google/byo/callback`). Add one per host you use:
+   `http://localhost:3000/api/v1/google/byo/callback`,
+   `https://pr-<n>-besidka.chernenko.workers.dev/api/v1/google/byo/callback`,
+   `https://preview-besidka.chernenko.workers.dev/api/v1/google/byo/callback`,
+   `https://besidka.com/api/v1/google/byo/callback`. No JavaScript origins
+   are needed. Create, then copy the client id and the client secret from
+   the dialog (Google shows the secret in full only there).
+5. **Paste in Besidka.** API Keys, Google tab, "Your own Google OAuth
+   client": paste the client id and the secret, Save client. The card then
+   says only that a client is saved; it never shows either value again.
+   Besidka refuses its own sign-in or Drive client here.
+6. **Connect.** Tick what Besidka may request (nothing is ticked for you)
+   and press Connect. On Google's screens pick your account, accept the
+   unverified-app warning and leave every box you want granted ticked.
+   Back in Besidka the card lists what Google granted; "Google granted only
+   part of the access" means you unticked something, and only the granted
+   part is stored.
+7. **Change what is granted.** To add access while connected, tick the
+   new boxes under "Add access" and press Add access; what Google granted
+   before is kept. To remove access, Disconnect (which revokes the whole
+   grant), then Connect again with fewer boxes.
+8. **Rotate the secret.** In the console add a new secret to the same
+   client, paste the client id and the new secret in Besidka and save (the
+   connection stays, its refresh token belongs to the client, not to the
+   secret), then delete the old secret in the console. Saving a different
+   client id ends the connection made with the old client first.
+9. **Remove.** Delete client on the card (it disconnects first: revokes the
+   grant at Google, clears the tokens, then deletes the stored id and
+   secret), then delete the client or the project in the console. Check
+   myaccount.google.com/connections that the app is gone.
+10. **Breach.** Revoke and delete as in step 9, delete the client secret in
+    the console, and follow `docs/legal/breach-runbook.md`. The runbook has
+    no Google line yet; it is to be added with the Google legal text
+    (G-10), using the note at the end of section 10.9.
 
 There is no public BYO guide page and no video: a page under
 `content/key-guides` would be public on `/guides`, in the sitemap and in
@@ -508,10 +571,519 @@ files must compare `external_source` with a value (`=` or `IN`), which implies
 the predicate.
 
 A connection's `connectedAt` is `created_at`. The end of access has no
-timestamp of its own; `status` and `updated_at` carry it. How the access-ended
-sweep reads them is the connections child's design: with two modes per user,
-a lingering `needs_reauth` row of one mode must not make it delete the files
-of the other, still active, mode.
+timestamp of its own; `status` and `updated_at` carry it. Files carry no
+client mode; copies belong to the copy-making modes
+(`GOOGLE_COPY_CLIENT_MODES`, only `besidka`), so the cleanup deletes a
+user's Google files when no connection of those modes is `active`, whatever
+the bring-your-own connection does (section 10.6).
 
 Rotating `NUXT_ENCRYPTION_KEY` without re-encrypting breaks every stored
 Google token; users reconnect.
+
+## 9. Connecting Google (connections child, G-3)
+
+Built on `feat/google-connections`. Code: `server/utils/google/`
+(`client.ts`, `http.ts`, `oauth.ts`, `oauth-state.ts`, `refresh-lock.ts`,
+`tokens.ts`, `store.ts`, `connection.ts`, `access-ended.ts`, `route.ts`),
+`server/api/v1/google/`, `server/plugins/google-access-sweep.ts`,
+`app/composables/google-connection.ts`,
+`app/components/Profile/Google/Connection.vue` and the Google tab of
+`app/pages/profile/keys.vue`.
+
+### 9.1 Routes
+
+| Method and path | What it does | Gate |
+|---|---|---|
+| `POST /api/v1/google/oauth/start` | Body `{ returnTo? }`; answers `{ authorizationUrl }` for the browser to open | Same-origin write guard, session, `google.drive` active, 10 per minute |
+| `GET /api/v1/google/oauth/callback` | Google's redirect target; redirects to the return path with `?google=<result>`, or once back to Google with `prompt=consent` | Session, `google.drive` active, 20 failed callbacks per 10 minutes per IP; no `Sec-Fetch-Site` check (Google's redirect is a cross-site navigation) |
+| `GET /api/v1/google/connections` | `{ connection, canConnect, dedicatedClient, byo }`: status, Google email, granted capabilities, connected date, whether `google.drive` is active, whether Drive runs on its own client, and the bring-your-own part (section 10.2); never a token, a client secret or a full client id | Cross-site `Sec-Fetch-Site` refused, session, 60 per minute; no flag |
+| `POST /api/v1/google/connections/disconnect` | Body `{ clientMode? }` (`besidka` by default, or `byo`). Revokes, deletes the copies, deletes the row; `{ disconnected, revoked, filesDeleted, filesPending }` | Same-origin write guard, session, 10 per minute; no flag, no admin role |
+
+Start and callback answer 404 unless `google.drive` is active (enabled for
+the user and opted in). The two callbacks skip the cross-site read guard:
+Google returns the browser through a cross-site top-level redirect, which
+carries `Sec-Fetch-Site: cross-site`, and the earlier guard refused every
+real callback (no test sent that header); the single-use state bound to the
+user and the client mode protects them instead. The status read and
+disconnect never check the flag:
+a user who is connected can always see and end the connection, also after
+the flag is turned off or they opt out in Labs. The result values are
+`connected`, `denied` (`error=access_denied`), `missing_scope`, `expired`
+(no such state) and `error`; the reason is logged, never put in the URL. A
+token, the code, the state value or an email never appears in a URL Besidka
+generates. `server/plugins/evlog-request-observability.ts` drops the
+callback's query from the wide event.
+
+### 9.2 Flow, state and PKCE
+
+1. Start resolves the client (`resolveGoogleClient`: the dedicated Drive
+   client when configured, otherwise the sign-in client; the BYO mode reads
+   the owner's stored client, section 10), builds the redirect URI from
+   `resolveRequestPublicOrigin` plus `/api/v1/google/oauth/callback`, creates
+   a 32-byte state and an S256 PKCE pair, and stores
+   `{ userId, clientMode, codeVerifier, redirectUri, returnTo, forcedConsent,
+   createdAt }` encrypted under `google:oauth:<state>` for 600 s. `returnTo`
+   must pass `resolveSafeNextPath`; otherwise it is `/profile/keys?tab=google`
+   (`google` is a valid tab of `KEYS_PAGE_TAB_IDS`).
+2. The consent URL carries `access_type=offline`,
+   `include_granted_scopes=true` (incremental authorization, as BES-273
+   decided), the scopes `openid`, `userinfo.email` (the email is shown on the
+   card) and `drive.file`, never `userinfo.profile`, Calendar or a BYO scope;
+   `prompt=consent` when no refresh token is stored for the mode or consent is
+   forced, `select_account` when there is no `login_hint`, and on a reconnect
+   the stored Google subject (`sub`) as `login_hint`, which Google's OAuth
+   web-server guide accepts ("an email address or `sub` identifier"), so no
+   email is put in a URL.
+3. The callback deletes the state on first read (single use), refuses it
+   when it is older than 600 s or belongs to another user, exchanges the code
+   with the stored verifier and the exact stored redirect URI, and compares
+   the granted scopes with `hasScopes(granted, [drive.file])`. A grant
+   without `drive.file` is revoked at once and nothing is stored.
+4. The Google account comes from the ID token in the token response: issuer
+   `accounts.google.com`, audience equal to the client id, not expired. It
+   arrived straight from the token endpoint over TLS, so the signature check
+   is skipped (OpenID Connect Core 3.1.3.7); there is no userinfo call.
+5. If Google sent no refresh token and none can be kept (a first connection,
+   or a different account chosen in Google's account chooser), nothing is
+   revoked or deleted: the callback sends the user back to Google once with
+   a new state and `prompt=consent`. A second miss answers `error`.
+6. Only then does a different Google subject replace the old connection: the
+   old grant is revoked, the row marked `revoked` and the old account's
+   copies deleted; if that cleanup cannot finish, the new grant is revoked
+   and the result is `error`.
+7. The row is upserted on `(user_id, client_mode)` with status `active`.
+
+### 9.3 Token storage and key management
+
+Tokens are encrypted with `useEncryptText` (`NUXT_ENCRYPTION_KEY`, the same
+path as the `keys` table) and decrypted only in `server/utils/google/tokens.ts`.
+`tests/unit/server/utils/google/token-boundary.spec.ts` fails if another
+server file names a token column of the table (directly or through an alias,
+except inside `isNotNull`), or, in a file that names the table, uses a bare
+`.select()` or `.returning()` or a relational query, which would read every
+column. Tokens are never logged, never returned by a route and never sent to
+the browser (the Picker token of a later child is the one planned
+exception). Key-management position (pre-check row 12): a Worker secret is
+acceptable for `drive.file`, a non-sensitive scope; a KMS or HSM-backed key
+is required before any public restricted-scope path. Rotating
+`NUXT_ENCRYPTION_KEY` without re-encrypting makes every stored token
+undecryptable. `getGoogleAccessToken` then answers 500 and changes nothing,
+so a wrong key on one deployment never ends connections or deletes copies;
+after a deliberate rotation, wipe the tokens by hand (the restore runbook's
+step 2d) and users reconnect.
+
+Better Auth keeps its own Google tokens for sign-in in `accounts`, outside
+this boundary. Two settings keep a Drive-scoped token out of that table and
+out of the browser: the Google sign-in provider sets
+`includeGrantedScopes: false` (Better Auth 1.7 otherwise sends
+`include_granted_scopes=true`, so a sign-in after a Drive connection on the
+shared client would return a token covering `drive.file`), and
+`/get-access-token` and `/refresh-token` are in `DISABLED_AUTH_PATHS`
+(`server/utils/auth.ts`); nothing in the app called them.
+
+### 9.4 Getting a token and the refresh lock
+
+`getGoogleAccessToken({ userId, clientMode, requiredScopes })` answers
+`ok`, `not_connected`, `needs_reauth` or `missing_scope`;
+`requireGoogleAccessToken` turns the last three into 404 or 409. The cached
+token is used while it has more than 120 s left. Otherwise one request
+refreshes under `google:refresh:<connectionId>` (KV entry of 60 s with its
+own 30 s expiry, read-write-read like `connectors:refresh:`). The owner
+re-reads the row after taking the lock and skips the refresh when another
+request already stored a fresh token. A request that loses the lock waits up
+to three times 500 ms for a new access token on the row, then answers 503
+instead of spending the refresh token twice. When KV fails, the refresh runs
+unlocked. Every write is a compare-and-set on the refresh-token ciphertext
+that was read, so a parallel rotation or a reconnect is never overwritten. A
+rotated refresh token from Google is stored; otherwise the old one is kept.
+Only a parsed `invalid_grant` ends a connection; timeouts, 5xx and other
+errors (for example `invalid_client` after a secret rotation) throw 502 or
+504 and change nothing.
+
+### 9.5 Outbound requests
+
+`googleFetchJson` (`server/utils/google/http.ts`) is the only way the server
+calls Google: HTTPS on an exact host of `GOOGLE_FETCH_HOSTS`
+(`oauth2.googleapis.com` today; `accounts.google.com` is opened by the
+browser only), `redirect: 'manual'` with any 3xx refused and its body
+canceled, a 15 s timeout that covers the body, a 64 KiB cap enforced while
+the body streams in, form bodies (the revoke token goes in the body, never
+the URL). Every caller awaits each call before the next, so a request holds
+one Google connection at a time, well under the six simultaneous
+connections a Worker allows.
+
+### 9.6 When access ends
+
+| Event | Revoke at Google | Tokens | Copies with `external_source` in `GOOGLE_EXTERNAL_SOURCES` | Row |
+|---|---|---|---|---|
+| Disconnect | Refresh token (ends the grant), best effort; the answer says whether Google confirmed it | Cleared | Deleted before the answer | Deleted when the cleanup finished and the row is still `revoked`; otherwise left for the sweep |
+| `invalid_grant` on refresh | The old access token if it was still valid, best effort | Cleared | Deleted at detection | `needs_reauth` |
+| Revoke made at Google | None needed | Cleared by the next refresh | Deleted when the sweep's daily check refreshes and gets `invalid_grant` | `needs_reauth` |
+| Different Google account connects | Old refresh token | Replaced | Old copies deleted first | Replaced |
+| Account deletion | Every stored grant, one at a time, 10 s deadline, never blocks | Deleted with the row | Deleted with the user's `files` | Deleted (`purgeUserGoogleConnections`) |
+| Hourly sweep | No | Cleared on any row that is not `active` | Deleted for users with Google files and no `active` connection | `revoked` rows removed once nothing is left |
+
+`deleteGoogleDerivedFiles` only touches files created no later than the
+moment access ended, so a file picked after a reconnect is never deleted,
+and it re-checks before every batch that the user still has no active
+connection of a copy-making mode: a reconnect while the cleanup runs stops
+it (the user regained access, and the copies made under the earlier grant
+stay with the new one). An active bring-your-own connection does not stop
+it (section 10.6). Each
+batch of up to 50 files is one R2 batch delete (with derived Office text
+keys), the KV file cache one key at a time, the D1 rows, the documents and
+knowledge texts that pointed at them, then the storage cache. An R2 failure
+stops before D1 so the sweep can retry.
+
+The sweep runs on the `0 * * * *` cron with no flag on purpose. Each run:
+refreshes up to 10 active connections whose access token expired more than
+24 hours ago, oldest first (a revoke made at Google is otherwise never
+noticed, so it is detected within about a day and the `invalid_grant` path
+runs); clears tokens left on rows that are not active; cleans at most 25
+users, 2,000 files and 20 seconds, walking users in id order from the KV
+cursor `google:sweep-cursor` so a user whose cleanup keeps failing cannot
+starve the rest; and removes `revoked` rows with nothing left to clean.
+Crons do not run on Cloudflare Previews, so on a preview only the
+synchronous paths delete.
+
+What can stay alive at Google: the account purge revokes under a 10 s
+deadline and never waits longer, so a slow Google leaves a grant alive until
+the user removes it at myaccount.google.com/connections or Google expires
+it; the restore runbook's token wipe (`docs/d1-restore-reconciliation.md`,
+step 2d) clears tokens without revoking them, so revoke first wherever the
+tokens are still readable.
+
+### 9.7 KV keys
+
+| Key | Value | TTL |
+|---|---|---|
+| `google:oauth:<state>` | Encrypted pending connection | 600 s, deleted on first read |
+| `google:refresh:<connectionId>` | Refresh lock owner and time | 60 s entry, 30 s lock |
+| `google:callback-failures:<sha256(ip)>` | Failed callback count | 10 minutes |
+| `google:sweep-cursor` | Last user id the sweep cleaned | 7 days |
+| `google-rate-limit:<userId>` | Writes per minute (start, disconnect) | At least 60 s |
+| `google-read-rate-limit:<userId>` | Status reads per minute | At least 60 s |
+
+### 9.8 Logging
+
+Wide events carry `attributes.google` (steps, outcomes, connection ids,
+counts of granted scopes, whether the dedicated client is in use),
+`attributes.googleToken` (refresh outcome: `refreshed`, `already-refreshed`,
+`waited`, `lost-race`, `superseded`, `invalid-grant`, `undecryptable`,
+`lock-busy`, `lock-unavailable`, `failed` with Google's error code),
+`attributes.googleAccessEnded` and `attributes.googleAccessSweep` (counts,
+including the stale-connection check), and `attributes.googlePurge`. Never a
+token, a code, a state value, an email or a file name.
+
+### 9.9 UI
+
+The API Keys page gets a Google tab, last, while `google.drive` is active or
+the user has a connection; it holds one bubble with the Google Drive card.
+The status is fetched once per session (`useGoogleConnection`) and fetched
+again after a connect or disconnect. States:
+
+- Loading: a skeleton. Load error: an error with Try again, never a Connect
+  button.
+- Not connected: three plain lines (Besidka gets access only to the Google
+  Drive files you pick; picked files are copied into your Besidka files;
+  the account's email is read to show which account is connected) and
+  Connect Google Drive while the flag is active.
+- Connected: the Google account's email, what Besidka can access, and
+  Disconnect behind a confirmation that says the copies will be deleted,
+  also whenever Google access ends, and, while the sign-in client is shared,
+  that Google will ask for consent again at the next Sign in with Google.
+- Needs re-authorization: a warning and, while the flag is active,
+  Reconnect.
+
+After Disconnect a toast says the copies were deleted (or that the deletion
+finishes shortly), a second toast with the link to
+myaccount.google.com/connections appears when Google did not confirm the
+revoke, a polite live region announces the change, and focus moves to
+Connect Google Drive (or the card heading). The callback's `?google=` value
+becomes a toast and is removed from the URL. The card is on an existing page,
+so there is no new profile tab and no search popup row. Focus rings come
+from the global `:focus-visible` rule in `main.css` (not checked in a
+browser).
+
+### 9.10 Testing locally
+
+Add `http://localhost:3000/api/v1/google/oauth/callback` as a redirect URI on
+the client in use (the dedicated Drive client in `.dev.vars` as
+`NUXT_GOOGLE_DRIVE_CLIENT_ID` and `_SECRET`, or the sign-in client), add the
+scopes of section 4.3 and your account as a test user, give yourself the
+`google.drive` flag (admin role or a grant) and opt in under Labs, then use
+the Google tab on `/profile/keys`. Specs mock Google entirely
+(`tests/setup/helpers/google-connections.ts`); no test calls Google.
+
+### 9.11 Open items
+
+- G-1 question 9 (does the token endpoint return the expanded `userinfo.*`
+  scopes) is still open; the comparison needs only `drive.file`, so either
+  answer works.
+- The KV refresh lock is best effort across locations; the D1
+  compare-and-set settles the rare double refresh.
+- Nothing has been checked against a real Google account: the consent
+  screens, the restart with `prompt=consent`, the revoke effect on sign-in
+  and the daily revoke detection.
+
+### 9.12 Shared or dedicated OAuth client
+
+Google revokes per OAuth client and Google account. On the shared sign-in
+client, revoking the Drive connection (disconnect, account deletion, a
+different account replacing it) also ends the user's "Sign in with Google"
+consent for Besidka: sign-in still works, but Google shows its consent
+screen again. It also ends the Drive connection of any other Besidka user
+who connected the same Google account. A dedicated Drive OAuth client
+(`googleDriveClientId` and `googleDriveClientSecret`, env
+`NUXT_GOOGLE_DRIVE_CLIENT_ID` and `NUXT_GOOGLE_DRIVE_CLIENT_SECRET`) removes
+the first problem, and `resolveGoogleClient` uses it whenever both values
+are set. The status response's `dedicatedClient` tells the card whether to
+warn about the sign-in consent. **The dedicated client is required before
+`google.drive` leaves `internal`.** Switching clients makes stored
+connections unusable (their refresh tokens belong to the old client): the
+next refresh answers `invalid_grant` or `invalid_client`; wipe the tokens and
+have users reconnect when switching.
+
+## 10. The owner's own OAuth client (BYO child, G-7)
+
+Built on `feat/google-byo-client`. Owner-only, as the pre-check requires
+(`docs/legal/prechecks/google.md`, row 1: a public bring-your-own client is
+an owner risk call, recommended NO-GO; owner-only use is personal use). Code:
+`shared/utils/google-byo.ts`, `server/utils/google/byo-access.ts`,
+`server/utils/google/byo-client.ts`, `server/utils/google/callback.ts`, the
+`byo` branches of `client.ts`, `connection.ts` and `tokens.ts`, the routes
+below, and `app/components/Profile/Google/OwnClient.vue`. The owner steps are
+section 6.
+
+### 10.1 Where the client lives
+
+One `keys` row per user with provider `google-oauth-client`
+(`GOOGLE_BYO_KEY_PROVIDER`). Its `api_key` is one value encrypted with
+`useEncryptText` (`NUXT_ENCRYPTION_KEY`, as every BYOK key): the JSON
+`{ clientId, clientSecret }`, the same shape the Cloudflare gateway key uses
+for its three values. No migration: `keys.provider` is a plain `text`
+column in D1 (the Drizzle enum is a TypeScript list, not a CHECK and not in
+the migration snapshot, so `db:generate` produces nothing), and the unique
+`(user_id, provider)` index allows one client per user. The new kind stays
+out of every provider list: it is not in `providerMeta`, and the keys
+summary route (`GET /api/v1/profiles/keys`) leaves it out.
+
+- Decrypted only in `server/utils/google/byo-client.ts`
+  (`readGoogleByoClient`), and only to start, exchange or refresh.
+  `token-boundary.spec.ts` fails if another server file reads that row's
+  value, and also if any other `keys` value read names its provider with
+  anything but a literal or a reviewed expression (research, gateways,
+  Jev, code execution), so no generic reader can be handed this kind.
+- Write-only: no route returns the secret or the client id. The status
+  answers only `hasClient`, read without decrypting (an id-only select),
+  so a status read never touches the secret.
+- Saved in one upsert on `(user_id, provider)`, so two saves at once never
+  collide on the unique index.
+- Validation: the client id matches
+  `^[0-9a-z][0-9a-z-]*\.apps\.googleusercontent\.com$` (at most 200
+  characters) and is neither Besidka's sign-in client nor the dedicated
+  Drive client (`isBesidkaGoogleClientId`, also re-checked when the client
+  is resolved); the secret is 20 to 128 visible ASCII characters with no
+  spaces. Errors never echo the input; logs carry `byoClient` (`saved`,
+  `deleted`, `missing`), `clientReplaced` and `connectionEnded` only.
+- Deleted with the account: the `keys` row cascades with `users`, and the
+  account purge revokes every stored Google grant first (revoking needs only
+  the token, not the client secret).
+
+### 10.2 Routes
+
+| Method and path | What it does | Gate |
+|---|---|---|
+| `POST /api/v1/profiles/keys/google-oauth-client` | Body `{ clientId, clientSecret }`; saves or replaces the client; `{ saved, connectionEnded }` | Same-origin write guard, session, admin and `google.byo`, 10 writes per minute |
+| `DELETE /api/v1/profiles/keys/google-oauth-client` | Removal only: ends the bring-your-own connection (as Disconnect), then deletes the client; `{ deleted, connectionEnded, revoked }`, 404 when there was neither; a failure to read the connection fails the request and deletes nothing | Same-origin write guard, session, 10 writes per minute; no flag and no admin role, so a former admin can remove the secret |
+| `POST /api/v1/google/byo/start` | Body `{ capabilities, returnTo? }` with capability names only (`drive-read`, `gmail-read`, `gmail-compose`, `calendar`, at least one); answers `{ authorizationUrl }`; 409 when no client is saved | Same as the save route |
+| `GET /api/v1/google/byo/callback` | Google's redirect target for the owner's client; redirects with `?google-byo=<result>`; a refused gate (signed out, not admin, flag off) redirects to the Google tab with `?google-byo=error` instead of an error page | Session, admin and `google.byo`, the callback failure budget; no `Sec-Fetch-Site` check |
+| `GET /api/v1/google/connections` | Adds `byo`: `null` for a user with nothing; `{ canManage: true, redirectUri, hasClient, connection }` for a user who passes the gate; `{ canManage: false, redirectUri: null, hasClient, connection }` for a user who no longer passes it but still holds a client or a connection | Section 9.1 |
+| `POST /api/v1/google/connections/disconnect` | `{ clientMode: 'byo' }` ends the bring-your-own connection. A JSON body is always parsed (411 without `Content-Length`); only a clearly bodyless request means Besidka's client; any other body is refused (400), so the destructive direction is never guessed | Section 9.1: no flag and no admin role, so access can always be ended |
+
+The callback path is separate from Besidka's, so the owner's client
+registers its own redirect URI, a block of one path never takes down the
+other, and the state check refuses a code from one flow on the other path.
+
+### 10.3 The admin gate
+
+`checkGoogleByoAccess({ db, userId })` in
+`server/utils/google/byo-access.ts` is the one gate. It answers `allowed`
+only when the user is an admin right now (`isAdminUser`: verified email, 2FA
+outside dev and CI, the `admin` role or an env admin email) and `google.byo`
+is active for the user through the real evaluator (the flag and its parent
+`google.drive` resolved, and both Labs opt-ins on). A flag grant or the
+tester role alone is never enough, because stage `internal` still allows
+grants. It needs no request, so it runs:
+
+- in the save, start and callback routes (`requireGoogleByoAccess`, an
+  early 404; the callback redirects instead); removal (Delete client,
+  Disconnect) never needs it;
+- in the hourly sweep (`endUngatedGoogleByoConnections`,
+  `server/utils/google/byo-sweep.ts`, section 10.6), which ends the
+  connection of a user who no longer passes it;
+- inside `resolveGoogleClient('byo')`, so start, the code exchange in the
+  callback and every token refresh (including the hourly stale check) pass
+  it again;
+- at the top of `getGoogleAccessToken` for the `byo` mode, so even a cached
+  token is never handed to a later tool for a user who no longer passes it.
+
+A refusal is the same 404 as an unavailable feature and logs
+`attributes.google.byoGate` (`not-admin` or `flag-off`) only.
+`tests/integration/api/google-byo.spec.ts` proves it with a non-admin whose
+flag grants make `google.byo` active (the evaluator says active, save and
+start answer 404, the callback redirects with an error) and with an admin
+who did not opt in; the callback test removes the admin role between start
+and callback. `google.byo` also carries `adminOnly: true` in the registry,
+so Labs lists its toggle only for an admin.
+
+### 10.4 Scopes and capabilities
+
+The owner ticks capabilities; nothing is ticked by default, and the browser
+never sends scope strings. `getGoogleByoScopes` maps them through the scope
+map (`shared/utils/google-scopes.ts`), and `filterByoCapabilityScopes` drops
+anything the map does not allow for the `byo` client, also when it reads the
+requested set back from the stored state on a restart with consent. The
+request always adds `openid` and `userinfo.email` (the email is shown on
+the card), never `drive.file` or `userinfo.profile`.
+
+| Capability | Scope | Tool today |
+|---|---|---|
+| `drive-read` | `drive.readonly` (restricted) | None yet (Drive search arrives with the Gmail child) |
+| `gmail-read` | `gmail.readonly` (restricted) | None yet (Gmail child) |
+| `gmail-compose` | `gmail.compose` (restricted; Google's scope for managing drafts and sending mail) | None yet; Besidka has no send tool and its Gmail child creates drafts only, a limit of the product, not of the permission |
+| `calendar` | `calendar.events` (provisional) | None yet (Calendar child) |
+
+Scope minimization (pre-check row 10, "smallest set of scopes"): no
+bring-your-own tool exists yet, so offering only capabilities whose tools
+exist would offer nothing and leave the owner nothing to test. The card
+offers all four unticked and says that what is ticked is requested now for
+tools that arrive later.
+
+Adding and narrowing (choice for the stored set): the request keeps
+`include_granted_scopes=true`, so adding a capability later works without
+a disconnect. While connected the card shows the capabilities not granted
+yet under "Add access" and sends the union of what is granted and what is
+ticked, and the start route adds the scopes already stored on an active
+connection to the request as well. What is stored is only the granted
+scopes that were requested plus identity (`scopesToStore`): Google's answer
+can list earlier grants of the same client that this flow never asked for,
+and those are not recorded. A refresh may narrow the stored set but never
+widen it (`refreshedScopes`). To narrow a grant the owner disconnects
+(which revokes the whole grant) and connects with fewer boxes.
+
+After the exchange the granted set is compared with the requested
+capability scopes: none granted is refused and revoked (`missing_scope`);
+some granted is saved with exactly what Google granted and reported as
+`partial`, never as a full connection; all granted is `connected`. Tools
+check `hasScopes` against the stored set before each use
+(`getGoogleAccessToken({ requiredScopes })`).
+
+### 10.5 Flow
+
+The same code as Besidka's client (section 9.2): `startGoogleConnection` and
+`completeGoogleConnection` with `clientMode: 'byo'`, one callback handler
+(`handleGoogleOAuthCallback`) parameterized by the mode. The KV state also
+holds `requestedScopes`; a state whose mode differs from the callback path
+is refused (`state-mode-mismatch`) before any token request, in both
+directions. The ID token's audience must be the owner's client id.
+
+### 10.6 Ending access, and two connections
+
+Disconnect, `invalid_grant`, account deletion and deleting or replacing the
+stored client all end the bring-your-own connection through the same code
+as section 9.6: revoke at Google (no client secret needed), clear the
+tokens, run the access-ended cleanup. Deleting the client ends the
+connection first; saving a different client id (or over a stored value that
+can no longer be read) ends it before the new client is saved, because the
+refresh token belongs to the old client; a new secret for the same client
+id keeps it.
+
+Losing the gate also ends access. Every hour, before the stale check, the
+sweep reads up to 25 active bring-your-own rows (least recently updated
+first) and runs `checkGoogleByoAccess` for each owner; a refusal (not admin
+any more, 2FA off, the flag off or killed, the Labs opt-in withdrawn) ends
+that connection exactly like Disconnect. A gate check that cannot run
+(KV or D1 down) leaves the row for the next hour. The former admin then
+sees the reduced card and can delete the stored client.
+
+A user can hold both connections (unique `(user_id, client_mode)`). Files
+carry no client mode, and no schema change was allowed, so the rule is
+attribution by mode: only Besidka's client makes copies (the Picker needs
+the project of Besidka's client; bring-your-own tools keep references only),
+so copies belong to `GOOGLE_COPY_CLIENT_MODES = ['besidka']`.
+
+| Event | Besidka's copies |
+|---|---|
+| Besidka's connection ends while the bring-your-own one is active | Deleted (pre-check row 4: the grant they came from is gone) |
+| The bring-your-own connection ends while Besidka's is active | Kept |
+| The bring-your-own connection ends and Besidka's is not active | Deleted (they were orphans already; the hourly sweep would delete them too) |
+| A reconnect of Besidka's client during a cleanup | Stops the cleanup, as before |
+
+`deleteGoogleDerivedFiles`, the sweep's user selection and its revoked-row
+pass all read `hasActiveCopyConnection`. A later tool that saves copies
+under the bring-your-own client must first give them their own
+`external_source` value and a rule here.
+
+### 10.7 The card
+
+On the Google tab of API Keys, inside the same bubble as the Google Drive
+card, below a divider, only when the status carries `byo`:
+
+- For a user who passes the gate: one paragraph (this is for the instance
+  owner; the Google project, its consent screen and its verification status
+  are the owner's responsibility), the redirect URI to register with a copy
+  button, the client id and secret fields (the secret is a password field,
+  never prefilled, `autocomplete="new-password"`, both with the page's
+  Paste button), Save client and, once saved, "A client is saved" and
+  Delete client behind a confirmation. With a client saved and no active
+  connection: the four capability checkboxes, unticked, the "tools arrive
+  later" note and Connect (Reconnect after access ended).
+- Connected: the Google account's email, what Google granted, Disconnect
+  behind a confirmation, and "Add access" with only the capabilities not
+  granted yet.
+- A user who no longer passes the gate but still holds a client or a
+  connection: one line, Delete client (when a client is saved) and the
+  connection with Disconnect; no fields, no Connect.
+
+A save failure shows in an alert with `role="alert"`; changes are announced
+in a polite live region; focus returns to the card heading after Delete and
+Disconnect. The callback result arrives as `?google-byo=`, a key of its own
+so the Drive card never shows a "Google Drive connected" toast for it. The
+Google tab also stays visible for a user whose only connection is the
+bring-your-own one.
+
+### 10.8 What is not offered
+
+- No public bring-your-own client, no guide page under
+  `content/key-guides` (it would be public on `/guides`, in the sitemap and
+  in `llms.txt`), no video, no entry in `providerMeta` or any provider list.
+- No Gmail, Calendar or full Drive tool in this child; nothing calls those
+  APIs yet.
+- No KMS: the client secret and the tokens are encrypted with the Worker
+  secret. The pre-check (row 12) expects HSM-grade key management for
+  restricted scopes; that stays an open owner item before any public
+  restricted-scope path.
+
+### 10.9 Open items
+
+- Nothing has been checked against a real Google project: the consent
+  screens of an unverified client, whether Google returns the expanded
+  `userinfo.email` scope, the scope list on a partial grant, and the
+  `invalid_client` answer after a secret rotation.
+- An admin who loses the role (for example turns off 2FA) loses the
+  connection within the hour (section 10.6); the stored client stays until
+  they delete it from the reduced card or the account is deleted. On
+  Cloudflare Previews crons do not run, so there only the next use of the
+  token refuses it.
+- The breach runbook line for the bring-your-own secret is still to be
+  added with the Google legal text (G-10); legal files are owner-owned.
+  Wording to add, as a note:
+
+  > **To add (Google, bring-your-own client):** if the owner's own Google
+  > OAuth client secret may have leaked, delete the stored client on the
+  > Google tab of API Keys (this revokes the bring-your-own grant at Google
+  > and clears its tokens), then delete or rotate the client secret in the
+  > owner's own Google Cloud project, and check
+  > myaccount.google.com/connections. While the client is owner-only, the
+  > owner is the only affected Google account.

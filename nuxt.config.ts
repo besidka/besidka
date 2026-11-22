@@ -433,6 +433,8 @@ export default defineNuxtConfig({
     authAdditionalAllowedHosts: '',
     googleClientId: '',
     googleClientSecret: '',
+    googleDriveClientId: '',
+    googleDriveClientSecret: '',
     githubClientId: '',
     githubClientSecret: '',
     turnstileSecretKey: '',

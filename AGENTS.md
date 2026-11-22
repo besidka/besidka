@@ -870,8 +870,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
-- `docs/google.md` - Google Drive, Calendar and Gmail design (Phase 4b, partly
-  built, 2026-11-22): the umbrella `feat/google-connectors` and what
+- `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, in
+  progress, 2026-11-22): the umbrella `feat/google-connectors` and what
   exists on it so far (the four `google.*` flags with `optIn: 'required'`,
   `google.gmail` under `google.byo`; `shared/utils/google-scopes.ts` with
   `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`
@@ -891,11 +891,22 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `shared/utils/google-data-recipient.ts`: every enforcement point as a table
   with what the user sees, the recipient check on every model call of a
   flagged chat, the gateway safeguards sent, the Gemini paid-tier route,
-  skipped web search and TypeSafe AI, memory exclusion, the share opt-in
-  derived from `chat_shares.updated_at`, MCP and Besidka tool withholding,
-  no Google copies as project knowledge, and the exits still open), the BYO
-  owner runbook outline, and what is not in the phase (legal notices stay
-  the owner's decision)
+  skipped web search and TypeSafe AI, memory exclusion, the derived mark
+  `google_derived_at` on artifacts and files and how a marked item is read,
+  the stored share opt-in `chat_shares.google_opt_in_at`, MCP and Besidka
+  tool withholding, no Google copies or marked files as project knowledge,
+  and the exits still open), the BYO owner runbook outline, what is not in
+  the phase (legal notices stay the owner's decision), and section 9, the
+  connection flow as built
+  (routes under `/api/v1/google/`, state and PKCE, the redirect URI from the
+  request origin, the `drive.file` comparison, tokens decrypted only in
+  `server/utils/google/tokens.ts`, the `google:refresh:` lock, what
+  disconnect, `invalid_grant` and account deletion revoke and delete, the
+  hourly `google-access-sweep`, KV keys, logging, the Google tab on API Keys,
+  local testing and the open items), and section 10, the owner-only
+  bring-your-own client (one encrypted `keys` row of the
+  `google-oauth-client` kind, the admin gate, `/api/v1/google/byo/callback`,
+  copies owned by Besidka's mode, the owner runbook in section 6)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes

@@ -102,6 +102,36 @@ Consequences:
   OAuth callback is `/__nuxt_studio/auth/github` on a single host and does
   not go through `oAuthProxy`.
 
+## Public origin of a Preview request
+
+`resolveRequestPublicOrigin` (`server/utils/request-public-origin.ts`) gives a
+request on an additional allowed host its own origin, and every other request
+the configured base URL. It feeds the connector write guard
+(`Origin` must equal it), connector OAuth redirect URIs, the CIMD client id
+and artifact share links.
+
+It reads scheme and host from `event.context.cloudflare.url`, the platform
+request URL, and not from h3's `getRequestURL()`. On Workers `getRequestURL()`
+reports `http` for every host: Nitro passes `protocol: "https:"` to
+`node-mock-http`, which compares it with `"https"` and never marks the mock
+connection encrypted, and Cloudflare sends no `X-Forwarded-Proto` that h3
+could use instead (a client-sent one does not arrive either). Because the
+function only returns the request's own origin for `https:`, `pr-<n>` and
+deployment hosts fell back to the long-lived preview host, so the connector
+guard answered 403 for their own `Origin`. Production was not affected: its
+configured base URL is already `https://besidka.com`. A symptom of the same
+cause outside this function: `/.well-known/oauth-authorization-server` lists
+`http://` endpoints (`jwks_uri`) on every host, production included.
+
+Check on a deployed Preview, without a session (401 means the guard passed,
+403 means it did not):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  -H 'Origin: https://pr-<n>-besidka.chernenko.workers.dev' \
+  https://pr-<n>-besidka.chernenko.workers.dev/api/v1/connectors
+```
+
 ## Turnstile on Previews
 
 Turnstile is **disabled** on every Preview (PR previews
