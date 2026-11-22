@@ -139,6 +139,35 @@ describe('withGoogleDataFlag', () => {
     expect(ensureFlagged).not.toHaveBeenCalled()
   })
 
+  it('does not flag for an empty Drive list, and flags for one that names '
+    + 'a file', async () => {
+    const ensureFlagged = vi.fn(async () => undefined)
+    const listed = {
+      google__drive_list_picked: {
+        execute: vi.fn(async (input: unknown) => {
+          return (input as { references: unknown[] }).references.length > 0
+            ? { references: [{ id: 'f1' }], count: 1 }
+            : { references: [], count: 0, note: 'Nothing picked.' }
+        }),
+      },
+    } as unknown as ToolSet
+    const wrapped = withGoogleDataFlag(listed, {
+      isGoogleDerived: () => true,
+      ensureFlagged,
+    })!
+    const tool = wrapped.google__drive_list_picked as unknown as {
+      execute: (input: unknown, options?: unknown) => Promise<unknown>
+    }
+
+    await tool.execute({ references: [] }, { toolCallId: 'call-1' })
+
+    expect(ensureFlagged).not.toHaveBeenCalled()
+
+    await tool.execute({ references: [{}] }, { toolCallId: 'call-2' })
+
+    expect(ensureFlagged).toHaveBeenCalledTimes(1)
+  })
+
   it('drops the Google result when the flag write fails', async () => {
     const { wrapped, tools } = wrap({
       derived: () => true,

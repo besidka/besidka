@@ -25,6 +25,36 @@ export const GOOGLE_DATA_GATEWAY_CONDITION_REASON = 'This model is not '
 export const GOOGLE_DATA_UNKNOWN_REASON = 'This model has not been checked '
   + 'for Google data.'
 
+export const GOOGLE_DATA_SELF_SEARCH_REASON = 'This model searches the web '
+  + 'by itself, so your Google data could reach a search service.'
+
+/**
+ * The model ids that search the web on their own, whatever tools a send
+ * declares, so the whole conversation (and the Google data in it) can reach
+ * a search backend. The catalogs carry no flag for this (`supportsWebSearch`
+ * only says a search tool can be switched on, and a flagged chat removes
+ * those tools), so the documented id patterns are the check:
+ * - a trailing `:online`, OpenRouter's shortcut that adds its web plugin to
+ *   any model (`openai/gpt-5:online`);
+ * - `-search-preview` and `-search-api` in an id, OpenAI's search models
+ *   (`gpt-4o-search-preview`, `openai/gpt-4o-mini-search-preview`);
+ * - `sonar` as a word of the id, Perplexity's search models (`sonar`,
+ *   `perplexity/sonar-pro`, `sonar-reasoning-pro`; the word match leaves
+ *   `claude-sonnet` alone).
+ * A self-searching model under another name is not covered.
+ */
+const SELF_SEARCHING_MODEL_PATTERNS: readonly RegExp[] = [
+  /:online$/i,
+  /-search-(?:preview|api)(?:-|$)/i,
+  /(?:^|[/:._-])sonar(?:$|[:._-])/i,
+]
+
+export function isSelfSearchingModel(modelId: string): boolean {
+  return SELF_SEARCHING_MODEL_PATTERNS.some((pattern) => {
+    return pattern.test(modelId)
+  })
+}
+
 export const GOOGLE_DATA_PAID_TIER_STATEMENT = 'This key is on a Google Cloud '
   + 'project with billing enabled'
 
@@ -159,6 +189,15 @@ export function decideGoogleDataRecipient(
   recipient: GoogleDataRecipient,
   facts: GoogleDataRecipientFacts = {},
 ): GoogleDataDecision {
+  if (isSelfSearchingModel(recipient.modelId)) {
+    return {
+      allowed: false,
+      reason: 'searches-by-itself',
+      recipientId: recipient.modelId,
+      unmetConditions: [],
+    }
+  }
+
   return evaluateGoogleDataRoute(googleDataRouteOf(recipient, facts))
 }
 
@@ -176,6 +215,10 @@ export function googleDataRefusalReason(
 
   if (decision.reason === 'refused') {
     return GOOGLE_DATA_REFUSED_REASON
+  }
+
+  if (decision.reason === 'searches-by-itself') {
+    return GOOGLE_DATA_SELF_SEARCH_REASON
   }
 
   if (decision.reason !== 'condition-unmet') {
@@ -198,6 +241,12 @@ export function googleDataRefusalFix(
   decision: GoogleDataDecision,
   recipient: GoogleDataRecipient,
 ): string {
+  if (decision.reason === 'searches-by-itself') {
+    return 'Pick the same model without its online or search variant, or a '
+      + 'model from Anthropic, OpenAI or xAI that does not search by itself, '
+      + 'or start a new chat.'
+  }
+
   const canConfirmPaidTier = !recipient.gatewayId
     && decision.unmetConditions.includes('gemini-paid-tier-confirmed')
 

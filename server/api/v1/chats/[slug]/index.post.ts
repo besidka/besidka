@@ -2672,6 +2672,7 @@ export default defineEventHandler(async (event) => {
     const googleSend = await getGoogleSendTools({
       plan: googleSendPlan,
       holdsGoogleData,
+      toolCallingAllowed,
       providerToolsStayCallable: hasUnremovableProviderTool({
         isAnthropicRoute,
         tools: parsedTools.tools,

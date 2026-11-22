@@ -120,9 +120,18 @@ export async function getGoogleSendTools(input: {
   mayReceiveGoogleData: () => Promise<boolean>
   holdsGoogleData?: boolean
   providerToolsStayCallable?: boolean
+  toolCallingAllowed?: boolean
   logger: LoggerLike
 }): Promise<GoogleSendTools> {
   if (!hasGoogleSendTools(input.plan.candidates)) {
+    return noGoogleSendTools()
+  }
+
+  if (input.toolCallingAllowed === false) {
+    input.logger.set({
+      attributes: { googleDataGuard: { googleTools: 'tool-calling-off' } },
+    })
+
     return noGoogleSendTools()
   }
 

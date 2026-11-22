@@ -2776,6 +2776,78 @@ describe('tool approval continuation', () => {
         })
       })
 
+    it('gives the model no Google file name when a round continues a reply '
+      + 'that read a Drive file', async () => {
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'step-start' },
+            {
+              type: 'tool-google__drive_read_file',
+              toolCallId: 'call-drive-1',
+              state: 'output-available',
+              input: { fileId: 'file-1' },
+              output: {
+                references: [{
+                  id: 'drive-id-7',
+                  kind: 'drive-file',
+                  title: 'Secret Plan.md',
+                  link: 'https://drive.google.com/open?id=drive-id-7',
+                }],
+                bodyRemoved: true,
+                note: 'The content was not kept.',
+              },
+            },
+            { type: 'text', text: 'Read it.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: MODEL_ID,
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+
+      const { doStream } = await continueRound('assistant-1', 2, [
+        textChunks('Carried on.'),
+      ])
+      const prompt = JSON.stringify(
+        (doStream.mock.calls[0]?.[0] as any)?.prompt ?? [],
+      )
+
+      expect(prompt).toContain('drive-id-7')
+      expect(prompt).not.toContain('Secret Plan')
+      expect(prompt).not.toContain('open?id=drive-id-7')
+      expect(JSON.stringify(mocks.updates.at(-1)!.parts))
+        .toContain('Secret Plan.md')
+    })
+
     it('never runs a round twice: a round that already started is '
       + 'interrupted', async () => {
       mocks.chatMessages.push(

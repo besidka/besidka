@@ -1567,6 +1567,8 @@ describe('tool approval requests in the chat send', () => {
     async function offeredOnAnthropic(input: {
       tools: string[]
       providerTools: Record<string, unknown>
+      toolCall?: boolean
+      qwen?: boolean
     }): Promise<string[]> {
       mocks.mergedStreams = []
       mocks.writers = []
@@ -1574,14 +1576,15 @@ describe('tool approval requests in the chat send', () => {
       const { model, doStream } = createScriptedModel([
         textChunks('Answer.'),
       ])
+      const modelId = input.qwen ? 'qwen3-max' : ANTHROPIC_MODEL_ID
 
       vi.stubGlobal('useChatProvider', vi.fn(() => ({
-        provider: { id: 'anthropic' },
+        provider: { id: input.qwen ? 'qwen' : 'anthropic' },
         model: {
-          id: ANTHROPIC_MODEL_ID,
-          name: 'Claude Haiku',
+          id: modelId,
+          name: 'Test model',
           tools: ['web_search'],
-          toolCall: true,
+          toolCall: input.toolCall ?? true,
           modalities: { input: ['text'], output: ['text'] },
         },
       })))
@@ -1591,6 +1594,14 @@ describe('tool approval requests in the chat send', () => {
         providerOptions: {},
         reasoning: undefined,
         thinkingBinding: undefined,
+      })))
+      vi.stubGlobal('useQwen', vi.fn(async () => ({
+        instance: model,
+        tools: input.providerTools,
+        providerOptions: input.tools.includes('web_search')
+          ? { enable_search: true }
+          : {},
+        reasoning: undefined,
       })))
       vi.stubGlobal('fetch', createMockMcpFetch([linear]))
 
@@ -1604,7 +1615,7 @@ describe('tool approval requests in the chat send', () => {
       const result = await handler({
         params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
         body: {
-          model: ANTHROPIC_MODEL_ID,
+          model: modelId,
           tools: input.tools,
           reasoning: 'off',
           messages: [{
@@ -1634,6 +1645,46 @@ describe('tool approval requests in the chat send', () => {
       expect(offered).toContain('web_search')
       expect(offered.filter(name => name.startsWith('google__')))
         .toEqual([])
+    })
+
+    it('offers no Google tool on Qwen while enable_search is on and the '
+      + 'chat holds no Google data, and offers them when it is off',
+    async () => {
+      await useRealDriveTools()
+
+      const withSearch = await offeredOnAnthropic({
+        qwen: true,
+        tools: ['web_search'],
+        providerTools: {},
+      })
+
+      expect(withSearch.filter(name => name.startsWith('google__')))
+        .toEqual([])
+
+      const withoutSearch = await offeredOnAnthropic({
+        qwen: true,
+        tools: [],
+        providerTools: {},
+      })
+
+      expect(withoutSearch).toEqual(expect.arrayContaining([
+        'google__drive_list_picked',
+      ]))
+    })
+
+    it('offers no Google tool to a model without tool calling, like every '
+      + 'other function tool', async () => {
+      await useRealDriveTools()
+
+      const offered = await offeredOnAnthropic({
+        tools: [],
+        providerTools: {},
+        toolCall: false,
+      })
+
+      expect(offered.filter(name => name.startsWith('google__')))
+        .toEqual([])
+      expect(offered.filter(name => name.startsWith('mcp__'))).toEqual([])
     })
 
     it('offers the Drive tools on direct Anthropic when no provider tool '

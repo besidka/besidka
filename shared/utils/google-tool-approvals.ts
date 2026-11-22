@@ -21,12 +21,21 @@ export const GOOGLE_EGRESS_GRANT_KEY_PREFIX = 'google-egress:'
  * Only a tool whose result carries no Google content (a write that answers
  * with a link it just created) is listed with `returnsGoogleContent: false`.
  * Never inferred from a tool's kind or from the shape of its output.
+ * `emptyListHoldsNoContent` marks the one listing tool whose answer, with no
+ * references, names no file at all, so that answer does not flag the chat.
  */
 export const GOOGLE_TOOL_PROPERTIES: Readonly<
-  Record<string, { returnsGoogleContent: boolean }>
+  Record<string, {
+    returnsGoogleContent: boolean
+    emptyListHoldsNoContent?: boolean
+  }>
 > = {
   [`${GOOGLE_TOOL_NAME_PREFIX}drive_save_file`]: {
     returnsGoogleContent: false,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_list_picked`]: {
+    returnsGoogleContent: true,
+    emptyListHoldsNoContent: true,
   },
 }
 
@@ -42,6 +51,38 @@ export const GOOGLE_TOOL_CHAT_GRANT_LABELS: Readonly<Record<string, string>>
       + 'files you picked from Google Drive in this chat',
   }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * A Google output as the model gets it back when stored parts are turned
+ * into model messages again (an approval resume, a `{ continue }` round, the
+ * stash that refills a paused turn): the references keep their id, kind and
+ * date but never their title or link, because a title is a name someone
+ * else wrote (a Drive file name, a calendar subject) and would reach the
+ * model outside the untrusted frame that holds the same text. The stored
+ * part keeps the title for the card. Idempotent.
+ */
+export function withoutReferenceNames(output: unknown): unknown {
+  if (!isPlainRecord(output) || !Array.isArray(output.references)) {
+    return output
+  }
+
+  return {
+    ...output,
+    references: output.references.map((reference) => {
+      if (!isPlainRecord(reference)) {
+        return reference
+      }
+
+      const { title: _title, link: _link, ...rest } = reference
+
+      return rest
+    }),
+  }
+}
+
 export function googleToolReturnsContent(toolName: unknown): boolean {
   if (typeof toolName !== 'string') {
     return true
@@ -50,6 +91,34 @@ export function googleToolReturnsContent(toolName: unknown): boolean {
   return Object.hasOwn(GOOGLE_TOOL_PROPERTIES, toolName)
     ? GOOGLE_TOOL_PROPERTIES[toolName]!.returnsGoogleContent
     : true
+}
+
+/**
+ * Whether one finished result of a Google tool holds Google content, the
+ * test that flags a chat: the tool returns content (`googleToolReturnsContent`)
+ * and, for the listing tool only, names at least one file. An empty list
+ * (nothing picked) or a list too long to show carries a count and a note,
+ * and no file name, id or text from Google.
+ */
+export function googleToolResultHoldsContent(
+  toolName: unknown,
+  output: unknown,
+): boolean {
+  if (!googleToolReturnsContent(toolName)) {
+    return false
+  }
+
+  const holdsNoContentWhenEmpty = typeof toolName === 'string'
+    && Object.hasOwn(GOOGLE_TOOL_PROPERTIES, toolName)
+    && GOOGLE_TOOL_PROPERTIES[toolName]!.emptyListHoldsNoContent === true
+
+  if (!holdsNoContentWhenEmpty) {
+    return true
+  }
+
+  return !isPlainRecord(output)
+    || !Array.isArray(output.references)
+    || output.references.length > 0
 }
 
 export const GOOGLE_TOOL_KINDS = ['read', 'write'] as const

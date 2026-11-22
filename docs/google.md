@@ -410,11 +410,12 @@ unknown and refused. Unknown, unverifiable or refused means no.
 |---|---|---|
 | Send start: Google content in the request (`resolveSendGoogleContent`) | Before the guard, the send looks up the files of every file part (a Google copy, `external_source` in `GOOGLE_EXTERNAL_SOURCES`, or a marked file; this is the only path that reads file parts, `chatHoldsGoogleData` does not) and every attached or referenced artifact (marked). Any hit flags the chat (`flagChatGoogleData`, not best effort) and the guard below runs on it; content new in this message also clears the share opt-in | The guard's answer below |
 | Send start: marked origin (`holdsMarkedOrigin`) | A send killed after a marked artifact or document was written, before its reply was stored, leaves the row in a chat with no flag and no `data-artifact` part. The chat query of the send route and of deep research carries one extra (`chatMarkedOriginExtras`: two `exists` subqueries over `idx_artifacts_origin_chat` and `idx_documents_chat`), so a chat without such rows costs no query and no round trip. A hit counts as Google data, flags the chat (`flagChatGoogleData`, not best effort) and the guard runs on it, so a refused model never sees the artifact context or the document titles | The guard's answer below |
-| Google data enters a send (`withGoogleDataFlag`, `server/utils/google/send-flag.ts`) | Every function tool of a send under tool approvals is wrapped (inside the cleared-call guard, so continuation replays too). A Google tool flags the chat right after its result exists, and not because of its own failure; the send is Google-derived from the approval of a Google call on, though, so any other tool flags before it runs once that happened (also after a failed Google call, which keeps taint), so a marked write never lands in an unflagged chat, and again after it returned if taint appeared while it ran. The write is `markChatGoogleData` with `failClosed`: one awaited `update chats set google_data_at ... where google_data_at is null` per send (`createGoogleDataFlagger`, shared by parallel callers, skipped when the chat is flagged). If it fails the tool call fails and its result is dropped. The persist step flags every Google-derived send too (flagged chat, or taint from any Google call, failed ones included), before generated images and container files are stored, so a stopped reply carries the flag; a failed write fails the persist | A tool error, or the usual save error |
+| Google data enters a send (`withGoogleDataFlag`, `server/utils/google/send-flag.ts`) | Every function tool of a send under tool approvals is wrapped (inside the cleared-call guard, so continuation replays too). A Google tool flags the chat right after its result exists, and not because of its own failure; the send is Google-derived from the approval of a Google call on, though, so any other tool flags before it runs once that happened (also after a failed Google call, which keeps taint), so a marked write never lands in an unflagged chat, and again after it returned if taint appeared while it ran. The write is `markChatGoogleData` with `failClosed`: one awaited `update chats set google_data_at ... where google_data_at is null` per send (`createGoogleDataFlagger`, shared by parallel callers, skipped when the chat is flagged). If it fails the tool call fails and its result is dropped. The persist step flags a Google-derived send too (flagged chat, or taint from a Google call) when the reply holds a flag trigger (`holdsStickyGoogleFlagTrigger`: a Google result that returned content, a file part or a code run), before generated images and container files are stored, so a stopped reply carries the flag; a reply with only failed or empty Google calls and no such part does not set it. A failed write fails the persist | A tool error, or the usual save error |
 | Chat send, `{ continue }` rounds and approval continuations (`server/api/v1/chats/[slug]/index.post.ts`, every request kind takes the same path) | `assertGoogleDataRecipient` right after the provider or gateway is resolved, before any search, TypeSafe AI call, user message persist or model call; this covers every step of the tool loop and the search answer continuation, which reuse the same model | A 403 shown through the chat error: "This model cannot be used in a chat with Google data.", the reason and the fix (pick an allowed model, or confirm the Gemini paid tier). On a continuation the paused reply keeps the model of its pending record, so the message says the reply cannot continue and the fix is a new message on an allowed model |
 | Model switch mid-chat | The same check, on the model of each send | The same error; the picker already marks the model |
+| Models that search the web by themselves | `decideGoogleDataRecipient` refuses a model id that searches on its own whatever tools the send declares, with the reason `searches-by-itself`, before the provider or gateway rule: a trailing `:online` (OpenRouter's web plugin on any model), `-search-preview` or `-search-api` in the id (OpenAI's search models, also through a gateway) and `sonar` as a word of the id (Perplexity: `sonar`, `perplexity/sonar-pro`, `sonar-reasoning-pro`; `claude-sonnet` is left alone). The catalogs have no flag for this (`supportsWebSearch` only says a search tool can be switched on, and a flagged chat removes those tools), so `SELF_SEARCHING_MODEL_PATTERNS` in `shared/utils/google-data-recipient.ts` is the check, tested per pattern. Not covered: a self-searching model under another name, a provider that turns search on by a request flag the catalog does not show, and a search backend a gateway adds behind a model id without one of these markers | The picker marks the model ("This model searches the web by itself, so your Google data could reach a search service."), and a send is refused with the fix "Pick the same model without its online or search variant, or a model from Anthropic, OpenAI or xAI that does not search by itself, or start a new chat." |
 | Gateway sends | `useGateway(..., { googleDataSafeguards: plan.gatewaySafeguards })`: true exactly in a flagged chat, false otherwise, so a user who only turned on `google.drive` or connected Drive keeps the request options of before | Nothing; the gateway applies its own setting. A Vercel 403 or `zdr_not_attested` on such a call becomes a Google-specific chat error in the stream (`googleSafeguardGatewayErrorOverride`: Hobby teams cannot request zero data retention, or the upstream key is not ZDR-attested). Title, the artifact bridge and deep research never send the safeguards on a gateway call (title skips gateways in a flagged chat; the bridge and research use direct keys only), so they cannot receive that error |
-| Google tools (`getGoogleSendTools`) | No candidate unless tool approvals and `google.drive` are active, and on a gateway only when the chat already holds Google data; with a candidate, no tool when the chat holds no Google data yet and the send declares a provider-run tool that stays callable after a Google read (direct Anthropic with any provider tool, whose route keeps every declaration; a Qwen send with `enable_search`, a request flag for the whole send: `hasUnremovableProviderTool`); then `mayReceiveGoogleData` (the guard with the plan's gateway condition, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered; the "+" menu says in one sentence where the Drive tools work (section 13.2) |
+| Google tools (`getGoogleSendTools`) | No candidate unless tool approvals and `google.drive` are active, and on a gateway only when the chat already holds Google data; with a candidate, no tool when the send would register no other function tool either (`toolCallingAllowed` of the send route, the predicate that already gates memory, Besidka and connector tools: false for a model without tool calling, a forced tool choice, exclusive native web search or image generation; logged as `googleTools: 'tool-calling-off'`); no tool when the chat holds no Google data yet and the send declares a provider-run tool that stays callable after a Google read (direct Anthropic with any provider tool, whose route keeps every declaration; a Qwen send with `enable_search`, a request flag for the whole send: `hasUnremovableProviderTool`); then `mayReceiveGoogleData` (the guard with the plan's gateway condition, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered; the "+" menu says in one sentence where the Drive tools work (section 13.2) |
 | Title (`title.patch.ts`) | A refused direct provider, or any gateway, when `chatHoldsGoogleData` (flag, or a Google result in the loaded first message) | The fallback title built from the first message, with no model call |
 | Deep research (`chats/[slug]/research/index.post.ts`) | `chatHoldsGoogleData` over the loaded messages plus the send-start lookup of the new message; the research provider, before the user message is stored | The same 403 |
 | Artifact LLM bridge (`artifacts/[id]/complete.post.ts`) | The bridge model, when the artifact carries the derived mark (`artifacts.google_derived_at`), so a deleted origin chat changes nothing | The same 403, before the key and caps are used |
@@ -428,7 +429,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Connectors with tool approvals off | A flagged chat offers no connector unless tool approvals are active (`mayOfferConnectorsWithGoogleData`), because only the Google egress ask (rule 12) keeps Google content from a user-added MCP server, and it needs approvals | Connectors are not offered in that chat |
 | Flag write with the reply | The assistant message that brings the first Google result and the flag (with the share opt-in cleared) are one `db.batch` (`buildGoogleContentPersistStatements`); if the batch fails the reply is not persisted | The usual save error |
 | Flag repair | A send that finds a Google result in the stored parts while `google_data_at` is null sets the flag | Nothing |
-| What sets the sticky flag | A Google tool result that returned data (a static `tool-google__*` part with an output, for a tool that returns Google content), a marked write, or a marked file or code run at the persist step (`holdsStickyGoogleFlagTrigger`). A Google call that only failed (an approved read of a bogus id, a Drive error) keeps the transient taint for the rest of the send, so the send stays guarded, but never sets the flag. A Google tool that returns no Google content (`GOOGLE_TOOL_PROPERTIES`, today the Drive save) taints nothing and flags nothing unless the file it saves is itself marked Google-derived | Nothing |
+| What sets the sticky flag | A Google tool result that returned data (a static `tool-google__*` part with an output, for a tool that returns Google content), a marked write, or a marked file or code run at the persist step (`holdsStickyGoogleFlagTrigger`). A Google call that only failed (an approved read of a bogus id, a Drive error) or an empty Drive list (`emptyListHoldsNoContent`, 13.2) keeps the transient taint for the rest of the send, so the send stays guarded, but never sets the flag by itself; a later tool of the same send that flags after it ran (an artifact or document write) still does, because the send is tainted. A Google tool that returns no Google content (`GOOGLE_TOOL_PROPERTIES`, today the Drive save) taints nothing and flags nothing unless the file it saves carries the derived mark (`google_derived_at`; a Drive copy is refused by the save) | Nothing |
 | Memory | Flagged chats leave the extraction sweep, the backfill queue, project memory refresh and settle, the extract-now path (checked before and after the model call), the guarded entry insert, and the `search_chats` and `read_chat` tools of other chats; `memory_write` and `memory_forget` are not offered inside a flagged chat | Memory stays as it was; the chat is never cited |
 | Shares | `POST /share` needs `includeGoogleContent: true` for a flagged chat (409 otherwise) and stores it as `chat_shares.google_opt_in_at`, recorded in the wide event as `googleDataGuard.shareOptIn`; a share of a flagged chat is visible only while that column is set (`isShareVisibleForGoogleData`, read with the share in one query in `resolveActiveShareBySlug`, and by the tokened file route). Every write that brings new Google content clears it in the same batch, so the link pauses until the owner opts in again. `indexable` is forced off for a flagged chat (on the stored row, the owner and shared reads, and the dialog). Google copies get no `chat_share_files` grant | The share dialog names the Google items (reference titles and Google or marked file names, at most 20), asks "Share the Google content in this chat", says when a link is paused, disables the indexing toggle, and Generate waits for the box |
 | MCP and Besidka tools | `get_chat` replaces every message text with a fixed notice when `chatHoldsGoogleData` (flag, or a Google result in the loaded messages); `list_chats` treats a content match in a flagged chat as no match (only a title match lists it); `list_files`, `read_file` and the `get_chat` context files never include a Google copy or a marked file (`fileHoldsNoGoogleContent`); `list_artifacts` and `get_artifact` hide marked artifacts. The tool descriptions say so (MCP 5.4.1) | The withheld notice in place of the text; the items are not found |
@@ -501,9 +502,12 @@ unknown and refused. Unknown, unverifiable or refused means no.
   Google read ending the model call so that the answer continues with
   withheld tools: the round continuation on Anthropic keeps a tool's
   declaration whenever the stored history already called it, so it cannot
-  guarantee the tool is gone. A search the model already ran earlier in the
-  same reply therefore stays declared on Anthropic in that continuation, a
-  gap that exists for every flagged chat and is not widened here. Native web
+  guarantee the tool is gone. A provider tool the stored history of the
+  same reply already called stays declared on Anthropic in that continuation,
+  so the gap is limited to a reply that called such a tool before the chat
+  came to hold Google data (a flagged chat declares none from its first step,
+  and an unflagged one gets no Google tool while it declares one); it is not
+  widened here. Native web
   search tools of other providers are removed per step by the step guard
   (`withProviderToolEgressGuard`), as before.
 - Deep research runs the provider's own agent, which searches the web with
@@ -1691,8 +1695,17 @@ same `frameUntrustedResult` the connector results use (a copy of the closing
 tag inside the text is neutralized). File names reach the model only inside
 the frame: each tool has a `toModelOutput` that hands the model the output
 without its `references` (the stored part keeps the name and link for the
-card), and the stash that gives a paused turn its bodies back strips every
-reference's title and link too (`withoutReferenceNames`). Every input schema is
+card). The stored parts are turned into model messages in one place,
+`buildResumedAssistantMessages`, for an approval resume and for a `{ continue }`
+round alike, and that seam strips every Google reference's title and link
+(`withoutReferenceNames`, the same function the stash uses) from every Google
+part, whether its body came from the stash, is missing or the part is a plain
+stored one, because `toModelOutput` does not run when stored parts are
+converted without their tools. The search answer continuation drops tool
+history altogether (`withoutToolHistory`), so no Google part reaches it. Tests:
+the seam (`google.spec.ts`), a round and an approval resume through the route
+(`chats-tool-approval-continuation.spec.ts`) and the search answer
+continuation (`search-answer-continuation.spec.ts`). Every input schema is
 strict, and an id of the wrong shape answers the "not one of the files the
 user picked" sentence instead of a schema error. The model's file id is the
 `file_id` of the list or the `fileId` of an earlier page, never a Drive id.
@@ -1787,8 +1800,11 @@ three tools only when its status is `active` and the granted scopes hold
 `drive.file`. No candidate (and so no tool, and no gateway safeguards) for no
 connection, `needs_reauth`, `revoked`, a missing `drive.file`, or a
 bring-your-own connection. On a direct provider nothing about the gateway
-changes. After that `getGoogleSendTools` offers nothing when the chat holds no
-Google data and the send declares a provider-run tool that stays callable
+changes. After that `getGoogleSendTools` offers nothing when the send would
+register no other function tool (`toolCallingAllowed`, the route's predicate
+for memory, Besidka and connector tools: a model without tool calling, a
+forced tool choice, exclusive native web search or image generation),
+nothing when the chat holds no Google data and the send declares a provider-run tool that stays callable
 after a read (direct Anthropic with any provider tool, a Qwen send with
 `enable_search`; section 5.3, built option (b)), withholds all of them from a
 model that may not receive Google data, and `withGoogleSendTools` removes any
@@ -1826,9 +1842,26 @@ no taint and no read source, `hasGoogleToolResult`,
 `isGoogleToolResultContent`, `createToolRoundApprovalState` and
 `withGoogleDataFlag` read the property, and its part does not re-flag the chat
 on the next send or clear a share opt-in. Exception: when the file being saved
-is itself marked Google-derived, the entry's `taintsRun` lookup (one D1 read,
-run by the cleared-call guard before the tool) taints the send like any Google
-call, because the answer names that file.
+carries the derived mark (`files.google_derived_at`, set on a file written in
+a Google-derived send), the entry's `taintsRun` lookup (one D1 read, run by
+the cleared-call guard before the tool) taints the send like any Google call,
+because the answer names that file. The exception reads that one column. A
+Drive copy (`external_source = 'google'`) is not part of it: the save refuses
+a Drive copy before anything is sent (13.4), so it never reaches the lookup.
+
+**Empty list.** `google__drive_list_picked` is listed in
+`GOOGLE_TOOL_PROPERTIES` with `emptyListHoldsNoContent`: a result with no
+reference (nothing picked, or a list too long to show, which carries a count
+and a note but no name, id or text) is not a Google result.
+`googleToolResultHoldsContent` decides it for the part, the stream chunk that
+tells the picker the chat holds Google data, the round state and the flag
+wrapper, so an empty list does not set `chats.google_data_at`, announce
+Google data or make the chat refuse a model. The send itself still carries
+the transient taint of the approved call (no web search, connector calls ask),
+which is harmless but not nothing: a later tool of the same send (an artifact
+or document write, whose output is then marked Google-derived) still flags the
+chat, because the send is tainted. Memory writes are locked by the taint. A list output of an
+unexpected shape, and every other Google tool, counts as content.
 
 ### 13.3 What is stored, and what the user sees after a reload
 
@@ -1836,7 +1869,10 @@ D1 holds the references only: Drive id, `kind`, name, https link and the date
 of the Drive edit, with `bodyRemoved: true` and the note of section 5.2. A
 paused turn keeps the framed body 24 hours in KV and gives it back to the
 model on the answer, as for every Google tool (the stash round trip is
-tested with the real read tool). The tool step shows "Google Drive" in
+tested with the real read tool). A stash record written before the name
+stripping existed may still hold reference titles until its 24 hour expiry;
+the resume seam (13.1) strips them on the way to the model, so no title
+reaches it. The tool step shows "Google Drive" in
 the title ("Read a file from Google Drive") with a neutral `lucide:hard-drive`
 icon, never a Google logo, and after a reload one line per reference: the
 file name and "Open in Google Drive" (`Chat/Reasoning/GoogleStep.vue`), never an

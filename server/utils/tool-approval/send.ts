@@ -387,7 +387,6 @@ export function buildGoogleApprovalEntry(input: {
   toolApprovalsActive: boolean
   summarize?: (input: unknown) => string
   chatGrantHash?: string | null
-  returnsGoogleContent?: boolean
   taintsRun?: (input: unknown) => Promise<boolean>
 }): SendToolEntry {
   if (!canOfferGoogleTools(input)) {
@@ -408,8 +407,7 @@ export function buildGoogleApprovalEntry(input: {
   }
 
   const isRead = input.kind === 'read'
-  const returnsContent = input.returnsGoogleContent
-    ?? googleToolReturnsContent(input.toolName)
+  const returnsContent = googleToolReturnsContent(input.toolName)
 
   return {
     descriptor: {

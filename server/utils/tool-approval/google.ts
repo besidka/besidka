@@ -4,8 +4,9 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
-  googleToolReturnsContent,
+  googleToolResultHoldsContent,
   isGoogleToolName,
+  withoutReferenceNames,
 } from '#shared/utils/google-tool-approvals'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
 import * as schema from '~~/server/db/schema'
@@ -146,8 +147,9 @@ export function hasGoogleToolResult(parts: unknown): boolean {
   return Array.isArray(parts) && parts.some((part) => {
     return isStaticGoogleToolPart(part)
       && (part as Record<string, unknown>).state === 'output-available'
-      && googleToolReturnsContent(
+      && googleToolResultHoldsContent(
         toolNameOfPart(part as Record<string, unknown>),
+        (part as Record<string, unknown>).output,
       )
   })
 }
@@ -182,7 +184,7 @@ export function isGoogleToolResultContent(content: unknown): boolean {
   return isRecord(content)
     && content.type === 'tool-result'
     && isGoogleToolName(content.toolName)
-    && googleToolReturnsContent(content.toolName)
+    && googleToolResultHoldsContent(content.toolName, content.output)
 }
 
 /**
@@ -454,32 +456,6 @@ export function googleToolCallIdsOf(parts: readonly unknown[]): string[] {
       ? [part.toolCallId]
       : []
   }))]
-}
-
-/**
- * A Google output as the model gets it back on a continuation: the
- * references keep their id, kind and date but never their title or link,
- * because a title is a name someone else wrote (a Drive file name, a
- * calendar subject) and would reach the model outside the untrusted frame
- * that holds the same text. The stored part keeps the title for the card.
- */
-export function withoutReferenceNames(output: unknown): unknown {
-  if (!isRecord(output) || !Array.isArray(output.references)) {
-    return output
-  }
-
-  return {
-    ...output,
-    references: output.references.map((reference) => {
-      if (!isRecord(reference)) {
-        return reference
-      }
-
-      const { title: _title, link: _link, ...rest } = reference
-
-      return rest
-    }),
-  }
 }
 
 function stashedBodyOf(body: GoogleToolResultBody): StashedResult {

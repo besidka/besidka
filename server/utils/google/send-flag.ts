@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai'
 import {
+  googleToolResultHoldsContent,
   googleToolReturnsContent,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
@@ -115,8 +116,10 @@ export function withGoogleDataFlag(
         }
 
         const result = await execute(toolInput, options)
+        const returnedNothingFromGoogle = isGoogleTool
+          && !googleToolResultHoldsContent(toolName, result)
 
-        if (input.isGoogleDerived()) {
+        if (!returnedNothingFromGoogle && input.isGoogleDerived()) {
           await input.ensureFlagged()
         }
 
