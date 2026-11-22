@@ -82,6 +82,7 @@ const STRUCTURE_CUTS: readonly string[] = [
   'notes',
   'names',
   'structure',
+  'limits',
   'cells',
   'part',
 ]

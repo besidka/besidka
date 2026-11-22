@@ -168,25 +168,29 @@ function mergeByKey<Rule extends { ranges: string[] }>(
   rules: readonly Rule[],
   keyOf: (rule: Rule) => string,
 ): Rule[] {
-  const merged = new Map<string, Rule>()
+  const merged = new Map<string, { rule: Rule, seen: Set<string> }>()
 
   for (const rule of rules) {
     const key = keyOf(rule)
     const existing = merged.get(key)
 
     if (!existing) {
-      merged.set(key, { ...rule, ranges: [...rule.ranges] })
+      merged.set(key, {
+        rule: { ...rule, ranges: [...new Set(rule.ranges)] },
+        seen: new Set(rule.ranges),
+      })
       continue
     }
 
     for (const range of rule.ranges) {
-      if (!existing.ranges.includes(range)) {
-        existing.ranges.push(range)
+      if (!existing.seen.has(range)) {
+        existing.seen.add(range)
+        existing.rule.ranges.push(range)
       }
     }
   }
 
-  return [...merged.values()]
+  return [...merged.values()].map(entry => entry.rule)
 }
 
 /**

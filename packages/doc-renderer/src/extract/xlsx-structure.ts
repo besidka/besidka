@@ -25,6 +25,10 @@ export const BUILT_IN_FORMAT_CODES: ReadonlyMap<number, string> = new Map([
   [2, '0.00'],
   [3, '#,##0'],
   [4, '#,##0.00'],
+  [5, 'currency, no decimals (built-in 5)'],
+  [6, 'currency, no decimals, red negatives (built-in 6)'],
+  [7, 'currency, 2 decimals (built-in 7)'],
+  [8, 'currency, 2 decimals, red negatives (built-in 8)'],
   [9, '0%'],
   [10, '0.00%'],
   [11, '0.00E+00'],
@@ -43,6 +47,10 @@ export const BUILT_IN_FORMAT_CODES: ReadonlyMap<number, string> = new Map([
   [38, '#,##0 ;[Red](#,##0)'],
   [39, '#,##0.00;(#,##0.00)'],
   [40, '#,##0.00;[Red](#,##0.00)'],
+  [41, 'accounting, no symbol, no decimals (built-in 41)'],
+  [42, 'accounting, currency, no decimals (built-in 42)'],
+  [43, 'accounting, no symbol, 2 decimals (built-in 43)'],
+  [44, 'accounting, currency, 2 decimals (built-in 44)'],
   [45, 'mm:ss'],
   [46, '[h]:mm:ss'],
   [47, 'mmss.0'],
@@ -57,6 +65,7 @@ export interface SheetStructure {
   notes: WorkbookNote[]
   notRead: SheetNotRead
   isTailCut: boolean
+  isLimited: boolean
 }
 
 const RANGES_PER_RULE_MAX = 50
@@ -130,8 +139,23 @@ function isTrue(value: string | undefined): boolean {
   return value === '1' || value === 'true'
 }
 
-function rangesOf(sqref: string): string[] {
-  return parseRangeList(sqref, RANGES_PER_RULE_MAX).map(rangeAddress)
+/**
+ * The ranges of a range list, at most `RANGES_PER_RULE_MAX`. Marks the
+ * structure as limited when ranges are dropped or a non-empty list has no
+ * range it can read, so the map says so instead of silently narrowing a rule.
+ */
+function rangesOf(sqref: string, structure: SheetStructure): string[] {
+  const ranges = parseRangeList(sqref, RANGES_PER_RULE_MAX + 1)
+
+  if (ranges.length > RANGES_PER_RULE_MAX) {
+    structure.isLimited = true
+  }
+
+  if (ranges.length === 0 && sqref.trim().length > 0) {
+    structure.isLimited = true
+  }
+
+  return ranges.slice(0, RANGES_PER_RULE_MAX).map(rangeAddress)
 }
 
 function appendCapped(current: string, text: string, max: number): string {
@@ -200,7 +224,11 @@ export class SheetTailReader {
         break
       case 'mergeCell':
         if (this.structure.mergedRanges.length < MERGED_STORED_MAX) {
-          this.structure.mergedRanges.push(...rangesOf(attributes.ref ?? ''))
+          this.structure.mergedRanges.push(
+            ...rangesOf(attributes.ref ?? '', this.structure),
+          )
+        } else {
+          this.structure.isLimited = true
         }
 
         break
@@ -324,16 +352,21 @@ export class SheetTailReader {
     this.validation = null
     this.formulaSlot = 0
 
-    if (
-      !pending
-      || this.structure.validations.length >= VALIDATIONS_STORED_MAX
-    ) {
+    if (!pending) {
       return
     }
 
-    const ranges = rangesOf(pending.sqref)
+    if (this.structure.validations.length >= VALIDATIONS_STORED_MAX) {
+      this.structure.isLimited = true
+
+      return
+    }
+
+    const ranges = rangesOf(pending.sqref, this.structure)
 
     if (ranges.length === 0) {
+      this.structure.isLimited = true
+
       return
     }
 
@@ -341,7 +374,7 @@ export class SheetTailReader {
   }
 
   private finishConditional(): void {
-    const ranges = rangesOf(this.conditionalSqref ?? '')
+    const ranges = rangesOf(this.conditionalSqref ?? '', this.structure)
     const isExtension = this.extDepth > 0
 
     for (const pending of this.pendingRules) {
@@ -358,11 +391,12 @@ export class SheetTailReader {
       const isFull = this.structure.conditionalRules.length
         >= CONDITIONAL_STORED_MAX
 
-      if (ranges.length > 0 && !isFull) {
-        this.structure.conditionalRules.push(
-          buildConditional(pending, ranges),
-        )
+      if (ranges.length === 0 || isFull) {
+        this.structure.isLimited = true
+        continue
       }
+
+      this.structure.conditionalRules.push(buildConditional(pending, ranges))
     }
 
     this.conditionalSqref = null
@@ -502,13 +536,15 @@ function noteText(text: string): string {
 function readCommentsPart(
   officePackage: OfficePackage,
   entry: ZipEntry,
-  notes: WorkbookNote[],
-): void {
+  structure: SheetStructure,
+): boolean {
+  const { notes } = structure
+
   if (
     entry.uncompressedSize > COMMENTS_PART_BYTES_MAX
     || !hasOptionalRoom(officePackage, entry.uncompressedSize)
   ) {
-    return
+    return false
   }
 
   scanPart(officePackage, entry, (events) => {
@@ -542,6 +578,8 @@ function readCommentsPart(
       } else if (event.name === 'comment') {
         if (address !== null && notes.length < NOTES_STORED_MAX) {
           notes.push({ address, text: noteText(text) })
+        } else if (address !== null) {
+          structure.isLimited = true
         }
 
         address = null
@@ -550,6 +588,51 @@ function readCommentsPart(
 
     return false
   })
+
+  return true
+}
+
+function emptyStructure(): SheetStructure {
+  return {
+    mergedRanges: [],
+    validations: [],
+    conditionalRules: [],
+    notes: [],
+    notRead: emptyNotRead(),
+    isTailCut: false,
+    isLimited: false,
+  }
+}
+
+/**
+ * Reads a whole small part with the tail reader, for a sheet whose cells
+ * end without a `</sheetData>` tag (`<sheetData/>`). Each pass of `scanPart`
+ * starts from a fresh structure, so a growing prefix never counts twice.
+ */
+function readWholePart(
+  officePackage: OfficePackage,
+  entry: ZipEntry,
+  structure: SheetStructure,
+): void {
+  let scanned = emptyStructure()
+
+  scanPart(officePackage, entry, (events) => {
+    scanned = emptyStructure()
+
+    const reader = new SheetTailReader(scanned)
+
+    for (const event of events) {
+      reader.consume(event)
+    }
+
+    return false
+  })
+
+  structure.mergedRanges = scanned.mergedRanges
+  structure.validations = scanned.validations
+  structure.conditionalRules = scanned.conditionalRules
+  structure.notRead = scanned.notRead
+  structure.isLimited = structure.isLimited || scanned.isLimited
 }
 
 function countDrawing(
@@ -583,17 +666,8 @@ export function readSheetStructure(
   entry: ZipEntry,
   partName: string,
 ): SheetStructure {
-  const structure: SheetStructure = {
-    mergedRanges: [],
-    validations: [],
-    conditionalRules: [],
-    notes: [],
-    notRead: emptyNotRead(),
-    isTailCut: false,
-  }
+  const structure = emptyStructure()
   const tailRead = readOptional(officePackage, () => {
-    const reader = new SheetTailReader(structure)
-
     if (!hasOptionalRoom(officePackage, entry.uncompressedSize)) {
       return false
     }
@@ -605,16 +679,12 @@ export function readSheetStructure(
         return false
       }
 
-      scanPart(officePackage, entry, (events) => {
-        for (const event of events) {
-          reader.consume(event)
-        }
-
-        return false
-      })
+      readWholePart(officePackage, entry, structure)
 
       return true
     }
+
+    const reader = new SheetTailReader(structure)
 
     for (const event of tail.events) {
       reader.consume(event)
@@ -636,10 +706,12 @@ export function readSheetStructure(
       if (type.endsWith(COMMENTS_TYPE_SUFFIX)) {
         const comments = findEntry(officePackage, target)
 
-        if (comments) {
-          readOptional(officePackage, () => {
-            readCommentsPart(officePackage, comments, structure.notes)
-          })
+        const isRead = comments !== null && readOptional(officePackage, () => {
+          return readCommentsPart(officePackage, comments, structure)
+        }) === true
+
+        if (!isRead) {
+          structure.isLimited = true
         }
       } else if (type.endsWith(DRAWING_TYPE_SUFFIX)) {
         readOptional(officePackage, () => {

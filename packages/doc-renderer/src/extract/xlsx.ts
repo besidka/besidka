@@ -46,6 +46,7 @@ interface Workbook {
   declaredSheetNames: string[]
   names: DefinedName[]
   hiddenNamesSkipped: number
+  namesNotRead: number
 }
 
 export interface CellFormats {
@@ -351,12 +352,14 @@ export function readWorkbook(officePackage: OfficePackage): Workbook {
   const names: DefinedName[] = []
   let date1904 = false
   let hiddenNamesSkipped = 0
+  let namesNotRead = 0
 
   scanPart(officePackage, entry, (events) => {
     declared.length = 0
     names.length = 0
     date1904 = false
     hiddenNamesSkipped = 0
+    namesNotRead = 0
 
     let pendingName: DefinedName | null = null
 
@@ -394,8 +397,13 @@ export function readWorkbook(officePackage: OfficePackage): Workbook {
           || event.attributes.hidden === 'true'
           || name.startsWith(BUILT_IN_NAME_PREFIX)
 
-        if (isHidden || names.length >= NAMES_MAX) {
+        if (isHidden) {
           hiddenNamesSkipped += 1
+          continue
+        }
+
+        if (names.length >= NAMES_MAX) {
+          namesNotRead += 1
           continue
         }
 
@@ -458,6 +466,7 @@ export function readWorkbook(officePackage: OfficePackage): Workbook {
     declaredSheetNames: declared.map(sheet => sheet.name),
     names,
     hiddenNamesSkipped,
+    namesNotRead,
   }
 }
 

@@ -309,7 +309,13 @@ chunks), drops everything before it, and keeps at most `tailBytesMax` (4 MiB)
 after it. A row-capped 40 MB sheet therefore reaches its rules without being
 held in memory. A part the optional budget cannot cover, or a tail cut at
 4 MiB, is reported in the map as "Rules, merged cells and links stored after
-the cell data were not read". Formula text is capped at 8,192 characters per
+the cell data were not read". The adapter's own stored caps (50 ranges per
+rule, 2,000 merges, 500 validations, 2,000 conditional rules, 500 notes), a
+range list it cannot read (whole columns and rows such as `F:F` are read as
+full-height ranges) and a comments part it cannot read never narrow a rule
+silently: the sheet gets the cut `limits` and the line "Some rules, ranges,
+merged cells or notes are left out because there are too many." Defined names
+past 500 are counted into "(N more names not shown)". Formula text is capped at 8,192 characters per
 cell and 8 MiB per workbook (then `formulas_limit`). The map renderer adds its
 own caps (`WORKBOOK_MAP_DEFAULTS`): 300 formula lines, 20 exception ranges per
 line, 100 validation lines, 100 conditional lines, 12 literal variants listed
@@ -534,7 +540,8 @@ extraction"). The summary has `sheets`, `sheetsTotal`, `hiddenSheets`,
 `validations`, `conditionalRules`, `names`, `bytes`, `cut` (what was left
 out: `sheets`, `values`, `formula_patterns`, `validations`,
 `conditional_rules`, `number_formats`, `merged_cells`, `notes`, `names`,
-`structure` for the final hard cut, and the sheet cuts), `notRead` (summed)
+`structure` for the final hard cut, and the sheet cuts including `limits`),
+`notRead` (summed)
 and `sheetSummaries` (name cut to 64 characters, visibility,
 `valuesCutAfterRow`, `rowsNotShown`).
 

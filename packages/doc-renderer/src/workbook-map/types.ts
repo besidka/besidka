@@ -102,6 +102,7 @@ export type SheetCut
     | 'cells'
     | 'formulas'
     | 'structure'
+    | 'limits'
     | 'part'
 
 export interface WorkbookSheet {
@@ -131,6 +132,7 @@ export interface WorkbookModel {
   sheets: WorkbookSheet[]
   sheetsTotal: number
   hiddenNamesSkipped?: number
+  namesNotRead?: number
 }
 
 export interface WorkbookMapOptions {
@@ -165,6 +167,7 @@ export type WorkbookMapCut
     | 'notes'
     | 'names'
     | 'structure'
+    | 'limits'
     | 'rows'
     | 'columns'
     | 'cells'

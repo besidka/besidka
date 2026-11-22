@@ -31,6 +31,7 @@ const CUT_REASONS: Record<WorkbookMapCut, TruncationReason> = {
   sheets: 'sheets_limit',
   values: 'text_limit',
   structure: 'text_limit',
+  limits: 'map_limit',
   rows: 'rows_limit',
   columns: 'columns_limit',
   cells: 'cells_limit',
@@ -93,9 +94,10 @@ function sheetCuts(
   data: SheetData,
   isCut: boolean,
   collector: SheetCollector,
-  isTailCut: boolean,
+  structure: { isTailCut: boolean, isLimited: boolean },
   stats: ExtractStats,
 ): SheetCut[] {
+  const { isTailCut, isLimited } = structure
   const cuts: SheetCut[] = []
 
   if (data.hasMoreRows) {
@@ -119,6 +121,10 @@ function sheetCuts(
   if (isTailCut) {
     cuts.push('structure')
     addTruncation(stats, 'structure_limit')
+  }
+
+  if (isLimited) {
+    cuts.push('limits')
   }
 
   if (data.hasTruncatedCells) {
@@ -226,7 +232,7 @@ export function extractXlsxMap(officePackage: OfficePackage): ExtractionOutput {
       conditionalRules: structure.conditionalRules,
       notes: structure.notes,
       notRead: structure.notRead,
-      cuts: sheetCuts(data, isCut, collector, structure.isTailCut, stats),
+      cuts: sheetCuts(data, isCut, collector, structure, stats),
       rowsRead: limits.rowsMax,
     })
   }
@@ -245,6 +251,7 @@ export function extractXlsxMap(officePackage: OfficePackage): ExtractionOutput {
     sheets,
     sheetsTotal: workbook.sheets.length,
     hiddenNamesSkipped: workbook.hiddenNamesSkipped,
+    namesNotRead: workbook.namesNotRead,
   }
   const map = renderWorkbookMap(model, {
     maxBytes: limits.textBytesMax - utf8Length(TRUNCATION_MARKER) - 2,

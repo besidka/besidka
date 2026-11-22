@@ -368,6 +368,77 @@ describe('extractOfficeText with workbookMap', () => {
     expect(text).toContain('more rule lines not shown')
   })
 
+  it('merges a flood of identical rules over many ranges quickly', () => {
+    const rules = Array.from({ length: 2000 }, (_value, index) => {
+      const sqref = Array.from({ length: 50 }, (_item, offset) => {
+        return `C${index * 50 + offset + 1}`
+      }).join(' ')
+
+      return `<conditionalFormatting sqref="${sqref}">`
+        + `<cfRule type="expression" priority="${index + 1}">`
+        + '<formula>$A1&gt;1</formula></cfRule></conditionalFormatting>'
+    }).join('')
+    const bytes = workbookPackage({
+      sheets: [{
+        name: 'Data',
+        xml: sheetXml({ rows: rowXml(1, [numberCell('A1', 1)]), after: rules }),
+      }],
+    })
+    let text = ''
+    const cpu = cpuMilliseconds(() => {
+      text = mapOf(bytes).text
+    })
+
+    expect(cpu).toBeLessThan(1500)
+    expect(text).toContain('- C1:C100000: formula =$A1>1')
+  })
+
+  it('says when rules or ranges are left out instead of narrowing them', () => {
+    const sqref = Array.from({ length: 60 }, (_value, index) => {
+      return `E${index * 2 + 1}`
+    }).join(' ')
+    const bytes = workbookPackage({
+      sheets: [{
+        name: 'Data',
+        xml: sheetXml({
+          rows: rowXml(1, [numberCell('A1', 1)]),
+          after: '<dataValidations count="3">'
+            + `<dataValidation type="whole" sqref="${sqref}">`
+            + '<formula1>1</formula1></dataValidation>'
+            + '<dataValidation type="whole" sqref="F:F">'
+            + '<formula1>2</formula1></dataValidation>'
+            + '<dataValidation type="whole" sqref="not a range">'
+            + '<formula1>3</formula1></dataValidation>'
+            + '</dataValidations>',
+        }),
+      }],
+    })
+    const result = mapOf(bytes)
+
+    expect(result.text).toContain('Some rules, ranges, merged cells or notes '
+      + 'are left out because there are too many.')
+    expect(result.text).toContain('- F1:F1048576: whole number between 2')
+    expect(result.workbookMap?.cut).toContain('limits')
+    expect(result.stats.truncations).toContain('map_limit')
+  })
+
+  it('counts defined names past the cap as not shown', () => {
+    const names = Array.from({ length: 600 }, (_value, index) => {
+      return `<definedName name="Name${index}">Data!$A$${index + 1}</definedName>`
+    }).join('')
+    const bytes = workbookPackage({
+      definedNames: names,
+      sheets: [{
+        name: 'Data',
+        xml: sheetXml({ rows: rowXml(1, [numberCell('A1', 1)]) }),
+      }],
+    })
+    const result = mapOf(bytes)
+
+    expect(result.text).toContain('(400 more names not shown)')
+    expect(result.workbookMap?.cut).toContain('names')
+  })
+
   it('maps an estimate-shaped sheet within the inline size', () => {
     const result = mapOf(estimateShapedWorkbook(), { textBytesMax: 200 * 1024 })
 

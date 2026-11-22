@@ -54,7 +54,8 @@ export const WORKBOOK_MAP_LEGEND = 'How to read this map: cells use A1 '
   + '`→` is the same, filled to the right (references without `$` move by '
   + 'columns). "except" lists cells inside the range that have their own '
   + 'line or no formula. Formulas in rules are written for the first cell '
-  + 'of their range. Values are the results last saved in the file, not '
+  + 'of their range. `_xlfn.` before a function name only marks a newer '
+  + 'Excel function. Values are the results last saved in the file, not '
   + 'recalculated; the first column of each Values table is the row number.'
 
 export const WORKBOOK_MAP_TRUNCATION_MARKER
@@ -76,6 +77,8 @@ const SHEET_CUT_NOTES: Record<SheetCut, string> = {
   formulas: 'The formula limit was reached; later formulas are not included.',
   structure: 'Rules, merged cells and links stored after the cell data were '
     + 'not read because the sheet is too large.',
+  limits: 'Some rules, ranges, merged cells or notes are left out because '
+    + 'there are too many.',
   part: 'This sheet is too large; only its start was read.',
 }
 
@@ -517,13 +520,16 @@ function namesBlock(
   options: WorkbookMapOptions,
   cuts: Set<WorkbookMapCut>,
 ): string | null {
-  if (model.names.length === 0) {
+  const notRead = model.namesNotRead ?? 0
+
+  if (model.names.length === 0 && notRead === 0) {
     return null
   }
 
   const shown = model.names.slice(0, options.namesMax)
+  const hidden = model.names.length - shown.length + notRead
 
-  if (model.names.length > shown.length) {
+  if (hidden > 0) {
     cuts.add('names')
   }
 
@@ -538,7 +544,7 @@ function namesBlock(
 
   return `## Named ranges\n${[
     ...lines,
-    ...moreNote(model.names.length - shown.length, 'name', 'names'),
+    ...moreNote(hidden, 'name', 'names'),
   ].join('\n')}`
 }
 

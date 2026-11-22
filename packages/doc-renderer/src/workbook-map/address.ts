@@ -180,9 +180,82 @@ export function parseCell(text: string): CellPosition | null {
   return cell !== null && cell.end === text.length ? cell.position : null
 }
 
+function readLine(
+  text: string,
+  isLetters: boolean,
+): number | null {
+  const value = text.charCodeAt(0) === DOLLAR ? text.slice(1) : text
+
+  if (value.length === 0) {
+    return null
+  }
+
+  if (isLetters) {
+    return columnNumber(value)
+  }
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (!isDigitCode(value.charCodeAt(index))) {
+      return null
+    }
+  }
+
+  const row = value.length <= MAX_ROW_DIGITS ? Number(value) : 0
+
+  return row >= 1 && row <= MAX_ROW ? row : null
+}
+
+/**
+ * `parseRange`, plus whole columns (`A:C`) and whole rows (`3:9`), which
+ * some writers use in range lists; they become full-height or full-width
+ * rectangles.
+ */
+export function parseArea(text: string): CellRange | null {
+  const range = parseRange(text)
+
+  if (range !== null) {
+    return range
+  }
+
+  const colon = text.indexOf(':')
+
+  if (colon === -1 || text.indexOf(':', colon + 1) !== -1) {
+    return null
+  }
+
+  const start = text.slice(0, colon)
+  const end = text.slice(colon + 1)
+  const firstColumn = readLine(start, true)
+  const lastColumn = readLine(end, true)
+
+  if (firstColumn !== null && lastColumn !== null) {
+    return {
+      top: 1,
+      bottom: MAX_ROW,
+      left: Math.min(firstColumn, lastColumn),
+      right: Math.max(firstColumn, lastColumn),
+    }
+  }
+
+  const firstRow = readLine(start, false)
+  const lastRow = readLine(end, false)
+
+  if (firstRow !== null && lastRow !== null) {
+    return {
+      top: Math.min(firstRow, lastRow),
+      bottom: Math.max(firstRow, lastRow),
+      left: 1,
+      right: MAX_COLUMN,
+    }
+  }
+
+  return null
+}
+
 /**
  * Splits a space-separated range list (`sqref`) into ranges, keeping only the
- * ones that parse and at most `maxRanges` of them.
+ * ones that parse (whole columns and rows included) and at most `maxRanges`
+ * of them.
  */
 export function parseRangeList(text: string, maxRanges: number): CellRange[] {
   const ranges: CellRange[] = []
@@ -197,7 +270,7 @@ export function parseRangeList(text: string, maxRanges: number): CellRange[] {
     }
 
     if (index > start) {
-      const range = parseRange(text.slice(start, index))
+      const range = parseArea(text.slice(start, index))
 
       if (range !== null) {
         ranges.push(range)
