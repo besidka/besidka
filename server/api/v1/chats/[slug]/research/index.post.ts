@@ -15,7 +15,12 @@ import {
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
-import { assertGoogleDataRecipient } from '~~/server/utils/google/data-guard'
+import {
+  assertGoogleDataRecipient,
+  flagChatGoogleData,
+  resolveSendGoogleContent,
+} from '~~/server/utils/google/data-guard'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import { getModel } from '#shared/utils/model'
 
 export default defineEventHandler(async (event) => {
@@ -130,8 +135,27 @@ export default defineEventHandler(async (event) => {
       reasoning: message.reasoning,
     }))
 
+  const chatHeldGoogleData = chatHoldsGoogleData({
+    googleDataAt: chat.googleDataAt,
+    messages: chat.messages,
+  })
+  const sendGoogleContent = await resolveSendGoogleContent({
+    db,
+    userId,
+    chatMessages: chat.messages,
+    newMessageParts: body.data.userMessage.parts,
+  })
+
+  if (
+    sendGoogleContent.holdsGoogleContent
+    && (!chat.googleDataAt || sendGoogleContent.newMessage)
+  ) {
+    await flagChatGoogleData(db, chat.id, sendGoogleContent.newMessage)
+  }
+
   await assertGoogleDataRecipient({
-    holdsGoogleData: !!chat.googleDataAt,
+    holdsGoogleData: chatHeldGoogleData
+      || sendGoogleContent.holdsGoogleContent,
     db,
     userId,
     recipient: {

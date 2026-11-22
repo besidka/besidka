@@ -39,6 +39,7 @@ import {
 } from '~~/server/utils/chats/history/search-cursor'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import { fileHoldsNoGoogleContent } from '~~/server/utils/google/data-guard'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import {
@@ -213,25 +214,31 @@ function toChatSummary(row: ChatListRow): McpChatSummary {
   }
 }
 
-/**
- * A content match keeps its snippet, except in a chat that holds Google
- * data: the snippet could quote it, and Google data never leaves through
- * MCP or the Besidka chat tools.
- */
-function snippetOf(
-  chat: ChatListRow,
-  hit: ContentSearchHit,
-): { snippet?: string } {
-  return chat.googleDataAt ? {} : { snippet: cleanSearchSnippet(hit.snippet) }
+function snippetOf(hit: ContentSearchHit): { snippet: string } {
+  return { snippet: cleanSearchSnippet(hit.snippet) }
 }
 
+/**
+ * Title matches and content matches in one list. A content match in a chat
+ * that holds Google data counts as no match at all: neither its snippet nor
+ * the fact that the term occurs in the chat's text leaves through MCP, so
+ * such a chat appears only when its title matches.
+ */
 export function mergeChatSearchResults(
   titleMatches: ChatListRow[],
   contentHits: ContentSearchHit[],
   contentChats: Map<string, ChatListRow>,
 ): McpChatSummary[] {
-  const hitsByChatId = new Map(contentHits.map((hit) => {
-    return [hit.chatId, hit]
+  const visibleHits = contentHits.filter((hit) => {
+    return !contentChats.get(hit.chatId)?.googleDataAt
+  })
+  const flaggedTitleIds = new Set(titleMatches.flatMap((chat) => {
+    return chat.googleDataAt ? [chat.id] : []
+  }))
+  const hitsByChatId = new Map(visibleHits.flatMap((hit) => {
+    return flaggedTitleIds.has(hit.chatId)
+      ? []
+      : [[hit.chatId, hit] as const]
   }))
   const titleIds = new Set(titleMatches.map((chat) => {
     return chat.id
@@ -242,11 +249,11 @@ export function mergeChatSearchResults(
     return {
       ...toChatSummary(chat),
       matchedIn: hit ? 'both' : 'title',
-      ...(hit ? snippetOf(chat, hit) : {}),
+      ...(hit ? snippetOf(hit) : {}),
     }
   })
 
-  for (const hit of contentHits) {
+  for (const hit of visibleHits) {
     const chat = contentChats.get(hit.chatId)
 
     if (!chat || titleIds.has(hit.chatId)) {
@@ -256,7 +263,7 @@ export function mergeChatSearchResults(
     merged.push({
       ...toChatSummary(chat),
       matchedIn: 'content',
-      ...snippetOf(chat, hit),
+      ...snippetOf(hit),
     })
   }
 
@@ -674,7 +681,10 @@ export async function getMcpChat(
       messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
       totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
     }),
-    !!chat.googleDataAt,
+    chatHoldsGoogleData({
+      googleDataAt: chat.googleDataAt,
+      messages: window,
+    }),
   )
   const commandMessageCount = window.filter(isBuiltinCommandMessage).length
   const context = await resolveMcpContextFiles(

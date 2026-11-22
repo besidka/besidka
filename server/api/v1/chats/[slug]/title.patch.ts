@@ -15,6 +15,7 @@ import {
 } from '~~/server/utils/chats/title'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { mayRunWithGoogleData } from '~~/server/utils/google/data-guard'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import { getModel } from '#shared/utils/model'
 import {
   defineEventHandler,
@@ -124,7 +125,10 @@ export default defineEventHandler(async (event) => {
 
   const runtimeConfig = useRuntimeConfig()
   const legalConsent = await readLegalConsent(userId, db)
-  const holdsGoogleData = !!chat.googleDataAt
+  const holdsGoogleData = chatHoldsGoogleData({
+    googleDataAt: chat.googleDataAt,
+    messages: chat.messages,
+  })
   const titleProviderId = gatewayId
     ? undefined
     : getModel(body.data.model).provider?.id
