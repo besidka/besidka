@@ -558,6 +558,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
     'tests/unit/config/mcp-surface.spec.ts',
     'tests/unit/scripts/mcp-version-guard.spec.ts',
   ]
