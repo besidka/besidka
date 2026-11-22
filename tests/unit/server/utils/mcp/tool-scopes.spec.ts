@@ -51,6 +51,7 @@ const DESTRUCTIVE_TOOLS = [
   'revoke_artifact_shares',
   'delete_artifacts',
   'delete_connectors',
+  'disconnect_google',
   'update_skill',
   'delete_skills',
   'set_project_skills',
@@ -195,7 +196,11 @@ describe('mcp tool scopes', () => {
   })
 
   it('puts the connector tools behind their own scopes', () => {
-    for (const name of ['list_connectors', 'get_connector'] as const) {
+    for (const name of [
+      'list_connectors',
+      'get_connector',
+      'list_google_connections',
+    ] as const) {
       expect(getMcpToolRequiredScopes(name), name)
         .toEqual(['connectors:read'])
       expect(isMcpWriteTool(name), name).toBe(false)
@@ -206,6 +211,7 @@ describe('mcp tool scopes', () => {
       'add_connector',
       'update_connector_tools',
       'delete_connectors',
+      'disconnect_google',
     ] as const) {
       expect(getMcpToolRequiredScopes(name), name)
         .toEqual(['connectors:write'])
