@@ -7,10 +7,13 @@ export const GOOGLE_DRIVE_LIST_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_list
 export const GOOGLE_DRIVE_READ_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_read_file`
 export const GOOGLE_DRIVE_SAVE_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_save_file`
 
+export const GOOGLE_DRIVE_SEARCH_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_search`
+
 export const GOOGLE_DRIVE_TOOL_NAMES: readonly string[] = [
   GOOGLE_DRIVE_LIST_TOOL_NAME,
   GOOGLE_DRIVE_READ_TOOL_NAME,
   GOOGLE_DRIVE_SAVE_TOOL_NAME,
+  GOOGLE_DRIVE_SEARCH_TOOL_NAME,
 ]
 
 export const GOOGLE_DRIVE_FILE_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/
@@ -184,6 +187,11 @@ const TOOL_STEP_TITLES: Readonly<Record<string, {
     pending: 'Saving a file to Google Drive',
     done: 'Saved a file to Google Drive',
     failed: 'Saving a file to Google Drive failed',
+  },
+  [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: {
+    pending: 'Searching Google Drive',
+    done: 'Searched Google Drive',
+    failed: 'Searching Google Drive failed',
   },
 }
 

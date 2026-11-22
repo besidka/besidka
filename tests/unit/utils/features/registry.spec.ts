@@ -130,16 +130,17 @@ describe('feature registry', () => {
     }
   })
 
-  it('ships the Google Drive and bring-your-own client flags only', () => {
+  it('ships the Google Drive, own client and Gmail flags only', () => {
     expect(FEATURE_REGISTRY['google.drive'].available).toBe(true)
     expect(FEATURE_REGISTRY['google.byo'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.gmail'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.calendar'].available).toBe(false)
+  })
 
-    for (const key of [
-      'google.calendar',
-      'google.gmail',
-    ] as const) {
-      expect(FEATURE_REGISTRY[key].available).toBe(false)
-    }
+  it('lists the own-client and Gmail flags in Labs for admins only', () => {
+    expect(FEATURE_REGISTRY['google.byo'].adminOnly).toBe(true)
+    expect(FEATURE_REGISTRY['google.gmail'].adminOnly).toBe(true)
+    expect(FEATURE_REGISTRY['google.drive'].adminOnly).toBeUndefined()
   })
 
   it('nests Gmail under the bring-your-own Google client', () => {

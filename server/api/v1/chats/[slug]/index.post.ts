@@ -1539,6 +1539,8 @@ export default defineEventHandler(async (event) => {
       'tool-approvals',
       'besidka-tools',
       'google.drive',
+      'google.byo',
+      'google.gmail',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -1547,6 +1549,8 @@ export default defineEventHandler(async (event) => {
   const googleSendPlan = await planGoogleSendTools({
     toolApprovalsActive,
     googleDriveActive: sendFeatures.isFeatureActive('google.drive'),
+    googleByoActive: sendFeatures.isFeatureActive('google.byo'),
+    googleGmailActive: sendFeatures.isFeatureActive('google.gmail'),
     userId,
     chatPublicId: chat.id,
     gatewayId,

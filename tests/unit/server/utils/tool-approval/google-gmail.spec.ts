@@ -1,0 +1,326 @@
+import { describe, expect, it } from 'vitest'
+import {
+  GOOGLE_BYO_TOOL_NAMES,
+  GOOGLE_BYO_TOOL_SCOPES,
+  GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
+  GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+  GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+  GOOGLE_GMAIL_TOOL_NAMES,
+  getGoogleGmailToolStepTitle,
+  isGoogleGmailToolName,
+  isGoogleOnceOnlyReadTool,
+} from '#shared/utils/google-gmail-tools'
+import { GOOGLE_DRIVE_SEARCH_TOOL_NAME } from '#shared/utils/google-drive-tools'
+import {
+  GOOGLE_TOOL_CHAT_GRANT_LABELS,
+  GOOGLE_TOOL_PROPERTIES,
+  googleToolResultHoldsContent,
+} from '#shared/utils/google-tool-approvals'
+import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
+import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import { resolveToolApproval } from '~~/server/utils/tool-approval/policy'
+import type {
+  ToolApprovalDescriptor,
+  ToolApprovalGrant,
+} from '~~/server/utils/tool-approval/policy'
+import {
+  createApprovalState,
+  recordTaint,
+} from '~~/server/utils/tool-approval/state'
+import {
+  hasGoogleToolResult,
+  redactGoogleToolPartsForPersistence,
+} from '~~/server/utils/tool-approval/google'
+
+const HASH = 'a'.repeat(64)
+
+function descriptor(
+  toolName: string,
+  overrides: Partial<ToolApprovalDescriptor> = {},
+): ToolApprovalDescriptor {
+  return {
+    family: 'google',
+    access: 'read',
+    toolName,
+    definitionHash: HASH,
+    destructiveHint: false,
+    ...overrides,
+  }
+}
+
+function grant(toolName: string): ToolApprovalGrant {
+  return { definitionHash: HASH, connectorId: null, toolName }
+}
+
+function decide(
+  toolName: string,
+  overrides: Partial<ToolApprovalDescriptor> = {},
+  extra: Record<string, unknown> = {},
+) {
+  return resolveToolApproval({
+    descriptor: descriptor(toolName, overrides),
+    state: recordTaint(createApprovalState(), 'google'),
+    permissionMode: 'allow',
+    alwaysGrant: grant(toolName),
+    chatGrant: grant(toolName),
+    isAlwaysGrantDefault: false,
+    ...extra,
+  })
+}
+
+describe('the Gmail and Drive search tools in the approval policy', () => {
+  it('lets Gmail search run under its own chat grant and offers it', () => {
+    const asked = resolveToolApproval({
+      descriptor: descriptor(GOOGLE_GMAIL_SEARCH_TOOL_NAME),
+      state: createApprovalState(),
+      permissionMode: 'ask',
+    })
+    const granted = resolveToolApproval({
+      descriptor: descriptor(GOOGLE_GMAIL_SEARCH_TOOL_NAME),
+      state: createApprovalState(),
+      permissionMode: 'ask',
+      chatGrant: grant(GOOGLE_GMAIL_SEARCH_TOOL_NAME),
+    })
+
+    expect(asked.rememberOptions).toEqual(['once', 'chat'])
+    expect(granted.status.type).toBe('not-applicable')
+  })
+
+  it('asks for every thread read with Allow once only, whatever grant exists',
+    () => {
+      const decision = decide(GOOGLE_GMAIL_READ_THREAD_TOOL_NAME)
+
+      expect(decision.rule).toBe(11)
+      expect(decision.status.type).toBe('user-approval')
+      expect(decision.rememberOptions).toEqual(['once'])
+    })
+
+  it('asks for a draft with Allow once only, whatever grant, mode or taint',
+    () => {
+      const decision = decide(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME, {
+        access: 'write',
+        destructiveHint: true,
+      })
+
+      expect(decision.reason).toBe('always-ask')
+      expect(decision.status.type).toBe('user-approval')
+      expect(decision.rememberOptions).toEqual(['once'])
+    })
+
+  it('never offers Always allow for any of the four tools', () => {
+    for (const toolName of GOOGLE_BYO_TOOL_NAMES) {
+      for (const permissionMode of ['ask', 'allow'] as const) {
+        const decision = decide(toolName, {}, { permissionMode })
+
+        expect(decision.rememberOptions, toolName).not.toContain('always')
+      }
+    }
+  })
+
+  it('still denies a Blocked Gmail tool', () => {
+    const decision = decide(GOOGLE_GMAIL_SEARCH_TOOL_NAME, {}, {
+      permissionMode: 'blocked',
+    })
+
+    expect(decision.status).toEqual({ type: 'denied', reason: 'blocked' })
+  })
+
+  it('treats the once-only name case-insensitively and no other tool as one',
+    () => {
+      expect(isGoogleOnceOnlyReadTool('Google__Gmail_Read_Thread')).toBe(true)
+      expect(isGoogleOnceOnlyReadTool(GOOGLE_GMAIL_SEARCH_TOOL_NAME))
+        .toBe(false)
+      expect(isGoogleOnceOnlyReadTool(null)).toBe(false)
+    })
+})
+
+describe('the Gmail tool registrations', () => {
+  it('keeps the shared names equal to the registry keys', () => {
+    expect(GOOGLE_BYO_TOOL_NAMES).toEqual([
+      'google__gmail_search',
+      'google__gmail_read_thread',
+      'google__gmail_create_draft',
+      'google__drive_search',
+    ])
+    expect(Object.keys(GOOGLE_TOOL_PROPERTIES)).toEqual(
+      expect.arrayContaining([...GOOGLE_BYO_TOOL_NAMES]),
+    )
+  })
+
+  it('needs the narrowest scope for each tool', () => {
+    expect(GOOGLE_BYO_TOOL_SCOPES).toEqual({
+      [GOOGLE_GMAIL_SEARCH_TOOL_NAME]: [GOOGLE_SCOPES.gmailReadonly],
+      [GOOGLE_GMAIL_READ_THREAD_TOOL_NAME]: [GOOGLE_SCOPES.gmailReadonly],
+      [GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME]: [GOOGLE_SCOPES.gmailCompose],
+      [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: [GOOGLE_SCOPES.driveReadonly],
+    })
+  })
+
+  it('labels the chat grant of the two searches exactly', () => {
+    expect(GOOGLE_TOOL_CHAT_GRANT_LABELS[GOOGLE_GMAIL_SEARCH_TOOL_NAME])
+      .toBe('Allow searching all your Gmail in this chat')
+    expect(GOOGLE_TOOL_CHAT_GRANT_LABELS[GOOGLE_DRIVE_SEARCH_TOOL_NAME])
+      .toBe('Allow searching any file in your Google Drive in this chat')
+    expect(GOOGLE_TOOL_CHAT_GRANT_LABELS[GOOGLE_GMAIL_READ_THREAD_TOOL_NAME])
+      .toBeUndefined()
+  })
+
+  it('says a draft returns no Google content and the rest do', () => {
+    expect(GOOGLE_TOOL_PROPERTIES[GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME])
+      .toEqual({ returnsGoogleContent: false })
+    expect(googleToolResultHoldsContent(
+      GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
+      { references: [{ id: 'r-1' }] },
+    )).toBe(false)
+    expect(googleToolResultHoldsContent(
+      GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
+      { references: [{ id: 't1' }] },
+    )).toBe(true)
+  })
+
+  it('does not count an empty search as Google content', () => {
+    for (const toolName of [
+      GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+      GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+    ]) {
+      expect(googleToolResultHoldsContent(toolName, { references: [] }))
+        .toBe(false)
+      expect(googleToolResultHoldsContent(
+        toolName,
+        { references: [{ id: 't1' }] },
+      )).toBe(true)
+    }
+  })
+
+  it('names the Gmail tools in the step title and nothing but Gmail', () => {
+    expect(isGoogleGmailToolName('Google__Gmail_Search')).toBe(true)
+    expect(isGoogleGmailToolName(GOOGLE_DRIVE_SEARCH_TOOL_NAME)).toBe(false)
+
+    for (const toolName of GOOGLE_GMAIL_TOOL_NAMES) {
+      for (const [isPending, isFailed] of [
+        [true, false],
+        [false, false],
+        [false, true],
+      ] as const) {
+        const title = getGoogleGmailToolStepTitle(toolName, isPending, isFailed)
+
+        expect(title).toContain('Gmail')
+        expect(title).not.toContain('Google')
+      }
+    }
+
+    expect(getGoogleGmailToolStepTitle('google__gmail_other', false, false))
+      .toBe('Used Gmail')
+  })
+})
+
+describe('what reaches D1 for the Gmail tools', () => {
+  const searchOutput = {
+    references: [{
+      id: '18c0ffee',
+      kind: 'gmail-thread',
+      link: 'https://mail.google.com/mail/#all/18c0ffee',
+      date: '2026-11-21T10:00:00.000Z',
+    }],
+    count: 1,
+    threads: '<untrusted_tool_result>from: Eve | subject: Secret plans'
+      + '</untrusted_tool_result>',
+  }
+
+  it('keeps a thread id, link and date and never the framed text', () => {
+    const [part] = redactGoogleToolPartsForPersistence([{
+      type: `tool-${GOOGLE_GMAIL_SEARCH_TOOL_NAME}`,
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { query: 'from:eve' },
+      output: searchOutput,
+    }] as never) as unknown as Array<{ output: Record<string, unknown> }>
+
+    expect(JSON.stringify(part!.output)).not.toContain('Secret plans')
+    expect(JSON.stringify(part!.output)).not.toContain('from: Eve')
+    expect(part!.output.bodyRemoved).toBe(true)
+    expect(part!.output.references).toEqual([
+      expect.objectContaining({
+        id: '18c0ffee',
+        kind: 'gmail-thread',
+        link: 'https://mail.google.com/mail/#all/18c0ffee',
+        date: '2026-11-21T10:00:00.000Z',
+      }),
+    ])
+  })
+
+  it('keeps only the draft id and link of a created draft', () => {
+    const [part] = redactGoogleToolPartsForPersistence([{
+      type: `tool-${GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME}`,
+      toolCallId: 'call-2',
+      state: 'output-available',
+      input: { to: [{ email: 'a@example.com' }], subject: 's', body: 'b' },
+      output: {
+        references: [{
+          id: 'r-1',
+          kind: 'gmail-draft',
+          link: 'https://mail.google.com/mail/#drafts',
+        }],
+        created: true,
+        message: 'The draft was saved',
+      },
+    }] as never) as unknown as Array<{ output: Record<string, unknown> }>
+
+    expect(Object.keys(part!.output).sort()).toEqual([
+      'bodyRemoved',
+      'note',
+      'references',
+    ])
+  })
+
+  it('flags no chat for a draft but does for a search with a hit', () => {
+    const draftPart = {
+      type: `tool-${GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME}`,
+      state: 'output-available',
+      output: { references: [{ id: 'r-1' }] },
+    }
+    const searchPart = {
+      type: `tool-${GOOGLE_GMAIL_SEARCH_TOOL_NAME}`,
+      state: 'output-available',
+      output: { references: [{ id: '18c0ffee' }] },
+    }
+    const emptySearchPart = {
+      type: `tool-${GOOGLE_GMAIL_SEARCH_TOOL_NAME}`,
+      state: 'output-available',
+      output: { references: [] },
+    }
+
+    expect(hasGoogleToolResult([draftPart])).toBe(false)
+    expect(hasGoogleToolResult([searchPart])).toBe(true)
+    expect(hasGoogleToolResult([emptySearchPart])).toBe(false)
+  })
+})
+
+describe('readGmailDraftApprovalView', () => {
+  it('lists every recipient, the subject and the whole body', () => {
+    const body = 'line\n'.repeat(500)
+    const view = readGmailDraftApprovalView({
+      to: [{ email: 'a@example.com', name: 'Ann' }, { email: 'b@example.com' }],
+      cc: [{ email: 'c@example.com' }],
+      bcc: [{ email: 'd@example.com' }],
+      subject: 'Plans',
+      body,
+      replyToThreadId: '18c0ffee',
+    })
+
+    expect(view).toEqual({
+      to: ['Ann <a@example.com>', 'b@example.com'],
+      cc: ['c@example.com'],
+      bcc: ['d@example.com'],
+      subject: 'Plans',
+      body,
+      isReply: true,
+    })
+  })
+
+  it('is null for an input that is not a draft', () => {
+    expect(readGmailDraftApprovalView(null)).toBeNull()
+    expect(readGmailDraftApprovalView({ query: 'x' })).toBeNull()
+    expect(readGmailDraftApprovalView({ subject: 's' })).toBeNull()
+  })
+})

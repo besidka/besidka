@@ -1227,7 +1227,7 @@ describe('Google Drive tools', () => {
           runTool(GOOGLE_DRIVE_LIST_TOOL_NAME, {}, tools),
         )
 
-        expect(message).toContain('limit of Google Drive tool calls')
+        expect(message).toContain('limit of Google tool calls')
         expect(message).toContain(String(GOOGLE_DRIVE_CALLS_PER_MESSAGE))
       })
 

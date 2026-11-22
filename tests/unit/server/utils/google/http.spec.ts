@@ -53,6 +53,52 @@ describe('googleFetchJson', () => {
       .toBe('www.googleapis.com')
   })
 
+  it('allows the Gmail API host and no lookalike of it', async () => {
+    expect(assertGoogleUrl('https://gmail.googleapis.com/gmail/v1/users/me/drafts')
+      .hostname).toBe('gmail.googleapis.com')
+
+    for (const url of [
+      'http://gmail.googleapis.com/gmail/v1/users/me/drafts',
+      'https://gmail.googleapis.com.evil.example/gmail/v1',
+      'https://mail.google.com/mail/u/0/',
+      'https://gmail.googleapis.com:8443/gmail/v1',
+      'https://www.googleapis.com.gmail.evil.example/gmail/v1',
+    ]) {
+      const fetchImpl = vi.fn()
+      const failure = await failureOf(
+        googleFetchJson(url, { method: 'GET' }, { fetchImpl }),
+      )
+
+      expect(failure.status).toBe(500)
+      expect(fetchImpl).not.toHaveBeenCalled()
+    }
+  })
+
+  it('reads a larger answer only when the caller raises the cap', async () => {
+    const big = 'x'.repeat(GOOGLE_RESPONSE_MAX_BYTES + 100)
+    const fetchImpl = vi.fn(async () => {
+      return new Response(JSON.stringify({ text: big }))
+    })
+    const url = 'https://gmail.googleapis.com/gmail/v1/users/me/threads/t1'
+    const refused = await failureOf(
+      googleFetchJson(url, { method: 'GET' }, { fetchImpl }),
+    )
+    const allowed = await googleFetchJson(
+      url,
+      { method: 'GET' },
+      { fetchImpl, maxResponseBytes: GOOGLE_RESPONSE_MAX_BYTES * 2 },
+    )
+    const stillCapped = await failureOf(googleFetchJson(
+      url,
+      { method: 'GET' },
+      { fetchImpl, maxResponseBytes: 1000 },
+    ))
+
+    expect(refused.status).toBe(502)
+    expect(allowed.body?.text).toBe(big)
+    expect(stillCapped.status).toBe(502)
+  })
+
   it('posts a form body with manual redirects and parses JSON', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ access_token: 'a' }))
     const result = await googleFetchJson(

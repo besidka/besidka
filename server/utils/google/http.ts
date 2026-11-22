@@ -8,12 +8,13 @@ export const GOOGLE_DOWNLOAD_TIMEOUT_MS = 60_000
 /**
  * Every host the server calls for Google. The authorization endpoint on
  * `accounts.google.com` is opened by the browser, never fetched here, so it
- * is not listed. `www.googleapis.com` is the Drive API (metadata, export and
- * media download).
+ * is not listed. `www.googleapis.com` is the Drive API (metadata, export,
+ * media download and search); `gmail.googleapis.com` is the Gmail API.
  */
 export const GOOGLE_FETCH_HOSTS: ReadonlySet<string> = new Set([
   'oauth2.googleapis.com',
   'www.googleapis.com',
+  'gmail.googleapis.com',
 ])
 
 const FIRST_REDIRECT_STATUS = 300
@@ -35,6 +36,7 @@ export interface GoogleFetchRequest {
 export interface GoogleFetchOptions {
   fetchImpl?: GoogleFetchImplementation
   timeoutMs?: number
+  maxResponseBytes?: number
 }
 
 export interface GoogleJsonResponse {
@@ -79,11 +81,13 @@ export function unreachable() {
   })
 }
 
-function responseTooLarge() {
+export const GOOGLE_RESPONSE_TOO_LARGE_MESSAGE = 'Google answer too large'
+
+function responseTooLarge(maxBytes: number) {
   return createError({
-    message: 'Google answer too large',
+    message: GOOGLE_RESPONSE_TOO_LARGE_MESSAGE,
     status: 502,
-    why: `The answer exceeded ${GOOGLE_RESPONSE_MAX_BYTES} bytes`,
+    why: `The answer exceeded ${maxBytes} bytes`,
     fix: 'Try again later',
   })
 }
@@ -173,7 +177,7 @@ export async function readCappedText(
     if (received > maxBytes) {
       await reader.cancel()
 
-      throw responseTooLarge()
+      throw responseTooLarge(maxBytes)
     }
 
     text += decoder.decode(value, { stream: true })
@@ -259,7 +263,10 @@ export async function googleFetchJson(
       throw redirectRefused()
     }
 
-    const text = await readCappedText(response)
+    const text = await readCappedText(
+      response,
+      options.maxResponseBytes ?? GOOGLE_RESPONSE_MAX_BYTES,
+    )
 
     return {
       status: response.status,

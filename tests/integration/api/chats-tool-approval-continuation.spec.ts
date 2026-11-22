@@ -256,6 +256,17 @@ vi.mock('~~/server/utils/google/drive-picked', async (importOriginal) => {
   }
 })
 
+vi.mock('~~/server/utils/google/tokens', async (importOriginal) => {
+  return {
+    ...await importOriginal<typeof import('~~/server/utils/google/tokens')>(),
+    getGoogleAccessToken: async () => ({
+      status: 'ok',
+      accessToken: 'byo-token',
+      expiresAt: null,
+    }),
+  }
+})
+
 vi.mock('~~/server/utils/google/drive-save', () => ({
   saveFileToGoogleDrive: (...args: unknown[]) => mocks.saveFile!(...args),
 }))
@@ -2415,6 +2426,285 @@ describe('tool approval continuation', () => {
         await answer(paused, [{ approvalId, approved: false }])
 
         expect(mocks.saveFile).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('with the real Gmail tools', () => {
+      const MAIL_SUBJECT = 'SECRET MERGER SUBJECT'
+      const MAIL_SENDER = 'eve@evil.example'
+      const MAIL_SNIPPET = 'SECRET MERGER SNIPPET'
+      const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
+      let gmailFetch: ReturnType<typeof vi.fn>
+
+      function outsideFrames(prompt: string): string {
+        return prompt.replace(FRAME, '')
+      }
+
+      async function continueRound(
+        messageId: string,
+        round: number,
+        steps: Array<Array<Record<string, unknown>>>,
+      ) {
+        return await request({
+          servers: [linear],
+          steps,
+          body: { continue: { messageId, round } },
+        })
+      }
+
+      beforeEach(async () => {
+        const { buildGoogleByoTools } = await import(
+          '~~/server/utils/google/byo-tools'
+        )
+
+        gmailFetch = vi.fn(async (input: string) => {
+          const url = new URL(input)
+
+          if (url.pathname === '/gmail/v1/users/me/messages') {
+            return Response.json({ messages: [{ id: 'm1', threadId: 't1' }] })
+          }
+
+          if (url.pathname === '/gmail/v1/users/me/messages/m1') {
+            return Response.json({
+              id: 'm1',
+              threadId: 't1',
+              internalDate: '1763719200000',
+              snippet: MAIL_SNIPPET,
+              payload: {
+                headers: [
+                  { name: 'From', value: `Eve <${MAIL_SENDER}>` },
+                  { name: 'Subject', value: MAIL_SUBJECT },
+                  { name: 'Date', value: 'Fri, 21 Nov 2025 10:00:00 +0000' },
+                ],
+              },
+            })
+          }
+
+          if (url.pathname === '/gmail/v1/users/me/drafts') {
+            return Response.json({
+              id: 'r-1',
+              message: { id: 'm9', threadId: 't9' },
+            })
+          }
+
+          return new Response('{}', { status: 404 })
+        })
+
+        const build = (grants: Record<string, string> = {}) => {
+          return buildGoogleByoTools({
+            db: {} as never,
+            kv: {} as never,
+            userId: 1,
+            grantedScopes: [
+              'https://www.googleapis.com/auth/gmail.readonly',
+              'https://www.googleapis.com/auth/gmail.compose',
+              'https://www.googleapis.com/auth/drive.readonly',
+            ],
+            chatGrantHashes: grants,
+            logger: { set: vi.fn() },
+            fetchImpl: gmailFetch as never,
+          })
+        }
+        const hash = (await build()).entries
+          .get('google__gmail_search')!.descriptor.definitionHash!
+
+        mocks.googleSend = await build({ google__gmail_search: hash })
+      })
+
+      async function pauseAfterSearch() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-g', 'google__gmail_search', {
+              query: 'merger',
+            }),
+            toolCallChunks('call-w', 'google__gmail_create_draft', {
+              to: [{ email: 'alice@example.com' }],
+              subject: 'Re: plans',
+              body: 'Hello Alice',
+            }),
+          ],
+        })
+      }
+
+      function draftPosts() {
+        return gmailFetch.mock.calls.filter((call) => {
+          return String(call[0]).endsWith('/drafts')
+        })
+      }
+
+      it('stores the thread as a reference, keeps the framed mail in KV while '
+        + 'the draft waits, and creates the draft once approved', async () => {
+        const paused = await pauseAfterSearch()
+        const { toolApprovalResultIdOf, toolApprovalResultKey } = await import(
+          '~~/server/utils/tool-approval/kv'
+        )
+        const key = toolApprovalResultKey(
+          await toolApprovalResultIdOf(paused.messagePublicId, 'call-g'),
+        )
+        const [approvalId] = paused.approvalIds
+        const storedSearch = findPart(
+          paused.assistantParts,
+          'tool-google__gmail_search',
+        )
+
+        expect(storedSearch).toMatchObject({
+          state: 'output-available',
+          output: {
+            bodyRemoved: true,
+            references: [{
+              id: 't1',
+              kind: 'gmail-thread',
+              link: 'https://mail.google.com/mail/#all/t1',
+              date: '2025-11-21T10:00:00.000Z',
+            }],
+          },
+        })
+        expect(JSON.stringify(paused.assistantParts))
+          .not.toContain(MAIL_SUBJECT)
+        expect(JSON.stringify(paused.assistantParts))
+          .not.toContain(MAIL_SENDER)
+        expect(JSON.stringify(paused.assistantParts))
+          .not.toContain(MAIL_SNIPPET)
+        expect(mocks.kv.get(key)).toContain(MAIL_SUBJECT)
+        expect(mocks.kv.get(key)).toContain('<untrusted_tool_result')
+        expect(draftPosts()).toHaveLength(0)
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__gmail_create_draft',
+          rememberOptions: ['once'],
+          summary: 'Create a Gmail draft "Re: plans" to alice@example.com',
+        })
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Drafted it.')])
+        const update = mocks.updates.at(-1)!
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(draftPosts()).toHaveLength(1)
+        expect(prompt).toContain(MAIL_SUBJECT)
+        expect(outsideFrames(prompt)).not.toContain(MAIL_SUBJECT)
+        expect(outsideFrames(prompt)).not.toContain(MAIL_SENDER)
+        expect(outsideFrames(prompt)).not.toContain(MAIL_SNIPPET)
+        expect(prompt).not.toContain('#all/t1')
+        expect(JSON.stringify(update.parts)).not.toContain(MAIL_SUBJECT)
+        expect(findPart(update.parts, 'tool-google__gmail_create_draft'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{ id: 'r-1', kind: 'gmail-draft' }],
+            },
+          })
+        expect(mocks.kv.has(key)).toBe(false)
+      })
+
+      it('gives the model no mail text at all when the stash is gone',
+        async () => {
+          const paused = await pauseAfterSearch()
+          const kvModule = await import('~~/server/utils/tool-approval/kv')
+          const { toolApprovalResultIdOf, toolApprovalResultKey } = kvModule
+
+          mocks.kv.delete(toolApprovalResultKey(
+            await toolApprovalResultIdOf(paused.messagePublicId, 'call-g'),
+          ))
+
+          const { doStream } = await answer(paused, [
+            { approvalId: paused.approvalIds[0], approved: true },
+          ])
+          const prompt = JSON.stringify(
+            (doStream.mock.calls[0]?.[0] as any)?.prompt,
+          )
+
+          expect(prompt).not.toContain(MAIL_SUBJECT)
+          expect(prompt).not.toContain(MAIL_SENDER)
+          expect(prompt).not.toContain(MAIL_SNIPPET)
+          expect(prompt).toContain('could not be kept')
+        })
+
+      it('does not create the draft when the user denies it', async () => {
+        const paused = await pauseAfterSearch()
+
+        await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: false },
+        ])
+
+        expect(draftPosts()).toHaveLength(0)
+      })
+
+      it('gives the model no mail text when a round continues a reply that '
+        + 'searched Gmail', async () => {
+        mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+        mocks.chatMessages.push(
+          {
+            id: 'row-user',
+            publicId: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Go' }],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+          {
+            id: 'row-assistant',
+            publicId: 'assistant-1',
+            role: 'assistant',
+            parts: [
+              { type: 'step-start' },
+              {
+                type: 'tool-google__gmail_search',
+                toolCallId: 'call-mail-1',
+                state: 'output-available',
+                input: { query: 'merger' },
+                output: {
+                  references: [{
+                    id: 't1',
+                    kind: 'gmail-thread',
+                    title: MAIL_SUBJECT,
+                    link: 'https://mail.google.com/mail/#all/t1',
+                    date: '2025-11-21T10:00:00.000Z',
+                  }],
+                  bodyRemoved: true,
+                  note: 'The content was not kept.',
+                },
+              },
+              { type: 'text', text: 'Found it.' },
+              {
+                type: 'data-tool-budget',
+                id: 'tool-budget-1',
+                data: {
+                  round: 1,
+                  maxRounds: 10,
+                  reason: 'steps',
+                  model: MODEL_ID,
+                  gateway: null,
+                  reasoning: 'off',
+                  connectorIds: ['conn-linear'],
+                },
+              },
+            ],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+        )
+
+        const { doStream } = await continueRound('assistant-1', 2, [
+          textChunks('Carried on.'),
+        ])
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt ?? [],
+        )
+
+        expect(prompt).toContain('t1')
+        expect(outsideFrames(prompt)).not.toContain(MAIL_SUBJECT)
+        expect(prompt).not.toContain('mail.google.com')
       })
     })
   })

@@ -37,6 +37,20 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
     returnsGoogleContent: true,
     emptyListHoldsNoContent: true,
   },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_search`]: {
+    returnsGoogleContent: true,
+    emptyListHoldsNoContent: true,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: {
+    returnsGoogleContent: true,
+    emptyListHoldsNoContent: true,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}gmail_read_thread`]: {
+    returnsGoogleContent: true,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`]: {
+    returnsGoogleContent: false,
+  },
 }
 
 /**
@@ -49,6 +63,10 @@ export const GOOGLE_TOOL_CHAT_GRANT_LABELS: Readonly<Record<string, string>>
       + 'you picked from Google Drive in this chat',
     [`${GOOGLE_TOOL_NAME_PREFIX}drive_list_picked`]: 'Allow listing the '
       + 'files you picked from Google Drive in this chat',
+    [`${GOOGLE_TOOL_NAME_PREFIX}drive_search`]: 'Allow searching any file '
+      + 'in your Google Drive in this chat',
+    [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: 'Allow searching all your '
+      + 'Gmail in this chat',
   }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
