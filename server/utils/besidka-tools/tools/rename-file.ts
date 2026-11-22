@@ -43,7 +43,10 @@ export const renameFileBesidkaTool = defineBesidkaTool({
       + quoteText(input.name)
   },
   handler: async (input: RenameFileInput, context) => {
-    const file = await renameMcpFile(context.db, context.userId, input)
+    const file = await renameMcpFile(context.db, context.userId, {
+      ...input,
+      googleContent: context.googleContent ?? 'hidden',
+    })
 
     context.log({ file_id: file.id })
 

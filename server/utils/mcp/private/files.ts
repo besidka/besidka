@@ -327,13 +327,20 @@ export async function createMcpFile(
 export async function renameMcpFile(
   db: DbClient,
   userId: number,
-  input: { fileId: string, name: string },
+  input: {
+    fileId: string
+    name: string
+    googleContent?: GoogleContentAccess
+  },
 ) {
   const name = normalizeMcpFileName(input.name)
 
-  if (decodeKnowledgeEntityId(input.fileId) === null) {
-    throw createFileNotFoundError(input.fileId)
-  }
+  await resolveOwnedMcpFile(
+    db,
+    userId,
+    input.fileId,
+    input.googleContent ?? 'hidden',
+  )
 
   const renamed = await db.update(schema.files)
     .set({ name })
