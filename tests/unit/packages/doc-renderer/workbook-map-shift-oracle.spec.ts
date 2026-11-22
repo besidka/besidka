@@ -81,6 +81,10 @@ const SHEET_PREFIXES = [
   '\'It\'\'s\'!',
   '\'S 1\'!',
   '\'A1\'!',
+  'Jan!',
+  'S!',
+  'Tax!',
+  'Jan:Mar!',
   'Sheet1:Sheet3!',
   '\'Sheet1:Sheet3\'!',
   'Лист1!',
@@ -237,10 +241,15 @@ describe('shiftFormula against an independent shifter', () => {
   it('refuses a prefix that could also be a reference', () => {
     expect(shiftFormula('Q1!A1', 1, 0)).toBeNull()
     expect(shiftFormula('A1:B2!C3', 1, 0)).toBeNull()
-    expect(shiftFormula('AB:Sheet3!A1', 1, 0)).toBeNull()
     expect(shiftFormula('1:Sheet2!A1', 1, 0)).toBeNull()
     expect(shiftFormula('Sheet1:A1!B2', 1, 0)).toBeNull()
     expect(shiftFormula('$A$1!B2', 1, 0)).toBeNull()
-    expect(shiftFormula('Jan:Mar!D4', 1, 0)).toBeNull()
+  })
+
+  it('keeps short sheet names made of letters', () => {
+    expect(shiftFormula('Jan!A1', 1, 0)).toBe('Jan!A2')
+    expect(shiftFormula('SUM(S!A1:S!B1)', 1, 0)).toBe('SUM(S!A2:S!B2)')
+    expect(shiftFormula('Tax!$B$2*C3', 0, 1)).toBe('Tax!$B$2*D3')
+    expect(shiftFormula('Jan:Mar!D4', 1, 0)).toBe('Jan:Mar!D5')
   })
 })

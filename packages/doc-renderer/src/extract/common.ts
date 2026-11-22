@@ -846,12 +846,15 @@ export class ClosingTagFinder {
       } else if (next === SLASH) {
         const close = data.indexOf(GREATER_THAN, open)
 
-        if (close === -1) {
-          if (data.length - open <= this.tagBytesMax) {
-            this.keep(data, open)
-          }
+        if (close === -1 && data.length - open <= this.tagBytesMax) {
+          this.keep(data, open)
 
           return null
+        }
+
+        if (close === -1) {
+          index = open + 1
+          continue
         }
 
         if (

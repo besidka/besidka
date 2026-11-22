@@ -426,6 +426,18 @@ describe('renderWorkbookMap shared formulas and sheet facts', () => {
     expect(expanded.get('6:4')).toBe(shiftFormula('A2*$C$1', 4, 2))
   })
 
+  it('writes out a shared group that reads a short tab name', () => {
+    const cells: WorkbookCell[] = [{ row: 2, column: 3, formula: 'Tax!$B$1*B2' }]
+
+    for (let row = 3; row <= 9; row += 1) {
+      cells.push({ row, column: 3, formulaKind: 'shared', sharedFrom: 'C2' })
+    }
+
+    const { text } = renderWorkbookMap(model([sheet({ cells })]))
+
+    expect(formulaSection(text, 'Lines')).toEqual(['- C2:C9 ↓ =Tax!$B$1*B2'])
+  })
+
   it('lists followers of an unread or ambiguous master as copies', () => {
     const cells: WorkbookCell[] = [
       { row: 1, column: 1, formula: 'B1*2' },

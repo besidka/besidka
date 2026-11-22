@@ -215,9 +215,13 @@ function readWholeLine(
   return part !== null && part.end === name.length ? part.part : null
 }
 
-function isReferenceLike(name: string): boolean {
+/**
+ * Whether a name before `!` could also be read as a reference: a cell such
+ * as `Q1` or a row number. Letters alone (`Jan`, `Tax`, `S`) cannot be a
+ * reference there, because a whole column needs a colon.
+ */
+function isAmbiguousPrefix(name: string): boolean {
   return readCellReference(name) !== null
-    || readWholeLine(name, true) !== null
     || readWholeLine(name, false) !== null
 }
 
@@ -331,7 +335,7 @@ export function tokenizeFormula(text: string): TokenizedFormula {
     }
 
     if (next === EXCLAMATION) {
-      isMalformed = isMalformed || isReferenceLike(name)
+      isMalformed = isMalformed || isAmbiguousPrefix(name)
       push({ kind: 'sheet', text: `${name}!` }, end + 1)
       continue
     }
@@ -355,8 +359,8 @@ export function tokenizeFormula(text: string): TokenizedFormula {
 
       if (isSheetRange) {
         isMalformed = isMalformed
-          || isReferenceLike(name)
-          || isReferenceLike(second)
+          || isAmbiguousPrefix(name)
+          || isAmbiguousPrefix(second)
         push({ kind: 'sheet', text: `${name}:${second}!` }, secondEnd + 1)
         continue
       }
@@ -482,6 +486,44 @@ export function shiftTokens(
   }
 
   return text
+}
+
+/**
+ * Whether `shiftTokens(formula, rowDelta, columnDelta)` equals `target`,
+ * compared piece by piece in place, so only shifted references allocate.
+ */
+export function shiftMatches(
+  formula: TokenizedFormula,
+  rowDelta: number,
+  columnDelta: number,
+  target: string,
+): boolean {
+  if (formula.isMalformed || formula.hasExternal) {
+    return false
+  }
+
+  if (formula.hasStructured && columnDelta !== 0) {
+    return false
+  }
+
+  let offset = 0
+
+  for (const token of formula.tokens) {
+    const isReference = token.kind === 'cell'
+      || token.kind === 'columns'
+      || token.kind === 'rows'
+    const piece = isReference
+      ? shiftToken(token, rowDelta, columnDelta)
+      : token.text
+
+    if (piece === null || !target.startsWith(piece, offset)) {
+      return false
+    }
+
+    offset += piece.length
+  }
+
+  return offset === target.length
 }
 
 export function shiftFormula(

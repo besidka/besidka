@@ -3,6 +3,7 @@ import {
   isInsideBounds,
   relativeFormulaHash,
   shiftBounds,
+  shiftMatches,
   shiftTokens,
   tokenizeFormula,
 } from './formula.ts'
@@ -201,13 +202,19 @@ class Collapser {
     return this.masterTokens
   }
 
-  private shiftFrom(origin: number, target: number, tokens: TokenizedFormula) {
+  private shiftMatchesFrom(
+    origin: number,
+    target: number,
+    tokens: TokenizedFormula,
+    text: string,
+  ): boolean {
     const { table } = this
 
-    return shiftTokens(
+    return shiftMatches(
       tokens,
       (table.rows[target] as number) - (table.rows[origin] as number),
       (table.columns[target] as number) - (table.columns[origin] as number),
+      text,
     )
   }
 
@@ -221,7 +228,7 @@ class Collapser {
 
     const state = this.states[group] as GroupState
     const matches = this.work.spend(state.formula.length)
-      && this.shiftFrom(master, state.masterEntry, tokens) === state.formula
+      && this.shiftMatchesFrom(master, state.masterEntry, tokens, state.formula)
 
     this.groupMatches.set(group, matches)
 
@@ -261,8 +268,12 @@ class Collapser {
 
     const origin = this.originOf(master)
 
-    return this.shiftFrom(origin, entry, this.tokensOf(master))
-      === table.formulas[entry]
+    return this.shiftMatchesFrom(
+      origin,
+      entry,
+      this.tokensOf(master),
+      table.formulas[entry] as string,
+    )
   }
 
   private findRun(
