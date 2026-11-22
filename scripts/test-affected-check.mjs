@@ -3769,7 +3769,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/google-connections\.ts|server\/db\/schemas\/(google-connections|chats|files|keys)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|\.drizzle\/migrations\/[^/]+_gifted_mattie_franklin\/.*)$/,
+        /^(shared\/utils\/google-connections\.ts|server\/db\/schemas\/(google-connections|chats|files|keys)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|\.drizzle\/migrations\/[^/]+_wandering_genesis\/.*)$/,
       tests: googleSchemaTests,
     },
     {

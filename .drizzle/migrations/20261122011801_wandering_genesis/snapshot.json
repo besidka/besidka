@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "a5c6f94e-ef97-4a83-a147-582eb8bc78f9",
+  "id": "5d224a2a-2586-41b2-9849-8eed25f3c992",
   "prevIds": [
     "bb42f299-a2de-41d5-af60-d1efd01dd737"
   ],
@@ -7993,26 +7993,6 @@
       "name": "status",
       "type": "text",
       "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "google_connections",
-      "name": "last_refreshed_at",
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "google_connections",
-      "name": "last_used_at",
-      "type": "integer",
-      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,

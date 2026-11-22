@@ -240,7 +240,6 @@ user and client mode (unique `(user_id, client_mode)`, index on `user_id`):
 | `refresh_token`, `access_token` | text, encrypted with `useEncryptText`, null after revoke | `server/utils/google/tokens.ts` only |
 | `access_token_expires_at` | timestamp | lazy refresh under the KV lock |
 | `status` | text `active`, `needs_reauth` or `revoked`, not null | the access-ended sweep and the reconnect prompt |
-| `last_refreshed_at`, `last_used_at` | timestamp | named by BES-273 with no reader in its routes or card; open for the connections child to use or cut (`last_used_at` costs a D1 write on every token use) |
 
 Columns on existing tables:
 

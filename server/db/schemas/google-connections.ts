@@ -18,8 +18,6 @@ export const googleConnections = snakeCase.table(
     accessToken: text(),
     accessTokenExpiresAt: integer({ mode: 'timestamp' }),
     status: text({ enum: GOOGLE_CONNECTION_STATUSES }).notNull(),
-    lastRefreshedAt: integer({ mode: 'timestamp' }),
-    lastUsedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_google_connections_user_mode')

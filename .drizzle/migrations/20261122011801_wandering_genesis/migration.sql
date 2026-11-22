@@ -10,9 +10,7 @@ CREATE TABLE `google_connections` (
 	`refresh_token` text,
 	`access_token` text,
 	`access_token_expires_at` integer,
-	`status` text NOT NULL,
-	`last_refreshed_at` integer,
-	`last_used_at` integer
+	`status` text NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE `chats` ADD `google_data_at` integer;--> statement-breakpoint
