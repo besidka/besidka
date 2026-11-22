@@ -113,9 +113,14 @@ the design record, the connectors rows shipped in 4.0.0 (see
 [The connectors scopes](#the-connectors-scopes)) and the skills rows in 5.0.0
 (see [The skills scopes](#the-skills-scopes)).
 Each is a new scope, so each ships with a major version bump
-(consent is stored by scope name, and a new tool under an existing scope
-would reach existing clients silently). The design is in
-`docs/agentic-capabilities-roadmap.md`.
+(consent is stored by scope name). The rule from `docs/mcp-marketplaces.md`,
+"When to publish again": a new SCOPE is a major bump; a new tool under an
+existing scope is a minor bump, and it reaches existing grants without a new
+consent screen, which is why the scope's label in
+`app/components/OAuth/ScopeLabel.vue` and its phrase in
+`server/utils/account/security-emails.ts` must be updated in the same change
+(`disconnect_google` under `connectors:write`, 5.5.0, is the precedent). The
+design is in `docs/agentic-capabilities-roadmap.md`.
 
 | Scope | Class | Planned tools | Ticket |
 | --- | --- | --- | --- |
@@ -280,8 +285,9 @@ scope, so it is unticked by default and shown with the warning style.
 - **Where they are registered:** `shared/utils/mcp-oauth-scopes.ts`,
   `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
   "See your connectors: names and addresses, never their keys" and "Add,
-  change and delete connectors. New ones start switched off; you switch them
-  on in Besidka"), the write warning in `ScopePicker.vue`, the
+  change and delete connectors, and disconnect Google. New ones start
+  switched off; you switch them on in Besidka" (the Google part since
+  5.5.0)), the write warning in `ScopePicker.vue`, the
   scope phrases of the security emails, and `MCP_SERVER_VERSION` 4.0.0 in the
   four version files. The Privacy Policy lists the permissions ("What a
   connected app can reach"), so it gained two bullets and one sentence and its

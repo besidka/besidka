@@ -1191,7 +1191,15 @@ design, the scope choice and the guard rails are in `docs/mcp-server.md`,
   taint, not a Google read, not in the tools withheld for a Google-derived
   send. `disconnect_google` is excluded from chats: in a chat that holds
   Google data it would delete the copies the chat is using.
-- **Open owner item.** `connectors:write` now also covers a Google
-  disconnect for apps that already hold it. The consent label of that scope
-  and the Privacy Policy list of what a connected app can reach name
-  connectors only; wording changes there are the owner's decision.
+- **A `revoked` row.** It lists as not connected, and `disconnect_google` on
+  it still runs and finishes the cleanup.
+- **Consent wording.** `connectors:write` now also covers a Google
+  disconnect for apps that already hold it. The consent label and
+  description (`app/components/OAuth/ScopeLabel.vue`) and the scope phrase of
+  the security email (`server/utils/account/security-emails.ts`) are updated
+  in this change: they say the scope can disconnect Google, which revokes the
+  grant and deletes the copies of Google Drive files that Besidka made, and
+  that it cannot connect Google.
+- **Open owner item.** The Privacy Policy sentence about what a connected app
+  can reach still names connectors only. It stays an owner item for the
+  Google legal text (legal files are not changed here).

@@ -278,7 +278,9 @@ break. Account: the one `wrangler whoami` lists for this repo.
     (`server/utils/mcp/private-tool.ts`), and logic in
     `server/utils/mcp/private/*.ts`;
   - exactly one scope per tool, and a new scope for anything that deletes,
-    spends or publishes;
+    spends or publishes, unless an existing write scope already covers that
+    resource (precedents: `delete_connectors` and `disconnect_google` under
+    `connectors:write`, `delete_skills` under `skills:write`);
   - a scope lives in `shared/utils/mcp-oauth-scopes.ts`,
     `server/utils/mcp/tool-scopes.ts` and
     `app/components/OAuth/ScopeLabel.vue` (plus `ScopePicker.vue`, the

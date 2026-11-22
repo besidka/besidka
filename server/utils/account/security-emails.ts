@@ -244,7 +244,7 @@ const oauthScopePhrases: Record<string, string> = {
   'artifacts:write': 'create and edit your artifacts',
   'artifacts:share': 'publish your artifacts as public links (up to 30 days)',
   'connectors:write': 'add connectors (switched off), restrict their '
-    + 'tools and delete them',
+    + 'tools, delete them and disconnect Google',
   'skills:write': 'add, change and delete skills (saved switched off for '
     + 'your review)',
   'data:delete': 'permanently delete your data',

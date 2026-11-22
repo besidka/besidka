@@ -282,7 +282,7 @@ Example prompts:
 ### Tools and scopes
 
 Four public tools need no token: `list_models`, `list_providers`,
-`get_key_guide`, `get_page`. The 44 private tools need these scopes; the
+`get_key_guide`, `get_page`. The 63 private tools need these scopes; the
 consent page lets the user approve each scope separately.
 
 | Scope | Tools |
