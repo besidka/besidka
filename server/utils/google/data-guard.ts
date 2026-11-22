@@ -203,8 +203,8 @@ export function googleSafeguardGatewayErrorOverride(input: {
   }
 
   return {
-    message: 'Vercel AI Gateway refused zero data retention, which a chat '
-      + 'with Google data needs.',
+    message: 'Vercel AI Gateway refused zero data retention, which Besidka '
+      + 'requests when Google data can reach this chat.',
     why: notAttested
       ? 'The upstream key for this model is not marked as zero data '
       + 'retention compliant (zdr_not_attested).'

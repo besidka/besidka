@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   kv: new Map<string, string>(),
   chatMessages: [] as Array<Record<string, any>>,
   capabilityTools: {} as Record<string, unknown>,
+  capabilityInputs: [] as Array<{ isGoogleDerived?: () => boolean }>,
   artifactExecute: null as null | ReturnType<typeof vi.fn>,
   connectorUrls: {} as Record<string, string>,
   holdsSkillText: false,
@@ -176,7 +177,11 @@ vi.mock('~~/server/utils/skills/runtime/send', () => ({
 }))
 
 vi.mock('~~/server/capabilities/index', () => ({
-  getCapabilityTools: async () => mocks.capabilityTools,
+  getCapabilityTools: async (input: { isGoogleDerived?: () => boolean }) => {
+    mocks.capabilityInputs.push(input)
+
+    return mocks.capabilityTools
+  },
 }))
 
 vi.mock('~~/server/capabilities/documents', () => ({
@@ -580,6 +585,7 @@ describe('tool approval requests in the chat send', () => {
     mocks.kv = new Map()
     mocks.chatMessages = []
     mocks.capabilityTools = {}
+    mocks.capabilityInputs = []
     mocks.artifactExecute = null
     mocks.connectorUrls = {}
     mocks.chatGoogleDataAt = null
@@ -1487,6 +1493,8 @@ describe('tool approval requests in the chat send', () => {
       })]]),
     }
 
+    mocks.flags.add('artifacts')
+
     const { assistantInsert } = await runSend({
       servers: [linear],
       steps: [
@@ -1496,6 +1504,8 @@ describe('tool approval requests in the chat send', () => {
     })
     const parts = assistantInsert?.parts ?? []
 
+    expect(mocks.capabilityInputs).toHaveLength(1)
+    expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(true)
     expect(execute).toHaveBeenCalledTimes(1)
     expect(findPart(parts, 'tool-google__drive_search')).toMatchObject({
       state: 'output-available',
@@ -1521,6 +1531,22 @@ describe('tool approval requests in the chat send', () => {
       data: { holdsGoogleData: true },
       transient: true,
     }])
+  })
+
+  it('hands the writers a mark that is off in an ordinary send and on in a '
+    + 'flagged chat', async () => {
+    mocks.flags.add('artifacts')
+
+    await runSend({ servers: [linear], steps: [textChunks('Hello.')] })
+
+    expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(false)
+
+    mocks.capabilityInputs = []
+    mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+    await runSend({ servers: [linear], steps: [textChunks('Hello.')] })
+
+    expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(true)
   })
 
   it('fails the persist when the batch with the chat flag fails', async () => {

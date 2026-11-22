@@ -463,6 +463,14 @@ unknown and refused. Unknown, unverifiable or refused means no.
 - Project knowledge text extracted on the client from a Google copy before
   this child cannot be told apart from other text.
 - Rows written before the migration carry no mark.
+- In a send that already holds Google data, a Besidka read of a marked item
+  from another chat is allowed but does not clear the share opt-in or add the
+  item to the names the share dialog lists: only a Google tool result does.
+  An existing opt-in then covers content the owner did not see named.
+- With tool approvals and `google.drive` on, every gateway send carries the
+  safeguards, also in chats without Google data and while no Google tool
+  exists yet: OpenRouter `zdr: true` narrows the endpoints, and a Vercel Hobby
+  team gets 403 on such sends.
 
 ## 6. Owner runbook: bring your own client
 
