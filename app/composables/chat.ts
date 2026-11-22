@@ -65,6 +65,7 @@ import {
   parsePersistedChatFailureNotice,
 } from '#shared/utils/chat-failure-text'
 import { CHAT_STREAM_HEARTBEAT_PART_TYPE } from '#shared/utils/chat-stream-heartbeat'
+import { CHAT_GOOGLE_DATA_PART_TYPE } from '#shared/utils/google-data-recipient'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -1068,6 +1069,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   chat = toValue(chat)
 
   const chatSlug = chat.slug
+  const { rememberChatGoogleData } = useChatGoogleData()
 
   const tools = shallowRef<Tools>(resolveInitialChatTools(chat.messages, {
     isAutoWebSearchPreferred: isAutoWebSearchPreferred.value,
@@ -1451,6 +1453,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       if (dataPart.type === CHAT_STREAM_HEARTBEAT_PART_TYPE) {
         hasStreamHeartbeat = true
+
+        return
+      }
+
+      if (dataPart.type === CHAT_GOOGLE_DATA_PART_TYPE) {
+        rememberChatGoogleData(chatSlug, true)
 
         return
       }

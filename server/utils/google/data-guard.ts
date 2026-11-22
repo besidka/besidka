@@ -20,6 +20,9 @@ import {
   googleDataRefusalReason,
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
+import { canOfferGoogleTools } from '#shared/utils/google-tool-approvals'
+import type { RequestEvent } from 'nuxt/server'
+import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
@@ -28,6 +31,7 @@ import { decodeArtifactId } from '~~/server/utils/artifacts/store'
 import { extractStorageKeyFromFileUrl } from '~~/server/utils/files/file-governance'
 import { isGoogleToolPart } from '~~/server/utils/tool-approval/google'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { unwrapRetryError } from '~~/server/utils/chats/provider-error-summary'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 
@@ -124,20 +128,91 @@ function recordGuardDecision(
   })
 }
 
+/**
+ * The 403 for a refused recipient. On a continuation (an approval answer or
+ * a next tool round) the paused reply is bound to the model it started on,
+ * so switching the model does not resume it: the way out is a new message
+ * on an allowed model.
+ */
 export function createGoogleDataRecipientError(
   decision: GoogleDataGuardDecision,
+  continuation = false,
 ) {
   return createError({
-    message: 'This model cannot be used in a chat with Google data.',
+    message: continuation
+      ? 'This reply cannot continue: its model cannot be used in a chat '
+      + 'with Google data.'
+      : 'This model cannot be used in a chat with Google data.',
     status: 403,
     code: GOOGLE_DATA_RECIPIENT_REFUSED_CODE,
     why: decision.message,
-    fix: decision.fix,
+    fix: continuation
+      ? 'Send a new message with a model from Anthropic, OpenAI or xAI, or '
+      + 'start a new chat. The paused reply stays as it is.'
+      : decision.fix,
     data: {
       reason: GOOGLE_DATA_RECIPIENT_REFUSED_CODE,
       recipient: decision.recipientId,
     },
   })
+}
+
+const ZDR_NOT_ATTESTED_PATTERN = /zdr_not_attested/i
+
+function errorStatusOf(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined
+  }
+
+  const { statusCode, status } = error as {
+    statusCode?: unknown
+    status?: unknown
+  }
+
+  if (typeof statusCode === 'number') {
+    return statusCode
+  }
+
+  return typeof status === 'number' ? status : undefined
+}
+
+/**
+ * The Google-specific reason for a Vercel AI Gateway refusal of a call that
+ * carried `zeroDataRetention` (pre-check, gateway table): a 403 (a Hobby team
+ * cannot request zero data retention) or `zdr_not_attested` (an upstream BYOK
+ * key not marked ZDR-compliant). Empty for any other error, so the caller can
+ * spread it into `normalizeChatError`.
+ */
+export function googleSafeguardGatewayErrorOverride(input: {
+  gatewayId: string | undefined
+  safeguardsSent: boolean
+  error: unknown
+}): { message?: string, why?: string, fix?: string, status?: number } {
+  if (input.gatewayId !== 'vercel' || !input.safeguardsSent) {
+    return {}
+  }
+
+  const error = unwrapRetryError(input.error)
+  const status = errorStatusOf(error)
+  const text = error instanceof Error ? error.message : String(error)
+  const notAttested = ZDR_NOT_ATTESTED_PATTERN.test(text)
+
+  if (status !== 403 && !notAttested) {
+    return {}
+  }
+
+  return {
+    message: 'Vercel AI Gateway refused zero data retention, which a chat '
+      + 'with Google data needs.',
+    why: notAttested
+      ? 'The upstream key for this model is not marked as zero data '
+      + 'retention compliant (zdr_not_attested).'
+      : 'Zero data retention needs a Vercel Pro or Enterprise team, or a '
+        + 'team with purchased credits. A Hobby team gets 403.',
+    fix: 'Pick a model from Anthropic, OpenAI or xAI on your own key for '
+      + 'this chat, or upgrade the Vercel team.',
+    status: 403,
+  }
 }
 
 /**
@@ -170,6 +245,7 @@ export async function assertGoogleDataRecipient(input: {
   recipient: GoogleDataRecipient
   gatewaySafeguardsSent: boolean
   site: string
+  continuation?: boolean
   logger?: LoggerLike
 }): Promise<void> {
   if (!input.holdsGoogleData) {
@@ -181,7 +257,7 @@ export async function assertGoogleDataRecipient(input: {
   recordGuardDecision(decision, input.site, input.logger)
 
   if (!decision.allowed) {
-    throw createGoogleDataRecipientError(decision)
+    throw createGoogleDataRecipientError(decision, input.continuation)
   }
 }
 
@@ -259,6 +335,38 @@ export function mayOfferConnectorsWithGoogleData(input: {
   toolApprovalsActive: boolean
 }): boolean {
   return !input.holdsGoogleData || input.toolApprovalsActive
+}
+
+/**
+ * Whether a gateway call gets the gateway safeguards: in a chat that holds
+ * Google data, and in any send where Google tools could be offered (tool
+ * approvals and `google.drive` active). Without the second case a gateway
+ * send would never pass the recipient check, so Google tools could never be
+ * offered through a gateway at all.
+ */
+export async function shouldSendGatewayGoogleSafeguards(input: {
+  event: Pick<RequestEvent, 'context'>
+  gatewayId: string | undefined
+  holdsGoogleData: boolean
+  logger: LoggerLike
+}): Promise<boolean> {
+  if (!input.gatewayId) {
+    return false
+  }
+
+  if (input.holdsGoogleData) {
+    return true
+  }
+
+  const features = await resolveSendFeatures(
+    input.event,
+    ['tool-approvals', 'google.drive'],
+    input.logger,
+  )
+
+  return features.isFeatureActive('google.drive') && canOfferGoogleTools({
+    toolApprovalsActive: features.isFeatureActive('tool-approvals'),
+  })
 }
 
 /**

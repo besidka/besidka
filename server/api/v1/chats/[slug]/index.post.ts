@@ -185,6 +185,7 @@ import {
 } from '~~/server/utils/chats/generation-lease'
 import { generationInProgressKvKey } from '~~/server/utils/chats/generation-in-progress'
 import { startStreamHeartbeat } from '~~/server/utils/chats/stream-heartbeat'
+import { CHAT_GOOGLE_DATA_PART_TYPE } from '#shared/utils/google-data-recipient'
 import {
   logClientDisconnect,
   withClientDisconnectResponse,
@@ -481,6 +482,7 @@ import {
   chatHoldsGoogleData,
   deleteGoogleToolResults,
   hasGoogleToolResult,
+  isGoogleToolResultContent,
   loadGoogleToolResults,
   redactGoogleToolPartsForPersistence,
   withholdCodeExecutionForGoogleData,
@@ -496,7 +498,9 @@ import {
   disabledRerankModelResolver,
   flagChatGoogleData,
   mayOfferConnectorsWithGoogleData,
+  googleSafeguardGatewayErrorOverride,
   resolveSendGoogleContent,
+  shouldSendGatewayGoogleSafeguards,
   withGoogleTaintRerankStop,
   withoutWebSearchForGoogleData,
 } from '~~/server/utils/google/data-guard'
@@ -998,6 +1002,7 @@ export default defineEventHandler(async (event) => {
     },
     gatewaySafeguardsSent: !!gatewayId,
     site: 'chat-send',
+    continuation: continuationRequest !== null || roundRequest !== null,
     logger,
   })
 
@@ -1504,6 +1509,12 @@ export default defineEventHandler(async (event) => {
     ...gatewayTelemetryAttributes,
   })
 
+  const gatewayGoogleSafeguards = await shouldSendGatewayGoogleSafeguards({
+    event,
+    gatewayId,
+    holdsGoogleData,
+    logger: aiLogger,
+  })
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
@@ -1542,7 +1553,7 @@ export default defineEventHandler(async (event) => {
         requestedTools,
         reasoningLevel,
         logger,
-        { googleDataSafeguards: holdsGoogleData },
+        { googleDataSafeguards: gatewayGoogleSafeguards },
       )
 
       instance = gatewayResult.instance
@@ -1991,6 +2002,7 @@ export default defineEventHandler(async (event) => {
       'connectors',
       'tool-approvals',
       'besidka-tools',
+      'google.drive',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -2630,6 +2642,7 @@ export default defineEventHandler(async (event) => {
 
     const googleSend = await getGoogleSendTools({
       toolApprovalsActive,
+      googleDriveActive: sendFeatures.isFeatureActive('google.drive'),
       userId,
       chatPublicId: chat.id,
       mayReceiveGoogleData: async () => {
@@ -2641,7 +2654,7 @@ export default defineEventHandler(async (event) => {
             gatewayId,
             modelId,
           },
-          gatewaySafeguardsSent: holdsGoogleData,
+          gatewaySafeguardsSent: gatewayGoogleSafeguards,
           logger: aiLogger,
         })
 
@@ -3094,6 +3107,24 @@ export default defineEventHandler(async (event) => {
           writer.write(activationPart)
         }
 
+        let googleDataAnnounced = false
+        const announceGoogleData = () => {
+          if (googleDataAnnounced) {
+            return
+          }
+
+          googleDataAnnounced = true
+          writer.write({
+            type: CHAT_GOOGLE_DATA_PART_TYPE,
+            data: { holdsGoogleData: true },
+            transient: true,
+          })
+        }
+
+        if (holdsGoogleData) {
+          announceGoogleData()
+        }
+
         if (!isResume && connectorNotices.length > 0) {
           writer.write({
             type: CONNECTORS_NOTICE_PART_TYPE,
@@ -3529,6 +3560,10 @@ export default defineEventHandler(async (event) => {
             }
 
             if (part.type === 'finish-step') {
+              if (pendingStepContent.some(isGoogleToolResultContent)) {
+                announceGoogleData()
+              }
+
               finishedSteps.push({
                 usage: part.usage,
                 providerMetadata: part.providerMetadata,
@@ -3568,6 +3603,11 @@ export default defineEventHandler(async (event) => {
               error,
               event,
               providerId: errorProviderId,
+              ...googleSafeguardGatewayErrorOverride({
+                gatewayId,
+                safeguardsSent: gatewayGoogleSafeguards,
+                error,
+              }),
             })
 
             logger.set({

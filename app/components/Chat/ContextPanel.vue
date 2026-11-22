@@ -229,9 +229,10 @@
           class="mt-px shrink-0"
         />
         <span>
-          This chat holds content from Google. It stays out of memory, web
-          search and TypeSafe AI checks, only models that do not train on
-          your data can answer, and sharing asks first.
+          This chat holds content from Google, so only models on the Google
+          data list can answer here. Memory and TypeSafe AI skip this chat,
+          web search is off for new messages, and a share link needs your
+          confirmation.
         </span>
       </p>
       <p

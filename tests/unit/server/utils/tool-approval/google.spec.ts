@@ -559,6 +559,7 @@ describe('the Google tool gate (tool approvals required)', () => {
     const mayReceiveGoogleData = vi.fn(async () => true)
     const google = await getGoogleSendTools({
       toolApprovalsActive: false,
+      googleDriveActive: true,
       userId: 1,
       chatPublicId: 'chat-1',
       mayReceiveGoogleData,
@@ -570,12 +571,28 @@ describe('the Google tool gate (tool approvals required)', () => {
     expect(mayReceiveGoogleData).not.toHaveBeenCalled()
   })
 
+  it('runs no guard and reads no key while google.drive is off', async () => {
+    const mayReceiveGoogleData = vi.fn(async () => true)
+    const google = await getGoogleSendTools({
+      toolApprovalsActive: true,
+      googleDriveActive: false,
+      userId: 1,
+      chatPublicId: 'chat-1',
+      mayReceiveGoogleData,
+      logger: logger(),
+    })
+
+    expect(google.tools).toEqual({})
+    expect(mayReceiveGoogleData).not.toHaveBeenCalled()
+  })
+
   it('offers no Google tools to a model that may not receive Google data',
     async () => {
       const mayReceiveGoogleData = vi.fn(async () => false)
       const sendLogger = logger()
       const google = await getGoogleSendTools({
         toolApprovalsActive: true,
+        googleDriveActive: true,
         userId: 1,
         chatPublicId: 'chat-1',
         mayReceiveGoogleData,

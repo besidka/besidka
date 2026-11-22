@@ -29,6 +29,14 @@ export const GOOGLE_DATA_PAID_TIER_STATEMENT = 'This key is on a Google Cloud '
   + 'project with billing enabled'
 
 /**
+ * A transient stream chunk the send route writes when the chat holds Google
+ * data: at the start of a send in a flagged chat, and after the first step
+ * with a Google result. The client then gates the model picker without a
+ * reload. Never stored in `messages.parts`.
+ */
+export const CHAT_GOOGLE_DATA_PART_TYPE = 'data-google-data'
+
+/**
  * The model a chat would send to: a direct provider, or a model id routed
  * through a gateway.
  */

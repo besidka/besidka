@@ -26,17 +26,20 @@ function noGoogleSendTools(): GoogleSendTools {
  * would run. Nothing is offered either when the send's model may not
  * receive Google data (`mayReceiveGoogleData`, the data guard), because a
  * Google result would reach that model in the next step of the same send.
+ * The guard (and its keys read) runs only when `google.drive` is active for
+ * the send, so a send that could never get a Google tool reads nothing.
  * The Drive, Calendar and Gmail children add their tools here; until then
  * the set is empty.
  */
 export async function getGoogleSendTools(input: {
   toolApprovalsActive: boolean
+  googleDriveActive: boolean
   userId: number
   chatPublicId: string
   mayReceiveGoogleData: () => Promise<boolean>
   logger: LoggerLike
 }): Promise<GoogleSendTools> {
-  if (!canOfferGoogleTools(input)) {
+  if (!canOfferGoogleTools(input) || !input.googleDriveActive) {
     return noGoogleSendTools()
   }
 
