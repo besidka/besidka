@@ -3,9 +3,45 @@ import { effectScope } from 'vue'
 import type { EffectScope } from 'vue'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 
-const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }))
+const STATUS_URL = '/api/v1/google/connections'
 
-mockNuxtImport('$fetch', () => fetchMock)
+const { fetchMock, statusMock, routedFetch } = vi.hoisted(() => {
+  const tokenMock = vi.fn()
+  const connectionMock = vi.fn()
+
+  return {
+    fetchMock: tokenMock,
+    statusMock: connectionMock,
+    routedFetch: vi.fn((url: string, options?: unknown) => {
+      return url === '/api/v1/google/connections'
+        ? connectionMock(url, options)
+        : tokenMock(url, options)
+    }),
+  }
+})
+
+mockNuxtImport('$fetch', () => routedFetch)
+
+function notConnected() {
+  return { ...activeConnection(), connection: null }
+}
+
+function activeConnection(
+  capabilities: string[] = ['identity', 'drive-picked'],
+) {
+  return {
+    connection: {
+      clientMode: 'besidka',
+      status: 'active',
+      email: 'user@example.com',
+      capabilities,
+      connectedAt: '2026-11-22T10:00:00.000Z',
+    },
+    canConnect: true,
+    dedicatedClient: true,
+    byo: null,
+  }
+}
 
 interface FakeBuilderCall {
   token?: string
@@ -173,6 +209,8 @@ describe('useGooglePicker', () => {
     })
     delete (window as any).gapi
     delete (window as any).google
+    statusMock.mockReset()
+    statusMock.mockResolvedValue(activeConnection())
     fetchMock.mockReset()
     fetchMock.mockResolvedValue({
       accessToken: 'picker-token',
@@ -562,6 +600,144 @@ describe('useGooglePicker', () => {
     await first
 
     expect(isPicking.value).toBe(false)
+  })
+
+  describe('the connection check', () => {
+    function expectNothingFromGoogle() {
+      expect(appended).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(gapiLoad).not.toHaveBeenCalled()
+    }
+
+    it('loads no script and asks for no token when not connected',
+      async () => {
+        statusMock.mockResolvedValue(notConnected())
+
+        const { pick } = await loadComposable()
+        const result = await pick()
+
+        expect(result).toMatchObject({ status: 'error', code: 'not-connected' })
+        expect(statusMock).toHaveBeenCalledWith(STATUS_URL, undefined)
+        expectNothingFromGoogle()
+      })
+
+    it('loads no script and asks for no token when re-authorization is '
+      + 'needed', async () => {
+      const response = activeConnection()
+
+      response.connection.status = 'needs_reauth'
+      statusMock.mockResolvedValue(response)
+
+      const { pick } = await loadComposable()
+
+      expect(await pick()).toMatchObject({
+        status: 'error',
+        code: 'reauthorize',
+      })
+      expectNothingFromGoogle()
+    })
+
+    it('treats an active connection without the picked files capability '
+      + 'as needing re-authorization', async () => {
+      statusMock.mockResolvedValue(activeConnection(['identity']))
+
+      const { pick } = await loadComposable()
+
+      expect(await pick()).toMatchObject({
+        status: 'error',
+        code: 'reauthorize',
+      })
+      expectNothingFromGoogle()
+    })
+
+    it('shows an error and loads nothing when the status request fails',
+      async () => {
+        statusMock.mockRejectedValue(httpError(500, 'Status unavailable'))
+
+        const { pick } = await loadComposable()
+        const result = await pick()
+
+        expect(result).toMatchObject({
+          status: 'error',
+          code: 'failed',
+          message: 'Status unavailable',
+        })
+        expectNothingFromGoogle()
+      })
+
+    it('checks the status, then loads the script, then asks for the token',
+      async () => {
+        const { pick } = await loadComposable()
+        const pending = pick()
+
+        await settle()
+
+        expect(statusMock).toHaveBeenCalledTimes(1)
+        expect(appended).toHaveLength(1)
+        expect(fetchMock).not.toHaveBeenCalled()
+
+        await finishScriptLoad()
+
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+
+        pickerCallback({ action: 'cancel' })
+        await pending
+      })
+
+    it('checks again on every call and never trusts an earlier answer',
+      async () => {
+        const { pick } = await loadComposable()
+        const first = pick()
+
+        await finishScriptLoad()
+        pickerCallback({ action: 'cancel' })
+        await first
+
+        statusMock.mockResolvedValue(notConnected())
+
+        expect(await pick()).toMatchObject({ code: 'not-connected' })
+        expect(statusMock).toHaveBeenCalledTimes(2)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      })
+
+    it('shows the pending flag only when the check takes over 300 ms',
+      async () => {
+        vi.useFakeTimers()
+
+        let resolveStatus: (value: unknown) => void = () => undefined
+
+        statusMock.mockReturnValue(new Promise((resolve) => {
+          resolveStatus = resolve
+        }))
+
+        const { pick, isCheckingConnection } = await loadComposable()
+        const pending = pick()
+
+        await vi.advanceTimersByTimeAsync(299)
+
+        expect(isCheckingConnection.value).toBe(false)
+
+        await vi.advanceTimersByTimeAsync(1)
+
+        expect(isCheckingConnection.value).toBe(true)
+
+        resolveStatus(notConnected())
+
+        expect(await pending).toMatchObject({ code: 'not-connected' })
+        expect(isCheckingConnection.value).toBe(false)
+      })
+
+    it('never shows the pending flag for a fast check', async () => {
+      vi.useFakeTimers()
+      statusMock.mockResolvedValue(notConnected())
+
+      const { pick, isCheckingConnection } = await loadComposable()
+
+      await pick()
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(isCheckingConnection.value).toBe(false)
+    })
   })
 
   describe('the token request', () => {

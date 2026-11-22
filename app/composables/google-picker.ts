@@ -8,6 +8,7 @@ export const GOOGLE_API_SCRIPT_URL = 'https://apis.google.com/js/api.js'
 export const GOOGLE_PICKER_SCRIPT_TIMEOUT_MS = 15_000
 export const GOOGLE_PICKER_LOAD_TIMEOUT_MS = 20_000
 export const GOOGLE_PICKER_IDLE_TIMEOUT_MS = 15 * 60 * 1000
+export const GOOGLE_PICKER_STATUS_INDICATOR_DELAY_MS = 300
 
 const GOOGLE_API_SCRIPT_SELECTOR = 'script[data-google-api-script]'
 
@@ -258,6 +259,37 @@ async function fetchPickerToken(): Promise<PickerToken | GooglePickerResult> {
   }
 }
 
+async function checkDriveConnection(): Promise<GooglePickerResult | null> {
+  try {
+    const response = await $fetch('/api/v1/google/connections')
+    const connection = response.connection
+
+    if (!connection) {
+      return toFailure('not-connected', 'Google Drive is not connected')
+    }
+
+    if (
+      connection.status !== 'active'
+      || !connection.capabilities.includes('drive-picked')
+    ) {
+      return toFailure(
+        'reauthorize',
+        'Google Drive needs to be connected again',
+      )
+    }
+
+    return null
+  } catch (exception) {
+    const parsed = parseError(exception)
+
+    return toFailure(
+      'failed',
+      parsed.message || 'Google Drive could not be opened',
+      parsed.why,
+    )
+  }
+}
+
 function isPickerToken(
   value: PickerToken | GooglePickerResult,
 ): value is PickerToken {
@@ -457,8 +489,13 @@ function showPicker(
 
 /**
  * Opens Google's Drive Picker for the connected account. Nothing from
- * Google loads until `pick()` is called, so a user who never asks for Google
- * Drive never loads Google's script. The access token comes from
+ * Google loads until `pick()` is called, and not even then until Besidka's
+ * own status route (`GET /api/v1/google/connections`, fetched on every
+ * call, never cached) says the Drive connection is active with the picked
+ * files capability, so a user who is not connected never sends their
+ * address to Google for a script they cannot use. `isCheckingConnection`
+ * turns true only when that check takes longer than 300 ms. The access
+ * token comes from
  * `POST /api/v1/google/drive/picker-token`, lives only inside this call and
  * is never stored; no Google Identity Services is used. Every failure path
  * returns a value (script blocked or timed out, not connected, needs
@@ -468,8 +505,24 @@ function showPicker(
  */
 export function useGooglePicker() {
   const isPicking = shallowRef<boolean>(false)
+  const isCheckingConnection = shallowRef<boolean>(false)
   let cancelOpenPicker: (() => void) | null = null
   let isScopeDisposed = false
+
+  async function checkConnectionWithIndicator(): Promise<
+    GooglePickerResult | null
+  > {
+    const indicatorTimer = setTimeout(() => {
+      isCheckingConnection.value = true
+    }, GOOGLE_PICKER_STATUS_INDICATOR_DELAY_MS)
+
+    try {
+      return await checkDriveConnection()
+    } finally {
+      clearTimeout(indicatorTimer)
+      isCheckingConnection.value = false
+    }
+  }
 
   async function pick(
     options: { maxItems?: number } = {},
@@ -481,6 +534,12 @@ export function useGooglePicker() {
     isPicking.value = true
 
     try {
+      const connectionFailure = await checkConnectionWithIndicator()
+
+      if (connectionFailure || isScopeDisposed) {
+        return connectionFailure ?? { status: 'canceled' }
+      }
+
       try {
         await loadPickerLibrary()
       } catch (exception) {
@@ -527,5 +586,5 @@ export function useGooglePicker() {
     })
   }
 
-  return { isPicking, pick }
+  return { isPicking, isCheckingConnection, pick }
 }

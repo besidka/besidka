@@ -120,6 +120,7 @@ export interface ChatInputToolsState {
   googleDrive?: {
     visible: boolean
     importing: number
+    checking?: boolean
   }
   skills?: {
     visible: boolean

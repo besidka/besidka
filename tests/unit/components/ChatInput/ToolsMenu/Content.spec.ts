@@ -272,27 +272,103 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
         .toHaveLength(1)
       expect(row.attributes('aria-label') ?? '').not.toContain('Drive file')
 
-      await row.trigger('click')
+      await wrapper.get('[data-testid="tools-action-google-drive-open"]')
+        .trigger('click')
 
       expect(wrapper.emitted('open-google-drive')).toHaveLength(1)
     })
 
-    it('says where the model can use Drive and where it cannot, in one '
-      + 'sentence under the row', async () => {
+    it('keeps the row as high as its neighbors and adds no always-visible '
+      + 'paragraph', async () => {
       const wrapper = await mountContent(createState({ drive: true }))
-      const hint = wrapper.get('[data-testid="tools-google-drive-tools-hint"]')
+      const driveRow = wrapper.get('[data-testid="tools-action-google-drive"]')
+      const neighbor = wrapper.get('[data-testid="tools-action-library"]')
+      const driveLine = driveRow.get('.min-h-9')
 
-      expect(hint.text()).toBe(GOOGLE_DRIVE_TOOLS_HINT)
-      expect(hint.text()).toContain('gateway chat only after a Drive file is '
-        + 'attached')
-      expect(hint.text()).toContain('web search')
-      expect(hint.text()).toContain('Run code')
+      expect(driveLine.classes()).toEqual(expect.arrayContaining([
+        'min-h-9',
+        'max-md:min-h-11',
+      ]))
+      expect(neighbor.classes()).toEqual(expect.arrayContaining([
+        'min-h-9',
+        'max-md:min-h-11',
+      ]))
+      expect(driveRow.findAll('p')).toHaveLength(1)
+      expect((driveRow.get('[data-testid="tools-action-google-drive-note"]')
+        .element as HTMLElement).style.display).toBe('none')
+      expect(wrapper.find('[data-testid="tools-google-drive-tools-hint"]')
+        .exists()).toBe(false)
     })
 
-    it('shows no hint while google.drive is off', async () => {
+    it('puts the model-use sentence behind an info button, like Web search '
+      + 'and Use memory', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const info = wrapper.get('[data-testid="tools-action-google-drive-info"]')
+      const note = wrapper.get('[data-testid="tools-action-google-drive-note"]')
+
+      expect(info.attributes('aria-label')).toBe('About Google Drive in chats')
+      expect(info.attributes('aria-expanded')).toBe('false')
+      expect(info.attributes('aria-controls')).toBe(note.attributes('id'))
+      expect(note.text()).toBe(GOOGLE_DRIVE_TOOLS_HINT)
+      expect(note.text()).toContain('gateway chat')
+      expect(note.text()).toContain('web search')
+      expect(note.text()).toContain('Run code')
+
+      await info.trigger('click')
+
+      expect(info.attributes('aria-expanded')).toBe('true')
+      expect((note.element as HTMLElement).style.display).not.toBe('none')
+      expect(wrapper.get('[data-testid="tools-action-google-drive-open"]')
+        .attributes('aria-describedby')).toContain(note.attributes('id'))
+
+      await info.trigger('click')
+
+      expect(info.attributes('aria-expanded')).toBe('false')
+      expect((note.element as HTMLElement).style.display).toBe('none')
+    })
+
+    it('does not open the Picker or close the menu when the info button is '
+      + 'pressed', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+
+      await wrapper.get('[data-testid="tools-action-google-drive-info"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('open-google-drive')).toBeUndefined()
+    })
+
+    it('keeps the info button out of the row button', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const open = wrapper.get('[data-testid="tools-action-google-drive-open"]')
+
+      expect(open.find('button').exists()).toBe(false)
+      expect(open.element.contains(wrapper.get(
+        '[data-testid="tools-action-google-drive-info"]',
+      ).element)).toBe(false)
+    })
+
+    it('shows a spinner on the row only while the status check is slow',
+      async () => {
+        const idle = await mountContent(createState({ drive: true }))
+
+        expect(idle.find('[data-testid="tools-action-google-drive-pending"]')
+          .exists()).toBe(false)
+
+        const state = createState({ drive: true })
+
+        state.googleDrive = { visible: true, importing: 0, checking: true }
+
+        const checking = await mountContent(state)
+
+        expect(checking.find(
+          '[data-testid="tools-action-google-drive-pending"]',
+        ).exists()).toBe(true)
+      })
+
+    it('shows no note while google.drive is off', async () => {
       const wrapper = await mountContent(createState({ drive: false }))
 
-      expect(wrapper.find('[data-testid="tools-google-drive-tools-hint"]')
+      expect(wrapper.find('[data-testid="tools-action-google-drive-note"]')
         .exists()).toBe(false)
     })
 

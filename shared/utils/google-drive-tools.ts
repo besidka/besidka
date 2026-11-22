@@ -47,10 +47,11 @@ export const GOOGLE_DRIVE_LIST_MAX = 50
 export const GOOGLE_DRIVE_READ_TEXT_MAX_BYTES = 40 * 1024
 export const GOOGLE_DRIVE_READ_SOURCE_MAX_BYTES = 8 * 1024 * 1024
 export const GOOGLE_DRIVE_SAVE_MAX_BYTES = 5 * 1024 * 1024
-export const GOOGLE_DRIVE_TOOLS_HINT = 'The model can list, read and save '
-  + 'your picked Drive files when you allow it, but not while web search or '
-  + 'Run code is on with an Anthropic model or Qwen search is on, and in a '
-  + 'gateway chat only after a Drive file is attached.'
+export const GOOGLE_DRIVE_TOOLS_HINT = 'The model can list and read the '
+  + 'Drive files you picked, and save a Besidka file to Drive, each time you '
+  + 'allow it. With Anthropic web search or Run code, with Qwen search, or in '
+  + 'a gateway chat, attach a Drive file first.'
+export const GOOGLE_DRIVE_TOOLS_INFO_LABEL = 'About Google Drive in chats'
 
 export const GOOGLE_DRIVE_FILE_REFERENCE_KIND = 'drive-file'
 export const GOOGLE_DRIVE_SAVE_PENDING_PREFIX = 'pending:'
