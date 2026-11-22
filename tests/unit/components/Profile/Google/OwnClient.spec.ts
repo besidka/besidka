@@ -593,6 +593,20 @@ describe('Profile/Google/OwnClient', () => {
     expect(document.activeElement?.id).toBe('google-byo-heading')
   })
 
+  it('styles Disconnect and Delete client as error outline buttons', async () => {
+    setByo({ hasClient: true, connection: connection() })
+
+    const wrapper = await mountOwnClient()
+
+    for (const testId of ['google-byo-disconnect', 'google-byo-delete']) {
+      const button = wrapper.get(`[data-testid="${testId}"]`)
+
+      expect(button.classes()).toEqual(
+        expect.arrayContaining(['btn', 'btn-error', 'btn-outline']),
+      )
+    }
+  })
+
   it('does nothing when the disconnect is canceled', async () => {
     setByo({ hasClient: true, connection: connection() })
     confirmMock.mockResolvedValue(null)

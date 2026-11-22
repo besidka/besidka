@@ -148,16 +148,16 @@
           >
             Save client
           </button>
-          <button
+          <UiButton
             v-if="byo.hasClient"
-            type="button"
-            class="btn btn-ghost btn-sm"
+            mode="error"
+            text="Delete client"
+            icon-name="lucide:trash"
             :disabled="isBusy"
+            outline
             data-testid="google-byo-delete"
             @click="deleteClient"
-          >
-            Delete client
-          </button>
+          />
         </div>
       </form>
     </template>
@@ -173,15 +173,15 @@
         v-if="byo.hasClient"
         class="flex flex-wrap gap-2"
       >
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
+        <UiButton
+          mode="error"
+          text="Delete client"
+          icon-name="lucide:trash"
           :disabled="isBusy"
+          outline
           data-testid="google-byo-delete"
           @click="deleteClient"
-        >
-          Delete client
-        </button>
+        />
       </div>
     </template>
     <fieldset
@@ -329,15 +329,15 @@
         </div>
       </div>
       <div>
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
+        <UiButton
+          mode="error"
+          text="Disconnect"
+          icon-name="lucide:unplug"
           :disabled="isBusy"
+          outline
           data-testid="google-byo-disconnect"
           @click="disconnect"
-        >
-          Disconnect
-        </button>
+        />
       </div>
     </template>
   </section>

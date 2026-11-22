@@ -913,6 +913,13 @@ again after a connect or disconnect. States:
 - Needs re-authorization: a warning and, while the flag is active,
   Reconnect.
 
+Disconnect (and "Delete client" and Disconnect on the own-client card) is the
+same control as Delete on an API key card: `UiButton` with `mode="error"` and
+`outline`, default size and radius, an icon (`lucide:unplug`, `lucide:trash`).
+It is the existing `btn-error btn-outline` pair, so its contrast follows the
+semantic pairs in `docs/ui/semantic-colors.md`; Reconnect next to it uses the
+same default size. How both themes render it was not checked in a browser.
+
 After Disconnect a toast says the copies were deleted (or that the deletion
 finishes shortly), a second toast with the link to
 myaccount.google.com/connections appears when Google did not confirm the
