@@ -38,13 +38,15 @@ function hasGoogleSendTools(google: GoogleSendTools): boolean {
  * built. No candidate unless tool approvals are active
  * (`canOfferGoogleTools`: without them no approval, cleared-call guard or
  * references-only rule would run) and `google.drive` or `google.byo` is
- * active (`google.gmail` adds the Gmail tools).
+ * active (`google.gmail` adds the Gmail tools, `google.calendar` the Calendar
+ * tools).
  */
 export async function planGoogleSendTools(input: {
   toolApprovalsActive: boolean
   googleDriveActive: boolean
   googleByoActive?: boolean
   googleGmailActive?: boolean
+  googleCalendarActive?: boolean
   userId: number
   chatPublicId: string
   gatewayId: string | undefined
@@ -67,6 +69,7 @@ export async function planGoogleSendTools(input: {
       driveActive: input.googleDriveActive,
       byoActive: input.googleByoActive === true,
       gmailActive: input.googleGmailActive === true,
+      calendarActive: input.googleCalendarActive === true,
       ...(input.featureState ? { featureState: input.featureState } : {}),
       ...(input.priorParts ? { priorParts: input.priorParts } : {}),
       logger: input.logger,

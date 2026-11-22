@@ -182,6 +182,7 @@ export async function seedGoogleByoAccess(
     grant?: boolean
     optIn?: boolean
     gmail?: boolean
+    calendar?: boolean
   } = {},
 ): Promise<void> {
   const schema = await import('~~/server/db/schema')
@@ -190,6 +191,7 @@ export async function seedGoogleByoAccess(
     'google.drive',
     'google.byo',
     ...(input.gmail ?? true ? ['google.gmail'] : []),
+    ...(input.calendar ?? false ? ['google.calendar'] : []),
   ]
 
   await db.update(schema.users)

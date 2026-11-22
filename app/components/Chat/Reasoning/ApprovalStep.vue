@@ -124,6 +124,11 @@
           This only saves a draft in your Gmail. Besidka cannot send it.
         </p>
       </div>
+      <ChatReasoningCalendarEvent
+        v-if="calendarEvent"
+        :view="calendarEvent"
+        class="mt-1.5"
+      />
       <details
         v-if="clippedPreview.text"
         class="mt-1 text-xs"
@@ -270,6 +275,8 @@
 import { LazyChatReasoningApprovalDetails } from '#components'
 import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
+import { readCreateEventApprovalView } from '#shared/utils/google-calendar-event'
+import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-event'
 import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
@@ -390,6 +397,10 @@ const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
   return toolName === GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME
     ? readGmailDraftApprovalView(props.model.input)
     : null
+})
+
+const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
+  return readCreateEventApprovalView(props.model.toolName, props.model.input)
 })
 
 const gmailDraftReplyNote = computed<string>(() => {

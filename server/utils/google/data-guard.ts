@@ -21,6 +21,12 @@ import {
 } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
 import {
+  GOOGLE_CALENDAR_EVENT_REFERENCE_KIND,
+  GOOGLE_CALENDAR_FREE_BUSY_REFERENCE_KIND,
+  describeCalendarEventDay,
+  describeCalendarFreeBusyDay,
+} from '#shared/utils/google-calendar-tools'
+import {
   GOOGLE_GMAIL_THREAD_REFERENCE_KIND,
   describeGmailThreadDay,
 } from '#shared/utils/google-gmail-tools'
@@ -629,16 +635,26 @@ function googleReferencesOf(parts: unknown): StoredGoogleReference[] {
   })
 }
 
+const DAY_NAMED_REFERENCE_KINDS: Readonly<
+  Record<string, (date: string | null) => string>
+> = {
+  [GOOGLE_GMAIL_THREAD_REFERENCE_KIND]: describeGmailThreadDay,
+  [GOOGLE_CALENDAR_EVENT_REFERENCE_KIND]: describeCalendarEventDay,
+  [GOOGLE_CALENDAR_FREE_BUSY_REFERENCE_KIND]: describeCalendarFreeBusyDay,
+}
+
 /**
  * Collects the names the share dialog shows for stored references: a
- * reference's title, or for an email thread (which stores no subject)
- * "Email thread from <day>" from Gmail's own timestamp. One thread is one
- * name however often it was found, and two threads of the same day get
- * distinct names ("Email thread from <day> (2)") without any mail text.
+ * reference's title, or for an email thread, a calendar event or a free and
+ * busy answer (which store no subject or title) a name from the day of
+ * Gmail's or Google Calendar's own timestamp ("Email thread from <day>",
+ * "Calendar event on <day>"). One item is one name however often it was
+ * found, and two items of the same day get distinct names ("Calendar event
+ * on <day> (2)") without any mail or event text.
  */
 function createReferenceNamer(names: Set<string>) {
-  const threadNames = new Map<string, string>()
-  const threadsPerLabel = new Map<string, number>()
+  const itemNames = new Map<string, string>()
+  const itemsPerLabel = new Map<string, number>()
 
   return (reference: StoredGoogleReference) => {
     if (typeof reference.title === 'string' && reference.title.trim()) {
@@ -647,22 +663,29 @@ function createReferenceNamer(names: Set<string>) {
       return
     }
 
-    if (
-      reference.kind !== GOOGLE_GMAIL_THREAD_REFERENCE_KIND
-      || typeof reference.id !== 'string'
-      || threadNames.has(reference.id)
-    ) {
+    const describeDay = typeof reference.kind === 'string'
+      && Object.hasOwn(DAY_NAMED_REFERENCE_KINDS, reference.kind)
+      ? DAY_NAMED_REFERENCE_KINDS[reference.kind]
+      : undefined
+
+    if (!describeDay || typeof reference.id !== 'string') {
       return
     }
 
-    const label = describeGmailThreadDay(
+    const itemKey = `${reference.kind}:${reference.id}`
+
+    if (itemNames.has(itemKey)) {
+      return
+    }
+
+    const label = describeDay(
       typeof reference.date === 'string' ? reference.date : null,
     )
-    const ordinal = (threadsPerLabel.get(label) ?? 0) + 1
+    const ordinal = (itemsPerLabel.get(label) ?? 0) + 1
     const name = ordinal === 1 ? label : `${label} (${ordinal})`
 
-    threadsPerLabel.set(label, ordinal)
-    threadNames.set(reference.id, name)
+    itemsPerLabel.set(label, ordinal)
+    itemNames.set(itemKey, name)
     names.add(name)
   }
 }

@@ -1,4 +1,10 @@
 import {
+  GOOGLE_CALENDAR_FREE_BUSY_TOOL_NAME,
+  GOOGLE_CALENDAR_GRANTED_CALLS_PER_MESSAGE,
+  GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME,
+  GOOGLE_CALENDAR_TOOLS_HINT,
+} from '#shared/utils/google-calendar-tools'
+import {
   GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
   GOOGLE_DRIVE_SEARCH_TOOL_NAME,
 } from '#shared/utils/google-drive-tools'
@@ -80,6 +86,10 @@ export const GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE: Readonly<
     GOOGLE_GMAIL_SEARCH_GRANTED_CALLS_PER_MESSAGE,
   [GOOGLE_DRIVE_SEARCH_TOOL_NAME]:
     GOOGLE_DRIVE_SEARCH_GRANTED_CALLS_PER_MESSAGE,
+  [GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME]:
+    GOOGLE_CALENDAR_GRANTED_CALLS_PER_MESSAGE,
+  [GOOGLE_CALENDAR_FREE_BUSY_TOOL_NAME]:
+    GOOGLE_CALENDAR_GRANTED_CALLS_PER_MESSAGE,
 }
 export const GOOGLE_DRIVE_SEARCH_KINDS = [
   'any',
@@ -121,10 +131,18 @@ export const GOOGLE_BYO_DRIVE_TOOLS_HINT = 'With your own Google client, the '
 /**
  * The owner card's line about the bring-your-own tools: Gmail is named only
  * while `google.gmail` is active for the owner (the flag and its Labs
- * opt-in), because without it no Gmail tool is offered.
+ * opt-in), because without it no Gmail tool is offered, and Calendar only
+ * while `google.calendar` is.
  */
-export function getGoogleByoToolsHint(isGmailActive: boolean): string {
-  return isGmailActive ? GOOGLE_BYO_TOOLS_HINT : GOOGLE_BYO_DRIVE_TOOLS_HINT
+export function getGoogleByoToolsHint(
+  isGmailActive: boolean,
+  isCalendarActive = false,
+): string {
+  const base = isGmailActive
+    ? GOOGLE_BYO_TOOLS_HINT
+    : GOOGLE_BYO_DRIVE_TOOLS_HINT
+
+  return isCalendarActive ? `${base} ${GOOGLE_CALENDAR_TOOLS_HINT}` : base
 }
 
 /**

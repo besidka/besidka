@@ -67,6 +67,20 @@ describe('Chat/Reasoning/StepIcon', () => {
       .attributes('aria-hidden')).toBe('true')
   })
 
+  it.each([
+    'logos:google-drive',
+    'logos:google-gmail',
+    'logos:google-calendar',
+  ])('keeps the aspect ratio of the %s mark in its square box', async (name) => {
+    const wrapper = await mountIcon({ kind: 'iconify', name })
+    const classes = wrapper.get('[data-testid="reasoning-step-icon"]')
+      .get('.size-full')
+      .classes()
+
+    expect(classes).toContain('bg-contain!')
+    expect(classes).toContain('bg-center!')
+  })
+
   it('tries the image again for another connector', async () => {
     const wrapper = await mountIcon({
       kind: 'connector',

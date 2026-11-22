@@ -15,7 +15,8 @@ export const GOOGLE_SCOPES = {
   driveReadonly: `${GOOGLE_AUTH_PREFIX}drive.readonly`,
   gmailReadonly: `${GOOGLE_AUTH_PREFIX}gmail.readonly`,
   gmailCompose: `${GOOGLE_AUTH_PREFIX}gmail.compose`,
-  calendarEvents: `${GOOGLE_AUTH_PREFIX}calendar.events`,
+  calendarEventsOwned: `${GOOGLE_AUTH_PREFIX}calendar.events.owned`,
+  calendarEventsFreebusy: `${GOOGLE_AUTH_PREFIX}calendar.events.freebusy`,
 } as const
 
 export type GoogleScope = typeof GOOGLE_SCOPES[keyof typeof GOOGLE_SCOPES]
@@ -72,10 +73,13 @@ export const GOOGLE_SCOPE_CAPABILITIES: Readonly<
     provisional: false,
   },
   'calendar': {
-    scopes: [GOOGLE_SCOPES.calendarEvents],
-    clients: ['besidka', 'byo'],
+    scopes: [
+      GOOGLE_SCOPES.calendarEventsOwned,
+      GOOGLE_SCOPES.calendarEventsFreebusy,
+    ],
+    clients: ['byo'],
     classification: 'unconfirmed',
-    provisional: true,
+    provisional: false,
   },
 }
 

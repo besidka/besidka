@@ -3,6 +3,10 @@ import {
   BESIDKA_TOOL_NAME_PREFIX,
   isBesidkaChatToolName,
 } from '#shared/utils/besidka-tool-permissions'
+import {
+  getGoogleCalendarToolStepTitle,
+  isGoogleCalendarToolName,
+} from '#shared/utils/google-calendar-tools'
 import { getGoogleDriveToolStepTitle } from '#shared/utils/google-drive-tools'
 import {
   getGoogleGmailToolStepTitle,
@@ -338,6 +342,10 @@ export function getToolStepTitle(
   const isGoogleTool: boolean = isGoogleToolName(toolName)
 
   if (isGoogleTool) {
+    if (isGoogleCalendarToolName(toolName)) {
+      return getGoogleCalendarToolStepTitle(toolName, isPending, isFailed)
+    }
+
     return isGoogleGmailToolName(toolName)
       ? getGoogleGmailToolStepTitle(toolName, isPending, isFailed)
       : getGoogleDriveToolStepTitle(toolName, isPending, isFailed)

@@ -199,9 +199,16 @@
         and read your mail when you allow it, Gmail drafts let it write
         drafts you approve (Gmail tools need Gmail turned on in Labs), and
         Google Drive read access lets it search your files and read the
-        ones it finds. Besidka has no tool for Google Calendar yet: what you
-        tick for it is requested now for a tool that arrives later. You can
-        add more later; to remove access, disconnect and connect again.
+        ones it finds.
+        <template v-if="isCalendarActive">
+          Google Calendar access lets it list events, check when you are
+          busy and create one event you approve.
+        </template>
+        <template v-else>
+          Google Calendar tools need Google Calendar turned on in Labs.
+        </template>
+        You can add more later; to remove access, disconnect and connect
+        again.
       </p>
       <label
         v-for="option in offeredOptions"
@@ -217,7 +224,13 @@
           :data-testid="`google-byo-capability-${option.id}`"
         >
         <span>
-          {{ option.label }}
+          <Icon
+            v-if="option.icon"
+            :name="option.icon"
+            size="16"
+            class="mr-1 inline-block shrink-0 align-text-bottom"
+            :data-testid="`google-byo-capability-${option.id}-icon`"
+          />{{ option.label }}
           <span
             v-if="option.note"
             class="block text-xs text-base-content/60"
@@ -338,6 +351,8 @@ import {
   isGoogleOAuthClientSecret,
 } from '#shared/utils/google-byo'
 import type { GoogleByoCapability } from '#shared/utils/google-byo'
+import { GOOGLE_CALENDAR_ICON } from '#shared/utils/google-brand-icons'
+import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
 import { getGoogleByoToolsHint } from '#shared/utils/google-gmail-tools'
 import {
   GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
@@ -348,6 +363,7 @@ import type {
   GoogleByoConnectionStatus,
   GoogleConnectResult,
   GoogleConnectionSummary,
+  GooglePartialCalendarAccess,
 } from '#shared/utils/google-connections'
 import type { GoogleCapability } from '#shared/utils/google-scopes'
 
@@ -357,6 +373,7 @@ interface CapabilityOption {
   id: GoogleByoCapability
   label: string
   note?: string
+  icon?: string
 }
 
 const COMPOSE_SEND_NOTE = 'Google\'s gmail.compose permission technically '
@@ -379,8 +396,8 @@ const CAPABILITY_OPTIONS: CapabilityOption[] = [
   {
     id: 'calendar',
     label: 'Your Google Calendar events',
-    note: 'The Calendar scope is provisional until a narrower one is '
-      + 'checked.',
+    note: GOOGLE_CALENDAR_ACCESS_NOTE,
+    icon: GOOGLE_CALENDAR_ICON,
   },
 ]
 
@@ -401,7 +418,21 @@ const MISSING_TOOL_NOTES: ReadonlyArray<{
     note: 'Searching Google Drive and reading the files it finds needs '
       + 'Google Drive read access.',
   },
+  {
+    id: 'calendar',
+    note: 'Reading and creating Google Calendar events and checking free '
+      + 'and busy time needs Google Calendar access.',
+  },
 ]
+
+const PARTIAL_CALENDAR_NOTES: Readonly<
+  Record<GooglePartialCalendarAccess, string>
+> = {
+  'events': 'Listing and creating Google Calendar events work. Checking '
+    + 'when you are busy needs the second Google Calendar permission.',
+  'free-busy': 'Checking when you are busy works. Listing and creating '
+    + 'Google Calendar events needs the other Google Calendar permission.',
+}
 
 const GRANTED_LABELS: ReadonlyMap<GoogleCapability, string> = new Map(
   CAPABILITY_OPTIONS.map((option) => {
@@ -453,9 +484,14 @@ const heading = useTemplateRef<HTMLElement>('heading')
 
 const { data, refresh } = await useGoogleConnection()
 const gmailFeature = useFeature('google.gmail')
+const calendarFeature = useFeature('google.calendar')
 
 const isGmailActive = computed<boolean>(() => {
   return gmailFeature.value.active
+})
+
+const isCalendarActive = computed<boolean>(() => {
+  return calendarFeature.value.active
 })
 
 const byo = computed<GoogleByoConnectionStatus | null>(() => {
@@ -499,16 +535,25 @@ const missingToolNotes = computed<string[]>(() => {
     return []
   }
 
+  const partialCalendar = connection.value?.partialCalendar
+
   return MISSING_TOOL_NOTES
     .filter((item) => {
       return isGmailActive.value || !GMAIL_CAPABILITIES.has(item.id)
     })
+    .filter((item) => {
+      return isCalendarActive.value || item.id !== 'calendar'
+    })
     .filter(item => !grantedCapabilities.value.includes(item.id))
-    .map(item => item.note)
+    .map((item) => {
+      return item.id === 'calendar' && partialCalendar
+        ? PARTIAL_CALENDAR_NOTES[partialCalendar]
+        : item.note
+    })
 })
 
 const toolsHint = computed<string>(() => {
-  return getGoogleByoToolsHint(isGmailActive.value)
+  return getGoogleByoToolsHint(isGmailActive.value, isCalendarActive.value)
 })
 
 const isComposeGranted = computed<boolean>(() => {
@@ -518,6 +563,18 @@ const isComposeGranted = computed<boolean>(() => {
 const offeredOptions = computed<CapabilityOption[]>(() => {
   return CAPABILITY_OPTIONS.filter((option) => {
     return !grantedCapabilities.value.includes(option.id)
+      && (isCalendarActive.value || option.id !== 'calendar')
+  })
+})
+
+const requestedCapabilities = computed<GoogleByoCapability[]>(() => {
+  return [
+    ...new Set([
+      ...grantedCapabilities.value,
+      ...selectedCapabilities.value,
+    ]),
+  ].filter((id) => {
+    return isCalendarActive.value || id !== 'calendar'
   })
 })
 
@@ -686,12 +743,7 @@ async function connect() {
     const { authorizationUrl } = await $fetch('/api/v1/google/byo/start', {
       method: 'POST',
       body: {
-        capabilities: [
-          ...new Set([
-            ...grantedCapabilities.value,
-            ...selectedCapabilities.value,
-          ]),
-        ],
+        capabilities: requestedCapabilities.value,
         returnTo: GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
       },
     })

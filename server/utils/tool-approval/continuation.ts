@@ -1113,7 +1113,10 @@ export function connectorAuditApprovalOf(
 }
 
 function hasExecute(tool: unknown): tool is {
-  execute: (input: unknown, options?: { toolCallId?: string }) => unknown
+  execute: (
+    input: unknown,
+    options?: { toolCallId?: string, approvalId?: string },
+  ) => unknown
 } {
   return isRecord(tool) && typeof tool.execute === 'function'
 }
@@ -1188,7 +1191,9 @@ export function startClaimHeartbeats(input: {
  * when it threw), its heartbeat stops and the approval is used up
  * (`onSettled`), all before the SDK starts the next model turn. The output
  * itself is never stored. A failed claim write is logged and never changes
- * the call's result.
+ * the call's result. The approved call also gets the approval id as
+ * `approvalId` in its `execute` options, so a write can derive an idempotent
+ * request id from the approval and not from the provider's tool call id.
  */
 export function wrapApprovedExecutions(input: {
   tools: ToolSet | undefined
@@ -1297,7 +1302,10 @@ export function wrapApprovedExecutions(input: {
         let result: unknown
 
         try {
-          result = execute(toolInput, options)
+          result = execute(toolInput, {
+            ...options,
+            approvalId: decision.approvalId,
+          })
         } catch (exception) {
           return settle(decision, true).then(() => {
             throw exception

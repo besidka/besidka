@@ -1,5 +1,11 @@
 import type { UIMessage } from 'ai'
 import {
+  GOOGLE_CALENDAR_EVENT_REFERENCE_KIND,
+  GOOGLE_CALENDAR_FREE_BUSY_REFERENCE_KIND,
+  describeCalendarEventDay,
+  describeCalendarFreeBusyDay,
+} from '#shared/utils/google-calendar-tools'
+import {
   GOOGLE_GMAIL_DRAFT_REFERENCE_KIND,
   GOOGLE_GMAIL_THREAD_REFERENCE_KIND,
 } from '#shared/utils/google-gmail-tools'
@@ -61,7 +67,9 @@ function readDay(date: string): string {
  * The line a reference shows after a reload. An email reference holds only
  * a thread id, a link and Gmail's own timestamp (never a sender, a subject
  * or a snippet), so it reads "Email thread" with its date; a draft reads
- * "Draft"; a Drive reference shows the file name.
+ * "Draft"; a Calendar reference holds only an event id, a link and the
+ * start day (never a title or a guest), so it reads "Calendar event on
+ * <day>"; a Drive reference shows the file name.
  */
 export function describeGoogleStepReference(
   reference: GoogleStepReference,
@@ -83,6 +91,30 @@ export function describeGoogleStepReference(
       text: 'Draft saved in Gmail',
       linkText: 'Open drafts in Gmail',
       linkLabel: 'Open your drafts in Gmail',
+    }
+  }
+
+  if (reference.kind === GOOGLE_CALENDAR_EVENT_REFERENCE_KIND) {
+    const day = readDay(reference.date)
+
+    return {
+      text: describeCalendarEventDay(reference.date),
+      linkText: 'Open in Google Calendar',
+      linkLabel: day
+        ? `Open the event on ${day} in Google Calendar`
+        : 'Open the event in Google Calendar',
+    }
+  }
+
+  if (reference.kind === GOOGLE_CALENDAR_FREE_BUSY_REFERENCE_KIND) {
+    const day = readDay(reference.date)
+
+    return {
+      text: describeCalendarFreeBusyDay(reference.date),
+      linkText: 'Open in Google Calendar',
+      linkLabel: day
+        ? `Open ${day} in Google Calendar`
+        : 'Open Google Calendar',
     }
   }
 

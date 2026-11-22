@@ -2864,6 +2864,363 @@ describe('tool approval continuation', () => {
         expect(prompt).not.toContain('mail.google.com')
       })
     })
+
+    describe('with the real Calendar tools', () => {
+      const EVENT_TITLE = 'SECRET LAYOFF TITLE'
+      const EVENT_NOTES = 'SECRET LAYOFF NOTES'
+      const GUEST = 'eve@evil.example'
+      const EVENT_LINK = 'https://www.google.com/calendar/event?eid=YWJjZGVm'
+      const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
+      const NEW_EVENT = {
+        title: 'Planning',
+        start: '2026-12-01T10:00:00+01:00',
+        end: '2026-12-01T11:00:00+01:00',
+        timeZone: 'Europe/Berlin',
+      }
+      let calendarFetch: ReturnType<typeof vi.fn>
+      let insertStatus = 200
+
+      function outsideFrames(prompt: string): string {
+        return prompt.replace(FRAME, '')
+      }
+
+      function eventPosts() {
+        return calendarFetch.mock.calls.filter((call) => {
+          return (call[1] as RequestInit | undefined)?.method === 'POST'
+        })
+      }
+
+      async function pauseAfterListing() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-l', 'google__calendar_list_events', {
+              from: '2026-12-01T00:00:00+01:00',
+              to: '2026-12-08T00:00:00+01:00',
+            }),
+            toolCallChunks('call-w', 'google__calendar_create_event', NEW_EVENT),
+          ],
+        })
+      }
+
+      beforeEach(async () => {
+        const { buildGoogleCalendarTools } = await import(
+          '~~/server/utils/google/calendar-tools'
+        )
+
+        insertStatus = 200
+        calendarFetch = vi.fn(async (input: string, init?: RequestInit) => {
+          const url = new URL(input)
+
+          if (url.pathname !== '/calendar/v3/calendars/primary/events') {
+            return new Response('{}', { status: 404 })
+          }
+
+          if (init?.method === 'POST' && insertStatus !== 200) {
+            return Response.json(
+              { error: { errors: [{ reason: 'backendError' }] } },
+              { status: insertStatus },
+            )
+          }
+
+          if (init?.method === 'POST') {
+            return Response.json({
+              id: 'newevent123',
+              htmlLink: 'https://www.google.com/calendar/event?eid=bmV3',
+              start: { dateTime: NEW_EVENT.start },
+            })
+          }
+
+          return Response.json({
+            items: [{
+              id: 'ev1',
+              summary: EVENT_TITLE,
+              description: EVENT_NOTES,
+              start: { dateTime: '2026-12-02T10:00:00+01:00' },
+              end: { dateTime: '2026-12-02T11:00:00+01:00' },
+              htmlLink: EVENT_LINK,
+              attendees: [{ email: GUEST }],
+            }],
+          })
+        })
+
+        const build = (grants: Record<string, string> = {}) => {
+          return buildGoogleCalendarTools({
+            db: {} as never,
+            kv: {} as never,
+            userId: 1,
+            grantedScopes: [
+              'https://www.googleapis.com/auth/calendar.events.owned',
+              'https://www.googleapis.com/auth/calendar.events.freebusy',
+            ],
+            chatGrantHashes: grants,
+            logger: { set: vi.fn() },
+            fetchImpl: calendarFetch as never,
+          })
+        }
+        const hash = (await build()).entries
+          .get('google__calendar_list_events')!.descriptor.definitionHash!
+
+        mocks.googleSendFactory = async () => {
+          return await build({ google__calendar_list_events: hash })
+        }
+      })
+
+      it('stores events as references, keeps the framed text in KV while the '
+        + 'write waits, and creates one event once approved', async () => {
+        const paused = await pauseAfterListing()
+        const { toolApprovalResultIdOf, toolApprovalResultKey } = await import(
+          '~~/server/utils/tool-approval/kv'
+        )
+        const key = toolApprovalResultKey(
+          await toolApprovalResultIdOf(paused.messagePublicId, 'call-l'),
+        )
+        const [approvalId] = paused.approvalIds
+        const { buildCalendarEventId } = await import(
+          '~~/server/utils/google/calendar-api'
+        )
+
+        expect(findPart(paused.assistantParts, 'tool-google__calendar_list_events'))
+          .toMatchObject({
+            state: 'output-available',
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: 'ev1',
+                kind: 'calendar-event',
+                link: EVENT_LINK,
+                date: '2026-12-02',
+              }],
+            },
+          })
+        expect(JSON.stringify(paused.assistantParts)).not.toContain(EVENT_TITLE)
+        expect(JSON.stringify(paused.assistantParts)).not.toContain(EVENT_NOTES)
+        expect(JSON.stringify(paused.assistantParts)).not.toContain(GUEST)
+        expect(mocks.kv.get(key)).toContain(EVENT_TITLE)
+        expect(mocks.kv.get(key)).toContain('<untrusted_tool_result')
+        expect(eventPosts()).toHaveLength(0)
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__calendar_create_event',
+          rememberOptions: ['once'],
+          summary: 'Create the Google Calendar event "Planning" on 2026-12-01',
+          input: NEW_EVENT,
+        })
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+        const update = mocks.updates.at(-1)!
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(eventPosts()).toHaveLength(1)
+        expect(JSON.parse(Buffer.from(
+          eventPosts()[0]![1].body as Uint8Array,
+        ).toString())).toEqual({
+          id: await buildCalendarEventId(`1:${approvalId}`),
+          summary: 'Planning',
+          start: { dateTime: NEW_EVENT.start, timeZone: 'Europe/Berlin' },
+          end: { dateTime: NEW_EVENT.end, timeZone: 'Europe/Berlin' },
+        })
+        expect(String(eventPosts()[0]![0])).toContain('sendUpdates=none')
+        expect(prompt).toContain(EVENT_TITLE)
+        expect(outsideFrames(prompt)).not.toContain(EVENT_TITLE)
+        expect(outsideFrames(prompt)).not.toContain(EVENT_NOTES)
+        expect(outsideFrames(prompt)).not.toContain(GUEST)
+        expect(prompt).not.toContain('eid=YWJjZGVm')
+        expect(prompt).toContain('Nobody was invited')
+        expect(JSON.stringify(update.parts)).not.toContain(EVENT_TITLE)
+        expect(findPart(update.parts, 'tool-google__calendar_create_event'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: 'newevent123',
+                kind: 'calendar-event',
+                date: '2026-12-01',
+              }],
+            },
+          })
+        expect(mocks.kv.has(key)).toBe(false)
+      })
+
+      it('gives the model no event text at all when the stash is gone',
+        async () => {
+          const paused = await pauseAfterListing()
+          const kvModule = await import('~~/server/utils/tool-approval/kv')
+          const { toolApprovalResultIdOf, toolApprovalResultKey } = kvModule
+
+          mocks.kv.delete(toolApprovalResultKey(
+            await toolApprovalResultIdOf(paused.messagePublicId, 'call-l'),
+          ))
+
+          const { doStream } = await answer(paused, [
+            { approvalId: paused.approvalIds[0], approved: true },
+          ])
+          const prompt = JSON.stringify(
+            (doStream.mock.calls[0]?.[0] as any)?.prompt,
+          )
+
+          expect(prompt).not.toContain(EVENT_TITLE)
+          expect(prompt).not.toContain(EVENT_NOTES)
+          expect(prompt).not.toContain(GUEST)
+          expect(prompt).toContain('could not be kept')
+        })
+
+      it('tells the model an approved create that Google then fails may have '
+        + 'made the event, and records the failure', async () => {
+        const paused = await pauseAfterListing()
+
+        insertStatus = 500
+
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('It failed.')])
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+        const part = findPart(
+          mocks.updates.at(-1)!.parts,
+          'tool-google__calendar_create_event',
+        )
+
+        expect(eventPosts()).toHaveLength(1)
+        expect(prompt).toContain('may or may not have been created')
+        expect(prompt).toContain('check their calendar before trying again')
+        expect(prompt).not.toContain('Try again in a moment')
+        expect(part).toMatchObject({ state: 'output-error' })
+        expect(JSON.stringify(mocks.updates.at(-1)!.parts))
+          .not.toContain(EVENT_TITLE)
+      })
+
+      it('does not create the event when the user denies it', async () => {
+        const paused = await pauseAfterListing()
+
+        await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: false },
+        ])
+
+        expect(eventPosts()).toHaveLength(0)
+      })
+
+      it('asks no approval for an event that cannot run, and creates '
+        + 'nothing', async () => {
+        const { inserts } = await request({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-w', 'google__calendar_create_event', {
+              ...NEW_EVENT,
+              end: '2026-12-01T09:00:00+01:00',
+            }),
+            textChunks('I could not make that event.'),
+          ],
+          body: {
+            model: MODEL_ID,
+            tools: [],
+            reasoning: 'off',
+            connectorIds: ['conn-linear'],
+            messages: [{
+              id: USER_MESSAGE_ID,
+              role: 'user',
+              parts: [{ type: 'text', text: 'Add it' }],
+            }],
+          },
+        })
+        const assistant = inserts.find(value => value.role === 'assistant')
+
+        expect(assistant!.parts.find((part: any) => {
+          return part.toolCallId === 'call-w'
+        })).toMatchObject({
+          toolName: 'google__calendar_create_event',
+          state: 'output-error',
+        })
+        expect(assistant!.parts.some((part: any) => {
+          return part.type === 'data-tool-approval'
+            || part.state === 'approval-requested'
+        })).toBe(false)
+        expect(eventPosts()).toHaveLength(0)
+      })
+
+      it('gives the model no event text when a round continues a reply '
+        + 'that read the calendar', async () => {
+        mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+        mocks.chatMessages.push(
+          {
+            id: 'row-user',
+            publicId: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Go' }],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+          {
+            id: 'row-assistant',
+            publicId: 'assistant-1',
+            role: 'assistant',
+            parts: [
+              { type: 'step-start' },
+              {
+                type: 'tool-google__calendar_list_events',
+                toolCallId: 'call-cal-1',
+                state: 'output-available',
+                input: {
+                  from: '2026-12-01T00:00:00+01:00',
+                  to: '2026-12-08T00:00:00+01:00',
+                },
+                output: {
+                  references: [{
+                    id: 'ev1',
+                    kind: 'calendar-event',
+                    title: EVENT_TITLE,
+                    link: EVENT_LINK,
+                    date: '2026-12-02',
+                  }],
+                  bodyRemoved: true,
+                  note: 'The content was not kept.',
+                },
+              },
+              { type: 'text', text: 'Found it.' },
+              {
+                type: 'data-tool-budget',
+                id: 'tool-budget-1',
+                data: {
+                  round: 1,
+                  maxRounds: 10,
+                  reason: 'steps',
+                  model: MODEL_ID,
+                  gateway: null,
+                  reasoning: 'off',
+                  connectorIds: ['conn-linear'],
+                },
+              },
+            ],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(),
+          },
+        )
+
+        const { doStream } = await request({
+          servers: [linear],
+          steps: [textChunks('Carried on.')],
+          body: { continue: { messageId: 'assistant-1', round: 2 } },
+        })
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt ?? [],
+        )
+
+        expect(prompt).toContain('ev1')
+        expect(outsideFrames(prompt)).not.toContain(EVENT_TITLE)
+        expect(prompt).not.toContain('eid=YWJjZGVm')
+      })
+    })
   })
 
   describe('a chat that came to hold Google data while paused', () => {

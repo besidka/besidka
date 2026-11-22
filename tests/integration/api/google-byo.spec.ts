@@ -691,6 +691,49 @@ describe('Google bring-your-own client routes', () => {
         expect(scopes).not.toContain(DRIVE_READONLY)
       })
 
+    it('asks for the two narrow Calendar scopes only when Calendar is on '
+      + 'for the owner', async () => {
+      await saveClient()
+      await testDb.db.insert(schema.featureOptIns).values({
+        userId,
+        flag: 'google.calendar',
+        optedInAt: new Date('2026-11-01T00:00:00.000Z'),
+      })
+
+      const url = await startByo(['calendar'])
+      const scopes = url.searchParams.get('scope')!.split(' ')
+
+      expect(scopes.sort()).toEqual([
+        'openid',
+        EMAIL_SCOPE,
+        `${AUTH}calendar.events.owned`,
+        `${AUTH}calendar.events.freebusy`,
+      ].sort())
+      expect(scopes).not.toContain(`${AUTH}calendar.events`)
+      expect(scopes).not.toContain(`${AUTH}calendar`)
+    })
+
+    it('refuses the Calendar capability while Calendar is off for the '
+      + 'owner, without calling Google', async () => {
+      await saveClient()
+
+      const failure = await failureOf(call('start', {
+        body: { capabilities: ['drive-read', 'calendar'] },
+      }))
+
+      expect(failure.status).toBe(403)
+      expect(failure.message).toContain('Google Calendar is not turned on')
+    })
+
+    it('still starts a connection without Calendar while Calendar is off',
+      async () => {
+        await saveClient()
+
+        const url = await startByo(['drive-read'])
+
+        expect(url.searchParams.get('scope')).not.toContain('calendar')
+      })
+
     it.each([
       ['no capability', { capabilities: [] }],
       ['an unknown capability', { capabilities: ['drive-picked'] }],
@@ -748,6 +791,65 @@ describe('Google bring-your-own client routes', () => {
           .not.toContain('gmail-compose')
       })
 
+    it('stores a Calendar grant of both scopes as the Calendar capability, '
+      + 'and one scope alone as a partial grant', async () => {
+      await saveClient()
+      await testDb.db.insert(schema.featureOptIns).values({
+        userId,
+        flag: 'google.calendar',
+        optedInAt: new Date('2026-11-01T00:00:00.000Z'),
+      })
+      grantedScope = `openid ${EMAIL_SCOPE} ${AUTH}calendar.events.owned `
+        + `${AUTH}calendar.events.freebusy`
+
+      expect(await connectByo(['calendar']))
+        .toBe('/profile/keys?tab=google&google-byo=connected')
+      expect((await call('status')).result.byo.connection.capabilities)
+        .toContain('calendar')
+
+      await testDb.db.delete(schema.googleConnections)
+      grantedScope = `openid ${EMAIL_SCOPE} ${AUTH}calendar.events.owned`
+
+      expect(await connectByo(['calendar']))
+        .toBe('/profile/keys?tab=google&google-byo=partial')
+
+      const row = await connectionRow('byo')
+
+      expect(row!.grantedScopes).toContain(`${AUTH}calendar.events.owned`)
+      expect(row!.grantedScopes)
+        .not.toContain(`${AUTH}calendar.events.freebusy`)
+      expect((await call('status')).result.byo.connection.capabilities)
+        .not.toContain('calendar')
+    })
+
+    it('does not ask again for a stored Calendar grant while Calendar is '
+      + 'off, and asks for it while Calendar is on', async () => {
+      await saveClient()
+      await testDb.db.insert(schema.featureOptIns).values({
+        userId,
+        flag: 'google.calendar',
+        optedInAt: new Date('2026-11-01T00:00:00.000Z'),
+      })
+      grantedScope = `openid ${EMAIL_SCOPE} ${AUTH}calendar.events.owned `
+        + `${AUTH}calendar.events.freebusy ${DRIVE_READONLY}`
+      await connectByo(['calendar', 'drive-read'])
+
+      const whileOn = (await startByo(['drive-read']))
+        .searchParams.get('scope')!.split(' ')
+
+      expect(whileOn).toContain(`${AUTH}calendar.events.owned`)
+      expect(whileOn).toContain(`${AUTH}calendar.events.freebusy`)
+
+      await testDb.db.delete(schema.featureOptIns)
+        .where(eq(schema.featureOptIns.flag, 'google.calendar'))
+
+      const whileOff = (await startByo(['drive-read']))
+        .searchParams.get('scope')!.split(' ')
+
+      expect(whileOff).toContain(DRIVE_READONLY)
+      expect(whileOff.some(scope => scope.includes('calendar'))).toBe(false)
+    })
+
     it('stores only what was asked for when Google returns more',
       async () => {
         await saveClient()
@@ -756,6 +858,7 @@ describe('Google bring-your-own client routes', () => {
           EMAIL_SCOPE,
           DRIVE_READONLY,
           `${AUTH}calendar.events`,
+          `${AUTH}calendar.events.owned`,
           `${AUTH}userinfo.profile`,
         ].join(' ')
 
