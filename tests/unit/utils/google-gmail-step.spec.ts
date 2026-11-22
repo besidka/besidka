@@ -95,7 +95,7 @@ describe('Gmail reasoning steps', () => {
       'Allow in this chat',
     ])
     expect(search[1]!.ariaLabel)
-      .toBe('Allow searching all your Gmail in this chat')
+      .toBe('Allow in this chat: searching all your Gmail')
     expect(read.map(button => button.remember)).toEqual(['once'])
     expect(draft.map(button => button.remember)).toEqual(['once'])
   })

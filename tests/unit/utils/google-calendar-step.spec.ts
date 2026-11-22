@@ -79,13 +79,13 @@ describe('Calendar reasoning steps', () => {
       'Allow in this chat',
     ])
     expect(list[1]!.ariaLabel)
-      .toBe('Allow reading events on your Google Calendar in this chat')
+      .toBe('Allow in this chat: reading events on your Google Calendar')
     expect(busy.map(button => button.label)).toEqual([
       'Allow once',
       'Allow in this chat',
     ])
     expect(busy[1]!.ariaLabel).toBe(
-      'Allow checking when you are busy in your Google Calendar in this chat',
+      'Allow in this chat: checking when you are busy in your Google Calendar',
     )
     expect(write.map(button => button.remember)).toEqual(['once'])
   })
