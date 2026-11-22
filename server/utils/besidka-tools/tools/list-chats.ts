@@ -51,7 +51,8 @@ export const listChatsBesidkaTool = defineBesidkaTool({
     + 'slug, title, project, and whether each is pinned, shared or excluded '
     + 'from memory. Pass search to find chats by title or message content, '
     + 'projectId for the chats of one project, pinnedOnly for pinned chats. '
-    + 'Use get_chat with a slug to read one. Requires signing in '
+    + 'The messages of a chat that holds Google data are not searched. Use '
+    + 'get_chat with a slug to read one. Requires signing in '
     + '(chats:read).',
   inputSchema,
   annotations: {

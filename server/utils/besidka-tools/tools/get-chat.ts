@@ -30,7 +30,10 @@ export const getChatBesidkaTool = defineBesidkaTool({
     + 'reports and memory actions, plus up to 20 attached files by id and '
     + 'name) and the text of its messages, oldest to newest. Long messages '
     + 'and long chats are truncated; file contents, images and tool output '
-    + 'are left out. Requires signing in (chats:read).',
+    + 'are left out. In a chat that holds content from Google Drive, '
+    + 'Calendar or Gmail, every message text is replaced by a notice, and '
+    + 'files with Google content are not listed. Requires signing in '
+    + '(chats:read).',
   inputSchema,
   annotations: {
     readOnlyHint: true,

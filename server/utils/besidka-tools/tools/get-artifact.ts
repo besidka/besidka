@@ -31,7 +31,8 @@ export const getArtifactBesidkaTool = defineBesidkaTool({
   description: 'Read the full content of one version of a Besidka artifact '
     + '(the latest by default, up to 512 KB) together with its title, kind '
     + 'and the list of version numbers. An artifact taken down after a '
-    + 'report is refused. Requires signing in (artifacts:read).',
+    + 'report is refused, and an artifact made in a chat that holds Google '
+    + 'data is not found here. Requires signing in (artifacts:read).',
   inputSchema,
   annotations: {
     readOnlyHint: true,
@@ -42,7 +43,8 @@ export const getArtifactBesidkaTool = defineBesidkaTool({
   chat: { expose: true, tier: 'read' },
   chatDescription: 'Read the full content of one artifact version (the latest by '
     + 'default, up to 512 KB) with its title, kind and the list of '
-    + 'version numbers.',
+    + 'version numbers. An artifact with Google content is withheld unless '
+    + 'this chat already holds Google data.',
   handler: async (input: GetArtifactInput, context) => {
     const result = await getMcpArtifact(
       buildMcpArtifactContext(context),
