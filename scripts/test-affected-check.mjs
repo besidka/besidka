@@ -1699,6 +1699,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/scopes.spec.ts',
     'tests/unit/server/utils/connectors/store-tokens.spec.ts',
     'tests/unit/server/routes/connectors/client-metadata.spec.ts',
+    'tests/unit/server/utils/request-public-origin.spec.ts',
     'tests/unit/server/plugins/evlog-request-observability.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/integration/api/connectors-oauth-flow.spec.ts',
