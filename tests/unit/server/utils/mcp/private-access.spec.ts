@@ -4,6 +4,7 @@ import {
   MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT,
   MCP_PRIVATE_DELETE_RATE_LIMIT,
   MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT,
+  MCP_PRIVATE_DISCONNECT_GOOGLE_RATE_LIMIT,
   MCP_PRIVATE_TOOL_RATE_LIMIT,
   MCP_PRIVATE_WRITE_RATE_LIMIT,
 } from '~~/config/mcp-server'
@@ -231,6 +232,29 @@ describe('enforceMcpToolRateLimit', () => {
 
     await expect(enforceMcpToolRateLimit(7, 'delete_connectors', kv))
       .rejects.toMatchObject({ status: 429 })
+    await expect(enforceMcpToolRateLimit(7, 'delete_chats', kv)).resolves
+      .toBeUndefined()
+  })
+
+  it('gives disconnect_google its own hourly budget on top of the write '
+    + 'budget', async () => {
+    const kv = createKv()
+
+    expect(MCP_PRIVATE_DISCONNECT_GOOGLE_RATE_LIMIT)
+      .toEqual({ window: 3600, max: 10 })
+
+    for (
+      let call = 0;
+      call < MCP_PRIVATE_DISCONNECT_GOOGLE_RATE_LIMIT.max;
+      call++
+    ) {
+      await enforceMcpToolRateLimit(7, 'disconnect_google', kv)
+    }
+
+    await expect(enforceMcpToolRateLimit(7, 'disconnect_google', kv))
+      .rejects.toMatchObject({ status: 429 })
+    await expect(enforceMcpToolRateLimit(8, 'disconnect_google', kv))
+      .resolves.toBeUndefined()
     await expect(enforceMcpToolRateLimit(7, 'delete_chats', kv)).resolves
       .toBeUndefined()
   })

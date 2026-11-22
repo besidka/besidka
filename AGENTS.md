@@ -782,7 +782,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  61 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  63 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -907,12 +907,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   bring-your-own client (one encrypted `keys` row of the
   `google-oauth-client` kind, the admin gate, `/api/v1/google/byo/callback`,
   copies owned by Besidka's mode, the owner runbook in section 6), and
-  section 11, the Drive Picker (the G-1 answers marked documented, inferred or
-  NOT VERIFIED in section 3; the token route and why only Besidka's client,
-  export choices and every limit, the one-hop download redirect rule, reuse of
-  an unchanged copy, the `data-drive-file` part rebuilt on the server, names
-  only in shares, the `frame-src` addition, and the owner's real-account
-  checklist)
+  section 11, the MCP tools `list_google_connections` and `disconnect_google`
+  (status without email or tokens, the owner's mode hidden from non-admins,
+  disconnect through the app's function, excluded from chats), and section
+  12, the Drive Picker (the G-1 answers marked documented, inferred or NOT
+  VERIFIED in section 3; the token route, why only Besidka's client and what
+  stays exposed, export choices and every limit, the one-hop download
+  redirect rule, reuse of an unchanged copy, the `data-drive-file` part
+  rebuilt on the server, names only in shares, the path-scoped `frame-src`
+  source and why, and the owner's real-account checklist)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes

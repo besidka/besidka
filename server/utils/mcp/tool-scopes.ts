@@ -58,6 +58,8 @@ export const MCP_PRIVATE_TOOL_SCOPES = {
   add_connector: 'connectors:write',
   update_connector_tools: 'connectors:write',
   delete_connectors: 'connectors:write',
+  list_google_connections: 'connectors:read',
+  disconnect_google: 'connectors:write',
   list_skills: 'skills:read',
   get_skill: 'skills:read',
   create_skill: 'skills:write',

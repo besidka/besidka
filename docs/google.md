@@ -1171,7 +1171,7 @@ bring-your-own one.
   > myaccount.google.com/connections. While the client is owner-only, the
   > owner is the only affected Google account.
 
-## 11. The Drive Picker (Picker child, G-4)
+## 12. The Drive Picker (Picker child, G-4)
 
 Built on `feat/google-drive-picker`. A connected user picks files in Google's
 own Picker; Besidka copies each into its own storage as a snapshot and
@@ -1462,3 +1462,50 @@ Where BES-278 differs from what was built, and the brief won:
   messages that used it).
 - A resource key is used for the copy but not stored, so a later "Open in
   Google Drive" for a file shared only by link may ask for access.
+
+## 11. MCP and the Besidka tools (status and disconnect, child 11)
+
+Built (2026-11-22, MCP 5.5.0). The user's Google connection is visible and
+removable through the `/mcp` server, and Google data stays out of it
+(pre-check row 5: a user-authorized MCP app is a third party). The tool
+design, the scope choice and the guard rails are in `docs/mcp-server.md`,
+"Google connections (5.5.0)".
+
+| Tool | Scope | Destructive | Chat |
+|---|---|---|---|
+| `list_google_connections` | `connectors:read` | no | Read tier |
+| `disconnect_google` | `connectors:write` | yes | Excluded |
+
+- **Status.** One entry per client mode: `clientMode`, `connected`, `status`
+  (`active` or `needs_reauth`), `capabilities` (names such as `identity` and
+  `drive-picked`, never scope URLs) and `connectedAt`. Never the Google
+  account's email or subject, the connection id, a token, the client id or
+  secret, a file name or any Google content. Besidka's mode is always listed;
+  the owner's own client only for a caller who passes `isGoogleByoAllowed`
+  (section 10.3), so no other caller learns that the mode exists. Unlike the
+  Google tab, a former admin does not see a leftover connection over MCP.
+- **Disconnect.** `{ clientMode, confirm: true }` calls
+  `disconnectGoogleConnection`, the function behind the disconnect route
+  (section 9.6), so revoke, cleanup and logging are the same. It needs no flag
+  and no admin role, so a former admin can still end the owner's connection
+  (section 10.6). The description says the copies of Drive files are deleted
+  and that the user connects again in the app.
+- **What MCP does not do.** It cannot connect Google (OAuth needs the browser
+  and a consent screen) and cannot store, replace or delete the owner's
+  client secret.
+- **Chat.** The status read is a Besidka read in the read tier: no Google
+  taint, not a Google read, not in the tools withheld for a Google-derived
+  send. `disconnect_google` is excluded from chats: in a chat that holds
+  Google data it would delete the copies the chat is using.
+- **A `revoked` row.** It lists as not connected, and `disconnect_google` on
+  it still runs and finishes the cleanup.
+- **Consent wording.** `connectors:write` now also covers a Google
+  disconnect for apps that already hold it. The consent label and
+  description (`app/components/OAuth/ScopeLabel.vue`) and the scope phrase of
+  the security email (`server/utils/account/security-emails.ts`) are updated
+  in this change: they say the scope can disconnect Google, which revokes the
+  grant and deletes the copies of Google Drive files that Besidka made, and
+  that it cannot connect Google.
+- **Open owner item.** The Privacy Policy sentence about what a connected app
+  can reach still names connectors only. It stays an owner item for the
+  Google legal text (legal files are not changed here).

@@ -843,6 +843,43 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Disconnect Google from your Besidka account for one client mode: the grant is revoked at Google, the stored tokens are cleared and the copies of Google Drive files that Besidka made are deleted, so chats that used them lose them. This cannot be undone and the user will have to connect again in the Besidka app (API Keys, Google): ask the user to confirm first and send confirm: true. Reports revoked (false when Google did not confirm), filesDeleted and filesPending (true when some copies are still being deleted and the hourly sweep finishes it). Cannot connect Google or store a client secret. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "clientMode": {
+            "description": "Which connection to end, from list_google_connections: \"besidka\" or \"byo\"",
+            "enum": [
+              "besidka",
+              "byo"
+            ],
+            "type": "string"
+          },
+          "confirm": {
+            "const": true,
+            "description": "Must be true, confirmed by the user",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "clientMode",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "disconnect_google",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Disconnect Google"
+    },
+    {
+      "annotations": {
         "destructiveHint": null,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -1439,6 +1476,25 @@
         "files:read"
       ],
       "title": "List my files"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Show whether Google is connected to your Besidka account, per client mode: \"besidka\" (Besidka's own Google client) and, only when your account may use it, \"byo\" (the owner's own client). Each entry has connected, status (\"active\", or \"needs_reauth\" when you must connect again in the Besidka app), the granted capabilities (for example identity, drive-picked) and connectedAt. Never returns the Google account's email or id, tokens, client ids or secrets, file names or any Google content. Connecting is only possible in the Besidka app. Requires signing in (connectors:read).",
+      "inputSchema": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_google_connections",
+      "public": false,
+      "requiredScopes": [
+        "connectors:read"
+      ],
+      "title": "List my Google connections"
     },
     {
       "annotations": {

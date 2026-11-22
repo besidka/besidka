@@ -26,7 +26,7 @@ permission and cannot be set.
 
 | Tier | Group in the UI | Tools |
 | --- | --- | --- |
-| `read` | Read-only | 14 |
+| `read` | Read-only | 15 |
 | `write` | Write | 8 |
 | `ask-every-time` | Delete and share ("Always asks" before 2026-11-20) | 13 |
 
@@ -211,6 +211,19 @@ one definition the client and the server share), with the entry's
   (`<untrusted_tool_result connector="besidka" tool="...">`, cut to 64 KiB) and
   raises the untrusted-content guard. A handler's client error (4xx) passes
   its own message on; anything else becomes "The Besidka tool call failed."
+
+Google connection status is the one Google-related Besidka tool in the read
+tier: `list_google_connections` returns whether Google is connected per client
+mode, its status, the granted capability names and when it was connected, and
+never the Google account, a token or Google content (the owner's own client is
+listed only for an admin who passes `isGoogleByoAllowed`). It is a plain
+Besidka read: family `besidka`, `besidka` taint, no `google` taint, no Google
+read source, and not in `GOOGLE_SPREADING_BESIDKA_TOOLS`, so it is offered and
+runs in a chat that holds Google data. Its sibling `disconnect_google` is
+excluded from chats (the strictest choice): there it would delete the copies
+the chat is using, so it stays in the app and on MCP
+(`tests/unit/server/utils/besidka-tools/google-connections.spec.ts`,
+`docs/mcp-server.md`, "Google connections (5.5.0)").
 
 The route adds a short system block that explains the `besidka__` tools and
 the frame, also when no connector is on, and gives the tool loop

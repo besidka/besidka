@@ -549,6 +549,19 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/integration/api/connectors-oauth-flow.spec.ts',
   ]
+  const mcpGoogleConnectionTests = [
+    'tests/unit/server/mcp/tools/list-google-connections.spec.ts',
+    'tests/unit/server/mcp/tools/disconnect-google.spec.ts',
+    'tests/unit/server/utils/mcp/private/google.spec.ts',
+    'tests/unit/server/utils/besidka-tools/google-connections.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/scripts/mcp-version-guard.spec.ts',
+  ]
   const mcpSkillTests = [
     'tests/unit/server/mcp/tools/list-skills.spec.ts',
     'tests/unit/server/mcp/tools/get-skill.spec.ts',
@@ -4985,6 +4998,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
       tests: mcpConnectorTests,
+    },
+    {
+      pattern: /^(config\/mcp-server\.ts|server\/(mcp\/tools\/(list-google-connections|disconnect-google)|utils\/(besidka-tools\/(registry|chat-adapter|tools\/(list-google-connections|disconnect-google))|mcp\/(private\/google|private-access|tool-scopes)|google\/(connection|store|byo-access))))\.ts$/,
+      tests: mcpGoogleConnectionTests,
     },
     {
       pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write|statements|route)))\.ts$/,

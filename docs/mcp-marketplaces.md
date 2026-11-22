@@ -282,7 +282,7 @@ Example prompts:
 ### Tools and scopes
 
 Four public tools need no token: `list_models`, `list_providers`,
-`get_key_guide`, `get_page`. The 44 private tools need these scopes; the
+`get_key_guide`, `get_page`. The 63 private tools need these scopes; the
 consent page lets the user approve each scope separately.
 
 | Scope | Tools |
@@ -300,8 +300,8 @@ consent page lets the user approve each scope separately.
 | `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
 | `artifacts:write` | `create_artifact`, `update_artifact`, `revoke_artifact_shares` |
 | `artifacts:share` | `share_artifact` (publishes a public link: up to 30 days, never indexed, no saved progress or AI features, 10 a day) |
-| `connectors:read` | `list_connectors`, `get_connector` |
-| `connectors:write` | `add_connector` (created switched off, never enabled over MCP), `update_connector_tools` (only turns tools off or back to ask), `delete_connectors` |
+| `connectors:read` | `list_connectors`, `get_connector`, `list_google_connections` |
+| `connectors:write` | `add_connector` (created switched off, never enabled over MCP), `update_connector_tools` (only turns tools off or back to ask), `delete_connectors`, `disconnect_google` |
 | `skills:read` | `list_skills`, `get_skill` |
 | `skills:write` | `create_skill`, `update_skill`, `rename_skill` (saved switched off for the user's review, never enabled over MCP), `delete_skills`, `set_project_skills` (pins existing skills to a project; never enables one) |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |

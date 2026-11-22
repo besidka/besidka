@@ -7,7 +7,7 @@
   pages). They work without a token, read only public content and never
   touch user data.
 - **Private tools** (the signed-in user's chats, projects, files, memory and
-  settings, artifacts: 41 tools that cover what the web UI does except
+  settings, artifacts: 60 tools that cover what the web UI does except
   chatting, plus the three admin-only feature access tools, see
   [What MCP does not do (and why)](#what-mcp-does-not-do-and-why)). They
   need an OAuth access token issued by Besidka's own authorization server
@@ -89,8 +89,8 @@ never data.
 | `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
 | `artifacts:write` | `create_artifact`, `update_artifact`, `revoke_artifact_shares` |
 | `artifacts:share` | `share_artifact` (publishes, see exclusion 2) |
-| `connectors:read` | `list_connectors`, `get_connector` |
-| `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`) |
+| `connectors:read` | `list_connectors`, `get_connector`, `list_google_connections` (5.5.0) |
+| `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`), `disconnect_google` (5.5.0, destructive) |
 | `skills:read` | `list_skills`, `get_skill` |
 | `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`), `set_project_skills` (5.1.0, replaces the skills pinned to a project; destructive because omitted pins are removed; never changes a skill) |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_connector_images` (5.2.0), `delete_memory`, `reset_memory`, `delete_artifacts` |
@@ -113,9 +113,14 @@ the design record, the connectors rows shipped in 4.0.0 (see
 [The connectors scopes](#the-connectors-scopes)) and the skills rows in 5.0.0
 (see [The skills scopes](#the-skills-scopes)).
 Each is a new scope, so each ships with a major version bump
-(consent is stored by scope name, and a new tool under an existing scope
-would reach existing clients silently). The design is in
-`docs/agentic-capabilities-roadmap.md`.
+(consent is stored by scope name). The rule from `docs/mcp-marketplaces.md`,
+"When to publish again": a new SCOPE is a major bump; a new tool under an
+existing scope is a minor bump, and it reaches existing grants without a new
+consent screen, which is why the scope's label in
+`app/components/OAuth/ScopeLabel.vue` and its phrase in
+`server/utils/account/security-emails.ts` must be updated in the same change
+(`disconnect_google` under `connectors:write`, 5.5.0, is the precedent). The
+design is in `docs/agentic-capabilities-roadmap.md`.
 
 | Scope | Class | Planned tools | Ticket |
 | --- | --- | --- | --- |
@@ -149,14 +154,14 @@ history (the `DESTRUCTIVE_TOOLS` list in the spec): `delete_memory`,
 `delete_project_knowledge_items`, `rename_file`, `delete_files`,
 `reset_memory`, `update_settings`, `set_feature_access`,
 `revoke_artifact_shares`, `delete_artifacts`, `delete_connectors`,
-`update_skill` and `delete_skills`.
+`disconnect_google`, `update_skill` and `delete_skills`.
 `update_artifact` is not on the list because every earlier version is kept.
 `update_connector_tools` is not either: it only reduces what a connector may
 do and removes no user content. `update_skill` is on the list because it
 switches the skill off and stages a replacement of its files; `rename_skill`
 is not, because it writes a new version and keeps the old ones.
 
-Since 5.4.1 the descriptions of `get_chat`, `list_chats`, `list_files`, `read_file`, `list_artifacts` and `get_artifact` say which Google content they leave out (`docs/google.md`, section 5.3); no tool, input or scope changed. Since 5.4.0 the surface has 61 private tools: `get_chat_cost` and `get_usage_stats` (the cost of one chat by model, and the user's usage stats for 7 days, 30 days or all time; see `docs/besidka-tools.md`, "Chat cost and usage stats") are the additions, under the existing `chats:read` scope; the counts of projects, artifacts, skills and connectors in `get_usage_stats` need the matching read scope too. Since 5.3.0 the surface had 59 private tools: `get_debug_info` (support and developer debug info, see `docs/besidka-tools.md`, "Debug info") is the only addition, under the existing `chats:read` scope. Since 5.2.0 the surface had 58 private tools: `delete_connector_images` (C-15) deletes every image connectors returned in chats, under the existing `data:delete` scope with `confirm: true`; those images are in no file list, so `list_files` does not show them. Since 5.1.0 the surface had 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
+Since 5.5.0 the surface has 63 private tools: `list_google_connections` (under `connectors:read`) and `disconnect_google` (under `connectors:write`, destructive) are the additions, see [Google connections](#google-connections-550). Both reuse existing scopes, so an app already approved for `connectors:read` or `connectors:write` gets them without a new consent screen. Since 5.4.1 the descriptions of `get_chat`, `list_chats`, `list_files`, `read_file`, `list_artifacts` and `get_artifact` say which Google content they leave out (`docs/google.md`, section 5.3); no tool, input or scope changed. Since 5.4.0 the surface has 61 private tools: `get_chat_cost` and `get_usage_stats` (the cost of one chat by model, and the user's usage stats for 7 days, 30 days or all time; see `docs/besidka-tools.md`, "Chat cost and usage stats") are the additions, under the existing `chats:read` scope; the counts of projects, artifacts, skills and connectors in `get_usage_stats` need the matching read scope too. Since 5.3.0 the surface had 59 private tools: `get_debug_info` (support and developer debug info, see `docs/besidka-tools.md`, "Debug info") is the only addition, under the existing `chats:read` scope. Since 5.2.0 the surface had 58 private tools: `delete_connector_images` (C-15) deletes every image connectors returned in chats, under the existing `data:delete` scope with `confirm: true`; those images are in no file list, so `list_files` does not show them. Since 5.1.0 the surface had 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
 `skills:read` and `skills:write` scopes were added to the
 50 of 4.0.0 (see [The skills scopes](#the-skills-scopes)).
 
@@ -280,8 +285,9 @@ scope, so it is unticked by default and shown with the warning style.
 - **Where they are registered:** `shared/utils/mcp-oauth-scopes.ts`,
   `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
   "See your connectors: names and addresses, never their keys" and "Add,
-  change and delete connectors. New ones start switched off; you switch them
-  on in Besidka"), the write warning in `ScopePicker.vue`, the
+  change and delete connectors, and disconnect Google. New ones start
+  switched off; you switch them on in Besidka" (the Google part since
+  5.5.0)), the write warning in `ScopePicker.vue`, the
   scope phrases of the security emails, and `MCP_SERVER_VERSION` 4.0.0 in the
   four version files. The Privacy Policy lists the permissions ("What a
   connected app can reach"), so it gained two bullets and one sentence and its
@@ -959,7 +965,7 @@ directly in `server/mcp/` is loaded as a named handler.
 
 ### The Besidka tools registry (BES-394 L7)
 
-The 57 private tools are not defined in `server/mcp/tools/`. Each has one
+The 63 private tools are not defined in `server/mcp/tools/`. Each has one
 transport-neutral entry in `server/utils/besidka-tools/tools/<name>.ts`
 (`defineBesidkaTool`), and the file in `server/mcp/tools/` is a three-line
 shim:
@@ -1120,6 +1126,8 @@ text only and capped.
 | `add_connector` | `connectors:write` | no | Add a connector by `url` or `presetId`, with an optional `title`. Created switched off, `needs-auth`, `createdVia: 'mcp'`, with the OAuth client id; returns `manageUrl` | `addConnector` (`server/utils/connectors/add.ts`, shared with `POST /api/v1/connectors`): `parseSafeOutboundUrl`, no network call, no credentials input. At most 5 MCP-added connectors may wait switched off (`CONNECTORS_MCP_DISABLED_MAX`), checked in the insert batch; 20 per user |
 | `update_connector_tools` | `connectors:write` | no | Turn tools off (`enabled: false`) or end their "Always allow" (`approval: 'ask'`; chat grants are not touched); returns the tool list | `reduceConnectorToolSettings`: an update of existing rows only, all names checked first, nothing changes when one is unknown. Up to 100 tools (`CONNECTOR_MCP_TOOLS_BATCH`) |
 | `delete_connectors` | `connectors:write` | yes | Delete connectors with their credentials, tool settings and per-chat settings; revokes the tokens best effort first. Needs `confirm: true`; reports `deleted` and `notFound` | `deleteConnectorsWithRevocation` (`server/utils/connectors/delete.ts`, shared with `POST /api/v1/connectors/delete/bulk`): 10 s revoke deadline, four at a time, the consent-withdrawn log, audit rows kept. Up to 20 ids (`CONNECTOR_MCP_DELETE_BATCH`), the 30 per minute write limit |
+| `list_google_connections` | `connectors:read` | no | Since 5.5.0. `{ connections }`: one entry per Google client mode, `clientMode` (`besidka` always, `byo` only for an admin who passes the owner gate), `connected`, `status` (`active`, `needs_reauth` or `null`), `capabilities` (names from `shared/utils/google-scopes.ts`, empty unless `active`) and `connectedAt`. No email, subject, connection id, token, client id, secret or Google content. No feature flag | `listMcpGoogleConnections`: `readGoogleConnection`, `isGoogleByoAllowed` (fails closed) |
+| `disconnect_google` | `connectors:write` | yes | Since 5.5.0. `clientMode` (`besidka` or `byo`, required, no default) and `confirm: true`; revokes the grant at Google, clears the tokens and deletes the copies of Google files; reports `disconnected`, `revoked`, `filesDeleted` and `filesPending`. 404 when that mode is not connected. No flag and no admin check, as in the app | `disconnectMcpGoogle` over `disconnectGoogleConnection`, the function the app route calls. Its own hourly cap of 10 (`MCP_PRIVATE_DISCONNECT_GOOGLE_RATE_LIMIT`), on top of the write limit |
 | `list_skills` | `skills:read` | no | The caller's skills and commands, most recently changed first: `id`, `name`, `description`, `enabled`, `status`, `licenseClass`, `sourceKind`, `sourceUrl`, `sourceRef`, `version`, `pendingVersion`, `filesCount`, `bytes`, `createdVia`, `modelInvocable`, `slashCommand`, `command`, `argumentHint`, `updatedAt`; `kind` `skill` or `command` filters on the command; `nextCursor` | `listMcpSkills`. No text. `limit` up to 50 |
 | `get_skill` | `skills:read` | no | One skill: the list fields plus the file list of a version (`version`, default current); with `path`, that file's text up to 200,000 characters and `truncated` | `getMcpSkill`, `loadOwnedSkill`, `readBlobText`. The same 404 for an unknown id and another user's |
 | `create_skill` | `skills:write` | no | 1 to 50 text files, 400 KiB in all, with a `SKILL.md`; optional `argumentHint` (no command, no mode). Saved disabled with `needs-review`; returns `id`, `name`, `licenseClass`, `findings`, `reviewUrl` | `createSkillForMcpClient` (`server/utils/skills/versions/mcp.ts`): `validateSkillEditPath`, `analyzeSkillFiles` (license gate, scanner), `insertSkillWithinLimits`, `buildVersionStatements` |
@@ -1255,6 +1263,55 @@ Notes:
   (`decodeKnowledgeEntityId`); a search cursor must be a valid offset. A bad
   cursor is a `400` tool error asking the caller to omit it, never a `500`
   or a silent restart from the first page.
+
+### Google connections (5.5.0)
+
+`list_google_connections` and `disconnect_google` (child 11 of the Phase 4b
+stack, `docs/google.md`, section 11) make the user's Google connection
+visible and removable, and never expose Google data
+(`docs/legal/prechecks/google.md`, row 5: a user-authorized MCP app is a
+third party).
+
+- **A dedicated read tool, not an extension of `list_connectors`.**
+  `list_connectors` answers a generic 404 when the `connectors` flag is off
+  (`assertMcpConnectorsAvailable`), but Google status needs only a session in
+  the app, so a user with Google connected and Connectors off must still see
+  it. It is also a paginated list of remote MCP servers by id and host with a
+  fixed output contract; Google has no connector id, and one block per page
+  would repeat. The scope is the same, `connectors:read`.
+- **Status is built field by field.** The result never spreads the stored
+  connection, so the Google account's email and subject, the connection id,
+  the granted scope URLs, tokens and the client id and secret cannot reach
+  it (`tests/unit/server/utils/mcp/private/google.spec.ts` asserts on the
+  serialized output). A `revoked` row (a disconnect whose cleanup still
+  runs) reads as not connected. `needs_reauth` is `connected: true` with no
+  capabilities: the user must connect again in the app.
+- **The owner's own client stays hidden.** The `byo` entry exists only for a
+  caller who passes `isGoogleByoAllowed`, the gate the app uses (admin and
+  `google.byo`). A gate that cannot be checked hides it. This is narrower
+  than the app, which still shows a former admin a leftover connection with a
+  reduced card: over MCP that user sees no `byo` entry.
+- **Disconnect needs no flag and no admin check.** It calls
+  `disconnectGoogleConnection`, the function behind
+  `POST /api/v1/google/connections/disconnect`, so the revoke at Google, the
+  deletion of the copies and the logging are identical, and a former admin
+  can still end the owner's connection with `clientMode: 'byo'`.
+  `clientMode` is required with no default, so the destructive direction is
+  never guessed. A mode with nothing to disconnect, for a caller who never
+  had it as well, answers the same 404. Guard rails: `confirm: true`,
+  `destructiveHint`, the write limit and an hourly cap of 10.
+- **Chat exposure.** `list_google_connections` is offered to chat models in
+  the read tier (it returns no Google data, so it is a Besidka read that sets
+  no Google taint and is not in `GOOGLE_SPREADING_BESIDKA_TOOLS`).
+  `disconnect_google` is excluded from chats, the strictest option the
+  registry has: in a chat that holds Google data it would delete the copies
+  the chat is using (`docs/besidka-tools.md`).
+- **What there is no tool for.** MCP cannot connect Google (the OAuth
+  redirect needs the user's browser and a consent screen) and cannot store,
+  replace or remove the owner's client id and secret (no tool takes a
+  credential). Both stay in the app, API Keys, Google tab.
+  **Revisit when** a connect link the user opens in the app can complete the
+  flow without the agent seeing a code or a secret.
 
 ### Files and documents (text route)
 

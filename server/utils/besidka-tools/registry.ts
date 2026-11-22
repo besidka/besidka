@@ -25,6 +25,7 @@ import { deleteMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/del
 import { deleteProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-project'
 import { deleteProjectKnowledgeItemsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-project-knowledge-items'
 import { deleteSkillsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-skills'
+import { disconnectGoogleBesidkaTool } from '~~/server/utils/besidka-tools/tools/disconnect-google'
 import { getArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-artifact'
 import { getChatBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-chat'
 import { getChatCostBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-chat-cost'
@@ -41,6 +42,7 @@ import { listConnectorsBesidkaTool } from '~~/server/utils/besidka-tools/tools/l
 import { listFeatureAccessBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-feature-access'
 import { listFeatureFlagsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-feature-flags'
 import { listFilesBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-files'
+import { listGoogleConnectionsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-google-connections'
 import { listMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-memory'
 import { listMyFeaturesBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-my-features'
 import { listProjectsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-projects'
@@ -88,6 +90,7 @@ export const BESIDKA_TOOLS = {
   delete_project: deleteProjectBesidkaTool,
   delete_project_knowledge_items: deleteProjectKnowledgeItemsBesidkaTool,
   delete_skills: deleteSkillsBesidkaTool,
+  disconnect_google: disconnectGoogleBesidkaTool,
   get_artifact: getArtifactBesidkaTool,
   get_chat: getChatBesidkaTool,
   get_chat_cost: getChatCostBesidkaTool,
@@ -104,6 +107,7 @@ export const BESIDKA_TOOLS = {
   list_feature_access: listFeatureAccessBesidkaTool,
   list_feature_flags: listFeatureFlagsBesidkaTool,
   list_files: listFilesBesidkaTool,
+  list_google_connections: listGoogleConnectionsBesidkaTool,
   list_memory: listMemoryBesidkaTool,
   list_my_features: listMyFeaturesBesidkaTool,
   list_projects: listProjectsBesidkaTool,
