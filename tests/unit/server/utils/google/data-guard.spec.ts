@@ -18,7 +18,6 @@ import {
   mayOfferConnectorsWithGoogleData,
   mayRunWithGoogleData,
   resolveSendGoogleContent,
-  shouldSendGatewayGoogleSafeguards,
   withGoogleTaintRerankStop,
   readGeminiPaidTierConfirmed,
   withoutWebSearchForGoogleData,
@@ -547,24 +546,4 @@ describe('resolveSendGoogleContent', () => {
       newMessageParts: fileParts('other.pdf'),
     })).toEqual({ holdsGoogleContent: false, newMessage: false })
   })
-})
-
-describe('shouldSendGatewayGoogleSafeguards', () => {
-  it('sends nothing without a gateway and always in a flagged chat',
-    async () => {
-      const logger = createLogger()
-
-      expect(await shouldSendGatewayGoogleSafeguards({
-        event: { context: {} },
-        gatewayId: undefined,
-        holdsGoogleData: true,
-        logger,
-      })).toBe(false)
-      expect(await shouldSendGatewayGoogleSafeguards({
-        event: { context: {} },
-        gatewayId: 'vercel',
-        holdsGoogleData: true,
-        logger,
-      })).toBe(true)
-    })
 })

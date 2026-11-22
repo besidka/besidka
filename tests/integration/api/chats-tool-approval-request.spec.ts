@@ -62,21 +62,17 @@ vi.mock('~~/server/utils/tool-approval/secret', () => ({
   useToolApprovalSecret: async () => 'test-tool-approval-secret',
 }))
 
-vi.mock('~~/server/utils/tool-approval/google-send-tools', async (
+vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
   importOriginal,
 ) => {
   const actual = await importOriginal<
-    typeof import('~~/server/utils/tool-approval/google-send-tools')
+    typeof import('~~/server/utils/tool-approval/google-send-candidates')
   >()
 
   return {
     ...actual,
-    getGoogleSendTools: async (
-      input: Parameters<typeof actual.getGoogleSendTools>[0],
-    ) => {
-      return mocks.googleSend && input.toolApprovalsActive
-        ? mocks.googleSend
-        : await actual.getGoogleSendTools(input)
+    buildGoogleSendToolCandidates: async () => {
+      return mocks.googleSend ?? actual.noGoogleSendTools()
     },
   }
 })
@@ -579,7 +575,7 @@ describe('tool approval requests in the chat send', () => {
     vi.clearAllMocks()
     mocks.mergedStreams = []
     mocks.writers = []
-    mocks.flags = new Set(['connectors', 'tool-approvals'])
+    mocks.flags = new Set(['connectors', 'tool-approvals', 'google.drive'])
     mocks.holdsSkillText = false
     mocks.skillsInstructionBlock = null
     mocks.kv = new Map()

@@ -26,7 +26,26 @@ const mocks = vi.hoisted(() => ({
   resolveJevRoleApiKey: vi.fn(),
   listChatConnectorStates: vi.fn(),
   getOwnedFilesByStorageKeys: vi.fn(),
+  googleCandidates: null as null | {
+    tools: Record<string, unknown>
+    entries: Map<string, unknown>
+  },
 }))
+
+vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/tool-approval/google-send-candidates')
+  >()
+
+  return {
+    ...actual,
+    buildGoogleSendToolCandidates: async () => {
+      return mocks.googleCandidates ?? actual.noGoogleSendTools()
+    },
+  }
+})
 
 vi.mock('~~/server/utils/files/file-governance', async (importOriginal) => {
   const actual = await importOriginal<
@@ -151,8 +170,12 @@ function createUsage() {
   }
 }
 
-function createTextModel() {
+function createTextModel(streamError?: unknown) {
   const doStream = vi.fn(async () => {
+    if (streamError) {
+      throw streamError
+    }
+
     return {
       stream: simulateReadableStream({
         chunks: [
@@ -341,9 +364,10 @@ async function runSend(input: {
   storedMessages?: unknown[]
   newMessageParts?: unknown[]
   markedArtifactIds?: number[]
+  streamError?: unknown
 }) {
   const directModel = input.directModel ?? OPENAI_MODEL
-  const { model, doStream } = createTextModel()
+  const { model, doStream } = createTextModel(input.streamError)
 
   stubSendGlobals(directModel)
   stubProviderBuilders(model)
@@ -446,6 +470,7 @@ describe('chat send data guard', () => {
       new Error('stop after the connector gate'),
     )
     mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
+    mocks.googleCandidates = null
   })
 
   describe('connectors', () => {
@@ -711,42 +736,80 @@ describe('chat send data guard', () => {
       expect(result.batches[0]).toHaveLength(1)
     })
 
-    it('sends the gateway safeguards where Google tools could be offered, '
-      + 'in a chat without Google data', async () => {
+    function gatewayOptionsOf(result: Awaited<ReturnType<typeof runSend>>) {
+      return (result.useGatewayMock.mock.calls[0] as unknown[] | undefined)
+        ?.at(-1)
+    }
+
+    it('sends no gateway safeguards in a chat without Google data while no '
+      + 'Google tool is registered, even with google.drive on', async () => {
       mocks.flags.add('tool-approvals')
       mocks.flags.add('google.drive')
 
-      const offered = await runSend({
+      const result = await runSend({
         googleDataAt: null,
         gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
       })
 
-      expect(offered.useGatewayMock).toHaveBeenCalledWith(
-        'openrouter',
-        expect.anything(),
-        'openai/gpt-5',
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        { googleDataSafeguards: true },
+      expect(gatewayOptionsOf(result)).toEqual({ googleDataSafeguards: false })
+      expect(result.firstCallProviderOptions ?? {})
+        .not.toHaveProperty('gateway')
+    })
+
+    it('sends the gateway safeguards once the send registers a Google tool',
+      async () => {
+        mocks.flags.add('tool-approvals')
+        mocks.flags.add('google.drive')
+        mocks.googleCandidates = {
+          tools: { google__drive_search: { execute: vi.fn() } },
+          entries: new Map([['google__drive_search', {}]]),
+        }
+
+        const result = await runSend({
+          googleDataAt: null,
+          gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
+        })
+
+        expect(gatewayOptionsOf(result)).toEqual({ googleDataSafeguards: true })
+      })
+
+    it('shows the Google reason when Vercel refuses zero data retention on '
+      + 'a flagged send', async () => {
+      const refusal = Object.assign(
+        new Error('Forbidden: {"error":"team plan"}'),
+        { statusCode: 403, responseBody: '{"error":"team plan"}' },
       )
 
-      mocks.flags.delete('google.drive')
+      await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
+        gateway: { id: 'vercel', modelId: 'openai/gpt-5' },
+        streamError: refusal,
+      })
 
-      const notOffered = await runSend({
-        googleDataAt: null,
+      const chunks: Array<Record<string, any>> = []
+
+      for await (const chunk of mocks.mergedStreams[0] as any) {
+        chunks.push(chunk)
+      }
+
+      const errorChunk = chunks.find(chunk => chunk.type === 'error')
+      const payload = JSON.parse(errorChunk?.errorText ?? '{}')
+
+      expect(payload).toMatchObject({
+        status: 403,
+        message: expect.stringContaining('zero data retention'),
+        why: expect.stringContaining('Hobby'),
+      })
+      expect(errorChunk?.errorText).not.toContain('team plan')
+    })
+
+    it('always sends the gateway safeguards in a flagged chat', async () => {
+      const result = await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
         gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
       })
 
-      expect(notOffered.useGatewayMock).toHaveBeenCalledWith(
-        'openrouter',
-        expect.anything(),
-        'openai/gpt-5',
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        { googleDataSafeguards: false },
-      )
+      expect(gatewayOptionsOf(result)).toEqual({ googleDataSafeguards: true })
     })
 
     it('stops a refused upstream behind a gateway', async () => {

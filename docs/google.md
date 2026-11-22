@@ -378,7 +378,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 |---|---|
 | `gemini-paid-tier-confirmed` | `keys.paid_tier_confirmed_at` of the user's Gemini key, set by the user with the pre-check's sentence "This key is on a Google Cloud project with billing enabled". Read from D1 only for a direct Gemini model in a flagged chat. Never carried onto a gateway route: a gateway model has no Gemini key to confirm, so Gemini through a gateway is refused |
 | `alibaba-served-model` | A direct Qwen model whose id starts with `qwen`, `qwq` or `qvq`: the whole curated Qwen catalog. Never carried onto a gateway route, so Qwen through a gateway is refused |
-| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and of any send where Google tools could be offered (`shouldSendGatewayGoogleSafeguards`: tool approvals and `google.drive` active): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
+| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and of any send that has at least one Google tool candidate (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts`, which decides the candidates and the safeguards together, and only candidates can be registered; the candidates come from `buildGoogleSendToolCandidates`, empty until the Drive, Calendar and Gmail children add tools for users with an active connection): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
 | `payload-logging-disabled` | Sent on the same calls: the header `cf-aig-collect-log-payload: false` on the Cloudflare client |
 
 **Enforcement points.**
@@ -388,8 +388,8 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Send start: Google content in the request (`resolveSendGoogleContent`) | Before the guard, the send looks up the files of every file part (a Google copy, `external_source` in `GOOGLE_EXTERNAL_SOURCES`, or a marked file) and every attached or referenced artifact (marked). Any hit flags the chat (`flagChatGoogleData`, not best effort) and the guard below runs on it; content new in this message also clears the share opt-in | The guard's answer below |
 | Chat send, `{ continue }` rounds and approval continuations (`server/api/v1/chats/[slug]/index.post.ts`, every request kind takes the same path) | `assertGoogleDataRecipient` right after the provider or gateway is resolved, before any search, TypeSafe AI call, user message persist or model call; this covers every step of the tool loop and the search answer continuation, which reuse the same model | A 403 shown through the chat error: "This model cannot be used in a chat with Google data.", the reason and the fix (pick an allowed model, or confirm the Gemini paid tier). On a continuation the paused reply keeps the model of its pending record, so the message says the reply cannot continue and the fix is a new message on an allowed model |
 | Model switch mid-chat | The same check, on the model of each send | The same error; the picker already marks the model |
-| Gateway sends | `useGateway(..., { googleDataSafeguards })`, true in a flagged chat and in any send where Google tools could be offered | Nothing; the gateway applies its own setting. A Vercel 403 or `zdr_not_attested` on such a call becomes a Google-specific chat error (`googleSafeguardGatewayErrorOverride`: Hobby teams cannot request zero data retention, or the upstream key is not ZDR-attested) |
-| Google tools (`getGoogleSendTools`) | Nothing unless tool approvals and `google.drive` are active; then `mayReceiveGoogleData` (the guard, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered |
+| Gateway sends | `useGateway(..., { googleDataSafeguards: plan.gatewaySafeguards })`: true in a flagged chat and in a send with a Google tool candidate, false otherwise, so a user who only turned on `google.drive` keeps the request options of before | Nothing; the gateway applies its own setting. A Vercel 403 or `zdr_not_attested` on such a call becomes a Google-specific chat error in the stream (`googleSafeguardGatewayErrorOverride`: Hobby teams cannot request zero data retention, or the upstream key is not ZDR-attested). Title, the artifact bridge and deep research never send the safeguards on a gateway call (title skips gateways in a flagged chat; the bridge and research use direct keys only), so they cannot receive that error |
+| Google tools (`getGoogleSendTools`) | No candidate unless tool approvals and `google.drive` are active; with a candidate, `mayReceiveGoogleData` (the guard with the plan's gateway condition, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered |
 | Title (`title.patch.ts`) | A refused direct provider, or any gateway, when `chatHoldsGoogleData` (flag, or a Google result in the loaded first message) | The fallback title built from the first message, with no model call |
 | Deep research (`chats/[slug]/research/index.post.ts`) | `chatHoldsGoogleData` over the loaded messages plus the send-start lookup of the new message; the research provider, before the user message is stored | The same 403 |
 | Artifact LLM bridge (`artifacts/[id]/complete.post.ts`) | The bridge model, when the artifact carries the derived mark (`artifacts.google_derived_at`), so a deleted origin chat changes nothing | The same 403, before the key and caps are used |
@@ -449,28 +449,39 @@ unknown and refused. Unknown, unverifiable or refused means no.
 
 **Open after this child.**
 
+- A Besidka read of a marked item from another chat, in a send that already
+  holds Google data, does not clear the share opt-in or add the item to the
+  names the share dialog lists; only a Google tool result does. Acceptable
+  for now: the owner opted in to sharing Google content in that chat, the
+  item stays out of MCP and other chats, and no Google tool exists yet. The
+  Drive child, which first makes such reads common, records an allowed
+  marked read and persists it through the same flag batch.
 - Qwen's `enable_search` is a request body flag set at send start. A send
   that starts without Google data and with web search on keeps it for every
   step, also after a Google result arrives mid-send; only the next send
   drops it. The same holds for native web search tools of other providers in
-  that first send.
+  that first send. Acceptable: Google tools run only under approvals, the
+  approval of a Google read is the user's choice in that send, and the Drive
+  child adds the per-step strip (`prepareStep`) when it registers the first
+  Google tool.
 - Deep research runs the provider's own agent, which searches the web with
   queries it writes from the conversation. The guard checks the research
-  provider, but those searches leave the allow-list's scope.
+  provider, but those searches leave the allow-list's scope. Acceptable
+  until the custom research track (Phase 3) replaces the provider agent with
+  Besidka's own search loop, where the web search skip applies.
+- Rows written before the migration carry no mark. Acceptable: no Google
+  tool or Google copy existed in production before this child, so no
+  Google-derived row can predate the column.
+- A 403 at send start (a Google copy sent to a refused model) flags the chat
+  but writes no `data-google-data` chunk, so the picker updates on the next
+  load. Acceptable: the server refuses every later send on that model with
+  the same reason; the Picker child marks the chat on the client when the
+  copy is attached.
 - The user can still download a marked artifact or document, copy its
   text, or paste Google content into another chat: the mark follows stored
   items, not what the user retypes.
 - Project knowledge text extracted on the client from a Google copy before
   this child cannot be told apart from other text.
-- Rows written before the migration carry no mark.
-- In a send that already holds Google data, a Besidka read of a marked item
-  from another chat is allowed but does not clear the share opt-in or add the
-  item to the names the share dialog lists: only a Google tool result does.
-  An existing opt-in then covers content the owner did not see named.
-- With tool approvals and `google.drive` on, every gateway send carries the
-  safeguards, also in chats without Google data and while no Google tool
-  exists yet: OpenRouter `zdr: true` narrows the endpoints, and a Vercel Hobby
-  team gets 403 on such sends.
 
 ## 6. Owner runbook: bring your own client
 
