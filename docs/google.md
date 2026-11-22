@@ -401,7 +401,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 |---|---|
 | `gemini-paid-tier-confirmed` | `keys.paid_tier_confirmed_at` of the user's Gemini key, set by the user with the pre-check's sentence "This key is on a Google Cloud project with billing enabled". Read from D1 only for a direct Gemini model in a flagged chat. Never carried onto a gateway route: a gateway model has no Gemini key to confirm, so Gemini through a gateway is refused |
 | `alibaba-served-model` | A direct Qwen model whose id starts with `qwen`, `qwq` or `qvq`: the whole curated Qwen catalog. Never carried onto a gateway route, so Qwen through a gateway is refused |
-| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and of any send that has at least one Google tool candidate (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts`, which decides the candidates and the safeguards together, and only candidates can be registered; the candidates come from `buildGoogleSendToolCandidates`: the Drive tools for a user with an active Besidka-client connection that holds `drive.file`, and the Calendar and Gmail children add theirs there): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
+| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and on no other gateway call (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts` decides the candidates and the safeguards together: on a gateway, Google tools are candidates only when the chat already holds Google data, so a candidate never exists on a gateway call without the safeguards, and an ordinary gateway chat of a connected user sends the request options it always did; on a direct provider candidates need no safeguards; the candidates come from `buildGoogleSendToolCandidates`: the Drive tools for a user with an active Besidka-client connection that holds `drive.file`, and the Calendar and Gmail children add theirs there): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
 | `payload-logging-disabled` | Sent on the same calls: the header `cf-aig-collect-log-payload: false` on the Cloudflare client |
 
 **Enforcement points.**
@@ -413,8 +413,8 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Google data enters a send (`withGoogleDataFlag`, `server/utils/google/send-flag.ts`) | Every function tool of a send under tool approvals is wrapped (inside the cleared-call guard, so continuation replays too). A Google tool flags the chat right after its result exists, and not because of its own failure; the send is Google-derived from the approval of a Google call on, though, so any other tool flags before it runs once that happened (also after a failed Google call, which keeps taint), so a marked write never lands in an unflagged chat, and again after it returned if taint appeared while it ran. The write is `markChatGoogleData` with `failClosed`: one awaited `update chats set google_data_at ... where google_data_at is null` per send (`createGoogleDataFlagger`, shared by parallel callers, skipped when the chat is flagged). If it fails the tool call fails and its result is dropped. The persist step flags every Google-derived send too (flagged chat, or taint from any Google call, failed ones included), before generated images and container files are stored, so a stopped reply carries the flag; a failed write fails the persist | A tool error, or the usual save error |
 | Chat send, `{ continue }` rounds and approval continuations (`server/api/v1/chats/[slug]/index.post.ts`, every request kind takes the same path) | `assertGoogleDataRecipient` right after the provider or gateway is resolved, before any search, TypeSafe AI call, user message persist or model call; this covers every step of the tool loop and the search answer continuation, which reuse the same model | A 403 shown through the chat error: "This model cannot be used in a chat with Google data.", the reason and the fix (pick an allowed model, or confirm the Gemini paid tier). On a continuation the paused reply keeps the model of its pending record, so the message says the reply cannot continue and the fix is a new message on an allowed model |
 | Model switch mid-chat | The same check, on the model of each send | The same error; the picker already marks the model |
-| Gateway sends | `useGateway(..., { googleDataSafeguards: plan.gatewaySafeguards })`: true in a flagged chat and in a send with a Google tool candidate, false otherwise, so a user who only turned on `google.drive` keeps the request options of before | Nothing; the gateway applies its own setting. A Vercel 403 or `zdr_not_attested` on such a call becomes a Google-specific chat error in the stream (`googleSafeguardGatewayErrorOverride`: Hobby teams cannot request zero data retention, or the upstream key is not ZDR-attested). Title, the artifact bridge and deep research never send the safeguards on a gateway call (title skips gateways in a flagged chat; the bridge and research use direct keys only), so they cannot receive that error |
-| Google tools (`getGoogleSendTools`) | No candidate unless tool approvals and `google.drive` are active; with a candidate, `mayReceiveGoogleData` (the guard with the plan's gateway condition, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered |
+| Gateway sends | `useGateway(..., { googleDataSafeguards: plan.gatewaySafeguards })`: true exactly in a flagged chat, false otherwise, so a user who only turned on `google.drive` or connected Drive keeps the request options of before | Nothing; the gateway applies its own setting. A Vercel 403 or `zdr_not_attested` on such a call becomes a Google-specific chat error in the stream (`googleSafeguardGatewayErrorOverride`: Hobby teams cannot request zero data retention, or the upstream key is not ZDR-attested). Title, the artifact bridge and deep research never send the safeguards on a gateway call (title skips gateways in a flagged chat; the bridge and research use direct keys only), so they cannot receive that error |
+| Google tools (`getGoogleSendTools`) | No candidate unless tool approvals and `google.drive` are active, and on a gateway only when the chat already holds Google data; with a candidate, no tool when the chat holds no Google data yet and the send declares a provider-run tool that stays callable after a Google read (direct Anthropic with any provider tool, whose route keeps every declaration; a Qwen send with `enable_search`, a request flag for the whole send: `hasUnremovableProviderTool`); then `mayReceiveGoogleData` (the guard with the plan's gateway condition, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered; the "+" menu says in one sentence where the Drive tools work (section 13.2) |
 | Title (`title.patch.ts`) | A refused direct provider, or any gateway, when `chatHoldsGoogleData` (flag, or a Google result in the loaded first message) | The fallback title built from the first message, with no model call |
 | Deep research (`chats/[slug]/research/index.post.ts`) | `chatHoldsGoogleData` over the loaded messages plus the send-start lookup of the new message; the research provider, before the user message is stored | The same 403 |
 | Artifact LLM bridge (`artifacts/[id]/complete.post.ts`) | The bridge model, when the artifact carries the derived mark (`artifacts.google_derived_at`), so a deleted origin chat changes nothing | The same 403, before the key and caps are used |
@@ -428,6 +428,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Connectors with tool approvals off | A flagged chat offers no connector unless tool approvals are active (`mayOfferConnectorsWithGoogleData`), because only the Google egress ask (rule 12) keeps Google content from a user-added MCP server, and it needs approvals | Connectors are not offered in that chat |
 | Flag write with the reply | The assistant message that brings the first Google result and the flag (with the share opt-in cleared) are one `db.batch` (`buildGoogleContentPersistStatements`); if the batch fails the reply is not persisted | The usual save error |
 | Flag repair | A send that finds a Google result in the stored parts while `google_data_at` is null sets the flag | Nothing |
+| What sets the sticky flag | A Google tool result that returned data (a static `tool-google__*` part with an output, for a tool that returns Google content), a marked write, or a marked file or code run at the persist step (`holdsStickyGoogleFlagTrigger`). A Google call that only failed (an approved read of a bogus id, a Drive error) keeps the transient taint for the rest of the send, so the send stays guarded, but never sets the flag. A Google tool that returns no Google content (`GOOGLE_TOOL_PROPERTIES`, today the Drive save) taints nothing and flags nothing unless the file it saves is itself marked Google-derived | Nothing |
 | Memory | Flagged chats leave the extraction sweep, the backfill queue, project memory refresh and settle, the extract-now path (checked before and after the model call), the guarded entry insert, and the `search_chats` and `read_chat` tools of other chats; `memory_write` and `memory_forget` are not offered inside a flagged chat | Memory stays as it was; the chat is never cited |
 | Shares | `POST /share` needs `includeGoogleContent: true` for a flagged chat (409 otherwise) and stores it as `chat_shares.google_opt_in_at`, recorded in the wide event as `googleDataGuard.shareOptIn`; a share of a flagged chat is visible only while that column is set (`isShareVisibleForGoogleData`, read with the share in one query in `resolveActiveShareBySlug`, and by the tokened file route). Every write that brings new Google content clears it in the same batch, so the link pauses until the owner opts in again. `indexable` is forced off for a flagged chat (on the stored row, the owner and shared reads, and the dialog). Google copies get no `chat_share_files` grant | The share dialog names the Google items (reference titles and Google or marked file names, at most 20), asks "Share the Google content in this chat", says when a link is paused, disables the indexing toggle, and Generate waits for the box |
 | MCP and Besidka tools | `get_chat` replaces every message text with a fixed notice when `chatHoldsGoogleData` (flag, or a Google result in the loaded messages); `list_chats` treats a content match in a flagged chat as no match (only a title match lists it); `list_files`, `read_file` and the `get_chat` context files never include a Google copy or a marked file (`fileHoldsNoGoogleContent`); `list_artifacts` and `get_artifact` hide marked artifacts. The tool descriptions say so (MCP 5.4.1) | The withheld notice in place of the text; the items are not found |
@@ -484,14 +485,27 @@ unknown and refused. Unknown, unverifiable or refused means no.
   Google result, which flags the chat and keeps references, so they do not
   make a Besidka read of a marked item more common and did not add the
   recording of an allowed marked read.
-- Qwen's `enable_search` is a request body flag set at send start. A send
-  that starts without Google data and with web search on keeps it for every
-  step, also after a Google result arrives mid-send; only the next send
-  drops it. The same holds for native web search tools of other providers in
-  that first send. Acceptable: Google tools run only under approvals, the
-  approval of a Google read is the user's choice in that send. Still open
-  after the Drive tools (section 13): they add no `prepareStep` strip, and
-  no route test proves one that already exists.
+- CLOSED by not offering the tools (13.2, built option (b)): provider-run
+  tools that cannot be removed between the steps of a send. Direct Anthropic
+  keeps every declaration (Anthropic rejects tool history without them, so
+  the step guard is skipped there) and Qwen's `enable_search` is a request
+  flag for the whole send, so a search or a code run could follow a Drive
+  read in the same send, with the file's text in the query and nobody asked
+  (a read under a chat grant does not pause). A send that declares such a
+  tool and whose chat holds no Google data registers no Google tool
+  (`hasUnremovableProviderTool` in `getGoogleSendTools`). In a chat that
+  holds Google data the send withholds search, URL fetch and code execution
+  before its first step, so a Google tool and a search tool are never
+  callable in the same call; a route test shows both directions on direct
+  Anthropic (`chats-tool-approval-request.spec.ts`). Why not option (a), a
+  Google read ending the model call so that the answer continues with
+  withheld tools: the round continuation on Anthropic keeps a tool's
+  declaration whenever the stored history already called it, so it cannot
+  guarantee the tool is gone. A search the model already ran earlier in the
+  same reply therefore stays declared on Anthropic in that continuation, a
+  gap that exists for every flagged chat and is not widened here. Native web
+  search tools of other providers are removed per step by the step guard
+  (`withProviderToolEgressGuard`), as before.
 - Deep research runs the provider's own agent, which searches the web with
   queries it writes from the conversation. The guard checks the research
   provider, but those searches leave the allow-list's scope. Acceptable
@@ -1674,21 +1688,43 @@ so the model can use the answer in the next step. Each description carries
 the untrusted-content sentence, and every result that carries Drive text wraps
 it in `<untrusted_tool_result connector="google" tool="...">` through the
 same `frameUntrustedResult` the connector results use (a copy of the closing
-tag inside the text is neutralized). Names are cleaned by
-`sanitizeDriveFileName` when copied, but a name still sits outside the frame in
-`references`; the approval step and the Allow once answer on every write are
-the check on it (pre-check rows 13 and 14).
+tag inside the text is neutralized). File names reach the model only inside
+the frame: each tool has a `toModelOutput` that hands the model the output
+without its `references` (the stored part keeps the name and link for the
+card), and the stash that gives a paused turn its bodies back strips every
+reference's title and link too (`withoutReferenceNames`). Every input schema is
+strict, and an id of the wrong shape answers the "not one of the files the
+user picked" sentence instead of a schema error. The model's file id is the
+`file_id` of the list or the `fileId` of an earlier page, never a Drive id.
 
 | Tool | Kind | Input | Output | Limits |
 |---|---|---|---|---|
-| `google__drive_list_picked` | read | none | `references` (Drive id, `kind: drive-file`, name, https link, date of the Drive edit), `count`, `files` (one framed line per file: Besidka file id, name, type, size, copied at, changed in Drive) | One D1 query, no call to Google; newest copy per Drive file, at most 50, the 64 KiB cap |
-| `google__drive_read_file` | read | `fileId` (the Besidka id the list returned), optional `offset` | `references`, `readable`, `file`, `content` (framed text), `isTruncated`, `nextOffset`, `note` | Text only (`text/*`: Docs as Markdown, Sheets as the first sheet in CSV, Slides as text, plain text, Markdown, CSV), 40 KiB of text per call and the whole JSON under 64 KiB (`fitGoogleToolOutput` halves the text budget until the serialized output fits), copy up to 8 MiB; paging by `offset` |
+| `google__drive_list_picked` | read | none | `references` (for the card), `count`, `files` (one framed line per file: `file_id`, name, type, size, copied at, changed in Drive) | One D1 query, no call to Google; newest copy per Drive file, at most 50, the 64 KiB cap |
+| `google__drive_read_file` | read | `fileId` (the `file_id` the list returned, or the `fileId` of the previous page), optional `offset` | `references`, `readable`, `file` (`fileId`, type, size, `totalCharacters`), `content` (framed text), `isTruncated`, `nextOffset`, `truncationNote`, `note` | Text only: `text/*` (Docs as Markdown, Sheets as the first sheet in CSV, Slides as text, plain text, Markdown, CSV), JSON, XML, YAML and `+json` and `+xml` types; 40 KiB of text per call and the whole JSON under 64 KiB (`fitGoogleToolOutput` halves the text budget until the serialized output fits), copy up to 8 MiB |
 | `google__drive_save_file` | write | `fileId` (a Besidka file id), optional `name` | `references`, `saved`, `alreadySaved`, `link`, `message` | One file per call, up to 5 MB, Allow once only |
 
 A refusal or a Google failure is a thrown error with a sentence the model can
 read, never a result: only real Drive data or a finished save is an
-`output-available` part, so only those flag the chat. A binary file
-(PDF, image, Office) answers `readable: false` with no call to Google.
+`output-available` part, so a failed call never sets the sticky chat flag
+(`holdsStickyGoogleFlagTrigger`, section 5.3), while the send keeps its
+transient taint. A binary file (PDF, image, Office) answers `readable: false`
+with no call to Google, its name framed.
+
+**Cost and pacing.** Calls of one send run one at a time (a per-send chain), so
+a step that batches calls never runs them in parallel. At most 30 Google Drive
+tool calls count for one message across its rounds and approvals
+(`GOOGLE_DRIVE_CALLS_PER_MESSAGE`; the calls the reply already holds are read
+from its stored parts, `priorGoogleCalls`): enough for a list, a dozen files
+with a few pages each and a save or two, where the shared per-turn cap
+(12 per turn, 10 rounds) would allow up to 120. The call after the limit is a
+thrown sentence that tells the model to report what it did. Only the first
+page (`offset` 0) of a file may refresh the copy, and the send remembers the
+copy it refreshed, so a second first page of the same Drive file does not call
+Google again. Every later page reads exactly the copy whose `fileId` the model
+passes, with no call to Google, so all pages of one read come from one
+version. A refresh never downloads or exports more than the 8 MiB the tool
+reads (`maxBytes` of `importDriveFiles`), so a larger file is refused from its
+metadata or cut off the stream, never copied just to be refused.
 
 **Reading.** The tool reads only files the user picked: the id must be one of
 the user's own `files` rows with `external_source = 'google'`, checked before
@@ -1696,10 +1732,15 @@ any call to Google (and before the token is read). The Drive id always comes
 from that row, never from the model. For text, the copy is made current
 through `importDriveFiles`, the code the Picker uses: an unchanged original
 (same `modifiedTime`) is one metadata call and the stored copy is read; a
-changed one is exported again as a new copy. When Google answers busy,
-unreachable or the storage is full, the last copy is read and the answer says
-it may be out of date. Other failures map to sentences (no longer returned,
-reconnect Google Drive, no access, too large, no download right).
+changed one is exported again as a new copy. When Google answers busy or is
+unreachable, or the user's storage is full, the last copy is read and the
+answer says which of the two reasons it was and that the copy may be out of
+date. Other failures map to sentences (no longer returned, reconnect Google
+Drive, no access, too large, no download right, empty). An offset past the end
+explains itself, and an answer that could make no progress (the output budget
+reached zero) is an error instead of a loop. Pages are cut on character
+boundaries, tested by reassembling every page of a text with 1-, 2-, 3- and
+4-byte characters against its source.
 
 **Saving.** `saveFileToGoogleDrive` is the one function behind the tool and
 the button. The file must be the user's own and not a copy of a Drive file
@@ -1710,8 +1751,18 @@ the button. The file must be the user's own and not a copy of a Drive file
 The save takes the file with one atomic D1 update of `drive_copy_id` to
 `pending:<epoch ms>` (a claim older than two minutes is abandoned and can be
 taken over), so two parallel saves cannot both reach Google; the loser gets
-"already being saved". The claim is released on any failure and replaced by the
-Drive id on success. No column was added.
+"already being saved". The claim is released when Google answered with an
+error (nothing was created) and replaced by the Drive id on success. When a
+timeout or a throw comes after the upload started, the claim stays until it
+expires and the answer says the outcome is unknown (`unconfirmed`), so the
+model cannot create a duplicate at once; if a takeover replaced the claim
+while the first upload ran, the first saver answers that the file may exist
+twice (`not_recorded`), never `saved`. No column was added. When no Besidka
+connection is active any more (a disconnect, an `invalid_grant`, a different
+Google account replacing the connection), `deleteGoogleDerivedFiles` also
+clears `files.drive_copy_id` for the user (`clearSavedDriveCopyIds`), so
+"already saved" never returns a link into an account that is no longer
+connected. Readers of the column use `readSavedDriveCopyId`.
 
 The upload (`server/utils/google/drive-upload.ts`) is the documented
 multipart upload of `files.create` (Google Drive "Manage uploads": "POST
@@ -1729,26 +1780,55 @@ storage is full".
 `buildGoogleSendToolCandidates` runs only when `planGoogleSendTools` calls it:
 tool approvals active and `google.drive` active (so a user without the flag,
 and every send with approvals off, costs no query and gets no gateway
-safeguards). It then reads one `google_connections` row (Besidka's client) and
-offers the three tools only when its status is `active` and the granted scopes
-hold `drive.file`. No candidate (and so no tool, and no gateway safeguards) for
-no connection, `needs_reauth`, `revoked`, a missing `drive.file`, or a
-bring-your-own connection. After that `getGoogleSendTools` withholds all of
-them from a model that may not receive Google data, and
-`withGoogleSendTools` removes any other `google__` tool. The chat route also
-counts them as approval-gated tools (`isApprovalGatedToolName`), so a paused
-Google tool never starts the answer guarantee continuation that web search
-uses. Calls count in the shared built-in cap (`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN`,
-12 per turn): no separate limit, so the model can list, read a few files and
-save one in a turn.
+safeguards), and on a gateway only when the chat already holds Google data (a
+Drive file attached through the Picker flags it; decision D2 of 2026-11-22).
+It then reads one `google_connections` row (Besidka's client) and offers the
+three tools only when its status is `active` and the granted scopes hold
+`drive.file`. No candidate (and so no tool, and no gateway safeguards) for no
+connection, `needs_reauth`, `revoked`, a missing `drive.file`, or a
+bring-your-own connection. On a direct provider nothing about the gateway
+changes. After that `getGoogleSendTools` offers nothing when the chat holds no
+Google data and the send declares a provider-run tool that stays callable
+after a read (direct Anthropic with any provider tool, a Qwen send with
+`enable_search`; section 5.3, built option (b)), withholds all of them from a
+model that may not receive Google data, and `withGoogleSendTools` removes any
+other `google__` tool. The "+" menu says it in one sentence under the Google
+Drive row (`GOOGLE_DRIVE_TOOLS_HINT`): the model can list, read and save your
+picked Drive files when you allow it, but not while web search or Run code is
+on with an Anthropic model or Qwen search is on, and in a gateway chat only
+after a Drive file is attached. The chat route also counts them as
+approval-gated tools (`isApprovalGatedToolName`), so a paused Google tool
+never starts the answer guarantee continuation that web search uses. Calls
+count in the shared built-in cap (`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN`, 12
+per turn) and in the per-message cap of 13.1.
 
 Approvals (section 5.2): the list and the read ask with Allow once or Allow in
 this chat; the save asks every time with Allow once only (an Always grant, a
-permission mode and a chat grant never run it). The approval text names the
-file: `Read "Plan.md" from Google Drive`, `Save "Report.md" to your Google
-Drive as "Final.md"` (one lookup at the pause, `describe`; the summary
-without a name when the file is gone). Every call that runs records `google`
-taint and the chat flag, the save included (see 13.5).
+permission mode and a chat grant never run it). "Allow once" is first and the
+only primary button. The chat option says what it covers for these two tools
+(`GOOGLE_TOOL_CHAT_GRANT_LABELS`, read by `getApprovalButtons`): "Allow
+reading any file you picked from Google Drive in this chat", and "Allow
+listing the files you picked from Google Drive in this chat", because the
+grant covers every Drive copy of the account, every page and every batched
+call, not the one file the card names. The approval text names the file:
+`Read "Plan.md" from Google Drive`, and for the save the cleaned name with its
+size and date so two files with one name differ: `Save "Report.md" (12 KB,
+created 2026-11-22) to your Google Drive as "Final.md"` (one lookup at the
+pause, `describe`; the summary without a name when the file is gone).
+
+Taint. A read and the list taint the send and record the Google read source
+as every Google tool did. The save returns no Google content, so it is
+registered with a static property, `returnsGoogleContent: false`
+(`GOOGLE_TOOL_PROPERTIES` in `shared/utils/google-tool-approvals.ts`, default
+true for every tool that is not listed there, so an unregistered or
+undescribed `google__` tool still taints): `buildGoogleApprovalEntry` gives it
+no taint and no read source, `hasGoogleToolResult`,
+`isGoogleToolResultContent`, `createToolRoundApprovalState` and
+`withGoogleDataFlag` read the property, and its part does not re-flag the chat
+on the next send or clear a share opt-in. Exception: when the file being saved
+is itself marked Google-derived, the entry's `taintsRun` lookup (one D1 read,
+run by the cleared-call guard before the tool) taints the send like any Google
+call, because the answer names that file.
 
 ### 13.3 What is stored, and what the user sees after a reload
 
@@ -1782,8 +1862,13 @@ with `drive-picked` (one cached read of the connection status, only when the
 flag is active, never once per card), spins while saving, and becomes "Open
 in Google Drive" with the link. The link is remembered for the session by
 storage key; after a reload the first click on a file saved before answers
-`already_saved` at once and shows the link (no preloading, to avoid a request
-per card). It is not shown on shared chats or on a message the user sent.
+`already_saved` at once and shows the link (no preloading: a card holds only
+its storage key, and the saved state would need a request per card). The
+result is announced in a polite live region, focus moves to the link when the
+button that had it turns into one, the connection is read when the flag turns
+active even after the card mounted, and the session caches are cleared at
+sign-out (`GOOGLE_DRIVE_SAVE_STATE_KEYS`). It is not shown on shared chats or
+on a message the user sent.
 
 **Data decision.** Saving a Google-derived file (a marked document or
 file) back to the user's own Drive is allowed: it goes to the same Google
@@ -1803,24 +1888,18 @@ Against the ticket (BES-283), the plan and the pre-check, the brief won:
   chat" (the read allowlist is every file the user picked), and injection
   screening of returned text (the frame plus a per-call approval are the
   measures of pre-check row 13). "Save automatically" stays dropped.
-- A user with an active Drive connection on a gateway now sends the gateway
-  safeguards on every send in which the Drive tools are candidates, also in
-  chats that never use Drive. Section 5.3 says a Vercel Hobby team answers 403
-  to a zero-data-retention request; that guard is unchanged and now reaches
-  those chats. An owner decision whether candidates should wait for the
-  model to ask for Drive.
+- Closed after the first version of this section, by owner decisions of
+  2026-11-22: a connected user on a gateway no longer sends the gateway
+  safeguards in chats that never use Drive (D2: on a gateway the Drive tools
+  are candidates only in a chat that already holds Google data, and the
+  safeguards go out exactly then); a Drive save that returns no Google
+  content no longer taints the send or flags the chat (D1, 13.2).
 - The chat route lists Google tools as approval-gated tools, so a turn that
   ran only Drive tools does not start the answer guarantee continuation; on
   direct Anthropic routes such a turn can end without text.
-
-- The save reads nothing from Google, but it is a Google tool, so a call that
-  runs records `google` taint and flags the chat for good, which then
-  restricts models, memory, sharing and web search for that chat. Built to
-  the guard as it is; an owner decision whether a write that reads nothing
-  should be exempt.
 - The pre-check says "file id, title, modified date" for references; the
-  stored reference also keeps the https link and `kind`, and the name is also
-  visible to the model outside the frame (above).
+  stored reference also keeps the https link and `kind`. The model never sees
+  the name outside the frame (13.1).
 - The tool does not check that a file to save belongs to "this chat": files
   made with `create_file` carry no origin message, so ownership is the check
   and the approval card names the file.

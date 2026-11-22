@@ -2046,6 +2046,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Reasoning.icons.spec.ts',
     'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
     'tests/unit/components/Chat/Reasoning.google.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/server/utils/google/send-flag.spec.ts',
+    'tests/integration/server/google-access-ended.spec.ts',
     'tests/unit/composables/chat-scroll-spacer.spec.ts',
     'tests/e2e/chat/scroll-spacer.spec.ts',
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
@@ -4064,7 +4068,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/google-drive-tools\.ts|server\/utils\/google\/(drive-tools|drive-picked|drive-save|drive-upload|drive-import|tool-output|drive|http|route)\.ts|server\/api\/v1\/google\/drive\/saved-files\/.*\.ts|server\/utils\/tool-approval\/google-send-candidates\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/google-drive-save\.ts|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/(google-step|reasoning-step)\.d\.ts|app\/components\/Chat\/(SaveToGoogleDrive|Files|Document|GeneratedImage|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/(GoogleStep|Step)\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+        /^(shared\/utils\/google-drive-tools\.ts|server\/utils\/google\/(drive-tools|drive-picked|drive-save|drive-upload|drive-import|tool-output|drive|http|route|access-ended|send-flag)\.ts|shared\/utils\/google-tool-approvals\.ts|server\/api\/v1\/google\/drive\/saved-files\/.*\.ts|server\/utils\/tool-approval\/(google|google-send-candidates|google-send-tools|send|round-state)\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/composables\/auth\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/google-drive-save\.ts|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/(google-step|reasoning-step)\.d\.ts|app\/components\/Chat\/(SaveToGoogleDrive|Files|Document|GeneratedImage|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/(GoogleStep|Step)\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
       tests: googleDriveToolsTests,
     },
     {
