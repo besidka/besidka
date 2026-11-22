@@ -2,6 +2,12 @@ import { parseError } from 'evlog'
 import type { GoogleConnectionSummary } from '#shared/utils/google-connections'
 import { GOOGLE_DRIVE_SAVED_FILE_ROUTE } from '#shared/utils/google-drive-tools'
 
+export const GOOGLE_DRIVE_SAVE_STATE_KEYS = [
+  'google-drive-saved-files',
+  'google-drive-save-connection',
+  'google-drive-save-connection-requested',
+] as const
+
 export interface DriveSavedState {
   link: string
   driveFileId: string
@@ -44,8 +50,12 @@ export function useGoogleDriveSave() {
       const response = await $fetch('/api/v1/google/connections')
 
       connection.value = response.connection
-    } catch {
+    } catch (exception) {
       hasRequestedConnection.value = false
+
+      if (parseError(exception).status === 401) {
+        connection.value = null
+      }
     }
   }
 

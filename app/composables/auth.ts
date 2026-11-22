@@ -345,6 +345,7 @@ export function useAuth() {
             preferenceStorage.removeItem('settings_reasoning_level')
             useLegalConsent().bindUser(null)
             clearNuxtData(BESIDKA_TOOL_PERMISSIONS_KEY)
+            clearNuxtState([...GOOGLE_DRIVE_SAVE_STATE_KEYS])
 
             if (!redirectTo) {
               return

@@ -2,18 +2,22 @@ import { mountSuspended, mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SaveToGoogleDrive from '../../../../app/components/Chat/SaveToGoogleDrive.vue'
 
+type SavedState = null | { link: string, driveFileId: string }
+
 const mocks = vi.hoisted(() => ({
   isAvailable: true,
-  saved: null as null | { link: string, driveFileId: string },
+  savedRef: null as unknown as { value: SavedState },
   save: vi.fn(),
 }))
 
 mockNuxtImport('useGoogleDriveSave', async () => {
-  const { computed } = await import('vue')
+  const { computed, shallowRef } = await import('vue')
+
+  mocks.savedRef = shallowRef<SavedState>(null)
 
   return () => ({
     isAvailable: computed(() => mocks.isAvailable),
-    getSaved: () => mocks.saved,
+    getSaved: () => mocks.savedRef.value,
     save: mocks.save,
   })
 })
@@ -29,7 +33,7 @@ async function mountButton(props: Record<string, unknown> = {}) {
 describe('Chat/SaveToGoogleDrive', () => {
   beforeEach(() => {
     mocks.isAvailable = true
-    mocks.saved = null
+    mocks.savedRef.value = null
     mocks.save.mockReset()
   })
 
@@ -87,8 +91,62 @@ describe('Chat/SaveToGoogleDrive', () => {
       })
     })
 
+  it('announces the result in a live region, for a save and a failure',
+    async () => {
+      mocks.save.mockResolvedValueOnce({ link: LINK, driveFileId: 'd1' })
+
+      const wrapper = await mountButton()
+      const status = wrapper.get('[data-testid="save-to-google-drive-status"]')
+
+      expect(status.attributes('role')).toBe('status')
+      expect(status.attributes('aria-live')).toBe('polite')
+
+      await wrapper.get('[data-testid="save-to-google-drive"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(status.text()).toBe('Report.md was saved to Google Drive')
+      })
+
+      mocks.save.mockResolvedValueOnce(null)
+
+      const failing = await mountButton()
+      const failingStatus = failing.get(
+        '[data-testid="save-to-google-drive-status"]',
+      )
+
+      await failing.get('[data-testid="save-to-google-drive"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(failingStatus.text())
+          .toBe('Report.md could not be saved to Google Drive')
+      })
+    })
+
+  it('keeps focus on the same spot when the button turns into the link',
+    async () => {
+      const wrapper = await mountSuspended(SaveToGoogleDrive, {
+        props: { storageKey: 'key-1', fileName: 'Report.md' },
+        attachTo: document.body,
+      })
+      const button = wrapper.get('[data-testid="save-to-google-drive"]')
+
+      mocks.save.mockImplementationOnce(async () => {
+        mocks.savedRef.value = { link: LINK, driveFileId: 'd1' }
+
+        return mocks.savedRef.value
+      })
+      ;(button.element as HTMLElement).focus()
+      await button.trigger('click')
+      await vi.waitFor(() => {
+        expect(document.activeElement?.getAttribute('data-testid'))
+          .toBe('save-to-google-drive-open')
+      })
+
+      wrapper.unmount()
+    })
+
   it('shows Open in Google Drive once the file is saved', async () => {
-    mocks.saved = { link: LINK, driveFileId: 'drive-1' }
+    mocks.savedRef.value = { link: LINK, driveFileId: 'drive-1' }
 
     const wrapper = await mountButton({ variant: 'button' })
     const link = wrapper.get('[data-testid="save-to-google-drive-open"]')

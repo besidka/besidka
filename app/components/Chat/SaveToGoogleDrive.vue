@@ -1,48 +1,58 @@
 <template>
-  <a
-    v-if="isAvailable && saved"
-    :href="saved.link"
-    target="_blank"
-    rel="noopener noreferrer"
-    :class="classes"
-    :aria-label="`Open ${fileName} in Google Drive`"
-    :title="`Open ${fileName} in Google Drive`"
-    data-testid="save-to-google-drive-open"
-  >
-    <Icon
-      :name="GOOGLE_DRIVE_ICON"
-      :size="iconSize"
-      aria-hidden="true"
-    />
-    <span v-if="variant === 'button'">Open in Google Drive</span>
-  </a>
-  <button
-    v-else-if="isAvailable"
-    type="button"
-    :class="classes"
-    :disabled="isSaving"
-    :aria-busy="isSaving"
-    :aria-label="`Save ${fileName} to Google Drive`"
-    :title="isSaving ? 'Saving to Google Drive' : 'Save to Google Drive'"
-    data-testid="save-to-google-drive"
-    @click="onSave"
-  >
+  <span class="contents">
+    <a
+      v-if="isAvailable && saved"
+      ref="openLink"
+      :href="saved.link"
+      target="_blank"
+      rel="noopener noreferrer"
+      :class="classes"
+      :aria-label="`Open ${fileName} in Google Drive`"
+      :title="`Open ${fileName} in Google Drive`"
+      data-testid="save-to-google-drive-open"
+    >
+      <Icon
+        :name="GOOGLE_DRIVE_ICON"
+        :size="iconSize"
+        aria-hidden="true"
+      />
+      <span v-if="variant === 'button'">Open in Google Drive</span>
+    </a>
+    <button
+      v-else-if="isAvailable"
+      ref="saveButton"
+      type="button"
+      :class="classes"
+      :disabled="isSaving"
+      :aria-busy="isSaving"
+      :aria-label="`Save ${fileName} to Google Drive`"
+      :title="isSaving ? 'Saving to Google Drive' : 'Save to Google Drive'"
+      data-testid="save-to-google-drive"
+      @click="onSave"
+    >
+      <span
+        v-if="isSaving"
+        class="loading loading-spinner"
+        :class="variant === 'button' ? 'size-4' : 'size-3'"
+        aria-hidden="true"
+      />
+      <Icon
+        v-else
+        :name="GOOGLE_DRIVE_ICON"
+        :size="iconSize"
+        aria-hidden="true"
+      />
+      <span v-if="variant === 'button'">
+        {{ isSaving ? 'Saving to Google Drive' : 'Save to Google Drive' }}
+      </span>
+    </button>
     <span
-      v-if="isSaving"
-      class="loading loading-spinner"
-      :class="variant === 'button' ? 'size-4' : 'size-3'"
-      aria-hidden="true"
-    />
-    <Icon
-      v-else
-      :name="GOOGLE_DRIVE_ICON"
-      :size="iconSize"
-      aria-hidden="true"
-    />
-    <span v-if="variant === 'button'">
-      {{ isSaving ? 'Saving to Google Drive' : 'Save to Google Drive' }}
-    </span>
-  </button>
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+      data-testid="save-to-google-drive-status"
+    >{{ statusText }}</span>
+  </span>
 </template>
 
 <script setup lang="ts">
@@ -59,6 +69,9 @@ const props = withDefaults(defineProps<{
 const { isAvailable, getSaved, save } = useGoogleDriveSave()
 
 const isSaving = shallowRef<boolean>(false)
+const statusText = shallowRef<string>('')
+const saveButton = useTemplateRef<HTMLButtonElement>('saveButton')
+const openLink = useTemplateRef<HTMLAnchorElement>('openLink')
 
 const saved = computed(() => {
   return getSaved(props.storageKey)
@@ -79,12 +92,27 @@ async function onSave() {
     return
   }
 
+  const hadFocus = document.activeElement === saveButton.value
+
   isSaving.value = true
+  statusText.value = 'Saving to Google Drive'
 
   try {
-    await save(props.storageKey)
+    const result = await save(props.storageKey)
+
+    statusText.value = result
+      ? `${props.fileName} was saved to Google Drive`
+      : `${props.fileName} could not be saved to Google Drive`
   } finally {
     isSaving.value = false
+  }
+
+  if (hadFocus) {
+    await nextTick()
+
+    const focusTarget = openLink.value ?? saveButton.value
+
+    focusTarget?.focus()
   }
 }
 </script>

@@ -417,6 +417,37 @@ describe('getApprovalButtons', () => {
   })
 })
 
+describe('getApprovalButtons for a Google Drive tool', () => {
+  it('says what Allow in this chat covers for the read and the list, and '
+    + 'keeps Allow once first', () => {
+    expect(getApprovalButtons(['once', 'chat'], 'google__drive_read_file'))
+      .toEqual([
+        { remember: 'once', label: 'Allow once' },
+        {
+          remember: 'chat',
+          label: 'Allow reading any file you picked from Google Drive in '
+            + 'this chat',
+        },
+      ])
+    expect(getApprovalButtons(['once', 'chat'], 'google__drive_list_picked')[1])
+      .toMatchObject({
+        label: 'Allow listing the files you picked from Google Drive in this '
+          + 'chat',
+      })
+  })
+
+  it('leaves every other tool, and the write, with the generic labels', () => {
+    expect(getApprovalButtons(['once', 'chat'], 'google__drive_search')[1])
+      .toMatchObject({ label: 'Allow in this chat' })
+    expect(getApprovalButtons(['once'], 'google__drive_save_file'))
+      .toEqual([{ remember: 'once', label: 'Allow once' }])
+    expect(getApprovalButtons(['once', 'chat'])[1])
+      .toMatchObject({ label: 'Allow in this chat' })
+    expect(getApprovalButtons(['once', 'chat'], 'constructor')[1])
+      .toMatchObject({ label: 'Allow in this chat' })
+  })
+})
+
 describe('isApprovalInputShortened', () => {
   const model = getApprovalStepModel(connectorPart(), dataMap())!
 

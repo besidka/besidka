@@ -779,6 +779,49 @@ describe('Chat/GeneratedImage', () => {
       .toBe(false)
   })
 
+  describe('Save to Google Drive', () => {
+    async function mountImage(props: Record<string, unknown> = {}) {
+      return await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'assistant',
+          part: {
+            type: 'file',
+            mediaType: 'image/webp',
+            filename: 'owned.webp',
+            url: '/files/owned-key.webp?generated=1',
+          } as any,
+          ...props,
+        },
+        global: {
+          stubs: {
+            LazyChatImagePreview: LazyImagePreview,
+            teleport: true,
+          },
+        },
+      })
+    }
+
+    it('offers the action on an image of the owner\'s chat, with its '
+      + 'storage key', async () => {
+      const wrapper = await mountImage({ canSaveToDrive: true })
+      const action = wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' })
+
+      expect(action.exists()).toBe(true)
+      expect(action.props()).toMatchObject({
+        storageKey: 'owned-key.webp',
+        fileName: 'owned.webp',
+      })
+    })
+
+    it('offers nothing on a shared chat, where the prop is not set',
+      async () => {
+        const wrapper = await mountImage()
+
+        expect(wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' })
+          .exists()).toBe(false)
+      })
+  })
+
   it('shows the same failure card as a tool-based failure for an unsafe '
     + 'gateway file URL, instead of a broken tile', async () => {
     const wrapper = await mountSuspended(GeneratedImage, {
