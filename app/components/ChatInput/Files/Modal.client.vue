@@ -63,6 +63,7 @@
               @detach="onFilesDetached"
               @preview="onFilePreview"
               @deleted="storageUsage?.fetch()"
+              @changed="storageUsage?.fetch()"
             />
             <ChatInputFilesModalUpload
               v-else-if="activeTab === 'upload'"
@@ -130,6 +131,7 @@ const activeTab = shallowRef<Tab | null>(null)
 const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
 const stopPreviewReturnWatch = shallowRef<(() => void) | null>(null)
+const isSuspended = shallowRef<boolean>(false)
 let refreshGeneration = 0
 let activeRefreshGeneration: number | null = null
 
@@ -218,12 +220,34 @@ function resetModalState(): void {
 }
 
 function onModalClosed(): void {
-  if (modal.value?.open || stopPreviewReturnWatch.value) {
+  if (modal.value?.open || stopPreviewReturnWatch.value || isSuspended.value) {
     return
   }
 
   resetModalState()
 }
+
+function suspend(): void {
+  isSuspended.value = true
+  close()
+}
+
+function resume(): void {
+  if (!isSuspended.value) {
+    return
+  }
+
+  isSuspended.value = false
+
+  if (!modal.value || modal.value.open) {
+    return
+  }
+
+  modal.value.showModal()
+  storageUsage.value?.fetch()
+}
+
+provide(FILE_MANAGER_DIALOG_KEY, { close, suspend, resume })
 
 function cancelPreviewReturn(): void {
   stopPreviewReturnWatch.value?.()
@@ -322,6 +346,8 @@ function onFilesAttached(files: FileManagerFile[]) {
       textTruncated: file.textTruncated,
       textOmittedMedia: file.textOmittedMedia,
       textOmittedCharts: file.textOmittedCharts,
+      externalSource: file.externalSource,
+      externalId: file.externalId,
     }
   })
 

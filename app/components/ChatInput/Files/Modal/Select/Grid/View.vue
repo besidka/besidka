@@ -152,9 +152,22 @@
         </a>
         <ChatInputFilesModalSelectGridActionsMenu
           :file-name="file.name"
+          :refreshable="refreshable"
+          @refresh="$emit('refresh', file)"
           @rename="$emit('rename', file)"
           @delete="$emit('delete', file)"
         />
+        <button
+          v-if="refreshable"
+          type="button"
+          class="btn btn-circle btn-xs btn-soft max-sm:hidden"
+          aria-label="Refresh from Google Drive"
+          title="Refresh from Google Drive"
+          data-testid="files-action-refresh"
+          @click="$emit('refresh', file)"
+        >
+          <Icon name="lucide:refresh-cw" size="12" />
+        </button>
         <button
           type="button"
           class="btn btn-circle btn-xs btn-soft max-sm:hidden"
@@ -188,10 +201,12 @@ withDefaults(defineProps<{
   selectedIds: Set<string>
   isTouchSelecting: boolean
   touchedIndices: Set<number>
+  refreshable?: boolean
   unsupportedReasons?: Record<string, string>
   unsupportedCaptions?: Record<string, string>
   textNotes?: Record<string, FileDeliveryHint>
 }>(), {
+  refreshable: false,
   unsupportedReasons: () => ({}),
   unsupportedCaptions: () => ({}),
   textNotes: () => ({}),
@@ -202,6 +217,7 @@ const emit = defineEmits<{
   'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
+  'refresh': [file: FileManagerFile]
 }>()
 
 const { canPreviewFile } = useDocumentPreview()

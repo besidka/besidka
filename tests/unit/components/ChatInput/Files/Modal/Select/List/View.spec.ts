@@ -44,6 +44,26 @@ describe('ChatInput/Files/Modal/Select/List/View', () => {
     documentsActive.value = true
   })
 
+  it('shows no refresh action unless the list is refreshable', async () => {
+    const wrapper = await mountListView()
+
+    expect(wrapper.find('[data-testid="files-action-refresh"]').exists())
+      .toBe(false)
+  })
+
+  it('refreshes a row without selecting it when refreshable', async () => {
+    const wrapper = await mountListView({ refreshable: true })
+    const refresh = wrapper.get('[data-testid="files-action-refresh"]')
+
+    expect(refresh.attributes('aria-label'))
+      .toBe('Refresh from Google Drive')
+
+    await refresh.trigger('click')
+
+    expect(wrapper.emitted('refresh')?.[0]).toEqual([file])
+    expect(wrapper.emitted('file-click')).toBeUndefined()
+  })
+
   it('previews a document file without selecting the row', async () => {
     const documentFile = { ...file, documentId: 'doc-1' }
     const wrapper = await mountListView({ files: [documentFile] })

@@ -31,6 +31,13 @@ const mocks = vi.hoisted(() => ({
 
 const driveBusy = shallowRef<boolean>(false)
 
+const googleDataMocks = vi.hoisted(() => ({ remember: vi.fn() }))
+
+mockNuxtImport('useChatGoogleData', () => () => ({
+  rememberChatGoogleData: googleDataMocks.remember,
+  isChatHoldingGoogleData: () => false,
+}))
+
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
 mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useChatDriveFiles', () => () => ({
@@ -1495,6 +1502,63 @@ describe('ChatInput.client', () => {
 
       expect(attachedFileNames(wrapper)).toEqual([])
       expect(mocks.useWarningMessage).toHaveBeenCalledWith(pdfWarning)
+    })
+
+    describe('a Google Drive copy attached from the file manager', () => {
+      const driveCopy = {
+        ...textFile,
+        id: '4',
+        storageKey: 'drive-copy-key',
+        name: 'Plan.md',
+        externalSource: 'google',
+        externalId: '1DriveDriveDriveDriveDrive01',
+      }
+
+      beforeEach(() => {
+        googleDataMocks.remember.mockClear()
+        Object.assign(mockRoute, { params: { slug: 'abc123' } })
+      })
+
+      afterEach(() => {
+        Reflect.deleteProperty(mockRoute, 'params')
+      })
+
+      it('marks the open chat as holding Google data', async () => {
+        useSelection(textOnly)
+
+        const wrapper = await mountChatInput()
+
+        wrapper.findComponent(filesModalStub).vm.$emit('attach', [driveCopy])
+        await nextTick()
+
+        expect(attachedFileNames(wrapper)).toEqual(['Plan.md'])
+        expect(googleDataMocks.remember).toHaveBeenCalledWith('abc123', true)
+      })
+
+      it('does not mark the chat for an ordinary file', async () => {
+        useSelection(textOnly)
+
+        const wrapper = await mountChatInput()
+
+        wrapper.findComponent(filesModalStub).vm.$emit('attach', [textFile])
+        await nextTick()
+
+        expect(googleDataMocks.remember).not.toHaveBeenCalled()
+      })
+
+      it('does not mark the chat when the copy was refused', async () => {
+        useSelection(withoutImages)
+
+        const wrapper = await mountChatInput()
+
+        wrapper.findComponent(filesModalStub).vm.$emit('attach', [{
+          ...driveCopy,
+          type: 'image/png',
+        }])
+        await nextTick()
+
+        expect(googleDataMocks.remember).not.toHaveBeenCalled()
+      })
     })
 
     it('keeps a text file when images and PDFs are unsupported', async () => {

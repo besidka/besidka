@@ -1,9 +1,15 @@
-import { defineComponent, h, watch } from 'vue'
+import { defineComponent, h, inject, watch } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Modal from '../../../../../app/components/ChatInput/Files/Modal.client.vue'
 import { useSidePanel } from '../../../../../app/composables/side-panel'
+import {
+  FILE_MANAGER_DIALOG_KEY,
+} from '../../../../../app/utils/file-manager-dialog'
+import type {
+  FileManagerDialogControls,
+} from '../../../../../app/utils/file-manager-dialog'
 
 enableAutoUnmount(afterEach)
 
@@ -12,6 +18,7 @@ const scrollMocks = vi.hoisted(() => ({
   setScrollTop: vi.fn(),
   fetchFiles: vi.fn(async () => true),
   reset: vi.fn(),
+  controls: null as FileManagerDialogControls | null,
 }))
 
 const SelectStub = defineComponent({
@@ -22,8 +29,10 @@ const SelectStub = defineComponent({
     isImageInputSupported: { type: Boolean, default: true },
     resolveDelivery: { type: Function, default: undefined },
   },
-  emits: ['attach', 'detach', 'deleted', 'preview'],
+  emits: ['attach', 'detach', 'deleted', 'changed', 'preview'],
   setup(_props, { expose }) {
+    scrollMocks.controls = inject(FILE_MANAGER_DIALOG_KEY, null)
+
     expose({
       reset: scrollMocks.reset,
       fetchFiles: scrollMocks.fetchFiles,
@@ -140,6 +149,95 @@ describe('ChatInput/Files/Modal.client', () => {
 
     expect(wrapper.findComponent(SelectStub).props('resolveDelivery'))
       .toBe(resolveDelivery)
+  })
+
+  it('keeps the external source of an attached Google Drive copy', async () => {
+    const wrapper = await mountModal()
+    const exposed = wrapper.vm as unknown as ModalExposed
+
+    exposed.open('select')
+    await wrapper.vm.$nextTick()
+    wrapper.findComponent(SelectStub).vm.$emit('attach', [{
+      id: 'file-2',
+      storageKey: 'file-2.md',
+      name: 'Plan.md',
+      size: 10,
+      type: 'text/markdown',
+      source: 'upload',
+      externalSource: 'google',
+      externalId: '1DriveDriveDriveDriveDrive01',
+    }])
+
+    expect(wrapper.emitted('attach')![0]![0]).toMatchObject([{
+      id: 'file-2',
+      externalSource: 'google',
+      externalId: '1DriveDriveDriveDriveDrive01',
+    }])
+  })
+
+  describe('suspending for a source tab', () => {
+    beforeEach(() => {
+      scrollMocks.controls = null
+      scrollMocks.reset.mockClear()
+    })
+
+    it('gives the open tab controls to close, suspend and resume', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+
+      expect(Object.keys(scrollMocks.controls ?? {}).sort())
+        .toEqual(['close', 'resume', 'suspend'])
+    })
+
+    it('keeps the tab and its state while the dialog is closed', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+      scrollMocks.controls!.suspend()
+      wrapper.get('[data-testid="files-modal"]').element
+        .dispatchEvent(new Event('close'))
+      await flushPromises()
+
+      expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+      expect(scrollMocks.reset).not.toHaveBeenCalled()
+    })
+
+    it('shows the dialog again on resume and resets on a later close', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]').element
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+      vi.mocked(HTMLDialogElement.prototype.showModal).mockClear()
+      scrollMocks.controls!.suspend()
+      dialog.dispatchEvent(new Event('close'))
+      scrollMocks.controls!.resume()
+
+      expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+
+      dialog.dispatchEvent(new Event('close'))
+      await flushPromises()
+
+      expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+    })
+
+    it('does nothing on resume when it was not suspended', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+      vi.mocked(HTMLDialogElement.prototype.showModal).mockClear()
+      scrollMocks.controls!.resume()
+
+      expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled()
+    })
   })
 
   it('keeps the text status of an attached Office file', async () => {

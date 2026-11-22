@@ -45,7 +45,11 @@
         :attached-ids="attachedIds"
         :search="search"
         :view-mode="viewMode"
+        :can-attach-media-type="canAttachMediaType"
+        :resolve-delivery="resolveDelivery"
         @attach="onExtraSourceAttach"
+        @detach="onExtraSourceDetach"
+        @changed="onExtraSourceChanged"
       />
       <LazyChatInputFilesModalSelectGridSkeleton
         v-else-if="isInitialLoading && viewMode === 'grid'"
@@ -201,6 +205,7 @@ const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
   detach: [fileIds: string[]]
   deleted: []
+  changed: []
   preview: [file: FileManagerFile]
 }>()
 
@@ -316,6 +321,7 @@ const textNotes = computed<Record<string, FileDeliveryHint>>(() => {
 
 const extraSourceTabs = getFileManagerExtraSourceTabs()
 const activeExtraTabId = shallowRef<string | null>(null)
+const isListStale = shallowRef<boolean>(false)
 
 const sourceTabs = computed<FileSourceTab[]>(() => {
   return resolveFileManagerSourceTabs({
@@ -348,8 +354,16 @@ function selectSourceTab(tab: FileSourceTab): void {
     return
   }
 
+  const isSameSource = source.value === tab.id
+
   activeExtraTabId.value = null
   source.value = tab.id
+
+  if (isListStale.value && isSameSource) {
+    fetchFiles(true)
+  }
+
+  isListStale.value = false
 }
 
 watch(activeExtraTab, (tab) => {
@@ -364,8 +378,18 @@ function onExtraSourceAttach(attachedFiles: FileManagerFile[]): void {
   emit('attach', attachedFiles)
 }
 
+function onExtraSourceDetach(fileIds: string[]): void {
+  emit('detach', fileIds)
+}
+
+function onExtraSourceChanged(): void {
+  isListStale.value = true
+  emit('changed')
+}
+
 function reset(): void {
   activeExtraTabId.value = null
+  isListStale.value = false
   resetFileManager()
 }
 

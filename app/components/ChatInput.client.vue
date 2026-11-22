@@ -669,6 +669,8 @@ const {
 } = useChatFiles(files, canAttachMediaType, resolveDelivery)
 
 const googleDriveFeature = useFeature('google.drive')
+const { routeSlug: chatRouteSlug } = useChatRoute()
+const { rememberChatGoogleData } = useChatGoogleData()
 const {
   driveImports,
   importingCount: driveImportingCount,
@@ -1558,6 +1560,14 @@ function onFilesAttached(attachedFiles: AttachedFile[]): number {
   }
 
   files.value = [...files.value, ...newFiles as FileMetadata[]]
+
+  const holdsGoogleCopy = newFiles.some((file) => {
+    return file.externalSource === 'google'
+  })
+
+  if (holdsGoogleCopy && chatRouteSlug.value) {
+    rememberChatGoogleData(chatRouteSlug.value, true)
+  }
 
   return newFiles.length
 }
