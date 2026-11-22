@@ -1704,10 +1704,14 @@ instance with `source = 'google'`, so the rows, selection (click, Shift range,
 select all), pagination, search, skeletons, `Load more`, rename and the delete
 and bulk-delete routes are the Uploaded tab's own code; the touch-swipe range
 selection and the `/` shortcut's search field belong to `Select.client.vue` and
-are not repeated in the tab. A row shows name, type, size and the date it was
-copied ("Added"). Whether the Drive original changed since the copy is NOT
-shown: D1 holds only the `modifiedTime` at the copy, so knowing it would take
-one Google call per row. The answer comes from Refresh.
+are not repeated in the tab. A row is the existing row: in the list view the
+name, type and size, the date it was copied ("Added", from `lg` up) and the
+expiry; the grid tile shows the icon or image and the name, with no type, size
+or date. That is a deviation from "name, type, size, when copied" on every
+width, kept so the tab has exactly the Uploaded tab's rows. Whether the Drive
+original changed since the copy is NOT shown: D1 holds only the `modifiedTime`
+at the copy, so knowing it would take one Google call per row. The answer comes
+from Refresh.
 
 **Pick more and the dialog stacking decision.** The button runs the same
 `useGooglePicker().pick()` as the composer (consent first, at most 5 files),
@@ -1721,7 +1725,9 @@ closes the dialog without resetting the modal state (the open tab, its search
 and its pending Picker stay mounted, the same idea as `closeForPreview`), and
 `resume()` shows it again on every outcome (picked, canceled, failed, even a
 throw) before the copy request starts, so progress shows in the tab ("Opening
-Google Drive", then "Copying"). The pick, copy and refresh buttons are
+Google Drive", then "Copying"). The send consent comes first, while the dialog
+is still open: both consent dialogs are `showModal()` dialogs opened later, so
+they sit above the file manager. The pick, copy and refresh buttons are
 disabled while any of them runs. Failures use the Picker's own messages as
 toasts; a Picker `not-connected` or `reauthorize` answer, or a 404 or 409 from
 a route, re-reads the connection status so the tab switches to the matching
@@ -1807,8 +1813,9 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
    taps, and the dialog must reopen with the keyboard closed).
 4. Edit a picked Doc in Drive, then Refresh the row and a selection: the new
    copy appears above the old one, the old one is still attachable, and an
-   older chat message still shows the earlier version. Refresh again: "already
-   up to date" (or "A newer copy ... is already in your files" on the old row).
+   older chat message still shows the earlier version. Refresh again: "<name> is
+   up to date" (or "A newer copy of <name> is already in your files" on the old
+   row).
 5. Trash a file in Drive and refresh it; remove a file's sharing and refresh it
    (404 or 403 wording); refresh a file that was shared only by a link.
 6. Select copies and "Attach": they become chips; the model picker greys the

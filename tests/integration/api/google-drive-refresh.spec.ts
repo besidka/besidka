@@ -133,6 +133,7 @@ interface FakeDriveFile {
   metadata: Record<string, unknown>
   media?: Uint8Array
   exports?: Record<string, string>
+  metadataError?: { status: number, reason: string }
 }
 
 interface FakeDriveRequest {
@@ -172,6 +173,12 @@ function createFakeDrive(files: Record<string, FakeDriveFile>) {
     }
 
     requests.push({ kind: 'metadata', fileId: match[1]! })
+
+    if (file.metadataError) {
+      return new Response(JSON.stringify({
+        error: { errors: [{ reason: file.metadataError.reason }] },
+      }), { status: file.metadataError.status })
+    }
 
     return new Response(JSON.stringify(file.metadata))
   })
@@ -521,6 +528,52 @@ describe('POST /api/v1/google/drive/files/refresh', () => {
 
       expect(result).toMatchObject({ status: 'failed', code: 'not_found' })
     })
+
+    it('reports a file Besidka lost access to', async () => {
+      const copy = await importCopy(PDF_ID)
+
+      driveFiles[PDF_ID]!.metadataError = {
+        status: 403,
+        reason: 'insufficientFilePermissions',
+      }
+
+      const [result] = await refresh([copy.file.id])
+
+      expect(result).toMatchObject({
+        id: copy.file.id,
+        status: 'failed',
+        code: 'no_access',
+      })
+      expect(result!.reason).toContain('Besidka has no access')
+      expect(await fileRows()).toHaveLength(1)
+    })
+
+    it('reports a Drive outage as a plain failure and keeps the copy',
+      async () => {
+        const copy = await importCopy(PDF_ID)
+
+        driveFiles[PDF_ID]!.metadataError = {
+          status: 500,
+          reason: 'backendError',
+        }
+
+        const [result] = await refresh([copy.file.id])
+
+        expect(result).toMatchObject({ status: 'failed', code: 'failed' })
+        expect(await fileRows()).toHaveLength(1)
+      })
+
+    it('answers 409 when the connection ended after the copy was made',
+      async () => {
+        const copy = await importCopy(PDF_ID)
+
+        await testDb.db.update(schema.googleConnections)
+          .set({ status: 'needs_reauth' })
+
+        const failure = await failureOf(refresh([copy.file.id]))
+
+        expect(failure.status).toBe(409)
+      })
 
     it('reports an original that grew past the limit', async () => {
       const copy = await importCopy(PDF_ID)
