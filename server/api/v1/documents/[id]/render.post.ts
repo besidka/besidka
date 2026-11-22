@@ -137,6 +137,7 @@ export default defineEventHandler(async (event) => {
       db,
       userId,
       collectImageIds(spec),
+      { allowGoogleContent: !!claimed.googleDerivedAt },
     )
 
     if (!images.ok) {

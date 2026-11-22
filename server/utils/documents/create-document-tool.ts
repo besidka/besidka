@@ -485,6 +485,7 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
             input.db,
             input.userId,
             imageIds,
+            { allowGoogleContent: input.isGoogleDerived?.() === true },
           )
 
           if (resolved.missingIds.length > 0) {

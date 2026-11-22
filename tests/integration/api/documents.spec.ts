@@ -1026,6 +1026,74 @@ describe('documents API', () => {
       )
     })
 
+    describe('marked images', () => {
+      async function markImage(imageId: string) {
+        await testDb.db.update(schema.files)
+          .set({ googleDerivedAt: new Date(1_000) })
+          .where(eq(schema.files.id, imageId))
+      }
+
+      function pictureSpec(imageId: string) {
+        return {
+          specVersion: 1,
+          format: 'docx',
+          title: 'With picture',
+          blocks: [{
+            type: 'image',
+            fileId: imageId,
+            alt: 'Chart',
+            widthPercent: 50,
+          }],
+        }
+      }
+
+      async function insertDocumentRow(
+        imageId: string,
+        googleDerivedAt: Date | null,
+      ) {
+        return (await createDocument(testDb.db, {
+          userId: ownerId,
+          format: 'docx',
+          title: 'With picture',
+          createdVia: 'chat',
+          originChatId: chatId,
+          specVersion: 1,
+          specJson: JSON.stringify(pictureSpec(imageId)),
+          googleDerivedAt,
+        })).id
+      }
+
+      it('renders a marked image into a document that carries the mark',
+        async () => {
+          const image = await seedOwnedImage()
+
+          await markImage(image.id)
+
+          const documentId = await insertDocumentRow(image.id, new Date(1_000))
+          const handler = await handlers.render()
+
+          await handler(createEvent({ documentId }))
+
+          expect(mocks.renderDocument).toHaveBeenCalledTimes(1)
+        })
+
+      it('refuses a marked image in a document without the mark',
+        async () => {
+          const image = await seedOwnedImage()
+
+          await markImage(image.id)
+
+          const documentId = await insertDocumentRow(image.id, null)
+          const handler = await handlers.render()
+
+          await expectRejection(
+            handler(createEvent({ documentId })),
+            { status: 422, why: 'asset_invalid' },
+          )
+          expect(mocks.renderDocument).not.toHaveBeenCalled()
+        })
+    })
+
     it('fails with asset_invalid when an image is not the owner\'s', async () => {
       const [foreign] = await testDb.db.insert(schema.files).values({
         userId: strangerId,

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
+import { isGoogleContentFile } from '~~/server/utils/google/data-guard'
 import type { RenderAssetInput } from '~~/workers/doc-renderer/src/contract'
 
 type DbClient = ReturnType<typeof useDb>
@@ -50,15 +51,24 @@ function isDecodableFileId(fileId: string): boolean {
   }
 }
 
+export interface DocumentImageOptions {
+  allowGoogleContent?: boolean
+}
+
 /**
  * Looks up the image files a spec points at. Only files of `userId` with a
  * PNG or JPEG media type count; everything else, including a file of another
  * user, is reported as missing so the caller cannot tell the cases apart.
+ * A Google copy or a file with the derived mark counts only when
+ * `allowGoogleContent` is true (a send that already holds Google data, or a
+ * document that carries the mark itself), so a document made outside such a
+ * send can never launder a marked image into an unmarked file.
  */
 export async function resolveOwnedImageFiles(
   db: DbClient,
   userId: number,
   fileIds: readonly string[],
+  options: DocumentImageOptions = {},
 ): Promise<ResolvedImageFiles> {
   const uniqueIds = [...new Set(fileIds)]
   const decodableIds = uniqueIds.filter(isDecodableFileId)
@@ -70,6 +80,8 @@ export async function resolveOwnedImageFiles(
       storageKey: schema.files.storageKey,
       type: schema.files.type,
       size: schema.files.size,
+      externalSource: schema.files.externalSource,
+      googleDerivedAt: schema.files.googleDerivedAt,
     })
       .from(schema.files)
       .where(and(
@@ -78,6 +90,10 @@ export async function resolveOwnedImageFiles(
       ))
 
     for (const row of rows) {
+      if (!options.allowGoogleContent && isGoogleContentFile(row)) {
+        continue
+      }
+
       if (isDocumentImageMediaType(row.type)) {
         files.push({
           id: row.id,
@@ -106,12 +122,18 @@ export async function loadDocumentImageAssets(
   db: DbClient,
   userId: number,
   fileIds: readonly string[],
+  options: DocumentImageOptions = {},
 ): Promise<LoadImageAssetsResult> {
   if (fileIds.length === 0) {
     return { ok: true, assets: [] }
   }
 
-  const resolved = await resolveOwnedImageFiles(db, userId, fileIds)
+  const resolved = await resolveOwnedImageFiles(
+    db,
+    userId,
+    fileIds,
+    options,
+  )
   const totalBytes = resolved.files.reduce((sum, file) => sum + file.size, 0)
   const exceedsCaps = resolved.files.some((file) => {
     return file.size > DOCUMENT_IMAGE_MAX_BYTES
