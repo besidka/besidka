@@ -1,13 +1,17 @@
 # Google: Drive, Calendar and Gmail (Phase 4b)
 
-Status: **design, not built yet** (2026-11-22). Only the contracts exist on
-the umbrella branch `feat/google-connectors`: the four `google.*` flags in
+Status: **partly built** (2026-11-22), on the umbrella branch
+`feat/google-connectors`. Built so far: the four `google.*` flags in
 `shared/utils/features/registry.ts` (all `available: false`, stage
-`internal`, `optIn: 'required'`), `shared/utils/google-scopes.ts` and
+`internal`, `optIn: 'required'`), `shared/utils/google-scopes.ts`,
 `shared/utils/google-data-policy.ts`, the schema child's single migration
-(section 8), and the approval, taint and references-only rules Google tools
-register into (section 5.2). No route, no UI and no legal text exists. This
-file grows with every child of the umbrella; each child replaces a "design" marker below with what was built.
+(section 8), and the chat runtime every Google tool registers into
+(section 5.2: approvals, taint, the chat flag, references-only results and
+the approval panel rows). Not built yet: the Google connection routes and
+OAuth, the Picker, the Drive, Calendar and Gmail tools themselves, the data
+guard of the allow-list, and the legal text. This file grows with every
+child of the umbrella; each child replaces a "design" marker below with
+what was built.
 
 Binding inputs: `docs/legal/prechecks/google.md` (G-11, BES-313) and
 `docs/agentic-capabilities-roadmap.md`. Where this file and the pre-check
@@ -188,21 +192,35 @@ has a "wipe Google tokens" step (2d) in `docs/d1-restore-reconciliation.md`.
 
 Built (child 4, 2026-11-22): the runtime rules every built-in Google tool
 registers into. No Google tool exists yet; the rules are proven with fake
-tool descriptors in `tests/unit/server/utils/tool-approval/google.spec.ts`.
+tool descriptors in `tests/unit/server/utils/tool-approval/google.spec.ts`
+and with a fake registered tool through the chat route in
+`tests/integration/api/chats-tool-approval-request.spec.ts` and
+`chats-tool-approval-continuation.spec.ts`.
 
 **Registering a tool.** A Google tool joins a send only through
-`buildGoogleApprovalEntry` (`server/utils/tool-approval/send.ts`): the
-exposed name must start with `google__` (`GOOGLE_TOOL_NAME_PREFIX`,
-`shared/utils/google-tool-approvals.ts`) or registration throws, and the
-kind is `read` or `write`; any other kind is a write. A `google__` tool the
-send did not describe gets a fallback entry that is a Google write asking
-with Allow once only, so a Google tool can never fall back to the native
-write entry, which runs without asking. The tool's `execute` only runs a
-call the policy cleared (`guardNativeWrites` covers Google reads too). Each
-tool caps its output at `GOOGLE_TOOL_OUTPUT_MAX_BYTES` (64 KiB of
-serialized JSON) and returns `{ references: [{ id, kind?, title?, link?,
-date? }], ...body }` (`GoogleToolOutput`). Pass the tool's chat grant hash
-from `readGoogleChatGrantHashes` (`server/utils/tool-approval/google.ts`).
+`getGoogleSendTools` (`server/utils/tool-approval/google-send-tools.ts`),
+the one place the chat route assembles Google tools, with entries built by
+`buildGoogleApprovalEntry` (`server/utils/tool-approval/send.ts`):
+
+- Nothing is offered unless tool approvals are active for the send
+  (`canOfferGoogleTools`, `shared/utils/google-tool-approvals.ts`):
+  `getGoogleSendTools` returns nothing and `buildGoogleApprovalEntry`
+  throws, because without approvals no Google rule would run.
+- The route removes every other tool named `google__` (any letter case)
+  from the send (`withGoogleSendTools`), so no other tool source can slip a
+  Google tool in.
+- The exposed name must start with `google__` (`GOOGLE_TOOL_NAME_PREFIX`),
+  matched in any letter case, or registration throws. The kind is `read`
+  or `write`; any other kind is a write. A `google__` tool the send did not
+  describe gets a fallback entry that is a Google write asking with Allow
+  once only, never the native write entry, which runs without asking.
+- The tool's `execute` only runs a call the policy cleared
+  (`guardNativeWrites` covers Google reads too).
+- Each tool caps its output at `GOOGLE_TOOL_OUTPUT_MAX_BYTES` (64 KiB of
+  serialized JSON) and returns `{ references: [{ id, kind?, title?, link?,
+  date? }], ...body }` (`GoogleToolOutput`).
+- Pass the tool's chat grant hash from `readGoogleChatGrantHashes`
+  (`server/utils/tool-approval/google.ts`).
 
 **Rules** (`resolveToolApproval`, `server/utils/tool-approval/policy.ts`):
 
@@ -211,8 +229,15 @@ from `readGoogleChatGrantHashes` (`server/utils/tool-approval/google.ts`).
 | Google read | Ask (`default`, rule 11) | Allow once, Allow in this chat | A Google chat grant with the same name and definition hash |
 | Google write | Ask (`always-ask`, rule 11) | Allow once | Nothing: Always allow, the permission mode and taint are ignored |
 | Connector call while the send holds `google` taint | Ask (`google-egress`, rule 12) | Allow once, Allow in this chat | The tool's Google egress grant in this chat; the call then goes through the ordinary connector rules |
+| Besidka tool that is not a plain read, while the send holds `google` taint | Ask (`untrusted-output`, rule 13) | Allow once | Nothing: its Allow mode, Always allow and chat grants are ignored (`create_file`, `add_project_text`, `add_project_note`, `update_project_instructions`, `branch_chat`, `share_artifact` and every other Besidka write) |
+| Besidka read after `google` taint | Its existing rules | As before | As before |
 | Native write after `google` taint | Ask (`untrusted-output`, rule 2) | Allow once | Nothing (artifact and document writes now count `google` taint too) |
-| Besidka tool after `google` taint | Its existing rules (`google` is foreign taint) | As before | As before |
+| Run code (provider code execution) | Not offered in a chat that holds Google data; withheld from the steps after `google` taint appears in the same send | None | Nothing |
+
+The final order inside `resolveToolApproval`: rule 0 (invalid, Blocked),
+rule 11 (Google tools), rule 10 (consent gate), the native rules (1, 2, 5,
+8), rule 12 (Google egress), rule 13 (Besidka writes after Google content),
+then rules 6, 7, 2, 3, 5 and 9.
 
 No Google prompt ever offers Always allow. Blocked still denies. The
 egress prompt says "Content from Google in this chat may be sent to this
@@ -220,17 +245,42 @@ connector". Its Allow in this chat stores only the egress grant, never the
 ordinary chat grant: an ungranted write can ask a second time, which keeps
 a send or delete tool from running unprompted after one egress answer.
 
-**Taint.** A Google call that runs records `google` taint and the `google`
-read source as a tool read, so web search is withheld for the rest of the
-turn and memory writes lock. A send starts with `google` taint when the
-chat already holds a Google tool result (`chatHoldsGoogleData`, a scan of
-the stored parts today; the chat-level flag of child 3 replaces that one
-function). A `{ continue }` round restores `google` taint and the tool read
-from the reply's own parts. A turn record written by another deploy with a
-taint kind this version does not know reads it as `google`, the strictest
-kind; a pending record with an unknown family loads with family null and
-replay denies that call (`invalid-input`); an unknown reason reads as
-`default`.
+**Run code.** Code execution runs in the provider's own sandbox, inside the
+provider's response, so no approval can stop one call, and its code,
+output and files are stored without any Google marking. In a chat that
+holds Google data, the send does not offer it at all
+(`withholdCodeExecutionForGoogleData`). Within one send, the step guard
+(`withProviderToolEgressGuard`) removes it from every step after `google`
+taint appears. Gap: on direct Anthropic routes the guard keeps every tool
+declaration (Anthropic rejects tool history without them), so there code
+execution stays available in the steps after a Google read of the same
+send; it is dropped from the next send of that chat.
+
+**Taint and the chat flag.** A Google call that runs records `google` taint
+and the `google` read source as a tool read, so web search, URL tools and
+Brave and Exa are withheld for the rest of the turn and memory writes lock.
+The persist step sets `chats.google_data_at` (`markChatGoogleData`) the
+first time a reply holds a Google result: a static `tool-google__*` part
+with an output; a failed or model-invented `google__` call does not count.
+The flag is never cleared. `chatHoldsGoogleData` reads the flag, and falls
+back to the parts scan for a chat from before the flag; it is the one
+function every send, branch and later data guard asks. A send in a flagged
+chat starts with `google` taint and the Google tool read
+(`presetApprovalTaint`), so the egress ask, rule 13 and the web search
+hold-back survive deleting the message that held the Google part. A branch
+copies the flag (`branchGoogleDataAt` in `server/utils/chats/branch.ts`,
+used by the branch route, the MCP and Besidka `branch_chat` tool through
+`branchChat`, and the shared-chat branch route), because a branch strips
+tool parts. A `{ continue }` round restores `google` taint and the tool
+read from the reply's own parts (`createToolRoundApprovalState`,
+`server/utils/tool-approval/round-state.ts`).
+
+**Records from another deploy.** A turn record with a taint kind this
+version does not know reads it as `google`, the strictest kind. A pending
+record with an unknown family loads with family null and the replay denies
+that call (`invalid-input`). An unknown reason reads as `default` and the
+answer applies to that one call only: its remember options become Allow
+once, so no grant is stored.
 
 **Grants** (no D1 change):
 
@@ -239,7 +289,11 @@ replay denies that call (`invalid-input`); an unknown reason reads as
 | Google read, Allow in this chat | `besidka_chat_settings.alwaysAllowTools` | The exposed `google__` name | Definition hash |
 | Google egress, Allow in this chat | The connector's `connector_chat_settings.alwaysAllowTools` | `google-egress:<exposed connector tool name>` | Definition hash |
 
-Both are cleared by Reset in the chat panel and deleted with the chat.
+The chat panel lists both under Approvals (`listChatToolApprovalGrants`):
+a Google read grant as "Google · Allowed in this chat", an egress grant as
+the connector tool with "May receive Google content in this chat". Reset
+clears both, and they are deleted with the chat. There is no per-row
+revoke for chat grants, as for every other chat grant.
 
 **Caps.** Google calls count against the built-in calls per turn
 (`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN`, shared with Besidka tools) in the
@@ -247,24 +301,51 @@ send and on replay.
 
 **References only.** `redactGoogleToolPartsForPersistence` runs in the
 persistence chain of the chat route at every persist, pause and end: a
-Google result keeps only its sanitized references and `bodyRemoved: true`,
+Google result keeps only its sanitized references, `bodyRemoved: true` and
+a short `note` for the model ("kept only for the reply that fetched it");
 an error keeps one fixed sentence. The part count, type, state and tool
-call id stay, so a resumed reply never shrinks and the taint scan still
+call id stay, so a resumed reply never shrinks and the flag scan still
 finds the call. For a turn paused for approval, the bodies live only in KV
 and the continuation gives them back to the model (`stashedResults` in
 `buildResumedAssistantMessages`); the stored parts stay references.
 
+What is NOT redacted, and why: a Google tool's input stays in the stored
+part. A write's input (a draft, an event title and description) is content
+the user and the model composed, not data fetched from Google, and the
+approval step shows it to the user. It may still quote Google content the
+model read earlier; the data guard child decides what leaves the chat.
+Assistant text that summarizes a Google result is not redacted either.
+
 | KV key | Holds | TTL | Deleted by |
 |---|---|---|---|
-| `tool-approval:result:<id>`, `<id>` = base64url SHA-256 of message public id and tool call id | One Google result body or error text of a paused turn, with user, chat and message ids checked on read | 24 hours | A finished continuation (`deleteResumedTurn`), a new user message, chat deletion and account purge (all through the per-chat index `tool-approval:chat:<chatPublicId>`, where the id is listed with the approval ids) |
+| `tool-approval:result:<id>`, `<id>` = base64url SHA-256 of message public id and tool call id | One Google result body or error text of a paused turn, with user, chat and message ids checked on read | 24 hours | A finished continuation (`deleteResumedTurn`), a new user message, chat deletion and account purge, through the `resultIds` list of the per-chat index `tool-approval:chat:<chatPublicId>` |
 
-A body over 64 KiB is not stashed, and a missing, foreign or unreadable
-record degrades the same way: that call reaches the model as its references,
-and the continuation never fails over it. The stash is written after the
-pause records, so a KV write limit on the per-chat index can cost a body,
-never a pending approval. A user with more than 200 chats, or an id the
-index lost to its bound or a write race, keeps a stashed body until the
-24 hour TTL.
+The stash is written by `recordToolApprovalPause` with the pause records,
+and every id of one pause (pending, turn and result ids) goes into the
+per-chat index in ONE write, because KV takes about one write a second per
+key. Result ids have their own bounded list (`resultIds`, 200), so stashed
+bodies never push pending approvals out of the index. The stash runs only
+when a pending record was written, so a pause nobody can answer leaves no
+body behind. A body over 64 KiB is stored as its references with a note
+that it was too large and the user should narrow the request; a missing,
+foreign or unreadable record gives the model the references with a note
+that the content could not be kept. The continuation never fails over a
+stash.
+
+**Residual gaps** (for the data guard child and the tool children):
+
+- Google content still leaves through assistant text, artifact and
+  document writes the user approves, approved memory writes, shares and
+  branches of a flagged chat (shares drop tool parts but keep text), MCP
+  `get_chat`, and memory extraction of a flagged chat.
+- Code execution on direct Anthropic routes within the send of the Google
+  read (see Run code above).
+- A user with more than 200 chats, or an id the index lost to its bound or
+  a write race, keeps a stashed body until the 24 hour TTL.
+- With tool approvals off, a chat flagged earlier gets no Google taint, so
+  web search is not withheld there; no Google tool is offered either.
+- A pending record with an unknown access or remember option still reads
+  as expired.
 
 ## 6. Owner runbook outline: bring your own client
 
