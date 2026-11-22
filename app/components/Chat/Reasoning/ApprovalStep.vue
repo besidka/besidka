@@ -60,6 +60,54 @@
       >
         {{ reasonText }}
       </p>
+      <div
+        v-if="gmailDraft"
+        class="mt-1.5 min-w-0 rounded-box bg-base-200 p-2 text-xs"
+        data-testid="reasoning-approval-step-gmail-draft"
+      >
+        <dl class="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]">
+          <template
+            v-for="row in gmailDraftRecipientRows"
+            :key="row.label"
+          >
+            <dt class="text-base-content/60">
+              {{ row.label }}
+            </dt>
+            <dd
+              class="min-w-0 break-all"
+              :data-testid="`reasoning-approval-step-gmail-draft-${row.key}`"
+            >
+              <span
+                v-for="address in row.addresses"
+                :key="address"
+                class="block"
+              >{{ address }}</span>
+            </dd>
+          </template>
+          <dt class="text-base-content/60">
+            Subject
+          </dt>
+          <dd
+            class="min-w-0 break-words font-medium"
+            data-testid="reasoning-approval-step-gmail-draft-subject"
+          >
+            {{ gmailDraft.subject }}
+          </dd>
+        </dl>
+        <p class="mt-2 text-base-content/60">
+          Message{{ gmailDraftReplyNote }}
+        </p>
+        <p
+          class="mt-0.5 max-h-60 overflow-auto whitespace-pre-wrap break-words"
+          data-testid="reasoning-approval-step-gmail-draft-body"
+        >{{ gmailDraft.body }}</p>
+        <p
+          class="mt-2 text-base-content/60"
+          data-testid="reasoning-approval-step-gmail-draft-note"
+        >
+          This only saves a draft in your Gmail. Besidka cannot send it.
+        </p>
+      </div>
       <details
         v-if="clippedPreview.text"
         class="mt-1 text-xs"
@@ -206,6 +254,9 @@
 import { LazyChatReasoningApprovalDetails } from '#components'
 import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
+import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
 import type {
   ApprovalStepModel,
   ApprovalStepState,
@@ -314,6 +365,34 @@ const isFocusable = computed<boolean>(() => {
 
 const argumentsText = computed<string>(() => {
   return formatApprovalArguments(props.model.input)
+})
+
+const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
+  const toolName = props.model.toolName.toLowerCase()
+
+  return toolName === GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME
+    ? readGmailDraftApprovalView(props.model.input)
+    : null
+})
+
+const gmailDraftReplyNote = computed<string>(() => {
+  return gmailDraft.value?.isReply
+    ? ' (a reply in an existing thread)'
+    : ''
+})
+
+const gmailDraftRecipientRows = computed(() => {
+  const draft = gmailDraft.value
+
+  if (!draft) {
+    return []
+  }
+
+  return [
+    { key: 'to', label: 'To', addresses: draft.to },
+    { key: 'cc', label: 'Cc', addresses: draft.cc },
+    { key: 'bcc', label: 'Bcc', addresses: draft.bcc },
+  ].filter(row => row.addresses.length > 0)
 })
 
 const clippedPreview = computed(() => {

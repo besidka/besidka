@@ -374,6 +374,94 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       .toEqual(expect.objectContaining({ preview }))
   })
 
+  describe('a Gmail draft', () => {
+    const body = `${'Dear Alice, '.repeat(120)}THE END`
+    const draftInput = {
+      to: [
+        { email: 'alice@example.com', name: 'Alice Ünal' },
+        { email: 'bob@example.com' },
+      ],
+      cc: [{ email: 'carol@example.com' }],
+      bcc: [{ email: 'secret.boss@example.com' }],
+      subject: 'Lunch plans',
+      body,
+      replyToThreadId: '18c0ffee',
+    }
+
+    function draftModel(
+      overrides: Partial<ApprovalStepModel> = {},
+    ): ApprovalStepModel {
+      return createModel({
+        toolName: 'google__gmail_create_draft',
+        connectorSlug: null,
+        tool: 'google__gmail_create_draft',
+        input: draftInput,
+        summary: 'Create a Gmail draft "Lunch plans" to Alice',
+        ...overrides,
+      })
+    }
+
+    it('shows every recipient, the subject and the whole body', async () => {
+      const { wrapper } = await mountStep({ model: draftModel() })
+      const card = wrapper.get(testId('gmail-draft'))
+
+      expect(card.get(testId('gmail-draft-to')).text())
+        .toContain('Alice Ünal <alice@example.com>')
+      expect(card.get(testId('gmail-draft-to')).text())
+        .toContain('bob@example.com')
+      expect(card.get(testId('gmail-draft-cc')).text())
+        .toBe('carol@example.com')
+      expect(card.get(testId('gmail-draft-bcc')).text())
+        .toBe('secret.boss@example.com')
+      expect(card.get(testId('gmail-draft-subject')).text())
+        .toBe('Lunch plans')
+      expect(card.get(testId('gmail-draft-body')).text()).toBe(body)
+      expect(card.get(testId('gmail-draft-body')).text()).toContain('THE END')
+      expect(card.text()).toContain('a reply in an existing thread')
+      expect(card.get(testId('gmail-draft-note')).text())
+        .toContain('Besidka cannot send it')
+    })
+
+    it('offers Allow once and nothing else to allow', async () => {
+      const { wrapper } = await mountStep({ model: draftModel() })
+
+      expect(wrapper.find(testId('allow-once')).exists()).toBe(true)
+      expect(wrapper.find(testId('allow-chat')).exists()).toBe(false)
+      expect(wrapper.find(testId('allow-always')).exists()).toBe(false)
+    })
+
+    it('renders the text as text, never as markup', async () => {
+      const { wrapper } = await mountStep({
+        model: draftModel({
+          input: {
+            ...draftInput,
+            subject: '<img src=x onerror=alert(1)>',
+            body: '<b>bold</b> [link](https://evil.example)',
+          },
+        }),
+      })
+      const card = wrapper.get(testId('gmail-draft'))
+
+      expect(card.find('img').exists()).toBe(false)
+      expect(card.find('b').exists()).toBe(false)
+      expect(card.get(testId('gmail-draft-body')).text())
+        .toBe('<b>bold</b> [link](https://evil.example)')
+    })
+
+    it('shows no draft card for another tool or an input that is no draft',
+      async () => {
+        const other = await mountStep({
+          model: createModel({ input: draftInput }),
+        })
+        const broken = await mountStep({
+          model: draftModel({ input: { nothing: true } }),
+        })
+
+        expect(other.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
+        expect(broken.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
+      })
+  })
+
   it('shows no preview for a call without text to save', async () => {
     const { wrapper } = await mountStep()
 

@@ -36,6 +36,7 @@ export const GOOGLE_BYO_TOOL_SCOPES: Readonly<
 }
 
 export const GOOGLE_GMAIL_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/
+export const GOOGLE_GMAIL_ICON = 'lucide:mail'
 export const GOOGLE_GMAIL_THREAD_REFERENCE_KIND = 'gmail-thread'
 export const GOOGLE_GMAIL_DRAFT_REFERENCE_KIND = 'gmail-draft'
 export const GOOGLE_GMAIL_DRAFTS_LINK = 'https://mail.google.com/mail/#drafts'
@@ -85,10 +86,6 @@ export const GOOGLE_BYO_TOOLS_HINT = 'With your own Google client, the model '
   + 'your Google Drive when you allow it, but not while web search or Run '
   + 'code is on with an Anthropic model or Qwen search is on, and in a '
   + 'gateway chat only after Google content is already in the chat.'
-
-export const GOOGLE_BYO_MISSING_ACCESS_HINT = 'Some Gmail or Google Drive '
-  + 'tools are off because your own Google client was connected without '
-  + 'that access. Add it under API Keys, Google.'
 
 /**
  * Reads of one thread that never take "Allow in this chat": a thread read

@@ -4,6 +4,10 @@ import {
   isBesidkaChatToolName,
 } from '#shared/utils/besidka-tool-permissions'
 import { getGoogleDriveToolStepTitle } from '#shared/utils/google-drive-tools'
+import {
+  getGoogleGmailToolStepTitle,
+  isGoogleGmailToolName,
+} from '#shared/utils/google-gmail-tools'
 import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 
 export interface ParsedReasoningSection {
@@ -334,7 +338,9 @@ export function getToolStepTitle(
   const isGoogleTool: boolean = isGoogleToolName(toolName)
 
   if (isGoogleTool) {
-    return getGoogleDriveToolStepTitle(toolName, isPending, isFailed)
+    return isGoogleGmailToolName(toolName)
+      ? getGoogleGmailToolStepTitle(toolName, isPending, isFailed)
+      : getGoogleDriveToolStepTitle(toolName, isPending, isFailed)
   }
 
   const knownTitles = TOOL_STEP_TITLES.get(toolName)

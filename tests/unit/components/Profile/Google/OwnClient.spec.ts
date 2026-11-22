@@ -265,7 +265,7 @@ describe('Profile/Google/OwnClient', () => {
     )
   })
 
-  it('says the tools arrive later and what gmail.compose allows', async () => {
+  it('says what each access is for and what gmail.compose allows', async () => {
     setByo({ hasClient: true })
 
     const wrapper = await mountOwnClient()
@@ -273,9 +273,56 @@ describe('Profile/Google/OwnClient', () => {
       .get('[data-testid="google-byo-capabilities-form"]')
       .text()
 
-    expect(text).toContain('requested now for tools that arrive later')
+    expect(text).toContain('search and read your mail when you allow it')
+    expect(text).toContain('search your files')
+    expect(text).toContain('Besidka has no tool for Google Calendar yet')
     expect(text).toContain('managing drafts and sending mail')
     expect(text).toContain('Besidka has no send tool')
+  })
+
+  it('tells a connected owner where the tools work and which are off for '
+    + 'missing access', async () => {
+    setByo({ hasClient: true, connection: connection() })
+
+    const wrapper = await mountOwnClient()
+    const hint = wrapper
+      .get('[data-testid="google-byo-missing-tools"]')
+      .text()
+
+    expect(wrapper.get('[data-testid="google-byo-tools-hint"]').text())
+      .toContain('never send')
+    expect(wrapper.get('[data-testid="google-byo-tools-hint"]').text())
+      .toContain('gateway chat only after Google content is already in the chat')
+
+    expect(hint).toContain('Searching and reading Gmail needs Gmail read')
+    expect(hint).toContain('Writing Gmail drafts needs Gmail drafts access')
+    expect(hint).not.toContain('Searching Google Drive')
+  })
+
+  it('shows no missing-tools hint when every tool has its access, or when '
+    + 'the connection ended', async () => {
+    setByo({
+      hasClient: true,
+      connection: connection({
+        capabilities: [
+          'identity',
+          'drive-read',
+          'gmail-read',
+          'gmail-compose',
+        ],
+      }),
+    })
+
+    expect((await mountOwnClient())
+      .find('[data-testid="google-byo-missing-tools"]').exists()).toBe(false)
+
+    setByo({
+      hasClient: true,
+      connection: connection({ status: 'needs_reauth' }),
+    })
+
+    expect((await mountOwnClient())
+      .find('[data-testid="google-byo-missing-tools"]').exists()).toBe(false)
   })
 
   it('shows the connected account and what Google granted', async () => {

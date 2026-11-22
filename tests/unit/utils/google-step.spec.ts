@@ -50,6 +50,7 @@ describe('getGoogleStepData', () => {
       state: 'done',
       references: [{
         id: '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+        kind: 'drive-file',
         title: 'Plan.md',
         link: LINK,
         date: '2026-11-20T10:00:00.000Z',

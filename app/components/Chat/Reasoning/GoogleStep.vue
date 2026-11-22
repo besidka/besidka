@@ -32,10 +32,10 @@
         data-testid="reasoning-google-step-reference"
       >
         <span
-          :title="reference.title"
+          :title="reference.title || undefined"
           class="min-w-0 truncate text-base-content/70"
         >
-          {{ reference.title || 'Google Drive file' }}
+          {{ describeGoogleStepReference(reference).text }}
         </span>
         <a
           v-if="reference.link"
@@ -43,10 +43,10 @@
           target="_blank"
           rel="noopener noreferrer"
           class="link link-hover shrink-0"
-          :aria-label="`Open ${reference.title || 'file'} in Google Drive`"
+          :aria-label="describeGoogleStepReference(reference).linkLabel"
           data-testid="reasoning-google-step-link"
         >
-          Open in Google Drive
+          {{ describeGoogleStepReference(reference).linkText }}
         </a>
       </li>
     </ul>
