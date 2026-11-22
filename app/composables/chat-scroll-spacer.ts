@@ -18,6 +18,16 @@ const INITIAL_SPACER_HEIGHT: number = 500
 export const INITIAL_SPACER_PADDING: number = 12
 const MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES: number = 12
 const MESSAGE_3_LINES_HEIGHT: number = 100
+const CONTINUATION_WHEEL_MOMENTUM_MS: number = 250
+const SCROLL_KEYS: ReadonlySet<string> = new Set([
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+  'ArrowUp',
+  'ArrowDown',
+  ' ',
+])
 
 // Could be 100 for small chats
 // but rendering many DOM elements for long conversations could take more time,
@@ -68,6 +78,8 @@ export function useChatScrollSpacer(
   const isInitialPageLoad = shallowRef<boolean>(true)
   let continuationScrollTarget: number | null = null
   let hasUserTakenOverContinuationScroll: boolean = false
+  let continuationPinnedAt: number = 0
+  const route = useRoute('chats-slug')
   const messagesContentElement = computed<HTMLElement | null>(() => {
     return messagesEndRef.value?.parentElement ?? null
   })
@@ -372,6 +384,7 @@ export function useChatScrollSpacer(
     spacerComputedByPush.value = true
     continuationScrollTarget = scrollTarget
     hasUserTakenOverContinuationScroll = false
+    continuationPinnedAt = performance.now()
     spacerHeight.value = getSpacerHeightForScrollTarget(
       scrollTarget,
       container,
@@ -444,13 +457,68 @@ export function useChatScrollSpacer(
     hasUserTakenOverContinuationScroll = true
   }
 
+  function isEditableElement(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    return target.isContentEditable
+      || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+  }
+
+  /**
+   * A wheel event within the momentum window of the pin is the tail of a
+   * trackpad scroll that started before the pin, not a new user decision.
+   */
+  function onContinuationWheel(event: WheelEvent) {
+    const elapsedSincePin = event.timeStamp - continuationPinnedAt
+
+    if (elapsedSincePin < CONTINUATION_WHEEL_MOMENTUM_MS) {
+      return
+    }
+
+    markUserTakeoverOfContinuationScroll()
+  }
+
+  function onContinuationKeydown(event: KeyboardEvent) {
+    if (
+      !SCROLL_KEYS.has(event.key)
+      || isEditableElement(event.target)
+    ) {
+      return
+    }
+
+    markUserTakeoverOfContinuationScroll()
+  }
+
+  function onContinuationPointerdown(event: PointerEvent) {
+    if (event.target !== scrollContainerRef.value) {
+      return
+    }
+
+    markUserTakeoverOfContinuationScroll()
+  }
+
   useResizeObserver(messagesContentElement, keepContinuationPinned)
   useEventListener(
     scrollContainerRef,
-    ['wheel', 'touchmove'],
+    'wheel',
+    onContinuationWheel,
+    { passive: true },
+  )
+  useEventListener(
+    scrollContainerRef,
+    'touchmove',
     markUserTakeoverOfContinuationScroll,
     { passive: true },
   )
+  useEventListener(
+    scrollContainerRef,
+    'pointerdown',
+    onContinuationPointerdown,
+    { passive: true },
+  )
+  useEventListener('keydown', onContinuationKeydown, { passive: true })
 
   async function pushUserMessageToTop(behavior: ScrollBehavior = 'smooth') {
     continuationScrollTarget = null
@@ -590,9 +658,13 @@ export function useChatScrollSpacer(
   }
 
   watch(() => chatSdk.status, (status) => {
-    if (status === 'error') {
+    if (status === 'ready' || status === 'error') {
       continuationScrollTarget = null
     }
+  })
+
+  watch(() => route.params.slug, () => {
+    continuationScrollTarget = null
   })
 
   nuxtApp.hook('chat:submit', () => {
