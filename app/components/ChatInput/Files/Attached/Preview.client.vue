@@ -112,17 +112,21 @@
             >
               {{ truncateFilename(file.name) }}
             </p>
-            <span
+            <button
               v-if="deliveryHints.get(file.storageKey)"
-              class="badge badge-soft badge-xs leading-none"
+              type="button"
+              class="badge badge-soft badge-xs leading-none cursor-pointer"
               :class="{
                 'badge-warning': deliveryHints.get(file.storageKey)?.isBlocking
               }"
               :title="deliveryHints.get(file.storageKey)?.description"
+              :aria-expanded="openHintKey === file.storageKey"
+              :aria-controls="hintNoteId"
               data-testid="files-delivery-hint"
+              @click="toggleHint(file.storageKey)"
             >
               {{ deliveryHints.get(file.storageKey)?.label }}
-            </span>
+            </button>
             <span
               v-if="convertedFromXlsKeys.has(file.storageKey)"
               class="text-[10px] leading-none text-base-content/60"
@@ -424,6 +428,16 @@
         </button>
       </div>
     </div>
+    <ChatInputToolsMenuInfoNote
+      v-if="openHint"
+      :id="hintNoteId"
+      class="mt-1 break-words"
+      role="note"
+      data-testid="files-delivery-hint-note"
+    >
+      <span class="font-medium">{{ openHint.name }}:</span>
+      {{ openHint.description }}
+    </ChatInputToolsMenuInfoNote>
   </div>
 </template>
 
@@ -452,9 +466,11 @@ const props = withDefaults(defineProps<{
       AttachedFile,
       | 'textStatus'
       | 'textBytes'
+      | 'textVersion'
       | 'textTruncated'
       | 'textOmittedMedia'
       | 'textOmittedCharts'
+      | 'workbookSummary'
       | 'externalSource'
     >>
   )[]
@@ -516,6 +532,7 @@ const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
       file,
       resolve,
       props.resolveDeliveryWithRunCode,
+      { spreadsheetNote: true },
     )
 
     if (hint) {
@@ -525,6 +542,30 @@ const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
 
   return hints
 })
+
+const hintNoteId = useId()
+const openHintKey = shallowRef<string | null>(null)
+
+const openHint = computed<{ name: string, description: string } | null>(() => {
+  const key = openHintKey.value
+
+  if (key === null) {
+    return null
+  }
+
+  const file = props.files.find(item => item.storageKey === key)
+  const hint = deliveryHints.value.get(key)
+
+  if (!file || !hint) {
+    return null
+  }
+
+  return { name: file.name, description: hint.description }
+})
+
+function toggleHint(storageKey: string) {
+  openHintKey.value = openHintKey.value === storageKey ? null : storageKey
+}
 
 const carouselRef = useTemplateRef<HTMLDivElement>('carouselRef')
 const detachAllItemRef = useTemplateRef<HTMLDivElement>('detachAllItemRef')

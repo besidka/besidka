@@ -84,6 +84,8 @@ function setRendererLog(
     status?: string
     textBytes?: number
     truncated?: boolean
+    extractVersion?: number
+    workbookMap?: boolean
   },
 ): void {
   logger?.set({
@@ -241,6 +243,35 @@ const EXTRACT_CRASHED_CODE = 'extract_crashed'
 const FILE_TOO_LARGE_CODE = 'file_too_large'
 const SUPPORTED_EXTRACT_VERSIONS: readonly number[] = [1]
 
+export const WORKBOOK_MAP_EXTRACT_VERSION = 2
+
+/**
+ * Whether the bound renderer answers extract version 2 (the workbook map
+ * for XLSX). A renderer deployed before it lists no `versions`.
+ */
+export function offersWorkbookMap(capabilities: RendererCapabilities): boolean {
+  const extract = capabilities.extract
+
+  return extract !== undefined
+    && SUPPORTED_EXTRACT_VERSIONS.includes(extract.version)
+    && extract.formats.includes('xlsx')
+    && (extract.versions ?? []).includes(WORKBOOK_MAP_EXTRACT_VERSION)
+}
+
+/**
+ * `offersWorkbookMap` for the bound renderer, from the cached capabilities.
+ * Never throws: an unreachable renderer offers nothing.
+ */
+export async function rendererOffersWorkbookMap(
+  logger?: LoggerLike,
+): Promise<boolean> {
+  try {
+    return offersWorkbookMap(await getRendererCapabilities(logger))
+  } catch {
+    return false
+  }
+}
+
 function createExtraction(
   request: ExtractRequest,
   status: ExtractResult['status'],
@@ -273,6 +304,9 @@ function createExtraction(
  * - `extract_crashed` (`failed`, do not retry): the call threw on a
  *   satellite that supports `extract`, for instance CPU or memory exceeded,
  *   which the same file will do again.
+ * A request for version 2 goes to a renderer that offers it; to one that
+ * does not, the version 1 request is sent instead, so the caller must read
+ * `workbookMap` on the result rather than assume what it asked for.
  * Only sizes and codes are logged, never the text.
  */
 export async function extractOfficeText(
@@ -329,11 +363,16 @@ export async function extractOfficeText(
     return createExtraction(request, 'too_large', FILE_TOO_LARGE_CODE)
   }
 
+  const wantsMap = request.version === WORKBOOK_MAP_EXTRACT_VERSION
+  const outgoing: ExtractRequest = wantsMap && offersWorkbookMap(capabilities)
+    ? request
+    : { format: request.format, bytes: request.bytes }
+
   try {
     const result = await callRenderer(
       'extract',
       logger,
-      renderer => renderer.extract(request),
+      renderer => renderer.extract(outgoing),
       request.format,
     )
 
@@ -348,6 +387,8 @@ export async function extractOfficeText(
       textBytes: result.stats.textBytes,
       truncated: result.truncated,
       rendererVersion: capabilities.rendererVersion,
+      extractVersion: outgoing.version ?? 1,
+      workbookMap: result.workbookMap !== undefined,
     })
 
     return result

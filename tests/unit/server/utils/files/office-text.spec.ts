@@ -11,10 +11,13 @@ import {
 
 const mocks = vi.hoisted(() => ({
   extractOfficeText: vi.fn(),
+  rendererOffersWorkbookMap: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/documents/renderer', () => ({
+  WORKBOOK_MAP_EXTRACT_VERSION: 2,
   extractOfficeText: mocks.extractOfficeText,
+  rendererOffersWorkbookMap: mocks.rendererOffersWorkbookMap,
 }))
 
 const {
@@ -23,12 +26,43 @@ const {
   countOmittedOfficeEntries,
   ensureOfficeTextState,
   extractAndStoreOfficeText,
+  isOfficeTextUpgradable,
   loadOfficeText,
   needsOfficeTextExtraction,
+  toWorkbookTextSummary,
   truncateUtf8,
 } = await import('~~/server/utils/files/office-text')
 
 const DOCX = OFFICE_MEDIA_TYPES.docx
+const XLSX = OFFICE_MEDIA_TYPES.xlsx
+
+const MAP_SUMMARY = {
+  sheets: 3,
+  sheetsTotal: 3,
+  hiddenSheets: 1,
+  cells: 40,
+  formulas: 12,
+  patterns: 4,
+  validations: 2,
+  conditionalRules: 1,
+  names: 1,
+  bytes: 900,
+  cut: ['values'],
+  notRead: {
+    charts: 0,
+    images: 0,
+    pivotTables: 0,
+    colorScales: 0,
+    dataBars: 0,
+    iconSets: 0,
+    hyperlinks: 0,
+    threadedComments: 0,
+  },
+  sheetSummaries: [
+    { name: 'Lines', visibility: 'visible', valuesCutAfterRow: 400 },
+    { name: 'Lists', visibility: 'hidden' },
+  ],
+} as const
 
 function readyResult(text: string) {
   return {
@@ -267,6 +301,57 @@ describe('needsOfficeTextExtraction', () => {
     expect(needsOfficeTextExtraction({ type: 'text/plain' })).toBe(false)
     expect(needsOfficeTextExtraction({ type: 'image/png' })).toBe(false)
   })
+
+  it('keeps a version 1 spreadsheet usable instead of forcing a read', () => {
+    expect(needsOfficeTextExtraction({
+      type: XLSX,
+      textStatus: 'ready',
+      textVersion: 1,
+    })).toBe(false)
+  })
+})
+
+describe('isOfficeTextUpgradable', () => {
+  it('marks only spreadsheets stored before the workbook map', () => {
+    expect(isOfficeTextUpgradable({
+      type: XLSX,
+      textStatus: 'ready',
+      textVersion: 1,
+    })).toBe(true)
+    expect(isOfficeTextUpgradable({
+      type: XLSX,
+      textStatus: 'ready',
+      textVersion: 2,
+    })).toBe(false)
+    expect(isOfficeTextUpgradable({
+      type: DOCX,
+      textStatus: 'ready',
+      textVersion: 1,
+    })).toBe(false)
+    expect(isOfficeTextUpgradable({ type: XLSX, textStatus: null }))
+      .toBe(false)
+  })
+})
+
+describe('toWorkbookTextSummary', () => {
+  it('keeps what the chip needs and cuts sheet names short', () => {
+    expect(toWorkbookTextSummary({
+      ...MAP_SUMMARY,
+      cut: [...MAP_SUMMARY.cut],
+      sheetSummaries: [{
+        name: 'x'.repeat(200),
+        visibility: 'visible',
+        valuesCutAfterRow: 9,
+      }],
+    })).toEqual({
+      sheets: 3,
+      sheetsTotal: 3,
+      formulas: 12,
+      rules: 3,
+      cut: ['values'],
+      valuesCut: [{ sheet: 'x'.repeat(64), afterRow: 9 }],
+    })
+  })
 })
 
 describe('extractAndStoreOfficeText', () => {
@@ -291,6 +376,101 @@ describe('extractAndStoreOfficeText', () => {
     updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }))
     vi.stubGlobal('useFileStorage', () => ({ put, delete: vi.fn(), get: vi.fn() }))
     vi.stubGlobal('useDb', () => ({ update: vi.fn(() => ({ set: updateSet })) }))
+  })
+
+  it('asks a renderer that offers it for the workbook map', async () => {
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+    mocks.extractOfficeText.mockResolvedValue({
+      ...readyResult('# Workbook map'),
+      workbookMap: MAP_SUMMARY,
+    })
+
+    const state = await extractAndStoreOfficeText({
+      ...input(),
+      storageKey: 'k.xlsx',
+      mediaType: XLSX,
+    })
+
+    expect(mocks.extractOfficeText.mock.calls[0]?.[0]).toEqual({
+      format: 'xlsx',
+      bytes: expect.any(Uint8Array),
+      version: 2,
+      maxTextBytes: 200 * 1024,
+    })
+    expect(state).toMatchObject({
+      textStatus: 'ready',
+      textVersion: 2,
+      workbookSummary: {
+        sheets: 3,
+        formulas: 12,
+        valuesCut: [{ sheet: 'Lines', afterRow: 400 }],
+      },
+    })
+    expect(updateSet.mock.calls[0]?.[0]).not.toHaveProperty('workbookSummary')
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ textVersion: 2 })
+  })
+
+  it('stores version 1 when an older renderer answers', async () => {
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(false)
+    mocks.extractOfficeText.mockResolvedValue(readyResult('## Sheet: A'))
+
+    const state = await extractAndStoreOfficeText({
+      ...input(),
+      storageKey: 'k.xlsx',
+      mediaType: XLSX,
+    })
+
+    expect(mocks.extractOfficeText.mock.calls[0]?.[0]).toEqual({
+      format: 'xlsx',
+      bytes: expect.any(Uint8Array),
+    })
+    expect(state?.textVersion).toBe(1)
+    expect(state).not.toHaveProperty('workbookSummary')
+  })
+
+  it('stores version 1 when a map was asked for but plain text came back', async () => {
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+    mocks.extractOfficeText.mockResolvedValue(readyResult('## Sheet: A'))
+
+    const state = await extractAndStoreOfficeText({
+      ...input(),
+      storageKey: 'k.xlsx',
+      mediaType: XLSX,
+    })
+
+    expect(state?.textVersion).toBe(1)
+  })
+
+  it('stores version 2 for a failure of the map read, so it is not retried', async () => {
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+    mocks.extractOfficeText.mockResolvedValue({
+      status: 'failed',
+      text: '',
+      truncated: false,
+      stats: { inputBytes: 1, entries: 0, textBytes: 0, truncations: [] },
+      errorCode: 'zip_invalid',
+    })
+
+    const state = await extractAndStoreOfficeText({
+      ...input(),
+      storageKey: 'k.xlsx',
+      mediaType: XLSX,
+    })
+
+    expect(state).toMatchObject({ textStatus: 'failed', textVersion: 2 })
+  })
+
+  it('never asks for the map for a document', async () => {
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+    mocks.extractOfficeText.mockResolvedValue(readyResult('hello'))
+
+    await extractAndStoreOfficeText(input())
+
+    expect(mocks.rendererOffersWorkbookMap).not.toHaveBeenCalled()
+    expect(mocks.extractOfficeText.mock.calls[0]?.[0]).toEqual({
+      format: 'docx',
+      bytes: expect.any(Uint8Array),
+    })
   })
 
   it('stores the text and the state', async () => {
@@ -603,6 +783,79 @@ describe('ensureOfficeTextState and loadOfficeText', () => {
       textStatus: 'empty',
       textVersion: 1,
     }, logger)).resolves.toBeNull()
+  })
+
+  it('reads a version 1 spreadsheet again once the renderer offers the map', async () => {
+    const put = vi.fn().mockResolvedValue({ key: 'k' })
+    const get = vi.fn(async () => {
+      return { arrayBuffer: async () => new Uint8Array([1]).buffer }
+    })
+
+    vi.stubGlobal('useFileStorage', () => ({ get, put, delete: vi.fn() }))
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+    mocks.extractOfficeText.mockResolvedValue({
+      ...readyResult('# Workbook map'),
+      workbookMap: MAP_SUMMARY,
+    })
+
+    const state = await ensureOfficeTextState({
+      id: 'f1',
+      userId: 1,
+      storageKey: 'k.xlsx',
+      type: XLSX,
+      textStatus: 'ready',
+      textBytes: 10,
+      textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
+    }, logger)
+
+    expect(get).toHaveBeenCalledWith('k.xlsx')
+    expect(put.mock.calls[0]?.[0]).toBe('k.xlsx.text.md')
+    expect(state).toMatchObject({ textStatus: 'ready', textVersion: 2 })
+  })
+
+  it('keeps the version 1 text while the renderer does not offer the map', async () => {
+    const get = vi.fn()
+
+    vi.stubGlobal('useFileStorage', () => ({ get }))
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(false)
+
+    await expect(ensureOfficeTextState({
+      id: 'f1',
+      userId: 1,
+      storageKey: 'k.xlsx',
+      type: XLSX,
+      textStatus: 'ready',
+      textBytes: 10,
+      textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
+    }, logger)).resolves.toMatchObject({ textVersion: 1 })
+    expect(get).not.toHaveBeenCalled()
+    expect(mocks.extractOfficeText).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the stored text when the upgrade cannot finish', async () => {
+    vi.stubGlobal('useFileStorage', () => ({
+      get: vi.fn().mockRejectedValue(new Error('R2 down')),
+    }))
+    mocks.rendererOffersWorkbookMap.mockResolvedValue(true)
+
+    await expect(ensureOfficeTextState({
+      id: 'f1',
+      userId: 1,
+      storageKey: 'k.xlsx',
+      type: XLSX,
+      textStatus: 'ready',
+      textBytes: 10,
+      textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
+    }, logger)).resolves.toMatchObject({
+      textStatus: 'ready',
+      textVersion: 1,
+    })
   })
 
   it('loads the sidecar text with its byte size', async () => {

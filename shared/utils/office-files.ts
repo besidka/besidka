@@ -42,6 +42,30 @@ export const OFFICE_TEXT_MAX_BYTES = 1024 * 1024
 
 export const OFFICE_TEXT_VERSION = 1
 
+export const WORKBOOK_MAP_TEXT_VERSION = 2
+
+export const OFFICE_TEXT_VERSIONS: Record<OfficeFormat, number> = {
+  docx: OFFICE_TEXT_VERSION,
+  xlsx: WORKBOOK_MAP_TEXT_VERSION,
+  pptx: OFFICE_TEXT_VERSION,
+}
+
+export const WORKBOOK_SUMMARY_SHEETS_MAX = 50
+
+export interface WorkbookValuesCut {
+  sheet: string
+  afterRow: number
+}
+
+export interface WorkbookTextSummary {
+  sheets: number
+  sheetsTotal: number
+  formulas: number
+  rules: number
+  cut: string[]
+  valuesCut: WorkbookValuesCut[]
+}
+
 export const OFFICE_TEXT_SUFFIX = '.text.md'
 
 export const OFFICE_TEXT_INLINE_MAX_BYTES = 200 * 1024
@@ -135,6 +159,17 @@ export function getOfficeFormatByFileName(
   const extension = getFileNameExtension(fileName)
 
   return isOfficeFormat(extension) ? extension : null
+}
+
+/**
+ * The extractor version a stored text of this media type should come from.
+ * Spreadsheets moved to the workbook map (2); documents and presentations
+ * stay at 1, so they are not read again. Non-Office types get 1.
+ */
+export function getOfficeTextVersion(mediaType: string): number {
+  const format = getOfficeFormatByMediaType(mediaType)
+
+  return format ? OFFICE_TEXT_VERSIONS[format] : OFFICE_TEXT_VERSION
 }
 
 export function getOfficeTextStorageKey(storageKey: string): string {

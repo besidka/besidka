@@ -9,6 +9,10 @@ import {
   OFFICE_TEXT_INLINE_MAX_BYTES,
 } from '../../../shared/utils/office-files'
 import {
+  SPREADSHEET_MAP_DESCRIPTION,
+  SPREADSHEET_MAP_LABEL,
+  SPREADSHEET_TEXT_DESCRIPTION,
+  SPREADSHEET_TEXT_LABEL,
   TEXT_ONLY_DESCRIPTION,
   TEXT_SHORTENED_DESCRIPTION,
   buildFileDeliveryInput,
@@ -271,6 +275,114 @@ describe('getFileDeliveryHint', () => {
       textStatus: 'ready',
       textTruncated: true,
     }, resolve)?.label).toBe('Shortened')
+  })
+
+  describe('spreadsheets', () => {
+    const summary = {
+      sheets: 4,
+      sheetsTotal: 4,
+      formulas: 120,
+      rules: 6,
+      cut: [] as string[],
+      valuesCut: [] as Array<{ sheet: string, afterRow: number }>,
+    }
+
+    function hintOf(file: DeliveryFile) {
+      return getFileDeliveryHint(file, resolve, undefined, {
+        spreadsheetNote: true,
+      })
+    }
+
+    it('notes nothing new outside the attach chip', () => {
+      expect(getFileDeliveryHint({
+        type: XLSX,
+        textStatus: 'ready',
+        textVersion: 2,
+        workbookSummary: summary,
+      }, resolve)).toBeNull()
+    })
+
+    it('always says what the model gets, even when nothing is cut', () => {
+      expect(hintOf({
+        type: XLSX,
+        textStatus: 'ready',
+        textVersion: 2,
+        workbookSummary: summary,
+      })).toEqual({
+        label: '4 sheets · formulas',
+        description: SPREADSHEET_MAP_DESCRIPTION,
+        isBlocking: false,
+      })
+    })
+
+    it('says what was cut, in the info text', () => {
+      const hint = hintOf({
+        type: XLSX,
+        textStatus: 'ready',
+        textVersion: 2,
+        textOmittedCharts: 2,
+        textOmittedMedia: 1,
+        workbookSummary: {
+          ...summary,
+          sheets: 50,
+          sheetsTotal: 63,
+          cut: ['sheets', 'values', 'rows', 'formula_patterns'],
+          valuesCut: [
+            { sheet: 'Lines', afterRow: 400 },
+            { sheet: 'Summary', afterRow: 90 },
+            { sheet: 'Archive', afterRow: 12 },
+          ],
+        },
+      })
+
+      expect(hint?.label).toBe('50 sheets · formulas · shortened')
+      expect(hint?.description).toBe([
+        SPREADSHEET_MAP_DESCRIPTION,
+        'Only the first 50 of 63 sheets are sent.',
+        'Sheets are read up to row 1,000.',
+        'It is long, so values after row 400 of Lines and after row 90 of '
+        + 'Summary, and on 1 more sheet aren\'t sent.',
+        'Some formulas, rules or notes are left out because the workbook is '
+        + 'large.',
+        '2 charts and 1 image aren\'t sent.',
+      ].join(' '))
+    })
+
+    it('shows a short note for a map read without a summary', () => {
+      expect(hintOf({
+        type: XLSX,
+        textStatus: 'ready',
+        textVersion: 2,
+      })).toEqual({
+        label: SPREADSHEET_MAP_LABEL,
+        description: SPREADSHEET_MAP_DESCRIPTION,
+        isBlocking: false,
+      })
+    })
+
+    it('stays honest for a spreadsheet read before the map', () => {
+      expect(hintOf({
+        type: XLSX,
+        textStatus: 'ready',
+        textVersion: 1,
+      })).toEqual({
+        label: SPREADSHEET_TEXT_LABEL,
+        description: SPREADSHEET_TEXT_DESCRIPTION,
+        isBlocking: false,
+      })
+      expect(hintOf({
+        type: XLSX,
+        textStatus: 'ready',
+        textTruncated: true,
+      })?.label).toBe(`${SPREADSHEET_TEXT_LABEL} · Shortened`)
+    })
+
+    it('keeps the blocking note for an unreadable spreadsheet', () => {
+      expect(hintOf({
+        type: XLSX,
+        textStatus: 'empty',
+      })?.isBlocking).toBe(true)
+    })
   })
 
   it('shows nothing for files that are not converted to text', () => {

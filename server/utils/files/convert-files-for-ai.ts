@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import { useLogger } from 'evlog'
+import { WORKBOOK_MAP_TITLE } from '@besidka/doc-renderer/workbook-map'
 import { normalizeMediaType } from '#shared/utils/files'
 import { resolveFileDelivery } from '#shared/utils/file-delivery'
 import type { FileDeliveryReason } from '#shared/utils/file-delivery'
@@ -45,6 +46,13 @@ export interface ConversionResult {
 
 const CACHE_TTL_SECONDS = 5 * 60
 const FILE_CACHE_PREFIX = 'file-cache:'
+const EXTRACTED_TEXT_NOTE
+  = 'Extracted text. Images, charts and formatting are not included.'
+const WORKBOOK_MAP_NOTE = 'Workbook map. Included: values, formulas, '
+  + 'number formats, dropdown and validation rules, conditional formatting '
+  + 'rules, merged cells and notes. Not included: colors, charts and images. '
+  + 'Values are the results last calculated and saved in the file; they are '
+  + 'not recalculated.'
 
 export interface ConvertFilesOptions {
   container?: {
@@ -522,7 +530,9 @@ function formatOfficeFilePart(input: {
   const format = getOfficeFormatByMediaType(input.mediaType) as OfficeFormat
   const noun = OFFICE_FORMAT_NOUNS[format]
   const name = input.filename ? `**${input.filename}** (${noun})` : noun
-  const header = `${name}\n\nExtracted text. Images, charts and formatting are not included.\n\n`
+  const isWorkbookMap = input.text.startsWith(WORKBOOK_MAP_TITLE)
+  const note = isWorkbookMap ? WORKBOOK_MAP_NOTE : EXTRACTED_TEXT_NOTE
+  const header = `${name}\n\n${note}\n\n`
 
   if (input.remainingBytes <= 0) {
     return {

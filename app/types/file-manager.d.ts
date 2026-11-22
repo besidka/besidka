@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { WorkbookTextSummary } from '#shared/utils/office-files'
 
 export type FileManagerFile = Pick<
   FileMetadata,
@@ -18,6 +19,7 @@ export type FileManagerFile = Pick<
   documentAiGenerated?: boolean | null
   textStatus?: FileMetadata['textStatus']
   textBytes?: FileMetadata['textBytes']
+  textVersion?: FileMetadata['textVersion']
   textTruncated?: boolean
   textOmittedMedia?: FileMetadata['textOmittedMedia']
   textOmittedCharts?: FileMetadata['textOmittedCharts']
@@ -33,9 +35,11 @@ export type AttachedFile = Pick<
   externalId?: FileMetadata['externalId']
   textStatus?: FileMetadata['textStatus']
   textBytes?: FileMetadata['textBytes']
+  textVersion?: FileMetadata['textVersion']
   textTruncated?: boolean
   textOmittedMedia?: FileMetadata['textOmittedMedia']
   textOmittedCharts?: FileMetadata['textOmittedCharts']
+  workbookSummary?: WorkbookTextSummary | null
 }
 
 export type ViewMode = 'grid' | 'list'

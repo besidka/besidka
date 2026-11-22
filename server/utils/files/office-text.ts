@@ -1,17 +1,31 @@
 import { and, eq } from 'drizzle-orm'
 import { readZipDirectory } from '@besidka/doc-renderer/zip'
 import * as schema from '~~/server/db/schema'
+import type { WorkbookMapSummary } from '@besidka/doc-renderer/workbook-map'
 import {
+  OFFICE_TEXT_INLINE_MAX_BYTES,
   OFFICE_TEXT_MAX_BYTES,
   OFFICE_TEXT_VERSION,
+  WORKBOOK_MAP_TEXT_VERSION,
+  WORKBOOK_SUMMARY_SHEETS_MAX,
   getOfficeFormatByMediaType,
   getOfficeTextStorageKey,
+  getOfficeTextVersion,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
-import type { OfficeTextStatus } from '#shared/utils/office-files'
+import type {
+  OfficeFormat,
+  OfficeTextStatus,
+  WorkbookTextSummary,
+} from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { extractOfficeText } from '~~/server/utils/documents/renderer'
+import {
+  WORKBOOK_MAP_EXTRACT_VERSION,
+  extractOfficeText,
+  rendererOffersWorkbookMap,
+} from '~~/server/utils/documents/renderer'
+import type { ExtractResult } from '~~/workers/doc-renderer/src/contract'
 import { OFFICE_UPLOAD_ZIP_LIMITS } from '~~/server/utils/files/office-upload-check'
 
 const RENDERER_UNAVAILABLE_CODE = 'renderer_unavailable'
@@ -37,7 +51,11 @@ export interface OfficeTextState {
   textVersion: number
   textOmittedMedia: number | null
   textOmittedCharts: number | null
+  workbookSummary?: WorkbookTextSummary | null
 }
+
+const SUMMARY_SHEET_NAME_MAX = 64
+const SUMMARY_CUTS_MAX = 20
 
 export interface OfficeTextFile {
   id: string
@@ -130,8 +148,8 @@ export function countOmittedOfficeContent(
 }
 
 /**
- * Whether the stored extraction is missing or was made by an older extractor,
- * so the next send reads the file once and caches the result.
+ * Whether there is no usable stored extraction, so the next send must read
+ * the file once and cache the result.
  */
 export function needsOfficeTextExtraction(file: {
   type: string
@@ -143,6 +161,73 @@ export function needsOfficeTextExtraction(file: {
   }
 
   return !file.textStatus || (file.textVersion ?? 0) < OFFICE_TEXT_VERSION
+}
+
+/**
+ * Whether a usable stored extraction comes from an older extractor than this
+ * format now uses (a spreadsheet stored as plain values before the workbook
+ * map). It is read again only while the bound renderer offers the newer
+ * version; until then the stored text keeps being used.
+ */
+export function isOfficeTextUpgradable(file: {
+  type: string
+  textStatus?: string | null
+  textVersion?: number | null
+}): boolean {
+  if (!isOfficeMediaType(file.type) || !file.textStatus) {
+    return false
+  }
+
+  return (file.textVersion ?? 0) < getOfficeTextVersion(file.type)
+}
+
+/**
+ * The part of the workbook map summary the attach chip needs, with sheet
+ * names cut short. Sent to the client with the upload response, never
+ * stored.
+ */
+export function toWorkbookTextSummary(
+  summary: WorkbookMapSummary,
+): WorkbookTextSummary {
+  const valuesCut = summary.sheetSummaries
+    .filter(sheet => typeof sheet.valuesCutAfterRow === 'number')
+    .slice(0, WORKBOOK_SUMMARY_SHEETS_MAX)
+    .map((sheet) => {
+      return {
+        sheet: sheet.name.slice(0, SUMMARY_SHEET_NAME_MAX),
+        afterRow: sheet.valuesCutAfterRow as number,
+      }
+    })
+
+  return {
+    sheets: summary.sheets,
+    sheetsTotal: summary.sheetsTotal,
+    formulas: summary.formulas,
+    rules: summary.validations + summary.conditionalRules,
+    cut: summary.cut.slice(0, SUMMARY_CUTS_MAX),
+    valuesCut,
+  }
+}
+
+function storedTextVersion(
+  format: OfficeFormat,
+  result: ExtractResult,
+  askedForMap: boolean,
+): number {
+  if (format !== 'xlsx') {
+    return OFFICE_TEXT_VERSION
+  }
+
+  if (result.workbookMap) {
+    return WORKBOOK_MAP_TEXT_VERSION
+  }
+
+  const isFailure = result.status === 'failed'
+    || result.status === 'too_large'
+
+  return askedForMap && isFailure
+    ? WORKBOOK_MAP_TEXT_VERSION
+    : OFFICE_TEXT_VERSION
 }
 
 async function writeSidecar(
@@ -198,8 +283,17 @@ export async function extractAndStoreOfficeText(
   }
 
   try {
+    const askedForMap = format === 'xlsx'
+      && await rendererOffersWorkbookMap(input.logger)
     const result = await extractOfficeText(
-      { format, bytes: input.bytes },
+      askedForMap
+        ? {
+          format,
+          bytes: input.bytes,
+          version: WORKBOOK_MAP_EXTRACT_VERSION,
+          maxTextBytes: OFFICE_TEXT_INLINE_MAX_BYTES,
+        }
+        : { format, bytes: input.bytes },
       input.logger,
     )
 
@@ -225,7 +319,7 @@ export async function extractAndStoreOfficeText(
     const state: OfficeTextState = {
       textStatus,
       textBytes,
-      textVersion: OFFICE_TEXT_VERSION,
+      textVersion: storedTextVersion(format, result, askedForMap),
       textOmittedMedia: omitted?.media ?? 0,
       textOmittedCharts: omitted?.charts ?? 0,
     }
@@ -241,6 +335,7 @@ export async function extractAndStoreOfficeText(
       format,
       status: textStatus,
       textBytes,
+      textVersion: state.textVersion,
       truncated: result.truncated,
       errorCode: result.errorCode,
       omittedMedia: state.textOmittedMedia,
@@ -248,7 +343,9 @@ export async function extractAndStoreOfficeText(
       omittedUnreadable: omitted === null,
     })
 
-    return state
+    return result.workbookMap
+      ? { ...state, workbookSummary: toWorkbookTextSummary(result.workbookMap) }
+      : state
   } catch (exception) {
     logOfficeText(input.logger, {
       format,
@@ -296,6 +393,23 @@ async function extractFromStoredFile(
     bytes: new Uint8Array(await object.arrayBuffer()),
     logger,
   })
+}
+
+async function upgradeOfficeText(
+  file: OfficeTextFile,
+  logger: LoggerLike,
+): Promise<OfficeTextState | null> {
+  try {
+    return await extractFromStoredFile(file, logger)
+  } catch (exception) {
+    logOfficeText(logger, {
+      status: 'error',
+      phase: 'upgrade',
+      error: exceptionMessage(exception),
+    })
+
+    return null
+  }
 }
 
 function needsOmittedCounts(file: OfficeTextFile): boolean {
@@ -379,6 +493,17 @@ export async function ensureOfficeTextState(
       textVersion: file.textVersion ?? OFFICE_TEXT_VERSION,
       textOmittedMedia: file.textOmittedMedia ?? null,
       textOmittedCharts: file.textOmittedCharts ?? null,
+    }
+
+    const canUpgrade = isOfficeTextUpgradable(file)
+      && await rendererOffersWorkbookMap(logger)
+
+    if (canUpgrade) {
+      const upgraded = await upgradeOfficeText(file, logger)
+
+      if (upgraded) {
+        return upgraded
+      }
     }
 
     if (needsOmittedCounts(file)) {
