@@ -1216,7 +1216,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         ) {
           activeToolRound.value = toolRound.round
 
-          return { body: { continue: toolRound } }
+          return {
+            body: { continue: toolRound, ...getClientTimeZoneField() },
+          }
         }
 
         activeToolRound.value = 0
@@ -1233,7 +1235,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           toolApprovalRemember.markInFlight(answeredIds)
           sendingApprovalIds.value = answeredIds
 
-          return { body: approvalBody }
+          return { body: { ...approvalBody, ...getClientTimeZoneField() } }
         }
 
         const lastMessage = messages[messages.length - 1]
@@ -1257,6 +1259,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             ...getConnectorIdsField(),
             ...getBesidkaToolsField(),
             ...getStoppedRunField(lastMessage?.id),
+            ...getClientTimeZoneField(),
           },
         }
       },

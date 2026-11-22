@@ -2001,6 +2001,13 @@ describe('useChat request body webSearchMode', () => {
     expect(body.tools).toEqual([])
     expect(body.webSearchMode).toBe('always')
   })
+
+  it('sends the browser time zone with a new message', async () => {
+    const body = await buildRequestBody()
+
+    expect(body.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
+    expect(typeof body.timeZone).toBe('string')
+  })
 })
 
 describe('hasMeaningfulAssistantParts past-chat pre-retrieval chip', () => {
