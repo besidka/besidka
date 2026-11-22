@@ -166,7 +166,8 @@ project entry on first read; the column is left in place and writes stop
 ### 3.2 Injection and prompt caching
 
 - The memory index goes **first** in `buildChatInstructions`, before the
-  daily-date lines, so it sits in the stable cached prefix. It changes only
+  daily-date line (the last line of the system text), so it sits in the
+  stable cached prefix. It changes only
   when entries change, not every turn.
 - Inject **last-known-good** memory regardless of extraction status (fixes
   G1). Status only drives UI.

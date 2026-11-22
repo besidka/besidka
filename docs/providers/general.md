@@ -285,6 +285,48 @@ Gemini's implicit minimum is 2,048 tokens on 2.5 and 4,096 on 3.x.
 - **Gateways.** Vercel AI Gateway and OpenRouter have their own switches, see
   [`gateways.md`](./gateways.md#gateway-prompt-caching).
 
+### The current-date line
+
+Every chat message, with or without web search and on every provider and
+gateway, carries one line that states the user's calendar day, for example
+`Today is Sunday, 2026-11-22 in the user's time zone (Europe/Warsaw). Use
+this for "today", "tomorrow", "this week" and every other relative date.
+Never take the current date from your own knowledge.` Without a known zone
+the line reads `Today is Sunday, 2026-11-22 (UTC; the user's time zone is
+unknown).` It is built by `buildCurrentDateInstruction()`
+(`server/utils/ai/current-date-instruction.ts`) and appended by
+`buildChatInstructions()` (`server/utils/ai/chat-instructions.ts`).
+
+- **It is the last piece of the system text.** A cache entry is read only
+  when everything before it is byte-identical, in the order tools, system,
+  messages. The line is the only per-day change, so it goes after the memory
+  block, project prompt, knowledge, skills, connectors and search clauses and
+  nothing is appended after it: the project-stable prefix stays cached.
+  The one exception is the tool loop's final-step instruction, which
+  `prepareStep` appends on the last allowed step only; that step already
+  misses the cache.
+- **Day precision only.** Weekday, date and zone name: no hours, minutes or
+  seconds, so the line changes once a day. The date comes from
+  `Intl.DateTimeFormat('en-US')` with fixed options and `formatToParts`, so
+  the bytes never depend on the reader's locale.
+- **Built once per request.** The route computes the line from one `new
+  Date()` at the start of the request and passes the same string to the
+  knowledge budget, the main call (every step of the tool loop) and the
+  search-answer continuation. The continuation's user message carries no date.
+- **The zone.** The browser sends its IANA zone (`getClientTimeZoneField()`,
+  `app/utils/client-time-zone.ts`) on every request to the chat route that
+  can start a model call: a new message, regenerate, edit and resend, a
+  tool-approval answer and a long-task round, all through one
+  `prepareSendMessagesRequest`. The server reads it from the body, accepts it
+  only when `isKnownTimeZone()` passes, uses it for that request and stores
+  nothing. A missing or unknown zone falls back to UTC, and an invalid string
+  is never echoed into the text or a log.
+- **Never in tools or messages.** The date is in no tool description or tool
+  schema (tools come first in the cached prefix; the Calendar tools only say
+  that relative days come from the date in the system text), in no user or
+  assistant message, and not in `promptCacheKey` or any other cache key. The
+  search clauses keep "do not search for the current date" but name no date.
+
 ### The continuation never writes to the cache
 
 The tool-less search-answer continuation runs with different tool

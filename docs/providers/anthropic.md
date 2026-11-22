@@ -65,8 +65,10 @@ byte-identical, in the order tools, system, messages. These changes break it:
   instructions on the last allowed step, so that step does not reuse the
   entry written by earlier steps. On models with preserved thinking it also
   fails the prefix check; see "Thinking blocks and the prefix check".
-- **The UTC date line.** The current-date instruction changes when UTC
-  midnight passes, invalidating every chat's cache once per day.
+- **The date line.** The current-date line is the last line of the system
+  text and changes when the user's local midnight passes, so it invalidates
+  that chat's cached messages once per day and nothing before it. See
+  [`general.md`](./general.md#the-current-date-line).
 - **Project memory and instruction edits.** They live in the system prompt.
 - **Search and image mode toggles.** They change the tools and the system
   prompt.
