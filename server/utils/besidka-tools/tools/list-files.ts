@@ -43,7 +43,9 @@ export const listFilesBesidkaTool = defineBesidkaTool({
   description: 'List the files in your Besidka library, newest first, with '
     + 'your storage usage. Each file has an id, name, media type, size in '
     + 'bytes, source and expiry. Pass nextOffset back as offset to '
-    + 'continue. Requires signing in (files:read).',
+    + 'continue. Files with Google content (copies of Google files, and '
+    + 'files made in chats that hold Google data) are not listed. Requires '
+    + 'signing in (files:read).',
   inputSchema,
   annotations: {
     readOnlyHint: true,
@@ -54,9 +56,13 @@ export const listFilesBesidkaTool = defineBesidkaTool({
   chat: { expose: true, tier: 'read' },
   chatDescription: 'List the files in your library, newest first, with your '
     + 'storage usage: id, name, media type, size, source and expiry. '
-    + 'Pass nextOffset back as offset to continue.',
+    + 'Pass nextOffset back as offset to continue. Files with Google '
+    + 'content are listed only in a chat that already holds Google data.',
   handler: async (input: ListFilesInput, context) => {
-    const result = await listMcpFiles(context.db, context.userId, input)
+    const result = await listMcpFiles(context.db, context.userId, {
+      ...input,
+      googleContent: context.googleContent ?? 'hidden',
+    })
 
     context.log({
       file_source: input.source ?? 'all',

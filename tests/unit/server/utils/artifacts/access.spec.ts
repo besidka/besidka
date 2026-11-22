@@ -87,6 +87,7 @@ describe('resolveArtifactViewerAccess', () => {
       viewerUserId: ownerId,
       storageAllowed: true,
       bridgeAllowed: true,
+      googleDerived: false,
     })
   })
 
@@ -187,6 +188,7 @@ describe('resolveArtifactViewerAccess', () => {
           ownerUserId: ownerId,
           viewerUserId: strangerId,
           shareId: expect.any(Number),
+          googleDerived: false,
           ...permissions,
         })
       })

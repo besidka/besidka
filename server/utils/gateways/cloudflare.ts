@@ -4,10 +4,11 @@ import {
   findGatewayCatalogModel,
   getCachedCloudflareGatewayCatalog,
 } from './catalog'
-import type { GatewayChatResult } from './index'
+import type { GatewayCallOptions, GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
 const CLOUDFLARE_DEFAULT_GATEWAY_ID = 'default'
+const CLOUDFLARE_COLLECT_LOG_PAYLOAD_HEADER = 'cf-aig-collect-log-payload'
 const CLOUDFLARE_CHARACTERS_PER_TOKEN_ESTIMATE = 2.5
 const CLOUDFLARE_CONTEXT_SAFETY_MARGIN_TOKENS = 1024
 const CLOUDFLARE_MIN_OUTPUT_TOKENS = 256
@@ -247,6 +248,7 @@ export async function useCloudflareGateway(
   userId: string,
   model: string,
   logger?: { set: (fields: Record<string, unknown>) => void },
+  options: GatewayCallOptions = {},
 ): Promise<GatewayChatResult> {
   const credentials = await getCloudflareGatewayCredentials(userId)
 
@@ -274,6 +276,9 @@ export async function useCloudflareGateway(
     headers: {
       'cf-aig-gateway-id': credentials.gatewayId
         ?? CLOUDFLARE_DEFAULT_GATEWAY_ID,
+      ...(options.googleDataSafeguards
+        ? { [CLOUDFLARE_COLLECT_LOG_PAYLOAD_HEADER]: 'false' }
+        : {}),
     },
     transformRequestBody: (body) => {
       return withContextSizedMaxTokens(

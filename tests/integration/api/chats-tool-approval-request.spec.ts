@@ -36,12 +36,15 @@ const mocks = vi.hoisted(() => ({
   kv: new Map<string, string>(),
   chatMessages: [] as Array<Record<string, any>>,
   capabilityTools: {} as Record<string, unknown>,
+  capabilityInputs: [] as Array<{ isGoogleDerived?: () => boolean }>,
   artifactExecute: null as null | ReturnType<typeof vi.fn>,
   connectorUrls: {} as Record<string, string>,
   holdsSkillText: false,
   skillsInstructionBlock: null as string | null,
   chatGoogleDataAt: null as Date | null,
   chatUpdates: [] as Array<Record<string, unknown>>,
+  batches: [] as unknown[][],
+  failBatch: false,
   googleSend: null as null | {
     tools: Record<string, unknown>
     entries: Map<string, unknown>
@@ -59,21 +62,17 @@ vi.mock('~~/server/utils/tool-approval/secret', () => ({
   useToolApprovalSecret: async () => 'test-tool-approval-secret',
 }))
 
-vi.mock('~~/server/utils/tool-approval/google-send-tools', async (
+vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
   importOriginal,
 ) => {
   const actual = await importOriginal<
-    typeof import('~~/server/utils/tool-approval/google-send-tools')
+    typeof import('~~/server/utils/tool-approval/google-send-candidates')
   >()
 
   return {
     ...actual,
-    getGoogleSendTools: async (
-      input: Parameters<typeof actual.getGoogleSendTools>[0],
-    ) => {
-      return mocks.googleSend && input.toolApprovalsActive
-        ? mocks.googleSend
-        : await actual.getGoogleSendTools(input)
+    buildGoogleSendToolCandidates: async () => {
+      return mocks.googleSend ?? actual.noGoogleSendTools()
     },
   }
 })
@@ -174,7 +173,11 @@ vi.mock('~~/server/utils/skills/runtime/send', () => ({
 }))
 
 vi.mock('~~/server/capabilities/index', () => ({
-  getCapabilityTools: async () => mocks.capabilityTools,
+  getCapabilityTools: async (input: { isGoogleDerived?: () => boolean }) => {
+    mocks.capabilityInputs.push(input)
+
+    return mocks.capabilityTools
+  },
 }))
 
 vi.mock('~~/server/capabilities/documents', () => ({
@@ -358,6 +361,21 @@ function createDb() {
       },
       insert: vi.fn(() => ({ values: insertValues })),
       update: vi.fn(() => ({ set: updateSet })),
+      batch: vi.fn(async (statements: unknown[]) => {
+        mocks.batches.push(statements)
+
+        if (mocks.failBatch) {
+          throw new Error('D1 batch failed')
+        }
+
+        return await Promise.all(statements.map(async (statement) => {
+          const withGet = statement as { get?: () => Promise<unknown> }
+
+          return typeof withGet.get === 'function'
+            ? [await withGet.get()]
+            : await statement
+        }))
+      }),
     },
     insertValues,
   }
@@ -557,16 +575,19 @@ describe('tool approval requests in the chat send', () => {
     vi.clearAllMocks()
     mocks.mergedStreams = []
     mocks.writers = []
-    mocks.flags = new Set(['connectors', 'tool-approvals'])
+    mocks.flags = new Set(['connectors', 'tool-approvals', 'google.drive'])
     mocks.holdsSkillText = false
     mocks.skillsInstructionBlock = null
     mocks.kv = new Map()
     mocks.chatMessages = []
     mocks.capabilityTools = {}
+    mocks.capabilityInputs = []
     mocks.artifactExecute = null
     mocks.connectorUrls = {}
     mocks.chatGoogleDataAt = null
     mocks.chatUpdates = []
+    mocks.batches = []
+    mocks.failBatch = false
     mocks.googleSend = null
     Object.assign(mocks.store, {
       connectors: [],
@@ -1468,6 +1489,8 @@ describe('tool approval requests in the chat send', () => {
       })]]),
     }
 
+    mocks.flags.add('artifacts')
+
     const { assistantInsert } = await runSend({
       servers: [linear],
       steps: [
@@ -1477,6 +1500,8 @@ describe('tool approval requests in the chat send', () => {
     })
     const parts = assistantInsert?.parts ?? []
 
+    expect(mocks.capabilityInputs).toHaveLength(1)
+    expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(true)
     expect(execute).toHaveBeenCalledTimes(1)
     expect(findPart(parts, 'tool-google__drive_search')).toMatchObject({
       state: 'output-available',
@@ -1487,8 +1512,76 @@ describe('tool approval requests in the chat send', () => {
     })
     expect(JSON.stringify(parts)).not.toContain('SECRET GOOGLE BODY')
     expect(mocks.chatUpdates).toContainEqual({
-      googleDataAt: expect.any(Date),
+      googleDataAt: expect.anything(),
     })
+    expect(mocks.chatUpdates).toContainEqual({
+      googleOptInAt: null,
+      indexable: false,
+    })
+    expect(mocks.batches).toHaveLength(1)
+    expect(mocks.batches[0]).toHaveLength(3)
+    expect(writtenChunks().filter((chunk) => {
+      return chunk.type === 'data-google-data'
+    })).toEqual([{
+      type: 'data-google-data',
+      data: { holdsGoogleData: true },
+      transient: true,
+    }])
+  })
+
+  it('hands the writers a mark that is off in an ordinary send and on in a '
+    + 'flagged chat', async () => {
+    mocks.flags.add('artifacts')
+
+    await runSend({ servers: [linear], steps: [textChunks('Hello.')] })
+
+    expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(false)
+
+    mocks.capabilityInputs = []
+    mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+    await runSend({ servers: [linear], steps: [textChunks('Hello.')] })
+
+    expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(true)
+  })
+
+  it('fails the persist when the batch with the chat flag fails', async () => {
+    const { buildGoogleApprovalEntry } = await import(
+      '~~/server/utils/tool-approval/send'
+    )
+
+    mocks.failBatch = true
+    mocks.googleSend = {
+      tools: {
+        google__drive_search: tool({
+          description: 'Search Drive.',
+          inputSchema: z.object({ query: z.string() }),
+          execute: vi.fn(async () => ({
+            references: [{ id: 'file-1', title: 'Budget' }],
+            text: 'SECRET GOOGLE BODY',
+          })),
+        }),
+      },
+      entries: new Map([['google__drive_search', buildGoogleApprovalEntry({
+        toolName: 'google__drive_search',
+        kind: 'read',
+        definitionHash: 'g'.repeat(64),
+        summary: 'Search Google Drive',
+        toolApprovalsActive: true,
+        chatGrantHash: 'g'.repeat(64),
+      })]]),
+    }
+
+    await expect(runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+        textChunks('Found the budget file.'),
+      ],
+    })).rejects.toMatchObject({
+      message: 'The response could not be saved.',
+    })
+    expect(mocks.batches).toHaveLength(1)
   })
 
   it('keeps the egress ask in a flagged chat whose Google part is gone',
@@ -1510,7 +1603,12 @@ describe('tool approval requests in the chat send', () => {
         TOOL_APPROVAL_DATA_PART_TYPE,
       )).toMatchObject({ data: { reason: 'google-egress' } })
       expect(mocks.chatUpdates).not.toContainEqual({
-        googleDataAt: expect.any(Date),
+        googleDataAt: expect.anything(),
+      })
+      expect(writtenChunks()).toContainEqual({
+        type: 'data-google-data',
+        data: { holdsGoogleData: true },
+        transient: true,
       })
     })
 

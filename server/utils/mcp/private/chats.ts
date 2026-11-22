@@ -38,6 +38,8 @@ import {
   parseSearchCursor,
 } from '~~/server/utils/chats/history/search-cursor'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
+import { fileHoldsNoGoogleContent } from '~~/server/utils/google/data-guard'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import {
@@ -93,6 +95,7 @@ interface ChatListRow {
   pinnedAt: Date | null
   shared: boolean
   memoryExcluded: boolean | null
+  googleDataAt: Date | null
   createdAt: Date
   activityAt: Date
 }
@@ -135,6 +138,7 @@ function buildChatListColumns() {
     pinnedAt: schema.chats.pinnedAt,
     shared: buildChatSharedColumn(),
     memoryExcluded: schema.chats.memoryExcluded,
+    googleDataAt: schema.chats.googleDataAt,
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
   }
@@ -210,13 +214,31 @@ function toChatSummary(row: ChatListRow): McpChatSummary {
   }
 }
 
+function snippetOf(hit: ContentSearchHit): { snippet: string } {
+  return { snippet: cleanSearchSnippet(hit.snippet) }
+}
+
+/**
+ * Title matches and content matches in one list. A content match in a chat
+ * that holds Google data counts as no match at all: neither its snippet nor
+ * the fact that the term occurs in the chat's text leaves through MCP, so
+ * such a chat appears only when its title matches.
+ */
 export function mergeChatSearchResults(
   titleMatches: ChatListRow[],
   contentHits: ContentSearchHit[],
   contentChats: Map<string, ChatListRow>,
 ): McpChatSummary[] {
-  const hitsByChatId = new Map(contentHits.map((hit) => {
-    return [hit.chatId, hit]
+  const visibleHits = contentHits.filter((hit) => {
+    return !contentChats.get(hit.chatId)?.googleDataAt
+  })
+  const flaggedTitleIds = new Set(titleMatches.flatMap((chat) => {
+    return chat.googleDataAt ? [chat.id] : []
+  }))
+  const hitsByChatId = new Map(visibleHits.flatMap((hit) => {
+    return flaggedTitleIds.has(hit.chatId)
+      ? []
+      : [[hit.chatId, hit] as const]
   }))
   const titleIds = new Set(titleMatches.map((chat) => {
     return chat.id
@@ -227,11 +249,11 @@ export function mergeChatSearchResults(
     return {
       ...toChatSummary(chat),
       matchedIn: hit ? 'both' : 'title',
-      ...(hit ? { snippet: cleanSearchSnippet(hit.snippet) } : {}),
+      ...(hit ? snippetOf(hit) : {}),
     }
   })
 
-  for (const hit of contentHits) {
+  for (const hit of visibleHits) {
     const chat = contentChats.get(hit.chatId)
 
     if (!chat || titleIds.has(hit.chatId)) {
@@ -241,7 +263,7 @@ export function mergeChatSearchResults(
     merged.push({
       ...toChatSummary(chat),
       matchedIn: 'content',
-      snippet: cleanSearchSnippet(hit.snippet),
+      ...snippetOf(hit),
     })
   }
 
@@ -496,6 +518,40 @@ export function buildMcpChatTranscript(
   }
 }
 
+export const MCP_CHAT_GOOGLE_DATA_WITHHELD_TEXT = '[Withheld: this chat holds '
+  + 'content from Google Drive, Calendar or Gmail, which is never shared '
+  + 'outside the chat. Open the chat in Besidka to read it.]'
+
+/**
+ * The transcript of a chat that holds Google data, with every message text
+ * replaced by a fixed notice. The flag is chat-wide and sticky (a branch
+ * copies it), so no message is kept: any reply after the first Google
+ * result may quote it, and Google data never leaves through MCP or the
+ * Besidka chat tools (pre-check rows 2 and 5).
+ */
+export function withheldForGoogleData(
+  transcript: McpChatTranscript,
+  holdsGoogleData: boolean,
+): McpChatTranscript {
+  if (!holdsGoogleData) {
+    return transcript
+  }
+
+  return {
+    ...transcript,
+    truncated: false,
+    messages: transcript.messages.map((message) => {
+      return {
+        id: message.id,
+        role: message.role,
+        ...(message.model ? { model: message.model } : {}),
+        createdAt: message.createdAt,
+        text: MCP_CHAT_GOOGLE_DATA_WITHHELD_TEXT,
+      }
+    }),
+  }
+}
+
 export function collectChatModels(rows: McpChatMessageRow[]): string[] {
   const models = new Set<string>()
 
@@ -530,6 +586,7 @@ async function resolveMcpContextFiles(
       .where(and(
         eq(schema.files.userId, userId),
         inArray(schema.files.storageKey, storageKeys),
+        fileHoldsNoGoogleContent(),
       ))
     : []
   const idByStorageKey = new Map(rows.map((row) => {
@@ -564,6 +621,7 @@ export async function getMcpChat(
     projectName: schema.projects.name,
     pinnedAt: schema.chats.pinnedAt,
     memoryExcluded: schema.chats.memoryExcluded,
+    googleDataAt: schema.chats.googleDataAt,
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
   })
@@ -618,10 +676,16 @@ export async function getMcpChat(
     .limit(maxMessages + 1)
   const hasOlderMessages = rows.length > maxMessages
   const window = rows.slice(0, maxMessages)
-  const transcript = buildMcpChatTranscript(window, {
-    messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
-    totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
-  })
+  const transcript = withheldForGoogleData(
+    buildMcpChatTranscript(window, {
+      messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
+      totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
+    }),
+    chatHoldsGoogleData({
+      googleDataAt: chat.googleDataAt,
+      messages: window,
+    }),
+  )
   const commandMessageCount = window.filter(isBuiltinCommandMessage).length
   const context = await resolveMcpContextFiles(
     db,

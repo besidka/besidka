@@ -28,6 +28,14 @@ export function useChatShare() {
     'chat-share:target-used-connector',
     () => false,
   )
+  const targetHoldsGoogleData = useState<boolean>(
+    'chat-share:target-holds-google-data',
+    () => false,
+  )
+  const targetGoogleItems = useState<string[]>(
+    'chat-share:target-google-items',
+    () => [],
+  )
   const share = useState<ChatShare | null>(
     'chat-share:active-share',
     () => null,
@@ -62,6 +70,8 @@ export function useChatShare() {
 
       targetHasFiles.value = response.hasFiles
       targetUsedConnector.value = response.usedConnector === true
+      targetHoldsGoogleData.value = response.holdsGoogleData === true
+      targetGoogleItems.value = response.googleItems ?? []
       share.value = response.share?.slug
         ? {
           ...response.share,
@@ -96,6 +106,8 @@ export function useChatShare() {
     targetChatSlug.value = null
     targetHasFiles.value = false
     targetUsedConnector.value = false
+    targetHoldsGoogleData.value = false
+    targetGoogleItems.value = []
     share.value = null
     shareCheck.value = { ...IDLE_SHARE_CHECK }
   }
@@ -344,6 +356,8 @@ export function useChatShare() {
     targetChatSlug,
     targetHasFiles,
     targetUsedConnector,
+    targetHoldsGoogleData,
+    targetGoogleItems,
     share,
     shareCheck,
     isLoading,

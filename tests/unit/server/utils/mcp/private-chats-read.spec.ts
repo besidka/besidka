@@ -288,6 +288,53 @@ describe('getMcpChat extra fields', () => {
     expect(chat.share).not.toHaveProperty('url')
   })
 
+  it('withholds the transcript of a chat found only by its Google parts',
+    async () => {
+      const createdAt = new Date('2026-10-01T00:00:00.000Z')
+
+      queue(
+        chatRow({ googleDataAt: null }),
+        undefined,
+        [
+          {
+            publicId: 'm2',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'tool-google__drive_read',
+                toolCallId: 'call-1',
+                state: 'output-available',
+                input: {},
+                output: { references: [], bodyRemoved: true },
+              },
+              { type: 'text', text: 'The budget is 4200.' },
+            ],
+            usage: null,
+            createdAt,
+          },
+          {
+            publicId: 'm1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Read my budget file' }],
+            usage: null,
+            createdAt,
+          },
+        ],
+        [],
+      )
+
+      const chat = await getMcpChat(createDb(), 1, {
+        slug: 'slug-1',
+        siteUrl: 'https://besidka.com',
+      })
+      const texts = chat.messages.map(message => message.text).join('\n')
+
+      expect(chat.messages).toHaveLength(2)
+      expect(texts).not.toContain('4200')
+      expect(texts).not.toContain('budget file')
+      expect(texts).toContain('Google')
+    })
+
   it('returns a null share and false flags for a plain chat', async () => {
     queue(
       chatRow({
@@ -389,7 +436,8 @@ describe('getMcpChat extra fields', () => {
 
     expect(sql).toContain('"files"."user_id" = ?')
     expect(sql).toContain('"files"."storage_key" in (?)')
-    expect(params).toEqual([1, 'key-1'])
+    expect(sql).toContain('"files"."external_source" not in (?)')
+    expect(params).toEqual([1, 'key-1', 'google'])
   })
 
   it('drops attached files the user no longer owns', async () => {

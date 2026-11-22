@@ -52,6 +52,7 @@ export default defineEventHandler(async (event) => {
   if (existingKey) {
     await db.update(schema.keys).set({
       apiKey,
+      paidTierConfirmedAt: null,
     }).where(and(
       eq(schema.keys.userId, parseInt(session.user.id)),
       eq(schema.keys.provider, 'google'),

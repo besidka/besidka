@@ -130,6 +130,7 @@ describe('create_document tool', () => {
 
   function createTool(
     enabledFormats: readonly DocumentFormat[] = DOCUMENT_FORMATS,
+    isGoogleDerived?: () => boolean,
   ) {
     const tools = createDocumentTool({
       userId,
@@ -140,6 +141,7 @@ describe('create_document tool', () => {
       modelId: 'claude-haiku-4-5',
       provider: 'anthropic',
       assistantMessageId: 'ASSISTANT-ULID',
+      isGoogleDerived,
     })
 
     return tools.create_document as unknown as {
@@ -365,6 +367,19 @@ describe('create_document tool', () => {
       expect(row!.specR2Key).toBe(expectedKey)
       expect(JSON.parse(storage.objects.get(expectedKey)!)).toEqual(PDF_SPEC)
     })
+
+    it('marks a document written in a send that holds Google data',
+      async () => {
+        const marked = await createTool(DOCUMENT_FORMATS, () => true)
+          .execute(PDF_SPEC, {}) as Record<string, unknown>
+        const plain = await createTool(DOCUMENT_FORMATS, () => false)
+          .execute(PDF_SPEC, {}) as Record<string, unknown>
+
+        expect(await readDocument(testDb.db, marked.documentId as string))
+          .toMatchObject({ googleDerivedAt: expect.any(Date) })
+        expect(await readDocument(testDb.db, plain.documentId as string))
+          .toMatchObject({ googleDerivedAt: null })
+      })
 
     it('reports the stats of a workbook', async () => {
       const output = await createTool().execute(XLSX_SPEC, {}) as {

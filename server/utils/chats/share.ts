@@ -2,7 +2,9 @@ import type { RequestEvent } from 'nuxt/server'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { isConnectorUsagePart } from '#shared/utils/connectors-parts'
+import { isGoogleExternalSource } from '#shared/utils/google-data-policy'
 import * as schema from '~~/server/db/schema'
+import { isShareVisibleForGoogleData } from '~~/server/utils/google/data-guard'
 import { listChatDocumentFileIds } from '~~/server/utils/documents/chat-files'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import {
@@ -56,6 +58,7 @@ const ACTIVE_SHARE_COLUMNS = {
   showMetadata: true,
   showAuthorAvatar: true,
   allowBranch: true,
+  googleOptInAt: true,
 } as const
 
 export function durationToExpiresAt(
@@ -77,7 +80,7 @@ export async function resolveActiveShareBySlug(
 ) {
   const now = new Date()
 
-  const share = await useDb().query.chatShares.findFirst({
+  const row = await useDb().query.chatShares.findFirst({
     where: {
       slug,
       revoked: false,
@@ -87,13 +90,43 @@ export async function resolveActiveShareBySlug(
       ],
     },
     columns: ACTIVE_SHARE_COLUMNS,
+    with: {
+      chat: {
+        columns: { googleDataAt: true },
+      },
+    },
+  })
+
+  if (!row) {
+    useRequestLogger(event).set({
+      chatShareResolve: { slug, found: false },
+    })
+
+    return null
+  }
+
+  const { chat, ...share } = row
+  const holdsGoogleData = !!chat?.googleDataAt
+  const isVisible = isShareVisibleForGoogleData({
+    googleDataAt: chat?.googleDataAt,
+    googleOptInAt: share.googleOptInAt,
   })
 
   useRequestLogger(event).set({
-    chatShareResolve: { slug, found: !!share },
+    chatShareResolve: {
+      slug,
+      found: isVisible,
+      ...(isVisible ? {} : { googleDataOptInMissing: true }),
+    },
   })
 
-  return share ?? null
+  return isVisible
+    ? {
+      ...share,
+      holdsGoogleData,
+      indexable: share.indexable && !holdsGoogleData,
+    }
+    : null
 }
 
 export async function getActiveShareForChat(
@@ -169,12 +202,16 @@ export async function enumerateChatFileIds(
     Array.from(storageKeys),
   )
 
-  const references = Array.from(ownedFiles.values()).map((file) => {
-    return {
-      fileId: file.id,
-      storageKey: file.storageKey,
-    }
-  })
+  const references = Array.from(ownedFiles.values())
+    .filter((file) => {
+      return !isGoogleExternalSource(file.externalSource)
+    })
+    .map((file) => {
+      return {
+        fileId: file.id,
+        storageKey: file.storageKey,
+      }
+    })
   const knownFileIds = new Set(references.map(reference => reference.fileId))
 
   for (const documentFile of await listChatDocumentFileIds(

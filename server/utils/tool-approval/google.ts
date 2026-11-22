@@ -148,6 +148,17 @@ export function hasGoogleToolResult(parts: unknown): boolean {
 }
 
 /**
+ * Whether a step content item of the model stream (`tool-result`) came from
+ * a Google tool, so the send can tell the client that the chat now holds
+ * Google data.
+ */
+export function isGoogleToolResultContent(content: unknown): boolean {
+  return isRecord(content)
+    && content.type === 'tool-result'
+    && isGoogleToolName(content.toolName)
+}
+
+/**
  * Whether a chat holds content from Google: the sticky
  * `chats.google_data_at` flag, set once and never cleared, or a Google
  * result still in the given messages (a chat from before the flag). The one

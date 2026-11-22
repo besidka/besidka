@@ -84,6 +84,7 @@ export const ARTIFACT_SHARE_STATUSES = [
   'taken-down',
 ] as const
 export const ARTIFACT_SHARE_LIMIT_CODE = 'artifact_share_limit'
+export const ARTIFACT_SHARE_GOOGLE_DATA_CODE = 'artifact_share_google_data'
 export const ARTIFACT_TAKEDOWN_STATEMENT_MIN = 20
 export const ARTIFACT_TAKEDOWN_STATEMENT_MAX = 4000
 export const ARTIFACT_TAKEDOWN_SCOPES = ['share', 'artifact', 'user'] as const

@@ -11,6 +11,16 @@ export function chatIsMemoryIncluded() {
 }
 
 /**
+ * A chat that holds no Google data: `google_data_at` is null. A flagged chat
+ * never feeds memory (extraction, backfill, project memory, chat search
+ * tools), as the Google pre-check requires. Kept apart from
+ * `chatIsMemoryIncluded`, whose text mirrors the partial index predicate.
+ */
+export function chatHoldsNoGoogleData() {
+  return sql`${schema.chats.googleDataAt} is null`
+}
+
+/**
  * A chat with activity past its extraction watermark (account or project).
  * It repeats the predicate of `idx_chats_memory_due` term for term, which is
  * what lets SQLite pick that partial index for the sweep.

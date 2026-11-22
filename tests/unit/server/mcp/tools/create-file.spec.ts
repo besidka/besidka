@@ -120,6 +120,7 @@ describe('create_file tool', () => {
       42,
       { name: 'report.md', text: 'hello world' },
       mocks.logger,
+      false,
     )
     expect(payload).toMatchObject({ id: 'file1', name: 'report.md' })
     expect(mocks.logger.set).toHaveBeenCalledWith({

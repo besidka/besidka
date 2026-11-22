@@ -37,6 +37,7 @@ export interface PersistContainerFilesInput {
   tracker: ProviderResourceTracker
   logger: LoggerLike
   fetcher?: typeof fetch
+  googleDerived?: boolean
 }
 
 export interface PersistContainerFilesResult {
@@ -158,6 +159,7 @@ export async function persistContainerFiles(
           source: 'assistant',
           originProvider: input.provider,
           originModel: input.modelId,
+          googleDerivedAt: input.googleDerived ? new Date() : null,
           logger: input.logger,
         })
 

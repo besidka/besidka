@@ -2,23 +2,34 @@
   <li
     :id="optionId"
     role="option"
-    :aria-selected="isSelected"
+    :aria-selected="isBlocked ? false : isSelected"
+    :aria-disabled="isBlocked ? true : undefined"
   >
     <div
       class="flex items-center gap-1 rounded-xl pl-2 pr-1 py-1 transition-colors"
       :class="{
-        'bg-accent/15': isSelected,
-        'bg-base-content/10': isHighlighted && !isSelected,
-        'hover:bg-base-content/5': !isSelected && !isHighlighted
+        'bg-accent/15': isSelected && !isBlocked,
+        'bg-base-content/10': isHighlighted && !isSelected && !isBlocked,
+        'hover:bg-base-content/5': !isSelected && !isHighlighted && !isBlocked
       }"
     >
-      <button
-        type="button"
-        :aria-label="`Choose ${model.name}`"
-        class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left cursor-pointer"
-        :class="{ 'max-xs:gap-x-1': isRecommended }"
-        @click="emit('select')"
+      <component
+        :is="isBlocked ? 'div' : 'button'"
+        :type="isBlocked ? undefined : 'button'"
+        :aria-label="isBlocked ? undefined : `Choose ${model.name}`"
+        class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left"
+        :class="[
+          isBlocked ? 'opacity-50' : 'cursor-pointer',
+          { 'max-xs:gap-x-1': isRecommended }
+        ]"
+        @click="onSelect"
       >
+        <span
+          v-if="isBlocked"
+          class="sr-only"
+        >
+          {{ googleDataReason }}
+        </span>
         <span class="w-full xs:w-auto min-w-0 flex items-center gap-1.5">
           <ProviderIcon
             :provider-id="providerPrefix"
@@ -31,6 +42,19 @@
           >
             {{ model.name }}
           </span>
+        </span>
+        <span
+          v-if="isBlocked"
+          data-testid="gateway-model-google-data-blocked"
+          class="badge badge-xs badge-soft badge-warning shrink-0 gap-1 font-semibold max-xs:ml-5 tooltip tooltip-soft tooltip-bottom"
+          :data-tip="googleDataReason"
+          aria-hidden="true"
+        >
+          <Icon
+            name="lucide:shield-alert"
+            size="10"
+          />
+          Not for Google data
         </span>
         <span
           v-if="isFree"
@@ -136,7 +160,7 @@
             />
           </span>
         </span>
-      </button>
+      </component>
       <span
         data-testid="gateway-model-actions"
         class="shrink-0 flex items-center gap-1 max-xs:flex-col"
@@ -201,6 +225,7 @@ const props = defineProps<{
   isFavorite: boolean
   isDetailOpen: boolean
   isRecommended?: boolean
+  googleDataReason?: string
 }>()
 
 const emit = defineEmits<{
@@ -210,6 +235,18 @@ const emit = defineEmits<{
 }>()
 
 const { isDesktop } = useDevice()
+
+const isBlocked = computed<boolean>(() => {
+  return !!props.googleDataReason
+})
+
+function onSelect() {
+  if (isBlocked.value) {
+    return
+  }
+
+  emit('select')
+}
 
 const providerPrefix = computed<string>(() => {
   return getGatewayModelProviderPrefix(props.model.id)

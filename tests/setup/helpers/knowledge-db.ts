@@ -158,7 +158,9 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       text_bytes integer,
       text_version integer,
       text_omitted_media integer,
-      text_omitted_charts integer
+      text_omitted_charts integer,
+      external_source text,
+      google_derived_at integer
     );
 
     CREATE UNIQUE INDEX uq_file_storageKey ON files (storage_key);
@@ -204,7 +206,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       created_via text NOT NULL,
       origin_provider text,
       origin_model text,
-      ai_generated integer
+      ai_generated integer,
+      google_derived_at integer
     );
 
     CREATE INDEX idx_documents_file ON documents (file_id);
@@ -223,7 +226,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       created_via text NOT NULL,
       takedown_at integer,
       takedown_reason text,
-      legal_hold_until integer
+      legal_hold_until integer,
+      google_derived_at integer
     );
 
     CREATE TABLE skills (

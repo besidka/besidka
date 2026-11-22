@@ -42,13 +42,15 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
       title text,
       project_id integer,
       memory_excluded integer,
-      branched_from_share_slug text
+      branched_from_share_slug text,
+      google_data_at integer
     );
 
     CREATE TABLE chat_shares (
       id integer PRIMARY KEY,
       slug text,
-      chat_id integer NOT NULL
+      chat_id integer NOT NULL,
+      google_opt_in_at integer
     );
 
     CREATE TABLE messages (

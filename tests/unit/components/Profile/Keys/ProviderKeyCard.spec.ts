@@ -105,6 +105,32 @@ describe('Profile/Keys/ProviderKeyCard', () => {
     expect(providerCalls).toHaveLength(0)
   })
 
+  it('offers the Gemini paid-tier confirmation on a saved Gemini key only',
+    async () => {
+      summaryFor([
+        { provider: 'google', hasKey: true },
+        { provider: 'anthropic', hasKey: true },
+      ])
+
+      const gemini = await mountCard('google')
+
+      expect(gemini.find('[data-testid="gemini-paid-tier"]').exists())
+        .toBe(true)
+
+      const anthropic = await mountCard('anthropic')
+
+      expect(anthropic.find('[data-testid="gemini-paid-tier"]').exists())
+        .toBe(false)
+
+      summaryFor([{ provider: 'google', hasKey: false }])
+      clearNuxtData()
+
+      const keyless = await mountCard('google')
+
+      expect(keyless.find('[data-testid="gemini-paid-tier"]').exists())
+        .toBe(false)
+    })
+
   it('leaves the input empty and badges a stored key as saved', async () => {
     summaryFor([{ provider: 'anthropic', hasKey: true }])
 

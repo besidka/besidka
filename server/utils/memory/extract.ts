@@ -421,6 +421,7 @@ async function extractLeasedChatMemory(
       memoryExtractionFailures: true,
       projectMemorySummaryUpdatedAt: true,
       memoryExcluded: true,
+      googleDataAt: true,
     },
   })
 
@@ -428,7 +429,7 @@ async function extractLeasedChatMemory(
     return memoryExtractionEmptyResult('skipped', 'chat-unavailable')
   }
 
-  if (chat.memoryExcluded) {
+  if (chat.memoryExcluded || chat.googleDataAt) {
     return memoryExtractionEmptyResult('skipped', 'memory-excluded')
   }
 
@@ -650,14 +651,14 @@ async function extractLeasedChatMemory(
 
     const currentChat = await db.query.chats.findFirst({
       where: { id: chat.id, userId },
-      columns: { projectId: true, memoryExcluded: true },
+      columns: { projectId: true, memoryExcluded: true, googleDataAt: true },
     })
 
     if (!currentChat) {
       return { ...result, status: 'skipped', reason: 'chat-unavailable' }
     }
 
-    if (currentChat.memoryExcluded) {
+    if (currentChat.memoryExcluded || currentChat.googleDataAt) {
       return { ...result, status: 'skipped', reason: 'memory-excluded' }
     }
 

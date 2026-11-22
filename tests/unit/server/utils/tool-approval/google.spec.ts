@@ -47,6 +47,7 @@ import {
 } from '~~/server/utils/tool-approval/google'
 import {
   getGoogleSendTools,
+  planGoogleSendTools,
   withGoogleSendTools,
 } from '~~/server/utils/tool-approval/google-send-tools'
 import {
@@ -555,16 +556,94 @@ describe('the Google tool gate (tool approvals required)', () => {
     })).toThrow()
   })
 
-  it('offers no Google tools without tool approvals', async () => {
-    const google = await getGoogleSendTools({
-      toolApprovalsActive: false,
+  function planInput(overrides: Partial<
+    Parameters<typeof planGoogleSendTools>[0]
+  > = {}) {
+    return {
+      toolApprovalsActive: true,
+      googleDriveActive: true,
       userId: 1,
       chatPublicId: 'chat-1',
+      gatewayId: undefined,
+      holdsGoogleData: false,
+      logger: logger(),
+      ...overrides,
+    }
+  }
+
+  function fakePlan(gatewaySafeguards: boolean) {
+    return {
+      candidates: {
+        tools: { google__drive_search: { execute: vi.fn() } },
+        entries: new Map([['google__drive_search', {}]]),
+      } as never,
+      gatewaySafeguards,
+    }
+  }
+
+  it('plans no candidate without tool approvals or google.drive, and no '
+    + 'gateway safeguards without Google data', async () => {
+    for (const overrides of [
+      { toolApprovalsActive: false },
+      { googleDriveActive: false },
+      {},
+    ]) {
+      const plan = await planGoogleSendTools(planInput({
+        ...overrides,
+        gatewayId: 'openrouter',
+      }))
+
+      expect(plan.candidates.entries.size).toBe(0)
+      expect(plan.gatewaySafeguards).toBe(false)
+    }
+  })
+
+  it('sends the gateway safeguards in a chat that holds Google data only on '
+    + 'a gateway', async () => {
+    expect((await planGoogleSendTools(planInput({
+      gatewayId: 'vercel',
+      holdsGoogleData: true,
+      toolApprovalsActive: false,
+    }))).gatewaySafeguards).toBe(true)
+    expect((await planGoogleSendTools(planInput({
+      holdsGoogleData: true,
+    }))).gatewaySafeguards).toBe(false)
+  })
+
+  it('runs no guard and registers nothing without a candidate', async () => {
+    const mayReceiveGoogleData = vi.fn(async () => true)
+    const google = await getGoogleSendTools({
+      plan: await planGoogleSendTools(planInput()),
+      mayReceiveGoogleData,
       logger: logger(),
     })
 
     expect(google.tools).toEqual({})
     expect(google.entries.size).toBe(0)
+    expect(mayReceiveGoogleData).not.toHaveBeenCalled()
+  })
+
+  it('registers the candidates only for a model that may receive Google '
+    + 'data', async () => {
+    const allowed = await getGoogleSendTools({
+      plan: fakePlan(true),
+      mayReceiveGoogleData: async () => true,
+      logger: logger(),
+    })
+
+    expect(Object.keys(allowed.tools)).toEqual(['google__drive_search'])
+
+    const sendLogger = logger()
+    const refused = await getGoogleSendTools({
+      plan: fakePlan(true),
+      mayReceiveGoogleData: async () => false,
+      logger: sendLogger,
+    })
+
+    expect(refused.tools).toEqual({})
+    expect(sendLogger.set).toHaveBeenCalledWith({
+      attributes: { googleDataGuard: { googleTools: 'recipient-refused' } },
+    })
   })
 
   it('drops every google__ tool that did not come from the Google assembly',

@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import type { H3Event } from 'h3'
+import { isShareVisibleForGoogleData } from '~~/server/utils/google/data-guard'
 
 const FILE_ACCESS_TOKEN_HEADER = {
   alg: 'HS256',
@@ -61,6 +62,14 @@ export async function hasShareTokenFileAccess(
           revoked: true,
           expiresAt: true,
           showFiles: true,
+          googleOptInAt: true,
+        },
+        with: {
+          chat: {
+            columns: {
+              googleDataAt: true,
+            },
+          },
         },
       },
     },
@@ -84,7 +93,10 @@ export async function hasShareTokenFileAccess(
     return false
   }
 
-  return true
+  return isShareVisibleForGoogleData({
+    googleDataAt: share.chat?.googleDataAt,
+    googleOptInAt: share.googleOptInAt,
+  })
 }
 
 async function verifyFileAccessToken(

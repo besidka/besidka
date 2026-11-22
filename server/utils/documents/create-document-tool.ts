@@ -55,6 +55,7 @@ export interface CreateDocumentToolInput {
   modelId?: string | null
   provider?: string | null
   assistantMessageId: string
+  isGoogleDerived?: () => boolean
 }
 
 export type DocumentSpecCheck
@@ -519,6 +520,7 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
             specVersion: validSpec.specVersion,
             stats,
             specJson: JSON.stringify(validSpec),
+            googleDerivedAt: input.isGoogleDerived?.() ? new Date() : null,
           })
 
           created += 1

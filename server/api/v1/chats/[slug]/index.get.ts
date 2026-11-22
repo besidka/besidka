@@ -6,6 +6,7 @@ import { reconstructGeneratedImageParts } from '~~/server/utils/files/reconstruc
 import { markDeletedConnectorImages } from '~~/server/utils/files/connector-images'
 import { rewriteBranchedChatFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 
@@ -45,6 +46,7 @@ export default defineEventHandler(async (event) => {
       projectId: true,
       branchedFromShareSlug: true,
       memoryExcluded: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -101,8 +103,14 @@ export default defineEventHandler(async (event) => {
     orderBy: { id: 'desc' },
   })
 
+  const { googleDataAt, ...chatColumns } = chat
+
   return {
-    ...chat,
+    ...chatColumns,
+    holdsGoogleData: chatHoldsGoogleData({
+      googleDataAt,
+      messages: chat.messages,
+    }),
     messages: messagesWithGeneratedImages,
     activeResearchJob: isVisibleResearchJob(latestResearchJob)
       ? toResearchJobView(latestResearchJob)

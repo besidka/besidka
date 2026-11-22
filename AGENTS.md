@@ -882,8 +882,22 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `chernenko-chat` (redirect URI forms for localhost, the long-lived preview,
   `pr-<n>` and production; Picker key referrers), the data rule (allow-list,
   references-only persistence, deletion within 24 hours when access ends),
-  the BYO owner runbook outline, what is not in the phase (legal notices
-  stay the owner's decision), and section 9, the connection flow as built
+  approvals in section 5.2 (the `google` tool family, the `google` taint and
+  the sticky `chats.google_data_at` flag, the Google egress grant for
+  connectors, rule 13 for Besidka writes after Google content,
+  references-only persistence, the 64 KiB output cap, the 24 h KV stash of
+  bodies for a paused reply, tolerant reads of records from another deploy),
+  the data guard in section 5.3 (`server/utils/google/data-guard.ts` over
+  `shared/utils/google-data-recipient.ts`: every enforcement point as a table
+  with what the user sees, the recipient check on every model call of a
+  flagged chat, the gateway safeguards sent, the Gemini paid-tier route,
+  skipped web search and TypeSafe AI, memory exclusion, the derived mark
+  `google_derived_at` on artifacts and files and how a marked item is read,
+  the stored share opt-in `chat_shares.google_opt_in_at`, MCP and Besidka
+  tool withholding, no Google copies or marked files as project knowledge,
+  and the exits still open), the BYO owner runbook outline, what is not in
+  the phase (legal notices stay the owner's decision), and section 9, the
+  connection flow as built
   (routes under `/api/v1/google/`, state and PKCE, the redirect URI from the
   request origin, the `drive.file` comparison, tokens decrypted only in
   `server/utils/google/tokens.ts`, the `google:refresh:` lock, what

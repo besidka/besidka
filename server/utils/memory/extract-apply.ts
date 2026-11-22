@@ -17,7 +17,10 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
 import { insertGuardedMemoryEntry } from '~~/server/utils/memory/entries'
-import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
+import {
+  chatHoldsNoGoogleData,
+  chatIsMemoryIncluded,
+} from '~~/server/utils/memory/chat-memory-filters'
 import {
   evaluateMemoryEntry,
   recordSensitiveDetection,
@@ -886,6 +889,7 @@ class MemoryExtractionApplier {
       where ${eq(schema.chats.id, this.input.chatId)}
         and ${eq(schema.chats.userId, this.input.userId)}
         and ${chatIsMemoryIncluded()}
+        and ${chatHoldsNoGoogleData()}
     )`
   }
 
@@ -901,6 +905,7 @@ class MemoryExtractionApplier {
         eq(schema.chats.id, this.input.chatId),
         eq(schema.chats.userId, this.input.userId),
         chatIsMemoryIncluded(),
+        chatHoldsNoGoogleData(),
       ))
       .limit(1)
 

@@ -212,6 +212,57 @@ describe('artifact store', () => {
     })
   })
 
+  describe('the Google derived mark', () => {
+    function markOf() {
+      return (testDb.sqlite.prepare(
+        'select google_derived_at from artifacts',
+      ).get() as { google_derived_at: number | null }).google_derived_at
+    }
+
+    function append(artifactId: string, googleDerived?: boolean) {
+      return appendArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId,
+        content: '<p>Changed</p>',
+        createdBy: 'model',
+        googleDerived,
+        logger,
+      })
+    }
+
+    it('marks an artifact created in a send that holds Google data',
+      async () => {
+        await create({ googleDerived: true })
+
+        expect(markOf()).toEqual(expect.any(Number))
+      })
+
+    it('leaves an ordinary artifact unmarked', async () => {
+      const created = await create()
+
+      await append(created.artifactId)
+
+      expect(markOf()).toBeNull()
+    })
+
+    it('marks an artifact on a version written with Google data and never '
+      + 'clears it', async () => {
+      const created = await create()
+
+      await append(created.artifactId, true)
+
+      const marked = markOf()
+
+      expect(marked).toEqual(expect.any(Number))
+
+      await append(created.artifactId, false)
+
+      expect(markOf()).toBe(marked)
+    })
+  })
+
   describe('appendArtifactVersion', () => {
     it('writes a new immutable version and updates the header', async () => {
       const created = await create()

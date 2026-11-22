@@ -14,6 +14,9 @@ import {
   CHAT_TITLE_DEFAULT,
 } from '~~/server/utils/chats/title'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { mayRunWithGoogleData } from '~~/server/utils/google/data-guard'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
+import { getModel } from '#shared/utils/model'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -70,6 +73,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       title: true,
       projectId: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -121,12 +125,35 @@ export default defineEventHandler(async (event) => {
 
   const runtimeConfig = useRuntimeConfig()
   const legalConsent = await readLegalConsent(userId, db)
+  const holdsGoogleData = chatHoldsGoogleData({
+    googleDataAt: chat.googleDataAt,
+    messages: chat.messages,
+  })
+  const titleProviderId = gatewayId
+    ? undefined
+    : getModel(body.data.model).provider?.id
 
   try {
     assertLegalConsent(legalConsent)
 
     if (!initialText.trim()) {
       title = CHAT_TITLE_DEFAULT
+    } else if (
+      holdsGoogleData
+      && (gatewayId || !await mayRunWithGoogleData({
+        holdsGoogleData,
+        db,
+        userId,
+        recipient: {
+          providerId: titleProviderId,
+          modelId: body.data.model,
+        },
+        gatewaySafeguardsSent: false,
+        site: 'chat-title',
+        logger: useRequestLogger(event),
+      }))
+    ) {
+      title = buildFallbackChatTitle(initialText)
     } else if (
       runtimeConfig.researchMockEnabled
       && initialText.trim().toLowerCase().startsWith('mock:')

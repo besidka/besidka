@@ -267,6 +267,7 @@ describe('useGateway dispatch', () => {
       '1',
       'llama-3.3-70b',
       undefined,
+      {},
     )
   })
 
@@ -296,6 +297,7 @@ describe('useGateway dispatch', () => {
       [],
       'medium',
       undefined,
+      {},
     )
   })
 
@@ -333,6 +335,7 @@ describe('useGateway dispatch', () => {
       [],
       'low',
       logger,
+      {},
     )
   })
 })

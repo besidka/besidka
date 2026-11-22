@@ -4,7 +4,11 @@ import {
 } from '#shared/utils/provider-meta'
 
 interface UserKeysResponse {
-  keys: Array<{ provider: string, hasKey: boolean }>
+  keys: Array<{
+    provider: string
+    hasKey: boolean
+    paidTierConfirmed?: boolean
+  }>
 }
 
 export type UserKeyStatus = 'saved' | 'missing' | 'unknown'
@@ -152,6 +156,20 @@ export function useUserKeys() {
     })
   })
 
+  /**
+   * Whether the user confirmed that their Gemini key is on a paid Google
+   * Cloud project. Fails closed, unlike `hasKey`: an unknown answer means
+   * not confirmed, so the picker never offers Gemini in a chat that holds
+   * Google data on a guess.
+   */
+  const isGeminiPaidTierConfirmed = computed<boolean>(() => {
+    const entry = lastKnownKeys.value?.keys.find((row) => {
+      return row.provider === 'google'
+    })
+
+    return entry?.paidTierConfirmed === true
+  })
+
   return {
     pending,
     error,
@@ -159,6 +177,7 @@ export function useUserKeys() {
     hasKeyForProvider,
     keyStatusForProvider,
     hasAnyKey,
+    isGeminiPaidTierConfirmed,
     refresh,
   }
 }

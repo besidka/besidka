@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => ({
     entries: Map<string, unknown>
   },
   failRateLimitRead: false,
+  chatGoogleDataAt: null as Date | null,
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
   claims: new Map<string, Record<string, any>>(),
@@ -229,21 +230,17 @@ vi.mock('~~/server/utils/files/connector-images', async (importOriginal) => {
   }
 })
 
-vi.mock('~~/server/utils/tool-approval/google-send-tools', async (
+vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
   importOriginal,
 ) => {
   const actual = await importOriginal<
-    typeof import('~~/server/utils/tool-approval/google-send-tools')
+    typeof import('~~/server/utils/tool-approval/google-send-candidates')
   >()
 
   return {
     ...actual,
-    getGoogleSendTools: async (
-      input: Parameters<typeof actual.getGoogleSendTools>[0],
-    ) => {
-      return mocks.googleSend && input.toolApprovalsActive
-        ? mocks.googleSend
-        : await actual.getGoogleSendTools(input)
+    buildGoogleSendToolCandidates: async () => {
+      return mocks.googleSend ?? actual.noGoogleSendTools()
     },
   }
 })
@@ -578,18 +575,32 @@ function createDb() {
             projectId: null,
             project: null,
             branchedFromShareSlug: null,
+            googleDataAt: mocks.chatGoogleDataAt,
             messages: mocks.chatMessages,
           })),
         },
         keys: {
-          findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),
+          findFirst: vi.fn(async () => ({
+            apiKey: 'encrypted-key',
+            paidTierConfirmedAt: null,
+          })),
         },
         messages: { findFirst: vi.fn(async () => undefined) },
       },
       insert: vi.fn(() => ({ values: insertValues })),
       update: vi.fn(() => ({ set: updateSet })),
+      batch: vi.fn(async (statements: unknown[]) => {
+        return await Promise.all(statements.map(async (statement) => {
+          const withGet = statement as { get?: () => Promise<unknown> }
+
+          return typeof withGet.get === 'function'
+            ? [await withGet.get()]
+            : await statement
+        }))
+      }),
     },
     insertValues,
+    updateSet,
   }
 }
 
@@ -692,6 +703,11 @@ async function request(input: {
     providerOptions: {},
     reasoning: undefined,
     thinkingBinding: null,
+  })))
+  vi.stubGlobal('useGoogle', vi.fn(async () => ({
+    instance: model,
+    tools: mocks.providerTools,
+    providerOptions: {},
   })))
   vi.stubGlobal('fetch', createMockMcpFetch(input.servers))
 
@@ -847,12 +863,13 @@ describe('tool approval continuation', () => {
     vi.clearAllMocks()
     mocks.mergedStreams = []
     mocks.writers = []
-    mocks.flags = new Set(['connectors', 'tool-approvals'])
+    mocks.flags = new Set(['connectors', 'tool-approvals', 'google.drive'])
     mocks.holdsSkillText = false
     mocks.memoryToolsEnabled = false
     mocks.providerTools = {}
     mocks.googleSend = null
     mocks.failRateLimitRead = false
+    mocks.chatGoogleDataAt = null
     mocks.memoryWrites = []
     mocks.claims = new Map()
     mocks.updates = []
@@ -2239,6 +2256,52 @@ describe('tool approval continuation', () => {
       })
   })
 
+  describe('a chat that came to hold Google data while paused', () => {
+    const UNCONFIRMED_GEMINI = 'gemini-3.8-flash'
+
+    it('refuses the approval answer on its paused model and says how to go on',
+      async () => {
+        vi.stubGlobal('useChatProvider', vi.fn(() => ({
+          provider: { id: 'google' },
+          model: {
+            id: UNCONFIRMED_GEMINI,
+            name: 'Gemini 3.8 Flash',
+            tools: [],
+            toolCall: true,
+            modalities: { input: ['text'], output: ['text'] },
+          },
+        })))
+
+        const paused = await pauseCreateIssue()
+
+        expect(readKvJson(`tool-approval:${paused.approvalIds[0]}`)?.snapshot)
+          .toMatchObject({ model: UNCONFIRMED_GEMINI })
+
+        mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+        await expect(answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ])).rejects.toMatchObject({
+          status: 403,
+          message: expect.stringContaining('This reply cannot continue'),
+          fix: expect.stringContaining('Send a new message'),
+        })
+        expect(linear.callCount('tools/call')).toBe(0)
+      })
+
+    it('lets the answer through on an allowed paused model', async () => {
+      const paused = await pauseCreateIssue()
+
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+      const { doStream } = await answer(paused, [
+        { approvalId: paused.approvalIds[0], approved: true },
+      ])
+
+      expect(doStream).toHaveBeenCalled()
+    })
+  })
+
   it('answers 404 when the tool-approvals flag is off', async () => {
     const paused = await pauseCreateIssue()
 
@@ -2424,6 +2487,64 @@ describe('tool approval continuation', () => {
 
       await expect(continueRound('assistant-1', 2))
         .rejects.toMatchObject({ status: 404 })
+      expect(mocks.updates).toHaveLength(0)
+    })
+
+    it('refuses the next round on a refused model once the chat holds '
+      + 'Google data', async () => {
+      vi.stubGlobal('useChatProvider', vi.fn(() => ({
+        provider: { id: 'google' },
+        model: {
+          id: 'gemini-3.8-flash',
+          name: 'Gemini 3.8 Flash',
+          tools: [],
+          toolCall: true,
+          modalities: { input: ['text'], output: ['text'] },
+        },
+      })))
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+      mocks.chatMessages.push(
+        {
+          id: 'row-user',
+          publicId: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Go' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'row-assistant',
+          publicId: 'assistant-1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Working.' },
+            {
+              type: 'data-tool-budget',
+              id: 'tool-budget-1',
+              data: {
+                round: 1,
+                maxRounds: 10,
+                reason: 'steps',
+                model: 'gemini-3.8-flash',
+                gateway: null,
+                reasoning: 'off',
+                connectorIds: ['conn-linear'],
+              },
+            },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(),
+        },
+      )
+
+      await expect(continueRound('assistant-1', 2)).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining('This reply cannot continue'),
+      })
       expect(mocks.updates).toHaveLength(0)
     })
 

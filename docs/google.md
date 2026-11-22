@@ -8,13 +8,14 @@ Status: **partly built** (2026-11-22), on the umbrella branch
 `shared/utils/google-data-policy.ts`, the schema child's single migration
 (section 8), the chat runtime every Google tool registers into (section 5.2:
 approvals, taint, the chat flag, references-only results and the approval
-panel rows), and the connection flow of the connections child (section 9:
-connect and disconnect Google Drive, the token store, and deletion when
-Google access ends), and the owner-only bring-your-own client (section 10:
-the stored client, the admin gate, its own callback). Not built yet: the Picker, the Drive, Calendar and
-Gmail tools themselves, the data guard of the allow-list, and the legal
-text. This file grows with every child of the umbrella; each child replaces
-a "design" marker below with what was built.
+panel rows), the data guard of the allow-list (section 5.3), the connection
+flow of the connections child (section 9: connect and disconnect Google
+Drive, the token store, and deletion when Google access ends), and the
+owner-only bring-your-own client (section 10: the stored client, the admin
+gate, its own callback). Not built yet: the Picker, the Drive, Calendar and
+Gmail tools themselves, and the legal text. This file grows with every
+child of the umbrella; each child replaces a "design" marker below with
+what was built.
 
 Binding inputs: `docs/legal/prechecks/google.md` (G-11, BES-313) and
 `docs/agentic-capabilities-roadmap.md`. Where this file and the pre-check
@@ -343,20 +344,144 @@ foreign or unreadable record gives the model the references with a note
 that the content could not be kept. The continuation never fails over a
 stash.
 
-**Residual gaps** (for the data guard child and the tool children):
+**Residual gaps** (for the tool children; section 5.3 closed the memory,
+share, MCP, web search and model-recipient gaps):
 
-- Google content still leaves through assistant text, artifact and
-  document writes the user approves, approved memory writes, shares and
-  branches of a flagged chat (shares drop tool parts but keep text), MCP
-  `get_chat`, and memory extraction of a flagged chat.
+- Google content still leaves through artifact and document writes the
+  user approves, an artifact public link, and the user's own copy actions
+  (branch, copy, export), all inside the user's control.
 - Code execution on direct Anthropic routes within the send of the Google
   read (see Run code above).
 - A user with more than 200 chats, or an id the index lost to its bound or
   a write race, keeps a stashed body until the 24 hour TTL.
-- With tool approvals off, a chat flagged earlier gets no Google taint, so
-  web search is not withheld there; no Google tool is offered either.
 - A pending record with an unknown access or remember option still reads
   as expired.
+
+### 5.3 Data guard
+
+Built (child 3, 2026-11-22). Once a chat holds Google data
+(`chatHoldsGoogleData`: the sticky `chats.google_data_at`, or a Google
+result in the stored parts of a chat from before the flag), its content
+reaches only recipients the pre-check's allow-list accepts, and never leaves
+through a side door. No Google tool exists yet; the guard runs on the flag
+and is proven with specs that set it.
+
+**The module.** `server/utils/google/data-guard.ts` wraps
+`shared/utils/google-data-recipient.ts`, which wraps the table in
+`shared/utils/google-data-policy.ts` (no copy of it). A recipient is a
+direct provider and model, or a gateway and a model id. The gateway's
+upstream comes from the model id: `@cf/` and `@hf/` are Workers AI,
+`vendor/model` names the vendor through the alias map, anything else is
+unknown and refused. Unknown, unverifiable or refused means no.
+
+| Condition | How it is established |
+|---|---|
+| `gemini-paid-tier-confirmed` | `keys.paid_tier_confirmed_at` of the user's Gemini key, set by the user with the pre-check's sentence "This key is on a Google Cloud project with billing enabled". Read from D1 only for a direct Gemini model in a flagged chat. Never carried onto a gateway route: a gateway model has no Gemini key to confirm, so Gemini through a gateway is refused |
+| `alibaba-served-model` | A direct Qwen model whose id starts with `qwen`, `qwq` or `qvq`: the whole curated Qwen catalog. Never carried onto a gateway route, so Qwen through a gateway is refused |
+| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and of any send that has at least one Google tool candidate (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts`, which decides the candidates and the safeguards together, and only candidates can be registered; the candidates come from `buildGoogleSendToolCandidates`, empty until the Drive, Calendar and Gmail children add tools for users with an active connection): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
+| `payload-logging-disabled` | Sent on the same calls: the header `cf-aig-collect-log-payload: false` on the Cloudflare client |
+
+**Enforcement points.**
+
+| Call site | What is checked | What the user sees |
+|---|---|---|
+| Send start: Google content in the request (`resolveSendGoogleContent`) | Before the guard, the send looks up the files of every file part (a Google copy, `external_source` in `GOOGLE_EXTERNAL_SOURCES`, or a marked file) and every attached or referenced artifact (marked). Any hit flags the chat (`flagChatGoogleData`, not best effort) and the guard below runs on it; content new in this message also clears the share opt-in | The guard's answer below |
+| Chat send, `{ continue }` rounds and approval continuations (`server/api/v1/chats/[slug]/index.post.ts`, every request kind takes the same path) | `assertGoogleDataRecipient` right after the provider or gateway is resolved, before any search, TypeSafe AI call, user message persist or model call; this covers every step of the tool loop and the search answer continuation, which reuse the same model | A 403 shown through the chat error: "This model cannot be used in a chat with Google data.", the reason and the fix (pick an allowed model, or confirm the Gemini paid tier). On a continuation the paused reply keeps the model of its pending record, so the message says the reply cannot continue and the fix is a new message on an allowed model |
+| Model switch mid-chat | The same check, on the model of each send | The same error; the picker already marks the model |
+| Gateway sends | `useGateway(..., { googleDataSafeguards: plan.gatewaySafeguards })`: true in a flagged chat and in a send with a Google tool candidate, false otherwise, so a user who only turned on `google.drive` keeps the request options of before | Nothing; the gateway applies its own setting. A Vercel 403 or `zdr_not_attested` on such a call becomes a Google-specific chat error in the stream (`googleSafeguardGatewayErrorOverride`: Hobby teams cannot request zero data retention, or the upstream key is not ZDR-attested). Title, the artifact bridge and deep research never send the safeguards on a gateway call (title skips gateways in a flagged chat; the bridge and research use direct keys only), so they cannot receive that error |
+| Google tools (`getGoogleSendTools`) | No candidate unless tool approvals and `google.drive` are active; with a candidate, `mayReceiveGoogleData` (the guard with the plan's gateway condition, and the Gemini key read only for a direct Gemini model), because a Google result would reach the model in the next step of the same send | No Google tool is offered |
+| Title (`title.patch.ts`) | A refused direct provider, or any gateway, when `chatHoldsGoogleData` (flag, or a Google result in the loaded first message) | The fallback title built from the first message, with no model call |
+| Deep research (`chats/[slug]/research/index.post.ts`) | `chatHoldsGoogleData` over the loaded messages plus the send-start lookup of the new message; the research provider, before the user message is stored | The same 403 |
+| Artifact LLM bridge (`artifacts/[id]/complete.post.ts`) | The bridge model, when the artifact carries the derived mark (`artifacts.google_derived_at`), so a deleted origin chat changes nothing | The same 403, before the key and caps are used |
+| Derived mark on writes | Every artifact, document and file written in a send whose chat is flagged or whose approval state holds `google` taint gets `google_derived_at`: artifact create and update (native and Besidka tools), `create_document` (the document row, copied to its file at finalize), `create_file`, generated images and code execution files. Connector images are not marked (connector data) | Nothing |
+| Reading a marked item later | MCP: `list_files`, `list_artifacts` leave marked items out and `read_file`, `get_artifact` answer 404. Besidka chat tools in a send without Google data or taint: listed items are left out and a direct read answers 403 with "This item holds content from Google and is not available in this chat" (withheld, see Decisions). In a flagged or tainted send the read is allowed, because that send's recipient already passed the guard. Attached at send start: flags the chat first (row 1) | The withheld notice, or not found over MCP |
+| Project-level spread | In a flagged or tainted send `add_project_text`, `add_project_note`, `update_project_instructions`, `update_project_knowledge_item` and `share_artifact` are blocked before the send (`withoutGoogleSpreadingTools`) and refused if called after taint appears mid-send | The tools are not offered, or a 403 tool error |
+| Artifact public links | A marked artifact cannot get a public link (409, `ARTIFACT_SHARE_GOOGLE_DATA_CODE`), and an existing link to an artifact marked later resolves as not found. `artifact_shares` has no opt-in column, so refusing replaced the chat-share-style opt-in | The share action fails with the reason |
+| Web search, Brave, Exa | Every web search tool is removed from the send in a flagged chat (`withoutWebSearchForGoogleData`), whatever the tool approvals setting; the Brave and Exa keys are never read | The search tools are not offered; the reply has no search |
+| TypeSafe AI roles on the send path | Auto web search, skill selection, past-chat pre-retrieval and the rerank resolver are skipped in a flagged chat; in the send that first brings Google data, the rerank resolver stops once `google` taint appears (`withGoogleTaintRerankStop`); the share personal-data check skips its TypeSafe AI call | Auto web search keeps the chosen tools (minus search); the share check shows the generic reminder |
+| Connectors with tool approvals off | A flagged chat offers no connector unless tool approvals are active (`mayOfferConnectorsWithGoogleData`), because only the Google egress ask (rule 12) keeps Google content from a user-added MCP server, and it needs approvals | Connectors are not offered in that chat |
+| Flag write with the reply | The assistant message that brings the first Google result and the flag (with the share opt-in cleared) are one `db.batch` (`buildGoogleContentPersistStatements`); if the batch fails the reply is not persisted | The usual save error |
+| Flag repair | A send that finds a Google result in the stored parts while `google_data_at` is null sets the flag | Nothing |
+| Memory | Flagged chats leave the extraction sweep, the backfill queue, project memory refresh and settle, the extract-now path (checked before and after the model call), the guarded entry insert, and the `search_chats` and `read_chat` tools of other chats; `memory_write` and `memory_forget` are not offered inside a flagged chat | Memory stays as it was; the chat is never cited |
+| Shares | `POST /share` needs `includeGoogleContent: true` for a flagged chat (409 otherwise) and stores it as `chat_shares.google_opt_in_at`, recorded in the wide event as `googleDataGuard.shareOptIn`; a share of a flagged chat is visible only while that column is set (`isShareVisibleForGoogleData`, read with the share in one query in `resolveActiveShareBySlug`, and by the tokened file route). Every write that brings new Google content clears it in the same batch, so the link pauses until the owner opts in again. `indexable` is forced off for a flagged chat (on the stored row, the owner and shared reads, and the dialog). Google copies get no `chat_share_files` grant | The share dialog names the Google items (reference titles and Google or marked file names, at most 20), asks "Share the Google content in this chat", says when a link is paused, disables the indexing toggle, and Generate waits for the box |
+| MCP and Besidka tools | `get_chat` replaces every message text with a fixed notice when `chatHoldsGoogleData` (flag, or a Google result in the loaded messages); `list_chats` treats a content match in a flagged chat as no match (only a title match lists it); `list_files`, `read_file` and the `get_chat` context files never include a Google copy or a marked file (`fileHoldsNoGoogleContent`); `list_artifacts` and `get_artifact` hide marked artifacts. The tool descriptions say so (MCP 5.4.1) | The withheld notice in place of the text; the items are not found |
+| Project knowledge | Linking a Google copy or a marked file answers 400; knowledge screening and the sweep only ever see linked files, so neither reaches TypeSafe AI with one | "A file with Google content cannot be added to project knowledge" |
+| Model picker | The same allow-list on the client (`useGoogleDataRecipientReason`), with the Gemini paid-tier state from the keys summary. The send route writes a transient `data-google-data` chunk at the start of a send in a flagged chat and after the first step with a Google result, so the picker updates without a reload | "Not for Google data" on each refused model, the reason as its tooltip and screen-reader text, and the row cannot be picked |
+| Chat context panel | The chat page records the flag (`useChatGoogleData`) | "This chat holds content from Google, so only models on the Google data list can answer here. Memory and TypeSafe AI skip this chat, web search is off for new messages, and a share link needs your confirmation." |
+
+**Decisions.**
+
+- Native web search in a flagged chat is withheld too, not only Brave and
+  Exa: a query the model writes can carry Google content to a search
+  engine, and Vercel's gateway search is Perplexity, a third party outside
+  the table. This also closes the gap of section 5.2 where a chat flagged
+  earlier kept web search with approvals off.
+- Every TypeSafe AI role of the send path and the share check is skipped in
+  a flagged chat, including the ones that read only knowledge or search
+  results, as the pre-check says ("TypeSafe AI checks ... are skipped in
+  flagged chats"). `add_memory`, `update_memory` and `create_skill` are
+  `chat.excluded`, so a chat never offers them.
+- Chat search and the FTS index keep flagged chats: the pre-check says
+  nothing about them, and the search runs inside Besidka for the owner. The
+  model-facing tools that copy another chat into a send exclude them.
+- `get_chat` withholds the whole transcript rather than cutting at the flag
+  time, because the flag is chat-wide and a branch copies it.
+- The share opt-in is stored (`chat_shares.google_opt_in_at`) and cleared
+  by every write that brings new Google content, so an opt-in covers only
+  the Google content the owner saw named in the dialog. The tokened file
+  route (`hasShareTokenFileAccess`) applies the same pause. A legacy chat
+  flagged only by a parts scan gets `google_data_at` on its next send (flag
+  repair).
+- A marked item read inside the tool loop of a send without Google data is
+  withheld, not asked about and then flagged as the coordinator's plan
+  described: approvals are decided before a tool runs and cannot see which
+  item the call will return, and a prompt-injected read would otherwise
+  flag a chat permanently. Attaching the item, which the user does, flags
+  the chat before the guard instead.
+- Files made in a flagged chat keep their share grants when the owner opted
+  in: the opt-in covers replies that repeat Google content, and these files
+  are such replies. Google copies stay ungranted.
+- Names-only rendering of Google items in the shared view belongs to the
+  Picker child (`data-drive-file` parts); today a Google copy without a
+  grant is simply dropped from the share.
+- The Gemini paid-tier confirmation is cleared when the Gemini key is
+  replaced, because a new key can sit on another project.
+
+**Open after this child.**
+
+- A Besidka read of a marked item from another chat, in a send that already
+  holds Google data, does not clear the share opt-in or add the item to the
+  names the share dialog lists; only a Google tool result does. Acceptable
+  for now: the owner opted in to sharing Google content in that chat, the
+  item stays out of MCP and other chats, and no Google tool exists yet. The
+  Drive child, which first makes such reads common, records an allowed
+  marked read and persists it through the same flag batch.
+- Qwen's `enable_search` is a request body flag set at send start. A send
+  that starts without Google data and with web search on keeps it for every
+  step, also after a Google result arrives mid-send; only the next send
+  drops it. The same holds for native web search tools of other providers in
+  that first send. Acceptable: Google tools run only under approvals, the
+  approval of a Google read is the user's choice in that send, and the Drive
+  child adds the per-step strip (`prepareStep`) when it registers the first
+  Google tool.
+- Deep research runs the provider's own agent, which searches the web with
+  queries it writes from the conversation. The guard checks the research
+  provider, but those searches leave the allow-list's scope. Acceptable
+  until the custom research track (Phase 3) replaces the provider agent with
+  Besidka's own search loop, where the web search skip applies.
+- Rows written before the migration carry no mark. Acceptable: no Google
+  tool or Google copy existed in production before this child, so no
+  Google-derived row can predate the column.
+- A 403 at send start (a Google copy sent to a refused model) flags the chat
+  but writes no `data-google-data` chunk, so the picker updates on the next
+  load. Acceptable: the server refuses every later send on that model with
+  the same reason; the Picker child marks the chat on the client when the
+  copy is attached.
+- The user can still download a marked artifact or document, copy its
+  text, or paste Google content into another chat: the mark follows stored
+  items, not what the user retypes.
+- Project knowledge text extracted on the client from a Google copy before
+  this child cannot be told apart from other text.
 
 ## 6. Owner runbook: bring your own client
 
@@ -448,10 +573,11 @@ There is no public BYO guide page and no video: a page under
 
 ## 8. Data model
 
-One migration owns the whole phase; no other child generates one. Every
-addition is `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN` (nullable, no SQL
-default) or `CREATE INDEX`, so no existing table is rebuilt. Nothing here has
-a foreign key to `users`; account deletion removes the rows explicitly.
+Two migrations: the phase migration, and the data guard's
+`20261122040503_fuzzy_quasimodo` (four `ALTER TABLE ... ADD COLUMN`, below).
+Every addition is `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN` (nullable, no
+SQL default) or `CREATE INDEX`, so no existing table is rebuilt. Nothing here
+has a foreign key to `users`; account deletion removes the rows explicitly.
 
 `google_connections` (`server/db/schemas/google-connections.ts`), one row per
 user and client mode (unique `(user_id, client_mode)`, index on `user_id`):
@@ -477,6 +603,13 @@ Columns on existing tables:
 | `files.external_modified_at` | timestamp | live sync: re-export when Drive's `modifiedTime` is newer |
 | `files.drive_copy_id` | text | the id of the copy saved to Drive, so a second "Open in Google" or "Save to Google Drive" opens the same copy (BES-283 owner addendum); kept apart from `external_*`, which describe files imported from Google |
 | `keys.paid_tier_confirmed_at` | timestamp | the `gemini-paid-tier-confirmed` condition of the allow-list |
+| `artifacts.google_derived_at` | timestamp | the derived mark (section 5.3): set on create or on any later version written in a flagged or tainted send, never cleared; MCP and Besidka tool filters, the artifact bridge, public links, send-start lookup |
+| `files.google_derived_at` | timestamp | the derived mark on generated files (images, code execution output, `create_file`, rendered documents); `fileHoldsNoGoogleContent`, `isGoogleContentFile`, project knowledge refusal, send-start lookup |
+| `documents.google_derived_at` | timestamp | carries the mark from `create_document` to the file that `finalize` writes later, because the spec lives in R2 and the file row does not exist yet |
+| `chat_shares.google_opt_in_at` | timestamp | the stored share opt-in for a flagged chat; cleared in the batch that persists new Google content |
+
+No index is added: every reader filters rows it already selected by user,
+storage key or id.
 
 `idx_files_user_external` is a partial index on
 `(user_id, external_source, external_id) WHERE external_source IS NOT NULL`,

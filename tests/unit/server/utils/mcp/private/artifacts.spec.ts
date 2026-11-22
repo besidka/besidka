@@ -477,6 +477,79 @@ describe('MCP artifact logic', () => {
     })
   })
 
+  describe('artifacts with Google content', () => {
+    async function createMarked() {
+      const artifact = await createOwned({ title: 'From Drive' })
+
+      testDb.sqlite.prepare(
+        'update artifacts set google_derived_at = 1 where id = ?',
+      ).run(decodeArtifactId(artifact.artifactId))
+
+      return artifact
+    }
+
+    it('hides a marked artifact from MCP list and read', async () => {
+      await createOwned({ title: 'Plain' })
+
+      const marked = await createMarked()
+      const listed = await listMcpArtifacts(context(), {})
+
+      expect(listed.items.map(item => item.title)).toEqual(['Plain'])
+      await expect(getMcpArtifact(context(), { id: marked.artifactId }))
+        .rejects.toMatchObject({ status: 404 })
+    })
+
+    it('withholds it from the Besidka tools of a send without Google data '
+      + 'and lets a flagged send read it', async () => {
+      const marked = await createMarked()
+
+      await expect(getMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId },
+      )).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining('holds content from Google'),
+      })
+      await expect(getMcpArtifact(
+        { ...context(), googleContent: 'allowed' as const },
+        { id: marked.artifactId },
+      )).resolves.toMatchObject({ title: 'From Drive' })
+
+      const listed = await listMcpArtifacts(
+        { ...context(), googleContent: 'allowed' as const },
+        {},
+      )
+
+      expect(listed.items.map(item => item.title)).toEqual(['From Drive'])
+    })
+
+    it('marks an artifact created or updated in a send with Google data',
+      async () => {
+        const created = await createMcpArtifact(
+          { ...context(), isGoogleDerived: () => true },
+          { title: 'Plan', kind: 'html', content: '<p>x</p>' },
+        )
+        const markOf = (id: string) => {
+          return (testDb.sqlite.prepare(
+            'select google_derived_at from artifacts where id = ?',
+          ).get(decodeArtifactId(id)) as {
+            google_derived_at: number | null
+          }).google_derived_at
+        }
+
+        expect(markOf(created.id)).toEqual(expect.any(Number))
+
+        const plain = await createOwned()
+
+        await updateMcpArtifact(
+          { ...context(), isGoogleDerived: () => true },
+          { id: plain.artifactId, content: '<p>y</p>' },
+        )
+
+        expect(markOf(plain.artifactId)).toEqual(expect.any(Number))
+      })
+  })
+
   describe('get_artifact', () => {
     it('returns the latest content and the version numbers', async () => {
       const artifact = await createOwned()

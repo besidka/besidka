@@ -744,6 +744,7 @@ export function getMemoryTools(input: {
   useAccountMemory: boolean | null
   sourceMessageId: string | null
   userMessageText: string | null
+  allowsWrite?: boolean
   budget: ChatSearchBudget
   isApprovedByUser?: (call: {
     toolCallId: string | undefined
@@ -818,7 +819,11 @@ export function getMemoryTools(input: {
     })),
   }
 
-  if (userMessageText === null || userMessageText.trim() === '') {
+  if (
+    input.allowsWrite === false
+    || userMessageText === null
+    || userMessageText.trim() === ''
+  ) {
     return { tools: readTools }
   }
 

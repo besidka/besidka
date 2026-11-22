@@ -27,6 +27,7 @@ function mountGatewayModelItem(
     isFavorite: boolean
     isDetailOpen: boolean
     isRecommended: boolean
+    googleDataReason: string
   }> = {},
 ) {
   return mountSuspended(GatewayModelItem, {
@@ -48,6 +49,39 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
       isAndroid: false,
       isDesktop: true,
     })
+  })
+
+  it('blocks a model that may not receive Google data, with the reason',
+    async () => {
+      const reason = 'This model is not allowed with Google data through a '
+        + 'gateway.'
+      const wrapper = await mountGatewayModelItem(createModel(), {
+        googleDataReason: reason,
+      })
+      const badge = wrapper.get(
+        '[data-testid="gateway-model-google-data-blocked"]',
+      )
+
+      expect(badge.attributes('data-tip')).toBe(reason)
+      expect(wrapper.get('li').attributes('aria-disabled')).toBe('true')
+      expect(wrapper.find('button[aria-label="Choose Claude Opus 5"]')
+        .exists()).toBe(false)
+
+      await wrapper.get('li > div > div').trigger('click')
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+  it('keeps a model selectable without a Google data reason', async () => {
+    const wrapper = await mountGatewayModelItem()
+
+    expect(wrapper.find('[data-testid="gateway-model-google-data-blocked"]')
+      .exists()).toBe(false)
+
+    await wrapper.get('button[aria-label="Choose Claude Opus 5"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('select')).toHaveLength(1)
   })
 
   it('shows a price tier badge instead of a raw per-token price', async () => {

@@ -448,6 +448,10 @@ const { rememberChatMemoryExcluded } = useChatMemoryExclusion()
 
 rememberChatMemoryExcluded(chat.value.slug, chat.value.memoryExcluded)
 
+const { rememberChatGoogleData } = useChatGoogleData()
+
+rememberChatGoogleData(chat.value.slug, chat.value.holdsGoogleData)
+
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
 
 const artifactChatId = computed<string>(() => {

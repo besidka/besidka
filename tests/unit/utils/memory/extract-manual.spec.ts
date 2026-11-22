@@ -362,6 +362,51 @@ describe('manual memory extraction', () => {
       expect(await listEntries()).toHaveLength(0)
     })
 
+    it('skips a chat that holds Google data, before the model call',
+      async () => {
+        const accountChat = await seedChat(testDb.db, userId, {
+          googleDataAt: minutesBefore(90),
+        })
+
+        await seedMessage(testDb.db, accountChat.id, 'user',
+          [textPart(LONG_USER_TEXT)], minutesBefore(70))
+        mockOps([createOp()])
+
+        const result = await runManual(accountChat, {
+          explicit: true,
+          ignoreIdle: true,
+        })
+
+        expect(result).toMatchObject({
+          status: 'skipped',
+          reason: 'memory-excluded',
+        })
+        expect(mocks.generateText).not.toHaveBeenCalled()
+        expect(await listEntries()).toHaveLength(0)
+      })
+
+    it('re-checks the Google data flag after the model call', async () => {
+      const { chat } = await seedProjectChat()
+
+      mocks.generateText.mockImplementation(async () => {
+        await testDb.db.update(schema.chats)
+          .set({ googleDataAt: new Date() })
+
+        return {
+          output: { ops: [createOp()] },
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }
+      })
+
+      const result = await runManual(chat)
+
+      expect(result).toMatchObject({
+        status: 'skipped',
+        reason: 'memory-excluded',
+      })
+      expect(await listEntries()).toHaveLength(0)
+    })
+
     it('ignores the idle and dirty rule', async () => {
       const { chat } = await seedProjectChat({
         activityMinutesAgo: 0,

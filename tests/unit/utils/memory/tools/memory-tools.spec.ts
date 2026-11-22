@@ -50,6 +50,7 @@ describe('memory tools', () => {
     projectDisabled?: boolean
     useAccountMemory?: boolean | null
     userMessageText?: string | null
+    allowsWrite?: boolean
     budget?: ReturnType<typeof createChatSearchBudget>
     db?: typeof testDb.db
     isApprovedByUser?: (call: {
@@ -74,6 +75,9 @@ describe('memory tools', () => {
       userMessageText: overrides.userMessageText === undefined
         ? DEFAULT_MESSAGE
         : overrides.userMessageText,
+      ...(overrides.allowsWrite === undefined
+        ? {}
+        : { allowsWrite: overrides.allowsWrite }),
       budget,
       ...(overrides.isApprovedByUser
         ? { isApprovedByUser: overrides.isApprovedByUser }
@@ -143,6 +147,16 @@ describe('memory tools', () => {
     ])('registers only the read tools when the user text is %s',
       (_label, userMessageText) => {
         const { tools } = build({ userMessageText })
+
+        expect(Object.keys(tools).sort()).toEqual([
+          'memory_list',
+          'memory_read',
+        ])
+      })
+
+    it('registers only the read tools in a chat that holds Google data',
+      () => {
+        const { tools } = build({ allowsWrite: false })
 
         expect(Object.keys(tools).sort()).toEqual([
           'memory_list',

@@ -38,6 +38,7 @@ export const files = snakeCase.table(
     externalId: text(),
     externalModifiedAt: integer({ mode: 'timestamp' }),
     driveCopyId: text(),
+    googleDerivedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_file_user').on(table.id, table.userId),

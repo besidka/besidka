@@ -14,5 +14,7 @@ export function buildMcpArtifactContext(
     clientId: context.clientId,
     logger: context.logger,
     siteUrl: resolveMcpSiteUrl(),
+    googleContent: context.googleContent,
+    isGoogleDerived: context.isGoogleDerived,
   }
 }
