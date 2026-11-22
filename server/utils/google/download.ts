@@ -54,8 +54,9 @@ interface RedirectTarget {
 /**
  * A download redirect may only go one hop, to HTTPS on a Google API host
  * (the bearer token stays) or on a `*.googleusercontent.com` host (the
- * token is dropped: such URLs carry their own authorization, and the
- * bearer token must never reach a content host). Anything else is refused.
+ * token and the resource-key header are dropped: such URLs carry their own
+ * authorization, and neither credential may reach a content host).
+ * Anything else is refused.
  */
 function resolveRedirectTarget(
   location: string,
@@ -89,11 +90,16 @@ function resolveRedirectTarget(
   throw redirectRefused()
 }
 
-function withoutAuthorization(
+const CREDENTIAL_HEADER_NAMES: ReadonlySet<string> = new Set([
+  'authorization',
+  'x-goog-drive-resource-keys',
+])
+
+function withoutCredentials(
   headers: Record<string, string>,
 ): Record<string, string> {
   return Object.fromEntries(Object.entries(headers).filter(([name]) => {
-    return name.toLowerCase() !== 'authorization'
+    return !CREDENTIAL_HEADER_NAMES.has(name.toLowerCase())
   }))
 }
 
@@ -120,18 +126,23 @@ function readErrorReason(text: string): string | null {
   return typeof status === 'string' ? status : null
 }
 
+async function readErrorText(response: Response): Promise<string> {
+  try {
+    return await readCappedText(response, ERROR_BODY_MAX_BYTES)
+  } catch {
+    return ''
+  }
+}
+
 async function readOutcome(
   response: Response,
   maxBytes: number,
 ): Promise<GoogleDownloadResult> {
   if (!response.ok) {
-    const text = await readCappedText(response, ERROR_BODY_MAX_BYTES)
-      .catch(() => '')
-
     return {
       ok: false,
       status: response.status,
-      reason: readErrorReason(text),
+      reason: readErrorReason(await readErrorText(response)),
     }
   }
 
@@ -229,7 +240,7 @@ export async function googleFetchBytes(
       const target = resolveRedirectTarget(location, url)
 
       if (!target.keepsAuthorization) {
-        headers = withoutAuthorization(headers)
+        headers = withoutCredentials(headers)
       }
 
       url = target.url

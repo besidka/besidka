@@ -136,8 +136,11 @@ describe('Drive API calls', () => {
     [403, 'exportSizeLimitExceeded', 'export_too_large'],
     [403, 'downloadRestricted', 'not_downloadable'],
     [403, 'cannotDownloadFile', 'not_downloadable'],
-    [403, 'insufficientFilePermissions', 'not_found'],
-    [403, 'userRateLimitExceeded', 'failed'],
+    [403, 'insufficientFilePermissions', 'no_access'],
+    [403, null, 'no_access'],
+    [403, 'userRateLimitExceeded', 'rate_limited'],
+    [403, 'rateLimitExceeded', 'rate_limited'],
+    [429, null, 'rate_limited'],
     [500, null, 'failed'],
   ] as const)('classifies %s %s as %s', (status, reason, code) => {
     expect(classifyDriveFailure(status, reason)).toBe(code)

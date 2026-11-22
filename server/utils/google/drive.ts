@@ -190,6 +190,13 @@ const NOT_DOWNLOADABLE_REASONS: ReadonlySet<string> = new Set([
   'fileNotDownloadable',
 ])
 
+const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set([
+  'rateLimitExceeded',
+  'userRateLimitExceeded',
+  'sharingRateLimitExceeded',
+  'quotaExceeded',
+])
+
 /**
  * Maps a Drive answer that is not a success to one of the codes the user
  * sees. A 401 on a token that was just minted means Google revoked the
@@ -215,8 +222,12 @@ export function classifyDriveFailure(
     return 'not_downloadable'
   }
 
-  if (status === 403 && reason === 'insufficientFilePermissions') {
-    return 'not_found'
+  if (status === 429 || (reason && RATE_LIMIT_REASONS.has(reason))) {
+    return 'rate_limited'
+  }
+
+  if (status === 403) {
+    return 'no_access'
   }
 
   return 'failed'

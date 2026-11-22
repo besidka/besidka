@@ -9,6 +9,7 @@ import {
   buildDriveCopyName,
   isDriveFolder,
   isGoogleNativeMimeType,
+  sanitizeDriveFileName,
 } from '#shared/utils/google-drive'
 import type {
   DriveExportChoice,
@@ -46,6 +47,9 @@ import { getGoogleAccessToken } from '~~/server/utils/google/tokens'
 import { isStorageFullError } from '~~/server/utils/storage/errors'
 
 type DbClient = ReturnType<typeof useDb>
+
+const REUSE_CANDIDATE_LIMIT = 3
+const REUSE_MIN_REMAINING_MS = 60 * 60 * 1000
 
 export interface DriveImportInput {
   event: Pick<RequestEvent, 'context'>
@@ -129,7 +133,7 @@ async function planCopy(
 
     return {
       mediaType: resolved.mediaType,
-      fileName: metadata.name,
+      fileName: sanitizeDriveFileName(metadata.name),
       officeFormat: resolved.officeFormat,
       exportChoice: null,
     }
@@ -138,6 +142,20 @@ async function planCopy(
   }
 }
 
+function isCopyNewerThanEdit(createdAt: Date, modifiedTime: Date): boolean {
+  const editSecond = Math.floor(modifiedTime.getTime() / 1000)
+
+  return createdAt.getTime() >= (editSecond + 1) * 1000
+}
+
+/**
+ * The newest copy of the same Drive file at the same `modifiedTime` that
+ * has more than an hour left and whose R2 object still exists.
+ * `files.external_modified_at`
+ * keeps whole seconds, so a copy made in the same second as the edit it
+ * carries is never reused: a second edit in that second could not be told
+ * apart from it.
+ */
 async function findReusableCopy(
   context: ItemContext,
   metadata: DriveFileMetadata,
@@ -146,8 +164,9 @@ async function findReusableCopy(
     return null
   }
 
-  const [row] = await context.input.db
+  const rows = await context.input.db
     .select({
+      createdAt: schema.files.createdAt,
       id: schema.files.id,
       storageKey: schema.files.storageKey,
       name: schema.files.name,
@@ -171,13 +190,28 @@ async function findReusableCopy(
       eq(schema.files.externalModifiedAt, metadata.modifiedTime),
       or(
         isNull(schema.files.expiresAt),
-        gt(schema.files.expiresAt, new Date()),
+        gt(
+          schema.files.expiresAt,
+          new Date(Date.now() + REUSE_MIN_REMAINING_MS),
+        ),
       ),
     ))
     .orderBy(desc(schema.files.createdAt))
-    .limit(1)
+    .limit(REUSE_CANDIDATE_LIMIT)
 
-  return row ?? null
+  const storage = useFileStorage()
+
+  for (const { createdAt, ...file } of rows) {
+    if (!isCopyNewerThanEdit(createdAt, metadata.modifiedTime)) {
+      continue
+    }
+
+    if (await storage.head(file.storageKey)) {
+      return file
+    }
+  }
+
+  return null
 }
 
 function assertDownloadResult(
@@ -341,7 +375,7 @@ async function importOne(
   }
 
   if (copy.bytes.byteLength === 0) {
-    return failed(item.id, 'unsupported_type')
+    return failed(item.id, 'empty')
   }
 
   if (plan.officeFormat) {

@@ -362,6 +362,7 @@ describe('POST /api/v1/google/drive/files', () => {
   let sessionUserId: number
   let restoreGoogleConfig: () => void = () => {}
   let stored: Array<{ key: string, size: number, contentType: string }>
+  let missingKeys: Set<string>
 
   function useDrive(files: Record<string, FakeDriveFile> = standardFiles()) {
     drive = createFakeDrive(files)
@@ -437,6 +438,7 @@ describe('POST /api/v1/google/drive/files', () => {
     mocks.itemTokensAllowed = Number.POSITIVE_INFINITY
     mocks.maxStorageBytes = 100 * MEBIBYTE
     stored = []
+    missingKeys = new Set()
     testDb = createMemoryExtractionTestDb()
     kv = createFakeConnectorKv()
     userId = await seedUser(testDb.db)
@@ -458,6 +460,11 @@ describe('POST /api/v1/google/drive/files', () => {
         })
 
         return { key }
+      }),
+      head: vi.fn(async (key: string) => {
+        return missingKeys.has(key)
+          ? null
+          : stored.some(entry => entry.key === key) ? { key } : null
       }),
       delete: vi.fn(async () => undefined),
     }))
@@ -725,12 +732,83 @@ describe('POST /api/v1/google/drive/files', () => {
         })
         drive.serveContent(contentUrl, new Uint8Array([0x25, 0x50]))
 
-        const item = await importOne(PDF_ID)
+        const item = await importOne(PDF_ID, 'key-123')
         const [content] = drive.ofKind('content')
 
         expect(item).toMatchObject({ status: 'imported' })
         expect(content!.url).toBe(contentUrl)
         expect(content!.headers.authorization).toBeUndefined()
+        expect(content!.headers['x-goog-drive-resource-keys']).toBeUndefined()
+        expect(drive.ofKind('media')[0]!.headers['x-goog-drive-resource-keys'])
+          .toBe(`${PDF_ID}/key-123`)
+      })
+
+    it('caps a long name and strips control characters and separators',
+      async () => {
+        const longName = `a/b\\c\u0000\n${'x'.repeat(400)}.pdf`
+
+        useDrive({
+          ...standardFiles(),
+          [PDF_ID]: {
+            ...standardFiles()[PDF_ID]!,
+            metadata: metadata(PDF_ID, 'application/pdf', {
+              name: longName,
+              size: '4',
+            }),
+          },
+        })
+
+        const item = await importOne(PDF_ID)
+
+        expect(item).toMatchObject({ status: 'imported' })
+        expect(item.file.name.length).toBeLessThanOrEqual(255)
+        expect(item.file.name.endsWith('.pdf')).toBe(true)
+        expect(Array.from(item.file.name).some((character) => {
+          return character.charCodeAt(0) < 32
+            || character === '/'
+            || character === '\\'
+        })).toBe(false)
+        expect(item.file.name.startsWith('a b c')).toBe(true)
+      })
+
+    it('says what Drive refused: no access, slow down, empty file',
+      async () => {
+        const answer = (status: number, reason: string) => {
+          drive.fetch.mockImplementation(async () => {
+            return new Response(JSON.stringify({
+              error: { errors: [{ reason }] },
+            }), { status })
+          })
+        }
+
+        answer(403, 'forbidden')
+        expect(await importOne(PDF_ID)).toMatchObject({
+          status: 'failed',
+          code: 'no_access',
+        })
+        answer(403, 'userRateLimitExceeded')
+        expect(await importOne(PDF_ID)).toMatchObject({
+          status: 'failed',
+          code: 'rate_limited',
+        })
+        answer(429, 'rateLimitExceeded')
+        expect(await importOne(PDF_ID)).toMatchObject({
+          status: 'failed',
+          code: 'rate_limited',
+        })
+
+        useDrive({
+          ...standardFiles(),
+          [PDF_ID]: {
+            ...standardFiles()[PDF_ID]!,
+            media: new Uint8Array(0),
+          },
+        })
+        expect(await importOne(PDF_ID)).toMatchObject({
+          status: 'failed',
+          code: 'empty',
+        })
+        expect(await fileRows()).toHaveLength(0)
       })
 
     it('refuses a download redirect to a host that is not Google\'s',
@@ -831,6 +909,7 @@ describe('POST /api/v1/google/drive/files', () => {
       expect(await importOne(BIG_ID)).toMatchObject({
         status: 'failed',
         code: 'too_large',
+        reason: expect.stringContaining('20 MB'),
       })
       expect(drive.ofKind('media')).toHaveLength(0)
     })
@@ -943,6 +1022,100 @@ describe('POST /api/v1/google/drive/files', () => {
       })
 
       expect(await importOne(PDF_ID)).toMatchObject({ status: 'imported' })
+    })
+
+    describe('with a seeded copy', () => {
+      const MODIFIED = '2026-11-20T10:00:00.900Z'
+
+      async function seedCopy(extra: {
+        createdAt: Date
+        expiresAt?: Date
+        storageKey?: string
+      }) {
+        const storageKey = extra.storageKey ?? 'seeded.pdf'
+
+        stored.push({ key: storageKey, size: 4, contentType: 'application/pdf' })
+
+        await testDb.db.insert(schema.files).values({
+          userId,
+          storageKey,
+          name: 'Contract.pdf',
+          size: 4,
+          type: 'application/pdf',
+          externalSource: 'google',
+          externalId: PDF_ID,
+          externalModifiedAt: new Date(MODIFIED),
+          createdAt: extra.createdAt,
+          expiresAt: extra.expiresAt ?? null,
+        })
+      }
+
+      function modifiedAt(value: string) {
+        useDrive({
+          ...standardFiles(),
+          [PDF_ID]: {
+            ...standardFiles()[PDF_ID]!,
+            metadata: metadata(PDF_ID, 'application/pdf', {
+              name: 'Contract.pdf',
+              size: '4',
+              modifiedTime: value,
+            }),
+          },
+        })
+      }
+
+      it('reuses a copy made after the second of the edit', async () => {
+        await seedCopy({ createdAt: new Date('2026-11-20T10:00:01.000Z') })
+        modifiedAt(MODIFIED)
+
+        expect(await importOne(PDF_ID)).toMatchObject({ status: 'reused' })
+        expect(drive.ofKind('media')).toHaveLength(0)
+      })
+
+      it('copies again when the copy came in the second of the edit',
+        async () => {
+          await seedCopy({ createdAt: new Date('2026-11-20T10:00:00.000Z') })
+          modifiedAt(MODIFIED)
+
+          expect(await importOne(PDF_ID)).toMatchObject({ status: 'imported' })
+        })
+
+      it('copies again when the stored object is gone from R2', async () => {
+        await seedCopy({ createdAt: new Date('2026-11-20T10:00:05.000Z') })
+        missingKeys.add('seeded.pdf')
+        modifiedAt(MODIFIED)
+
+        expect(await importOne(PDF_ID)).toMatchObject({ status: 'imported' })
+      })
+
+      it('copies again when the copy expires within the hour', async () => {
+        await seedCopy({
+          createdAt: new Date('2026-11-20T10:00:05.000Z'),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        })
+        modifiedAt(MODIFIED)
+
+        expect(await importOne(PDF_ID)).toMatchObject({ status: 'imported' })
+      })
+
+      it('falls through to an older copy whose object still exists',
+        async () => {
+          await seedCopy({
+            createdAt: new Date('2026-11-20T10:00:05.000Z'),
+            storageKey: 'older.pdf',
+          })
+          await seedCopy({
+            createdAt: new Date('2026-11-20T10:00:09.000Z'),
+            storageKey: 'newer.pdf',
+          })
+          missingKeys.add('newer.pdf')
+          modifiedAt(MODIFIED)
+
+          expect(await importOne(PDF_ID)).toMatchObject({
+            status: 'reused',
+            file: { storageKey: 'older.pdf' },
+          })
+        })
     })
 
     it('returns one result per file when some fail', async () => {

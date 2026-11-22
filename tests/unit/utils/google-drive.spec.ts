@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DRIVE_FILE_PART_TYPE,
+  GOOGLE_DRIVE_COPY_LABEL,
   GOOGLE_DRIVE_EXPORTS,
   GOOGLE_DRIVE_FAILURE_REASONS,
   GOOGLE_PICKER_FRAME_SOURCES,
@@ -12,6 +13,7 @@ import {
   isDriveFileId,
   isDriveResourceKey,
   isGooglePickerPagePath,
+  sanitizeDriveFileName,
   toDriveFilePart,
   withDriveFileParts,
 } from '#shared/utils/google-drive'
@@ -148,13 +150,45 @@ describe('copy names and export choices', () => {
       expect(reason.length).toBeGreaterThan(10)
     }
   })
+
+  it('states the real limits in the size reasons', () => {
+    expect(GOOGLE_DRIVE_FAILURE_REASONS.too_large).toContain('20 MB')
+    expect(GOOGLE_DRIVE_FAILURE_REASONS.export_too_large).toContain('10 MB')
+  })
+
+  it('does not promise a retention period in the copy label', () => {
+    expect(GOOGLE_DRIVE_COPY_LABEL).not.toMatch(/\d/)
+  })
+})
+
+describe('sanitizeDriveFileName', () => {
+  it('turns control characters and separators into single spaces', () => {
+    expect(sanitizeDriveFileName('a/b\\c\u0000\n\td‮e.txt'))
+      .toBe('a b c d e.txt')
+  })
+
+  it('falls back when nothing printable is left', () => {
+    expect(sanitizeDriveFileName('\u0000/\\\n')).toBe('Google Drive file')
+  })
+
+  it('keeps a short extension when it cuts a long name', () => {
+    const name = sanitizeDriveFileName(`${'x'.repeat(400)}.pdf`)
+
+    expect(name).toHaveLength(255)
+    expect(name.endsWith('.pdf')).toBe(true)
+  })
+
+  it('cleans the base of an export name too', () => {
+    expect(buildDriveCopyName('Plan/2026\u0000', { extension: 'md' }))
+      .toBe('Plan 2026.md')
+  })
 })
 
 describe('Picker page and frame sources', () => {
-  it('allows only the two Google frame hosts, on chat pages only', () => {
+  it('allows only the Picker path, on chat pages only', () => {
     expect(GOOGLE_PICKER_FRAME_SOURCES).toEqual([
-      'https://docs.google.com',
-      'https://drive.google.com',
+      'https://docs.google.com/picker',
+      'https://docs.google.com/picker/',
     ])
     expect(isGooglePickerPagePath('/chats/abc')).toBe(true)
     expect(isGooglePickerPagePath('/chats/new?x=1')).toBe(true)

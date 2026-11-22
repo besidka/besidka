@@ -14,8 +14,8 @@ export const GOOGLE_DRIVE_FOLDER_MIME_TYPE
 export const GOOGLE_DRIVE_NATIVE_MIME_PREFIX = 'application/vnd.google-apps.'
 
 export const GOOGLE_PICKER_FRAME_SOURCES: readonly string[] = [
-  'https://docs.google.com',
-  'https://drive.google.com',
+  'https://docs.google.com/picker',
+  'https://docs.google.com/picker/',
 ]
 
 export function isGooglePickerPagePath(path: string): boolean {
@@ -24,10 +24,9 @@ export function isGooglePickerPagePath(path: string): boolean {
   return pathname.startsWith('/chats/')
 }
 
-export const GOOGLE_DRIVE_COPY_LABEL
-  = 'Saves a copy in your Besidka files for 30 days'
+export const GOOGLE_DRIVE_COPY_LABEL = 'Saves a copy in your Besidka files'
 export const GOOGLE_DRIVE_BRAND_NAME = 'Google Drive'
-export const GOOGLE_DRIVE_MARK_ICON = 'simple-icons:googledrive'
+export const GOOGLE_DRIVE_ICON = 'lucide:hard-drive'
 
 export interface DriveExportChoice {
   mimeType: string
@@ -82,6 +81,9 @@ export type DriveImportFailureCode
     | 'export_too_large'
     | 'storage_full'
     | 'reauthorize'
+    | 'no_access'
+    | 'rate_limited'
+    | 'empty'
     | 'failed'
 
 export type DriveImportedFile = Pick<
@@ -241,12 +243,57 @@ export function withDriveFileParts<TPart>(
   })
 }
 
+const GOOGLE_DRIVE_FALLBACK_NAME = 'Google Drive file'
+const GOOGLE_DRIVE_EXTENSION_KEEP_MAX = 16
+
+function isUnsafeNameCharacter(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0
+  const isControl = code < 32
+    || (code >= 127 && code <= 159)
+    || (code >= 0x200b && code <= 0x200f)
+    || (code >= 0x2028 && code <= 0x202e)
+    || (code >= 0x2066 && code <= 0x2069)
+    || code === 0xfeff
+
+  return isControl || character === '/' || character === '\\'
+}
+
+/**
+ * A Drive name made safe to store: control characters and path separators
+ * become spaces, runs of whitespace collapse, and a name longer than
+ * `GOOGLE_DRIVE_NAME_MAX` is cut in the base so a short extension survives.
+ */
+export function sanitizeDriveFileName(driveName: string): string {
+  const cleaned = Array.from(driveName, (character) => {
+    return isUnsafeNameCharacter(character) ? ' ' : character
+  }).join('').replace(/\s+/g, ' ').trim()
+
+  if (!cleaned) {
+    return GOOGLE_DRIVE_FALLBACK_NAME
+  }
+
+  if (cleaned.length <= GOOGLE_DRIVE_NAME_MAX) {
+    return cleaned
+  }
+
+  const dotIndex = cleaned.lastIndexOf('.')
+  const extension = dotIndex > 0
+    && cleaned.length - dotIndex <= GOOGLE_DRIVE_EXTENSION_KEEP_MAX
+    ? cleaned.slice(dotIndex)
+    : ''
+
+  return `${cleaned.slice(0, GOOGLE_DRIVE_NAME_MAX - extension.length)}`
+    + extension
+}
+
 export function buildDriveCopyName(
   driveName: string,
   choice: Pick<DriveExportChoice, 'extension' | 'nameSuffix'>,
 ): string {
   const suffix = `${choice.nameSuffix ?? ''}.${choice.extension}`
-  const base = driveName.slice(0, GOOGLE_DRIVE_NAME_MAX - suffix.length)
+  const base = sanitizeDriveFileName(driveName)
+    .slice(0, GOOGLE_DRIVE_NAME_MAX - suffix.length)
+    .trimEnd()
 
   return `${base}${suffix}`
 }
@@ -259,9 +306,15 @@ export const GOOGLE_DRIVE_FAILURE_REASONS: Readonly<
   folder: 'Folders cannot be attached. Pick the files inside it.',
   unsupported_type: 'This kind of file cannot be attached.',
   not_downloadable: 'The owner of this file does not allow downloading it.',
-  too_large: 'This file is too large to attach.',
+  too_large: 'This file is too large to attach. The limit is '
+    + `${GOOGLE_DRIVE_FILE_MAX_BYTES / (1024 * 1024)} MB.`,
   export_too_large: 'Google Drive cannot export this file because it is '
-    + 'larger than 10 MB.',
+    + `larger than ${GOOGLE_DRIVE_EXPORT_MAX_BYTES / (1024 * 1024)} MB.`,
+  no_access: 'Besidka has no access to this file. Pick it again in Google '
+    + 'Drive to give access.',
+  rate_limited: 'Google Drive asked Besidka to slow down. Try again in a '
+    + 'moment.',
+  empty: 'This file is empty.',
   storage_full: 'Your storage is full. Free space on the Storage page.',
   reauthorize: 'Google no longer accepts the connection. Reconnect Google '
     + 'Drive on the API Keys page.',
