@@ -1635,6 +1635,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/routes/waf-blocked-paths.spec.ts',
     'tests/unit/components/Profile/Google/Connection.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
   ]
 
   const connectorsStorageTests = [
