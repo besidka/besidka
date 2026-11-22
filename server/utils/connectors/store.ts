@@ -352,7 +352,7 @@ export async function assertConnectorCapacity(
   db: DbClient,
   userId: number,
 ): Promise<void> {
-  const [row] = await db.select({ total: sql<number>`count(*)` })
+  const [row] = await db.select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(schema.connectors)
     .where(eq(schema.connectors.userId, userId))
 
@@ -1049,10 +1049,10 @@ export async function countConnectorToolSettings(
 ): Promise<Map<string, ConnectorToolCounts>> {
   const rows = await db.select({
     connectorId: schema.connectorToolSettings.connectorId,
-    total: sql<number>`count(*)`,
+    total: sql<number>`count(*)`.mapWith(Number),
     enabled: sql<number>`coalesce(sum(case when ${
       schema.connectorToolSettings.enabled
-    } then 1 else 0 end), 0)`,
+    } then 1 else 0 end), 0)`.mapWith(Number),
   })
     .from(schema.connectorToolSettings)
     .where(and(
@@ -1078,7 +1078,7 @@ export async function countConnectorToolCallsSince(
   connectorId: string,
   since: Date,
 ): Promise<number> {
-  const [row] = await db.select({ total: sql<number>`count(*)` })
+  const [row] = await db.select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(schema.connectorToolCalls)
     .where(and(
       eq(schema.connectorToolCalls.userId, userId),

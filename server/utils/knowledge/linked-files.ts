@@ -165,7 +165,7 @@ export async function findKnowledgeTextTargetsForFile(
   const rows = await useDb()
     .select({
       projectId: items.projectId,
-      itemId: sql<number>`${items.id}`,
+      itemId: sql<number>`${items.id}`.mapWith(Number),
     })
     .from(items)
     .innerJoin(schema.files, eq(schema.files.id, items.fileId))
