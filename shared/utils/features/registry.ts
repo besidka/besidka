@@ -233,6 +233,7 @@ const featureList = [
     title: 'Google Drive',
     description: 'Attach files from Google Drive.',
     optIn: 'required',
+    available: true,
   }),
   internalFeature({
     key: 'google.calendar',

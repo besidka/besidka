@@ -161,9 +161,12 @@ behaves exactly as before C-6 (`docs/connectors.md` section 7.6).
 and `spend: 'none'`: it spends nothing, and the opt-in is the user's consent
 to let a model use their Besidka tools, with a permission for each tool
 (`docs/besidka-tools.md`).
-The four `google.*` flags (Phase 4b, `docs/google.md`) stay
-`available: false` at stage `internal` and carry `optIn: 'required'` with
-`spend: 'none'`: each one sends the user's Google data to Google or, through a
+The four `google.*` flags (Phase 4b, `docs/google.md`) stay at stage
+`internal` and carry `optIn: 'required'` with `spend: 'none'`.
+`google.drive` is `available: true` since the connections child (the
+connection flow, the Google tab on API Keys and the routes under
+`/api/v1/google/`); the other three stay `available: false` until their
+children ship. Each one sends the user's Google data to Google or, through a
 chat, to a model provider, so the user opts in before any of it runs
 (`docs/legal/prechecks/google.md`). `google.calendar` and `google.byo` are
 children of `google.drive`, and `google.gmail` is a child of `google.byo`, the

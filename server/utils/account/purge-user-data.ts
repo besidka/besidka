@@ -111,6 +111,8 @@ export interface PurgeUserDataResult {
  *     recently updated chats list; any other approval key expires within
  *     24 hours,
  *   - Google connections: the `google_connections` rows (no FK to `users`),
+ *     after a best-effort revocation of every stored grant at Google under
+ *     a ten-second deadline,
  *   - KV cache entries holding file bytes, storage quota and the usage
  *     stats of every period (`usage-stats:<userId>:<period>`),
  *   - KV session records: `getSession` answers from `secondaryStorage` before
@@ -337,7 +339,9 @@ export async function purgeUserData(
   >
 
   try {
-    googleConnectionPurge = await purgeUserGoogleConnections(userId, db)
+    googleConnectionPurge = await purgeUserGoogleConnections(userId, db, {
+      logger,
+    })
   } catch (exception) {
     logger.set({
       accountPurge: {

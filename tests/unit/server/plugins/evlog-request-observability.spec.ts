@@ -159,6 +159,25 @@ describe('connector OAuth callback query stripping', () => {
   })
 })
 
+describe('Google OAuth callback query stripping', () => {
+  const callbackPath = '/api/v1/google/oauth/callback'
+    + '?code=google-code-secret&state=google-state-secret'
+
+  it('keeps the code and the state out of every drained field', () => {
+    const context = {
+      request: { method: 'GET', path: callbackPath },
+      headers: {},
+      event: { path: callbackPath },
+    }
+
+    enrich(context)
+
+    expect(context.request.path).toBe('/api/v1/google/oauth/callback')
+    expect(JSON.stringify(context)).not.toContain('google-code-secret')
+    expect(JSON.stringify(context)).not.toContain('google-state-secret')
+  })
+})
+
 describe('artifact share token redaction', () => {
   const TOKEN = 'Q2hhbmdlTWVQbGVhc2VJdHNBU2VjcmV0VG9rZW4xMjM0NQ'
 
