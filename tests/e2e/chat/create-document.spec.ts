@@ -159,12 +159,12 @@ async function openGeneratedDocuments(page: Page): Promise<void> {
   })
   await page.getByTestId('chat-input-tools-trigger').click()
 
-  const libraryAction = page
+  const attachAction = page
     .getByTestId('chat-input-tools-panel')
-    .getByTestId('tools-action-library')
+    .getByTestId('tools-action-attach')
 
-  await expect(libraryAction).toBeVisible()
-  await libraryAction.click()
+  await expect(attachAction).toBeVisible()
+  await attachAction.click()
   await expect(page.getByTestId('files-modal')).toBeVisible()
   await page.getByRole('radio', {
     name: 'Select existing files',

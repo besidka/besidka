@@ -172,7 +172,7 @@ describe('ChatInput/ToolsMenu', () => {
     expect(
       wrapper.findAll('[data-section="add"] [data-testid="tools-project"]'),
     ).toHaveLength(1)
-    expect(wrapper.get('[data-testid="tools-action-library"]').text())
+    expect(wrapper.get('[data-testid="tools-action-attach"]').text())
       .toContain('2')
   })
 
@@ -183,13 +183,13 @@ describe('ChatInput/ToolsMenu', () => {
       image: { supported: false },
       project: { visible: false },
       memory: { excluded: null },
-      files: { isImageInputSupported: false },
     })
 
     await open(wrapper)
 
     expect(sectionIds(wrapper)).toEqual(['steps', 'add'])
     expect(has(wrapper, 'tools-action-generated')).toBe(false)
+    expect(has(wrapper, 'tools-action-library')).toBe(false)
   })
 
   it('shows only the deep research note and lower rows for a research '
@@ -337,7 +337,7 @@ describe('ChatInput/ToolsMenu', () => {
       await open(popover)
 
       expect(has(popover, 'tools-action-artifacts')).toBe(false)
-      expect(has(popover, 'tools-action-library')).toBe(true)
+      expect(has(popover, 'tools-action-attach')).toBe(true)
 
       isPopoverLayout.value = false
 
@@ -346,7 +346,7 @@ describe('ChatInput/ToolsMenu', () => {
       await open(sheet)
 
       expect(has(sheet, 'tools-action-artifacts')).toBe(false)
-      expect(has(sheet, 'tools-action-library')).toBe(true)
+      expect(has(sheet, 'tools-action-attach')).toBe(true)
     })
 
   it('closes and asks for the artifact picker with access, in both layouts',

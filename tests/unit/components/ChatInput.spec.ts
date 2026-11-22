@@ -3479,17 +3479,9 @@ describe('ChatInput.client', () => {
       ).toBe('false')
 
       await openToolsPanel(wrapper)
-      await wrapper.get('[data-testid="tools-action-library"]')
-        .trigger('click')
 
-      expect(filesModalOpenMock).toHaveBeenLastCalledWith('select', undefined)
-
-      await openToolsPanel(wrapper)
-      await wrapper.get('[data-testid="tools-action-generated"]')
-        .trigger('click')
-
-      expect(filesModalOpenMock)
-        .toHaveBeenLastCalledWith('select', 'assistant')
+      expect(hasTestId(wrapper, 'tools-action-library')).toBe(false)
+      expect(hasTestId(wrapper, 'tools-action-generated')).toBe(false)
     })
 
     it('opens the project picker and labels the row by chat state',
@@ -4109,7 +4101,7 @@ describe('ChatInput.client', () => {
 
       await openToolsPanel(wrapper)
 
-      expect(hasTestId(wrapper, 'tools-action-library')).toBe(true)
+      expect(hasTestId(wrapper, 'tools-action-attach')).toBe(true)
       expect(hasTestId(wrapper, 'tools-action-artifacts')).toBe(false)
       expect(getPicker(wrapper).exists()).toBe(false)
       expect(wrapper.text()).not.toContain('Add artifact')
