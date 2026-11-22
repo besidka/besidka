@@ -1046,7 +1046,10 @@ breach runbook (`docs/legal/breach-runbook.md`, sections 2.2, 2.5 and 3).
   notice at least 30 days before a material change takes effect, so the owner
   should decide on the notice before merging the `content/legal/` files, or
   accept that the text is published first and the notice follows (the features
-  stay at `internal`, so nothing it describes reaches users first).
+  stay at `internal`, so nothing it describes reaches users first). As of
+  2026-11-22 both facts stand: the owner decided on 2026-11-16 to update the
+  texts without notice emails, and the `connectors` flag is `internal` in
+  `shared/utils/features/registry.ts`.
 - **What the owner decides.** Whether and when to announce connectors, in
   `/admin/legal`. The pre-check suggests the id `2026-12-connectors`, 30 days
   between `publishedAt` and `effectiveAt`, and five summary bullets (the new
@@ -1135,8 +1138,8 @@ residual items 33 to 36.
   says material, and several items are clearly met.
 - **Revision record.** The Privacy Policy record moves to the new hash and
   keeps its `material` classification and its existing `noticeId`, with a note
-  that the Phase 4 text is not described by that notice. The Terms and Cookie
-  Policy are unchanged, so their hashes stay.
+  that the Phase 4 text is not described by that notice. The Cookie Policy is
+  unchanged, so its hash stays; the Terms record moves as described below.
 - **Terms of Use: written, material.** A new "Skills" section (the
   right-to-use promise for "create, paste or import", no review by Besidka,
   scripts under the provider's terms like any code run there, private skills
@@ -1164,10 +1167,10 @@ residual items 33 to 36.
   is needed" would close DPIA residual item 34. Changing the text needs a
   `CONNECTOR_CONSENT_VERSION` bump, which re-asks every connector, so it is the
   owner's call.
-- **Public copy that now reads wrong** (not legal pages, not edited here):
+- **Public copy that read wrong** (not legal pages):
   `content/key-guides/typesafe-ai-api-key.md` and `content/guides/memory.md`
-  say every TypeSafe AI check is on once the key is saved; Skill selection is
-  off by default.
+  said every TypeSafe AI check is on once the key is saved; Skill selection is
+  off by default. Both pages were corrected in this PR.
 - **No change to the Cookie Policy.** No browser storage was added by the
   connectors page, directory, modes or the skills screens (checked by grep
   across `app/` on `main` and on `feat/connectors-page` for `localStorage`,

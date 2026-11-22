@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '99da70011898afc2748eee1ce25c8d8b50060b4a1c8f0fa3e471a8674bf1af57',
+    hash: '8642e241ea8e5142ad8a438d4b44cf6331f79b705191f64f245b81e11a294620',
     classification: 'material',
     noticeId: '2026-11-support-requests',
     note: 'Support requests (new purpose): support@besidka.com, the debug '
@@ -51,10 +51,16 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'without asking after content from another source and in the delete '
       + 'and share group, tools grouped by kind, long tasks in up to 10 '
       + 'rounds while the chat is open); part of the connectors text above '
-      + 'and NOT described by the notice id on this record.',
+      + 'and NOT described by the notice id on this record. After review: a '
+      + 'tool the server labels read-only runs without asking on that '
+      + 'unverifiable label, images connector tools return are kept with '
+      + 'the chat as files, connector consent is withdrawn in the '
+      + 'connector\'s settings, and support emails are an eighth limit of '
+      + 'account deletion; also NOT described by that notice id, which is '
+      + 'provisional.',
   },
   'terms-of-use': {
-    hash: '054f5c415ce8cfd8b04aa76ca80dcec976522d6709dcb35e9e7f8d598043df24',
+    hash: '9094d1ce24d1692ce6b6ae1935fdfd121a222b685b5c9be31ba90b5f290c226d',
     classification: 'material',
     noticeId: '2026-11-support-requests',
     note: 'Contact: support@besidka.com for help with the app, with a link '
@@ -82,7 +88,10 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'says an allowed tool, including one that deletes or shares, runs '
       + 'without asking even after outside text in the same message (owner '
       + 'decision of 2026-11-20); NOT described by the notice id on this '
-      + 'record.',
+      + 'record, which is provisional. After review, Who I am and Contact '
+      + 'say the privacy address covers everything except help with the '
+      + 'app, which has the support address (a clarification of the '
+      + 'support text).',
   },
   'cookie-policy': {
     hash: '23698e9dfcd63b36e96015181acd14ee63db8d28cf75e09ea09993897450f58c',

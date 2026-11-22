@@ -13,7 +13,7 @@ The hosted Besidka service at **besidka.com** is provided by **Serhii Chernenko*
 - Email: **:privacy-email-link{}**
 - Location: **Poland (European Union)**
 
-That one address handles everything — general questions, privacy requests, reports of illegal content, and inquiries from authorities. It is read by a person, not a bot, and it is the fastest way to reach me.
+That one address handles everything except help with the app itself, which has its own address (see [Contact](#contact)) — general questions, privacy requests, reports of illegal content, and inquiries from authorities. It is read by a person, not a bot, and it is the fastest way to reach me.
 
 In these terms, "I" and "me" mean the person above, and "you" means the person using the service.
 
@@ -380,7 +380,7 @@ I would much rather sort a problem out by email first. Write to **:privacy-email
 
 ## Contact
 
-One address covers everything in these terms — general questions, privacy and data protection requests, reports of illegal content, and inquiries from authorities:
+One address covers everything in these terms except help with the app itself — general questions, privacy and data protection requests, reports of illegal content, and inquiries from authorities:
 
 **:privacy-email-link{}**
 
