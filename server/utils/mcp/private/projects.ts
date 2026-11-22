@@ -258,7 +258,7 @@ async function countMcpProjectMemoryEntries(
   userId: number,
   projectPublicId: string,
 ): Promise<number> {
-  const counted = await db.select({ total: sql<number>`count(*)` })
+  const counted = await db.select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(schema.memoryEntries)
     .where(and(
       eq(schema.memoryEntries.userId, userId),

@@ -99,7 +99,7 @@ export default defineEventHandler(async (event) => {
             and ${schema.documents.userId} = ${schema.files.userId}
             and ${schema.documents.status} = 'ready'
           limit 1
-        )`,
+        )`.mapWith(Number),
         documentCreatedVia: sql<DocumentCreatedVia | null>`(
           select ${schema.documents.createdVia} from ${schema.documents}
           where ${schema.documents.fileId} = ${schema.files.id}
@@ -113,7 +113,7 @@ export default defineEventHandler(async (event) => {
             and ${schema.documents.userId} = ${schema.files.userId}
             and ${schema.documents.status} = 'ready'
           limit 1
-        )`,
+        )`.mapWith(Number),
       })
       .from(schema.files)
       .where(whereConditions)
@@ -121,7 +121,7 @@ export default defineEventHandler(async (event) => {
       .offset(offset)
       .limit(limit),
     db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(schema.files)
       .where(whereConditions)
       .get(),

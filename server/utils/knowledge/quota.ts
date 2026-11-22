@@ -18,7 +18,7 @@ export async function getUserKnowledgeTextBytes(
     .select({
       used: sql<number>`coalesce(
         sum(${schema.projectKnowledgeItems.textBytes}), 0
-      )`,
+      )`.mapWith(Number),
     })
     .from(schema.projectKnowledgeItems)
     .where(eq(schema.projectKnowledgeItems.userId, userId))

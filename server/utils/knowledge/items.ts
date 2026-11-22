@@ -79,7 +79,7 @@ export async function countUserKnowledgeItems(
   userId: number,
 ): Promise<number> {
   const row = await useDb()
-    .select({ total: sql<number>`count(*)` })
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(schema.projectKnowledgeItems)
     .where(eq(schema.projectKnowledgeItems.userId, userId))
     .get()

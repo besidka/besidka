@@ -204,7 +204,7 @@ export async function getArtifactUsageBytes(
 ): Promise<number> {
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${schema.artifacts.totalBytes}), 0)`,
+      total: sql<number>`coalesce(sum(${schema.artifacts.totalBytes}), 0)`.mapWith(Number),
     })
     .from(schema.artifacts)
     .where(eq(schema.artifacts.userId, userId))

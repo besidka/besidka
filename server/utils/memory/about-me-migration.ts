@@ -71,7 +71,7 @@ async function isAccountMemoryFull(
   userId: number,
 ): Promise<boolean> {
   const [counted] = await db
-    .select({ total: sql<number>`count(*)` })
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(schema.memoryEntries)
     .where(and(
       eq(schema.memoryEntries.userId, userId),

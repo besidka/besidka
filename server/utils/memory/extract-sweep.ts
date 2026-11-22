@@ -110,7 +110,7 @@ const rankedColumns = {
   userId: schema.chats.userId,
   attemptedAt: schema.chats.memoryExtractionAttemptedAt,
   activityAt: schema.chats.activityAt,
-  userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0), ${schema.chats.activityAt})`.as('user_rank'),
+  userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0), ${schema.chats.activityAt})`.mapWith(Number).as('user_rank'),
 }
 
 function memoryIsNotOff() {

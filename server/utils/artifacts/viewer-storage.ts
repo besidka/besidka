@@ -86,8 +86,8 @@ export async function readArtifactStorageTotals(
 ): Promise<ArtifactStorageTotals> {
   const [row] = await scope.db
     .select({
-      keys: sql<number>`count(*)`,
-      bytes: sql<number>`coalesce(sum(${schema.artifactStorage.bytes}), 0)`,
+      keys: sql<number>`count(*)`.mapWith(Number),
+      bytes: sql<number>`coalesce(sum(${schema.artifactStorage.bytes}), 0)`.mapWith(Number),
     })
     .from(schema.artifactStorage)
     .where(scopeCondition(scope))
