@@ -86,6 +86,7 @@
 
 <script setup lang="ts">
 import { getBesidkaToolPermissionsPath } from '~/utils/besidka-tool-permissions'
+import { GOOGLE_EGRESS_GRANT_LABEL } from '#shared/utils/google-tool-approvals'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
@@ -123,6 +124,10 @@ onBeforeUnmount(() => {
 })
 
 function scopeLabel(grant: ToolApprovalGrantItem): string {
+  if (grant.source === 'google-egress') {
+    return GOOGLE_EGRESS_GRANT_LABEL
+  }
+
   return grant.scope === 'always'
     ? 'Always allowed, in every chat'
     : 'Allowed in this chat'

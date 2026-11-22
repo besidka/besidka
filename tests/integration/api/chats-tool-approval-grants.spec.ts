@@ -199,6 +199,65 @@ describe('chat tool approval grant routes', () => {
     expect(JSON.stringify(result)).not.toContain('a'.repeat(64))
   })
 
+  it('lists Google read and egress grants with plain labels, and Reset '
+    + 'clears them', async () => {
+    const store = await import('~~/server/utils/connectors/store')
+    const { buildExposedToolName } = await import(
+      '~~/server/utils/connectors/tool-definitions'
+    )
+    const { addBesidkaChatGrant } = await import(
+      '~~/server/utils/besidka-tools/chat-settings'
+    )
+    const [connector] = await store.listConnectors(testDb.db, userId)
+    const exposedName = await buildExposedToolName(
+      connector!.slug,
+      'update_issue',
+    )
+
+    await store.upsertConnectorChatSettings(testDb.db, {
+      userId,
+      chatPublicId: chat.id,
+      connectorId,
+      enabled: true,
+      alwaysAllowTools: {
+        [`google-egress:${exposedName}`]: 'b'.repeat(64),
+      },
+    })
+    await addBesidkaChatGrant(testDb.db, userId, chat.id, {
+      toolName: 'google__drive_search',
+      definitionHash: 'c'.repeat(64),
+    })
+
+    const result = await call(listPath)
+
+    expect(result.grants).toEqual(expect.arrayContaining([
+      {
+        scope: 'chat',
+        connectorId,
+        connectorTitle: 'Linear',
+        toolName: 'update_issue',
+        source: 'google-egress',
+      },
+      {
+        scope: 'chat',
+        connectorId: '',
+        connectorTitle: 'Google',
+        toolName: 'google__drive_search',
+        source: 'google',
+      },
+    ]))
+    expect(JSON.stringify(result)).not.toContain('c'.repeat(64))
+
+    await call(resetPath)
+
+    const sources = (await call(listPath)).grants.map((grant: {
+      source?: string
+    }) => grant.source)
+
+    expect(sources).not.toContain('google')
+    expect(sources).not.toContain('google-egress')
+  })
+
   it('resets only the chat grants and keeps the connector on', async () => {
     expect(await call(resetPath)).toEqual({ ok: true })
 
