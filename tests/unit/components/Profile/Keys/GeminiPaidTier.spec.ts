@@ -100,4 +100,21 @@ describe('Profile/Keys/GeminiPaidTier', () => {
     expect(mocks.errorMessage).toHaveBeenCalled()
     expect((input.element as HTMLInputElement).checked).toBe(false)
   })
+
+  it('keeps the saved box when the refresh after a save fails', async () => {
+    mocks.refresh.mockRejectedValue(new Error('offline'))
+
+    const wrapper = await mountSuspended(GeminiPaidTier)
+    const input = wrapper.get('[data-testid="gemini-paid-tier-toggle"]')
+
+    await input.setValue(true)
+    await flushPromises()
+    await wrapper.vm.$forceUpdate()
+    await flushPromises()
+
+    expect(mocks.successMessage).toHaveBeenCalled()
+    expect(mocks.errorMessage).not.toHaveBeenCalled()
+    expect((input.element as HTMLInputElement).checked).toBe(true)
+    expect(input.attributes('disabled')).toBeUndefined()
+  })
 })

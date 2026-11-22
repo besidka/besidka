@@ -26,13 +26,12 @@ vi.mock('~~/server/utils/jev/roles', () => ({
 const CHAT_SLUG = '01ARZ3NDEKTSV4RRFFQ69G5FB0'
 
 function createDb(googleDataAt: Date | null) {
-  const insertValues = vi.fn(() => ({
-    onConflictDoUpdate: vi.fn(() => ({
-      returning: vi.fn(() => ({
-        get: vi.fn(async () => ({ id: 'share-1', slug: 'share-slug' })),
-      })),
+  const onConflictDoUpdate = vi.fn((_config: unknown) => ({
+    returning: vi.fn(() => ({
+      get: vi.fn(async () => ({ id: 'share-1', slug: 'share-slug' })),
     })),
   }))
+  const insertValues = vi.fn((_values: unknown) => ({ onConflictDoUpdate }))
 
   return {
     db: {
@@ -47,6 +46,7 @@ function createDb(googleDataAt: Date | null) {
       })),
     },
     insertValues,
+    onConflictDoUpdate,
   }
 }
 
@@ -85,7 +85,12 @@ async function share(
     error = exception
   }
 
-  return { error, response, insertValues: created.insertValues }
+  return {
+    error,
+    response,
+    insertValues: created.insertValues,
+    onConflictDoUpdate: created.onConflictDoUpdate,
+  }
 }
 
 describe('sharing a chat that holds Google data', () => {
@@ -145,11 +150,35 @@ describe('sharing a chat that holds Google data', () => {
     })
   })
 
+  it('stores the opt-in and forces indexing off, on create and re-share',
+    async () => {
+      const result = await share(new Date(1_700_000_000_000), {
+        includeGoogleContent: true,
+        indexable: true,
+      })
+      const values = result.insertValues.mock.calls[0]?.[0] as unknown as
+        Record<string, unknown>
+      const onConflict = result.onConflictDoUpdate.mock.calls[0]?.[0] as
+        unknown as { set: Record<string, unknown> }
+
+      expect(values).toMatchObject({
+        indexable: false,
+        googleOptInAt: expect.any(Date),
+      })
+      expect(onConflict.set).toMatchObject({
+        indexable: false,
+        googleOptInAt: expect.any(Date),
+      })
+      expect(result.response).toMatchObject({ indexable: false })
+    })
+
   it('needs no opt-in for a chat without Google data', async () => {
-    const result = await share(null)
+    const result = await share(null, { indexable: true })
+    const values = result.insertValues.mock.calls[0]?.[0] as unknown as
+      Record<string, unknown>
 
     expect(result.error).toBeNull()
-    expect(result.insertValues).toHaveBeenCalled()
+    expect(values).toMatchObject({ indexable: true, googleOptInAt: null })
   })
 })
 

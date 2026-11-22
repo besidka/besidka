@@ -52,6 +52,7 @@ function createFetcher(files: FetchedFiles) {
 async function run(options: {
   files: FetchedFiles
   remainingFileSlots?: number
+  googleDerived?: boolean
 }) {
   const { persistContainerFiles } = await import(
     '~~/server/utils/code-execution/persist-container-files'
@@ -66,6 +67,7 @@ async function run(options: {
     userId: 7,
     apiKey: 'user-key',
     remainingFileSlots: options.remainingFileSlots ?? 10,
+    googleDerived: options.googleDerived,
     tracker,
     logger: { set: vi.fn() },
     fetcher: createFetcher(options.files) as unknown as typeof fetch,
@@ -111,6 +113,20 @@ describe('persistContainerFiles', () => {
       originModel: 'claude-haiku-5-5',
     }))
     expect(tracker.trackFile).toHaveBeenCalledWith('file_1')
+    expect(mocks.persistFile).toHaveBeenCalledWith(expect.objectContaining({
+      googleDerivedAt: null,
+    }))
+  })
+
+  it('marks a file saved in a send that holds Google data', async () => {
+    await run({
+      files: { file_1: { name: 'chart.png', bytes: png } },
+      googleDerived: true,
+    })
+
+    expect(mocks.persistFile).toHaveBeenCalledWith(expect.objectContaining({
+      googleDerivedAt: expect.any(Date),
+    }))
   })
 
   it('skips a disallowed type, a type that lies about its bytes, and a download that fails', async () => {

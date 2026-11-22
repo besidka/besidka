@@ -207,6 +207,7 @@ async function executeTool(
   provider: 'openai' | 'google',
   aspectRatio: '1:1' | '3:2' = '1:1',
   logger: { set: ReturnType<typeof vi.fn> } = { set: vi.fn() },
+  isGoogleDerived?: () => boolean,
 ): Promise<ImageGenerationToolOutput[]> {
   const imageTool = createImageGenerationTool({
     userId: 1,
@@ -216,6 +217,7 @@ async function executeTool(
       : 'gemini-3.1-flash-image',
     imageModel: {} as ImageModel,
     logger,
+    isGoogleDerived,
   })
   const execution = imageTool.execute?.(
     {
@@ -333,6 +335,22 @@ describe('AI image generation tool', () => {
       userId: 1,
       token: 'lease-token',
     })
+  })
+
+  it('marks an image generated in a send that holds Google data', async () => {
+    await executeTool('openai', '1:1', { set: vi.fn() }, () => true)
+
+    expect(mocks.persistFile).toHaveBeenCalledWith(expect.objectContaining({
+      googleDerivedAt: expect.any(Date),
+    }))
+
+    mocks.persistFile.mockClear()
+
+    await executeTool('openai', '1:1', { set: vi.fn() }, () => false)
+
+    expect(mocks.persistFile).toHaveBeenCalledWith(expect.objectContaining({
+      googleDerivedAt: null,
+    }))
   })
 
   it('marks the generated image with an IPTC source type before saving',

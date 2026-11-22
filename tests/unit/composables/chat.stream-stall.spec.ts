@@ -3,6 +3,7 @@ import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChat } from '../../../app/composables/chat'
+import { useChatGoogleData } from '../../../app/composables/chat-google-data'
 
 interface SdkOptions {
   throttle?: number
@@ -152,6 +153,22 @@ describe('useChat stream stall watchdog', () => {
 
     expect(sdk.options?.throttle).toBe(50)
   })
+
+  it('records that the chat holds Google data from the stream chunk',
+    async () => {
+      await mountChat()
+
+      const { isChatHoldingGoogleData } = useChatGoogleData()
+
+      expect(isChatHoldingGoogleData('slug-1')).toBe(false)
+
+      sdk.options!.onData({
+        type: 'data-google-data',
+        data: { holdsGoogleData: true },
+      })
+
+      expect(isChatHoldingGoogleData('slug-1')).toBe(true)
+    })
 
   it('reconnects a stream that went silent after a heartbeat', async () => {
     await mountChat()

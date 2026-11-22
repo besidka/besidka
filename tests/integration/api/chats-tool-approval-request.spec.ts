@@ -1514,6 +1514,13 @@ describe('tool approval requests in the chat send', () => {
     })
     expect(mocks.batches).toHaveLength(1)
     expect(mocks.batches[0]).toHaveLength(3)
+    expect(writtenChunks().filter((chunk) => {
+      return chunk.type === 'data-google-data'
+    })).toEqual([{
+      type: 'data-google-data',
+      data: { holdsGoogleData: true },
+      transient: true,
+    }])
   })
 
   it('fails the persist when the batch with the chat flag fails', async () => {
@@ -1574,7 +1581,12 @@ describe('tool approval requests in the chat send', () => {
         TOOL_APPROVAL_DATA_PART_TYPE,
       )).toMatchObject({ data: { reason: 'google-egress' } })
       expect(mocks.chatUpdates).not.toContainEqual({
-        googleDataAt: expect.any(Date),
+        googleDataAt: expect.anything(),
+      })
+      expect(writtenChunks()).toContainEqual({
+        type: 'data-google-data',
+        data: { holdsGoogleData: true },
+        transient: true,
       })
     })
 

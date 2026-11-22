@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ARTIFACT_SHARE_MAX_ACTIVE } from '#shared/utils/artifacts'
+import {
+  ARTIFACT_SHARE_GOOGLE_DATA_CODE,
+  ARTIFACT_SHARE_MAX_ACTIVE,
+} from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -173,6 +176,29 @@ describe('artifact shares', () => {
     it('builds the public link with the token in the path', () => {
       expect(buildArtifactShareUrl('tok', 'https://besidka.com/'))
         .toBe('https://besidka.com/artifacts/tok')
+    })
+  })
+
+  describe('an artifact with Google content', () => {
+    it('gets no public link', async () => {
+      testDb.sqlite.prepare('update artifacts set google_derived_at = 1').run()
+
+      await expect(share()).rejects.toMatchObject({
+        status: 409,
+        code: ARTIFACT_SHARE_GOOGLE_DATA_CODE,
+      })
+    })
+
+    it('stops resolving a link made before it was marked', async () => {
+      const link = await share()
+
+      testDb.sqlite.prepare('update artifacts set google_derived_at = 1').run()
+
+      await expect(resolveActiveArtifactShare({
+        db: testDb.db,
+        token: link.token,
+        now: NOW,
+      })).resolves.toBeNull()
     })
   })
 

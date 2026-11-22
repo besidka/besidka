@@ -320,6 +320,41 @@ describe('Chat/ShareModal.client', () => {
         .toBe(true)
     })
 
+    it('names the Google items and keeps indexing off', async () => {
+      const { targetHoldsGoogleData, targetGoogleItems } = useChatShare()
+
+      targetHoldsGoogleData.value = true
+      targetGoogleItems.value = ['Budget 2027', 'trip-notes.txt']
+      fetchMock.mockResolvedValue({
+        slug: 'share-1',
+        expiresAt: null,
+        indexable: false,
+        showFiles: false,
+        showMetadata: false,
+        showAuthorAvatar: false,
+        allowBranch: false,
+      })
+
+      const wrapper = await mountSuspended(ShareModal)
+      const items = wrapper.get('[data-testid="share-google-data-items"]')
+      const indexToggle = wrapper.get('[data-testid="share-toggle-indexable"]')
+
+      expect(items.findAll('li').map(item => item.text()))
+        .toEqual(['Budget 2027', 'trip-notes.txt'])
+      expect(indexToggle.attributes('disabled')).toBeDefined()
+
+      await wrapper.get('[data-testid="share-google-data-opt-in"]')
+        .setValue(true)
+      await wrapper.get('[data-testid="share-generate-button"]')
+        .trigger('click')
+      await new Promise(resolve => setTimeout(resolve))
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/share', {
+        method: 'POST',
+        body: expect.objectContaining({ indexable: false }),
+      })
+    })
+
     it('shows no opt-in for an ordinary chat', async () => {
       const wrapper = await mountSuspended(ShareModal)
 

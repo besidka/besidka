@@ -333,6 +333,7 @@ describe('documents API', () => {
   async function createRowWithTool(
     spec: unknown = PDF_SPEC,
     userId: number = ownerId,
+    isGoogleDerived?: () => boolean,
   ): Promise<string> {
     const tools = createDocumentTool({
       userId,
@@ -343,6 +344,7 @@ describe('documents API', () => {
       modelId: 'claude-haiku-4-5',
       provider: 'anthropic',
       assistantMessageId: 'ASSISTANT-ULID',
+      isGoogleDerived,
     })
     const output = await (tools.create_document as unknown as {
       execute: (input: unknown, options: unknown) => Promise<{
@@ -435,6 +437,26 @@ describe('documents API', () => {
         logger: mocks.logger,
       }))
     })
+
+    it('carries the Google derived mark from the document to its file',
+      async () => {
+        const marked = await createRowWithTool(PDF_SPEC, ownerId, () => true)
+        const handler = await handlers.file()
+
+        await handler(createUploadEvent(marked))
+
+        expect(mocks.persistFile).toHaveBeenLastCalledWith(
+          expect.objectContaining({ googleDerivedAt: expect.any(Date) }),
+        )
+
+        const plain = await createRowWithTool()
+
+        await handler(createUploadEvent(plain))
+
+        expect(mocks.persistFile).toHaveBeenLastCalledWith(
+          expect.objectContaining({ googleDerivedAt: null }),
+        )
+      })
 
     it('links the file to the assistant message once it is persisted', async () => {
       await seedMessage(
