@@ -58,11 +58,58 @@ describe('Google Drive files in the chat context', () => {
     expect(context.inputs.map(item => item.kind)).toEqual(['file'])
   })
 
+  it('does not hide or borrow the file before a name-only reference', () => {
+    const [sharedMessage] = filterPublicParts([{
+      id: 'm1',
+      role: 'user',
+      parts: [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'Photo.png',
+          url: '/files/photo.png?token=granted',
+        },
+        driveParts[2],
+      ],
+    }] as never) as unknown as ChatContextMessage[]
+    const context = buildChatContext([sharedMessage!], {
+      visibility: 'public',
+    })
+
+    expect(context.inputs.map(item => item.kind)).toEqual([
+      'file',
+      'drive-file',
+    ])
+    expect(context.inputs[0]!.title).toBe('Photo.png')
+    expect(context.inputs[1]!.title).toBe('Plan')
+    expect(context.inputs[1]!.meta?.url).toBeUndefined()
+    expect(JSON.stringify(context.inputs[1])).not.toContain('photo.png')
+  })
+
+  it('pairs a reference with the file before it only by its id', () => {
+    const context = buildChatContext([userMessage([
+      {
+        type: 'file',
+        mediaType: 'image/png',
+        filename: 'Photo.png',
+        url: '/files/photo.png',
+      },
+      driveParts[1],
+      driveParts[2],
+    ])], { visibility: 'private' })
+
+    expect(context.inputs.map(item => item.kind)).toEqual([
+      'file',
+      'drive-file',
+    ])
+    expect(context.inputs[1]!.meta?.url).toBe('/files/plan.md')
+  })
+
   it('lists the name only in a public build', () => {
     const publicMessages = filterPublicParts([{
       id: 'm1',
       role: 'user',
-      parts: driveParts,
+      parts: [driveParts[0], driveParts[2]],
     }] as never) as unknown as ChatContextMessage[]
     const context = buildChatContext(publicMessages, {
       visibility: 'public',

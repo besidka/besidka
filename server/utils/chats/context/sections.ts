@@ -111,6 +111,18 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+/**
+ * A Drive reference sits right after the file part of its own copy only
+ * while it carries its Drive id: the send routes insert it there from the
+ * stored row with that id. A public share keeps the name alone (empty id)
+ * and drops the copy's file part, so the part before such a reference is
+ * another file and must neither lend its URL nor be hidden by it.
+ */
+function isPairedDriveReference(part: unknown): boolean {
+  return isDriveFileReference(part)
+    && readString(part.data.driveFileId) !== null
+}
+
 function toTitle(value: string): string {
   const singleLine = value.replace(/\s+/g, ' ').trim()
 
@@ -352,7 +364,7 @@ const uploadedFilesSection: ChatContextSection = {
         !isRecord(part)
         || part.type !== 'file'
         || isHiddenFilePart(part as { type: string, mediaType?: string })
-        || isDriveFileReference(message.parts[index + 1])
+        || isPairedDriveReference(message.parts[index + 1])
       ) {
         return
       }
@@ -393,7 +405,9 @@ const driveFilesSection: ChatContextSection = {
       }
 
       const previous = message.parts[index - 1]
-      const copyUrl = isRecord(previous) && previous.type === 'file'
+      const copyUrl = isPairedDriveReference(part)
+        && isRecord(previous)
+        && previous.type === 'file'
         ? readString(previous.url)
         : null
       const link = readString(part.data.link)
