@@ -353,6 +353,57 @@ describe('approval copy', () => {
   })
 })
 
+describe('Google approvals', () => {
+  function googleModel(overrides: Record<string, unknown> = {}) {
+    return getApprovalStepModel(
+      connectorPart({
+        toolName: 'google__drive_search',
+        ...overrides,
+      }),
+      dataMap(approvalData({
+        toolName: 'google__drive_search',
+        reason: 'default',
+        summary: 'Besidka wants to search Google Drive',
+        rememberOptions: ['once', 'chat'],
+      })),
+    )!
+  }
+
+  it('says that Google content may go to the connector', () => {
+    expect(getApprovalReasonText('google-egress', 'Notion',
+      'mcp__linear__create_issue'))
+      .toBe('Content from Google in this chat may be sent to this connector')
+  })
+
+  it('shows the egress prompt without Always allow', () => {
+    const model = getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({
+        reason: 'google-egress',
+        rememberOptions: ['once', 'chat'],
+      })),
+    )!
+
+    expect(model.reason).toBe('google-egress')
+    expect(getApprovalButtons(model.rememberOptions).map((button) => {
+      return button.remember
+    })).toEqual(['once', 'chat'])
+  })
+
+  it('titles a Google tool with its server-written summary', () => {
+    const model = googleModel()
+
+    expect(getApprovalStepTitle(model, undefined))
+      .toBe('Besidka wants to search Google Drive')
+    expect(getApprovalStepTitle({ ...model, summary: '' }, undefined))
+      .toBe('Besidka wants to drive search on Google')
+    expect(getApprovalStepSummaryLine(model)).toBe('')
+    expect(getApprovalButtons(model.rememberOptions).map((button) => {
+      return button.remember
+    })).toEqual(['once', 'chat'])
+  })
+})
+
 describe('getApprovalButtons', () => {
   it('offers only what the server allowed, in a fixed order', () => {
     expect(getApprovalButtons(['once'])).toEqual([
