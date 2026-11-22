@@ -215,6 +215,12 @@ function readWholeLine(
   return part !== null && part.end === name.length ? part.part : null
 }
 
+function isReferenceLike(name: string): boolean {
+  return readCellReference(name) !== null
+    || readWholeLine(name, true) !== null
+    || readWholeLine(name, false) !== null
+}
+
 /**
  * Splits a formula (with or without its leading `=`) into tokens in one
  * linear pass. Cell references, whole columns (`A:C`) and whole rows
@@ -325,6 +331,7 @@ export function tokenizeFormula(text: string): TokenizedFormula {
     }
 
     if (next === EXCLAMATION) {
+      isMalformed = isMalformed || isReferenceLike(name)
       push({ kind: 'sheet', text: `${name}!` }, end + 1)
       continue
     }
@@ -337,8 +344,19 @@ export function tokenizeFormula(text: string): TokenizedFormula {
     if (next === COLON) {
       const secondEnd = scanName(text, end + 1)
       const second = text.slice(end + 1, secondEnd)
+      const isSheetRange = second.length > 0
+        && text.charCodeAt(secondEnd) === EXCLAMATION
+      const firstCell = isSheetRange ? readCellReference(name) : null
 
-      if (second.length > 0 && text.charCodeAt(secondEnd) === EXCLAMATION) {
+      if (firstCell) {
+        push(firstCell, end)
+        continue
+      }
+
+      if (isSheetRange) {
+        isMalformed = isMalformed
+          || isReferenceLike(name)
+          || isReferenceLike(second)
         push({ kind: 'sheet', text: `${name}:${second}!` }, secondEnd + 1)
         continue
       }
