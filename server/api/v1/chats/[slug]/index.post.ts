@@ -311,6 +311,7 @@ import {
   recordFirstMessageAutoWebSearchDecision,
   resolveAutoWebSearch,
 } from '~~/server/utils/chats/auto-web-search'
+import type { AutoWebSearchResolution } from '~~/server/utils/chats/auto-web-search'
 import { readSendPathTurns } from '~~/server/utils/jev/send-path'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 import {
@@ -489,6 +490,12 @@ import {
   getGoogleSendTools,
   withGoogleSendTools,
 } from '~~/server/utils/tool-approval/google-send-tools'
+import {
+  assertGoogleDataRecipient,
+  decideGoogleDataGuard,
+  disabledRerankModelResolver,
+  withoutWebSearchForGoogleData,
+} from '~~/server/utils/google/data-guard'
 import {
   TOOL_ROUND_CONTINUE_PROMPT,
   TOOL_ROUND_STALE_CODE,
@@ -682,6 +689,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const holdsGoogleData = chatHoldsGoogleData({
+    googleDataAt: chat.googleDataAt,
+    messages: chat.messages,
+  })
   let resume: ToolApprovalResume | null = null
   let sendBody: ChatSendBody
 
@@ -853,11 +864,14 @@ export default defineEventHandler(async (event) => {
     && (!firstUserMessage || isFirstMessageDecided)
     ? persistedSentMessage.tools || []
     : null
-  const candidateTools = collectAutoWebSearchCandidateTools({
-    mode: sendBody.webSearchMode,
-    defaultTools,
-    persistedTools: reusablePersistedTools,
-  })
+  const candidateTools = withoutWebSearchForGoogleData(
+    collectAutoWebSearchCandidateTools({
+      mode: sendBody.webSearchMode,
+      defaultTools,
+      persistedTools: reusablePersistedTools,
+    }),
+    holdsGoogleData,
+  )
   const candidateBraveSearch = candidateTools.includes('web_search_brave')
   const candidateExaSearch = candidateTools.includes('web_search_exa')
 
@@ -947,6 +961,20 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  await assertGoogleDataRecipient({
+    holdsGoogleData,
+    db,
+    userId,
+    recipient: {
+      providerId: provider?.id,
+      gatewayId,
+      modelId: model?.id ?? userModel,
+    },
+    gatewaySafeguardsSent: !!gatewayId,
+    site: 'chat-send',
+    logger,
+  })
+
   let encryptedBraveApiKey: string | undefined
   let encryptedExaApiKey: string | undefined
 
@@ -986,34 +1014,41 @@ export default defineEventHandler(async (event) => {
     encryptedExaApiKey = exaKey.apiKey
   }
 
-  const skillSelectionPlan = await prepareSkillSelection({
-    event,
-    db,
-    userId,
-    projectId: chat.projectId,
-    isResume,
-    messageText: readUserMessageText(newMessage.parts),
-    newMessageParts: newMessage.parts,
-    storedMessages: chat.messages,
-    logger,
-  })
-  const autoWebSearch = await resolveAutoWebSearch({
-    db,
-    userId,
-    mode: sendBody.webSearchMode,
-    chosenTools: firstUserMessage ? defaultTools : sendBody.tools,
-    defaultTools,
-    persistedTools: reusablePersistedTools,
-    messageText: readUserMessageText(newMessage.parts) ?? '',
-    recentTurns: readSendPathTurns(
-      chat.messages.filter((message) => {
-        return message !== persistedSentMessage
-      }),
-      JEV_AUTO_WEB_SEARCH.recentTurns,
-    ),
-    extraJev: skillSelectionPlan?.extraJev ?? undefined,
-    logger,
-  })
+  const skillSelectionPlan = holdsGoogleData
+    ? null
+    : await prepareSkillSelection({
+      event,
+      db,
+      userId,
+      projectId: chat.projectId,
+      isResume,
+      messageText: readUserMessageText(newMessage.parts),
+      newMessageParts: newMessage.parts,
+      storedMessages: chat.messages,
+      logger,
+    })
+  const autoWebSearch: AutoWebSearchResolution = holdsGoogleData
+    ? {
+      tools: withoutWebSearchForGoogleData(defaultTools, true),
+      outcome: null,
+    }
+    : await resolveAutoWebSearch({
+      db,
+      userId,
+      mode: sendBody.webSearchMode,
+      chosenTools: firstUserMessage ? defaultTools : sendBody.tools,
+      defaultTools,
+      persistedTools: reusablePersistedTools,
+      messageText: readUserMessageText(newMessage.parts) ?? '',
+      recentTurns: readSendPathTurns(
+        chat.messages.filter((message) => {
+          return message !== persistedSentMessage
+        }),
+        JEV_AUTO_WEB_SEARCH.recentTurns,
+      ),
+      extraJev: skillSelectionPlan?.extraJev ?? undefined,
+      logger,
+    })
   const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
     = autoWebSearch.outcome ?? undefined
   const selectedTools = autoWebSearch.tools
@@ -1028,7 +1063,12 @@ export default defineEventHandler(async (event) => {
     encryptedExaApiKey = undefined
   }
 
-  if (firstUserMessage && firstMessageDecisionKey && !isFirstMessageDecided) {
+  if (
+    !holdsGoogleData
+    && firstUserMessage
+    && firstMessageDecisionKey
+    && !isFirstMessageDecided
+  ) {
     await recordFirstMessageAutoWebSearchDecision({
       db,
       kv: autoWebSearchKv,
@@ -1048,10 +1088,6 @@ export default defineEventHandler(async (event) => {
     providerId: provider?.id,
     modelId: model?.id,
     logger,
-  })
-  const holdsGoogleData = chatHoldsGoogleData({
-    googleDataAt: chat.googleDataAt,
-    messages: chat.messages,
   })
   const codeExecutionGate = withholdCodeExecutionForGoogleData(
     isResume
@@ -1480,6 +1516,7 @@ export default defineEventHandler(async (event) => {
         requestedTools,
         reasoningLevel,
         logger,
+        { googleDataSafeguards: holdsGoogleData },
       )
 
       instance = gatewayResult.instance
@@ -1936,11 +1973,13 @@ export default defineEventHandler(async (event) => {
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
-  const resolveRerankModel = createJevRerankModelResolver({
-    db,
-    userId,
-    logger: aiLogger,
-  })
+  const resolveRerankModel = holdsGoogleData
+    ? disabledRerankModelResolver
+    : createJevRerankModelResolver({
+      db,
+      userId,
+      logger: aiLogger,
+    })
 
   if (chatSearchBudget && chatSearchToolsRegistered) {
     const { tools: chatSearchTools } = getChatSearchTools({
@@ -1964,6 +2003,7 @@ export default defineEventHandler(async (event) => {
   const userMessageText = readUserMessageText(newMessage.parts)
   const pastChatPreRetrievalRun: Promise<PastChatPreRetrieval | null>
     = !isResume
+      && !holdsGoogleData
       && isChatSearchToolEnabled(memorySettings)
       && !toolCallingAllowed
       && userMessageText !== null
@@ -2004,6 +2044,7 @@ export default defineEventHandler(async (event) => {
       useAccountMemory: chat.project?.useAccountMemory ?? null,
       sourceMessageId: newMessage.id,
       userMessageText,
+      allowsWrite: !holdsGoogleData,
       budget: chatSearchBudget,
       ...(toolApprovalsActive
         ? {
@@ -2549,6 +2590,21 @@ export default defineEventHandler(async (event) => {
       toolApprovalsActive,
       userId,
       chatPublicId: chat.id,
+      mayReceiveGoogleData: async () => {
+        const decision = await decideGoogleDataGuard({
+          db,
+          userId,
+          recipient: {
+            providerId: provider?.id,
+            gatewayId,
+            modelId,
+          },
+          gatewaySafeguardsSent: holdsGoogleData,
+          logger: aiLogger,
+        })
+
+        return decision.allowed
+      },
       logger: aiLogger,
     })
 

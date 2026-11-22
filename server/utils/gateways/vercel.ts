@@ -11,11 +11,28 @@ import {
   findGatewayCatalogModel,
   getCachedGatewayCatalog,
 } from './catalog'
-import type { GatewayChatResult } from './index'
+import type { GatewayCallOptions, GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
 const GENERATION_INFO_RETRY_DELAY_MS = 2000
 const GENERATION_INFO_MAX_ATTEMPTS = 8
+
+/**
+ * Prompt caching is never sent with image generation. A call that may carry
+ * Google data also asks Vercel for zero-data-retention routing, the
+ * condition of the Google data allow-list.
+ */
+export function buildVercelProviderOptions(input: {
+  isImageGenerationRequested: boolean
+  googleDataSafeguards: boolean
+}): GatewayChatResult['providerOptions'] {
+  const gateway = {
+    ...(input.isImageGenerationRequested ? {} : { caching: 'auto' }),
+    ...(input.googleDataSafeguards ? { zeroDataRetention: true } : {}),
+  }
+
+  return Object.keys(gateway).length > 0 ? { gateway } : {}
+}
 
 export async function useVercelGateway(
   userId: string,
@@ -23,6 +40,7 @@ export async function useVercelGateway(
   requestedTools: ModelTool[],
   requestedReasoning: ReasoningLevel,
   logger?: { set: (fields: Record<string, unknown>) => void },
+  options: GatewayCallOptions = {},
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -95,9 +113,10 @@ export async function useVercelGateway(
     instance: getInstance(),
     generateChatTitle,
     tools: getTools(),
-    providerOptions: isImageGenerationRequested
-      ? {}
-      : { gateway: { caching: 'auto' } },
+    providerOptions: buildVercelProviderOptions({
+      isImageGenerationRequested,
+      googleDataSafeguards: options.googleDataSafeguards === true,
+    }),
     client,
     maxOutputTokens: catalogModel?.maxOutputTokens,
     toolCall: catalogModel?.toolCall,

@@ -13,6 +13,7 @@ import {
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { persistFile } from '~~/server/utils/files/persist-file'
 import { getFilesSourceCondition } from '~~/server/utils/files/source-filter'
+import { fileIsNotGoogleCopy } from '~~/server/utils/google/data-guard'
 import { assertUploadContentLength } from '~~/server/utils/files/upload-request'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import { isFileLinkedToKnowledgeSql } from '~~/server/utils/knowledge/linked-files'
@@ -123,6 +124,7 @@ async function resolveOwnedMcpFile(
     .where(and(
       eq(schema.files.id, fileId),
       eq(schema.files.userId, userId),
+      fileIsNotGoogleCopy(),
     ))
     .get()
 
@@ -152,6 +154,7 @@ export async function listMcpFiles(
   const search = input.search?.trim() ?? ''
   const whereConditions = and(
     eq(schema.files.userId, userId),
+    fileIsNotGoogleCopy(),
     getFilesSourceCondition(input.source ?? 'all'),
     search ? containsLikeEscaped(schema.files.name, search) : undefined,
   )

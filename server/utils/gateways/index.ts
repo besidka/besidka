@@ -12,6 +12,16 @@ import { useCloudflareGateway } from './cloudflare'
 
 export type ChatGatewayId = GatewayId
 
+/**
+ * `googleDataSafeguards` makes the builder send the gateway's
+ * zero-data-retention (Vercel, OpenRouter) or no-payload-logging
+ * (Cloudflare) setting, the allow-list condition for a chat that holds
+ * Google data. The chat route sets it for every call in such a chat.
+ */
+export interface GatewayCallOptions {
+  googleDataSafeguards?: boolean
+}
+
 export interface GatewayChatResult {
   instance: LanguageModel
   generateChatTitle: (message: string) => Promise<string>
@@ -112,6 +122,7 @@ export async function useGateway(
   requestedTools: ModelTool[],
   requestedReasoning: ReasoningLevel,
   logger?: { set: (fields: Record<string, unknown>) => void },
+  options: GatewayCallOptions = {},
 ): Promise<GatewayChatResult> {
   switch (gatewayId) {
     case 'vercel':
@@ -121,6 +132,7 @@ export async function useGateway(
         requestedTools,
         requestedReasoning,
         logger,
+        options,
       )
     case 'openrouter':
       return await useOpenRouterGateway(
@@ -129,9 +141,10 @@ export async function useGateway(
         requestedTools,
         requestedReasoning,
         logger,
+        options,
       )
     case 'cloudflare':
-      return await useCloudflareGateway(userId, modelId, logger)
+      return await useCloudflareGateway(userId, modelId, logger, options)
   }
 }
 

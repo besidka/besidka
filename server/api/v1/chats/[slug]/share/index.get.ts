@@ -7,6 +7,7 @@ import {
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { isShareVisibleForGoogleData } from '~~/server/utils/google/data-guard'
 
 const paramsRules = z.object({
   slug: z.ulid(),
@@ -42,6 +43,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      googleDataAt: true,
     },
   })
 
@@ -55,11 +57,12 @@ export default defineEventHandler(async (event) => {
   const fileIds = await enumerateChatFileIds(chat.id, userId)
   const hasFiles = fileIds.length > 0
   const usedConnector = await chatUsedConnector(chat.id)
+  const holdsGoogleData = !!chat.googleDataAt
 
   const share = await getActiveShareForChat(chat.id)
 
   if (!share) {
-    return { share: null, hasFiles, usedConnector }
+    return { share: null, hasFiles, usedConnector, holdsGoogleData }
   }
 
   const baseUrl = (useRuntimeConfig().public.baseUrl as string)
@@ -68,7 +71,12 @@ export default defineEventHandler(async (event) => {
   return {
     hasFiles,
     usedConnector,
+    holdsGoogleData,
     share: {
+      googleOptInNeeded: !isShareVisibleForGoogleData({
+        googleDataAt: chat.googleDataAt,
+        shareUpdatedAt: share.updatedAt,
+      }),
       slug: share.slug,
       url: share.slug ? `${baseUrl}/shared/${share.slug}` : null,
       expiresAt: share.expiresAt,

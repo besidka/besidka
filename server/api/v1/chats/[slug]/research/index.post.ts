@@ -15,6 +15,8 @@ import {
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
+import { assertGoogleDataRecipient } from '~~/server/utils/google/data-guard'
+import { getModel } from '#shared/utils/model'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -84,6 +86,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       slug: true,
       projectId: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -126,6 +129,19 @@ export default defineEventHandler(async (event) => {
       tools: message.tools,
       reasoning: message.reasoning,
     }))
+
+  await assertGoogleDataRecipient({
+    holdsGoogleData: !!chat.googleDataAt,
+    db,
+    userId,
+    recipient: {
+      providerId: getModel(body.data.model).provider?.id,
+      modelId: body.data.model,
+    },
+    gatewaySafeguardsSent: false,
+    site: 'deep-research',
+    logger,
+  })
 
   await validateMessageFilePolicy(
     userId,

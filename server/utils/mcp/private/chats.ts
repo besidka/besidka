@@ -38,6 +38,7 @@ import {
   parseSearchCursor,
 } from '~~/server/utils/chats/history/search-cursor'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
+import { fileIsNotGoogleCopy } from '~~/server/utils/google/data-guard'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import {
@@ -93,6 +94,7 @@ interface ChatListRow {
   pinnedAt: Date | null
   shared: boolean
   memoryExcluded: boolean | null
+  googleDataAt: Date | null
   createdAt: Date
   activityAt: Date
 }
@@ -135,6 +137,7 @@ function buildChatListColumns() {
     pinnedAt: schema.chats.pinnedAt,
     shared: buildChatSharedColumn(),
     memoryExcluded: schema.chats.memoryExcluded,
+    googleDataAt: schema.chats.googleDataAt,
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
   }
@@ -210,6 +213,18 @@ function toChatSummary(row: ChatListRow): McpChatSummary {
   }
 }
 
+/**
+ * A content match keeps its snippet, except in a chat that holds Google
+ * data: the snippet could quote it, and Google data never leaves through
+ * MCP or the Besidka chat tools.
+ */
+function snippetOf(
+  chat: ChatListRow,
+  hit: ContentSearchHit,
+): { snippet?: string } {
+  return chat.googleDataAt ? {} : { snippet: cleanSearchSnippet(hit.snippet) }
+}
+
 export function mergeChatSearchResults(
   titleMatches: ChatListRow[],
   contentHits: ContentSearchHit[],
@@ -227,7 +242,7 @@ export function mergeChatSearchResults(
     return {
       ...toChatSummary(chat),
       matchedIn: hit ? 'both' : 'title',
-      ...(hit ? { snippet: cleanSearchSnippet(hit.snippet) } : {}),
+      ...(hit ? snippetOf(chat, hit) : {}),
     }
   })
 
@@ -241,7 +256,7 @@ export function mergeChatSearchResults(
     merged.push({
       ...toChatSummary(chat),
       matchedIn: 'content',
-      snippet: cleanSearchSnippet(hit.snippet),
+      ...snippetOf(chat, hit),
     })
   }
 
@@ -496,6 +511,40 @@ export function buildMcpChatTranscript(
   }
 }
 
+export const MCP_CHAT_GOOGLE_DATA_WITHHELD_TEXT = '[Withheld: this chat holds '
+  + 'content from Google Drive, Calendar or Gmail, which is never shared '
+  + 'outside the chat. Open the chat in Besidka to read it.]'
+
+/**
+ * The transcript of a chat that holds Google data, with every message text
+ * replaced by a fixed notice. The flag is chat-wide and sticky (a branch
+ * copies it), so no message is kept: any reply after the first Google
+ * result may quote it, and Google data never leaves through MCP or the
+ * Besidka chat tools (pre-check rows 2 and 5).
+ */
+export function withheldForGoogleData(
+  transcript: McpChatTranscript,
+  holdsGoogleData: boolean,
+): McpChatTranscript {
+  if (!holdsGoogleData) {
+    return transcript
+  }
+
+  return {
+    ...transcript,
+    truncated: false,
+    messages: transcript.messages.map((message) => {
+      return {
+        id: message.id,
+        role: message.role,
+        ...(message.model ? { model: message.model } : {}),
+        createdAt: message.createdAt,
+        text: MCP_CHAT_GOOGLE_DATA_WITHHELD_TEXT,
+      }
+    }),
+  }
+}
+
 export function collectChatModels(rows: McpChatMessageRow[]): string[] {
   const models = new Set<string>()
 
@@ -530,6 +579,7 @@ async function resolveMcpContextFiles(
       .where(and(
         eq(schema.files.userId, userId),
         inArray(schema.files.storageKey, storageKeys),
+        fileIsNotGoogleCopy(),
       ))
     : []
   const idByStorageKey = new Map(rows.map((row) => {
@@ -564,6 +614,7 @@ export async function getMcpChat(
     projectName: schema.projects.name,
     pinnedAt: schema.chats.pinnedAt,
     memoryExcluded: schema.chats.memoryExcluded,
+    googleDataAt: schema.chats.googleDataAt,
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
   })
@@ -618,10 +669,13 @@ export async function getMcpChat(
     .limit(maxMessages + 1)
   const hasOlderMessages = rows.length > maxMessages
   const window = rows.slice(0, maxMessages)
-  const transcript = buildMcpChatTranscript(window, {
-    messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
-    totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
-  })
+  const transcript = withheldForGoogleData(
+    buildMcpChatTranscript(window, {
+      messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
+      totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
+    }),
+    !!chat.googleDataAt,
+  )
   const commandMessageCount = window.filter(isBuiltinCommandMessage).length
   const context = await resolveMcpContextFiles(
     db,

@@ -389,7 +389,8 @@ describe('getMcpChat extra fields', () => {
 
     expect(sql).toContain('"files"."user_id" = ?')
     expect(sql).toContain('"files"."storage_key" in (?)')
-    expect(params).toEqual([1, 'key-1'])
+    expect(sql).toContain('"files"."external_source" not in (?)')
+    expect(params).toEqual([1, 'key-1', 'google'])
   })
 
   it('drops attached files the user no longer owns', async () => {

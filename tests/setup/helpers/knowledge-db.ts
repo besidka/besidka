@@ -158,7 +158,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       text_bytes integer,
       text_version integer,
       text_omitted_media integer,
-      text_omitted_charts integer
+      text_omitted_charts integer,
+      external_source text
     );
 
     CREATE UNIQUE INDEX uq_file_storageKey ON files (storage_key);

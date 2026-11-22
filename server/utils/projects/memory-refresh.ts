@@ -151,6 +151,7 @@ async function selectChatsWithUnreadUserText(
     where: {
       userId,
       projectId,
+      googleDataAt: { isNull: true },
       OR: [
         { memoryExcluded: { isNull: true } },
         { memoryExcluded: false },

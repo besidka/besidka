@@ -12,6 +12,7 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { createGoogleDataShareOptInError } from '~~/server/utils/google/data-guard'
 
 const paramsRules = z.object({
   slug: z.ulid(),
@@ -24,6 +25,7 @@ const bodyRules = z.object({
   showMetadata: z.boolean(),
   showAuthorAvatar: z.boolean(),
   allowBranch: z.boolean(),
+  includeGoogleContent: z.boolean().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -71,6 +73,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      googleDataAt: true,
     },
   })
 
@@ -78,6 +81,17 @@ export default defineEventHandler(async (event) => {
     throw createError({
       message: 'Chat not found',
       status: 404,
+    })
+  }
+
+  if (chat.googleDataAt) {
+    if (body.data.includeGoogleContent !== true) {
+      throw createGoogleDataShareOptInError()
+    }
+
+    logger.set({
+      chatId: chat.id,
+      attributes: { googleDataGuard: { shareOptIn: true } },
     })
   }
 

@@ -1,7 +1,10 @@
 import { and, desc, eq, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
-import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
+import {
+  chatHoldsNoGoogleData,
+  chatIsMemoryIncluded,
+} from '~~/server/utils/memory/chat-memory-filters'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -33,6 +36,7 @@ export function backfillEligibleChats(userId: number, createdBefore: Date) {
     isNull(schema.chats.projectId),
     lte(schema.chats.createdAt, createdBefore),
     chatIsMemoryIncluded(),
+    chatHoldsNoGoogleData(),
     sql`exists (
       select 1 from ${schema.messages}
       where ${schema.messages.chatId} = ${schema.chats.id}

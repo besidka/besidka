@@ -23,16 +23,28 @@ function noGoogleSendTools(): GoogleSendTools {
  * The one place the chat send assembles Google tools. Nothing is offered
  * unless tool approvals are active for the send (`canOfferGoogleTools`):
  * without them no approval, cleared-call guard or references-only rule
- * would run. The Drive, Calendar and Gmail children add their tools here;
- * until then the set is empty.
+ * would run. Nothing is offered either when the send's model may not
+ * receive Google data (`mayReceiveGoogleData`, the data guard), because a
+ * Google result would reach that model in the next step of the same send.
+ * The Drive, Calendar and Gmail children add their tools here; until then
+ * the set is empty.
  */
 export async function getGoogleSendTools(input: {
   toolApprovalsActive: boolean
   userId: number
   chatPublicId: string
+  mayReceiveGoogleData: () => Promise<boolean>
   logger: LoggerLike
 }): Promise<GoogleSendTools> {
   if (!canOfferGoogleTools(input)) {
+    return noGoogleSendTools()
+  }
+
+  if (!await input.mayReceiveGoogleData()) {
+    input.logger.set({
+      attributes: { googleDataGuard: { googleTools: 'recipient-refused' } },
+    })
+
     return noGoogleSendTools()
   }
 

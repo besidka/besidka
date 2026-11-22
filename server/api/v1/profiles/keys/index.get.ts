@@ -24,15 +24,22 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       provider: true,
+      paidTierConfirmedAt: true,
     },
   })
 
   const providersWithKeys = new Set(rows.map(row => row.provider))
+  const isGeminiPaidTierConfirmed = rows.some((row) => {
+    return row.provider === 'google' && !!row.paidTierConfirmedAt
+  })
 
   const keys = schema.keys.provider.enumValues.map((provider) => {
     return {
       provider,
       hasKey: providersWithKeys.has(provider),
+      ...(provider === 'google'
+        ? { paidTierConfirmed: isGeminiPaidTierConfirmed }
+        : {}),
     }
   })
 

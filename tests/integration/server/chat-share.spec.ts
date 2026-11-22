@@ -11,6 +11,7 @@ import {
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   chatSharesFindFirst: vi.fn(),
+  chatsFindFirst: vi.fn(),
   messagesFindMany: vi.fn(),
   chatShareFilesFindMany: vi.fn(),
   getOwnedFilesByStorageKeys: vi.fn(),
@@ -54,6 +55,9 @@ function createDb(overrides: Record<string, unknown> = {}) {
     query: {
       chatShares: {
         findFirst: mocks.chatSharesFindFirst,
+      },
+      chats: {
+        findFirst: mocks.chatsFindFirst,
       },
       messages: {
         findMany: mocks.messagesFindMany,
@@ -129,7 +133,45 @@ describe('buildChatSharedColumn', () => {
 describe('resolveActiveShareBySlug', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.chatsFindFirst.mockResolvedValue({ googleDataAt: null })
   })
+
+  it('hides a share made before the chat held Google data', async () => {
+    mocks.chatSharesFindFirst.mockResolvedValue({
+      id: 'share-1',
+      slug: 'abc123',
+      chatId: 'chat-1',
+      updatedAt: new Date(1_000_000),
+    })
+    mocks.chatsFindFirst.mockResolvedValue({
+      googleDataAt: new Date(2_000_000),
+    })
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useEvent', () => ({}))
+
+    expect(await resolveActiveShareBySlug('abc123')).toBeNull()
+  })
+
+  it('shows a share made with the opt-in after the chat held Google data',
+    async () => {
+      mocks.chatSharesFindFirst.mockResolvedValue({
+        id: 'share-1',
+        slug: 'abc123',
+        chatId: 'chat-1',
+        updatedAt: new Date(3_000_000),
+      })
+      mocks.chatsFindFirst.mockResolvedValue({
+        googleDataAt: new Date(2_000_000),
+      })
+
+      const db = createDb()
+      vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useEvent', () => ({}))
+
+      expect((await resolveActiveShareBySlug('abc123'))?.id).toBe('share-1')
+    })
 
   it('returns the active share row when found', async () => {
     mocks.chatSharesFindFirst.mockResolvedValue({
@@ -257,6 +299,38 @@ describe('enumerateChatFileIds', () => {
     )
     expect(references).toEqual([
       { fileId: 'file-1', storageKey: 'owned-key.png' },
+    ])
+  })
+
+  it('never grants a copy of a Google Drive file to a share', async () => {
+    mocks.messagesFindMany.mockResolvedValue([
+      {
+        parts: [
+          { type: 'file', url: '/files/upload-key.png' },
+          { type: 'file', url: '/files/drive-key.pdf' },
+        ],
+      },
+    ])
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      ['upload-key.png', {
+        id: 'file-1',
+        storageKey: 'upload-key.png',
+        size: 10,
+        externalSource: null,
+      }],
+      ['drive-key.pdf', {
+        id: 'file-2',
+        storageKey: 'drive-key.pdf',
+        size: 10,
+        externalSource: 'google',
+      }],
+    ]))
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+
+    expect(await enumerateChatFileIds('chat-1', 42)).toEqual([
+      { fileId: 'file-1', storageKey: 'upload-key.png' },
     ])
   })
 

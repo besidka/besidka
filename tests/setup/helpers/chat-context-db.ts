@@ -88,7 +88,8 @@ export function createChatContextTestDb(): ChatContextTestDb {
       memory_excluded integer,
       branched_from_share_slug text,
       pinned_at integer,
-      activity_at integer NOT NULL
+      activity_at integer NOT NULL,
+      google_data_at integer
     );
 
     CREATE TABLE messages (
