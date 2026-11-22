@@ -350,15 +350,37 @@ decision list are in BES-370.
   Known over-count: `ppt/media` also holds images from slide masters and
   layouts. A generated document with no image shows nothing.
 - **Lazy fallback.** A file with a null status (stored before extraction, or
-  while the renderer was down) or an older `text_version` is read once on its
+  while the renderer was down) or a `text_version` below 1 is read once on its
   first send (`ensureOfficeTextState()`) and cached the same way. Only the
   newest message's files are read lazily; an earlier file with no text is
   omitted from the carry-over instead. A `ready` file whose omitted counts are
   both NULL (stored before they existed) gets a count-only backfill on its
-  first use: one R2 read of the file, no renderer call, no rewrite of the text,
-  and `OFFICE_TEXT_VERSION` stays at 1 so no stored file is re-extracted.
+  first use: one R2 read of the file, no renderer call, no rewrite of the text.
   `getOwnedFilesByStorageKeys()` selects both columns, or the backfill would
   run on every send.
+- **Spreadsheets as a workbook map (BES-448).** The target text version is per
+  format (`OFFICE_TEXT_VERSIONS`, `getOfficeTextVersion()` in
+  `shared/utils/office-files.ts`): `.xlsx` is 2 (the workbook map, see
+  `docs/chats/documents-renderer-worker.md`, "Workbook map"), `.docx` and
+  `.pptx` stay at 1 (`OFFICE_TEXT_VERSION`), so no document or presentation is
+  read again. When a spreadsheet is stored, `extractAndStoreOfficeText()` asks
+  the renderer for extract version 2 with `maxTextBytes` 200 KB (the inline
+  cap, so the model sees the whole map) only when the cached capabilities list
+  it (`rendererOffersWorkbookMap()`); otherwise it sends the version 1
+  request. The stored `text_version` follows the result, not the request: 2
+  when the result carries `workbookMap`, 2 for a failure of a version 2 read
+  (so it is not read again on every send), 1 otherwise. A stored version 1
+  spreadsheet (`isOfficeTextUpgradable()`) is still usable: on a send,
+  `ensureOfficeTextState()` reads it again only while the bound renderer
+  offers version 2, and keeps the version 1 text when it does not or when the
+  new read cannot finish. So after this change reaches production, each
+  `.xlsx` that a send touches (the newest message through
+  `assertFilesDeliverable()`, and the earlier files carried into the context
+  through `convertFilesForAI()`) is read again once, and nothing else is.
+  Files uploaded while a preview binds an older renderer stay at version 1
+  and are upgraded on a later send against a newer one. No schema change: the
+  extraction summary (sheets, formulas, rules, cuts) is returned on the upload
+  response as `workbookSummary` and never stored.
 - **Deleting.** `withDerivedKeys(keys)` returns the keys plus their sidecar
   keys. All four paths that delete file objects use it in their batched R2
   delete: `delete-files.ts`, `cleanup-expired-files.ts`,
@@ -387,8 +409,14 @@ decision list are in BES-370.
   400 with the file name, the reason and a fix. `convertFilesForAI()` then
   turns a ready Office file into a `text` part: the file name and format
   ("Word document", "Excel spreadsheet", "PowerPoint presentation"), the line
-  "Extracted text. Images, charts and formatting are not included.", then the
-  Markdown in a fence, cut at 200 KB per file and 512 KB per message on a UTF-8
+  "Extracted text. Images, charts and formatting are not included." (for a
+  workbook map, a text that starts with `# Workbook map`, instead: "Workbook
+  map. Included: values, formulas, number formats, dropdown and validation
+  rules, conditional formatting rules, merged cells and notes. Not included:
+  colors, charts and images. Values are the results last calculated and saved
+  in the file; they are not recalculated."), then the
+  Markdown in a fence one backtick longer than the longest run inside, cut at
+  200 KB per file and 512 KB per message on a UTF-8
   boundary with a "[Truncated ...]" marker. Gateways get the same text. A file
   it cannot send becomes a "[File not included: ...]" note and an
   `unsupportedFiles` entry, never a dropped part. `assertOnlyDeliverableFileParts()`
@@ -416,9 +444,10 @@ decision list are in BES-370.
   instead of the file size, and an earlier file without ready text is omitted
   as `unsupported-by-model` instead of failing the send.
 - **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes`,
-  `textTruncated` (true when `textBytes` is over the 200 KB inline cap, so only
-  the start is sent), `textOmittedMedia` and `textOmittedCharts`. The upload
-  response carries the same columns.
+  `textVersion`, `textTruncated` (true when `textBytes` is over the 200 KB
+  inline cap, so only the start is sent), `textOmittedMedia` and
+  `textOmittedCharts`. The upload response carries the same columns plus
+  `workbookSummary` for a spreadsheet read as a workbook map.
 - **The text note (owner decision, 2026-11-12).** Normal files show nothing.
   Earlier every Office file showed "Sent as text"; that label is gone. A quiet
   `badge-soft badge-xs` appears only when something is lost, on the attached
@@ -432,6 +461,21 @@ decision list are in BES-370.
   nothing. Unsupported-file reasons ("No readable text", "Old Office format",
   "Needs Run code") are unchanged, and on a disabled row the reason replaces
   the note.
+- **The spreadsheet note on the attach chip (BES-448).** On the attached chip
+  only (`getFileDeliveryHint(..., { spreadsheetNote: true })`), a spreadsheet
+  read as a workbook map always shows a note, also when nothing is cut: with
+  the upload's `workbookSummary` it reads "4 sheets · formulas" (plus
+  "· shortened" when the map cut anything); without it (a file picked in the
+  file manager, whose list has `textVersion` but no summary) it reads "Values
+  and formulas". The hint is a button: it opens a `ChatInputToolsMenuInfoNote`
+  under the chip row (`files-delivery-hint-note`, `aria-expanded` and
+  `aria-controls` on the button) with what the model gets, which sheets had
+  values cut after which row, the row and sheet limits, whether formulas or
+  rules were left out, and how many charts and images are not sent. A
+  spreadsheet still at version 1, or whose version is unknown (Drive copies,
+  whose columns come from `server/utils/google/drive-import.ts`), keeps the
+  loss-only note above, so no "Sent as text" label comes back. File manager
+  rows and tiles keep the loss-only note for every Office file.
 
 ### Legacy `.xls` conversion in the browser
 
