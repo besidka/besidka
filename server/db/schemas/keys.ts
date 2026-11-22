@@ -29,6 +29,7 @@ export const keys = snakeCase.table(
       ],
     }).notNull(),
     apiKey: text().notNull(),
+    paidTierConfirmedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_key_user').on(table.id, table.userId),

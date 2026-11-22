@@ -1612,6 +1612,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/google-data-policy.spec.ts',
   ]
 
+  const googleSchemaTests = [
+    'tests/unit/server/utils/db/google-schema.spec.ts',
+    'tests/unit/utils/account/purge-google-connections.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
+
   const connectorsStorageTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
     'tests/unit/utils/connectors-slug.spec.ts',
@@ -3760,6 +3766,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^shared\/utils\/google-(scopes|data-policy)\.ts$/,
       tests: googleContractsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-connections\.ts|server\/db\/schemas\/(google-connections|chats|files|keys)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|\.drizzle\/migrations\/[^/]+_gifted_mattie_franklin\/.*)$/,
+      tests: googleSchemaTests,
     },
     {
       pattern:

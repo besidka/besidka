@@ -50,6 +50,10 @@ const toolApprovalPurgeCounts = {
   toolApprovalClaimsDeleted: 5,
 }
 
+const googleConnectionPurgeCounts = {
+  googleConnectionsDeleted: 2,
+}
+
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
   invalidateStorageCache: vi.fn(),
@@ -60,6 +64,7 @@ const mocks = vi.hoisted(() => ({
   purgeUserSkills: vi.fn(),
   purgeUserConnectors: vi.fn(),
   purgeUserToolApprovals: vi.fn(),
+  purgeUserGoogleConnections: vi.fn(),
   artifactBlobStore: { delete: vi.fn() },
 }))
 
@@ -81,6 +86,10 @@ vi.mock('~~/server/utils/connectors/cleanup', () => ({
 
 vi.mock('~~/server/utils/tool-approval/cleanup', () => ({
   purgeUserToolApprovals: mocks.purgeUserToolApprovals,
+}))
+
+vi.mock('~~/server/utils/account/purge-google-connections', () => ({
+  purgeUserGoogleConnections: mocks.purgeUserGoogleConnections,
 }))
 
 vi.mock('~~/server/utils/artifacts/blob-store', () => ({
@@ -188,6 +197,9 @@ describe('purgeUserData', () => {
     mocks.purgeUserSkills.mockResolvedValue(skillPurgeCounts)
     mocks.purgeUserConnectors.mockResolvedValue(connectorPurgeCounts)
     mocks.purgeUserToolApprovals.mockResolvedValue(toolApprovalPurgeCounts)
+    mocks.purgeUserGoogleConnections.mockResolvedValue(
+      googleConnectionPurgeCounts,
+    )
   })
 
   it('removes every R2 object in a single batched delete call', async () => {
@@ -219,6 +231,7 @@ describe('purgeUserData', () => {
       ...skillPurgeCounts,
       ...connectorPurgeCounts,
       ...toolApprovalPurgeCounts,
+      ...googleConnectionPurgeCounts,
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
@@ -411,6 +424,7 @@ describe('purgeUserData', () => {
           ...skillPurgeCounts,
           ...connectorPurgeCounts,
           ...toolApprovalPurgeCounts,
+          ...googleConnectionPurgeCounts,
           ...featureAccessCounts,
           ...legalNoticePurgeCounts,
         },
@@ -596,6 +610,42 @@ describe('purgeUserData', () => {
     expect(kv.delete).not.toHaveBeenCalled()
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       accountPurge: { phase: 'tool-approvals-delete', userId: 18 },
+    }))
+  })
+
+  it('purges the Google connection rows with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 19, logger })
+
+    expect(mocks.purgeUserGoogleConnections).toHaveBeenCalledWith(19, db)
+    expect(result).toEqual(expect.objectContaining(googleConnectionPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the Google purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserGoogleConnections.mockRejectedValueOnce(
+      new Error('d1 down'),
+    )
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 20, logger })).rejects.toThrow(
+      'd1 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'google-connections-delete', userId: 20 },
     }))
   })
 
@@ -793,6 +843,7 @@ describe('purgeUserData', () => {
       ...skillPurgeCounts,
       ...connectorPurgeCounts,
       ...toolApprovalPurgeCounts,
+      ...googleConnectionPurgeCounts,
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,

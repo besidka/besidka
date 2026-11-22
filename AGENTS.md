@@ -120,6 +120,8 @@ The skills tables (`skills`, `skill_versions`, `skill_files`, `skill_chat_settin
 
 The tool approval tables (`besidka_tool_permissions`, `besidka_chat_settings`, `tool_approval_claims`, `server/db/schemas/tool-approvals.ts`) have no FK and no cascade: `purgeUserToolApprovals` deletes their rows, `cleanupToolApprovalsForDeletedChats` removes the per-chat rows and claims, and the hourly `tool-approval-claim-sweep` plugin deletes claims older than 48 hours; the `tool-approval:` KV records expire after 24 hours, and the chat deletion and account purge hooks also delete the ones the per-chat index `tool-approval:chat:<chatPublicId>` lists (see `docs/d1-restore-reconciliation.md`, which also resets restored "allow" permissions and "always" grants to ask).
 
+`google_connections` (`server/db/schemas/google-connections.ts`) has no FK and no cascade: `purgeUserData` deletes its rows through `purgeUserGoogleConnections` (`server/utils/account/purge-google-connections.ts`), the user's Google file copies leave with their `files` rows (`files.external_source`, `external_id`, `external_modified_at`, `drive_copy_id`), and the restore runbook wipes every stored token and every `keys.paid_tier_confirmed_at` (see `docs/d1-restore-reconciliation.md`, "Google").
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:
