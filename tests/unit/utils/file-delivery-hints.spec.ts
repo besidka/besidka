@@ -11,8 +11,6 @@ import {
 import {
   SPREADSHEET_MAP_DESCRIPTION,
   SPREADSHEET_MAP_LABEL,
-  SPREADSHEET_TEXT_DESCRIPTION,
-  SPREADSHEET_TEXT_LABEL,
   TEXT_ONLY_DESCRIPTION,
   TEXT_SHORTENED_DESCRIPTION,
   buildFileDeliveryInput,
@@ -360,21 +358,23 @@ describe('getFileDeliveryHint', () => {
       })
     })
 
-    it('stays honest for a spreadsheet read before the map', () => {
+    it('keeps the loss-only note for a spreadsheet read before the map', () => {
       expect(hintOf({
         type: XLSX,
         textStatus: 'ready',
         textVersion: 1,
-      })).toEqual({
-        label: SPREADSHEET_TEXT_LABEL,
-        description: SPREADSHEET_TEXT_DESCRIPTION,
-        isBlocking: false,
-      })
+        textOmittedMedia: 0,
+        textOmittedCharts: 0,
+      })).toBeNull()
       expect(hintOf({
         type: XLSX,
         textStatus: 'ready',
         textTruncated: true,
-      })?.label).toBe(`${SPREADSHEET_TEXT_LABEL} · Shortened`)
+      })).toEqual({
+        label: 'Shortened',
+        description: `${TEXT_ONLY_DESCRIPTION} ${TEXT_SHORTENED_DESCRIPTION}`,
+        isBlocking: false,
+      })
     })
 
     it('keeps the blocking note for an unreadable spreadsheet', () => {

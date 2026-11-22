@@ -68,12 +68,6 @@ export const SPREADSHEET_MAP_DESCRIPTION = 'The model gets a map of this '
   + 'formatting rules, merged cells and notes. Values are the ones last '
   + 'saved in the file. Colors, charts and images aren\'t sent.'
 
-export const SPREADSHEET_TEXT_LABEL = 'Sent as text'
-
-export const SPREADSHEET_TEXT_DESCRIPTION = 'The model gets this workbook '
-  + 'as text: its values, plus its formulas and rules when they can be read. '
-  + 'Colors, charts and images aren\'t sent.'
-
 const SPREADSHEET_ROWS_READ = '1,000'
 
 const VALUES_CUT_SHEETS_SHOWN = 2
@@ -343,33 +337,24 @@ function sentences(parts: Array<string | null>): string {
 }
 
 /**
- * The note for a spreadsheet whose text reaches the model. It always shows,
- * not only when something is cut: what the model gets (a workbook map with
- * formulas and rules, or plain text from an older extraction), how many
- * sheets and what was cut when the upload carried the extraction summary.
- * The label stays short for the chip; the description goes to the info note.
+ * The note for a spreadsheet read as a workbook map. It always shows, not
+ * only when something is cut: what the model gets, how many sheets and what
+ * was cut when the upload carried the extraction summary. The label stays
+ * short for the chip; the description goes to the info note. A spreadsheet
+ * stored before the map (or whose version is not known yet) keeps the
+ * loss-only note of the other Office files, so no "Sent as text" label comes
+ * back (owner decision of 2026-11-12).
  */
 export function getSpreadsheetNote(
   file: DeliveryFile,
-): Pick<FileDeliveryHint, 'label' | 'description'> {
+): Pick<FileDeliveryHint, 'label' | 'description'> | null {
   const summary = file.workbookSummary
   const hasMap = !!summary
     || (file.textVersion ?? 0) >= WORKBOOK_MAP_TEXT_VERSION
   const omitted = omittedSentence(file)
 
   if (!hasMap) {
-    const isShortened = isTextTruncated(file)
-
-    return {
-      label: isShortened
-        ? `${SPREADSHEET_TEXT_LABEL} · ${TEXT_SHORTENED_LABEL}`
-        : SPREADSHEET_TEXT_LABEL,
-      description: sentences([
-        SPREADSHEET_TEXT_DESCRIPTION,
-        isShortened ? TEXT_SHORTENED_DESCRIPTION : null,
-        omitted,
-      ]),
-    }
+    return getTextLossNote(file)
   }
 
   if (!summary) {
@@ -443,11 +428,9 @@ export function getFileDeliveryHint(
     return null
   }
 
-  if (options.spreadsheetNote && isSpreadsheet(file)) {
-    return { ...getSpreadsheetNote(file), isBlocking: false }
-  }
-
-  const note = getTextLossNote(file)
+  const note = options.spreadsheetNote && isSpreadsheet(file)
+    ? getSpreadsheetNote(file)
+    : getTextLossNote(file)
 
   return note ? { ...note, isBlocking: false } : null
 }
