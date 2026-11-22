@@ -47,6 +47,7 @@ function logCandidates(
 export async function buildGoogleSendToolCandidates(input: {
   userId: number
   chatPublicId: string
+  priorCalls?: number
   logger: LoggerLike
 }): Promise<GoogleSendTools> {
   const db = useDb()
@@ -67,6 +68,7 @@ export async function buildGoogleSendToolCandidates(input: {
     kv: useKV(),
     event: useEvent(),
     userId: input.userId,
+    priorCalls: input.priorCalls ?? 0,
     chatGrantHashes: await readGoogleChatGrantHashes(
       db,
       input.userId,

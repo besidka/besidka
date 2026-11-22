@@ -187,6 +187,56 @@ describe('withGoogleDataFlag', () => {
     ).not.toHaveBeenCalled()
   })
 
+  describe('a Google tool that returns no Google content', () => {
+    const NO_CONTENT = 'google__drive_save_file'
+
+    function wrapSave(input: {
+      derived: () => boolean
+      ensureFlagged: () => Promise<void>
+      order?: string[]
+    }) {
+      const wrapped = withGoogleDataFlag({
+        [NO_CONTENT]: {
+          execute: vi.fn(async () => {
+            input.order?.push('run')
+
+            return 'saved'
+          }),
+        },
+      } as unknown as ToolSet, {
+        isGoogleDerived: input.derived,
+        ensureFlagged: input.ensureFlagged,
+      })!
+
+      return wrapped
+    }
+
+    it('flags nothing when the send is not Google-derived', async () => {
+      const ensureFlagged = vi.fn(async () => undefined)
+      const wrapped = wrapSave({ derived: () => false, ensureFlagged })
+
+      expect(await run(wrapped, NO_CONTENT)).toBe('saved')
+      expect(ensureFlagged).not.toHaveBeenCalled()
+    })
+
+    it('flags before it runs when the send already is Google-derived, as '
+      + 'any marked write does', async () => {
+      const order: string[] = []
+      const wrapped = wrapSave({
+        derived: () => true,
+        ensureFlagged: async () => {
+          order.push('flag')
+        },
+        order,
+      })
+
+      await run(wrapped, NO_CONTENT)
+
+      expect(order[0]).toBe('flag')
+      expect(order).toContain('run')
+    })
+  })
+
   it('costs nothing in a send without Google taint', async () => {
     const ensureFlagged = vi.fn(async () => undefined)
     const { wrapped } = wrap({ derived: () => false, ensureFlagged })

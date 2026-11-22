@@ -4,6 +4,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
+  googleToolReturnsContent,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
@@ -145,6 +146,30 @@ export function hasGoogleToolResult(parts: unknown): boolean {
   return Array.isArray(parts) && parts.some((part) => {
     return isStaticGoogleToolPart(part)
       && (part as Record<string, unknown>).state === 'output-available'
+      && googleToolReturnsContent(
+        toolNameOfPart(part as Record<string, unknown>),
+      )
+  })
+}
+
+/**
+ * Whether the reply holds something the sticky chat flag is for: a Google
+ * result that returned data, or a file or code execution run the send marks
+ * as Google-derived. A Google call that only failed (a refused id, a Drive
+ * error) keeps its transient taint for the rest of the send but never sets
+ * the flag.
+ */
+export function holdsStickyGoogleFlagTrigger(parts: unknown): boolean {
+  if (hasGoogleToolResult(parts)) {
+    return true
+  }
+
+  return Array.isArray(parts) && parts.some((part) => {
+    return isRecord(part)
+      && (
+        part.type === 'file'
+        || toolNameOfPart(part) === CODE_EXECUTION_MODEL_TOOL
+      )
   })
 }
 
@@ -157,6 +182,7 @@ export function isGoogleToolResultContent(content: unknown): boolean {
   return isRecord(content)
     && content.type === 'tool-result'
     && isGoogleToolName(content.toolName)
+    && googleToolReturnsContent(content.toolName)
 }
 
 /**
@@ -430,19 +456,50 @@ export function googleToolCallIdsOf(parts: readonly unknown[]): string[] {
   }))]
 }
 
+/**
+ * A Google output as the model gets it back on a continuation: the
+ * references keep their id, kind and date but never their title or link,
+ * because a title is a name someone else wrote (a Drive file name, a
+ * calendar subject) and would reach the model outside the untrusted frame
+ * that holds the same text. The stored part keeps the title for the card.
+ */
+export function withoutReferenceNames(output: unknown): unknown {
+  if (!isRecord(output) || !Array.isArray(output.references)) {
+    return output
+  }
+
+  return {
+    ...output,
+    references: output.references.map((reference) => {
+      if (!isRecord(reference)) {
+        return reference
+      }
+
+      const { title: _title, link: _link, ...rest } = reference
+
+      return rest
+    }),
+  }
+}
+
 function stashedBodyOf(body: GoogleToolResultBody): StashedResult {
   if (serializedBytes(body.output) <= GOOGLE_TOOL_OUTPUT_MAX_BYTES) {
-    return { isError: body.isError, output: body.output }
+    return {
+      isError: body.isError,
+      output: body.isError
+        ? body.output
+        : withoutReferenceNames(body.output),
+    }
   }
 
   return body.isError
     ? { isError: true, output: GOOGLE_TOOL_ERROR_PERSISTED_TEXT }
     : {
       isError: false,
-      output: toGooglePersistedOutput(
+      output: withoutReferenceNames(toGooglePersistedOutput(
         body.output,
         GOOGLE_TOOL_BODY_TOO_LARGE_NOTE,
-      ),
+      )),
     }
 }
 
@@ -464,7 +521,7 @@ export async function buildGoogleResultStash(
   for (const body of collectGoogleToolResultBodies(parts)) {
     const stashed = stashedBodyOf(body)
 
-    if (stashed.output !== body.output) {
+    if (serializedBytes(body.output) > GOOGLE_TOOL_OUTPUT_MAX_BYTES) {
       oversized += 1
     }
 
@@ -498,10 +555,10 @@ function unavailableResultOf(
 
   return {
     isError: false,
-    output: toGooglePersistedOutput(
+    output: withoutReferenceNames(toGooglePersistedOutput(
       part.output,
       GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE,
-    ),
+    )),
   }
 }
 

@@ -484,7 +484,9 @@ import {
   chatHoldsGoogleData,
   chatMarkedOriginExtras,
   deleteGoogleToolResults,
+  googleToolCallIdsOf,
   hasGoogleToolResult,
+  holdsStickyGoogleFlagTrigger,
   isGoogleToolResultContent,
   loadGoogleToolResults,
   redactGoogleToolPartsForPersistence,
@@ -492,6 +494,7 @@ import {
 } from '~~/server/utils/tool-approval/google'
 import {
   getGoogleSendTools,
+  hasUnremovableProviderTool,
   planGoogleSendTools,
   withGoogleSendTools,
 } from '~~/server/utils/tool-approval/google-send-tools'
@@ -1548,6 +1551,8 @@ export default defineEventHandler(async (event) => {
     chatPublicId: chat.id,
     gatewayId,
     holdsGoogleData,
+    priorGoogleCalls: googleToolCallIdsOf(resume?.assistant.parts ?? [])
+      .length,
     logger: aiLogger,
   })
   const gatewayGoogleSafeguards = googleSendPlan.gatewaySafeguards
@@ -2666,6 +2671,12 @@ export default defineEventHandler(async (event) => {
 
     const googleSend = await getGoogleSendTools({
       plan: googleSendPlan,
+      holdsGoogleData,
+      providerToolsStayCallable: hasUnremovableProviderTool({
+        isAnthropicRoute,
+        tools: parsedTools.tools,
+        providerOptions: providerOptions as Record<string, unknown>,
+      }),
       mayReceiveGoogleData: async () => {
         const decision = await decideGoogleDataGuard({
           db,
@@ -6319,7 +6330,10 @@ async function persistAssistantMessageFromStream(input: {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
-    if (input.isGoogleDerived?.()) {
+    if (
+      input.isGoogleDerived?.()
+      && holdsStickyGoogleFlagTrigger(responseMessage.parts)
+    ) {
       await input.ensureGoogleDataFlag?.()
     }
 

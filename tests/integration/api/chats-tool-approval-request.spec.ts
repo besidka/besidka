@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
+import { anthropic } from '@ai-sdk/anthropic'
 import { openai } from '@ai-sdk/openai'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
@@ -1544,6 +1545,133 @@ describe('tool approval requests in the chat send', () => {
     }])
   })
 
+  describe('provider-run tools that cannot be removed between steps', () => {
+    const ANTHROPIC_MODEL_ID = 'claude-haiku-4-5'
+    const providerWebSearch = anthropic.tools.webSearch_20250305()
+
+    async function useRealDriveTools() {
+      const { buildGoogleDriveTools } = await import(
+        '~~/server/utils/google/drive-tools'
+      )
+
+      mocks.googleSend = await buildGoogleDriveTools({
+        db: {} as never,
+        kv: {} as never,
+        event: { context: {} } as never,
+        userId: 1,
+        chatGrantHashes: {},
+        logger: { set: vi.fn() },
+      })
+    }
+
+    async function offeredOnAnthropic(input: {
+      tools: string[]
+      providerTools: Record<string, unknown>
+    }): Promise<string[]> {
+      mocks.mergedStreams = []
+      mocks.writers = []
+
+      const { model, doStream } = createScriptedModel([
+        textChunks('Answer.'),
+      ])
+
+      vi.stubGlobal('useChatProvider', vi.fn(() => ({
+        provider: { id: 'anthropic' },
+        model: {
+          id: ANTHROPIC_MODEL_ID,
+          name: 'Claude Haiku',
+          tools: ['web_search'],
+          toolCall: true,
+          modalities: { input: ['text'], output: ['text'] },
+        },
+      })))
+      vi.stubGlobal('useAnthropic', vi.fn(async () => ({
+        instance: model,
+        tools: input.providerTools,
+        providerOptions: {},
+        reasoning: undefined,
+        thinkingBinding: undefined,
+      })))
+      vi.stubGlobal('fetch', createMockMcpFetch([linear]))
+
+      const handler = (await import(
+        '../../../server/api/v1/chats/[slug]/index.post'
+      )).default
+      const created = createDb()
+
+      vi.stubGlobal('useDb', () => created.db)
+
+      const result = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: ANTHROPIC_MODEL_ID,
+          tools: input.tools,
+          reasoning: 'off',
+          messages: [{
+            id: USER_MESSAGE_ID,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Search and read my Drive file' }],
+          }],
+        },
+      } as any)
+
+      await result.ready
+
+      return ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((offeredTool: { name: string }) => offeredTool.name)
+    }
+
+    it('offers no Google tool on direct Anthropic while web search is '
+      + 'declared and the chat holds no Google data, so no search can '
+      + 'follow a Drive read', async () => {
+      await useRealDriveTools()
+
+      const offered = await offeredOnAnthropic({
+        tools: ['web_search'],
+        providerTools: { tools: { web_search: providerWebSearch } },
+      })
+
+      expect(offered).toContain('web_search')
+      expect(offered.filter(name => name.startsWith('google__')))
+        .toEqual([])
+    })
+
+    it('offers the Drive tools on direct Anthropic when no provider tool '
+      + 'is declared', async () => {
+      await useRealDriveTools()
+
+      const offered = await offeredOnAnthropic({
+        tools: [],
+        providerTools: {},
+      })
+
+      expect(offered).toEqual(expect.arrayContaining([
+        'google__drive_list_picked',
+        'google__drive_read_file',
+        'google__drive_save_file',
+      ]))
+    })
+
+    it('offers the Drive tools in a chat that already holds Google data and '
+      + 'carries no search tool into any call of it', async () => {
+      await useRealDriveTools()
+
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+      const offered = await offeredOnAnthropic({
+        tools: ['web_search'],
+        providerTools: { tools: { web_search: providerWebSearch } },
+      })
+
+      expect(offered).toEqual(expect.arrayContaining([
+        'google__drive_list_picked',
+        'google__drive_read_file',
+      ]))
+      expect(offered).not.toContain('web_search')
+      expect(offered).not.toContain('code_execution')
+    })
+  })
+
   it('runs the real Drive list tool once the user allowed it in this chat, '
     + 'stores references only and sets the chat flag', async () => {
     const { buildGoogleDriveTools } = await import(
@@ -1681,24 +1809,120 @@ describe('tool approval requests in the chat send', () => {
     })).toHaveLength(1)
   })
 
-  it('fails the Google read when the chat flag cannot be written',
+  it('fails the Google read when the chat flag cannot be written and drops '
+    + 'its result', async () => {
+    mocks.failChatFlag = true
+
+    const execute = await registerGoogleSearch()
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+        textChunks('Could not read it.'),
+      ],
+    })
+    const readPart = findPart(
+      assistantInsert?.parts ?? [],
+      'tool-google__drive_search',
+    )
+
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(readPart).toMatchObject({ state: 'output-error' })
+    expect(JSON.stringify(assistantInsert?.parts))
+      .not.toContain('SECRET GOOGLE BODY')
+    expect(mocks.batches).toHaveLength(0)
+  })
+
+  it('leaves the chat unflagged after an approved read that failed',
     async () => {
-      mocks.failChatFlag = true
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
 
-      const execute = await registerGoogleSearch()
+      mocks.googleSend = {
+        tools: {
+          google__drive_search: tool({
+            description: 'Search Drive.',
+            inputSchema: z.object({ query: z.string() }),
+            execute: async () => {
+              throw new Error('That file id is not one of the picked files.')
+            },
+          }),
+        },
+        entries: new Map([['google__drive_search', buildGoogleApprovalEntry({
+          toolName: 'google__drive_search',
+          kind: 'read',
+          definitionHash: 'g'.repeat(64),
+          summary: 'Search Google Drive',
+          toolApprovalsActive: true,
+          chatGrantHash: 'g'.repeat(64),
+        })]]),
+      }
 
-      await expect(runSend({
+      const { assistantInsert } = await runSend({
         servers: [linear],
         steps: [
-          toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
-          textChunks('Could not read it.'),
+          toolCallChunks('call-g', 'google__drive_search', { query: 'x' }),
+          textChunks('That did not work.'),
         ],
-      })).rejects.toMatchObject({
-        message: 'The response could not be saved.',
       })
-      expect(execute).toHaveBeenCalledTimes(1)
+
+      expect(findPart(
+        assistantInsert?.parts ?? [],
+        'tool-google__drive_search',
+      )).toMatchObject({ state: 'output-error' })
+      expect(mocks.chatUpdates.filter((values) => {
+        return values.googleDataAt instanceof Date
+      })).toHaveLength(0)
       expect(mocks.batches).toHaveLength(0)
     })
+
+  it('does not taint the send or flag the chat for a Google write that '
+    + 'returns no Google content', async () => {
+    const { buildGoogleApprovalEntry } = await import(
+      '~~/server/utils/tool-approval/send'
+    )
+    const execute = vi.fn(async () => ({
+      references: [{ id: 'saved-1', title: 'Report.md' }],
+      saved: true,
+    }))
+
+    mocks.googleSend = {
+      tools: {
+        google__drive_save_file: tool({
+          description: 'Save.',
+          inputSchema: z.object({ fileId: z.string() }),
+          execute,
+        }),
+      },
+      entries: new Map([['google__drive_save_file', buildGoogleApprovalEntry({
+        toolName: 'google__drive_save_file',
+        kind: 'write',
+        definitionHash: 'g'.repeat(64),
+        summary: 'Save a file',
+        toolApprovalsActive: true,
+      })]]),
+    }
+
+    mocks.flags.add('artifacts')
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-s', 'google__drive_save_file', { fileId: 'f1' }),
+        textChunks('Saved.'),
+      ],
+    })
+
+    expect(findPart(
+      assistantInsert?.parts ?? [],
+      'tool-google__drive_save_file',
+    )).toMatchObject({ state: 'approval-requested' })
+    expect(execute).not.toHaveBeenCalled()
+    expect(mocks.chatUpdates.filter((values) => {
+      return values.googleDataAt instanceof Date
+    })).toHaveLength(0)
+  })
 
   it('does not write the chat flag in a chat that is already flagged',
     async () => {

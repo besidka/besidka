@@ -15,9 +15,13 @@ export type { GoogleSendTools }
 /**
  * The Google tools a send could register and whether its gateway call
  * carries the Google safeguards, decided together so they cannot drift: a
- * gateway call gets the safeguards when the chat holds Google data or at
- * least one Google tool is a candidate, and only candidates can ever be
- * registered (`getGoogleSendTools`).
+ * gateway call gets the safeguards exactly when the chat already holds
+ * Google data, and on a gateway only such a chat has candidates at all
+ * (a Drive file attached through the Picker flags it), so a Google tool is
+ * never registered on a gateway call that does not carry the safeguards,
+ * and an ordinary gateway chat sends the request options it always did.
+ * Direct providers are unchanged: candidates for any connected user, no
+ * gateway options.
  */
 export interface GoogleSendPlan {
   candidates: GoogleSendTools
@@ -41,21 +45,66 @@ export async function planGoogleSendTools(input: {
   chatPublicId: string
   gatewayId: string | undefined
   holdsGoogleData: boolean
+  priorGoogleCalls?: number
   logger: LoggerLike
 }): Promise<GoogleSendPlan> {
-  const candidates = canOfferGoogleTools(input) && input.googleDriveActive
+  const mayHaveCandidates = canOfferGoogleTools(input)
+    && input.googleDriveActive
+    && (!input.gatewayId || input.holdsGoogleData)
+  const candidates = mayHaveCandidates
     ? await buildGoogleSendToolCandidates({
       userId: input.userId,
       chatPublicId: input.chatPublicId,
+      priorCalls: input.priorGoogleCalls ?? 0,
       logger: input.logger,
     })
     : noGoogleSendTools()
 
+  if (
+    !mayHaveCandidates
+    && input.gatewayId
+    && !input.holdsGoogleData
+    && canOfferGoogleTools(input)
+    && input.googleDriveActive
+  ) {
+    input.logger.set({
+      attributes: { googleDataGuard: { googleTools: 'gateway-no-google-data' } },
+    })
+  }
+
   return {
     candidates,
-    gatewaySafeguards: !!input.gatewayId
-      && (input.holdsGoogleData || hasGoogleSendTools(candidates)),
+    gatewaySafeguards: !!input.gatewayId && input.holdsGoogleData,
   }
+}
+
+/**
+ * Whether the send declares a provider-run tool that cannot be removed
+ * between its steps, so a Drive read in the same send could be followed by
+ * a search or a code run that no approval stops: direct Anthropic with any
+ * provider tool declared (that route keeps every declaration, because
+ * Anthropic rejects tool history without them), and a Qwen send with
+ * `enable_search` (a request flag for the whole send). Only a chat that does
+ * not hold Google data yet can be in this state; in a flagged chat the
+ * send withholds those tools before its first step.
+ */
+export function hasUnremovableProviderTool(input: {
+  isAnthropicRoute: boolean
+  tools: ToolSet | undefined
+  providerOptions: Record<string, unknown> | undefined
+}): boolean {
+  const qwenOptions = input.providerOptions?.qwen as
+    | { enable_search?: unknown }
+    | undefined
+
+  if (qwenOptions?.enable_search === true) {
+    return true
+  }
+
+  return input.isAnthropicRoute
+    && Object.values(input.tools ?? {}).some((declared) => {
+      return (declared as { type?: unknown } | null)?.type === 'provider'
+    })
 }
 
 /**
@@ -69,9 +118,19 @@ export async function planGoogleSendTools(input: {
 export async function getGoogleSendTools(input: {
   plan: GoogleSendPlan
   mayReceiveGoogleData: () => Promise<boolean>
+  holdsGoogleData?: boolean
+  providerToolsStayCallable?: boolean
   logger: LoggerLike
 }): Promise<GoogleSendTools> {
   if (!hasGoogleSendTools(input.plan.candidates)) {
+    return noGoogleSendTools()
+  }
+
+  if (input.providerToolsStayCallable && !input.holdsGoogleData) {
+    input.logger.set({
+      attributes: { googleDataGuard: { googleTools: 'provider-tools-declared' } },
+    })
+
     return noGoogleSendTools()
   }
 
