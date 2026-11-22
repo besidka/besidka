@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   flags: new Set<string>(),
   resolveJevRoleModel: vi.fn(),
   resolveJevRoleApiKey: vi.fn(),
+  listChatConnectorStates: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/jev/roles', async (importOriginal) => {
@@ -35,6 +36,17 @@ vi.mock('~~/server/utils/jev/roles', async (importOriginal) => {
     ...actual,
     resolveJevRoleModel: mocks.resolveJevRoleModel,
     resolveJevRoleApiKey: mocks.resolveJevRoleApiKey,
+  }
+})
+
+vi.mock('~~/server/utils/connectors/chat-selection', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/connectors/chat-selection')
+  >()
+
+  return {
+    ...actual,
+    listChatConnectorStates: mocks.listChatConnectorStates,
   }
 })
 
@@ -150,7 +162,9 @@ function createTextModel() {
 function createDb(input: {
   googleDataAt: Date | null
   paidTierConfirmedAt?: Date | null
+  storedMessages?: unknown[]
 }) {
+  const updateSets: unknown[] = []
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
     publicId: 'db-generated-public-id',
@@ -183,7 +197,7 @@ function createDb(input: {
             project: null,
             branchedFromShareSlug: null,
             googleDataAt: input.googleDataAt,
-            messages: [],
+            messages: input.storedMessages ?? [],
           })),
         },
         keys: { findFirst: keysFindFirst },
@@ -191,11 +205,16 @@ function createDb(input: {
       },
       insert: vi.fn(() => ({ values: insertValues })),
       update: vi.fn(() => ({
-        set: vi.fn(() => ({ where: updateWhere })),
+        set: vi.fn((values: unknown) => {
+          updateSets.push(values)
+
+          return { where: updateWhere }
+        }),
       })),
     },
     insertValues,
     keysFindFirst,
+    updateSets,
   }
 }
 
@@ -279,6 +298,8 @@ async function runSend(input: {
   paidTierConfirmedAt?: Date | null
   tools?: string[]
   webSearchMode?: 'auto' | 'always'
+  gatewayProviderOptions?: Record<string, unknown>
+  storedMessages?: unknown[]
 }) {
   const directModel = input.directModel ?? OPENAI_MODEL
   const { model, doStream } = createTextModel()
@@ -290,7 +311,7 @@ async function runSend(input: {
     instance: model,
     generateChatTitle: vi.fn(),
     tools: {},
-    providerOptions: {},
+    providerOptions: input.gatewayProviderOptions ?? {},
     toolCall: true,
   }))
 
@@ -299,6 +320,7 @@ async function runSend(input: {
   const created = createDb({
     googleDataAt: input.googleDataAt,
     paidTierConfirmedAt: input.paidTierConfirmedAt,
+    storedMessages: input.storedMessages,
   })
 
   vi.stubGlobal('useDb', () => created.db)
@@ -330,6 +352,7 @@ async function runSend(input: {
 
   const streamCalls = doStream.mock.calls as unknown as Array<[{
     tools?: Array<{ name: string }>
+    providerOptions?: Record<string, unknown>
   }]>
   const firstCallOptions = streamCalls[0]?.[0]
 
@@ -339,6 +362,8 @@ async function runSend(input: {
     useGatewayMock,
     keysFindFirst: created.keysFindFirst,
     insertValues: created.insertValues,
+    updateSets: created.updateSets,
+    firstCallProviderOptions: firstCallOptions?.providerOptions,
     offeredToolNames: (firstCallOptions?.tools ?? []).map((tool) => {
       return tool.name
     }),
@@ -364,6 +389,37 @@ describe('chat send data guard', () => {
     mocks.flags = new Set()
     mocks.resolveJevRoleModel.mockResolvedValue(null)
     mocks.resolveJevRoleApiKey.mockResolvedValue(null)
+    mocks.listChatConnectorStates.mockRejectedValue(
+      new Error('stop after the connector gate'),
+    )
+  })
+
+  describe('connectors', () => {
+    it('offers no connector in a flagged chat without tool approvals',
+      async () => {
+        mocks.flags.add('connectors')
+
+        await runSend({ googleDataAt: GOOGLE_DATA_AT })
+
+        expect(mocks.listChatConnectorStates).not.toHaveBeenCalled()
+      })
+
+    it('loads connectors in a flagged chat under tool approvals', async () => {
+      mocks.flags.add('connectors')
+      mocks.flags.add('tool-approvals')
+
+      await runSend({ googleDataAt: GOOGLE_DATA_AT })
+
+      expect(mocks.listChatConnectorStates).toHaveBeenCalled()
+    })
+
+    it('loads connectors in an ordinary chat without approvals', async () => {
+      mocks.flags.add('connectors')
+
+      await runSend({ googleDataAt: null })
+
+      expect(mocks.listChatConnectorStates).toHaveBeenCalled()
+    })
   })
 
   describe('recipient check', () => {
@@ -440,6 +496,50 @@ describe('chat send data guard', () => {
           expect.anything(),
           { googleDataSafeguards: true },
         )
+      })
+
+    it('passes the gateway zero-data-retention option to the model call',
+      async () => {
+        const result = await runSend({
+          googleDataAt: GOOGLE_DATA_AT,
+          gateway: { id: 'vercel', modelId: 'anthropic/claude-opus-5' },
+          gatewayProviderOptions: {
+            gateway: { caching: 'auto', zeroDataRetention: true },
+          },
+        })
+
+        expect(result.firstCallProviderOptions).toMatchObject({
+          gateway: { zeroDataRetention: true },
+        })
+      })
+
+    it('stores the flag for a chat found only by its Google parts',
+      async () => {
+        const result = await runSend({
+          googleDataAt: null,
+          storedMessages: [{
+            id: 'assistant-1',
+            publicId: 'assistant-public-1',
+            role: 'assistant',
+            parts: [{
+              type: 'tool-google__drive_read',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: {},
+              output: { references: [], bodyRemoved: true, note: 'x' },
+            }],
+            tools: [],
+            reasoning: 'off',
+            usage: null,
+            createdAt: new Date(1_000),
+          }],
+          directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+        })
+
+        expect(result.error).toMatchObject({ status: 403 })
+        expect(result.updateSets).toContainEqual({
+          googleDataAt: expect.any(Date),
+        })
       })
 
     it('stops a refused upstream behind a gateway', async () => {

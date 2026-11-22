@@ -494,6 +494,8 @@ import {
   assertGoogleDataRecipient,
   decideGoogleDataGuard,
   disabledRerankModelResolver,
+  mayOfferConnectorsWithGoogleData,
+  withGoogleTaintRerankStop,
   withoutWebSearchForGoogleData,
 } from '~~/server/utils/google/data-guard'
 import {
@@ -693,6 +695,11 @@ export default defineEventHandler(async (event) => {
     googleDataAt: chat.googleDataAt,
     messages: chat.messages,
   })
+
+  if (holdsGoogleData && !chat.googleDataAt) {
+    await markChatGoogleData(db, chat.id, logger)
+  }
+
   let resume: ToolApprovalResume | null = null
   let sendBody: ChatSendBody
 
@@ -1975,11 +1982,14 @@ export default defineEventHandler(async (event) => {
     : undefined
   const resolveRerankModel = holdsGoogleData
     ? disabledRerankModelResolver
-    : createJevRerankModelResolver({
-      db,
-      userId,
-      logger: aiLogger,
-    })
+    : withGoogleTaintRerankStop(
+      createJevRerankModelResolver({
+        db,
+        userId,
+        logger: aiLogger,
+      }),
+      () => toolApprovalSend.state.taint.has('google'),
+    )
 
   if (chatSearchBudget && chatSearchToolsRegistered) {
     const { tools: chatSearchTools } = getChatSearchTools({
@@ -2381,7 +2391,13 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    if (sendFeatures.isFeatureActive('connectors')) {
+    if (
+      sendFeatures.isFeatureActive('connectors')
+      && mayOfferConnectorsWithGoogleData({
+        holdsGoogleData,
+        toolApprovalsActive,
+      })
+    ) {
       const storedStates = await listChatConnectorStates(db, userId, chat.id)
       const userConnectors = await listConnectors(db, userId)
       const knownConnectorIds = new Set(userConnectors.map((connector) => {

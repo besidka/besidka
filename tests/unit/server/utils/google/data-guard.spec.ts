@@ -11,7 +11,9 @@ import {
   disabledRerankModelResolver,
   fileIsNotGoogleCopy,
   isShareVisibleForGoogleData,
+  mayOfferConnectorsWithGoogleData,
   mayRunWithGoogleData,
+  withGoogleTaintRerankStop,
   readArtifactHoldsGoogleData,
   readGeminiPaidTierConfirmed,
   withoutWebSearchForGoogleData,
@@ -259,6 +261,39 @@ describe('withoutWebSearchForGoogleData', () => {
 describe('disabledRerankModelResolver', () => {
   it('never resolves a TypeSafe AI model', async () => {
     expect(await disabledRerankModelResolver()).toBeNull()
+  })
+})
+
+describe('withGoogleTaintRerankStop', () => {
+  it('stops reranking once a Google result arrived in the send', async () => {
+    const model = { id: 'jev' }
+    const resolver = vi.fn(async () => model as never)
+    let tainted = false
+    const guarded = withGoogleTaintRerankStop(resolver, () => tainted)
+
+    expect(await guarded()).toBe(model)
+
+    tainted = true
+
+    expect(await guarded()).toBeNull()
+    expect(resolver).toHaveBeenCalledOnce()
+  })
+})
+
+describe('mayOfferConnectorsWithGoogleData', () => {
+  it('offers connectors in a flagged chat only under tool approvals', () => {
+    expect(mayOfferConnectorsWithGoogleData({
+      holdsGoogleData: true,
+      toolApprovalsActive: false,
+    })).toBe(false)
+    expect(mayOfferConnectorsWithGoogleData({
+      holdsGoogleData: true,
+      toolApprovalsActive: true,
+    })).toBe(true)
+    expect(mayOfferConnectorsWithGoogleData({
+      holdsGoogleData: false,
+      toolApprovalsActive: false,
+    })).toBe(true)
   })
 })
 

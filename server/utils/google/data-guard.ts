@@ -225,6 +225,33 @@ export const disabledRerankModelResolver: JevRerankModelResolver = () => {
 }
 
 /**
+ * The rerank resolver of a send that starts without Google data: once a
+ * Google result arrived in this send (`google` taint), no later search or
+ * knowledge rerank reaches TypeSafe AI.
+ */
+export function withGoogleTaintRerankStop(
+  resolver: JevRerankModelResolver,
+  holdsGoogleTaint: () => boolean,
+): JevRerankModelResolver {
+  return () => {
+    return holdsGoogleTaint() ? Promise.resolve(null) : resolver()
+  }
+}
+
+/**
+ * Connectors in a chat that holds Google data run only under tool
+ * approvals: the Google egress ask (rule 12) is the only thing that keeps
+ * Google content from reaching a user-added MCP server unasked, and it needs
+ * approvals to run.
+ */
+export function mayOfferConnectorsWithGoogleData(input: {
+  holdsGoogleData: boolean
+  toolApprovalsActive: boolean
+}): boolean {
+  return !input.holdsGoogleData || input.toolApprovalsActive
+}
+
+/**
  * A file that is not a copy of a Google file: `external_source` is null or
  * not one of `GOOGLE_EXTERNAL_SOURCES`. Google copies stay out of MCP, the
  * Besidka file tools and share grants.

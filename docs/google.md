@@ -381,7 +381,9 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Deep research (`chats/[slug]/research/index.post.ts`) | The research provider, before the user message is stored | The same 403 |
 | Artifact LLM bridge (`artifacts/[id]/complete.post.ts`) | The bridge model, when the artifact's origin chat holds Google data | The same 403, before the key and caps are used |
 | Web search, Brave, Exa | Every web search tool is removed from the send in a flagged chat (`withoutWebSearchForGoogleData`), whatever the tool approvals setting; the Brave and Exa keys are never read | The search tools are not offered; the reply has no search |
-| TypeSafe AI roles on the send path | Auto web search, skill selection, past-chat pre-retrieval and the rerank resolver are skipped in a flagged chat; the share personal-data check skips its TypeSafe AI call | Auto web search keeps the chosen tools (minus search); the share check shows the generic reminder |
+| TypeSafe AI roles on the send path | Auto web search, skill selection, past-chat pre-retrieval and the rerank resolver are skipped in a flagged chat; in the send that first brings Google data, the rerank resolver stops once `google` taint appears (`withGoogleTaintRerankStop`); the share personal-data check skips its TypeSafe AI call | Auto web search keeps the chosen tools (minus search); the share check shows the generic reminder |
+| Connectors with tool approvals off | A flagged chat offers no connector unless tool approvals are active (`mayOfferConnectorsWithGoogleData`), because only the Google egress ask (rule 12) keeps Google content from a user-added MCP server, and it needs approvals | Connectors are not offered in that chat |
+| Flag repair | A send that finds a Google result in the stored parts while `google_data_at` is null sets the flag, so title, research, shares, memory, MCP and the bridge, which read the column only, see it | Nothing |
 | Memory | Flagged chats leave the extraction sweep, the backfill queue, project memory refresh and settle, the extract-now path (checked before and after the model call), the guarded entry insert, and the `search_chats` and `read_chat` tools of other chats; `memory_write` and `memory_forget` are not offered inside a flagged chat | Memory stays as it was; the chat is never cited |
 | Shares | `POST /share` needs `includeGoogleContent: true` for a flagged chat (409 otherwise), recorded in the wide event as `googleDataGuard.shareOptIn`; a share is visible only when `chat_shares.updated_at` is later than `chats.google_data_at` (`resolveActiveShareBySlug`), so a link made before the flag pauses until the owner shares again; Google copies get no `chat_share_files` grant, so the public view drops them | The share dialog asks "Share the Google content in this chat", says when a link is paused, and the Generate button waits for the box |
 | MCP and Besidka tools | `get_chat` replaces every message text of a flagged chat with a fixed notice; `list_chats` content search keeps the match but drops the snippet; `list_files`, `read_file` and the `get_chat` context files never include a Google copy (`fileIsNotGoogleCopy`). The Besidka chat tools call the same functions | The withheld notice in place of the text; Google copies are not found |
@@ -396,18 +398,22 @@ unknown and refused. Unknown, unverifiable or refused means no.
   engine, and Vercel's gateway search is Perplexity, a third party outside
   the table. This also closes the gap of section 5.2 where a chat flagged
   earlier kept web search with approvals off.
-- Every TypeSafe AI role is skipped in a flagged chat, including the ones
-  that read only knowledge or search results, as the pre-check says ("TypeSafe
-  AI checks ... are skipped in flagged chats").
+- Every TypeSafe AI role of the send path and the share check is skipped in
+  a flagged chat, including the ones that read only knowledge or search
+  results, as the pre-check says ("TypeSafe AI checks ... are skipped in
+  flagged chats"). One path remains: a Besidka `add_memory` or
+  `update_memory` call the user approves (rule 13, Allow once) writes the
+  entry and runs the TypeSafe AI memory check when the user has a key.
 - Chat search and the FTS index keep flagged chats: the pre-check says
   nothing about them, and the search runs inside Besidka for the owner. The
   model-facing tools that copy another chat into a send exclude them.
 - `get_chat` withholds the whole transcript rather than cutting at the flag
   time, because the flag is chat-wide and a branch copies it.
 - The share opt-in is not stored: it is derived from the share's
-  `updated_at`, which only a create or re-share changes. A legacy chat
-  flagged only by a parts scan (no `google_data_at`) is treated as not
-  flagged by shares.
+  `updated_at`, which only a create or re-share changes. The tokened file
+  route (`hasShareTokenFileAccess`) applies the same pause, so a file token
+  issued before the flag stops working too. A legacy chat flagged only by a
+  parts scan gets `google_data_at` on its next send (flag repair).
 - Names-only rendering of Google items in the shared view belongs to the
   Picker child (`data-drive-file` parts); today a Google copy without a
   grant is simply dropped from the share.
@@ -419,8 +425,12 @@ user as the gateway's own error, not a Google-specific sentence. Artifact
 and document content written in a flagged chat still leaves through
 `get_artifact`, artifact public links and document downloads, and project
 knowledge text extracted on the client from a Google copy cannot be told
-apart from other text. Approved Besidka writes (`add_project_text`,
-`add_project_note`) still copy content after one approval (rule 13).
+apart from other text. Approved Besidka writes (`add_memory`,
+`update_memory`, `add_project_text`, `add_project_note`, `create_skill`)
+still copy content after one approval (rule 13), and the memory ones run
+the TypeSafe AI memory check. Native artifact and document writes run
+unasked when tool approvals are off; their content stays in the user's
+account until one of the exits above.
 
 ## 6. Owner runbook outline: bring your own client
 
