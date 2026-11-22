@@ -2753,17 +2753,55 @@ its `references`.
 
 | Tool | Kind | Input | Output | Limits | Approval options |
 |---|---|---|---|---|---|
-| `google__calendar_list_events` | read | `from` and `to`: RFC 3339 date-times with an explicit offset, `to` after `from`, at most 31 days apart | `references`, `count`, `calendarTimeZone` (only when it is a known time zone), `events` (one framed line per event: `start`, `end`, `all_day`, `title`, `location`, a short `description`, `organizer` (`you`, or the name or address of someone else), `guests` (a number), `video_call_links` (a number), `attachments` (a number), `type` and `status` when they are not the plain ones), `note` | `events.list` on the primary calendar only, `singleEvents=true`, `orderBy=startTime`, `maxResults=50`, a `fields` mask; one request; the answer is read with a 1 MiB cap (over it: "use a shorter window"); 24 KiB of text; the 64 KiB cap | Allow once, "Allow reading events on your Google Calendar in this chat" (at most 5 granted calls per message, then it asks again) |
-| `google__calendar_free_busy` | read | the same window | `references` (one), `window`, `count`, `busy` (validated start and end times in UTC, at most 100 intervals), `note` | `freeBusy.query` for `primary` only, one request, a `fields` mask, a 256 KiB cap; times only, no event text | Allow once, "Allow checking when you are busy in your Google Calendar in this chat" (at most 5 granted calls per message) |
-| `google__calendar_create_event` | write | `title` (1 to 200 characters), `start` and `end` (RFC 3339 with an explicit offset, or two dates for an all-day event), `timeZone` (an IANA name), optional `description` (4,000 characters) and `location` (300) | `references` (the event id, its start day and its link), `created`, `link`, a message that nobody was invited and no email was sent | One `events.insert` on the primary calendar with `sendUpdates=none` | Allow once only |
+| `google__calendar_list_events` | read | `from` and `to`: RFC 3339 date-times with an explicit offset, `to` after `from`, at most 31 calendar days apart (see "The window" below) | `references`, `count`, `calendarTimeZone` (only when it is a known time zone), `events` (one framed JSON object per line, the same keys in the same order for every event: `allDay`, `start`, `end` (timed events, else null), `endExclusive` and `lastDay` (all-day events, else null), `title`, `location`, a short `description` (each null when empty), `organizerIsYou`, `organizerName` (the display name only, or null), `myResponse`, `showsAsBusy`, `guests` (a number), `videoCallLinks` (a number), `attachments` (a number), `type` and `status` (null unless not the plain ones)), `note` | `events.list` on the primary calendar only, `singleEvents=true`, `orderBy=startTime`, `maxResults=50`, a `fields` mask; one request; the answer is read with a 1 MiB cap (over it: "use a shorter window"); 24 KiB of text; the 64 KiB cap | Allow once, "Allow reading events on your Google Calendar in this chat" (at most 5 granted calls per message, then it asks again) |
+| `google__calendar_free_busy` | read | the same window | `references` (one), `window`, `count`, `busy` (UTC start and end times, sorted, merged and cut to the window, at most 100 intervals), `note` | `freeBusy.query` for `primary` only, one request, a `fields` mask, a 256 KiB cap; times only, no event text | Allow once, "Allow checking when you are busy in your Google Calendar in this chat" (at most 5 granted calls per message) |
+| `google__calendar_create_event` | write | `title` (1 to 200 characters), `start` and `end` (RFC 3339 with an explicit offset, or two dates for an all-day event), `timeZone` (an IANA name), optional `description` (4,000 characters) and `location` (300) | `references` (the event id, its start day and its Google link, for the card only), `created`, a fixed message with the day that nobody was invited and no email was sent; no Google link | One `events.insert` on the primary calendar with `sendUpdates=none` and a client-supplied `id` | Allow once only |
 
 There are no attendees, no video call, no repeat, no reminders and no
 attachments in a created event, and no tool edits, moves or deletes one, reads
 another calendar or reads one event by id. A refusal or a Google failure is a
 thrown sentence the model can read and never repeats Google's own message
-text (`classifyCalendarFailure`: 401 reconnect, `accessNotConfigured` "the
-Google Calendar API is not turned on in your Google Cloud project", 403, 404,
-429, too large, 400, anything else).
+text (`classifyCalendarFailure`: 401 reconnect, `accessNotConfigured` or
+`SERVICE_DISABLED` "the Google Calendar API is not turned on in your Google
+Cloud project", 403, 404, 429 and the 403 reasons `rateLimitExceeded`,
+`userRateLimitExceeded` and `quotaExceeded` "slow down", too large, 400,
+anything else). A free and busy answer that carries an error for the
+calendar gets its own sentence: `notFound` "could not find the primary
+calendar of this account", any other reason "could not answer for the primary
+calendar". `SERVICE_DISABLED` is read from `error.details` by
+`readCalendarReason` in `calendar-api.ts`, because the shared `readReason`
+only reads `error.errors`.
+
+**The window.** `validateCalendarWindow` allows a window of up to 31 calendar
+days. The span is compared in real time, so one hour is allowed on top of 31
+days: a whole October in a European zone, whose clocks go back, is 31 days
+and one hour long and is accepted (tested for Europe/Warsaw in March and
+October and America/New_York in November), and 31 days and 61 minutes is
+refused.
+
+**What a listed event says.**
+
+- An all-day event carries `endExclusive`, which is Google's end date and is
+  not part of the event, and `lastDay`, the last day it covers (a one-day
+  event has `lastDay` equal to `start`). The tool description says so.
+- `organizerIsYou` is Google's own `organizer.self`. `organizerName` is the
+  cleaned display name and nothing else. An organizer's address is never
+  asked for (the `fields` mask is `organizer(self,displayName)`), never
+  returned and never used as a name: with no display name `organizerName` is
+  null.
+- `myResponse` is the response of the user's own entry in the guest list
+  (`accepted`, `declined`, `tentative`, `needsAction` or null; any other value
+  is null), asked as `attendees(self,responseStatus)`. A declined event is
+  listed, with `myResponse: "declined"`. `showsAsBusy` is false only when
+  Google's `transparency` is `transparent`. No guest name or address is asked
+  for.
+- A canceled event is not listed and is counted in the note as "N canceled
+  events not shown" (an event that cannot be shown for another reason is
+  counted as "could not be shown").
+- One event is one JSON object on its own line with `JSON.stringify` after
+  the cleaning below, so a title with a pipe or a quote, or an organizer
+  whose display name is "you", cannot forge another field: `organizerIsYou`
+  is a separate boolean that no text can set.
 
 **Why these approvals.** The two reads put text written by other people into
 the model's context, but only short fields (the pre-check's row 14 asks for an
@@ -2793,15 +2831,20 @@ framed by `frameUntrustedResult` as
 time is passed on only when it has exactly the shape of a date or an RFC 3339
 date-time (`readCalendarResponseTime`), so no free text rides on a time; an
 event whose start or end is not one, whose id is not `[A-Za-z0-9_-]{1,256}`
-or that is cancelled is left out and counted in the note.
+or that is canceled is left out; a canceled event is counted in the note as
+"N canceled events not shown" and any other is counted as "could not be
+shown".
 
 **Guests.** The attendees of a listed event are other people's addresses. The
-`fields` mask asks Google for `attendees(responseStatus)` only, so no address
-or name enters the Worker; the model gets the number of guests, whether the
-owner is the organizer (`organizer: you`) and the number of video call links
-and attachments (the `fields` mask leaves out their addresses too). The tool
+`fields` mask asks Google for `attendees(self,responseStatus)` only, so no
+address or name enters the Worker; the model gets the number of guests, the
+response of the user's own entry (`myResponse`), whether the owner is the
+organizer (`organizerIsYou`) and the number of video call links and
+attachments (the `fields` mask leaves out their addresses too). The tool
 description says so. The organizer of an event someone else created is shown
-by display name, or address when there is no name, inside the frame.
+by display name inside the frame, and never by address: with no display name
+`organizerName` is null (decided 2026-11-22, replacing the earlier fallback to
+the address).
 
 ### 15.2 Scopes
 
@@ -2840,9 +2883,16 @@ existing admin gate runs first). The route also leaves the two Calendar
 scopes out of the request while the flag is off even when the stored grant
 holds them (the start route normally adds the scopes of an active connection,
 section 10.4; `excludedScopes` of `startGoogleConnection` removes them), so
-"Add access" never re-requests Calendar without the flag, and the connection
-then drops them (tested by reading the authorization URL). A connection
-without them simply gets no Calendar tools, as with a missing Gmail scope.
+"Add access" never re-requests Calendar without the flag (tested by reading
+the authorization URL). The connection does not drop the scopes: the request
+keeps `include_granted_scopes=true`, so Google keeps every scope the owner
+granted earlier until the owner disconnects, and the next token can still
+carry them. What the flag off changes is Besidka's side: it stops requesting
+the Calendar scopes and stops using them, through the exact-scope checks
+(`hasScopes` on the stored scopes per tool) and the per-call flag check in
+`getGoogleAccessToken`. The OAuth behavior is unchanged. A connection
+without the scopes simply gets no Calendar tools, as with a missing Gmail
+scope.
 
 ### 15.3 When the tools are offered
 
@@ -2902,14 +2952,44 @@ Only after all of that does it return the request body. `CalendarInsertBody`
 has the keys `summary`, `description`, `location`, `start` and `end` and no
 other; `buildCalendarInsertPayload` in `calendar-api.ts` copies those fields
 one by one (so an object that carried an `attendees` property at runtime
-would still lose it), the call always sends `sendUpdates=none`, and no
+would still lose it) and adds one key of its own, the client-supplied `id`
+(below), which is kept out of the validated body so the card is still built
+from the body alone. The call always sends `sendUpdates=none`, and no
 parameter that turns on video calls or attachments is ever sent.
 `calendar-boundary.spec.ts` proves it: the module has no PUT, PATCH or
 DELETE, no other calendar, no `/acl`, `/move`, `quickAdd`, `/import` or
 `/watch`; two POSTs only (the free and busy query and the insert); the body
 type has no attendee key; the payload of a hostile object has only the
-whitelisted keys; and no byte of any request body in the tool specs holds an
-attendee, conference, recurrence, reminder or attachment.
+whitelisted keys plus `id`; and no byte of any request body in the tool specs
+holds an attendee, conference, recurrence, reminder or attachment.
+
+**An insert that is safe to repeat.** The approved call can run twice (a
+Worker that died after Google answered, or a lease that expired), so the
+insert carries an `id` that is derived, not random: `buildCalendarEventId`
+hashes the user id and the tool call id (SHA-256) and writes the digest in
+base32hex, 52 lowercase characters. A tool call has exactly one approval, so
+the tool call id that the approval wrapper replays stands for the approval id
+(the approval id itself is known only to `wrapApprovedExecutions`, not to the
+tool, so it is not used directly). Google's reference for `events.insert`
+(read 2026-11-22) says of the id: "characters allowed in the ID are those
+used in base32hex encoding, i.e. lowercase letters a-v and digits 0-9", "the
+length of the ID must be between 5 and 1024 characters" and "the ID must be
+unique per calendar", and adds that "we cannot guarantee that ID collisions
+will be detected at event creation time". Google's Calendar error guide
+documents the answer for an id that already exists: HTTP 409, reason
+`duplicate`, "The requested identifier already exists". A 409 is therefore
+counted as success (the reference is built from the id that was sent and the
+validated start, with the day view link, since a 409 carries no event). What
+is not verified: the 409 against the real API, and that a collision is always
+detected (Google says it is not guaranteed), so a rare double insert is still
+possible and the sentence below stays honest about it.
+
+**A failed insert.** An answer with no confirmation (no answer, a timeout, a
+5xx, an answer without an id) may still have created the event, so the
+sentence is not "try again": it says Google did not confirm the event, that
+it may or may not have been created, and that the user should check their
+calendar before trying again. A refusal that proves nothing was created
+(401, 403, 404, 429, 400) keeps its own sentence.
 
 The approval card (`reasoning-approval-step-calendar-event`) reads the
 tool part's input with `readCalendarEventApprovalView`, which is built from
@@ -2920,16 +3000,40 @@ cases). The view skips the two checks that need the runtime's time zone data
 (the name is known, the offset is the zone's at that instant; the server ran
 them before the approval was asked), so a browser whose time zone data
 differs from the Worker's never turns a valid card into raw arguments; every
-other check still runs. It shows the title, "Timed event" or "All-day event", the start and
-the end exactly as the strings that are sent (for an all-day event "First
-day" and "End (not included)" and the last day), the time zone, the location,
-the description in the same keyboard-reachable scrolling region as the Gmail
+other check still runs. It shows the title, "Timed event" or "All-day event",
+the start and the end the way a person reads them (weekday, date, 24-hour
+time and the offset, for example "Tue, Dec 1, 2026, 10:00 (UTC+01:00)",
+worked out from the digits and the offset of the string itself, never from
+the browser's time zone), the length ("1 hour 30 minutes", counted in real time
+across a clock change), and under each time, as a secondary line, the exact
+string that is sent (also the `datetime` of a `<time>` element). For an
+all-day event the labels are dates, "First day", "End (not included)", the
+last day and its length in days. Then the time zone, the location, the
+description in the same keyboard-reachable scrolling region as the Gmail
 draft with the line count and `collapseBlankLinesForCard` (a run of more than
 two blank lines becomes one "[N blank lines]" line on the card only), and the
 sentence "Nobody is invited and no email is sent. The event is created only
 on your own primary calendar." The text is rendered as text, never as markup.
 An input that cannot run never reaches an approval: the schema refuses it
 first, and the card shows nothing for it.
+
+The card is the component `Chat/Reasoning/CalendarEvent.vue`, and the
+"View details" panel of an approval (`ApprovalDetails.vue`, in the side panel)
+shows the same component for a create-event call, built by the same
+`readCreateEventApprovalView`, so the two never differ. The details panel has
+no way to allow anything: it has no button and no key handler, and Enter in
+the side panel does nothing (the panel's only key handling is the Tab focus
+trap). The one place that answers an approval is `ApprovalStep.vue`, whose
+`onEnter` refuses every Google write through `isGoogleWriteToolName` (Drive
+save, Gmail draft, Calendar event); `ApprovalDetails.spec.ts` proves the
+details view has no path for each of the three. The Gmail draft view is not
+shown in the details panel (it shows the raw arguments), which is a gap
+outside this child.
+
+The approval summary of a read names its window the way the owner would say
+it: "from Dec 1, 2026 to Dec 7, 2026" for whole days (the exclusive `to` is
+shown as the last day that is read) and "from Dec 1, 2026, 10:00 to Dec 1,
+2026, 18:30" when a time is not midnight (`describeCalendarWindow`).
 
 ### 15.5 What is stored, and what the user sees after a reload
 
@@ -2944,19 +3048,21 @@ tool input, which is composed by the user and the model (section 5.2):
 
 `withoutReferenceNames` and `toModelOutput` strip every title and link from
 what the model sees, on the first call, on an approval resume and on a
-"Continue" round (a stored event link never appears in a prompt; the one link
-the model does see is the link of an event just created, in the result of the
-write, which is Google's own validated link). A paused turn keeps the framed
+"Continue" round (a stored event link never appears in a prompt). The result
+of a create gives the model no Google link at all: the link of the new event
+(`eid` encodes the calendar id, which for the primary calendar is the owner's
+email address) stays only in the stored reference for the card, and the model
+gets a fixed message with the day. A paused turn keeps the framed
 bodies 24 hours in KV like every Google result (section 5.2), and the route
 specs show the model gets no event text outside the frame, and none at all
 when the stash is gone.
 
 Taint and the chat flag: `calendar_list_events` and `calendar_free_busy`
 return Google content (the send is tainted and the chat is flagged;
-`GOOGLE_TOOL_PROPERTIES`); an empty listing is not a Google result
-(`emptyListHoldsNoContent`) and flags nothing; free and busy time has no
-`emptyListHoldsNoContent`, because even an answer with no busy time says
-something about the calendar, so it always flags. `calendar_create_event` is
+`GOOGLE_TOOL_PROPERTIES`). Neither has `emptyListHoldsNoContent`: an empty
+listing still returns the calendar's time zone, and free and busy time with no
+busy interval still says something about the calendar, so every Calendar read
+flags the chat, empty or not. `calendar_create_event` is
 registered with `returnsGoogleContent: false`: its answer holds an id and a
 link, no calendar content, so it neither taints the send nor flags the chat.
 Like the Gmail draft, this is sound only because the event's own text comes
@@ -2973,13 +3079,25 @@ step reads "Read Google Calendar", "Checked free and busy time in Google
 Calendar" or "Created an event in Google Calendar" with Google's official
 Calendar mark (`GOOGLE_CALENDAR_ICON` from
 `shared/utils/google-brand-icons.ts`, unmodified, no color class), and each
-reference is one line with "Open in Google Calendar". The owner card
-(`OwnClient.vue`) lists Calendar access like Gmail, under the label "Your
-Google Calendar events", only while `google.calendar` is active, with the same
-mark beside the box (no color class, no opacity, square so its aspect ratio
-is kept) and one sentence about what the two permissions allow; the connected
-card lists Calendar in the tools hint and, when the access was not granted, in
-the "some tools are off" note.
+reference is one line with "Open in Google Calendar". The Calendar mark is
+256 by 275, Gmail's 256 by 204 and Drive's 256 by 238; in the step icon's
+square box the icon's CSS (`background-size: 100% 100%`, from Iconify) with the
+box's `size-full` stretched all three (Gmail by about 25 percent, Drive and
+Calendar by about 7 to 8 percent), so `StepIcon.vue` now adds `bg-contain!`
+and `bg-center!` (and the mask forms) to an icon, which keeps the aspect
+ratio. The owner card's mark is not stretched: it is sized by `size="16"`
+(a font size), and Iconify gives a non-square icon its own width. The owner
+card (`OwnClient.vue`) lists Calendar access like Gmail, under the label
+"Your Google Calendar events", only while `google.calendar` is active, with
+the same mark beside the box (no color class, no opacity) and a short note
+about what the two permissions allow, in short sentences. While
+`google.calendar` is not active the card says "Google Calendar tools need
+Google Calendar turned on in Labs", as it does for Gmail. The connected card
+lists Calendar in the tools hint and, when the access was not granted, in the
+"some tools are off" note; when only one of the two permissions was granted
+(`partialCalendar` in the connection summary, `events` or `free-busy`), the
+note says which tools work and which permission the others need, since the
+`calendar` capability itself counts only when both are granted.
 
 ### 15.6 Outbound
 
@@ -2989,19 +3107,28 @@ credentials, `redirect: 'manual'`, 15 s timeout, streaming response cap), one
 request at a time, with a `fields` mask on every request. Endpoints
 (Google's reference, read 2026-11-22):
 
-- `GET /calendar/v3/calendars/primary/events?timeMin=&timeMax=&singleEvents=true&orderBy=startTime&maxResults=50&fields=timeZone,nextPageToken,items(id,status,eventType,summary,description,location,start,end,htmlLink,organizer(self,displayName,email),attendees(responseStatus),hangoutLink,conferenceData(entryPoints(entryPointType)),attachments(fileId))`
+- `GET /calendar/v3/calendars/primary/events?timeMin=&timeMax=&singleEvents=true&orderBy=startTime&maxResults=50&fields=timeZone,nextPageToken,items(id,status,eventType,summary,description,location,start,end,htmlLink,transparency,organizer(self,displayName),attendees(self,responseStatus),hangoutLink,conferenceData(entryPoints(entryPointType)),attachments(fileId))`
 - `POST /calendar/v3/freeBusy?fields=calendars/*/busy,calendars/*/errors` with
   `{ timeMin, timeMax, items: [{ id: "primary" }] }`; the single entry of the
   answer's `calendars` object is read whatever its key is, and the key is never
-  echoed (it can be the account's address).
+  echoed (it can be the account's address). Each busy value must be a UTC
+  RFC 3339 time (ending in `Z`) or the interval is counted as skipped; the
+  valid ones are sorted, merged where they overlap or touch, cut to the
+  window and capped at 100 after merging. The tool description tells the model
+  that the times are UTC and that the calendar's time zone is the
+  `calendarTimeZone` of `google__calendar_list_events`, or to ask the user;
+  no request is added for it, because reading a calendar's time zone through
+  `calendars.get` or `settings.get` would need another scope.
 - `POST /calendar/v3/calendars/primary/events?sendUpdates=none&fields=id,htmlLink,start,end`
-  with `{ summary, description?, location?, start, end }`, where a boundary is
-  `{ dateTime, timeZone }` or `{ date, timeZone }`.
+  with `{ id, summary, description?, location?, start, end }`, where a boundary
+  is `{ dateTime, timeZone }` or `{ date, timeZone }` and `id` is the derived
+  client id of section 15.4.
 
 Logs hold counts and codes only (`attributes.googleByoTools.calendarListEvents`
-with the event, skipped and more-pages counts, `calendarFreeBusy` with the
-interval counts, `calendarCreateEvent` with three booleans), never titles,
-times, addresses or links.
+with the event, skipped, canceled and more-pages counts, `calendarFreeBusy`
+with the interval counts, `calendarCreateEvent` with four booleans, the last
+one saying that the id already existed), never titles, times, addresses or
+links.
 
 ### 15.7 Where the ticket (BES-297) and the pre-check differ
 
@@ -3047,9 +3174,11 @@ VERIFIED, to check once with the owner's own project:
    from before this child and holds the old `calendar.events` scope,
    disconnect and connect again so the old grant is revoked.
 2. Ask "what is on my calendar next week". Allow once. Check the events, that
-   a repeating event is listed once per day, that an all-day event reads
-   `all_day: yes`, the guest counts (and that no address appears), and that
-   the "Calendar event on <day>" lines after a reload open the event
+   a repeating event is listed once per day, that an all-day event has
+   `allDay: true` with its `lastDay` equal to its last real day, the guest
+   counts and `myResponse` (and that no address appears, not even an
+   organizer's), that a declined event shows `declined`, and that the
+   "Calendar event on <day>" lines after a reload open the event
    (Google's `htmlLink` shape `https://www.google.com/calendar/event?eid=`
    is NOT VERIFIED; otherwise the link is the day view).
 3. Ask "when am I free on Thursday". Check the busy intervals in UTC and the
@@ -3061,10 +3190,13 @@ VERIFIED, to check once with the owner's own project:
    Google Calendar: the title, the time in its zone, the description and
    location, no guests, no video call, no email sent to anyone, the default
    reminders. Whether Google accepts `date` together with `timeZone` for an
-   all-day event, and `sendUpdates=none` on an event without guests, are NOT
-   VERIFIED.
+   all-day event, `sendUpdates=none` on an event without guests, a
+   client-supplied event `id` of 52 base32hex characters and the 409
+   `duplicate` answer for the same id (the event id stays the same when an
+   approved call runs again), are NOT VERIFIED.
 5. Press Deny on a create-event card: nothing is created. Press Enter on the
-   card: nothing happens; the button creates it.
+   card: nothing happens; the button creates it. Open "View details" on the
+   card: it shows the same event and has no button.
 6. Allow reading events in this chat and ask for more than five reads in one
    message: the sixth asks again.
 7. Turn the Google Calendar API off in the project and read events: the
