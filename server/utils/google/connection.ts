@@ -11,8 +11,9 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
 import {
   buildGoogleRedirectUri,
+  filterByoCapabilityScopes,
   getConnectionScopes,
-  GOOGLE_CONNECTION_REQUIRED_SCOPES,
+  requiredConnectionScopes,
   resolveGoogleClient,
 } from '~~/server/utils/google/client'
 import type { GoogleFetchOptions } from '~~/server/utils/google/http'
@@ -54,11 +55,12 @@ function logConnection(logger: LoggerLike, values: Record<string, unknown>) {
 
 /**
  * Creates the single-use state (KV, ten minutes, bound to the user and the
- * client mode, holding the PKCE verifier, the exact redirect URI and the
- * checked return path) and returns Google's consent URL. Consent is asked
- * again when no refresh token is stored for the mode or when the caller
- * forces it; a reconnect passes the stored Google subject as `login_hint`,
- * never the email.
+ * client mode, holding the PKCE verifier, the exact redirect URI, the
+ * checked return path and, for the bring-your-own client, the capability
+ * scopes the owner asked for) and returns Google's consent URL. Consent is
+ * asked again when no refresh token is stored for the mode or when the
+ * caller forces it; a reconnect passes the stored Google subject as
+ * `login_hint`, never the email.
  */
 export async function startGoogleConnection(input: {
   db: DbClient
@@ -68,10 +70,24 @@ export async function startGoogleConnection(input: {
   origin: string
   returnTo: string
   logger: LoggerLike
+  capabilityScopes?: readonly string[]
   forceConsent?: boolean
   now?: number
 }): Promise<{ authorizationUrl: string }> {
-  const client = await resolveGoogleClient(input.clientMode)
+  const client = await resolveGoogleClient(input.clientMode, {
+    db: input.db,
+    userId: input.userId,
+    kv: input.kv,
+    logger: input.logger,
+  })
+  const requestedScopes = input.clientMode === 'byo'
+    ? filterByoCapabilityScopes(input.capabilityScopes ?? [])
+    : undefined
+
+  if (requestedScopes?.length === 0) {
+    throw new GoogleConnectionError('GOOGLE_NO_CAPABILITY')
+  }
+
   const redirectUri = buildGoogleRedirectUri(input.origin, input.clientMode)
   const existing = await readGoogleConnectionTokenState(
     input.db,
@@ -91,6 +107,7 @@ export async function startGoogleConnection(input: {
     returnTo: input.returnTo,
     forcedConsent,
     createdAt: input.now ?? Date.now(),
+    ...(requestedScopes ? { requestedScopes } : {}),
   })
 
   logConnection(input.logger, {
@@ -100,13 +117,14 @@ export async function startGoogleConnection(input: {
     promptConsent,
     forcedConsent,
     dedicatedClient: client.dedicated,
+    requestedScopeCount: requestedScopes?.length ?? null,
   })
 
   return {
     authorizationUrl: buildGoogleAuthorizationUrl({
       client,
       redirectUri,
-      scopes: getConnectionScopes(input.clientMode),
+      scopes: getConnectionScopes(input.clientMode, requestedScopes),
       state,
       codeChallenge: pkce.challenge,
       loginHint: forcedConsent ? null : existing?.googleSubject ?? null,
@@ -128,7 +146,11 @@ async function revokeFreshTokens(
 /**
  * Finishes a connection after the callback checked the state: exchanges
  * the code with the PKCE verifier and the stored redirect URI, refuses a
- * grant without `drive.file` (revoking the fresh tokens), reads the Google
+ * grant without `drive.file` on Besidka's client, or without any of the
+ * requested capability scopes on the bring-your-own client (revoking the
+ * fresh tokens). A bring-your-own grant that holds only some of them is
+ * saved with exactly the scopes Google granted and reported as `partial`,
+ * never as a full connection. It reads the Google
  * account from the ID token and saves the connection. Nothing is changed
  * before the grant is known to be usable: when Google sent no refresh token
  * and none can be kept, the user is sent back to Google once with
@@ -147,7 +169,20 @@ export async function completeGoogleConnection(input: {
 }): Promise<GoogleCompletion> {
   const { db, oauthState, logger } = input
   const now = input.now ?? Date.now()
-  const client = await resolveGoogleClient(oauthState.clientMode)
+  const requiredScopes = requiredConnectionScopes(
+    oauthState.clientMode,
+    oauthState.requestedScopes,
+  )
+
+  if (requiredScopes.length === 0) {
+    throw new GoogleConnectionError('GOOGLE_STATE_SCOPES_INVALID')
+  }
+
+  const client = await resolveGoogleClient(oauthState.clientMode, {
+    db,
+    userId: oauthState.userId,
+    logger,
+  })
   const exchange = await exchangeGoogleCode({
     client,
     code: input.code,
@@ -166,13 +201,15 @@ export async function completeGoogleConnection(input: {
   }
 
   const { tokens } = exchange
+  const grantedRequired = requiredScopes.filter((scope) => {
+    return hasScopes(tokens.scopes, [scope])
+  })
+  const isPartial = grantedRequired.length < requiredScopes.length
+  const isUsable = oauthState.clientMode === 'byo'
+    ? grantedRequired.length > 0
+    : !isPartial
 
-  if (
-    !hasScopes(
-      tokens.scopes,
-      GOOGLE_CONNECTION_REQUIRED_SCOPES[oauthState.clientMode],
-    )
-  ) {
+  if (!isUsable) {
     await revokeFreshTokens(tokens, input.fetchOptions)
     logConnection(logger, {
       step: 'scopes',
@@ -234,9 +271,10 @@ export async function completeGoogleConnection(input: {
     clientMode: oauthState.clientMode,
     replacedAccount: !!existing && !isSameAccount,
     grantedScopeCount: tokens.scopes.length,
+    partial: isPartial,
   })
 
-  return { kind: 'done', result: 'connected' }
+  return { kind: 'done', result: isPartial ? 'partial' : 'connected' }
 }
 
 async function replaceDifferentAccount(

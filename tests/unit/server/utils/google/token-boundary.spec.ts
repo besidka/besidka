@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = process.cwd()
 const TOKENS_FILE = 'server/utils/google/tokens.ts'
+const BYO_CLIENT_FILE = 'server/utils/google/byo-client.ts'
 const SCHEMA_FILES = new Set([
   'server/db/schemas/google-connections.ts',
   'server/db/schema.ts',
@@ -97,7 +98,7 @@ describe('Google token boundary', () => {
     expect(tokenReadsOutsideBoundary()).toEqual([])
   })
 
-  it('decrypts only in tokens.ts and the OAuth state store', () => {
+  it('decrypts only in tokens.ts, the own client and the state store', () => {
     const googleFiles = serverSources()
       .filter(({ source }) => source.includes('useDecryptText('))
       .map(({ path }) => path)
@@ -105,9 +106,23 @@ describe('Google token boundary', () => {
       .sort()
 
     expect(googleFiles).toEqual([
+      BYO_CLIENT_FILE,
       'server/utils/google/oauth-state.ts',
       TOKENS_FILE,
     ])
+  })
+
+  it('reads the own client\'s stored value only in byo-client.ts', () => {
+    const readers = serverSources()
+      .filter(({ path, source }) => {
+        return path !== BYO_CLIENT_FILE
+          && (source.includes('google-oauth-client')
+            || source.includes('GOOGLE_BYO_KEY_PROVIDER'))
+          && /schema\.keys\.apiKey|apiKey:\s*true|useDecryptText\(/.test(source)
+      })
+      .map(({ path }) => path)
+
+    expect(readers).toEqual([])
   })
 
   it('catches a bare select and an aliased token read', () => {

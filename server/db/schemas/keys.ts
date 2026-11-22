@@ -26,6 +26,7 @@ export const keys = snakeCase.table(
         'cloudflare-gateway',
         'openrouter',
         'typesafe',
+        'google-oauth-client',
       ],
     }).notNull(),
     apiKey: text().notNull(),

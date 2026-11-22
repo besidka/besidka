@@ -1,5 +1,6 @@
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler } from 'nuxt/server'
+import { GOOGLE_BYO_KEY_PROVIDER } from '#shared/utils/google-byo'
 
 const RATE_LIMIT_RULE = { window: 60, max: 300 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:summary:get'
@@ -29,12 +30,16 @@ export default defineEventHandler(async (event) => {
 
   const providersWithKeys = new Set(rows.map(row => row.provider))
 
-  const keys = schema.keys.provider.enumValues.map((provider) => {
-    return {
-      provider,
-      hasKey: providersWithKeys.has(provider),
-    }
-  })
+  const keys = schema.keys.provider.enumValues
+    .filter((provider) => {
+      return provider !== GOOGLE_BYO_KEY_PROVIDER
+    })
+    .map((provider) => {
+      return {
+        provider,
+        hasKey: providersWithKeys.has(provider),
+      }
+    })
 
   return { keys }
 })

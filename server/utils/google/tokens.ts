@@ -6,6 +6,7 @@ import type { GoogleClientMode } from '#shared/utils/google-scopes'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
+import { assertGoogleByoAllowed } from '~~/server/utils/google/byo-access'
 import { resolveGoogleClient } from '~~/server/utils/google/client'
 import { GOOGLE_FETCH_TIMEOUT_MS } from '~~/server/utils/google/http'
 import type { GoogleFetchOptions } from '~~/server/utils/google/http'
@@ -163,8 +164,9 @@ function refreshBusy() {
  * write only applies while the row still holds the refresh token that
  * failed, so a reconnect or a parallel rotation is never undone. The old
  * access token is revoked best effort, then the Google copies are deleted
- * (unless another mode is still active); a cleanup failure is left to the
- * hourly sweep.
+ * (unless a copy-making mode is still active, see
+ * `GOOGLE_COPY_CLIENT_MODES`); a cleanup failure is left to the hourly
+ * sweep.
  */
 async function endAccessAfterInvalidGrant(
   row: TokenRow,
@@ -279,7 +281,12 @@ async function performRefresh(
     throw undecryptable()
   }
 
-  const client = await resolveGoogleClient(row.clientMode)
+  const client = await resolveGoogleClient(row.clientMode, {
+    db: dependencies.db,
+    userId: row.userId,
+    kv: dependencies.kv,
+    logger: dependencies.logger,
+  })
   const result = await refreshGoogleAccessToken({
     client,
     refreshToken,
@@ -467,12 +474,23 @@ async function refreshUnderLock(
  * one). `invalid_grant` ends the connection (`needs_reauth`, tokens
  * cleared, Google copies deleted). Network failures, timeouts and other
  * Google errors throw and never end the connection. A token is never
- * logged or returned to a browser by this function.
+ * logged or returned to a browser by this function. A bring-your-own
+ * token, cached or refreshed, is handed out only after the admin and
+ * `google.byo` gate (`assertGoogleByoAllowed`), which throws a 404.
  */
 export async function getGoogleAccessToken(
   request: GoogleAccessTokenRequest,
   dependencies: GoogleTokenDependencies,
 ): Promise<GoogleAccessTokenResult> {
+  if (request.clientMode === 'byo') {
+    await assertGoogleByoAllowed({
+      db: dependencies.db,
+      userId: request.userId,
+      kv: dependencies.kv,
+      logger: dependencies.logger,
+    })
+  }
+
   const row = await readTokenRow(
     dependencies.db,
     request.userId,

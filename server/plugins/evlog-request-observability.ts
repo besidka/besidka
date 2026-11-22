@@ -76,6 +76,7 @@ const QUERY_FREE_PATH_PREFIXES = [
   '/api/v1/admin/',
   '/api/v1/connectors/oauth/callback',
   '/api/v1/google/oauth/callback',
+  '/api/v1/google/byo/callback',
 ]
 
 /**

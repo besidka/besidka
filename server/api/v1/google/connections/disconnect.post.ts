@@ -1,16 +1,46 @@
 import { createError } from 'evlog'
-import { defineEventHandler } from 'nuxt/server'
+import { defineEventHandler, getRequestHeader } from 'nuxt/server'
+import type { RequestEvent } from 'nuxt/server'
+import { z } from 'zod'
+import { GOOGLE_CLIENT_MODES } from '#shared/utils/google-scopes'
+import type { GoogleClientMode } from '#shared/utils/google-scopes'
+import { readConnectorBody } from '~~/server/utils/connectors/body'
 import { disconnectGoogleConnection } from '~~/server/utils/google/connection'
 import { requireGoogleAccess } from '~~/server/utils/google/route'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
+const bodySchema = z.object({
+  clientMode: z.enum(GOOGLE_CLIENT_MODES).optional(),
+}).optional()
+
 /**
- * Disconnects Google Drive: revokes the grant at Google (best effort),
- * clears the tokens and deletes the Drive files copied into Besidka
- * before answering. Needs a session and the same-origin guard but not the
- * `google.drive` flag, so a user can always end a connection. `revoked`
- * is false when Google did not confirm the revoke; `filesPending` is true
- * when the deletion could not finish and the hourly sweep completes it.
+ * The client mode to disconnect. A request without a body (the Google
+ * Drive card sends none, and a fetch may omit `Content-Length` or send 0)
+ * means Besidka's client, so the existing Disconnect never depends on a
+ * body.
+ */
+async function readClientMode(event: RequestEvent): Promise<GoogleClientMode> {
+  const length = Number(getRequestHeader(event, 'content-length') ?? '')
+
+  if (!Number.isFinite(length) || length <= 0) {
+    return 'besidka'
+  }
+
+  const body = await readConnectorBody(event, bodySchema)
+
+  return body?.clientMode ?? 'besidka'
+}
+
+/**
+ * Disconnects one Google connection: Besidka's client by default, or the
+ * owner's own client with `{ clientMode: 'byo' }`. Revokes the grant at
+ * Google (best effort; revoking needs no client secret), clears the tokens
+ * and runs the access-ended cleanup before answering. Needs a session and
+ * the same-origin guard but no flag and no admin role: ending access only
+ * ever removes it, so a user can always end a connection. `revoked` is
+ * false when Google did not confirm the revoke; `filesPending` is true
+ * when the deletion of Google file copies could not finish and the hourly
+ * sweep completes it.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireGoogleAccess(event, {
@@ -21,7 +51,7 @@ export default defineEventHandler(async (event) => {
   const result = await disconnectGoogleConnection({
     db: useDb(),
     userId,
-    clientMode: 'besidka',
+    clientMode: await readClientMode(event),
     logger: useRequestLogger(event),
   })
 

@@ -248,6 +248,7 @@ const featureList = [
     description: 'Connect Google with your own OAuth client.',
     parent: 'google.drive',
     optIn: 'required',
+    available: true,
   }),
   internalFeature({
     key: 'google.gmail',

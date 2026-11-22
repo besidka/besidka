@@ -226,6 +226,17 @@ describe('Google access-ended cleanup', () => {
     expect(await storageKeysOf(userId)).toEqual(['u/drive-a.pdf'])
   })
 
+  it('does not let an active own-client connection keep the copies',
+    async () => {
+      await seedConnection(userId, 'active', 'byo')
+      await seedFile(userId, 'u/drive-a.pdf')
+
+      const result = await cleanup()
+
+      expect(result).toEqual({ deleted: 1, complete: true, skipped: false })
+      expect(await storageKeysOf(userId)).toEqual([])
+    })
+
   it('leaves other users alone', async () => {
     const otherUserId = await seedUser(testDb.db)
 
@@ -353,6 +364,25 @@ describe('Google access-ended cleanup', () => {
 
         expect(result.incompleteUsers).toBe(1)
         expect(result.revokedRowsDeleted).toBe(0)
+      })
+
+    it('cleans the copies of a user whose only active link is the own client',
+      async () => {
+        await seedConnection(userId, 'revoked', 'besidka')
+        await seedConnection(userId, 'active', 'byo')
+        await seedFile(userId, 'u/drive-a.pdf')
+
+        const result = await sweep()
+
+        expect(result.filesDeleted).toBe(1)
+        expect(result.revokedRowsDeleted).toBe(1)
+        expect(await storageKeysOf(userId)).toEqual([])
+
+        const rows = await testDb.db
+          .select({ clientMode: schema.googleConnections.clientMode })
+          .from(schema.googleConnections)
+
+        expect(rows).toEqual([{ clientMode: 'byo' }])
       })
   })
 })

@@ -432,6 +432,17 @@ describe('Google connection routes', () => {
       expect(logged).not.toContain(GOOGLE_EMAIL)
     })
 
+    it('accepts Google\'s cross-site redirect', async () => {
+      const url = await start()
+      const { event } = await call('callback', {
+        query: { state: url.searchParams.get('state')!, code: 'auth-code' },
+        headers: { 'origin': '', 'sec-fetch-site': 'cross-site' },
+      })
+
+      expect(event.res.headers.get('location'))
+        .toBe('/profile/keys?tab=google&google=connected')
+    })
+
     it('refuses a replayed state', async () => {
       const url = await start()
       const query = { state: url.searchParams.get('state')!, code: 'auth-code' }
@@ -659,6 +670,7 @@ describe('Google connection routes', () => {
         connection: null,
         canConnect: true,
         dedicatedClient: false,
+        byo: null,
       })
     })
 
@@ -677,6 +689,7 @@ describe('Google connection routes', () => {
         },
         canConnect: true,
         dedicatedClient: false,
+        byo: null,
       })
       expect(JSON.stringify(result)).not.toContain('enc:')
     })
@@ -700,6 +713,33 @@ describe('Google connection routes', () => {
       expect(await connectionRows()).toEqual([])
       expect(await fileCount()).toBe(0)
     })
+
+    it.each([
+      ['no Content-Length', undefined],
+      ['a zero Content-Length', '0'],
+    ])('disconnects Besidka\'s client for a request with %s',
+      async (_label, contentLength) => {
+        await connect()
+
+        const module = await import(ROUTES.disconnect)
+        const event = createSkillsRouteEvent({
+          headers: {
+            'origin': mocks.origin,
+            'sec-fetch-site': 'same-origin',
+          },
+        })
+
+        if (contentLength === undefined) {
+          delete event.headers['content-length']
+        } else {
+          event.headers['content-length'] = contentLength
+        }
+
+        const result = await (module.default as Handler)(event)
+
+        expect(result.disconnected).toBe(true)
+        expect(await connectionRows()).toEqual([])
+      })
 
     it('still disconnects when Google cannot revoke', async () => {
       useGoogle({ revoke: () => ({ status: 503, body: {} }) })

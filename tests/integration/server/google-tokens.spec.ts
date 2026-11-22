@@ -15,10 +15,13 @@ import {
 } from '../../setup/helpers/connectors-oauth'
 import type { FakeConnectorKv } from '../../setup/helpers/connectors-oauth'
 import {
+  BYO_CLIENT_ID,
+  BYO_CLIENT_SECRET,
   createFakeBucket,
   createFakeGoogle,
   DRIVE_FILE_SCOPE,
   GOOGLE_SUBJECT,
+  seedGoogleByoAccess,
   useGoogleRuntimeConfig,
 } from '../../setup/helpers/google-connections'
 import type {
@@ -95,6 +98,17 @@ describe('Google tokens', () => {
       accessToken: 'access-stored',
       accessTokenExpiresAt: new Date(NOW + (input.expiresInMs ?? 3_600_000)),
       refreshToken: 'refresh-stored',
+    })
+  }
+
+  async function seedGoogleByoClient() {
+    await testDb.db.insert(schema.keys).values({
+      userId,
+      provider: 'google-oauth-client',
+      apiKey: fakeEncrypt(JSON.stringify({
+        clientId: BYO_CLIENT_ID,
+        clientSecret: BYO_CLIENT_SECRET,
+      })),
     })
   }
 
@@ -341,20 +355,99 @@ describe('Google tokens', () => {
       .toBe('access-stored')
   })
 
-  it('keeps the copies when another client mode is still active', async () => {
+  it('deletes Besidka\'s copies even while the own client is active',
+    async () => {
+      useGoogle({
+        token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
+      })
+      await seedConnection({ expiresInMs: 0 })
+      await seedConnection({ clientMode: 'byo' })
+      await seedGoogleFile('user/drive-a.pdf')
+
+      const { getGoogleAccessToken } = await tokensModule()
+
+      await getGoogleAccessToken(
+        { userId, clientMode: 'besidka' },
+        dependencies(),
+      )
+
+      expect(bucket.delete).toHaveBeenCalledTimes(1)
+      expect(await googleFileCount()).toBe(0)
+      expect((await connectionRow('byo'))!.status).toBe('active')
+    })
+
+  it('keeps Besidka\'s copies when the own client loses access', async () => {
+    await seedGoogleByoAccess(testDb.db, userId)
+    await seedGoogleByoClient()
     useGoogle({
       token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
     })
-    await seedConnection({ expiresInMs: 0 })
-    await seedConnection({ clientMode: 'byo' })
+    await seedConnection()
+    await seedConnection({ clientMode: 'byo', expiresInMs: 0 })
     await seedGoogleFile('user/drive-a.pdf')
 
     const { getGoogleAccessToken } = await tokensModule()
+    const result = await getGoogleAccessToken(
+      { userId, clientMode: 'byo' },
+      dependencies(),
+    )
 
-    await getGoogleAccessToken({ userId, clientMode: 'besidka' }, dependencies())
-
+    expect(result.status).toBe('needs_reauth')
+    expect((await connectionRow('byo'))!.status).toBe('needs_reauth')
+    expect((await connectionRow('besidka'))!.status).toBe('active')
     expect(bucket.delete).not.toHaveBeenCalled()
     expect(await googleFileCount()).toBe(1)
+  })
+
+  describe('own client gate', () => {
+    it('refreshes an own-client token with the stored client', async () => {
+      await seedGoogleByoAccess(testDb.db, userId)
+      await seedGoogleByoClient()
+      await seedConnection({ clientMode: 'byo', expiresInMs: 0 })
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const result = await getGoogleAccessToken(
+        { userId, clientMode: 'byo' },
+        dependencies(),
+      )
+      const [refresh] = google.tokenRequests()
+
+      expect(result.status).toBe('ok')
+      expect(refresh!.form.get('client_id')).toBe(BYO_CLIENT_ID)
+      expect(refresh!.form.get('client_secret')).toBe(BYO_CLIENT_SECRET)
+    })
+
+    it.each([
+      ['a non-admin with flag grants', { admin: false, grant: true }],
+      ['an admin without the opt-in', { admin: true, optIn: false }],
+    ])('refuses %s, even a cached token', async (_label, access) => {
+      await seedGoogleByoAccess(testDb.db, userId, access)
+      await seedGoogleByoClient()
+      await seedConnection({ clientMode: 'byo' })
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const failure = await failureOf(getGoogleAccessToken(
+        { userId, clientMode: 'byo' },
+        dependencies(),
+      ))
+
+      expect(failure.status).toBe(404)
+      expect(google.requests).toHaveLength(0)
+    })
+
+    it('answers 409 when the own client is no longer stored', async () => {
+      await seedGoogleByoAccess(testDb.db, userId)
+      await seedConnection({ clientMode: 'byo', expiresInMs: 0 })
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const failure = await failureOf(getGoogleAccessToken(
+        { userId, clientMode: 'byo' },
+        dependencies(),
+      ))
+
+      expect(failure.status).toBe(409)
+      expect((await connectionRow('byo'))!.status).toBe('active')
+    })
   })
 
   it.each([

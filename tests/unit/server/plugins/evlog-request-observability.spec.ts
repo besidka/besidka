@@ -116,6 +116,13 @@ describe('admin path query stripping', () => {
     expect(toLoggedPath(undefined)).toBeUndefined()
   })
 
+  it('drops the code and state from both Google callbacks', () => {
+    expect(toLoggedPath('/api/v1/google/oauth/callback?code=a&state=b'))
+      .toBe('/api/v1/google/oauth/callback')
+    expect(toLoggedPath('/api/v1/google/byo/callback?code=a&state=b'))
+      .toBe('/api/v1/google/byo/callback')
+  })
+
   it('keeps the search text out of the wide event path and message', () => {
     const context = {
       request: {
