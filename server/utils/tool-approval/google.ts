@@ -161,9 +161,13 @@ export function isGoogleToolResultContent(content: unknown): boolean {
 
 /**
  * Whether a chat holds content from Google: the sticky
- * `chats.google_data_at` flag, set once and never cleared, or a Google
- * result still in the given messages (a chat from before the flag). The one
- * function every send, branch and later data guard asks.
+ * `chats.google_data_at` flag, set once and never cleared, a Google result
+ * still in the given messages (a chat from before the flag), or a marked
+ * artifact or document that names the chat as its origin
+ * (`holdsMarkedOrigin`, from `chatMarkedOriginExtras`). It does not read file
+ * parts: `resolveSendGoogleContent` finds an attached Google copy or marked
+ * file at send start and flags the chat. The one function every send,
+ * branch and later data guard asks.
  */
 export function chatHoldsGoogleData(input: {
   googleDataAt?: Date | number | null
