@@ -37,6 +37,7 @@ export const chatShares = snakeCase.table(
     allowBranch: integer({ mode: 'boolean' })
       .notNull()
       .default(true),
+    googleOptInAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_chat_share_chat').on(table.chatId, table.id),

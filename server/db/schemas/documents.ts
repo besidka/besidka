@@ -37,6 +37,7 @@ export const documents = snakeCase.table(
     aiGenerated: integer({ mode: 'boolean' }),
     originProvider: text(),
     originModel: text(),
+    googleDerivedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     index('idx_documents_user_updated').on(table.userId, table.updatedAt),
