@@ -3725,6 +3725,19 @@ export default defineEventHandler(async (event) => {
           })
         }
 
+        if (persistResult.pausedParts) {
+          await stashGoogleToolResults({
+            kv,
+            owner: {
+              userId,
+              chatPublicId: chat.id,
+              messagePublicId,
+            },
+            parts: persistResult.pausedParts,
+            logger: aiLogger,
+          })
+        }
+
         if (searchAnswerGuarantee) {
           recordToolLoopOutcome(searchAnswerGuarantee.getOutcome())
         }
@@ -5995,11 +6008,17 @@ type MultiConsumerStreamTextResult = Extract<
   { steps: unknown }
 >
 
+/**
+ * `pausedParts` are the reply's parts before the D1 redaction, returned
+ * only when the stored reply waits for approval, so the caller can stash
+ * the Google result bodies after the pause records are written.
+ */
 interface PersistAssistantMessageResult {
   persisted: boolean
   emptyAnswerFailure: boolean
   answered: boolean
   stopped?: boolean
+  pausedParts?: UIMessage['parts']
 }
 
 async function persistAssistantMessageFromStream(input: {
@@ -6319,19 +6338,6 @@ async function persistAssistantMessageFromStream(input: {
         publicId: input.publicId,
       })
 
-    if (assistantMessage && isAwaitingApproval) {
-      await stashGoogleToolResults({
-        kv: useKV(),
-        owner: {
-          userId: input.userId,
-          chatPublicId: input.chatId,
-          messagePublicId: input.publicId,
-        },
-        parts: partsBeforeSizeGuard,
-        logger: input.logger,
-      })
-    }
-
     if (assistantMessage && turn.stoppedReplies.length > 0) {
       const replacedStoppedReplies = await deleteStoppedReplies({
         db: input.db,
@@ -6475,6 +6481,9 @@ async function persistAssistantMessageFromStream(input: {
         && !streamErrorText
         && !isAwaitingApproval
         && !hasPersistedFailureNotice(finalParts),
+      ...(assistantMessage && isAwaitingApproval
+        ? { pausedParts: partsBeforeSizeGuard }
+        : {}),
     }
   } catch (exception) {
     const chatError = normalizeChatError({

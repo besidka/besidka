@@ -6,7 +6,8 @@ export const GOOGLE_TOOL_NAME_PREFIX = 'google__'
  * The most a Google tool may return, measured as UTF-8 bytes of the
  * JSON-serialized output. A tool author caps the output here before
  * returning it: a paused turn keeps the body only in KV, and a body over
- * this size is stored as a short marker instead (`putToolApprovalResult`).
+ * this size is not kept there, so the continuation sees only its
+ * references (`stashGoogleToolResults`).
  */
 export const GOOGLE_TOOL_OUTPUT_MAX_BYTES = TOOL_APPROVAL_PAYLOAD_MAX_BYTES
 

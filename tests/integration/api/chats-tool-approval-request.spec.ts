@@ -1285,6 +1285,107 @@ describe('tool approval requests in the chat send', () => {
         .toMatchObject({ state: 'approval-requested' })
     })
 
+  it('asks for the Google egress grant before a default-allowed connector '
+    + 'read in a chat that holds Google content', async () => {
+    mocks.chatMessages = [
+      {
+        id: 'row-user-google',
+        publicId: 'user-public-0',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Find my budget file' }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      },
+      {
+        id: 'row-assistant-google',
+        publicId: 'assistant-public-0',
+        role: 'assistant',
+        parts: [{
+          type: 'tool-google__drive_search',
+          toolCallId: 'call-google-0',
+          state: 'output-available',
+          input: { query: 'budget' },
+          output: { references: [{ id: 'file-1' }], bodyRemoved: true },
+        }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      },
+    ]
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      connectorIds: ['conn-linear'],
+      steps: [
+        toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(findPart(
+      assistantInsert?.parts ?? [],
+      TOOL_APPROVAL_DATA_PART_TYPE,
+    )).toMatchObject({
+      data: {
+        toolCallId: 'call-1',
+        reason: 'google-egress',
+        rememberOptions: ['once', 'chat'],
+      },
+    })
+  })
+
+  it('pauses an unregistered google__ tool with Allow once only and never '
+    + 'runs it', async () => {
+    const execute = vi.fn(async () => ({ references: [] }))
+
+    mocks.flags.add('artifacts')
+    createArtifactTool()
+    mocks.capabilityTools = {
+      ...mocks.capabilityTools,
+      google__gmail_create_draft: tool({
+        description: 'Create a Gmail draft.',
+        inputSchema: z.object({ subject: z.string() }),
+        execute,
+      }),
+    }
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-1', 'google__gmail_create_draft', {
+          subject: 'Hello',
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(execute).not.toHaveBeenCalled()
+    expect(findPart(parts, 'tool-google__gmail_create_draft')).toMatchObject({
+      state: 'approval-requested',
+    })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: {
+        toolName: 'google__gmail_create_draft',
+        reason: 'always-ask',
+        rememberOptions: ['once'],
+      },
+    })
+
+    const pendingId = findPart(parts, 'tool-google__gmail_create_draft')
+      .approval.id
+
+    expect(readKvJson(`tool-approval:${pendingId}`)).toMatchObject({
+      family: 'google',
+      access: 'write',
+      connectorId: null,
+    })
+  })
+
   describe('with the tool-approvals flag off', () => {
     beforeEach(() => {
       mocks.flags.delete('tool-approvals')

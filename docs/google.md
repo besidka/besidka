@@ -259,8 +259,13 @@ and the continuation gives them back to the model (`stashedResults` in
 |---|---|---|---|
 | `tool-approval:result:<id>`, `<id>` = base64url SHA-256 of message public id and tool call id | One Google result body or error text of a paused turn, with user, chat and message ids checked on read | 24 hours | A finished continuation (`deleteResumedTurn`), a new user message, chat deletion and account purge (all through the per-chat index `tool-approval:chat:<chatPublicId>`, where the id is listed with the approval ids) |
 
-A body over 64 KiB is stored as a marker. A missing, foreign or unreadable
-record degrades to the references; it never fails the continuation.
+A body over 64 KiB is not stashed, and a missing, foreign or unreadable
+record degrades the same way: that call reaches the model as its references,
+and the continuation never fails over it. The stash is written after the
+pause records, so a KV write limit on the per-chat index can cost a body,
+never a pending approval. A user with more than 200 chats, or an id the
+index lost to its bound or a write race, keeps a stashed body until the
+24 hour TTL.
 
 ## 6. Owner runbook outline: bring your own client
 

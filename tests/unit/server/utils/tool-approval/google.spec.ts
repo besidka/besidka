@@ -877,20 +877,47 @@ describe('the KV stash of a paused turn', () => {
       expect(loaded.size).toBe(0)
     })
 
-  it('stores an output over the cap as a marker', async () => {
-    const kv = createFakeKv()
+  it('does not stash an output over the cap, so the model sees references',
+    async () => {
+      const kv = createFakeKv()
+      const log = logger()
 
-    await stashGoogleToolResults({
-      kv: kv as never,
-      owner: OWNER,
-      parts: [googleToolPart({
-        output: {
-          references: [],
-          text: 'x'.repeat(GOOGLE_TOOL_OUTPUT_MAX_BYTES + 1),
-        },
-      })],
-      logger: logger(),
+      await stashGoogleToolResults({
+        kv: kv as never,
+        owner: OWNER,
+        parts: [googleToolPart({
+          output: {
+            references: [],
+            text: 'x'.repeat(GOOGLE_TOOL_OUTPUT_MAX_BYTES + 1),
+          },
+        })],
+        logger: log,
+      })
+
+      expect(kv.put).not.toHaveBeenCalled()
+      expect(log.set).toHaveBeenCalledWith({
+        attributes: { googleTools: { oversized: 1 } },
+      })
     })
+
+  it('stores an oversized result record as a marker', async () => {
+    const kv = createFakeKv()
+    const resultId = await toolApprovalResultIdOf(
+      OWNER.messagePublicId,
+      'call-google-1',
+    )
+
+    await putToolApprovalResults(kv as never, [{
+      resultId,
+      record: {
+        version: 1,
+        ...OWNER,
+        toolCallId: 'call-google-1',
+        isError: false,
+        output: 'x'.repeat(GOOGLE_TOOL_OUTPUT_MAX_BYTES + 1),
+        recordedAt: 1,
+      },
+    }])
 
     const loaded = await loadGoogleToolResults({
       kv: kv as never,
@@ -901,6 +928,27 @@ describe('the KV stash of a paused turn', () => {
 
     expect(String(loaded.get('call-google-1')?.output))
       .toMatch(/^\[Output omitted:/)
+  })
+
+  it('stashes a body exactly at the cap', async () => {
+    const kv = createFakeKv()
+    const output = 'x'.repeat(GOOGLE_TOOL_OUTPUT_MAX_BYTES - 2)
+
+    await stashGoogleToolResults({
+      kv: kv as never,
+      owner: OWNER,
+      parts: [googleToolPart({ output })],
+      logger: logger(),
+    })
+
+    const loaded = await loadGoogleToolResults({
+      kv: kv as never,
+      owner: OWNER,
+      parts: [googleToolPart()],
+      logger: logger(),
+    })
+
+    expect(loaded.get('call-google-1')?.output).toBe(output)
   })
 
   it('is removed by a finished continuation', async () => {

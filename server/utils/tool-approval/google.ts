@@ -1,6 +1,9 @@
 import type { UIMessage } from 'ai'
 import type { KVNamespace } from '@cloudflare/workers-types'
-import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
+import {
+  GOOGLE_TOOL_OUTPUT_MAX_BYTES,
+  isGoogleToolName,
+} from '#shared/utils/google-tool-approvals'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
 import { readBesidkaChatSettings } from '~~/server/utils/besidka-tools/chat-settings'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -69,6 +72,14 @@ interface GoogleToolResultBody extends StashedResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function serializedBytes(value: unknown): number {
+  const serialized = JSON.stringify(value)
+
+  return serialized === undefined
+    ? 0
+    : new TextEncoder().encode(serialized).byteLength
 }
 
 function toolNameOfPart(part: Record<string, unknown>): string | null {
@@ -279,8 +290,11 @@ export function googleToolCallIdsOf(parts: readonly unknown[]): string[] {
  * the continuation can give them back to the model while D1 keeps only the
  * references. A new user message, deleting the chat and deleting the
  * account remove them through the index; a finished continuation removes
- * them (`deleteGoogleToolResults`). Best effort: a failure is logged with
- * counts only and the continuation then sees the references.
+ * them (`deleteGoogleToolResults`). A body over
+ * `GOOGLE_TOOL_OUTPUT_MAX_BYTES` is not stashed, so its call reaches the
+ * model as its references rather than as a cut-off marker. Best effort: a
+ * failure is logged with counts only and the continuation then sees the
+ * references.
  */
 export async function stashGoogleToolResults(input: {
   kv: KVNamespace
@@ -288,7 +302,15 @@ export async function stashGoogleToolResults(input: {
   parts: readonly unknown[]
   logger: LoggerLike
 }): Promise<void> {
-  const bodies = collectGoogleToolResultBodies(input.parts)
+  const collected = collectGoogleToolResultBodies(input.parts)
+  const bodies = collected.filter((body) => {
+    return serializedBytes(body.output) <= GOOGLE_TOOL_OUTPUT_MAX_BYTES
+  })
+  const oversized = collected.length - bodies.length
+
+  if (oversized > 0) {
+    input.logger.set({ attributes: { googleTools: { oversized } } })
+  }
 
   if (bodies.length === 0) {
     return
