@@ -508,6 +508,21 @@ decision list are in BES-370.
   whose columns come from `server/utils/google/drive-import.ts`), keeps the
   loss-only note above, so no "Sent as text" label comes back. File manager
   rows and tiles keep the loss-only note for every Office file.
+- **A Google Sheet is the same map from another source (BES-448).** A Sheet
+  picked from Google Drive is read through the Sheets API into the same
+  `WorkbookModel` and stored as Markdown (`text/markdown`, `external_source`
+  `google`, `text_status` `ready`, `text_version` 2), not as an Office file:
+  there is no `.xlsx`, no `.text.md` sidecar and no renderer call
+  (`docs/google.md`, section 12.16). `isGoogleWorkbookMapFile` tells such a
+  row from a Google Doc copy and from the older first-tab CSV copy, from the
+  columns only. `convertFilesForAI` gives it the Google Sheet wrapper and,
+  for a map carried into a later turn, `fitWorkbookMap` to
+  `CARRIED_TEXT_FILE_MAX_BYTES` (the send route puts it in
+  `spreadsheetTextVersionsByStorageKey`, so `carriedCharge` treats it like a
+  workbook), the attach chip says "5 tabs · formulas" (tabs, not sheets, for a
+  Google Sheet), and the CSV fallback copy gets the chip "First tab only"
+  with the fixed reason and the technical code. `persistFile` takes an
+  optional `workbookMap` that writes the three text columns on insert.
 
 ### Legacy `.xls` conversion in the browser
 

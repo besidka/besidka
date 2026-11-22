@@ -10,6 +10,10 @@ import type {
   DriveImportFailureCode,
 } from '#shared/utils/google-drive'
 import {
+  describeImportNotice,
+  withSheetsFallback,
+} from '#shared/utils/google-sheets'
+import {
   GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX,
   extractGoogleDriveLinks,
 } from '#shared/utils/google-drive-links'
@@ -109,6 +113,7 @@ export function useChatDriveFiles(
   const googleDriveFeature = useFeature('google.drive')
   const driveImports = ref<DriveImportProgress[]>([])
   const linkSuggestions = ref<DriveLinkSuggestion[]>([])
+  const checkingLinkIds = ref<string[]>([])
   const isPicking = shallowRef<boolean>(false)
   const isLinkProbing = shallowRef<boolean>(false)
   const connectionData
@@ -118,6 +123,7 @@ export function useChatDriveFiles(
     () => ({}),
   )
   const handledLinkIds = new Set<string>()
+  const linkCancelers = new Map<string, () => void>()
   const linkQueue: QueuedLink[] = []
   let linkRunner: Promise<void> | null = null
   let connectionRequest: Promise<boolean> | null = null
@@ -284,10 +290,12 @@ export function useChatDriveFiles(
 
       removeProgress(result.id)
       forgetUnreadable(result.id)
-      copies.push(result.file)
+      copies.push(withSheetsFallback(result))
 
-      if (result.note) {
-        useInfoMessage(result.note)
+      const notice = describeImportNotice(result)
+
+      if (notice) {
+        useInfoMessage(notice)
       }
     }
 
@@ -372,6 +380,26 @@ export function useChatDriveFiles(
     removeSuggestions([id])
   }
 
+  async function acceptAllLinkSuggestions() {
+    const fileIds = linkSuggestions.value.map(suggestion => suggestion.id)
+
+    if (fileIds.length === 0) {
+      return
+    }
+
+    await attachFromDrive({ fileIds })
+  }
+
+  function dismissAllLinkSuggestions() {
+    removeSuggestions(linkSuggestions.value.map(suggestion => suggestion.id))
+  }
+
+  function stopChecking(id: string) {
+    checkingLinkIds.value = checkingLinkIds.value.filter((checking) => {
+      return checking !== id
+    })
+  }
+
   function isAlreadyAttached(id: string): boolean {
     const isCopyAttached = attachedFiles.value.some((file) => {
       return file.externalSource === 'google' && file.externalId === id
@@ -438,15 +466,42 @@ export function useChatDriveFiles(
     }
   }
 
+  async function discardWhenSettled(
+    request: ReturnType<typeof requestLinkImport>,
+  ) {
+    try {
+      const response = await request
+      const result = response.results[0]
+
+      if (result && result.status !== 'failed') {
+        await discardStaleCopy(result)
+      }
+    } catch {
+      return
+    }
+  }
+
   async function probeLink(
     link: GoogleDriveLinkMatch,
     startedGeneration: number,
     timeout: number,
   ) {
     let response: Awaited<ReturnType<typeof requestLinkImport>>
+    const request = requestLinkImport(link, timeout)
+    const canceled = new Promise<'canceled'>((resolve) => {
+      linkCancelers.set(link.id, () => resolve('canceled'))
+    })
 
     try {
-      response = await requestLinkImport(link, timeout)
+      const outcome = await Promise.race([request, canceled])
+
+      if (outcome === 'canceled') {
+        discardWhenSettled(request)
+
+        return
+      }
+
+      response = outcome
     } catch (exception) {
       const status = (exception as { status?: unknown }).status
 
@@ -458,6 +513,8 @@ export function useChatDriveFiles(
       }
 
       return
+    } finally {
+      linkCancelers.delete(link.id)
     }
 
     const result = response.results[0]
@@ -475,10 +532,12 @@ export function useChatDriveFiles(
     }
 
     if (result.status !== 'failed') {
-      attachCopies([result.file])
+      attachCopies([withSheetsFallback(result)])
 
-      if (result.note) {
-        useInfoMessage(result.note)
+      const notice = describeImportNotice(result)
+
+      if (notice) {
+        useInfoMessage(notice)
       }
 
       return
@@ -528,16 +587,23 @@ export function useChatDriveFiles(
         if (queued && queued.startedGeneration === generation) {
           isLinkProbing.value = true
 
-          await probeLink(
-            queued.link,
-            queued.startedGeneration,
-            Math.min(GOOGLE_LINK_REQUEST_TIMEOUT_MS, remaining),
-          )
+          try {
+            await probeLink(
+              queued.link,
+              queued.startedGeneration,
+              Math.min(GOOGLE_LINK_REQUEST_TIMEOUT_MS, remaining),
+            )
+          } finally {
+            stopChecking(queued.link.id)
+          }
+        } else if (queued) {
+          stopChecking(queued.link.id)
         }
       }
     } finally {
       linkRunner = null
       isLinkProbing.value = false
+      checkingLinkIds.value = []
     }
   }
 
@@ -644,12 +710,50 @@ export function useChatDriveFiles(
       }
 
       linkQueue.push({ link, startedGeneration })
+      checkingLinkIds.value = [...checkingLinkIds.value, link.id]
     }
 
     if (linkQueue.length > 0) {
       await runLinkQueue()
     } else if (linkRunner) {
       await linkRunner
+    }
+  }
+
+  function cancelLinkCheck(id: string) {
+    const queuedIndex = linkQueue.findIndex((queued) => {
+      return queued.link.id === id
+    })
+
+    if (queuedIndex !== -1) {
+      linkQueue.splice(queuedIndex, 1)
+    }
+
+    linkCancelers.get(id)?.()
+    stopChecking(id)
+  }
+
+  /**
+   * Stops the check of every link that is no longer in the composer text:
+   * the skeleton goes away at once, a request that is still running is no
+   * longer waited for, and its copy, when it arrives, is deleted instead of
+   * attached. The link stays handled for this message, so deleting and
+   * pasting it again does not start a second check next to a copy that is
+   * still being deleted.
+   */
+  function cancelChecksForRemovedLinks(text: string) {
+    if (checkingLinkIds.value.length === 0) {
+      return
+    }
+
+    const presentIds = new Set(
+      extractGoogleDriveLinks(text).map(link => link.id),
+    )
+
+    for (const id of [...checkingLinkIds.value]) {
+      if (!presentIds.has(id)) {
+        cancelLinkCheck(id)
+      }
     }
   }
 
@@ -669,7 +773,9 @@ export function useChatDriveFiles(
     hasConnectionCheckFailed = false
     handledLinkIds.clear()
     linkQueue.length = 0
+    linkCancelers.clear()
     linkSuggestions.value = []
+    checkingLinkIds.value = []
     dismissAllDriveImports()
   }
 
@@ -682,14 +788,18 @@ export function useChatDriveFiles(
   return {
     driveImports,
     linkSuggestions,
+    checkingLinkIds,
     importingCount,
     isDriveBusy,
     isCheckingGoogleConnection: isCheckingConnection,
     attachFromDrive,
     pickAgain,
     detectLinks,
+    cancelChecksForRemovedLinks,
     acceptLinkSuggestion,
+    acceptAllLinkSuggestions,
     dismissLinkSuggestion,
+    dismissAllLinkSuggestions,
     dismissDriveImport,
     dismissAllDriveImports,
   }

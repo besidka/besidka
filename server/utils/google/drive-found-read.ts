@@ -26,6 +26,8 @@ import type {
 } from '~~/server/utils/google/drive'
 import { sanitizeMailText } from '~~/server/utils/google/gmail-text'
 
+const SPREADSHEET_MIME_TYPE = 'application/vnd.google-apps.spreadsheet'
+const FIRST_SHEET_MODEL_NOTE = 'Only the first sheet is included.'
 const TEXT_DECODER = new TextDecoder()
 const FOUND_TEXT_CLEANED_MAX_CHARACTERS = 64 * 1024
 
@@ -172,6 +174,9 @@ function toTextResult(
   }
 
   const decoded = TEXT_DECODER.decode(bytes)
+  const note = choice?.note ?? (
+    metadata.mimeType === SPREADSHEET_MIME_TYPE ? FIRST_SHEET_MODEL_NOTE : null
+  )
 
   return {
     status: 'ok',
@@ -182,7 +187,7 @@ function toTextResult(
     ),
     totalCharacters: decoded.length,
     isCut: decoded.length > FOUND_TEXT_CLEANED_MAX_CHARACTERS,
-    ...(choice?.note ? { note: choice.note } : {}),
+    ...(note ? { note } : {}),
   }
 }
 

@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { WorkbookTextSummary } from '#shared/utils/office-files'
+import type { DriveSheetsFallback } from '#shared/utils/google-sheets'
 
 export type FileManagerFile = Pick<
   FileMetadata,
@@ -40,6 +41,7 @@ export type AttachedFile = Pick<
   textOmittedMedia?: FileMetadata['textOmittedMedia']
   textOmittedCharts?: FileMetadata['textOmittedCharts']
   workbookSummary?: WorkbookTextSummary | null
+  sheetsFallback?: DriveSheetsFallback | null
 }
 
 export type ViewMode = 'grid' | 'list'

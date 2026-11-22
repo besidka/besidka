@@ -94,6 +94,9 @@ const SHEET_CUT_NOTES: Record<SheetCut, string> = {
   limits: 'Some rules, ranges, merged cells or notes are left out because '
     + 'there are too many.',
   part: 'This sheet is too large; only its start was read.',
+  not_read: 'The cell values, formulas, dropdowns and notes of this sheet '
+    + 'were not read (a request, time or size limit was reached). Its frozen '
+    + 'panes, merged cells and conditional formatting rules are included.',
 }
 
 interface SheetText {
@@ -458,6 +461,13 @@ function notReadLine(notRead: SheetNotRead): string | null {
       : null,
     notRead.hyperlinks > 0
       ? `${plural(notRead.hyperlinks, 'link', 'links')} (count only)`
+      : null,
+    (notRead.protectedRanges ?? 0) > 0
+      ? `${plural(
+        notRead.protectedRanges ?? 0,
+        'protected range',
+        'protected ranges',
+      )} (count only)`
       : null,
   ].filter((part): part is string => part !== null)
 
@@ -865,13 +875,17 @@ function cutToBytes(text: string, maxBytes: number): string {
 function totalNotRead(sheets: readonly WorkbookSheet[]): SheetNotRead {
   const total = emptyNotRead()
 
+  let protectedRanges = 0
+
   for (const sheet of sheets) {
     for (const key of Object.keys(total) as Array<keyof SheetNotRead>) {
-      total[key] += sheet.notRead[key]
+      total[key] = (total[key] ?? 0) + (sheet.notRead[key] ?? 0)
     }
+
+    protectedRanges += sheet.notRead.protectedRanges ?? 0
   }
 
-  return total
+  return protectedRanges > 0 ? { ...total, protectedRanges } : total
 }
 
 /**

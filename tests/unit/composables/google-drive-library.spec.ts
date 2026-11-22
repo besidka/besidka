@@ -165,7 +165,7 @@ describe('useGoogleDriveLibrary', () => {
 
     it('passes the first-sheet note on', async () => {
       mocks.fetch.mockResolvedValue({
-        results: [{ ...imported(), note: 'Only the first sheet is included.' }],
+        results: [{ ...imported(), note: 'Only the first tab of this spreadsheet was imported.' }],
       })
 
       const library = await mountLibrary()
@@ -173,7 +173,7 @@ describe('useGoogleDriveLibrary', () => {
       await library.pickMore()
 
       expect(mocks.info).toHaveBeenCalledWith(
-        'Only the first sheet is included.',
+        'Only the first tab of this spreadsheet was imported.',
       )
     })
 
@@ -441,7 +441,7 @@ describe('useGoogleDriveLibrary', () => {
           id: 'a',
           status: 'updated',
           file: { id: 'new' },
-          note: 'Only the first sheet is included.',
+          note: 'Only the first tab of this spreadsheet was imported.',
         })
 
         const library = await mountLibrary()
@@ -454,7 +454,7 @@ describe('useGoogleDriveLibrary', () => {
           + 'used it.',
         )
         expect(mocks.info).toHaveBeenCalledWith(
-          'Only the first sheet is included.',
+          'Only the first tab of this spreadsheet was imported.',
         )
         expect(mocks.onChanged).toHaveBeenCalledOnce()
       })

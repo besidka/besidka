@@ -321,6 +321,104 @@ describe('ChatInput/Files/Attached/Preview', () => {
         .toBe(false)
     })
 
+    const googleMapFile = {
+      storageKey: 'map-key',
+      name: 'Budget (workbook map).md',
+      type: 'text/markdown',
+      size: 9000,
+      textStatus: 'ready' as const,
+      textVersion: 2,
+      externalSource: 'google' as const,
+      workbookSummary: {
+        sheets: 5,
+        sheetsTotal: 5,
+        formulas: 12,
+        rules: 3,
+        cut: [],
+        valuesCut: [],
+      },
+    }
+
+    it('shows the map of a Google Sheet as a chip with a note in tabs, '
+      + 'not as a text card', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: { files: [googleMapFile], resolveDelivery },
+      })
+      const hint = wrapper.get('[data-testid="files-delivery-hint"]')
+
+      expect(wrapper.find('[data-testid="files-preview-text-open"]').exists())
+        .toBe(false)
+      expect(hint.text()).toBe('5 tabs · formulas')
+
+      await hint.trigger('click')
+
+      expect(wrapper.get('[data-testid="files-delivery-hint-note"]').text())
+        .toContain('every tab\'s values as they are displayed')
+    })
+
+    it('shows the first-tab fallback copy as a chip with its code in the '
+      + 'note', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            storageKey: 'csv-key',
+            name: 'Budget (first tab).csv',
+            type: 'text/csv',
+            size: 80,
+            externalSource: 'google' as const,
+            sheetsFallback: {
+              code: 'sheets_api_off' as const,
+              status: 403,
+              reason: 'SERVICE_DISABLED',
+            },
+          }],
+          resolveDelivery,
+        },
+      })
+      const hint = wrapper.get('[data-testid="files-delivery-hint"]')
+
+      expect(hint.text()).toBe('First tab only')
+
+      await hint.trigger('click')
+
+      const note = wrapper.get('[data-testid="files-delivery-hint-note"]')
+
+      expect(note.text()).toContain('Only the first tab of this spreadsheet '
+        + 'was imported.')
+      expect(note.text()).toContain('sheets_api_off (HTTP 403, '
+        + 'SERVICE_DISABLED)')
+    })
+
+    it('keeps the text card for a Google Doc copy and for a CSV copy with '
+      + 'no fallback', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [
+            {
+              storageKey: 'doc-key',
+              name: 'Plan.md',
+              type: 'text/markdown',
+              size: 40,
+              externalSource: 'google' as const,
+            },
+            {
+              storageKey: 'csv-key',
+              name: 'Budget (first tab).csv',
+              type: 'text/csv',
+              size: 40,
+              externalSource: 'google' as const,
+            },
+          ],
+          resolveDelivery,
+        },
+      })
+
+      expect(wrapper.findAll('[data-testid="files-preview-text-open"]'))
+        .toHaveLength(2)
+      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+        .toBe(false)
+    })
+
     it('opens and closes the info note from the hint', async () => {
       const wrapper = await mountSuspended(Preview, {
         props: {

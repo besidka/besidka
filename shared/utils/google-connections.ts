@@ -44,6 +44,7 @@ export interface GoogleConnectionSummary {
   clientMode: GoogleClientMode
   status: GoogleConnectionStatus
   email: string | null
+  isWorkspaceAccount: boolean
   capabilities: GoogleCapability[]
   partialCalendar?: GooglePartialCalendarAccess
   connectedAt: string
@@ -58,6 +59,31 @@ export interface GoogleConnectionStatusResponse {
   canConnect: boolean
   dedicatedClient: boolean
   byo: GoogleByoConnectionStatus | null
+}
+
+const PERSONAL_GOOGLE_DOMAINS: readonly string[] = [
+  'gmail.com',
+  'googlemail.com',
+]
+
+/**
+ * Whether a connected account is a Google Workspace account, from the
+ * domain of the stored account email: `gmail.com` and `googlemail.com` are
+ * personal accounts, any other domain is Workspace. An account with no
+ * stored email, or one that is not an address, is not treated as Workspace.
+ * This is a guess from the domain (a personal account can use another
+ * domain), made only to decide which Picker tabs to show.
+ */
+export function isWorkspaceAccountEmail(email: string | null): boolean {
+  const separator = email?.lastIndexOf('@') ?? -1
+
+  if (!email || separator < 1 || separator === email.length - 1) {
+    return false
+  }
+
+  const domain = email.slice(separator + 1).trim().toLowerCase()
+
+  return !!domain && !PERSONAL_GOOGLE_DOMAINS.includes(domain)
 }
 
 export const GOOGLE_THIRD_PARTY_ACCESS_URL

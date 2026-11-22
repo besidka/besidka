@@ -1375,15 +1375,18 @@ token never reaches a log or a stored value.
 | Drive file | Stored as | Note |
 |---|---|---|
 | Google Doc | `<name>.md`, `text/markdown` (export `text/markdown`); on a 400 from Drive, `<name>.txt`, `text/plain` | |
-| Google Sheet | `<name> (first sheet).csv`, `text/csv` | Google exports the first sheet only; the name and a toast say so |
+| Google Sheet | the workbook map of every tab, `<name> (workbook map).md`, `text/markdown`, read through the Sheets API (section 12.16); only when the Sheets API cannot be read: `<name> (first tab).csv`, `text/csv` | Google's CSV export is the first tab only; the notice "Only the first tab of this spreadsheet was imported." says so, and only then |
 | Google Slides | `<name>.txt`, `text/plain` | |
 | Other Google-native types (Forms, Drawings, Sites, Maps) and folders | not copied | `unsupported_type` and `folder` |
 | PDF, PNG, JPEG, WebP, text, Markdown, CSV, TSV | as is, through `alt=media` | needs `capabilities.canDownload`; images are not transformed |
 | Word, Excel, PowerPoint (`.docx`, `.xlsx`, `.pptx`) | as is, through `alt=media` | only while `files.office` is active, and only after the same ZIP and main-part checks as an upload; legacy and macro files are `unsupported_type` |
 
-Decision: Docs, Sheets and Slides go out as text exports, not as Office
-binaries. A text export needs no `files.office` and no `DOC_RENDERER`, and a
-Sheet export to XLSX would not be the first sheet only. The plan's "Office
+Decision: Docs and Slides go out as text exports, not as Office binaries
+(Sheets as a workbook map read through the Sheets API since BES-448, with the
+CSV export as the fallback). A text export needs no `files.office` and no
+`DOC_RENDERER`; a Sheet export to XLSX would hold every tab but would need the
+renderer and lose the formulas that only Sheets can run, as Excel could not
+run them, so it was not chosen. The plan's "Office
 binaries link-only" default is therefore not what Office files do here:
 Office files that already sit in Drive are copied as bytes (when
 `files.office` is on), because the existing upload extraction handles them
@@ -1595,8 +1598,9 @@ the API Keys page to attach files from it.", with Open API Keys (the Google
 tab) and Not now. A file being copied shows a chip with the Drive icon and an
 indeterminate progress bar; a failed file stays beside the chips with its
 plain reason and a dismiss button (also reported in a toast); a copy shows the
-Drive icon and can be detached like any attachment. A sheet adds a toast that
-only the first sheet is included. Failures of the Picker itself (script
+Drive icon and can be detached like any attachment. A Google Sheet that could
+only be read as its first tab adds a toast that says so (section 12.16).
+Failures of the Picker itself (script
 blocked or timed out, the Picker not opening, which is how a missing Google
 sign-in in this browser shows, a Drive refusal, idle for 15 minutes) are
 toasts with what to check.
@@ -1622,7 +1626,8 @@ account with `drive.file` consent, the consent screen "In production"):
 1. Connect, press "+", Google Drive: the Picker opens, and no
    "Refused to frame" message appears (section 12.8).
 2. Pick a Doc, a Sheet, a PDF, a PNG, a file someone shared with you, a file
-   from a shared drive: each becomes a chip; the Sheet says "first sheet".
+   from a shared drive: each becomes a chip; the Sheet is a chip with the
+   count of its tabs (or says "First tab only" with a technical code).
 3. Pick a file you have no access to, or one the owner locked from download:
    a plain per-file reason, the others still attach.
 4. Ask about each file; check the Drive link under the message and in the
@@ -1755,7 +1760,7 @@ user picked" sentence instead of a schema error. The model's file id is the
 | Tool | Kind | Input | Output | Limits |
 |---|---|---|---|---|
 | `google__drive_list_picked` | read | none | `references` (for the card), `count`, `files` (one framed line per file: `file_id`, name, type, size, copied at, changed in Drive) | One D1 query, no call to Google; newest copy per Drive file, at most 50, the 64 KiB cap |
-| `google__drive_read_file` | read | `fileId` (the `file_id` the list returned, or the `fileId` of the previous page), optional `offset` | `references`, `readable`, `file` (`fileId`, type, size, `totalCharacters`), `content` (framed text), `isTruncated`, `nextOffset`, `truncationNote`, `note` | Text only: `text/*` (Docs as Markdown, Sheets as the first sheet in CSV, Slides as text, plain text, Markdown, CSV), JSON, XML, YAML and `+json` and `+xml` types; 40 KiB of text per call and the whole JSON under 64 KiB (`fitGoogleToolOutput` halves the text budget until the serialized output fits), copy up to 8 MiB |
+| `google__drive_read_file` | read | `fileId` (the `file_id` the list returned, or the `fileId` of the previous page), optional `offset` | `references`, `readable`, `file` (`fileId`, type, size, `totalCharacters`), `content` (framed text), `isTruncated`, `nextOffset`, `truncationNote`, `note` | Text only: `text/*` (Docs as Markdown, Sheets as a workbook map of every tab, or the first tab in CSV when the Sheets API cannot be read (the first page makes an older first-tab copy of an unchanged Sheet into a map), Slides as text, plain text, Markdown, CSV), JSON, XML, YAML and `+json` and `+xml` types; 40 KiB of text per call and the whole JSON under 64 KiB (`fitGoogleToolOutput` halves the text budget until the serialized output fits), copy up to 8 MiB |
 | `google__drive_save_file` | write | `fileId` (a Besidka file id), optional `name` | `references`, `saved`, `alreadySaved`, `link`, `message` | One file per call, up to 5 MB, Allow once only |
 
 A refusal or a Google failure is a thrown error with a sentence the model can
@@ -2219,16 +2224,34 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
 The Picker used to open on one view built with `setEnableDrives(true)`, which
 Google fills with shared drives and their files: a user without shared drives
 saw "No documents." and had to search. `buildPickerViews` in
-`app/composables/google-picker.ts` now adds four views in this order, each
-labeled and each built on its own (an exception in one drops that tab and
-nothing else; with none left the plain `ViewId.DOCS` view opens):
+`app/composables/google-picker.ts` now adds up to five views in this order,
+each labeled and each built on its own (an exception in one drops that tab
+and nothing else; with none left the plain `ViewId.DOCS` view opens):
 
 | Tab | Built with |
 |---|---|
-| Recent | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(true)`, `setSelectFolderEnabled(false)`, `setMode(DocsViewMode.LIST)` |
+| Recent | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(false)`, `setMode(DocsViewMode.LIST)`; no owner filter, so files shared with the user are included |
 | Shared with me | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(false)`, `setOwnedByMe(false)`, `setMode(DocsViewMode.LIST)` |
-| Shared drives | the earlier view, `setEnableDrives(true)` with folders, plus `setMode(DocsViewMode.LIST)` |
+| My Drive | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(true)`, `setSelectFolderEnabled(false)`, `setParent('root')` when the namespace has it, `setMode(DocsViewMode.LIST)` |
+| Shared drives (Workspace accounts only) | `setEnableDrives(true)` with folders, plus `setMode(DocsViewMode.LIST)` |
 | Upload | `new DocsUploadView()` |
+
+Shared drives is conditional because a personal Google account can never
+have a shared drive, so on a personal account the tab only ever said "No
+documents." (BES-451). The server decides: `toGoogleConnectionSummary` adds
+`isWorkspaceAccount` to the connection that `GET /api/v1/google/connections`
+already returns, from the domain of the stored account email (`gmail.com` and
+`googlemail.com` are personal, any other domain is Workspace; no email, or
+one that is not an address, counts as personal). The hosted-domain (`hd`)
+claim is not stored, so it is not used, and nothing new is asked of Google or
+stored. `buildPickerViews(picker, fileIds, { hasSharedDrives })` stays pure:
+the composable passes the flag from the status check it already makes before
+the Picker loads, and without the flag the tab is left out. A personal
+account on its own domain would lose the tab by mistake, and a Workspace
+account whose admin turned shared drives off would see an empty one; neither
+is a guess the code can avoid without a Google call. That the tab shows
+shared-drive files for a Workspace account is NOT VERIFIED: no Workspace
+account was available.
 
 What Google's reference says about each (read 2026-11-22 on
 `developers.google.com/workspace/drive/picker/reference/`): `DocsView` "Use
@@ -2256,6 +2279,15 @@ two together. The upload runs inside the Picker's own frame, so no source was
 added to the content security policy (section 12.8); whether the upload view
 loads another frame host is NOT VERIFIED, and the `securitypolicyviolation`
 listener turns a block into the "Reload the page" message.
+
+The first version of Recent was the My Drive view with folders. On a real
+account on a preview the four tabs, their labels and
+list mode rendered and the list sorted by "Last modified" descending, but
+Google lists folders before files, so the whole first screen of Recent was
+folders that cannot be picked. Recent is now files only and the folder view
+is its own My Drive tab (BES-451). That Recent now fills with files, and that
+`setParent('root')` opens My Drive at the top, are NOT VERIFIED against
+Google: only a real session can show them.
 
 Three things are NOT VERIFIED and need a real account. The tab labels:
 `View.setLabel` is marked deprecated in the reference with no replacement,
@@ -2387,13 +2419,42 @@ same copy and reuse rules (an unchanged copy is `reused`), and a 400 for a
 link that is not a file. It never retries: a file that was not just picked
 has no grant on its way. `logger` gets `attributes.googleDrive.fromLink`.
 
-**What the composer does** (`useChatDriveFiles().detectLinks`, called from
-`ChatInput.client.vue` 800 ms after the text stops changing):
+**When the composer looks** (`useChatDriveFiles().detectLinks`, called from
+`ChatInput.client.vue`): 800 ms after typed text stops changing, and at once
+for a paste. The `paste` handler (`onComposerPaste`) sets a flag when the
+clipboard's plain text holds a recognized Google link and then runs the
+Markdown paste as before; the next change of the message consumes the flag
+and calls `detectLinks` in the same tick, with no timer, so a paste never
+runs the detection twice. The flag expires after 500 ms if the message did
+not change (a long paste becomes a chip and changes nothing). The watcher is
+a plain `watch` with the timer cleared in `onCleanup`; typed text after a
+paste waits again. Pasted text with no Google link takes the 800 ms path.
+
+**The placeholder.** From the moment a link passed the client parser, the
+connection check and the queue, until its answer, the attachments row shows
+one placeholder per link (at most five) in the place and the outer size of an
+attached-file chip: `role="status"`, the name "Checking Google link", not
+focusable, `skeleton skeleton--default` blocks (daisyUI's `.skeleton`
+animates only under `prefers-reduced-motion: no-preference`),
+`data-testid="google-link-skeleton"`. `useChatDriveFiles` keeps the ids in
+`checkingLinkIds`: it adds one when the link is queued, removes it when its
+probe ends (attached, suggestion, error, blocked or rate-limited answer),
+and clears all of them when the queue stops, when the message is sent
+(`chat:submit`) and when the composer is torn down. The real chip is
+appended to the files, where the placeholder was, so nothing jumps. From a
+paste to the placeholder is the same tick when the connection status is
+already cached (`await isGoogleConnected()` is one microtask) and otherwise
+one request to `GET /api/v1/google/connections`, as before. The first paste
+of a session can therefore show the placeholder a network round trip late.
+Not connected, an unrelated URL and a link inside code never show one. The
+visual result is NOT VERIFIED until the preview is looked at.
+
+**What the composer does with the answer:**
 
 | Answer | Result |
 |---|---|
 | Copied or reused | The file is attached like a pick (same chip, same rules, the chat marked as holding Google data) |
-| 404 not found or 403 no access | A suggestion, "Attach this Google file" (the kind of file and a number when there are several), that opens the Picker on that one file |
+| 404 not found or 403 no access | The Google Drive tile (below) |
 | Too large, empty, storage full, unsupported, locked | The failed chip of section 12.14 |
 | 401, 404, 409, 429 on the request, consent missing, `reauthorize`, rate limit, other failure | Nothing: no toast, no dialog, no chip |
 
@@ -2448,15 +2509,36 @@ message was chosen because that message may be unrelated. A request that the
 timeout aborts can still leave a copy on the server that nothing deletes: it
 counts against storage until it expires or the user deletes it from Files.
 
-**If the Picker shows nothing.** `setFileIds` leaves out ids the account
-cannot open, so for a file shared with another Google account the Picker is
-empty. The suggestion row says, below its buttons: "If the Picker shows
-nothing, open the file in Google Drive with the connected account first."
+**The Google Drive tile.** A link that needs the Picker is offered as a tile
+in the same row as the setting tiles, first in the row, built by
+`buildGoogleLinkTile` (`app/utils/chat-input-tiles.ts`, never by
+`buildChatInputTiles`, so the tools menu does not repeat it) and drawn by the
+same `ChatInput/SettingTile.vue` as "Web search / Built-in": the accent tone,
+the same height, radius, border, type and remove button. The official
+multicolor Drive logo (`GOOGLE_DRIVE_ICON`, unmodified, no color class or
+opacity) sits where the other tiles have their icon; the caption is "Google
+Drive" and the value "Attach file". Several links are one tile with the
+value "Attach 3 files". A tap opens the Picker on every suggested file
+(`setFileIds` takes the ids comma separated, `acceptAllLinkSuggestions`) and
+does nothing while a pick or copy is in flight (the tile is `aria-disabled`);
+its remove button dismisses all of them for the message
+(`dismissAllLinkSuggestions`). The accessible name says what it does:
+"Attach the Google file from the link" or "Attach the Google files from the
+links". The row is a sideways-scrolling carousel and the tile is one of its
+items, so at 375 px it sits in the row like the others and adds no line. There is no helper text,
+tooltip or note: the line "If the Picker shows nothing, open the file in
+Google Drive with the connected account first." (a gray sentence under the
+old pill) was removed on the owner's instruction, and a Picker that comes
+back with nothing picked shows nothing extra. `setFileIds` leaves out ids the
+account cannot open, so for a file shared with another Google account the
+Picker is still empty; that is now unexplained in the interface.
 
-**Keyboard and screen readers.** The suggestion row has one persistent live
-region that receives the announcement (not an `aria-live` on a root that
-appears with its content); dismissing a suggestion moves focus to the next
-one or to the textarea (`js-chat-input-textarea`). The failed-chip note of
+**Keyboard and screen readers.** `GoogleLinkAnnouncement.vue` is one
+persistent visually hidden live region that receives "A Google file link in
+your message can be attached." (or the count), outside the row so it exists
+before its text does. The tile is a button in the row's tab order, first; a
+dismiss goes through `removeTile`, which moves focus to the first tile or the
+tools button (`focusAfterTileRemoval`). The failed-chip note of
 section 12.14 takes focus when it opens, is announced through the attachments
 row's status region, closes on Escape back to its chip button, and after
 "Pick again" or "Remove" focus goes to the chip, the next failed chip or the
@@ -2469,6 +2551,213 @@ valid the link. Google's documented way to grant access is the Picker, which
 `DocsView.setFileIds` pre-navigates to that file (section 12.13): the user
 confirms it once and the normal import runs. Reading the file from the link
 alone would need a broader scope that Besidka does not ask for.
+
+### 12.16 A Google Sheet as a workbook map (BES-448)
+
+A Google Sheet picked from Drive used to arrive as the CSV export of its first
+tab, so a model never saw the other tabs, a formula, a dropdown or a rule. It
+now arrives as the workbook map of `@besidka/doc-renderer/workbook-map`
+(`docs/chats/documents-renderer-worker.md`, "Workbook map"), the format an
+uploaded `.xlsx` already produces, filled by a second adapter: Sheets API JSON
+to `WorkbookModel`. The CSV export stays as the fallback.
+
+**Verified against Google on 2026-11-22, with a real account:** a
+`drive.file` grant from the Picker works on `sheets.googleapis.com`
+(`spreadsheets.get` answered 200 for a picked Sheet) with the Drive-only token
+Besidka already holds, so no new scope and no new consent are needed. The
+size of the answers for an 11-tab estimate workbook was a few MB of JSON
+decoded, which is why the reader is sized as below. Nothing else about that
+workbook is recorded in this repository. The engineering rules it led to:
+a rule repeated on many cells dominates the size of an answer, so a repeated
+validation rule is printed as one line; the used range comes from the rows
+and cells that come back, never from `gridProperties`; and formulas are
+printed as `userEnteredValue.formulaValue` gives them, with no translation.
+
+**Fields read** (always with a `fields` mask and `prettyPrint=false`; a mask
+also makes `includeGridData` unnecessary, because Google ignores that
+parameter when a mask is set, so it is never sent):
+
+- request 1, the structure: `spreadsheetId`, `namedRanges(name,range)`,
+  `sheets(properties(sheetId,title,index,sheetType,hidden,gridProperties(
+  rowCount,columnCount,frozenRowCount,frozenColumnCount)),merges,
+  conditionalFormats(ranges,booleanRule(condition(type,values(
+  userEnteredValue,relativeDate))),gradientRule(minpoint(type))),
+  protectedRanges(protectedRangeId),charts(chartId))`. Protected ranges and
+  charts are counted, never read; a gradient rule counts as a color scale;
+  colors are never requested.
+- one request per tab, with `ranges` (`'Tab name'!A1:GR1000`, the title
+  quoted with inner quotes doubled): `sheets(properties(sheetId),data(
+  startRow,startColumn,rowData(values(userEnteredValue,formattedValue,
+  userEnteredFormat(numberFormat),dataValidation(condition(type,values(
+  userEnteredValue,relativeDate)),inputMessage,strict),note,hyperlink,
+  pivotTable(source)))))`. `data[].startRow` and `startColumn` are added to
+  the indexes (Google omits them at zero) and rows and cells are trimmed
+  from the end. The value is `formattedValue`; `userEnteredValue.formulaValue`
+  gives the formula (the leading `=` is stripped); the number format is
+  `userEnteredFormat.numberFormat.pattern`; `note` becomes a note;
+  `hyperlink` and `pivotTable` are counted.
+
+**What the adapter writes** (`server/utils/google/sheets-model.ts`,
+`sheets-conditions.ts`, `sheets-grid.ts`): a `GridRange` becomes A1 text (zero
+based, end exclusive, a missing start is the first row or column, an open end
+is closed with the grid size, whole columns `B:D` and whole rows `3:9`, a
+reversed or empty range is dropped); named ranges become
+`'Sheet name'!$A$1:$B$2`; conditional rules keep their `condition.type`
+(`CUSTOM_FORMULA` is a formula rule, `NUMBER_*` and `DATE_*` are comparisons,
+`TEXT_CONTAINS` and its relatives text rules, `BLANK` and `NOT_BLANK`, every
+other type `other`, never dropped); validation rules keep theirs
+(`ONE_OF_RANGE` is a dropdown of a range, `ONE_OF_LIST` a dropdown of values,
+`BOOLEAN` a checkbox, `NUMBER_*` a number rule, `DATE_*` a date rule,
+`CUSTOM_FORMULA` a custom rule, anything else a custom rule written as
+`TYPE(values)`), and the rule that Sheets repeats on every cell is grouped
+into the rectangles that cover those cells, then the cells that carry a
+formula relative to each cell are grouped as a fill. Every string goes through
+the map's own cleaning when it is rendered. A spec compares the output with
+the XLSX reader on the same invented workbook in every section both can
+express (`tests/unit/server/utils/google/sheets-parity.spec.ts`; the
+differences by nature are named in it: values, used range, Excel's
+whole-number rule, `{array}` lines, image counts). Two small additions to the
+shared module: a sheet cut `not_read` (a tab whose cells were not read keeps
+its structure and says so) and an optional `notRead.protectedRanges` count.
+
+**The request plan** (`server/utils/google/sheets-read.ts`), through the same
+guarded fetch as Drive (exact host `sheets.googleapis.com` added to
+`GOOGLE_FETCH_HOSTS`, `redirect: 'manual'`, a streaming byte cap, the bearer
+token of the Drive-only path):
+
+| Budget | Value |
+|---|---|
+| Requests per import | 22 (structure, at most 20 tabs, two retries); never retried on 429 |
+| Tabs | the first 20 in tab order; the rest are named ("Only the first 20 tabs of this spreadsheet were imported.") |
+| Rows and columns per tab | 1,000 and 200 (columns after GR are not read) |
+| One answer | 6 MiB in the first pass, 8 MiB for a tab asked again alone, then a quarter of its rows once |
+| All answers | 24 MiB decoded |
+| Time | 20 s for a Picker import, 10 s for a pasted link (the composer gives up on a link after 15 s); each request gets the time that is left, at most 15 s |
+| Concurrency | two tabs at a time after the structure request, so at most 12 MiB of answers is in flight in the first pass; the output keeps tab order |
+| Map size | `OFFICE_TEXT_INLINE_MAX_BYTES` (200 KiB), like an uploaded workbook |
+
+Memory is the constraint, not time: a parsed answer costs several times its
+text. Each answer is converted to its tab's cells and dropped before its lane
+asks again, and the structure answer is dropped as soon as it is parsed. A
+tab over 6 MiB is asked again alone, so two large tabs are never parsed
+together.
+
+Measured in Node, on synthetic fixtures, with the command
+`NODE_OPTIONS=--expose-gc pnpm vitest run tests/unit/server/utils/google/sheets-weight.spec.ts`
+(add `SHEETS_WEIGHT_REPORT=1` to print the numbers; without `--expose-gc` the
+spec checks the CPU and the request counts but not the heap). The heap is
+sampled after every `JSON.parse`, not during the conversion, so the true peak
+is somewhat higher, and the spec asserts under 64 MiB above the baseline. On
+2026-11-22: one 3.9 MiB tab plus ten small tabs peaked about 32 MiB above the
+baseline (27 MiB when the case runs alone), 130 to 160 ms of CPU, 12 requests;
+one 7.2 MiB tab (read alone after the 6 MiB first pass) plus ten small tabs
+peaked about 22 MiB (23 MiB alone), 160 to 230 ms of CPU, 13 requests. The
+8 MiB case is not higher because its large tab is the only answer being
+parsed while the 4 MiB case runs next to a small tab. Memory inside the
+Workers runtime (the 128 MB isolate limit, workerd's own heap accounting) is
+NOT measured: these numbers are V8 heap in Node.
+
+**Rules for what comes back.** A failed or empty structure request is a
+fallback. A tab that is still too large, or that a budget did not reach, is
+named as not read and the map is kept ("Only 4 of 5 tabs of this spreadsheet
+were imported."). Only when no tab's cells were read at all (every request
+failed, or the API cannot be read) is the result a fallback to the CSV. A
+workbook of chart tabs only is a map with no cell request.
+
+**A partial map is never reused.** A map with fewer imported tabs than the
+Sheet has (a Google error, the time budget, the rate limit, a tab that is too
+large, or the 20-tab limit) is stored without `external_modified_at`, the one
+column the reuse query matches on, so no later pick or link returns it as
+"reused" without the notice, and a refresh treats it as outdated. The next
+import of the unchanged Sheet reads again and says "Only N of M tabs" again;
+a complete map from a later try carries the Sheet's version and is reused
+from then on. The partial copy stays where it is (messages that used it keep
+it) until it expires. The cost: a Sheet with a tab that can never be read is
+read, and counted by the limiter, at every pick.
+
+**How the stored copy is marked as a map**, with no schema change and never
+from the text: `files.type` `text/markdown`, `external_source` `google`,
+`text_status` `ready` and `text_version` 2 (the workbook map version) and
+`text_bytes` the size. `isGoogleWorkbookMapFile` in
+`shared/utils/google-sheets.ts` is the one predicate, used by the send route
+(the carried-turn charge), `convertFilesForAI` (the wrapper), the attach chip
+and the Drive read tool. A Google Doc copy has no text version, the older
+first-tab copy is `text/csv`, and an uploaded Markdown file has no
+`external_source`, so none of them matches. The R2 object is the map text
+itself (no `.text.md` sidecar, no ZIP extractor). The model gets the same
+kind of wrapper as for an uploaded workbook (the name and "Google Sheet", a
+note saying values are as displayed and formulas are as written), a map
+carried into a later turn is fitted with `fitWorkbookMap` to 64 KiB (structure
+first), the chip shows "5 tabs · formulas" and, when something was cut, what,
+and `google__drive_read_file` pages over the map text like any copy.
+
+**Reuse and refresh.** An unchanged Sheet is reused only as a map: the
+reuse query asks for `text/markdown` with `text_version` of at least 2, so a
+first-tab CSV copy of an unchanged Sheet is not reused once the map can be
+read, and a new pick makes a map. The CSV copy is reused only while the map
+cannot be read. Refresh is unchanged and answers "up to date" for an older CSV
+copy of an unchanged Sheet; picking the file again upgrades it, and so does
+the first page of `google__drive_read_file` (it runs the same import, so
+the Sheets read, up to 20 seconds, happens once inside that tool call and the
+map copy is reused afterwards; with the Sheets API unreadable the CSV copy is
+read as it is).
+Storage accounting, the Google data flag on the chat, the 24 hour deletion
+when access ends and the new-copy-per-edit rule are the same, because the
+copy is an ordinary `files` row with `external_source` `google`.
+
+**The fallback and what the user is told** (`GOOGLE_SHEETS_FALLBACK_SENTENCES`,
+fixed sentences; the technical code is shown in the toast and in the chip's
+note the way a Drive failure code is):
+
+| Code | When | Sentence |
+|---|---|---|
+| `sheets_api_off` | 403 whose `error.details[].reason` (ErrorInfo) or `error.errors[0].reason` is `SERVICE_DISABLED`, `accessNotConfigured`, `ACCESS_NOT_CONFIGURED` or `API_DISABLED` | The Google Sheets API is not turned on or not set up for Besidka's Google project. |
+| `sheets_no_access` | any other 401, 403 or 404 (the Drive metadata of the file was readable) | Google did not let Besidka read this spreadsheet through the Google Sheets API. |
+| `sheets_quota` | 429, a rate or quota reason, `error.status` `RESOURCE_EXHAUSTED`, or Besidka's own bucket (`besidka_user_limit`, `besidka_app_limit`) | Google asked Besidka to slow down on the Google Sheets API. Try again in a minute. |
+| `sheets_too_large` | an answer over its cap after the retries, a timeout, or a spent request, byte or time budget with nothing read | This spreadsheet is too large or too slow to read in full through the Google Sheets API. |
+| `sheets_unavailable` | everything else (400, 5xx, unreachable, not JSON, no sheets) | The Google Sheets API could not be reached or did not answer as expected. |
+
+The sentences give the reason only; the sentence before them says what the
+user got. When the structure request itself failed, the number of tabs is
+unknown, and the notice is "Only the first tab of this spreadsheet could be
+read." (the detail carries `isTabCountUnknown`, so the chip says the same);
+it never claims that other tabs exist.
+
+The notice "Only the first tab of this spreadsheet was imported." appears only
+when the CSV fallback really ran, and not when the structure request
+already showed a spreadsheet with exactly one tab. The wide event gets
+`googleDrive.sheetsDetails`, next to `failureDetails`, one string per Sheet
+read with machine strings only: `map` or `fallback:<code>`, the request, byte
+and not-read counts, whether KV could not count, and for each failure
+`stage:status:error.status:reason`. Free text from Google is never kept: a
+status and a reason are kept only when they look like identifiers.
+
+**The limiter** (`server/utils/google/sheets-rate-limit.ts`): 30 Sheets
+requests a minute per user and 200 for the whole app, reserved in two steps per
+import (the structure request, then the tabs), never per request, because KV
+takes about one write a second per key and the app-wide key is shared. The
+counts live in the isolate and are written to KV at most once a second per
+key, like `consumeIconRateLimit`. An isolate reads the stored value once, when
+it first counts a bucket in a minute, and overwrites the key with its own
+total after that, so isolates share the count only best effort (a later write
+can hide what another isolate counted). A KV error never refuses a request
+and is logged as `kv=true`; a refusal names its bucket. It is a flood guard
+per isolate with a best-effort shared count, not exact accounting.
+
+**Side effects.** Adding `sheets.googleapis.com` to `GOOGLE_FETCH_HOSTS` also
+lets a download redirect stay on that host. The wording of
+`google__drive_read_file` changed, so its definition hash changed and the
+chat grants for that tool lapse and ask again. `google__drive_read_found_file`
+(the owner's own client, `drive.readonly`) still exports a Sheet as the first
+tab in CSV and says "tab" only in this document; it was not given the Sheets
+API because that token's use of the Sheets API was not checked.
+
+**NOT VERIFIED** (needs a real account): the exact error bodies of a disabled
+API and of a refused file (the reasons above are from Google's error model,
+not from a live answer), that `ranges` with a mask returns only the requested
+tab's data (the reader selects by `properties.sheetId` and tolerates the
+others), 429 behavior at the quotas (300 reads a minute per project, 60 per
+user), and the look of the chip and the toast on the preview.
 
 ## 14. Gmail tools and Drive search (Gmail tools child, G-8)
 

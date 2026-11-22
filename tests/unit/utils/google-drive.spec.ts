@@ -22,6 +22,7 @@ import {
   toDriveFilePart,
   withDriveFileParts,
 } from '#shared/utils/google-drive'
+import { GOOGLE_WORKBOOK_MAP_CHOICE } from '#shared/utils/google-sheets'
 
 const FILE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz-_0123456789'
 
@@ -78,7 +79,7 @@ describe('the data-drive-file part', () => {
 
   it('derives the part from a stored Google copy only', () => {
     expect(driveFilePartFromFile({
-      name: 'Budget (first sheet).csv',
+      name: 'Budget (first tab).csv',
       type: 'text/csv',
       externalSource: 'google',
       externalId: FILE_ID,
@@ -121,13 +122,19 @@ describe('the data-drive-file part', () => {
 })
 
 describe('copy names and export choices', () => {
-  it('names a sheet copy after its first sheet', () => {
+  it('names the first-tab CSV copy of a spreadsheet after its first tab, '
+    + 'with no note of its own', () => {
     const choice = GOOGLE_DRIVE_EXPORTS['application/vnd.google-apps.spreadsheet']!
 
     expect(buildDriveCopyName('Budget', choice)).toBe(
-      'Budget (first sheet).csv',
+      'Budget (first tab).csv',
     )
-    expect(choice.note).toBe('Only the first sheet is included.')
+    expect(choice.note).toBeUndefined()
+  })
+
+  it('names the workbook map of a spreadsheet', () => {
+    expect(buildDriveCopyName('Budget', GOOGLE_WORKBOOK_MAP_CHOICE))
+      .toBe('Budget (workbook map).md')
   })
 
   it('exports Docs to Markdown with a plain text fallback', () => {

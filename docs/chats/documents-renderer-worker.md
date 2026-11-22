@@ -545,6 +545,18 @@ joins touching ranges), plus `namedRanges`. Sheets has no shared formulas, so
 columns. The renderer does the collapsing, grouping, sanitizing and budgets,
 so an adapter only fills the model.
 
+The Google Sheets adapter exists (BES-448): `server/utils/google/sheets-model.ts`
+and its readers, described in `docs/google.md` section 12.16. It sends a
+`fields` mask (Google ignores `includeGridData` when a mask is set, so it is
+not sent), reads one request per tab, groups the validation rule that Sheets
+repeats on every cell into rectangles itself, and keeps the spreadsheet's
+own formulas as `userEnteredValue.formulaValue` gives them. Two additions to
+this module came with it: the sheet cut `not_read` (a tab whose cells were
+not read keeps its structure and the map says so; the summary's `cut` can
+hold `not_read`) and the optional `notRead.protectedRanges` count ("Not read:
+1 protected range (count only)"; the XLSX reader leaves it unset). A
+comparison spec feeds the same invented workbook to both readers.
+
 ### `renderWorkbookMap(model, options?)`
 
 Returns `{ text, summary }`. `options` overrides `WORKBOOK_MAP_DEFAULTS`

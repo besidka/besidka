@@ -18,6 +18,14 @@ import {
   isOfficeMediaType,
 } from '#shared/utils/office-files'
 import type { WorkbookTextSummary } from '#shared/utils/office-files'
+import {
+  GOOGLE_FIRST_TAB_NOTE,
+  GOOGLE_FIRST_TAB_UNKNOWN_COUNT_NOTE,
+  describeSheetsFallback,
+  formatSheetsFallbackDetail,
+  isGoogleWorkbookMapFile,
+} from '#shared/utils/google-sheets'
+import type { DriveSheetsFallback } from '#shared/utils/google-sheets'
 import { getUnsupportedInputMessage } from '~/utils/files'
 
 export interface DeliveryFile {
@@ -30,6 +38,8 @@ export interface DeliveryFile {
   textOmittedMedia?: number | null
   textOmittedCharts?: number | null
   workbookSummary?: WorkbookTextSummary | null
+  externalSource?: string | null
+  sheetsFallback?: DriveSheetsFallback | null
 }
 
 export type FileDeliveryContext = Pick<
@@ -67,6 +77,13 @@ export const SPREADSHEET_MAP_DESCRIPTION = 'The model gets a map of this '
   + 'workbook: values, formulas, number formats, dropdown and conditional '
   + 'formatting rules, merged cells and notes. Values are the ones last '
   + 'saved in the file. Colors, charts and images aren\'t sent.'
+
+export const GOOGLE_SPREADSHEET_MAP_DESCRIPTION = 'The model gets a map of '
+  + 'this spreadsheet: every tab\'s values as they are displayed, '
+  + 'formulas, number formats, dropdown and conditional formatting rules, '
+  + 'merged cells and notes. Colors, charts and images aren\'t sent.'
+
+export const SHEETS_FALLBACK_LABEL = 'First tab only'
 
 const SPREADSHEET_ROWS_READ = '1,000'
 
@@ -279,7 +296,10 @@ function omittedSentence(file: DeliveryFile): string | null {
   return `${omitted.join(' and ')} ${isOne ? 'isn\'t' : 'aren\'t'} sent.`
 }
 
-function valuesCutSentence(summary: WorkbookTextSummary): string | null {
+function valuesCutSentence(
+  summary: WorkbookTextSummary,
+  unit: 'sheet' | 'tab',
+): string | null {
   const shown = summary.valuesCut.slice(0, VALUES_CUT_SHEETS_SHOWN)
 
   if (shown.length === 0) {
@@ -291,25 +311,33 @@ function valuesCutSentence(summary: WorkbookTextSummary): string | null {
   })
   const rest = summary.valuesCut.length - shown.length
   const more = rest > 0
-    ? `, and on ${rest} more ${rest === 1 ? 'sheet' : 'sheets'}`
+    ? `, and on ${rest} more ${rest === 1 ? unit : `${unit}s`}`
     : ''
 
   return `It is long, so values ${parts.join(' and ')}${more} aren't sent.`
 }
 
-function cutSentences(summary: WorkbookTextSummary): string[] {
+function cutSentences(
+  summary: WorkbookTextSummary,
+  unit: 'sheet' | 'tab' = 'sheet',
+): string[] {
   const sentences: string[] = []
 
   if (summary.cut.includes('sheets')) {
     sentences.push(
-      `Only the first ${summary.sheets} of ${summary.sheetsTotal} sheets `
+      `Only the first ${summary.sheets} of ${summary.sheetsTotal} ${unit}s `
       + 'are sent.',
     )
   }
 
+  if (summary.cut.includes('not_read')) {
+    sentences.push(`Some ${unit}s could not be read in full.`)
+  }
+
   if (summary.cut.includes('rows')) {
     sentences.push(
-      `Sheets are read up to row ${SPREADSHEET_ROWS_READ}.`,
+      `${unit === 'tab' ? 'Tabs' : 'Sheets'} are read up to row `
+      + `${SPREADSHEET_ROWS_READ}.`,
     )
   }
 
@@ -317,7 +345,7 @@ function cutSentences(summary: WorkbookTextSummary): string[] {
     sentences.push('Columns after GR aren\'t read.')
   }
 
-  const valuesCut = valuesCutSentence(summary)
+  const valuesCut = valuesCutSentence(summary, unit)
 
   if (valuesCut) {
     sentences.push(valuesCut)
@@ -353,6 +381,11 @@ export function getSpreadsheetNote(
   const hasMap = !!summary
     || (file.textVersion ?? 0) >= WORKBOOK_MAP_TEXT_VERSION
   const omitted = omittedSentence(file)
+  const isGoogleSheet = isGoogleWorkbookMapFile(file)
+  const unit = isGoogleSheet ? 'tab' : 'sheet'
+  const description = isGoogleSheet
+    ? GOOGLE_SPREADSHEET_MAP_DESCRIPTION
+    : SPREADSHEET_MAP_DESCRIPTION
 
   if (!hasMap) {
     return getTextLossNote(file)
@@ -361,13 +394,13 @@ export function getSpreadsheetNote(
   if (!summary) {
     return {
       label: SPREADSHEET_MAP_LABEL,
-      description: sentences([SPREADSHEET_MAP_DESCRIPTION, omitted]),
+      description: sentences([description, omitted]),
     }
   }
 
-  const sheets = `${summary.sheets} ${summary.sheets === 1 ? 'sheet' : 'sheets'}`
+  const tabs = `${summary.sheets} ${summary.sheets === 1 ? unit : `${unit}s`}`
   const labelParts = [
-    sheets,
+    tabs,
     summary.formulas > 0 ? 'formulas' : null,
     summary.cut.length > 0 ? TEXT_SHORTENED_LABEL.toLowerCase() : null,
   ].filter((part): part is string => part !== null)
@@ -375,9 +408,30 @@ export function getSpreadsheetNote(
   return {
     label: labelParts.join(' · '),
     description: sentences([
-      SPREADSHEET_MAP_DESCRIPTION,
-      ...cutSentences(summary),
+      description,
+      ...cutSentences(summary, unit),
       omitted,
+    ]),
+  }
+}
+
+/**
+ * The note on the first-tab CSV copy of a Google Sheet that was made
+ * because the Sheets API could not be read: what the user got, why in a
+ * fixed sentence, and the short technical code that tells the owner which
+ * part failed.
+ */
+export function getSheetsFallbackNote(
+  fallback: DriveSheetsFallback,
+): Pick<FileDeliveryHint, 'label' | 'description'> {
+  return {
+    label: SHEETS_FALLBACK_LABEL,
+    description: sentences([
+      fallback.isTabCountUnknown
+        ? GOOGLE_FIRST_TAB_UNKNOWN_COUNT_NOTE
+        : GOOGLE_FIRST_TAB_NOTE,
+      describeSheetsFallback(fallback),
+      `Technical code: ${formatSheetsFallbackDetail(fallback)}.`,
     ]),
   }
 }
@@ -422,6 +476,21 @@ export function getFileDeliveryHint(
       label: getRejectionCaption(result.reason),
       description: `${why} ${fix.replace(/\.$/, '')}.`,
       isBlocking: true,
+    }
+  }
+
+  if (options.spreadsheetNote && result.delivery === 'text') {
+    if (isGoogleWorkbookMapFile(file)) {
+      const mapNote = getSpreadsheetNote(file)
+
+      return mapNote ? { ...mapNote, isBlocking: false } : null
+    }
+
+    if (file.sheetsFallback) {
+      return {
+        ...getSheetsFallbackNote(file.sheetsFallback),
+        isBlocking: false,
+      }
     }
   }
 

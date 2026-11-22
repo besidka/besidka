@@ -427,7 +427,14 @@ describe('useChatDriveFiles', () => {
     })
   })
 
-  it('says only the first sheet is included for a sheet copy', async () => {
+  it('says why only the first tab was imported, with the technical code, '
+    + 'and keeps the detail on the chip', async () => {
+    const sheets = {
+      code: 'sheets_no_access',
+      status: 403,
+      reason: 'PERMISSION_DENIED',
+    }
+
     mocks.fetch.mockImplementation(async (url: string) => {
       if (url === '/api/v1/files/policy') {
         return { policy: { maxFilesPerMessage: 10 } }
@@ -438,16 +445,82 @@ describe('useChatDriveFiles', () => {
           id: PICKED.id,
           status: 'imported',
           file: importedFile(),
-          note: 'Only the first sheet is included.',
+          note: 'Only the first tab of this spreadsheet was imported.',
+          sheets,
         }],
       }
     })
 
-    const { subject } = createSubject()
+    const { subject, attach } = createSubject()
 
     await subject.attachFromDrive()
 
-    expect(mocks.info).toHaveBeenCalledWith('Only the first sheet is included.')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Only the first tab of this spreadsheet was imported. Google did not '
+      + 'let Besidka read this spreadsheet through the Google Sheets API. '
+      + '(sheets_no_access (HTTP 403, PERMISSION_DENIED))',
+    )
+    expect(attach).toHaveBeenCalledWith([
+      expect.objectContaining({ sheetsFallback: sheets }),
+    ])
+  })
+
+  it('shows the plain note and no fallback detail when a map lost tabs',
+    async () => {
+      mocks.fetch.mockImplementation(async (url: string) => {
+        if (url === '/api/v1/files/policy') {
+          return { policy: { maxFilesPerMessage: 10 } }
+        }
+
+        return {
+          results: [{
+            id: PICKED.id,
+            status: 'imported',
+            file: importedFile(),
+            note: 'Only 4 of 5 tabs of this spreadsheet were imported.',
+          }],
+        }
+      })
+
+      const { subject, attach } = createSubject()
+
+      await subject.attachFromDrive()
+
+      expect(mocks.info).toHaveBeenCalledWith(
+        'Only 4 of 5 tabs of this spreadsheet were imported.',
+      )
+      expect((attach.mock.calls[0]![0] as Array<Record<string, unknown>>)[0])
+        .not.toHaveProperty('sheetsFallback')
+    })
+
+  it('shows no notice and no detail for a one-tab fallback, which the '
+    + 'server sends without a note', async () => {
+    mocks.fetch.mockImplementation(async (url: string) => {
+      if (url === '/api/v1/files/policy') {
+        return { policy: { maxFilesPerMessage: 10 } }
+      }
+
+      return {
+        results: [{
+          id: PICKED.id,
+          status: 'imported',
+          file: importedFile(),
+          sheets: {
+            code: 'sheets_too_large',
+            status: 0,
+            reason: 'timeout',
+          },
+        }],
+      }
+    })
+
+    const { subject, attach } = createSubject()
+
+    await subject.attachFromDrive()
+
+    expect(mocks.info).not.toHaveBeenCalled()
+    expect((attach.mock.calls[0]![0] as Array<Record<string, unknown>>)[0])
+      .not.toHaveProperty('sheetsFallback')
   })
 
   it('marks every file failed when the import request fails', async () => {
@@ -901,6 +974,271 @@ describe('useChatDriveFiles', () => {
       expect(linkCalls()).toHaveLength(5)
     })
 
+    describe('the placeholder while a link is checked', () => {
+      it('lists each link from the moment it is queued until its answer, '
+        + 'then drops it when the file is attached', async () => {
+        const first = deferred<unknown>()
+        const second = deferred<unknown>()
+        const answers = [first, second]
+
+        answerLink(() => answers.shift()!.promise)
+
+        const { subject, attach } = createSubject()
+        const running = subject.detectLinks(`${LINK_URL} ${SECOND_URL} `)
+
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+
+        expect(subject.checkingLinkIds.value).toEqual([LINK_ID, SECOND_ID])
+
+        first.resolve({
+          results: [{ id: LINK_ID, status: 'imported', file: copyOf(LINK_ID) }],
+        })
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(2))
+
+        expect(subject.checkingLinkIds.value).toEqual([SECOND_ID])
+        expect(attach).toHaveBeenCalledTimes(1)
+
+        second.resolve(failedLink('not_found'))
+        await running
+
+        expect(subject.checkingLinkIds.value).toEqual([])
+      })
+
+      it('is at most five, like the links of one message', async () => {
+        const answering = deferred<unknown>()
+        const ids = Array.from({ length: 7 }, (_item, index) => {
+          return `1LinkLinkLinkLinkLinkLinkLink${String(index + 10)}`
+        })
+
+        answerLink(() => answering.promise)
+
+        const { subject } = createSubject()
+        const running = subject.detectLinks(
+          ids.map(id => `https://drive.google.com/open?id=${id}`).join(' '),
+        )
+
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+
+        expect(subject.checkingLinkIds.value).toHaveLength(5)
+
+        answering.resolve(failedLink('not_found'))
+        await running
+      })
+
+      it('is gone once the link turns into the Google Drive tile',
+        async () => {
+          answerLink(() => failedLink('not_found'))
+
+          const { subject } = createSubject()
+
+          await subject.detectLinks(`${LINK_URL} `)
+
+          expect(subject.checkingLinkIds.value).toEqual([])
+          expect(subject.linkSuggestions.value).toHaveLength(1)
+        })
+
+      it('is gone after an error, a blocked answer and a rate limit, '
+        + 'with no toast of its own', async () => {
+        for (const failure of [
+          () => {
+            throw Object.assign(new Error('Server error'), { status: 500 })
+          },
+          () => {
+            throw Object.assign(new Error('Slow down'), { status: 429 })
+          },
+          () => failedLink('reauthorize'),
+        ]) {
+          answerLink(failure)
+
+          const { subject } = createSubject()
+
+          await subject.detectLinks(`${LINK_URL} `)
+
+          expect(subject.checkingLinkIds.value).toEqual([])
+          expect(subject.linkSuggestions.value).toEqual([])
+        }
+
+        expect(mocks.error).not.toHaveBeenCalled()
+        expect(mocks.info).not.toHaveBeenCalled()
+      })
+
+      it('is gone when the message is sent meanwhile', async () => {
+        const answering = deferred<unknown>()
+
+        answerLink(() => answering.promise)
+
+        const { subject } = createSubject()
+        const running = subject.detectLinks(`${LINK_URL} `)
+
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+
+        expect(subject.checkingLinkIds.value).toEqual([LINK_ID])
+
+        await useNuxtApp().callHook('chat:submit' as never)
+
+        expect(subject.checkingLinkIds.value).toEqual([])
+
+        answering.resolve(failedLink('not_found'))
+        await running
+
+        expect(subject.checkingLinkIds.value).toEqual([])
+      })
+
+      it('is gone when the composer is removed with a check pending',
+        async () => {
+          const answering = deferred<unknown>()
+          const scope = effectScope()
+
+          answerLink(() => answering.promise)
+
+          const { subject } = createSubject([], scope)
+          const running = subject.detectLinks(`${LINK_URL} `)
+
+          await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+
+          expect(subject.checkingLinkIds.value).toEqual([LINK_ID])
+
+          scope.stop()
+
+          expect(subject.checkingLinkIds.value).toEqual([])
+
+          answering.resolve(failedLink('not_found'))
+          await running
+        })
+
+      it('is gone at once when the link text is deleted, and the late copy '
+        + 'is deleted, not attached', async () => {
+        const answering = deferred<unknown>()
+
+        answerLink(() => answering.promise)
+
+        const { subject, attach } = createSubject()
+        const running = subject.detectLinks(`${LINK_URL} `)
+
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+
+        expect(subject.checkingLinkIds.value).toEqual([LINK_ID])
+
+        subject.cancelChecksForRemovedLinks('see nothing here')
+
+        expect(subject.checkingLinkIds.value).toEqual([])
+
+        await running
+
+        answering.resolve({
+          results: [{
+            id: LINK_ID,
+            status: 'imported',
+            file: { ...copyOf(LINK_ID), id: 'file-public-id' },
+          }],
+        })
+        await vi.waitFor(() => {
+          expect(mocks.fetch).toHaveBeenCalledWith(
+            '/api/v1/files/file-public-id',
+            { method: 'DELETE' },
+          )
+        })
+
+        expect(attach).not.toHaveBeenCalled()
+        expect(subject.checkingLinkIds.value).toEqual([])
+        expect(mocks.info).not.toHaveBeenCalled()
+      })
+
+      it('stops only the links that are gone, and drops a queued one '
+        + 'without asking about it', async () => {
+        const first = deferred<unknown>()
+
+        answerLink(() => first.promise)
+
+        const { subject, attach } = createSubject()
+        const running = subject.detectLinks(`${LINK_URL} ${SECOND_URL} `)
+
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+
+        subject.cancelChecksForRemovedLinks(`${LINK_URL} `)
+
+        expect(subject.checkingLinkIds.value).toEqual([LINK_ID])
+
+        first.resolve({
+          results: [{ id: LINK_ID, status: 'imported', file: copyOf(LINK_ID) }],
+        })
+        await running
+
+        expect(linkCalls()).toHaveLength(1)
+        expect(attach).toHaveBeenCalledTimes(1)
+      })
+
+      it('leaves a reused copy alone when its link was deleted', async () => {
+        const answering = deferred<unknown>()
+
+        answerLink(() => answering.promise)
+
+        const { subject, attach } = createSubject()
+        const running = subject.detectLinks(`${LINK_URL} `)
+
+        await vi.waitFor(() => expect(linkCalls()).toHaveLength(1))
+        subject.cancelChecksForRemovedLinks('')
+        await running
+        answering.resolve({
+          results: [{ id: LINK_ID, status: 'reused', file: copyOf(LINK_ID) }],
+        })
+        await Promise.resolve()
+
+        expect(attach).not.toHaveBeenCalled()
+        expect(
+          mocks.fetch.mock.calls.filter((call) => {
+            return (call[1] as { method?: string } | undefined)?.method
+              === 'DELETE'
+          }),
+        ).toEqual([])
+      })
+
+      it('never shows for an unrelated URL or for a link in code', async () => {
+        answerLink(() => failedLink('not_found'))
+
+        const { subject } = createSubject()
+
+        await subject.detectLinks('see https://example.com/doc')
+        await subject.detectLinks(`\`${LINK_URL}\``)
+
+        expect(subject.checkingLinkIds.value).toEqual([])
+        expect(linkCalls()).toHaveLength(0)
+      })
+    })
+
+    it('opens the Picker for every suggested file at once, and dismisses '
+      + 'them all for the message', async () => {
+      answerLink((body) => {
+        const id = body.link === LINK_URL ? LINK_ID : SECOND_ID
+
+        return {
+          results: [{ id, status: 'failed', code: 'not_found', reason: 'No' }],
+        }
+      })
+      mocks.pick.mockResolvedValue({ status: 'canceled' })
+
+      const { subject } = createSubject()
+
+      await subject.detectLinks(`${LINK_URL} ${SECOND_URL} `)
+
+      expect(subject.linkSuggestions.value).toHaveLength(2)
+
+      await subject.acceptAllLinkSuggestions()
+
+      expect(mocks.pick).toHaveBeenCalledWith({
+        maxItems: 5,
+        fileIds: [LINK_ID, SECOND_ID],
+      })
+
+      subject.dismissAllLinkSuggestions()
+
+      expect(subject.linkSuggestions.value).toEqual([])
+
+      await subject.detectLinks(`${LINK_URL} ${SECOND_URL} `)
+
+      expect(subject.linkSuggestions.value).toEqual([])
+    })
+
     it('is busy while it asks, so a send waits for the copy', async () => {
       const answering = deferred<unknown>()
 
@@ -1054,6 +1392,7 @@ describe('useChatDriveFiles', () => {
         expect(linkCalls()).toHaveLength(0)
         expect(statusCalls()).toHaveLength(1)
         expect(subject.linkSuggestions.value).toEqual([])
+        expect(subject.checkingLinkIds.value).toEqual([])
       })
 
       it.each([

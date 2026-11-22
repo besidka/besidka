@@ -65,15 +65,12 @@
           :class="{
             'max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]':
               !isKeyboardOpen,
-            'pt-0.5 px-1.5': files.length || tiles.length
-              || pastedTexts.length
+            'pt-0.5 px-1.5': files.length || rowTiles.length
+              || pastedTexts.length || checkingLinkIds.length
           }"
         >
-          <ChatInputFilesAttachedGoogleLinkSuggestions
-            :suggestions="linkSuggestions"
-            :is-busy="isDriveBusy"
-            @accept="acceptLinkSuggestion"
-            @dismiss="dismissLinkSuggestion"
+          <ChatInputFilesAttachedGoogleLinkAnnouncement
+            :count="linkSuggestions.length"
           />
           <!-- Attached Files Preview with Upload Progress -->
           <LazyChatInputFilesAttachedPreview
@@ -84,11 +81,12 @@
             :converted-from-xls-keys="convertedFromXlsKeys"
             :uploading-count="uploadingCount"
             :drive-imports="driveImports"
-            :tiles="tiles"
+            :tiles="rowTiles"
             :pasted-texts="pastedTexts"
+            :checking-link-count="checkingLinkIds.length"
             @dismiss-drive-import="dismissDriveImport"
             @pick-again-drive-import="pickAgain"
-            @open-tile="openToolsMenu"
+            @open-tile="openTile"
             @open-text="openTextFile"
             @open-pasted="openPastedText"
             @remove-pasted="removePastedText"
@@ -136,7 +134,7 @@
               @compositionstart="commands.onCompositionStart"
               @compositionend="commands.onCompositionEnd"
               @beforeinput="onTextareaBeforeInput"
-              @paste="onMarkdownPaste"
+              @paste="onComposerPaste"
               @focus="onTextareaFocus"
               @blur="onTextareaBlur"
             />
@@ -682,20 +680,50 @@ const {
   isDriveBusy,
   isCheckingGoogleConnection,
   linkSuggestions,
+  checkingLinkIds,
   attachFromDrive,
   pickAgain,
   detectLinks,
-  acceptLinkSuggestion,
-  dismissLinkSuggestion,
+  cancelChecksForRemovedLinks,
+  acceptAllLinkSuggestions,
+  dismissAllLinkSuggestions,
   dismissDriveImport,
 } = useChatDriveFiles(files, onFilesAttached, {
   isAvailable: () => !isDeepResearchModel.value,
 })
 
 const GOOGLE_LINK_DETECTION_DELAY_MS = 800
+const GOOGLE_PASTE_WINDOW_MS = 500
+
+let isPastedLinkPending = false
+let pastedLinkTimer: ReturnType<typeof setTimeout> | undefined
+
+function onComposerPaste(event: ClipboardEvent) {
+  const pastedText = event.clipboardData?.getData('text/plain') ?? ''
+
+  if (extractGoogleDriveLinks(pastedText).length > 0) {
+    isPastedLinkPending = true
+    clearTimeout(pastedLinkTimer)
+    pastedLinkTimer = setTimeout(() => {
+      isPastedLinkPending = false
+    }, GOOGLE_PASTE_WINDOW_MS)
+  }
+
+  onMarkdownPaste(event)
+}
 
 watch(message, (text, _previousText, onCleanup) => {
+  cancelChecksForRemovedLinks(text)
+
   if (!text.trim()) {
+    return
+  }
+
+  if (isPastedLinkPending) {
+    isPastedLinkPending = false
+    clearTimeout(pastedLinkTimer)
+    detectLinks(text)
+
     return
   }
 
@@ -704,6 +732,10 @@ watch(message, (text, _previousText, onCleanup) => {
   }, GOOGLE_LINK_DETECTION_DELAY_MS)
 
   onCleanup(() => clearTimeout(timer))
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(pastedLinkTimer)
 })
 
 watch(resolveDelivery, (resolve) => {
@@ -1198,12 +1230,37 @@ const tiles = computed<ChatInputTile[]>(() => {
   return buildChatInputTiles(toolsState.value)
 })
 
+const rowTiles = computed<ChatInputTile[]>(() => {
+  const googleTile = buildGoogleLinkTile(
+    linkSuggestions.value.length,
+    isDriveBusy.value,
+  )
+
+  return googleTile ? [googleTile, ...tiles.value] : tiles.value
+})
+
 const toolsMenu = useTemplateRef<{
   open: (
     section?: ToolsSection | null,
     origin?: HTMLElement | null,
   ) => Promise<void>
 }>('toolsMenu')
+
+async function openTile(
+  section: ToolsSection | null,
+  origin: HTMLElement,
+  id: ChatInputTileId,
+) {
+  if (id === GOOGLE_FILE_TILE_ID) {
+    if (!isDriveBusy.value) {
+      await acceptAllLinkSuggestions()
+    }
+
+    return
+  }
+
+  openToolsMenu(section, origin)
+}
 
 function openToolsMenu(
   section: ToolsSection | null,
@@ -1237,7 +1294,9 @@ async function focusAfterTileRemoval() {
 }
 
 function removeTile(id: ChatInputTileId) {
-  if (id.startsWith(ARTIFACT_TILE_ID_PREFIX)) {
+  if (id === GOOGLE_FILE_TILE_ID) {
+    dismissAllLinkSuggestions()
+  } else if (id.startsWith(ARTIFACT_TILE_ID_PREFIX)) {
     const artifactId = id.slice(ARTIFACT_TILE_ID_PREFIX.length)
 
     attachedArtifacts.value = attachedArtifacts.value.filter((artifact) => {

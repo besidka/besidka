@@ -112,6 +112,7 @@ export interface SheetNotRead {
   dataBars: number
   iconSets: number
   hyperlinks: number
+  protectedRanges?: number
 }
 
 export type SheetCut
@@ -122,6 +123,7 @@ export type SheetCut
     | 'structure'
     | 'limits'
     | 'part'
+    | 'not_read'
 
 export interface WorkbookSheet {
   name: string
@@ -192,6 +194,7 @@ export type WorkbookMapCut
     | 'cells'
     | 'formulas'
     | 'part'
+    | 'not_read'
 
 export interface WorkbookMapSheetSummary {
   name: string

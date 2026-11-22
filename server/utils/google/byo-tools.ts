@@ -102,6 +102,7 @@ import {
   readMessageContent,
 } from '~~/server/utils/google/gmail-text'
 import type { GmailAttachmentInfo } from '~~/server/utils/google/gmail-text'
+import { safeFileType } from '~~/server/utils/google/file-type'
 import { decodeMailHtmlEntities } from '~~/server/utils/google/html-entities'
 import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
 import type { GoogleSendGuard } from '~~/server/utils/google/send-guard'
@@ -157,10 +158,6 @@ const UNAVAILABLE_TEXT = 'Your own Google client is not available for this '
 
 const UNREACHABLE_TEXT = 'Besidka could not get a Google access token. Try '
   + 'again in a moment.'
-
-const SAFE_FILE_TYPE_PATTERN = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/
-const GENERIC_FILE_TYPE = 'application/octet-stream'
-const FILE_TYPE_MAX_LENGTH = 100
 
 const UNKNOWN_THREAD_TEXT = 'That thread_id was not returned by '
   + `${GOOGLE_GMAIL_SEARCH_TOOL_NAME} in this chat. Search first with `
@@ -853,25 +850,6 @@ function asRawText(value: unknown, key: string): string | null {
   const text = (value as Record<string, unknown> | null)?.[key]
 
   return typeof text === 'string' && text ? text : null
-}
-
-/**
- * A Drive `mimeType` is attacker-controlled text, and the type next to a
- * file sits outside the untrusted frame. Only a plain lowercase
- * `type/subtype` of at most 100 characters is passed on, with any
- * parameters after `;` dropped; everything else becomes the generic type.
- */
-function safeFileType(mimeType: unknown): string {
-  if (typeof mimeType !== 'string') {
-    return GENERIC_FILE_TYPE
-  }
-
-  const essence = mimeType.split(';')[0]!.trim().toLowerCase()
-
-  return essence.length <= FILE_TYPE_MAX_LENGTH
-    && SAFE_FILE_TYPE_PATTERN.test(essence)
-    ? essence
-    : GENERIC_FILE_TYPE
 }
 
 /**

@@ -33,10 +33,12 @@ const driveBusy = shallowRef<boolean>(false)
 const driveLinkSuggestions = shallowRef<
   Array<{ id: string, kind: string }>
 >([])
+const driveCheckingLinkIds = shallowRef<string[]>([])
 const driveLinkMocks = vi.hoisted(() => ({
   detectLinks: vi.fn(async () => {}),
-  acceptLinkSuggestion: vi.fn(async () => {}),
-  dismissLinkSuggestion: vi.fn(),
+  cancelChecksForRemovedLinks: vi.fn(),
+  acceptAllLinkSuggestions: vi.fn(async () => {}),
+  dismissAllLinkSuggestions: vi.fn(),
   pickAgain: vi.fn(async () => {}),
 }))
 
@@ -55,11 +57,13 @@ mockNuxtImport('useChatDriveFiles', () => () => ({
   isDriveBusy: driveBusy,
   isCheckingGoogleConnection: shallowRef(false),
   linkSuggestions: driveLinkSuggestions,
+  checkingLinkIds: driveCheckingLinkIds,
   attachFromDrive: vi.fn(),
   pickAgain: driveLinkMocks.pickAgain,
   detectLinks: driveLinkMocks.detectLinks,
-  acceptLinkSuggestion: driveLinkMocks.acceptLinkSuggestion,
-  dismissLinkSuggestion: driveLinkMocks.dismissLinkSuggestion,
+  cancelChecksForRemovedLinks: driveLinkMocks.cancelChecksForRemovedLinks,
+  acceptAllLinkSuggestions: driveLinkMocks.acceptAllLinkSuggestions,
+  dismissAllLinkSuggestions: driveLinkMocks.dismissAllLinkSuggestions,
   dismissDriveImport: vi.fn(),
   dismissAllDriveImports: vi.fn(),
 }))
@@ -4602,6 +4606,8 @@ describe('ChatInput.client', () => {
 
     afterEach(() => {
       driveLinkSuggestions.value = []
+      driveCheckingLinkIds.value = []
+      driveBusy.value = false
       vi.useRealTimers()
     })
 
@@ -4627,6 +4633,25 @@ describe('ChatInput.client', () => {
           `see ${LINK_TEXT}`,
         )
       })
+
+    it('stops the checks of links that are no longer in the text, at once, '
+      + 'also when the whole message is cleared', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      driveLinkMocks.cancelChecksForRemovedLinks.mockClear()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      await textarea.setValue(`see ${LINK_TEXT}`)
+
+      expect(driveLinkMocks.cancelChecksForRemovedLinks)
+        .toHaveBeenLastCalledWith(`see ${LINK_TEXT}`)
+
+      await textarea.setValue('')
+
+      expect(driveLinkMocks.cancelChecksForRemovedLinks)
+        .toHaveBeenLastCalledWith('')
+    })
 
     it('does not look for links in an empty or cleared message', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -4657,24 +4682,166 @@ describe('ChatInput.client', () => {
         expect(driveLinkMocks.detectLinks).not.toHaveBeenCalled()
       })
 
-    it('shows one suggestion that opens the Picker for the file, and one '
-      + 'that dismisses it', async () => {
+    it('looks at once, and only once, for a link that was pasted, and still '
+      + 'waits for typed text', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      driveLinkMocks.detectLinks.mockClear()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(LINK_TEXT))
+      await textarea.setValue(`see ${LINK_TEXT}`)
+      await nextTick()
+
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledTimes(1)
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledWith(
+        `see ${LINK_TEXT}`,
+      )
+
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledTimes(1)
+
+      await textarea.setValue(`see ${LINK_TEXT} and more`)
+      await nextTick()
+
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not rush a paste that holds no Google link', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      driveLinkMocks.detectLinks.mockClear()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      textarea.element.dispatchEvent(createTextPasteEvent('just some words'))
+      await textarea.setValue('just some words')
+      await nextTick()
+
+      expect(driveLinkMocks.detectLinks).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(driveLinkMocks.detectLinks).toHaveBeenCalledTimes(1)
+    })
+
+    it('forgets a paste that never changed the message, so typing after it '
+      + 'waits again', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      driveLinkMocks.detectLinks.mockClear()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('[data-testid="chat-input-textarea"]')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(LINK_TEXT))
+      await vi.advanceTimersByTimeAsync(600)
+      await textarea.setValue('typed later')
+      await nextTick()
+
+      expect(driveLinkMocks.detectLinks).not.toHaveBeenCalled()
+    })
+
+    it('puts one pink Google Drive tile first in the row, with the value '
+      + 'Attach file, and no helper text', async () => {
       driveLinkSuggestions.value = [{ id: 'abc', kind: 'spreadsheet' }]
 
       const wrapper = await mountChatInput()
+      const tile = wrapper.get('[data-testid="chat-input-tile-google-file"]')
+      const body = wrapper.get(
+        '[data-testid="chat-input-tile-google-file-body"]',
+      )
+      const firstTile = wrapper.get('[data-tile-id]')
 
-      expect(wrapper.get('[data-testid="google-link-suggestion-attach"]')
-        .text()).toBe('Attach this Google file')
+      expect(firstTile.attributes('data-tile-id')).toBe('google-file')
+      expect(tile.text()).toContain('Google Drive')
+      expect(tile.text()).toContain('Attach file')
+      expect(body.attributes('aria-label'))
+        .toBe('Attach the Google file from the link')
+      expect(body.classes().join(' ')).toContain('bg-accent/10')
+      expect(wrapper.text()).not.toContain('If the Picker shows nothing')
+      expect(wrapper.find('[data-testid="google-link-suggestion"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="google-link-announcement"]').text())
+        .toBe('A Google file link in your message can be attached.')
+    })
 
-      await wrapper.get('[data-testid="google-link-suggestion-attach"]')
+    it('is one tile for several links, opens the Picker for all of them and '
+      + 'dismisses all of them', async () => {
+      driveLinkSuggestions.value = [
+        { id: 'abc', kind: 'spreadsheet' },
+        { id: 'def', kind: 'document' },
+        { id: 'ghi', kind: 'file' },
+      ]
+      driveLinkMocks.acceptAllLinkSuggestions.mockClear()
+      driveLinkMocks.dismissAllLinkSuggestions.mockClear()
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.findAll('[data-tile-id="google-file"]')).toHaveLength(1)
+      expect(wrapper.get('[data-testid="chat-input-tile-google-file"]').text())
+        .toContain('Attach 3 files')
+
+      await wrapper.get('[data-testid="chat-input-tile-google-file-body"]')
         .trigger('click')
 
-      expect(driveLinkMocks.acceptLinkSuggestion).toHaveBeenCalledWith('abc')
+      expect(driveLinkMocks.acceptAllLinkSuggestions)
+        .toHaveBeenCalledTimes(1)
 
-      await wrapper.get('[data-testid="google-link-suggestion-dismiss"]')
+      await wrapper.get('[data-testid="chat-input-tile-google-file-remove"]')
         .trigger('click')
 
-      expect(driveLinkMocks.dismissLinkSuggestion).toHaveBeenCalledWith('abc')
+      expect(driveLinkMocks.dismissAllLinkSuggestions)
+        .toHaveBeenCalledTimes(1)
+    })
+
+    it('does not open the Picker from the tile while a copy is in flight',
+      async () => {
+        driveLinkSuggestions.value = [{ id: 'abc', kind: 'spreadsheet' }]
+        driveBusy.value = true
+        driveLinkMocks.acceptAllLinkSuggestions.mockClear()
+
+        const wrapper = await mountChatInput()
+        const body = wrapper.get(
+          '[data-testid="chat-input-tile-google-file-body"]',
+        )
+
+        await body.trigger('click')
+
+        expect(body.attributes('aria-disabled')).toBe('true')
+        expect(driveLinkMocks.acceptAllLinkSuggestions).not.toHaveBeenCalled()
+      })
+
+    it('shows one placeholder for each link being checked, with a status '
+      + 'role and a name, and none otherwise', async () => {
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[data-testid="google-link-skeleton"]').exists())
+        .toBe(false)
+
+      driveCheckingLinkIds.value = ['abc', 'def']
+      await flushPromises()
+
+      const skeletons = wrapper.findAll('[data-testid="google-link-skeleton"]')
+
+      expect(skeletons).toHaveLength(2)
+      expect(skeletons[0]!.attributes('role')).toBe('status')
+      expect(skeletons[0]!.attributes('aria-label'))
+        .toBe('Checking Google link')
+      expect(skeletons[0]!.find('.skeleton.skeleton--default').exists())
+        .toBe(true)
+      expect(skeletons[0]!.attributes('tabindex')).toBeUndefined()
+
+      driveCheckingLinkIds.value = []
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="google-link-skeleton"]').exists())
+        .toBe(false)
     })
 
     it('looks for links once more on send and waits for it, so a link typed '
@@ -4713,11 +4880,14 @@ describe('ChatInput.client', () => {
         .classes()).toContain('js-chat-input-textarea')
     })
 
-    it('shows no suggestion row without a suggestion', async () => {
+    it('shows no Google tile without a suggestion, but keeps its live '
+      + 'region', async () => {
       const wrapper = await mountChatInput()
 
-      expect(wrapper.find('[data-testid="google-link-suggestion"]').exists())
-        .toBe(false)
+      expect(wrapper.find('[data-testid="chat-input-tile-google-file"]')
+        .exists()).toBe(false)
+      expect(wrapper.get('[data-testid="google-link-announcement"]').text())
+        .toBe('')
     })
   })
 

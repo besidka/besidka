@@ -137,6 +137,7 @@ button already marks that edge. Order and rules:
 
 | Tile | Shown when | Remove (x) |
 |---|---|---|
+| Google Drive (always first; the official Drive logo, caption "Google Drive", value "Attach file" or "Attach 3 files", built by `buildGoogleLinkTile`, not a setting and not repeated in the tools menu) | a pasted or typed Google link needs the Picker; one tile for all such links, tapping opens the Picker on all of them (`docs/google.md` 12.15) | dismisses the offer for this message |
 | Project | a project is attached, tapping opens the Add section | clears the project |
 | Memory off (neutral gray, `lucide:book-x`) | a new chat excludes memory | turns memory back on |
 | Deep research | the model is a deep research model | none |

@@ -121,8 +121,10 @@ import {
 import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
 import {
   OFFICE_MEDIA_TYPES,
+  WORKBOOK_MAP_TEXT_VERSION,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
+import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
   appendTextAsLastUserTurn,
@@ -1353,6 +1355,11 @@ export default defineEventHandler(async (event) => {
 
   for (const [storageKey, file] of ownedContextFiles) {
     fileSizesByStorageKey.set(storageKey, file.size)
+
+    if (isGoogleWorkbookMapFile(file)) {
+      spreadsheetTextVersionsByStorageKey
+        .set(storageKey, file.textVersion ?? WORKBOOK_MAP_TEXT_VERSION)
+    }
 
     if (
       file.type

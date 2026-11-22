@@ -3,6 +3,7 @@ import {
   EXA_SEARCH_LEVEL_LABELS,
   type ExaSearchLevel,
 } from '#shared/utils/exa-search-level'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import { resolveSupportedReasoningLevel } from '#shared/utils/reasoning'
 import type {
   ChatInputTile,
@@ -409,6 +410,48 @@ function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
       isDisabled: false,
     }
   })
+}
+
+export const GOOGLE_FILE_TILE_ID = 'google-file'
+export const GOOGLE_FILE_TILE_CAPTION = 'Google Drive'
+
+/**
+ * The tile that offers the Google files a pasted link names, one for all of
+ * them, first in the row and in the same accent look as the setting tiles.
+ * Tapping it opens the Picker on those files; its remove button dismisses
+ * the offer for this message. It is not a setting, so `buildChatInputTiles`
+ * never returns it and the tools menu never repeats it; the composer puts it
+ * at the front of the row.
+ */
+export function buildGoogleLinkTile(
+  count: number,
+  isBusy: boolean,
+): ChatInputTile | null {
+  if (count <= 0) {
+    return null
+  }
+
+  const isSingle = count === 1
+  const value = isSingle ? 'Attach file' : `Attach ${count} files`
+
+  return {
+    id: GOOGLE_FILE_TILE_ID,
+    section: null,
+    icon: { kind: 'icon', name: GOOGLE_DRIVE_ICON },
+    caption: GOOGLE_FILE_TILE_CAPTION,
+    value,
+    chipLabel: `${GOOGLE_FILE_TILE_CAPTION}: ${value}`,
+    ariaLabel: isSingle
+      ? 'Attach the Google file from the link'
+      : 'Attach the Google files from the links',
+    removeLabel: isSingle
+      ? 'Dismiss the Google file suggestion'
+      : 'Dismiss the Google file suggestions',
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: isBusy,
+  }
 }
 
 /**

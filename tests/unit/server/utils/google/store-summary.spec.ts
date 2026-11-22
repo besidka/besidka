@@ -23,6 +23,20 @@ describe('toGoogleConnectionSummary', () => {
     ]))).toMatchObject({ partialCalendar: 'free-busy' })
   })
 
+  it('says whether the account is a Workspace one, from its email domain',
+    () => {
+      const summaryFor = (googleEmail: string | null) => {
+        return toGoogleConnectionSummary({
+          ...(record('active', ['openid']) as object),
+          googleEmail,
+        } as never)
+      }
+
+      expect(summaryFor('owner@example.test').isWorkspaceAccount).toBe(true)
+      expect(summaryFor('owner@gmail.com').isWorkspaceAccount).toBe(false)
+      expect(summaryFor(null).isWorkspaceAccount).toBe(false)
+    })
+
   it('leaves the field out with both permissions, with none and when the '
     + 'connection is not active', () => {
     for (const summary of [

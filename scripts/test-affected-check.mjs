@@ -1660,6 +1660,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/plugins/evlog-request-observability.spec.ts',
     'tests/unit/server/routes/waf-blocked-paths.spec.ts',
     'tests/unit/components/Profile/Google/Connection.spec.ts',
+    'tests/unit/config/client-icons.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
     'tests/unit/composables/google-connection.spec.ts',
@@ -2001,7 +2002,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/google-drive-links.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/DriveImport.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/DriveImportNote.spec.ts',
-    'tests/unit/components/ChatInput/Files/Attached/GoogleLinkSuggestions.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/GoogleLinkAnnouncement.spec.ts',
+    'tests/unit/components/ChatInput/SettingTile.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
     'tests/unit/utils/google-brand-icons.spec.ts',
     'tests/unit/server/utils/google/http.spec.ts',
     'tests/unit/server/utils/google/download.spec.ts',
@@ -2042,6 +2045,35 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
   ]
 
+  const googleSheetsMapTests = [
+    'tests/unit/server/utils/google/sheets-model.spec.ts',
+    'tests/unit/server/utils/google/sheets-parity.spec.ts',
+    'tests/unit/server/utils/google/sheets-api.spec.ts',
+    'tests/unit/server/utils/google/sheets-read.spec.ts',
+    'tests/unit/server/utils/google/sheets-weight.spec.ts',
+    'tests/unit/server/utils/google/sheets-rate-limit.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/utils/google-drive.spec.ts',
+    'tests/unit/utils/file-delivery-hints.spec.ts',
+    'tests/unit/composables/chat-drive-files.spec.ts',
+    'tests/unit/composables/google-drive-library.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/integration/api/google-drive-import.spec.ts',
+    'tests/integration/api/google-drive-refresh.spec.ts',
+    'tests/integration/server/google-sheet-map-send.spec.ts',
+    'tests/integration/server/google-drive-tools.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
+    'tests/integration/server/assistant-files-office-carry.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-fit.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/package-boundaries.spec.ts',
+    'tests/unit/composables/chat-scroll-spacer.spec.ts',
+    'tests/e2e/chat/scroll-spacer.spec.ts',
+    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  ]
+
   const googleDriveToolsTests = [
     'tests/unit/utils/google-drive-tools.spec.ts',
     'tests/unit/utils/google-step.spec.ts',
@@ -2074,6 +2106,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const googleGmailToolsTests = [
+    'tests/unit/server/utils/google/drive-found-read.spec.ts',
     'tests/unit/server/utils/google/gmail-message.spec.ts',
     'tests/unit/server/utils/google/gmail-text.spec.ts',
     'tests/unit/server/utils/google/gmail-boundary.spec.ts',
@@ -4149,13 +4182,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-drive|google-drive-links|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/(Preview\.client|DriveImport|DriveImportNote|GoogleLinkSuggestions))\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
+        /^(shared\/utils\/(google-drive|google-drive-links|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy|chat-input-tiles)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|SettingTile|Files\/Attached\/(Preview\.client|DriveImport|DriveImportNote|GoogleLinkAnnouncement))\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
       tests: googleDrivePickerTests,
     },
     {
       pattern:
         /^(shared\/utils\/google-drive-tools\.ts|server\/utils\/google\/(drive-tools|drive-picked|drive-save|drive-upload|drive-import|tool-output|drive|http|route|access-ended|send-flag)\.ts|shared\/utils\/google-tool-approvals\.ts|server\/api\/v1\/google\/drive\/saved-files\/.*\.ts|server\/utils\/tool-approval\/(google|google-send-candidates|google-send-tools|send|round-state)\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/composables\/auth\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/google-drive-save\.ts|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/(google-step|reasoning-step)\.d\.ts|app\/components\/Chat\/(SaveToGoogleDrive|Files|Document|GeneratedImage|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/(GoogleStep|Step)\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
       tests: googleDriveToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-sheets\.ts|server\/utils\/google\/(sheets-[a-z-]+|file-type|drive-import|drive-picked|drive-tools|http)\.ts|server\/api\/v1\/google\/drive\/files\/(index|link|refresh)\.post\.ts|server\/utils\/files\/(persist-file|convert-files-for-ai|assistant-files)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/file-delivery-hints\.ts|app\/composables\/(chat-drive-files|google-drive-library)\.ts|app\/components\/ChatInput\/Files\/Attached\/Preview\.client\.vue|app\/types\/file-manager\.d\.ts|packages\/doc-renderer\/src\/workbook-map\/.*\.ts|packages\/doc-renderer\/src\/extract\/xlsx-map\.ts|tests\/fixtures\/google\/.*\.ts)$/,
+      tests: googleSheetsMapTests,
     },
     {
       pattern:

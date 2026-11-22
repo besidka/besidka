@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getGrantedCapabilities,
   getPartialCalendarAccess,
+  isWorkspaceAccountEmail,
 } from '#shared/utils/google-connections'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
 
@@ -32,5 +33,28 @@ describe('getPartialCalendarAccess', () => {
   it('leaves the calendar capability off while only one is granted', () => {
     expect(getGrantedCapabilities([GOOGLE_SCOPES.calendarEventsOwned]))
       .not.toContain('calendar')
+  })
+})
+
+describe('isWorkspaceAccountEmail', () => {
+  it('treats gmail.com and googlemail.com as personal, in any case', () => {
+    for (const email of [
+      'person@gmail.com',
+      'Person@GMail.com',
+      'person@googlemail.com',
+    ]) {
+      expect(isWorkspaceAccountEmail(email)).toBe(false)
+    }
+  })
+
+  it('treats any other domain as Workspace', () => {
+    expect(isWorkspaceAccountEmail('person@example.test')).toBe(true)
+    expect(isWorkspaceAccountEmail('person@mail.gmail.com.example')).toBe(true)
+  })
+
+  it('does not treat a missing or malformed email as Workspace', () => {
+    for (const email of [null, '', 'no-at-sign', '@example.test', 'a@', 'a@ ']) {
+      expect(isWorkspaceAccountEmail(email)).toBe(false)
+    }
   })
 })

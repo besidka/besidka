@@ -74,6 +74,28 @@ describe('googleFetchJson', () => {
     }
   })
 
+  it('allows the Sheets API host and no lookalike of it', async () => {
+    expect(assertGoogleUrl('https://sheets.googleapis.com/v4/spreadsheets/x')
+      .hostname).toBe('sheets.googleapis.com')
+
+    for (const url of [
+      'http://sheets.googleapis.com/v4/spreadsheets/x',
+      'https://sheets.googleapis.com.evil.example/v4/spreadsheets/x',
+      'https://docs.google.com/spreadsheets/d/x',
+      'https://sheets.googleapis.com:8443/v4/spreadsheets/x',
+      'https://evil-sheets.googleapis.com/v4/spreadsheets/x',
+      'https://user@sheets.googleapis.com/v4/spreadsheets/x',
+    ]) {
+      const fetchImpl = vi.fn()
+      const failure = await failureOf(
+        googleFetchJson(url, { method: 'GET' }, { fetchImpl }),
+      )
+
+      expect(failure.status).toBe(500)
+      expect(fetchImpl).not.toHaveBeenCalled()
+    }
+  })
+
   it('reads a larger answer only when the caller raises the cap', async () => {
     const big = 'x'.repeat(GOOGLE_RESPONSE_MAX_BYTES + 100)
     const fetchImpl = vi.fn(async () => {
@@ -120,6 +142,7 @@ describe('googleFetchJson', () => {
       status: 200,
       ok: true,
       body: { access_token: 'a' },
+      bytes: JSON.stringify({ access_token: 'a' }).length,
     })
   })
 
@@ -156,6 +179,7 @@ describe('googleFetchJson', () => {
       status: 400,
       ok: false,
       body: { error: 'invalid_grant' },
+      bytes: JSON.stringify({ error: 'invalid_grant' }).length,
     })
   })
 
