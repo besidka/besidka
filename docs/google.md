@@ -15,8 +15,9 @@ owner-only bring-your-own client (section 10: the stored client, the admin
 gate, its own callback), the MCP status and disconnect tools (section 11),
 and the Drive Picker (section 12: the token route,
 the import into Besidka storage, the composer row, the `data-drive-file`
-part). Not built yet: the Drive, Calendar and Gmail tools themselves, and the
-legal text. This file grows with every
+part), and the Drive tools (section 13: list, read and save for chat models,
+and the "Save to Google Drive" action). Not built yet: the Calendar and Gmail
+tools, the Drive tab in the file manager, and the legal text. This file grows with every
 child of the umbrella; each child replaces a "design" marker below with
 what was built.
 
@@ -31,7 +32,7 @@ only, work with mail and calendar:
 
 | Capability | Flag | Client | Scopes | State |
 |---|---|---|---|---|
-| Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Connection (section 9) and Picker (section 12) built; tools design |
+| Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Connection (section 9), Picker (section 12) and the list, read and save tools (section 13) built |
 | Calendar text: list events, find free time, create an event | `google.calendar` | Either client | `calendar.events` (provisional) | Design |
 | Connect Google with the owner's own OAuth client | `google.byo` plus the admin role | Owner's own client | Identity plus what the owner ticks: `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events` | Built (section 10), owner-only; no tool uses it yet |
 | Gmail: search, read a thread, create a draft | `google.gmail` | Owner's own client | `gmail.readonly`, `gmail.compose` | Design, owner-only |
@@ -218,8 +219,8 @@ has a "wipe Google tokens" step (2d) in `docs/d1-restore-reconciliation.md`.
 ### 5.2 Google tools: approvals, taint and references-only results
 
 Built (child 4, 2026-11-22): the runtime rules every built-in Google tool
-registers into. No Google tool exists yet; the rules are proven with fake
-tool descriptors in `tests/unit/server/utils/tool-approval/google.spec.ts`
+registers into. The first Google tools are the Drive tools of section 13;
+the rules are proven with fake tool descriptors in `tests/unit/server/utils/tool-approval/google.spec.ts`
 and with a fake registered tool through the chat route in
 `tests/integration/api/chats-tool-approval-request.spec.ts` and
 `chats-tool-approval-continuation.spec.ts`.
@@ -385,8 +386,8 @@ result in the stored parts of a chat from before the flag, or a marked
 artifact or document whose origin is the chat; attached files are read by
 `resolveSendGoogleContent`, not by this function), its content
 reaches only recipients the pre-check's allow-list accepts, and never leaves
-through a side door. No Google tool exists yet; the guard runs on the flag
-and is proven with specs that set it.
+through a side door. The guard runs on the flag and is proven with specs that
+set it; the Drive tools (section 13) are the first tools that set it.
 
 **The module.** `server/utils/google/data-guard.ts` wraps
 `shared/utils/google-data-recipient.ts`, which wraps the table in
@@ -400,7 +401,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 |---|---|
 | `gemini-paid-tier-confirmed` | `keys.paid_tier_confirmed_at` of the user's Gemini key, set by the user with the pre-check's sentence "This key is on a Google Cloud project with billing enabled". Read from D1 only for a direct Gemini model in a flagged chat. Never carried onto a gateway route: a gateway model has no Gemini key to confirm, so Gemini through a gateway is refused |
 | `alibaba-served-model` | A direct Qwen model whose id starts with `qwen`, `qwq` or `qvq`: the whole curated Qwen catalog. Never carried onto a gateway route, so Qwen through a gateway is refused |
-| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and of any send that has at least one Google tool candidate (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts`, which decides the candidates and the safeguards together, and only candidates can be registered; the candidates come from `buildGoogleSendToolCandidates`, empty until the Drive, Calendar and Gmail children add tools for users with an active connection): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
+| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and of any send that has at least one Google tool candidate (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts`, which decides the candidates and the safeguards together, and only candidates can be registered; the candidates come from `buildGoogleSendToolCandidates`: the Drive tools for a user with an active Besidka-client connection that holds `drive.file`, and the Calendar and Gmail children add theirs there): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
 | `payload-logging-disabled` | Sent on the same calls: the header `cf-aig-collect-log-payload: false` on the Cloudflare client |
 
 **Enforcement points.**
@@ -478,17 +479,20 @@ unknown and refused. Unknown, unverifiable or refused means no.
   holds Google data, does not clear the share opt-in or add the item to the
   names the share dialog lists; only a Google tool result does. Acceptable
   for now: the owner opted in to sharing Google content in that chat, the
-  item stays out of MCP and other chats, and no Google tool exists yet. The
-  Drive child, which first makes such reads common, records an allowed
-  marked read and persists it through the same flag batch.
+  item stays out of MCP and other chats. Still open after the Drive tools
+  (section 13): they read only the user's own Drive copies, through their own
+  Google result, which flags the chat and keeps references, so they do not
+  make a Besidka read of a marked item more common and did not add the
+  recording of an allowed marked read.
 - Qwen's `enable_search` is a request body flag set at send start. A send
   that starts without Google data and with web search on keeps it for every
   step, also after a Google result arrives mid-send; only the next send
-  drops it. The same holds for native web search tools of other providers in
-  that first send. Acceptable: Google tools run only under approvals, the
-  approval of a Google read is the user's choice in that send, and the Drive
-  child adds the per-step strip (`prepareStep`) when it registers the first
-  Google tool.
+  drops it. Acceptable: Google tools run only under approvals and the
+  approval of a Google read is the user's choice in that send. The Drive
+  tools add no `prepareStep` strip of their own: provider-native web search
+  tools declared as tools are already withheld per step once a Google read
+  recorded its tool read source (`withholdProviderTools`, section 5.2), and
+  only the body flag of Qwen stays open.
 - Deep research runs the provider's own agent, which searches the web with
   queries it writes from the conversation. The guard checks the research
   provider, but those searches leave the allow-list's scope. Acceptable
@@ -1604,7 +1608,7 @@ file" option. Row 8: the key and project number are public values, the Picker
 runs only on Besidka's client, and the owner's client has no Picker. Row 9:
 "Google Drive" in full on the row and in every label; the mark is a generic
 icon, not the logo (section 12.9), a point for the owner. Row 15 concerns Save
-to Drive and is not touched here.
+to Drive and is built in section 13.
 
 Where BES-278 differs from what was built, and the brief won:
 
@@ -1612,7 +1616,8 @@ Where BES-278 differs from what was built, and the brief won:
   mode, and re-fetches metadata on send. Here the copy is made before the
   send as a normal `file` part, and the server rebuilds the reference from
   the stored row (section 12.6). There is no live sync, no link-only mode and
-  no pasted-link detection; those wait for the Drive tools child.
+  no pasted-link detection. The Drive tools (section 13) refresh a copy on
+  read; there is still no link-only mode and no pasted-link detection.
 - The ticket sets a 5 MB snapshot cap. This build uses 20 MiB, the Office
   upload cap, because copies are normal files (section 12.4).
 - The ticket hides snapshots from the Uploaded list behind a `drive` source.
@@ -1630,15 +1635,179 @@ Where BES-278 differs from what was built, and the brief won:
 
 ### 12.11 Not built, and known limits
 
-- No Drive tools for the model, no Drive tab in the file manager, no write to
-  Drive, no Gmail or Calendar.
+- No Drive tab in the file manager (another child), no Drive search, no Gmail
+  or Calendar. The Drive tools for the model and the one-file save to Drive
+  are section 13.
 - When the Calendar child adds `calendar.events` to Besidka's client, the
   Picker token route will refuse every grant that holds it (section 12.3):
   an access token cannot be narrowed, so that child must give the Picker a
   Drive-only grant (a second client or a separate consent), not widen this
   route.
-- A copy is a snapshot: Drive edits show up only when the file is picked again
-  (a new `modifiedTime` makes a new copy; the older copy stays with the
-  messages that used it).
+- A copy is a snapshot: Drive edits show up when the file is picked again or
+  when the model reads it (section 13 refreshes a changed original and makes
+  a new copy; the older copy stays with the messages that used it).
 - A resource key is used for the copy but not stored, so a later "Open in
-  Google Drive" for a file shared only by link may ask for access.
+  Google Drive" for a file shared only by link may ask for access, and a
+  Drive tool refresh of such a file may answer "no access" until the file is
+  picked again.
+
+## 13. Drive tools (tools child, G-5)
+
+Built on `feat/google-drive-tools`. Three tools for the chat model and a
+"Save to Google Drive" button. Code: `shared/utils/google-drive-tools.ts`,
+`server/utils/google/{drive-tools,drive-picked,drive-save,drive-upload,
+tool-output}.ts`, `server/utils/tool-approval/google-send-candidates.ts`,
+`server/api/v1/google/drive/saved-files/index.post.ts`,
+`app/composables/google-drive-save.ts`,
+`app/components/Chat/{SaveToGoogleDrive,Reasoning/GoogleStep}.vue`,
+`app/utils/google-step.ts`.
+
+### 13.1 The tools
+
+Every tool is a `google__` tool built by `buildGoogleDriveTools` with
+`buildGoogleApprovalEntry` (section 5.2) and wrapped with `withFollowUpTurn`,
+so the model can use the answer in the next step. Each description carries
+the untrusted-content sentence, and every result that carries Drive text wraps
+it in `<untrusted_tool_result connector="google" tool="...">` through the
+same `frameUntrustedResult` the connector results use (a copy of the closing
+tag inside the text is neutralized). Names are cleaned by
+`sanitizeDriveFileName` when copied, but a name still sits outside the frame in
+`references`; the approval step and the Allow once answer on every write are
+the check on it (pre-check rows 13 and 14).
+
+| Tool | Kind | Input | Output | Limits |
+|---|---|---|---|---|
+| `google__drive_list_picked` | read | none | `references` (Drive id, `kind: drive-file`, name, https link, date of the Drive edit), `count`, `files` (one framed line per file: Besidka file id, name, type, size, copied at, changed in Drive) | One D1 query, no call to Google; newest copy per Drive file, at most 50, the 64 KiB cap |
+| `google__drive_read_file` | read | `fileId` (the Besidka id the list returned), optional `offset` | `references`, `readable`, `file`, `content` (framed text), `isTruncated`, `nextOffset`, `note` | Text only (`text/*`: Docs as Markdown, Sheets as the first sheet in CSV, Slides as text, plain text, Markdown, CSV), 40 KiB of text per call and the whole JSON under 64 KiB (`fitGoogleToolOutput` halves the text budget until the serialized output fits), copy up to 8 MiB; paging by `offset` |
+| `google__drive_save_file` | write | `fileId` (a Besidka file id), optional `name` | `references`, `saved`, `alreadySaved`, `link`, `message` | One file per call, up to 5 MB, Allow once only |
+
+A refusal or a Google failure is a thrown error with a sentence the model can
+read, never a result: only real Drive data or a finished save is an
+`output-available` part, so only those flag the chat. A binary file
+(PDF, image, Office) answers `readable: false` with no call to Google.
+
+**Reading.** The tool reads only files the user picked: the id must be one of
+the user's own `files` rows with `external_source = 'google'`, checked before
+any call to Google (and before the token is read). The Drive id always comes
+from that row, never from the model. For text, the copy is made current
+through `importDriveFiles`, the code the Picker uses: an unchanged original
+(same `modifiedTime`) is one metadata call and the stored copy is read; a
+changed one is exported again as a new copy. When Google answers busy,
+unreachable or the storage is full, the last copy is read and the answer says
+it may be out of date. Other failures map to sentences (no longer returned,
+reconnect Google Drive, no access, too large, no download right).
+
+**Saving.** `saveFileToGoogleDrive` is the one function behind the tool and
+the button. The file must be the user's own and not a copy of a Drive file
+(it already lives in Drive: refused). It never overwrites: the request is
+`files.create`, always a new file in My Drive, named by the optional `name`
+(cleaned) or the Besidka name, with the stored media type. A file with
+`files.drive_copy_id` answers `alreadySaved` with that link and makes no call.
+The save takes the file with one atomic D1 update of `drive_copy_id` to
+`pending:<epoch ms>` (a claim older than two minutes is abandoned and can be
+taken over), so two parallel saves cannot both reach Google; the loser gets
+"already being saved". The claim is released on any failure and replaced by the
+Drive id on success. No column was added.
+
+The upload (`server/utils/google/drive-upload.ts`) is the documented
+multipart upload of `files.create` (Google Drive "Manage uploads": "POST
+https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", body
+`multipart/related` with a JSON metadata part, then the file part; multipart is
+for files of 5 MB or less, which is why saves stop at 5 MB). We add
+`supportsAllDrives=true` and send only `{"name": ...}`. The host
+`www.googleapis.com` was already in `GOOGLE_FETCH_HOSTS`, so no allow-list
+change; `googleFetchJson` got one new optional field, `rawBody`, with a 60 s
+timeout for the upload. Drive answers `storageQuotaExceeded` as "your Drive
+storage is full".
+
+### 13.2 When the tools are offered
+
+`buildGoogleSendToolCandidates` runs only when `planGoogleSendTools` calls it:
+tool approvals active and `google.drive` active (so a user without the flag,
+and every send with approvals off, costs no query and gets no gateway
+safeguards). It then reads one `google_connections` row (Besidka's client) and
+offers the three tools only when its status is `active` and the granted scopes
+hold `drive.file`. No candidate (and so no tool, and no gateway safeguards) for
+no connection, `needs_reauth`, `revoked`, a missing `drive.file`, or a
+bring-your-own connection. After that `getGoogleSendTools` withholds all of
+them from a model that may not receive Google data, and
+`withGoogleSendTools` removes any other `google__` tool. The chat route also
+counts them as approval-gated tools (`isApprovalGatedToolName`), so a paused
+Google tool never starts the answer guarantee continuation that web search
+uses. Calls count in the shared built-in cap (`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN`,
+12 per turn): no separate limit, so the model can list, read a few files and
+save one in a turn.
+
+Approvals (section 5.2): the list and the read ask with Allow once or Allow in
+this chat; the save asks every time with Allow once only (an Always grant, a
+permission mode and a chat grant never run it). The approval text names the
+file: `Read "Plan.md" from Google Drive`, `Save "Report.md" to your Google
+Drive as "Final.md"` (one lookup at the pause, `describe`; the summary
+without a name when the file is gone). Every call that runs records `google`
+taint and the chat flag, the save included (see 13.5).
+
+### 13.3 What is stored, and what the user sees after a reload
+
+D1 holds the references only: Drive id, `kind`, name, https link and the date
+of the Drive edit, with `bodyRemoved: true` and the note of section 5.2. A
+paused turn keeps the framed body 24 hours in KV and gives it back to the
+model on the answer, as for every Google tool (the stash round trip is
+tested with the real read tool). The tool step shows "Google Drive" in
+the title ("Read a file from Google Drive") with a neutral `lucide:hard-drive`
+icon, never a Google logo, and after a reload one line per reference: the
+file name and "Open in Google Drive" (`Chat/Reasoning/GoogleStep.vue`), never an
+empty box. A public share drops every tool part (`filterPublicParts`), so a
+Drive tool step never reaches a shared chat.
+
+### 13.4 "Save to Google Drive" as a user action
+
+`POST /api/v1/google/drive/saved-files` with `{ "storageKey": "<key>" }` (one
+file, the key the card already holds; a list is a 400). Gate: same-origin
+write guard, session, `google.drive`, legal consent, 10 per minute
+(`google-drive-save-rate-limit`). It calls `saveFileToGoogleDrive`; no model, no
+approval card: the click is the consent. Answers `{ status: saved |
+already_saved, fileId, driveFileId, name, link }`, or 404 (not the user's, not
+connected), 409 (a Drive copy, needs reauthorization, Drive full, busy), 413
+(over 5 MB), 429, 502.
+
+The button (`Chat/SaveToGoogleDrive.vue`) is an icon button on a file card in
+the owner's chat (assistant files), the generated image card, and a "Save to
+Google Drive" button beside Download on a ready document card. It shows only
+while `google.drive` is active and the user holds an active Drive connection
+with `drive-picked` (one cached read of the connection status, only when the
+flag is active, never once per card), spins while saving, and becomes "Open
+in Google Drive" with the link. The link is remembered for the session by
+storage key; after a reload the first click on a file saved before answers
+`already_saved` at once and shows the link (no preloading, to avoid a request
+per card). It is not shown on shared chats or on a message the user sent.
+
+**Data decision.** Saving a Google-derived file (a marked document or
+file) back to the user's own Drive is allowed: it goes to the same Google
+account the user connected, not to a third party, and nothing here sends it to
+a model. A copy of a Drive file is refused (it is already in Drive). There is
+no "save automatically" and no "save all": one file per call or click
+(pre-check row 15).
+
+### 13.5 Where the guards did not fit, and open items
+
+- The save reads nothing from Google, but it is a Google tool, so a call that
+  runs records `google` taint and flags the chat for good, which then
+  restricts models, memory, sharing and web search for that chat. Built to
+  the guard as it is; an owner decision whether a write that reads nothing
+  should be exempt.
+- The pre-check says "file id, title, modified date" for references; the
+  stored reference also keeps the https link and `kind`, and the name is also
+  visible to the model outside the frame (above).
+- The tool does not check that a file to save belongs to "this chat": files
+  made with `create_file` carry no origin message, so ownership is the check
+  and the approval card names the file.
+- A refreshed copy is a new `files` row each time the original changes; the
+  older copies expire with retention.
+- NOT VERIFIED without a real Google account (owner checklist): the
+  multipart request shape and that `drive.file` may create a file this way
+  (the Google page read for this child does not say so), the
+  `storageQuotaExceeded` and 403 reasons on create,
+  that a file picked earlier is still readable and refreshable with a fresh
+  token, that a Doc or Sheet export of a refreshed file works without the
+  resource key, and the link opening the saved file
+  (`drive.google.com/open?id=`).
