@@ -77,6 +77,19 @@ describe('getApprovalStepModel', () => {
     })
   })
 
+  it('keeps only a Google link from the server data', () => {
+    const link = 'https://mail.google.com/mail/#all/t1'
+
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ link })),
+    )?.link).toBe(link)
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ link: 'https://evil.example/' })),
+    )).not.toHaveProperty('link')
+  })
+
   it('falls back to the default reason and Allow once without data', () => {
     const model = getApprovalStepModel(connectorPart(), new Map())
 

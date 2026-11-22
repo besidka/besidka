@@ -8,6 +8,7 @@ import type { ToolApprovalFailure } from '~/composables/tool-approvals'
 import {
   isToolApprovalDataPart,
   isToolGrantDataPart,
+  readApprovalLink,
 } from '#shared/utils/tool-approval-parts'
 import {
   getConnectorToolCall,
@@ -46,6 +47,7 @@ export interface ApprovalStepModel {
   summary: string
   rememberOptions: ToolApprovalRemember[]
   preview: string
+  link?: string
   input: unknown
   partState: string
   approved: boolean | null
@@ -204,6 +206,7 @@ export function getApprovalStepModel(
 
   const connector = parseConnectorToolName(toolName)
   const isBesidka = isBesidkaChatToolName(toolName)
+  const link = readApprovalLink(data?.link)
 
   return {
     approvalId,
@@ -218,6 +221,7 @@ export function getApprovalStepModel(
     summary: typeof data?.summary === 'string' ? data.summary : '',
     rememberOptions: readRememberOptions(data?.rememberOptions),
     preview: typeof data?.preview === 'string' ? data.preview : '',
+    ...(link ? { link } : {}),
     input: part.input,
     partState: part.state,
     approved: typeof approval?.approved === 'boolean'

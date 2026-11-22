@@ -38,6 +38,40 @@ export interface ToolApprovalPartData {
   summary: string
   rememberOptions: ToolApprovalRemember[]
   preview?: string
+  link?: string
+}
+
+const APPROVAL_LINK_MAX_LENGTH = 2048
+const APPROVAL_LINK_HOSTS: ReadonlySet<string> = new Set([
+  'mail.google.com',
+  'drive.google.com',
+  'docs.google.com',
+])
+
+/**
+ * The one link an approval card may show next to its summary (the Gmail
+ * thread or Drive file the call names): plain HTTPS on a Gmail or Google
+ * Drive host, no credentials and no port. Anything else is null, on the
+ * server before it is stored and in the browser before it is shown.
+ */
+export function readApprovalLink(value: unknown): string | null {
+  if (
+    typeof value !== 'string'
+    || value.length > APPROVAL_LINK_MAX_LENGTH
+    || !URL.canParse(value)
+  ) {
+    return null
+  }
+
+  const url = new URL(value)
+  const isPlainHttps = url.protocol === 'https:'
+    && !url.username
+    && !url.password
+    && !url.port
+
+  return isPlainHttps && APPROVAL_LINK_HOSTS.has(url.hostname)
+    ? url.toString()
+    : null
 }
 
 export interface ToolApprovalDataPart {

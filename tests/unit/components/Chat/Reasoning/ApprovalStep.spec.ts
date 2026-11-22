@@ -257,6 +257,67 @@ describe('Chat/Reasoning/ApprovalStep', () => {
     expect(controller!.answer).not.toHaveBeenCalled()
   })
 
+  it.each([
+    'google__gmail_create_draft',
+    'google__drive_save_file',
+  ])('never approves the Google write %s on Enter from the card', async (
+    toolName,
+  ) => {
+    const { wrapper, controller } = await mountStep({
+      model: createModel({ toolName, connectorSlug: null, tool: toolName }),
+    })
+
+    await wrapper.get('[data-testid="reasoning-approval-step"]')
+      .trigger('keydown', { key: 'Enter' })
+
+    expect(controller!.answer).not.toHaveBeenCalled()
+
+    await wrapper.get(testId('allow-once')).trigger('click')
+
+    expect(controller!.answer).toHaveBeenCalledWith({
+      approvalId: 'approval-1',
+      approved: true,
+      remember: 'once',
+    })
+  })
+
+  it('still approves a Google read on Enter from the card', async () => {
+    const { wrapper, controller } = await mountStep({
+      model: createModel({
+        toolName: 'google__gmail_read_thread',
+        connectorSlug: null,
+        tool: 'google__gmail_read_thread',
+      }),
+    })
+
+    await wrapper.get('[data-testid="reasoning-approval-step"]')
+      .trigger('keydown', { key: 'Enter' })
+
+    expect(controller!.answer).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the link the call names, and none without one', async () => {
+    const link = 'https://mail.google.com/mail/?authuser=me%40example.com#all/t1'
+    const withLink = await mountStep({ model: createModel({ link }) })
+    const anchor = withLink.wrapper.get(testId('link'))
+
+    expect(anchor.attributes('href')).toBe(link)
+    expect(anchor.attributes('target')).toBe('_blank')
+    expect(anchor.attributes('rel')).toBe('noopener noreferrer')
+    expect(anchor.text()).toBe('Open in Gmail')
+
+    const without = await mountStep()
+
+    expect(without.wrapper.find(testId('link')).exists()).toBe(false)
+
+    const drive = await mountStep({
+      model: createModel({ link: 'https://drive.google.com/open?id=abc' }),
+    })
+
+    expect(drive.wrapper.get(testId('link')).text())
+      .toBe('Open in Google Drive')
+  })
+
   it('collapses the arguments on Escape', async () => {
     const { wrapper } = await mountStep()
     const details = wrapper.get(testId('arguments'))
@@ -417,9 +478,32 @@ describe('Chat/Reasoning/ApprovalStep', () => {
         .toBe('Lunch plans')
       expect(card.get(testId('gmail-draft-body')).text()).toBe(body)
       expect(card.get(testId('gmail-draft-body')).text()).toContain('THE END')
-      expect(card.text()).toContain('a reply in an existing thread')
+      expect(card.text()).toContain('a reply in the thread above')
+      expect(card.get(testId('gmail-draft-lines')).text()).toContain('1 line')
       expect(card.get(testId('gmail-draft-note')).text())
         .toContain('Besidka cannot send it')
+    })
+
+    it('makes the scrolling body a labeled region keyboard users can reach',
+      async () => {
+        const { wrapper } = await mountStep({ model: draftModel() })
+        const region = wrapper.get(testId('gmail-draft-body'))
+
+        expect(region.attributes('tabindex')).toBe('0')
+        expect(region.attributes('role')).toBe('region')
+        expect(region.attributes('aria-label')).toBe('Draft message')
+      })
+
+    it('counts the lines and shows a long blank run as one marker', async () => {
+      const padded = `Hi${'\n'.repeat(15)}hidden line`
+      const { wrapper } = await mountStep({
+        model: draftModel({ input: { ...draftInput, body: padded } }),
+      })
+
+      expect(wrapper.get(testId('gmail-draft-lines')).text())
+        .toContain('16 lines')
+      expect(wrapper.get(testId('gmail-draft-body')).text())
+        .toBe('Hi\n[14 blank lines]\nhidden line')
     })
 
     it('offers Allow once and nothing else to allow', async () => {

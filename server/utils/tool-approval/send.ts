@@ -20,6 +20,8 @@ import {
   TOOL_APPROVAL_DATA_PART_TYPE,
   TOOL_GRANT_DATA_PART_TYPE,
   hasAwaitingApprovalToolPart,
+  isToolGrantDataPart,
+  readApprovalLink,
 } from '#shared/utils/tool-approval-parts'
 import type {
   ToolApprovalPartData,
@@ -135,12 +137,19 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * (`taint` and `readSource` null): one lookup before `execute` says the
  * call names Google-derived data after all (a marked file), and the call
  * then taints the send like any Google call.
+ * `describeLink` gives the card one link to look at what the call names
+ * before answering (the Gmail thread a read or a reply names); only links
+ * `readApprovalLink` accepts are shown. `chatGrantRunsMax` caps how many
+ * calls of the tool one message runs under "Allow in this chat"; past it
+ * each call asks again.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
   summary: string
   summarize?: (input: unknown) => string
   describe?: (input: unknown) => Promise<string | null>
+  describeLink?: (input: unknown) => Promise<string | null>
+  chatGrantRunsMax?: number
   taintsRun?: (input: unknown) => Promise<boolean>
   preview?: (input: unknown) => string | null
   failsWithoutRunning?: (input: unknown) => boolean
@@ -187,6 +196,7 @@ export interface PendingToolApprovalDecision {
   decision: ToolApprovalDecision
   summary: string
   preview: string | null
+  link?: string | null
 }
 
 export interface ToolApprovalCall {
@@ -312,6 +322,8 @@ async function describeCall(
   pending: PendingToolApprovalDecision,
   input: unknown,
 ): Promise<void> {
+  await describeCallLink(pending, input)
+
   if (!pending.entry.describe) {
     return
   }
@@ -325,6 +337,46 @@ async function describeCall(
   } catch {
     return
   }
+}
+
+async function describeCallLink(
+  pending: PendingToolApprovalDecision,
+  input: unknown,
+): Promise<void> {
+  if (!pending.entry.describeLink) {
+    return
+  }
+
+  try {
+    pending.link = readApprovalLink(await pending.entry.describeLink(input))
+  } catch {
+    pending.link = null
+  }
+}
+
+/**
+ * How many calls of each tool the stored reply already ran under "Allow
+ * in this chat" (its `data-tool-grant` markers with the `chat` scope), so
+ * a pause or a "Continue" round keeps counting toward `chatGrantRunsMax`.
+ */
+export function countChatGrantRuns(
+  parts: readonly unknown[],
+): Map<string, number> {
+  const counts = new Map<string, number>()
+
+  for (const part of parts) {
+    if (!isToolGrantDataPart(part)) {
+      continue
+    }
+
+    const data = part.data as Partial<ToolGrantPartData>
+
+    if (data.scope === 'chat' && typeof data.toolName === 'string') {
+      counts.set(data.toolName, (counts.get(data.toolName) ?? 0) + 1)
+    }
+  }
+
+  return counts
 }
 
 /**
@@ -387,6 +439,7 @@ export function buildGoogleApprovalEntry(input: {
   toolApprovalsActive: boolean
   summarize?: (input: unknown) => string
   chatGrantHash?: string | null
+  chatGrantRunsMax?: number
   taintsRun?: (input: unknown) => Promise<boolean>
 }): SendToolEntry {
   if (!canOfferGoogleTools(input)) {
@@ -419,6 +472,9 @@ export function buildGoogleApprovalEntry(input: {
     },
     summary: clampSummary(input.summary),
     ...(input.summarize ? { summarize: input.summarize } : {}),
+    ...(input.chatGrantRunsMax !== undefined
+      ? { chatGrantRunsMax: input.chatGrantRunsMax }
+      : {}),
     ...(!returnsContent && input.taintsRun
       ? { taintsRun: input.taintsRun }
       : {}),
@@ -698,9 +754,26 @@ function toInputJson(input: unknown): string {
  */
 export function createSendToolApproval(input: {
   state: ApprovalState
+  priorChatGrantRuns?: ReadonlyMap<string, number>
 }): SendToolApproval {
   const { state } = input
+  const chatGrantRuns = new Map(input.priorChatGrantRuns ?? [])
   const entries = new Map<string, SendToolEntry>()
+
+  function chatGrantOf(
+    toolName: string,
+    entry: SendToolEntry,
+  ): ToolApprovalGrant | null {
+    const grant = entry.userGrants?.chat ?? null
+
+    if (!grant || entry.chatGrantRunsMax === undefined) {
+      return grant
+    }
+
+    return (chatGrantRuns.get(toolName) ?? 0) < entry.chatGrantRunsMax
+      ? grant
+      : null
+  }
   const clearedCalls = new Map<string, ClearedCall>()
   const approvedCalls = new Map<string, ClearedCall>()
 
@@ -835,7 +908,7 @@ export function createSendToolApproval(input: {
       state: decisionState,
       permissionMode: entry.permissionMode ?? 'ask',
       alwaysGrant: entry.userGrants?.always ?? null,
-      chatGrant: entry.userGrants?.chat ?? null,
+      chatGrant: chatGrantOf(toolCall.toolName, entry),
       isAlwaysGrantDefault: entry.userGrants?.isAlwaysDefault === true,
       googleEgressGrant: entry.userGrants?.googleEgress ?? null,
     })
@@ -856,6 +929,13 @@ export function createSendToolApproval(input: {
 
       if (grantScope) {
         grantedCalls.set(toolCall.toolCallId, grantScope)
+      }
+
+      if (grantScope === 'chat') {
+        chatGrantRuns.set(
+          toolCall.toolName,
+          (chatGrantRuns.get(toolCall.toolName) ?? 0) + 1,
+        )
       }
 
       recordRun(entry)
@@ -1407,6 +1487,7 @@ export function createToolApprovalStreamCollector(
           summary: pending.summary,
           rememberOptions: [...pending.decision.rememberOptions],
           ...(pending.preview ? { preview: pending.preview } : {}),
+          ...(pending.link ? { link: pending.link } : {}),
         }
 
         controller.enqueue({

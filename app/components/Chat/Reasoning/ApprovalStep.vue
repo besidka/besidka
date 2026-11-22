@@ -53,6 +53,16 @@
       >
         {{ summaryLine }}
       </p>
+      <a
+        v-if="model.link"
+        :href="model.link"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="link mt-0.5 inline-block text-xs text-base-content/80"
+        data-testid="reasoning-approval-step-link"
+      >
+        {{ approvalLinkLabel }}
+      </a>
       <p
         :id="reasonId"
         class="mt-0.5 min-w-0 break-words text-xs text-base-content/60"
@@ -94,13 +104,19 @@
             {{ gmailDraft.subject }}
           </dd>
         </dl>
-        <p class="mt-2 text-base-content/60">
-          Message{{ gmailDraftReplyNote }}
+        <p
+          class="mt-2 text-base-content/60"
+          data-testid="reasoning-approval-step-gmail-draft-lines"
+        >
+          Message{{ gmailDraftReplyNote }} · {{ gmailDraftLineCountText }}
         </p>
         <p
-          class="mt-0.5 max-h-60 overflow-auto whitespace-pre-wrap break-words"
+          class="mt-0.5 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-box outline-offset-2 focus:outline-2 focus:outline-accent"
+          tabindex="0"
+          role="region"
+          aria-label="Draft message"
           data-testid="reasoning-approval-step-gmail-draft-body"
-        >{{ gmailDraft.body }}</p>
+        >{{ gmailDraft.cardBody }}</p>
         <p
           class="mt-2 text-base-content/60"
           data-testid="reasoning-approval-step-gmail-draft-note"
@@ -257,6 +273,7 @@ import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
 import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
+import { isGoogleWriteToolName } from '#shared/utils/google-tool-approvals'
 import type {
   ApprovalStepModel,
   ApprovalStepState,
@@ -377,8 +394,26 @@ const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
 
 const gmailDraftReplyNote = computed<string>(() => {
   return gmailDraft.value?.isReply
-    ? ' (a reply in an existing thread)'
+    ? ' (a reply in the thread above)'
     : ''
+})
+
+const gmailDraftLineCountText = computed<string>(() => {
+  const count = gmailDraft.value?.lineCount ?? 0
+
+  return count === 1 ? '1 line' : `${count} lines`
+})
+
+const approvalLinkLabel = computed<string>(() => {
+  const link = props.model.link ?? ''
+
+  return link.startsWith('https://mail.google.com/')
+    ? 'Open in Gmail'
+    : 'Open in Google Drive'
+})
+
+const isEnterApprovalBlocked = computed<boolean>(() => {
+  return isGoogleWriteToolName(props.model.toolName)
 })
 
 const gmailDraftRecipientRows = computed(() => {
@@ -465,6 +500,10 @@ async function onAskAgain() {
 
 function onEnter(event: KeyboardEvent) {
   if (event.repeat || event.isComposing || props.state !== 'pending') {
+    return
+  }
+
+  if (isEnterApprovalBlocked.value) {
     return
   }
 

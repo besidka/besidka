@@ -41,6 +41,9 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
     returnsGoogleContent: true,
     emptyListHoldsNoContent: true,
   },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_read_found_file`]: {
+    returnsGoogleContent: true,
+  },
   [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: {
     returnsGoogleContent: true,
     emptyListHoldsNoContent: true,
@@ -51,6 +54,21 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
   [`${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`]: {
     returnsGoogleContent: false,
   },
+}
+
+const GOOGLE_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  `${GOOGLE_TOOL_NAME_PREFIX}drive_save_file`,
+  `${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`,
+])
+
+/**
+ * Whether a Google tool writes to the user's Google account (a Drive save,
+ * a Gmail draft). Its approval card never approves on Enter from the card
+ * itself: the user must press the button.
+ */
+export function isGoogleWriteToolName(toolName: unknown): boolean {
+  return typeof toolName === 'string'
+    && GOOGLE_WRITE_TOOL_NAMES.has(toolName.toLowerCase())
 }
 
 /**
