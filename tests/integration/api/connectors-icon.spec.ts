@@ -139,6 +139,7 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     testDb.close()
     vi.unstubAllGlobals()
   })
@@ -273,16 +274,37 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('limits the icon route to 300 requests a minute per user', async () => {
-    const connectorId = await addConnector()
+  describe('rate limit', () => {
+    const MID_MINUTE = Date.UTC(2026, 10, 22, 12, 0, 30)
 
-    for (let index = 0; index < 300; index += 1) {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(MID_MINUTE)
+    })
+
+    it('limits the icon route to 300 requests a minute per user', async () => {
+      const connectorId = await addConnector()
+
+      for (let index = 0; index < 300; index += 1) {
+        expect((await request(connectorId)).status).toBe(200)
+      }
+
+      const exception = await failureOf(request(connectorId))
+
+      expect(exception.status).toBe(429)
+    })
+
+    it('starts a new budget in the next calendar minute', async () => {
+      const connectorId = await addConnector()
+
+      for (let index = 0; index < 300; index += 1) {
+        expect((await request(connectorId)).status).toBe(200)
+      }
+
+      vi.setSystemTime(MID_MINUTE + 30_000)
+
       expect((await request(connectorId)).status).toBe(200)
-    }
-
-    const exception = await failureOf(request(connectorId))
-
-    expect(exception.status).toBe(429)
+    })
   })
 
   describe('cleanup', () => {
