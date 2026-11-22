@@ -57,6 +57,38 @@ describe('parseGoogleDriveLink', () => {
     expect(parseGoogleDriveLink(link)).toBeNull()
   })
 
+  it('reads an uppercase scheme and host, which URL parsing lowercases',
+    () => {
+      expect(parseGoogleDriveLink(
+        `HTTPS://DOCS.GOOGLE.COM/document/d/${FILE_ID}/edit`,
+      )).toEqual({ id: FILE_ID, kind: 'document' })
+      expect(parseGoogleDriveLink(
+        `https://Drive.Google.Com/open?id=${FILE_ID}`,
+      )).toEqual({ id: FILE_ID, kind: 'file' })
+    })
+
+  it('treats the default port written out as no port, and any other as '
+    + 'a foreign link', () => {
+    expect(parseGoogleDriveLink(
+      `https://docs.google.com:443/document/d/${FILE_ID}/edit`,
+    )).toEqual({ id: FILE_ID, kind: 'document' })
+    expect(parseGoogleDriveLink(
+      `https://docs.google.com:444/document/d/${FILE_ID}/edit`,
+    )).toBeNull()
+  })
+
+  it('refuses an open link with two id parameters, so no one id is '
+    + 'picked for Besidka and another for Google', () => {
+    expect(parseGoogleDriveLink(
+      `https://drive.google.com/open?id=${FILE_ID}&id=${OTHER_ID}`,
+    )).toBeNull()
+    expect(parseGoogleDriveLink(
+      `https://drive.google.com/open?id=${OTHER_ID}&id=${FILE_ID}`,
+    )).toBeNull()
+    expect(parseGoogleDriveLink(`https://drive.google.com/open?id=`))
+      .toBeNull()
+  })
+
   it('ignores a link longer than the cap', () => {
     expect(parseGoogleDriveLink(
       `https://docs.google.com/document/d/${FILE_ID}/edit?x=${'a'.repeat(3000)}`,
@@ -122,6 +154,50 @@ describe('extractGoogleDriveLinks', () => {
     expect(extractGoogleDriveLinks(
       `https://docs.google.com/document/d/${FILE_ID}`,
     )).toMatchObject([{ id: FILE_ID, kind: 'document' }])
+  })
+
+  it('skips links in fenced code blocks and inline code', () => {
+    const fenced = [
+      'Look at this snippet:',
+      '```',
+      `https://docs.google.com/document/d/${FILE_ID}/edit`,
+      '```',
+      `and https://docs.google.com/document/d/${OTHER_ID}/edit`,
+    ].join('\n')
+    const tilde = `~~~md\nhttps://drive.google.com/open?id=${FILE_ID}\n~~~\nend`
+    const inline = `use \`https://docs.google.com/document/d/${FILE_ID}/edit\` `
+      + `or https://docs.google.com/document/d/${OTHER_ID}/edit`
+
+    expect(extractGoogleDriveLinks(fenced).map(link => link.id))
+      .toEqual([OTHER_ID])
+    expect(extractGoogleDriveLinks(tilde)).toEqual([])
+    expect(extractGoogleDriveLinks(inline).map(link => link.id))
+      .toEqual([OTHER_ID])
+  })
+
+  it('skips a link in a code block that is still open', () => {
+    expect(extractGoogleDriveLinks(
+      `\`\`\`\nhttps://docs.google.com/document/d/${FILE_ID}/edit\nmore `,
+    )).toEqual([])
+  })
+
+  it('keeps a link after a lone backtick', () => {
+    expect(extractGoogleDriveLinks(
+      `it\`s https://docs.google.com/document/d/${FILE_ID}/edit `,
+    )).toHaveLength(1)
+  })
+
+  it('treats an id of 28 characters as complete only with more text after '
+    + 'it', () => {
+    const shortId = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
+
+    expect(shortId).toHaveLength(27)
+    expect(extractGoogleDriveLinks(
+      `https://docs.google.com/document/d/${shortId}`,
+    )).toEqual([])
+    expect(extractGoogleDriveLinks(
+      `https://docs.google.com/document/d/${shortId}0`,
+    )).toHaveLength(1)
   })
 
   it('ignores other links and folder links', () => {

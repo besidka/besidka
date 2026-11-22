@@ -21,7 +21,7 @@ export interface GoogleDriveLinkMatch extends GoogleDriveLink {
 
 export const GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX = 5
 export const GOOGLE_DRIVE_LINK_MAX_LENGTH = 2048
-export const GOOGLE_DRIVE_LINK_TRAILING_ID_MIN_LENGTH = 25
+export const GOOGLE_DRIVE_LINK_TRAILING_ID_MIN_LENGTH = 28
 
 export const GOOGLE_DRIVE_LINK_KIND_LABELS: Readonly<
   Record<GoogleDriveLinkKind, string>
@@ -119,9 +119,10 @@ export function parseGoogleDriveLink(value: string): GoogleDriveLink | null {
     return withResourceKey({ id: fileMatch[1], kind: 'file' }, url)
   }
 
-  const openId = url.pathname === DRIVE_OPEN_PATH
-    ? url.searchParams.get('id')
-    : null
+  const openIds = url.pathname === DRIVE_OPEN_PATH
+    ? url.searchParams.getAll('id')
+    : []
+  const openId = openIds.length === 1 ? openIds[0] : null
 
   if (openId && GOOGLE_DRIVE_FILE_ID_PATTERN.test(openId)) {
     return withResourceKey({ id: openId, kind: 'file' }, url)
@@ -144,9 +145,29 @@ function isCompleteCandidate(
     && link.id.length < GOOGLE_DRIVE_LINK_TRAILING_ID_MIN_LENGTH)
 }
 
+const FENCED_CODE_PATTERN
+  = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]{0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm
+const INLINE_CODE_PATTERN = /(`+)(?!`)[^\n]*?(?<!`)\1(?!`)/g
+
+function blankOut(match: string): string {
+  return match.replace(/[^\n]/g, ' ')
+}
+
+/**
+ * The text with fenced code blocks (an unclosed fence runs to the end, as in
+ * Markdown) and inline code spans replaced by spaces, so a link someone
+ * shows as code is never read as a link and every other position stays put.
+ */
+function maskCode(text: string): string {
+  return text
+    .replace(FENCED_CODE_PATTERN, blankOut)
+    .replace(INLINE_CODE_PATTERN, blankOut)
+}
+
 /**
  * The Google file links in a piece of text, first appearance first, one per
- * file id, at most `max`. A link that ends the text right after a short id
+ * file id, at most `max`. Links inside code blocks and code spans are
+ * skipped. A link that ends the text right after a short id
  * is skipped: while someone is still typing, a half-written id already
  * matches the id pattern, and acting on it would probe ids that are not
  * files. Each match carries the link as written (`url`), which is what the
@@ -159,7 +180,7 @@ export function extractGoogleDriveLinks(
   const links: GoogleDriveLinkMatch[] = []
   const seenIds = new Set<string>()
 
-  for (const match of text.matchAll(LINK_CANDIDATE_PATTERN)) {
+  for (const match of maskCode(text).matchAll(LINK_CANDIDATE_PATTERN)) {
     const candidate = match[0].replace(TRAILING_PUNCTUATION_PATTERN, '')
     const link = parseGoogleDriveLink(candidate)
 

@@ -386,8 +386,12 @@ export function describeDriveFailure(
   const reason = google?.reason ?? null
   const isAccessCode = code === 'not_found' || code === 'no_access'
 
-  if (isAccessCode && reason && GOOGLE_DRIVE_REASON_SENTENCES[reason]) {
-    return GOOGLE_DRIVE_REASON_SENTENCES[reason]
+  if (
+    isAccessCode
+    && reason
+    && Object.hasOwn(GOOGLE_DRIVE_REASON_SENTENCES, reason)
+  ) {
+    return GOOGLE_DRIVE_REASON_SENTENCES[reason]!
   }
 
   return GOOGLE_DRIVE_FAILURE_REASONS[code]

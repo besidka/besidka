@@ -1015,6 +1015,35 @@ describe('POST /api/v1/google/drive/files', () => {
         })
       })
 
+    it('shares one budget of six seconds between all files of a request',
+      async () => {
+        const { importDriveFiles } = await import(
+          '~~/server/utils/google/drive-import'
+        )
+        const wait = vi.fn(async () => undefined)
+        const ids = Array.from({ length: 5 }, (_unused, index) => {
+          return `1Missing${index}Missing${index}Missing${index}Xx`
+        })
+        const results = await importDriveFiles({
+          event: { context: {} } as never,
+          db: testDb.db,
+          kv,
+          userId,
+          items: ids.map(id => ({ id })),
+          logger: { set: () => undefined },
+          retryFreshPick: true,
+          wait,
+        })
+        const waits = wait.mock.calls.map((call) => {
+          return (call as unknown[])[0] as number
+        })
+
+        expect(waits.reduce((total, delay) => total + delay, 0))
+          .toBeLessThanOrEqual(6000)
+        expect(waits.length).toBeLessThan(15)
+        expect(results.every(result => result.status === 'failed')).toBe(true)
+      })
+
     it('never retries a file that was not just picked', async () => {
       const counter = hideDocForMetadataCalls(10)
 
@@ -1224,6 +1253,38 @@ describe('POST /api/v1/google/drive/files', () => {
       expect(await failureOf(importLink(DOC_LINK, {
         headers: { 'sec-fetch-site': 'cross-site' },
       }))).toMatchObject({ status: 403 })
+    })
+
+    it('has its own rate bucket: ten unreadable links leave the Picker '
+      + 'imports their ten a minute', async () => {
+      for (let index = 0; index < 10; index++) {
+        await importLink(
+          `https://docs.google.com/document/d/${MISSING_ID}/edit`,
+        )
+      }
+
+      await importFiles([{ id: FOLDER_ID }])
+
+      const imports = [] as number[]
+
+      for (let index = 0; index < 9; index++) {
+        imports.push((await importFiles([{ id: FOLDER_ID }])).result.results
+          .length)
+      }
+
+      expect(imports).toHaveLength(9)
+      expect((await failureOf(importFiles([{ id: FOLDER_ID }]))).status)
+        .toBe(429)
+    })
+
+    it('answers 429 after twenty links a minute', async () => {
+      for (let index = 0; index < 20; index++) {
+        await importLink(
+          `https://docs.google.com/document/d/${MISSING_ID}/edit`,
+        )
+      }
+
+      expect((await failureOf(importLink(DOC_LINK))).status).toBe(429)
     })
 
     it('answers 404 while google.drive is not active', async () => {

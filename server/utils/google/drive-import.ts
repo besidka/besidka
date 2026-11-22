@@ -63,6 +63,7 @@ const REUSE_MIN_REMAINING_MS = 60 * 60 * 1000
 const FAILURE_DETAILS_LOGGED_MAX = 5
 
 export const FRESH_PICK_RETRY_DELAYS_MS: readonly number[] = [500, 1000, 2000]
+export const FRESH_PICK_RETRY_BUDGET_MS = 6000
 
 export interface DriveImportInput {
   event: Pick<RequestEvent, 'context'>
@@ -80,6 +81,7 @@ interface ItemContext {
   input: DriveImportInput
   item: DriveImportRequestItem
   request: DriveRequestContext
+  retryBudget?: { remainingMs: number }
 }
 
 class DriveItemFailure extends Error {
@@ -346,7 +348,9 @@ async function copyBytes(
  * 404 for a moment before the grant of a fresh pick is visible, so a 404 is
  * asked again after 0.5, 1 and 2 seconds, one request at a time, and only
  * when the caller says the file is a fresh pick. Any other answer, and a 404
- * of a file that was not just picked, is final.
+ * of a file that was not just picked, is final. The waits of all files of one
+ * request come out of one budget of 6 seconds, so ten files that all answer
+ * 404 cost 6 seconds of waiting, not ten times 3.5.
  */
 async function fetchPickedMetadata(
   context: ItemContext,
@@ -362,10 +366,17 @@ async function fetchPickedMetadata(
   let retries = 0
 
   for (const delay of delays) {
+    const budget = context.retryBudget
+
     if (result.ok || result.status !== 404) {
       break
     }
 
+    if (!budget || budget.remainingMs < delay) {
+      break
+    }
+
+    budget.remainingMs -= delay
     await wait(delay)
     retries += 1
     result = await fetchDriveFileMetadata(context.item.id, context.request)
@@ -587,6 +598,7 @@ export async function importDriveFiles(
   input: DriveImportInput,
 ): Promise<DriveImportItemResult[]> {
   const results: DriveImportItemResult[] = []
+  const retryBudget = { remainingMs: FRESH_PICK_RETRY_BUDGET_MS }
 
   for (const item of input.items) {
     const token = await readItemToken(input)
@@ -607,6 +619,7 @@ export async function importDriveFiles(
         accessToken: token.accessToken,
         resourceKey: item.resourceKey,
       },
+      retryBudget,
     }))
   }
 

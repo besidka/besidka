@@ -25,13 +25,14 @@ const bodySchema = z.object({
  * Without access the answer is a failed result (not found or no access) and
  * nothing is stored: the composer then offers the Picker for that one file.
  * One file per request, no retry (a file that was not just picked has no
- * grant that could still be on its way), and Besidka's own Google client
- * only, like the other Drive routes.
+ * grant that could still be on its way), its own 20 a minute rate bucket
+ * (a probe that ends in 404 must not use up the Picker's import budget),
+ * and Besidka's own Google client only, like the other Drive routes.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireGoogleAccess(event, {
     write: true,
-    rateLimit: 'import',
+    rateLimit: 'link',
   })
   const logger = useRequestLogger(event)
   const body = await readConnectorBody(event, bodySchema)

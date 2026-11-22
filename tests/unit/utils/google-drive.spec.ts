@@ -232,6 +232,22 @@ describe('what Google said about a failed file', () => {
     expect(sentences[3]).toBe(GOOGLE_DRIVE_FAILURE_REASONS.no_access)
   })
 
+  it('does not read a reason named like an object property as a sentence',
+    () => {
+      for (const reason of [
+        'constructor',
+        'toString',
+        '__proto__',
+        'hasOwnProperty',
+        'valueOf',
+      ]) {
+        expect(describeDriveFailure('no_access', { reason }))
+          .toBe(GOOGLE_DRIVE_FAILURE_REASONS.no_access)
+        expect(describeDriveFailure('not_found', { reason }))
+          .toBe(GOOGLE_DRIVE_FAILURE_REASONS.not_found)
+      }
+    })
+
   it('keeps the sentence of the code for other codes and no reason', () => {
     expect(describeDriveFailure('too_large', { reason: 'notFound' }))
       .toBe(GOOGLE_DRIVE_FAILURE_REASONS.too_large)
