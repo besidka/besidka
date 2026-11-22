@@ -438,6 +438,19 @@ export function getApprovalReasonText(
   return 'Runs only after you allow it'
 }
 
+/**
+ * The accessible name and hover text of a Google tool's chat grant button.
+ * The visible label stays a prefix of it (WCAG 2.5.3), and the sentence from
+ * `GOOGLE_TOOL_CHAT_GRANT_LABELS` is cut to what it allows when it has the
+ * usual "Allow ... in this chat" shape.
+ */
+function getChatGrantAccessibleName(sentence: string): string {
+  const label = REMEMBER_LABELS.chat
+  const scope = /^Allow\s+(.+?)\s+in this chat$/.exec(sentence)?.[1]
+
+  return `${label}: ${scope ?? sentence}`
+}
+
 export function getApprovalButtons(
   rememberOptions: readonly ToolApprovalRemember[],
   toolName?: string,
@@ -446,7 +459,7 @@ export function getApprovalButtons(
     GOOGLE_TOOL_CHAT_GRANT_LABELS,
     toolName,
   )
-    ? GOOGLE_TOOL_CHAT_GRANT_LABELS[toolName]
+    ? getChatGrantAccessibleName(GOOGLE_TOOL_CHAT_GRANT_LABELS[toolName]!)
     : undefined
 
   return REMEMBER_ORDER

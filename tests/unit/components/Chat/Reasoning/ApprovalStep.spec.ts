@@ -151,7 +151,7 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       toolName: 'google__calendar_list_events',
       connectorSlug: null,
       tool: 'google__calendar_list_events',
-    }, 'Allow reading events on your Google Calendar in this chat'],
+    }, 'Allow in this chat: reading events on your Google Calendar'],
     ['a connector tool', {}, undefined],
     ['a Besidka tool', {
       toolName: 'besidka__get_chat',
@@ -159,25 +159,34 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       isBesidka: true,
       tool: 'get_chat',
     }, undefined],
-  ] as const)('labels the chat grant of %s the same short way and keeps '
-    + 'every allow button primary', async (_kind, overrides, ariaLabel) => {
+  ] as const)('labels the chat grant of %s the same short way and makes '
+    + 'only Allow once and Allow in this chat primary', async (
+    _kind,
+    overrides,
+    ariaLabel,
+  ) => {
     const { wrapper } = await mountStep({
       model: createModel({
         ...overrides,
         rememberOptions: ['once', 'chat', 'always'],
       }),
     })
-    const allowButtons = ['once', 'chat', 'always'].map((remember) => {
-      return wrapper.get(testId(`allow-${remember}`))
-    })
     const chatButton = wrapper.get(testId('allow-chat'))
+    const alwaysButton = wrapper.get(testId('allow-always'))
 
     expect(chatButton.text()).toBe('Allow in this chat')
     expect(chatButton.attributes('aria-label')).toBe(ariaLabel)
-    expect(allowButtons.every(button => button.classes().includes('btn-primary')))
-      .toBe(true)
-    expect(allowButtons.some(button => button.classes().includes('btn-soft')))
-      .toBe(false)
+
+    if (ariaLabel) {
+      expect(chatButton.attributes('title')).toBe(ariaLabel)
+    }
+
+    expect(wrapper.get(testId('allow-once')).classes())
+      .toContain('btn-primary')
+    expect(chatButton.classes()).toContain('btn-primary')
+    expect(chatButton.classes()).not.toContain('btn-soft')
+    expect(alwaysButton.classes()).toContain('btn-soft')
+    expect(alwaysButton.classes()).not.toContain('btn-primary')
     expect(wrapper.get(testId('deny')).classes()).toContain('btn-ghost')
   })
 
