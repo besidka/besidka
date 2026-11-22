@@ -889,7 +889,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `server/utils/google/tokens.ts`, the `google:refresh:` lock, what
   disconnect, `invalid_grant` and account deletion revoke and delete, the
   hourly `google-access-sweep`, KV keys, logging, the Google tab on API Keys,
-  local testing and the open items)
+  local testing and the open items), and section 10, the owner-only
+  bring-your-own client (one encrypted `keys` row of the
+  `google-oauth-client` kind, the admin gate, `/api/v1/google/byo/callback`,
+  copies owned by Besidka's mode, the owner runbook in section 6)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
