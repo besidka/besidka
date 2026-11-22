@@ -344,6 +344,32 @@ function standardFiles(): Record<string, FakeDriveFile> {
   }
 }
 
+const FRESH_PICK_STEP_MS = 500
+
+async function withFastTimers<Value>(
+  run: () => Promise<Value>,
+): Promise<Value> {
+  vi.useFakeTimers({ toFake: ['setTimeout'] })
+
+  try {
+    let isSettled = false
+    const pending = run()
+    const markSettled = () => {
+      isSettled = true
+    }
+
+    pending.then(markSettled, markSettled)
+
+    while (!isSettled) {
+      await vi.advanceTimersByTimeAsync(FRESH_PICK_STEP_MS)
+    }
+
+    return await pending
+  } finally {
+    vi.useRealTimers()
+  }
+}
+
 async function failureOf(promise: Promise<unknown>) {
   try {
     await promise
@@ -414,7 +440,9 @@ describe('POST /api/v1/google/drive/files', () => {
         ...partial.headers,
       },
     })
-    const result = await (module.default as Handler)(event)
+    const result = await withFastTimers(() => {
+      return (module.default as Handler)(event)
+    })
 
     return { result, event }
   }
@@ -423,6 +451,29 @@ describe('POST /api/v1/google/drive/files', () => {
     const { result } = await importFiles([{ id, resourceKey }])
 
     return result.results[0]
+  }
+
+  async function importLink(
+    link: string,
+    partial: Partial<SkillsRouteEvent> = {},
+  ) {
+    const module = await import(
+      '~~/server/api/v1/google/drive/files/link.post'
+    )
+    const event = createSkillsRouteEvent({
+      body: { link },
+      ...partial,
+      headers: {
+        'origin': ORIGIN,
+        'sec-fetch-site': 'same-origin',
+        'content-type': 'application/json',
+        ...partial.headers,
+      },
+    })
+
+    return await withFastTimers(() => {
+      return (module.default as Handler)(event)
+    })
   }
 
   async function fileRows() {
@@ -887,6 +938,361 @@ describe('POST /api/v1/google/drive/files', () => {
         code: 'not_found',
       })
       expect(drive.ofKind('media')).toHaveLength(0)
+    })
+  })
+
+  describe('Google detail and the retry for a fresh pick', () => {
+    function hideDocForMetadataCalls(hiddenCalls: number) {
+      const original = drive.fetch.getMockImplementation()!
+      const counter = { metadataCalls: 0 }
+
+      drive.fetch.mockImplementation(async (input, init) => {
+        const url = new URL(input)
+        const isMetadata = url.pathname.endsWith(`/files/${DOC_ID}`)
+          && url.searchParams.get('alt') !== 'media'
+
+        if (isMetadata) {
+          counter.metadataCalls++
+
+          if (counter.metadataCalls <= hiddenCalls) {
+            return new Response(JSON.stringify({
+              error: { errors: [{ reason: 'notFound' }] },
+            }), { status: 404 })
+          }
+        }
+
+        return await original(input, init)
+      })
+
+      return counter
+    }
+
+    async function importDirectly(
+      options: { retryFreshPick?: boolean },
+      id = DOC_ID,
+    ) {
+      const { importDriveFiles } = await import(
+        '~~/server/utils/google/drive-import'
+      )
+      const wait = vi.fn(async () => undefined)
+      const results = await importDriveFiles({
+        event: { context: {} } as never,
+        db: testDb.db,
+        kv,
+        userId,
+        items: [{ id }],
+        logger: { set: () => undefined },
+        wait,
+        ...options,
+      })
+
+      return { results, wait }
+    }
+
+    it('asks again after a 404 on a fresh pick and imports once Google '
+      + 'sees the grant', async () => {
+      const counter = hideDocForMetadataCalls(2)
+
+      expect(await importOne(DOC_ID)).toMatchObject({ status: 'imported' })
+      expect(counter.metadataCalls).toBe(3)
+    })
+
+    it('waits 0.5, 1 and 2 seconds, one request at a time, then gives up',
+      async () => {
+        const counter = hideDocForMetadataCalls(10)
+
+        const { results, wait } = await importDirectly({
+          retryFreshPick: true,
+        })
+
+        expect(wait.mock.calls.map(call => (call as unknown[])[0]))
+          .toEqual([500, 1000, 2000])
+        expect(counter.metadataCalls).toBe(4)
+        expect(results[0]).toMatchObject({
+          status: 'failed',
+          code: 'not_found',
+          google: { stage: 'metadata', status: 404, reason: 'notFound' },
+        })
+      })
+
+    it('shares one budget of six seconds between all files of a request',
+      async () => {
+        const { importDriveFiles } = await import(
+          '~~/server/utils/google/drive-import'
+        )
+        const wait = vi.fn(async () => undefined)
+        const ids = Array.from({ length: 5 }, (_unused, index) => {
+          return `1Missing${index}Missing${index}Missing${index}Xx`
+        })
+        const results = await importDriveFiles({
+          event: { context: {} } as never,
+          db: testDb.db,
+          kv,
+          userId,
+          items: ids.map(id => ({ id })),
+          logger: { set: () => undefined },
+          retryFreshPick: true,
+          wait,
+        })
+        const waits = wait.mock.calls.map((call) => {
+          return (call as unknown[])[0] as number
+        })
+
+        expect(waits.reduce((total, delay) => total + delay, 0))
+          .toBeLessThanOrEqual(6000)
+        expect(waits.length).toBeLessThan(15)
+        expect(results.every(result => result.status === 'failed')).toBe(true)
+      })
+
+    it('never retries a file that was not just picked', async () => {
+      const counter = hideDocForMetadataCalls(10)
+
+      const { results, wait } = await importDirectly({})
+
+      expect(wait).not.toHaveBeenCalled()
+      expect(counter.metadataCalls).toBe(1)
+      expect(results[0]).toMatchObject({ status: 'failed' })
+    })
+
+    it('retries only a 404, not another refusal', async () => {
+      drive.fetch.mockImplementation(async () => {
+        return new Response(JSON.stringify({
+          error: { errors: [{ reason: 'appNotAuthorizedToFile' }] },
+        }), { status: 403 })
+      })
+
+      const { results, wait } = await importDirectly({ retryFreshPick: true })
+
+      expect(wait).not.toHaveBeenCalled()
+      expect(drive.fetch).toHaveBeenCalledTimes(1)
+      expect(results[0]).toMatchObject({
+        code: 'no_access',
+        google: {
+          stage: 'metadata',
+          status: 403,
+          reason: 'appNotAuthorizedToFile',
+        },
+      })
+    })
+
+    it('says which request Google refused: the export of a Sheet', async () => {
+      useDrive({
+        [SHEET_ID]: {
+          ...standardFiles()[SHEET_ID]!,
+          exports: { 'text/csv': { status: 404, reason: 'notFound' } },
+        },
+      })
+
+      const item = await importOne(SHEET_ID)
+
+      expect(item).toMatchObject({
+        status: 'failed',
+        code: 'not_found',
+        google: { stage: 'export', status: 404, reason: 'notFound' },
+      })
+      expect(drive.ofKind('metadata')).toHaveLength(1)
+    })
+
+    it('names the download as the stage for a binary file', async () => {
+      useDrive({
+        [PDF_ID]: {
+          metadata: metadata(PDF_ID, 'application/pdf', { size: '4' }),
+        },
+      })
+
+      expect(await importOne(PDF_ID)).toMatchObject({
+        status: 'failed',
+        google: { stage: 'download', status: 404 },
+      })
+    })
+
+    it('gives a different sentence for each reason that asks for a '
+      + 'different action', async () => {
+      const sentenceFor = async (status: number, reason: string) => {
+        drive.fetch.mockImplementation(async () => {
+          return new Response(JSON.stringify({
+            error: { errors: [{ reason }] },
+          }), { status })
+        })
+
+        return (await importOne(PDF_ID)).reason as string
+      }
+      const notFound = await sentenceFor(404, 'notFound')
+      const notAuthorized = await sentenceFor(403, 'appNotAuthorizedToFile')
+      const noPermission = await sentenceFor(403, 'insufficientFilePermissions')
+      const other = await sentenceFor(403, 'forbidden')
+
+      expect(new Set([notFound, notAuthorized, noPermission, other]).size)
+        .toBe(4)
+      expect(notAuthorized).toContain('Pick it again')
+      expect(noPermission).toContain('Ask its owner')
+    })
+
+    it('never returns or logs a reason that is not a short machine string',
+      async () => {
+        drive.fetch.mockImplementation(async () => {
+          return new Response(JSON.stringify({
+            error: { errors: [{ reason: SECRET_NAME }] },
+          }), { status: 403 })
+        })
+
+        const { result } = await importFiles([{ id: PDF_ID }])
+        const item = result.results[0]
+
+        expect(item.google).toEqual({
+          stage: 'metadata',
+          status: 403,
+          reason: null,
+        })
+        expect(JSON.stringify(item)).not.toContain(SECRET_NAME)
+        expect(JSON.stringify(mocks.logged)).not.toContain(SECRET_NAME)
+      })
+
+    it('puts the status, stage and reason into the wide event', async () => {
+      useDrive({
+        [SHEET_ID]: {
+          ...standardFiles()[SHEET_ID]!,
+          exports: { 'text/csv': { status: 404, reason: 'notFound' } },
+        },
+      })
+
+      await importFiles([{ id: SHEET_ID }])
+
+      expect(JSON.stringify(mocks.logged))
+        .toContain('"failureDetails":["export:404:notFound"]')
+    })
+  })
+
+  describe('POST /api/v1/google/drive/files/link', () => {
+    const DOC_LINK = `https://docs.google.com/document/d/${DOC_ID}/edit?usp=sharing`
+
+    it('copies the file a link names when Besidka can already read it',
+      async () => {
+        const answer = await importLink(DOC_LINK)
+
+        expect(answer.item).toEqual({ id: DOC_ID })
+        expect(answer.kind).toBe('document')
+        expect(answer.results[0]).toMatchObject({
+          id: DOC_ID,
+          status: 'imported',
+        })
+        expect(await fileRows()).toHaveLength(1)
+      })
+
+    it('sends only the id and the resource key to Google, never the link',
+      async () => {
+        await importLink(
+          `${DOC_LINK}&resourcekey=0-abc_DEF`,
+        )
+
+        const requests = drive.requests.map(request => request.url)
+
+        expect(requests.length).toBeGreaterThan(0)
+        expect(requests.every(url => !url.includes('usp=sharing'))).toBe(true)
+        expect(drive.ofKind('metadata')[0]!.headers['x-goog-drive-resource-keys'])
+          .toBe(`${DOC_ID}/0-abc_DEF`)
+      })
+
+    it('reuses a copy of an unchanged file', async () => {
+      await importLink(DOC_LINK)
+
+      const second = await importLink(DOC_LINK)
+
+      expect(second.results[0]).toMatchObject({ status: 'reused' })
+      expect(await fileRows()).toHaveLength(1)
+    })
+
+    it('answers a failed result and stores nothing when Besidka has no '
+      + 'access, and asks Google once', async () => {
+      const answer = await importLink(
+        `https://docs.google.com/document/d/${MISSING_ID}/edit`,
+      )
+
+      expect(answer.results[0]).toMatchObject({
+        status: 'failed',
+        code: 'not_found',
+      })
+      expect(drive.fetch).toHaveBeenCalledTimes(1)
+      expect(await fileRows()).toHaveLength(0)
+    })
+
+    it('refuses a link that is not a file, with no request to Google',
+      async () => {
+        for (const link of [
+          `https://drive.google.com/drive/folders/${DOC_ID}`,
+          `https://example.com/document/d/${DOC_ID}`,
+          'not a link',
+        ]) {
+          expect(await failureOf(importLink(link))).toMatchObject({
+            status: 400,
+          })
+        }
+
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+
+    it('answers 404 before any read when Google is not connected',
+      async () => {
+        await testDb.db.delete(schema.googleConnections)
+
+        expect(await failureOf(importLink(DOC_LINK))).toMatchObject({
+          status: 404,
+        })
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+
+    it('refuses a signed-out request and a cross-origin one', async () => {
+      sessionUserId = 0
+
+      expect(await failureOf(importLink(DOC_LINK))).toMatchObject({
+        status: 401,
+      })
+
+      sessionUserId = userId
+
+      expect(await failureOf(importLink(DOC_LINK, {
+        headers: { 'sec-fetch-site': 'cross-site' },
+      }))).toMatchObject({ status: 403 })
+    })
+
+    it('has its own rate bucket: ten unreadable links leave the Picker '
+      + 'imports their ten a minute', async () => {
+      for (let index = 0; index < 10; index++) {
+        await importLink(
+          `https://docs.google.com/document/d/${MISSING_ID}/edit`,
+        )
+      }
+
+      await importFiles([{ id: FOLDER_ID }])
+
+      const imports = [] as number[]
+
+      for (let index = 0; index < 9; index++) {
+        imports.push((await importFiles([{ id: FOLDER_ID }])).result.results
+          .length)
+      }
+
+      expect(imports).toHaveLength(9)
+      expect((await failureOf(importFiles([{ id: FOLDER_ID }]))).status)
+        .toBe(429)
+    })
+
+    it('answers 429 after twenty links a minute', async () => {
+      for (let index = 0; index < 20; index++) {
+        await importLink(
+          `https://docs.google.com/document/d/${MISSING_ID}/edit`,
+        )
+      }
+
+      expect((await failureOf(importLink(DOC_LINK))).status).toBe(429)
+    })
+
+    it('answers 404 while google.drive is not active', async () => {
+      mocks.flags.delete('google.drive')
+
+      expect(await failureOf(importLink(DOC_LINK))).toMatchObject({
+        status: 404,
+      })
     })
   })
 

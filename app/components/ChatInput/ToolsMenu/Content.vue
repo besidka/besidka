@@ -164,36 +164,11 @@
       <ChatInputToolsMenuActionRow
         v-if="state.files.visible"
         label="Attach files"
-        hint="Upload from your device"
+        hint="Upload or pick from your files"
         icon="lucide:paperclip"
+        :badge="state.files.count || undefined"
         data-testid="tools-action-attach"
         @click="emit('open-files-upload')"
-      />
-      <ChatInputToolsMenuActionRow
-        v-if="state.files.visible"
-        label="Add from library"
-        hint="Files you've uploaded"
-        icon="lucide:folder-open"
-        :badge="state.files.count || undefined"
-        data-testid="tools-action-library"
-        @click="emit('open-files-select')"
-      />
-      <ChatInputToolsMenuActionRow
-        v-if="state.files.visible && state.files.isImageInputSupported"
-        label="Generated images"
-        hint="Images made in your chats"
-        icon="lucide:images"
-        data-testid="tools-action-generated"
-        @click="emit('open-files-generated')"
-      />
-      <ChatInputToolsMenuActionRow
-        v-if="state.files.visible && state.artifacts.visible"
-        label="Add artifact"
-        hint="Artifacts from your chats"
-        icon="lucide:app-window"
-        :badge="state.artifacts.attached.length || undefined"
-        data-testid="tools-action-artifacts"
-        @click="emit('open-artifact-picker')"
       />
       <ChatInputToolsMenuActionRowWithInfo
         v-if="state.files.visible && state.googleDrive?.visible"
@@ -208,6 +183,15 @@
       >
         {{ GOOGLE_DRIVE_TOOLS_HINT }}
       </ChatInputToolsMenuActionRowWithInfo>
+      <ChatInputToolsMenuActionRow
+        v-if="state.files.visible && state.artifacts.visible"
+        label="Add artifact"
+        hint="Artifacts from your chats"
+        icon="lucide:app-window"
+        :badge="state.artifacts.attached.length || undefined"
+        data-testid="tools-action-artifacts"
+        @click="emit('open-artifact-picker')"
+      />
       <ChatInputToolsMenuActionRow
         v-if="state.skills?.visible"
         label="Add skill"
@@ -271,9 +255,7 @@ const emit = defineEmits<{
   'select-reasoning-level': [level: ReasoningLevel]
   'save-default-reasoning-level': [level: ReasoningLevel]
   'open-project-picker': []
-  'open-files-select': []
   'open-files-upload': []
-  'open-files-generated': []
   'open-artifact-picker': []
   'open-google-drive': []
   'open-skills-picker': []

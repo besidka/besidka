@@ -10,7 +10,7 @@ pages and MCP (it has no chat send) are unchanged.
 
 ## What the user sees
 
-- "+" menu, Add section: **Add artifact** after "Generated images"
+- "+" menu, Add section: **Add artifact** after "Attach files" and "Google Drive"
   (`docs/chats/chat-input-tools-menu.md`, "Add artifact").
 - The picker is History → Artifacts in a dialog: the same rows, search, kind
   filter, lazy paging and states (`docs/artifacts/library.md`).

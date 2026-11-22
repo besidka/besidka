@@ -913,6 +913,13 @@ again after a connect or disconnect. States:
 - Needs re-authorization: a warning and, while the flag is active,
   Reconnect.
 
+Disconnect (and "Delete client" and Disconnect on the own-client card) is the
+same control as Delete on an API key card: `UiButton` with `mode="error"` and
+`outline`, default size and radius, an icon (`lucide:unplug`, `lucide:trash`).
+It is the existing `btn-error btn-outline` pair, so its contrast follows the
+semantic pairs in `docs/ui/semantic-colors.md`; Reconnect next to it uses the
+same default size. How both themes render it was not checked in a browser.
+
 After Disconnect a toast says the copies were deleted (or that the deletion
 finishes shortly), a second toast with the link to
 myaccount.google.com/connections appears when Google did not confirm the
@@ -1314,6 +1321,7 @@ deletes it from Files.
 |---|---|---|
 | `POST /api/v1/google/drive/picker-token` | Answers `{ accessToken, expiresInSeconds, apiKey, appId }` with `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer` | Same-origin write guard, session, `google.drive` active, 30 per minute (`google-picker-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files` | Body `{ items: [{ id, resourceKey? }] }`, 1 to 5 items, unique ids; answers `{ results }`, one per file | Same gate, 10 per minute (`google-drive-import-rate-limit:<userId>`), body at most 8 KiB, legal consent; 404 or 409 before any read when Google is not connected or needs re-authorization |
+| `POST /api/v1/google/drive/files/link` | Body `{ link }`, one Google file link parsed again on the server (section 12.15); answers `{ item, kind, results }`, no retry | The same gate, with its own bucket, 20 a minute (`google-drive-link-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files/refresh` | Body `{ ids }`, 1 to 5 unique Besidka file ids; answers `{ results }`, one per copy (section 12.12) | The same gate and the same `import` rate bucket |
 
 Ids match `^[A-Za-z0-9_-]{10,128}$` and resource keys `^[A-Za-z0-9_-]{1,128}$`
@@ -2206,6 +2214,262 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
 8. Disconnect Google on the API Keys page and reopen the tab: the copies are
    gone and the "not connected" state shows.
 
+### 12.13 The Picker tabs (BES-451)
+
+The Picker used to open on one view built with `setEnableDrives(true)`, which
+Google fills with shared drives and their files: a user without shared drives
+saw "No documents." and had to search. `buildPickerViews` in
+`app/composables/google-picker.ts` now adds four views in this order, each
+labeled and each built on its own (an exception in one drops that tab and
+nothing else; with none left the plain `ViewId.DOCS` view opens):
+
+| Tab | Built with |
+|---|---|
+| Recent | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(true)`, `setSelectFolderEnabled(false)`, `setMode(DocsViewMode.LIST)` |
+| Shared with me | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(false)`, `setOwnedByMe(false)`, `setMode(DocsViewMode.LIST)` |
+| Shared drives | the earlier view, `setEnableDrives(true)` with folders, plus `setMode(DocsViewMode.LIST)` |
+| Upload | `new DocsUploadView()` |
+
+What Google's reference says about each (read 2026-11-22 on
+`developers.google.com/workspace/drive/picker/reference/`): `DocsView` "Use
+`DocsView` to select files from Google Drive." `setMode(mode)` "Selects which
+mode the view will use to display the documents"; `DocsViewMode.LIST` is
+"Display documents in a detailed list" and `GRID` "Display documents in a
+thumbnail grid". `setOwnedByMe(me)` "Filters the documents based on whether
+they are owned by the user, or shared with the user"; the page warns that
+with `setEnableDrives(true)` and `setOwnedByMe(true)` there are no results,
+and the method is ignored when `setIncludeFolders(true)`, which is why Shared
+with me has no folders and never `setEnableDrives`. `setEnableDrives(enabled)`
+"Shows shared drives and the files they contain." `DocsUploadView` "Use
+`DocsUploadView` to upload files to Google Drive." The web guide recommends
+list mode when the token's scope is narrower than full Drive, because
+thumbnails are not accessible "as the user hasn't granted access to
+thumbnails", which matches the blank checkerboards seen with `drive.file`.
+Every view is list mode for that reason.
+
+An upload through the Upload tab is a pick: Google uploads the local file into
+the user's Drive and returns it, and the normal import then runs (copy,
+chip). That it works with the `drive.file` scope is NOT VERIFIED: the guide
+says users "can select and upload files with the Google Picker" and names
+`drive.file` as the scope for these views, without a sentence that ties the
+two together. The upload runs inside the Picker's own frame, so no source was
+added to the content security policy (section 12.8); whether the upload view
+loads another frame host is NOT VERIFIED, and the `securitypolicyviolation`
+listener turns a block into the "Reload the page" message.
+
+Three things are NOT VERIFIED and need a real account. The tab labels:
+`View.setLabel` is marked deprecated in the reference with no replacement,
+so it is called only when it exists (`view.setLabel?.(label)`) and the Picker
+may show its own names. "Recent": no method sets a sort order and the
+reference marks `ViewId.RECENTLY_PICKED` deprecated, so "most recent first"
+rests on how the plain Drive view orders its list, which is not documented.
+And whether multi-select works across tabs, including Upload.
+
+Besidka cannot draw its own list of recent Drive files. The `drive.file`
+permission only reaches files the user created with Besidka or picked in the
+Picker; it does not allow listing, so a list of recent files would need a
+broader scope (`drive.readonly` or `drive.metadata.readonly`, which are
+restricted) and Besidka asks for neither. Only Google's Picker can show those
+files.
+
+Opening the Picker for one file: `pick({ fileIds })` builds a single view
+with `setFileIds` and list mode and nothing else. The reference: `setFileIds`
+"Sets the file IDs included in the view", takes a comma-separated string,
+leaves out IDs the user cannot access, and must not be used with
+`setEnableDrives` or `setParent` (each call overrides the earlier ones). The
+ids are checked against the Drive id pattern first.
+
+### 12.14 A failed import: the diagnosis, the retry and the chip (BES-452)
+
+The owner picked two Google Sheets in one Picker session on the preview; one
+imported and the other showed "Google Drive did not return this file...", the
+`not_found` sentence. The preview has no log drain, so **the root cause is NOT
+VERIFIED**. What the code and Google's documentation settle:
+
+- `not_found` is any 404 from the three Google requests an import can make:
+  the metadata read (`files.get`), the export of a Google-native file
+  (`files.export`, the path both Sheets took) and the media download.
+  `classifyDriveFailure(404, ...)` gave all three the same sentence, so the
+  owner could not tell a missing grant from a failed export. The result now
+  carries `google: { stage, status, reason }`, where `stage` is `metadata`,
+  `export` or `download`, `status` is Google's HTTP status and `reason` is
+  Google's `error.errors[0].reason` only when it matches
+  `^[A-Za-z][A-Za-z0-9_]{0,63}$` (a file name or any text is dropped to
+  `null`). The wide event holds `attributes.googleDrive.failureDetails`
+  (for example `export:404:notFound`, at most five) and `metadataRetries`;
+  nothing else of Google's answer is logged.
+- Nothing in the callback drops or mangles a second pick: `collectPickedItems`
+  copies each `id` and `resourceKey` as the Picker returned them, the client
+  sends one request with all items (not one request per file, so nothing
+  races), the server imports them one at a time, each with a fresh token, and
+  every id is checked against the Drive id pattern before any call. No code
+  path that loses the second item was found.
+- Google's documentation of `drive.file` (read 2026-11-22): per-file access
+  that users grant "while using the Google Picker API or the app's file
+  picker". It says nothing about a delay between a pick and the access, about
+  shared drives, or about the app id; sections 3 (questions 1, 3 and 4) keep
+  what is and is not documented. A short propagation delay right after a pick
+  is therefore a hypothesis, not a finding.
+- Candidates a real run can tell apart now: a metadata 404 (grant not visible
+  yet, or the file in a shared drive picked through search), an export 404
+  (the Sheet could not be exported as CSV) and a download 404.
+
+**The retry.** Only the metadata read of a fresh pick is repeated, and only
+for a 404: up to three retries after the first request (so up to four
+requests), after 0.5, 1 and 2 seconds, one at a time, in
+`fetchPickedMetadata` in `server/utils/google/drive-import.ts`. The route
+`POST /api/v1/google/drive/files` passes `retryFreshPick: true`; the refresh
+route, the Drive tools (`drive-picked.ts`) and the link route never do. Any
+other answer, and a 404 of the export or the download, is final at once.
+"Up to three attempts with the waits 0.5, 1 and 2 seconds" was read as three
+retries after the first try. The waits of all files of one request come out
+of one budget of 6 seconds (`FRESH_PICK_RETRY_BUDGET_MS`), so a batch of ten
+files that all answer 404 waits 6 seconds in total, not 35.
+
+**The sentences.** `describeDriveFailure(code, google)` keeps one sentence
+per code and replaces it when Google's reason says what the user should do:
+`notFound` (pick it again; if it is still missing it was deleted or moved),
+`appNotAuthorizedToFile` (Besidka has not been given access yet, pick it
+again) and `insufficientFilePermissions` (the account may not read it, ask
+the owner). Any other 403 keeps the generic "no access" sentence.
+
+**The chip.** `ChatInput/Files/Attached/DriveImport.vue` is one chip for
+copying and failed files: the same box as an attached file (`size-14` icon,
+the name), and for a failure one short line, "Could not import", in the error
+color. That line is a button (`aria-expanded`, `aria-controls`); it opens
+`DriveImportNote.vue` under the row of chips, outside the carousel that
+clips its children: the full sentence, then the technical code in small text
+("(Google: notFound, export)"), "Pick again" and "Remove". A note is not an
+overlay, so it reads the same on a 375 px screen and for a screen reader (a
+labeled region after the chips). "Pick again" shows when the code can be
+fixed that way (`canPickDriveFileAgain`: not found, no access, rate limit,
+other) and opens the Picker on that file (section 12.13). Failed upload
+chips are a different component with their own one-word status and retry and
+were not changed. The per-file warning toast that repeated the sentence was
+removed; the chip and its note carry it.
+
+### 12.15 A pasted Google link attaches the file (BES-453)
+
+While `google.drive` is active, a link to a Google Doc, Sheet, Slides file or
+Drive file in the composer text becomes an attachment without the menu.
+
+**Parsing, twice.** `shared/utils/google-drive-links.ts`
+(`parseGoogleDriveLink`, `extractGoogleDriveLinks`) is strict: HTTPS, no
+credentials or port, host exactly `docs.google.com`
+(`/document/d/<id>`, `/spreadsheets/d/<id>`, `/presentation/d/<id>`) or
+`drive.google.com` (`/file/d/<id>`, `/open?id=<id>`), the Drive id pattern
+(`^[A-Za-z0-9_-]{10,128}$`), an optional `resourcekey` that matches the
+resource key pattern, at most 2048 characters. Folder links, forms, other
+paths and other hosts are ignored. The composer extracts links from the text
+(at most five a message, one per file id, trailing punctuation and Markdown
+parentheses stripped) and sends the link as written to the server, which runs
+the same parser again; only the file id and the resource key ever reach
+Google. An uppercase scheme or host is read (URL parsing lowercases it), the
+default port written out (`:443`) counts as no port, any other port is not
+Google's, and an `open?id=` link with more than one `id` parameter is
+refused, so Besidka and Google can never read different ids. Links inside
+fenced code blocks (an unclosed one runs to the end) and inline code are not
+links. A link that ends the text right after an id shorter than 28
+characters is skipped, because a half-typed id already matches the id
+pattern. Google documents no length for a Drive id (`files.generateIds` and
+the file resource say nothing); 28 is the shortest form seen in practice
+(newer ids are 33 or 44), a choice and not a documented minimum, and it only
+delays a link that ends the text right after a shorter id until more text
+follows.
+
+**The route.** `POST /api/v1/google/drive/files/link`, body `{ link }`, answers
+`{ item, kind, results }` with one result in the shape of the import route. It
+is the import route for one file: same gate (same-origin write guard,
+session, `google.drive`, its own `link` bucket of 20 a minute so that probes
+ending in 404 never use up the Picker's `import` budget of 10, legal consent,
+a connection that is active with `drive.file`, 404 or 409 before any read), the
+same copy and reuse rules (an unchanged copy is `reused`), and a 400 for a
+link that is not a file. It never retries: a file that was not just picked
+has no grant on its way. `logger` gets `attributes.googleDrive.fromLink`.
+
+**What the composer does** (`useChatDriveFiles().detectLinks`, called from
+`ChatInput.client.vue` 800 ms after the text stops changing):
+
+| Answer | Result |
+|---|---|
+| Copied or reused | The file is attached like a pick (same chip, same rules, the chat marked as holding Google data) |
+| 404 not found or 403 no access | A suggestion, "Attach this Google file" (the kind of file and a number when there are several), that opens the Picker on that one file |
+| Too large, empty, storage full, unsupported, locked | The failed chip of section 12.14 |
+| 401, 404, 409, 429 on the request, consent missing, `reauthorize`, rate limit, other failure | Nothing: no toast, no dialog, no chip |
+
+The first 404, 409, 401 or 429 on the request stops every later request until
+the next message.
+
+**A link never leaves the browser unless Google Drive is connected.**
+Detection needs, in this order: the `google.drive` feature active, the menu
+row's own gates (the model takes files, so not a deep-research model:
+`options.isAvailable` from `ChatInput.client.vue`), and a connection that is
+`active` with the `drive-picked` capability. The connection is read from the
+status the API Keys page keeps under the fetch key `google-drive-connection`
+(`useNuxtData`); when nothing is cached it is requested once from Besidka's
+own `GET /api/v1/google/connections` and stored under that key, and a failed
+answer counts as not connected until the next message. A disconnect on the
+API Keys page refreshes that same entry, so detection stops at once; a
+connect is a full page return. No status request is made for text without a
+link. Not connected, or the feature not active: no request to the link route
+and no hint.
+
+**What is remembered for the page session.** A link that was answered "not
+found" or "no access" is kept in `useState('google-drive-unreadable-links')`
+until the user picks the file; the same link in a later message shows its
+suggestion again with no request, so unreadable links cannot use up the
+bucket. A link already attached (a copy with that Drive id) or being copied
+is ignored, a link is asked about once a message (five at most), and sending
+forgets the suggestions and the handled links but not that memory. Removing
+the link text removes nothing already attached; dismissing a suggestion keeps
+it dismissed for the message.
+
+**Time limits.** Each request has a 15 second timeout (the `timeout` option of
+`$fetch`) and one run of the queue has 15 seconds in all: links still queued
+after that are dropped. The send button waits for a probe only while it runs;
+a message sent while a probe is out lets go of the composer at once
+(`invalidatePendingWork` clears the flag), and a request that times out ends
+silently.
+
+**Typed and sent at once (BES-453, 5a).** `sendMessage` awaits
+`detectLinks(message)` before its busy check, so Enter pressed within the
+800 ms debounce still runs the detection once and waits for it (an
+in-flight probe is awaited, not repeated, and the wait is bounded by the
+time limits above). A link that Besidka can read is therefore attached to the
+message that carries it. A link that needs the Picker only shows its
+suggestion, and the message is sent as text.
+
+**A copy that arrives after the send (BES-453, 5b).** When the answer of a
+probe comes back after the message was sent or the composer was torn down
+and the result is `imported` (a new copy), the copy is deleted again through
+`DELETE /api/v1/files/<id>` (a failure of that delete is ignored); a `reused`
+copy was there before and is left alone. Not attaching it to the next
+message was chosen because that message may be unrelated. A request that the
+timeout aborts can still leave a copy on the server that nothing deletes: it
+counts against storage until it expires or the user deletes it from Files.
+
+**If the Picker shows nothing.** `setFileIds` leaves out ids the account
+cannot open, so for a file shared with another Google account the Picker is
+empty. The suggestion row says, below its buttons: "If the Picker shows
+nothing, open the file in Google Drive with the connected account first."
+
+**Keyboard and screen readers.** The suggestion row has one persistent live
+region that receives the announcement (not an `aria-live` on a root that
+appears with its content); dismissing a suggestion moves focus to the next
+one or to the textarea (`js-chat-input-textarea`). The failed-chip note of
+section 12.14 takes focus when it opens, is announced through the attachments
+row's status region, closes on Escape back to its chip button, and after
+"Pick again" or "Remove" focus goes to the chip, the next failed chip or the
+textarea.
+
+**Why a first-time link needs one confirmation.** The `drive.file` permission
+only reaches files the user created with Besidka or picked in the Picker, so
+Google answers 404 or 403 for a file Besidka has never been given, however
+valid the link. Google's documented way to grant access is the Picker, which
+`DocsView.setFileIds` pre-navigates to that file (section 12.13): the user
+confirms it once and the normal import runs. Reading the file from the link
+alone would need a broader scope that Besidka does not ask for.
+
 ## 14. Gmail tools and Drive search (Gmail tools child, G-8)
 
 Built on `feat/google-gmail-tools`. Five `google__` tools for the owner's own
@@ -2973,8 +3237,13 @@ approved call as `approvalId` in the `execute` options, for that call only.
 It is not the provider's tool call id, which is unique only within one reply
 and could repeat for the same user (a repeat would make Google answer 409 and
 the tool report an event that was never created). A call with no approval id
-(never the case for a write that went through an approval) sends a random id,
-which can never give a false success. Google's reference for `events.insert`
+(never the case for a write that went through an approval) is refused before
+any token or Google request, with the fixed sentence "The event could not be
+created. Nothing was sent to Google Calendar." (`CALENDAR_CREATE_NO_APPROVAL_TEXT`):
+the earlier fallback to a random id could not be repeated and so could not
+protect against a double insert. The option is read as
+`options?.approvalId`, so a call with no options object is refused the same
+way. Google's reference for `events.insert`
 (read 2026-11-22) says of the id: "characters allowed in the ID are those
 used in base32hex encoding, i.e. lowercase letters a-v and digits 0-9", "the
 length of the ID must be between 5 and 1024 characters" and "the ID must be

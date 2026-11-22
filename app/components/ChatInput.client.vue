@@ -69,6 +69,12 @@
               || pastedTexts.length
           }"
         >
+          <ChatInputFilesAttachedGoogleLinkSuggestions
+            :suggestions="linkSuggestions"
+            :is-busy="isDriveBusy"
+            @accept="acceptLinkSuggestion"
+            @dismiss="dismissLinkSuggestion"
+          />
           <!-- Attached Files Preview with Upload Progress -->
           <LazyChatInputFilesAttachedPreview
             :files="files"
@@ -81,6 +87,7 @@
             :tiles="tiles"
             :pasted-texts="pastedTexts"
             @dismiss-drive-import="dismissDriveImport"
+            @pick-again-drive-import="pickAgain"
             @open-tile="openToolsMenu"
             @open-text="openTextFile"
             @open-pasted="openPastedText"
@@ -104,7 +111,7 @@
               ref="textarea"
               v-model="input"
               data-testid="chat-input-textarea"
-              class="textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+              class="js-chat-input-textarea textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
               :placeholder="textareaPlaceholder"
               :disabled="displayStop"
               :role="commands.isEnabled.value ? 'combobox' : undefined"
@@ -151,9 +158,7 @@
                 @select-reasoning-level="selectReasoningLevel"
                 @save-default-reasoning-level="saveDefaultReasoningLevel"
                 @open-project-picker="emit('open-project-picker')"
-                @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
-                @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
                 @open-google-drive="attachFromDrive"
                 @open-skills-picker="openSkillPicker"
@@ -346,7 +351,6 @@ const {
   webSearchProviderOptions,
   isImageGenerationSupported,
   isImageGenerationRequired,
-  isImageInputSupported,
   canAttachMediaType,
   fileDeliveryContext,
   isReasoningSupported,
@@ -677,9 +681,22 @@ const {
   importingCount: driveImportingCount,
   isDriveBusy,
   isCheckingGoogleConnection,
+  linkSuggestions,
   attachFromDrive,
+  pickAgain,
+  detectLinks,
+  acceptLinkSuggestion,
+  dismissLinkSuggestion,
   dismissDriveImport,
-} = useChatDriveFiles(files, onFilesAttached)
+} = useChatDriveFiles(files, onFilesAttached, {
+  isAvailable: () => !isDeepResearchModel.value,
+})
+
+const GOOGLE_LINK_DETECTION_DELAY_MS = 800
+
+watchDebounced(message, async (text) => {
+  await detectLinks(text)
+}, { debounce: GOOGLE_LINK_DETECTION_DELAY_MS })
 
 watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {
@@ -1133,7 +1150,6 @@ const toolsState = computed<ChatInputToolsState>(() => {
     files: {
       visible: !isDeepResearchModel.value,
       count: files.value.length,
-      isImageInputSupported: isImageInputSupported.value,
     },
     artifacts: {
       visible: isArtifactAttachEnabled.value,
@@ -1777,6 +1793,8 @@ async function sendMessage() {
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
   }
+
+  await detectLinks(message.value)
 
   if (isDriveBusy.value) {
     return useWarningMessage(GOOGLE_DRIVE_BUSY_REASON)

@@ -214,6 +214,31 @@ history sanitizer, FTS search, memory extraction, chat titles, MCP
 plain text needs none of that. The trade-off: a sent message shows the pasted
 text inline as Markdown, not as a chip.
 
+## A pasted Google link
+
+A link to a Google Doc, Sheet, Slides file or Drive file that is pasted (or
+typed) into the composer stays in the textarea exactly as pasted. It goes
+through the same `onPaste` path as any text (plain `text/plain`, native undo
+intact, no chip, no conversion) and `useMarkdownTextarea` knows nothing about
+it. The link is read by a separate watcher in `ChatInput.client.vue` that runs
+`useChatDriveFiles().detectLinks()` 800 ms after the text stops changing, so
+typing a link and pasting one behave the same, and the project instructions
+card, which shares the textarea, never reacts to a link. Only the textarea
+text is read: the content of a "Pasted text" chip (long paste) is not
+scanned, because it is not in the message until it is sent.
+
+The send path awaits the same detection once more, so a link typed and sent
+within the 800 ms is still attached to its message. Links inside fenced code
+blocks and inline code are skipped, and nothing is requested unless Google
+Drive is connected with an active connection and the model takes files.
+
+When Google Drive is connected, Besidka asks its own link route to copy the
+file and attaches it like a Drive pick; without access it shows "Attach this
+Google file", which opens the Google Picker on that one file. The reason a
+first-time link needs that confirmation, the strict parser, the limits (five
+links a message, one request at a time) and the silent cases are in
+`docs/google.md`, section 12.15.
+
 ## Keyboard
 
 All rules are skipped during IME composition (`event.isComposing` or

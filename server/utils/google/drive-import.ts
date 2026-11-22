@@ -4,23 +4,26 @@ import type { RequestEvent } from 'nuxt/server'
 import {
   GOOGLE_DRIVE_EXPORTS,
   GOOGLE_DRIVE_EXPORT_MAX_BYTES,
-  GOOGLE_DRIVE_FAILURE_REASONS,
   GOOGLE_DRIVE_FILE_MAX_BYTES,
   buildDriveCopyName,
+  describeDriveFailure,
   getDriveRefreshFailureReason,
   isDriveFileId,
   isDriveFolder,
   isGoogleNativeMimeType,
+  readDriveGoogleReason,
   sanitizeDriveFileName,
 } from '#shared/utils/google-drive'
 import type {
   DriveExportChoice,
+  DriveGoogleDetail,
   DriveImportFailureCode,
   DriveImportItemResult,
   DriveImportRequestItem,
   DriveImportedFile,
   DriveRefreshFailureCode,
   DriveRefreshItemResult,
+  DriveRequestStage,
 } from '#shared/utils/google-drive'
 import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
@@ -45,6 +48,7 @@ import {
 } from '~~/server/utils/google/drive'
 import type {
   DriveFileMetadata,
+  DriveMetadataResult,
   DriveRequestContext,
 } from '~~/server/utils/google/drive'
 import { GOOGLE_DOWNLOAD_TOO_LARGE_CODE } from '~~/server/utils/google/download'
@@ -56,6 +60,10 @@ type DbClient = ReturnType<typeof useDb>
 
 const REUSE_CANDIDATE_LIMIT = 3
 const REUSE_MIN_REMAINING_MS = 60 * 60 * 1000
+const FAILURE_DETAILS_LOGGED_MAX = 5
+
+export const FRESH_PICK_RETRY_DELAYS_MS: readonly number[] = [500, 1000, 2000]
+export const FRESH_PICK_RETRY_BUDGET_MS = 6000
 
 export interface DriveImportInput {
   event: Pick<RequestEvent, 'context'>
@@ -65,21 +73,40 @@ export interface DriveImportInput {
   items: readonly DriveImportRequestItem[]
   logger: LoggerLike
   maxBytes?: number
+  retryFreshPick?: boolean
+  wait?: (milliseconds: number) => Promise<void>
 }
 
 interface ItemContext {
   input: DriveImportInput
   item: DriveImportRequestItem
   request: DriveRequestContext
+  retryBudget?: { remainingMs: number }
 }
 
 class DriveItemFailure extends Error {
   readonly code: DriveImportFailureCode
+  readonly google?: DriveGoogleDetail
 
-  constructor(code: DriveImportFailureCode) {
+  constructor(code: DriveImportFailureCode, google?: DriveGoogleDetail) {
     super(code)
     this.code = code
+    this.google = google
   }
+}
+
+function toGoogleDetail(
+  stage: DriveRequestStage,
+  status: number,
+  reason: string | null,
+): DriveGoogleDetail {
+  return { stage, status, reason: readDriveGoogleReason(reason) }
+}
+
+function waitFor(milliseconds: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
 }
 
 interface CopyPlan {
@@ -93,12 +120,14 @@ interface CopyPlan {
 function failed(
   id: string,
   code: DriveImportFailureCode,
+  google?: DriveGoogleDetail,
 ): DriveImportItemResult {
   return {
     id,
     status: 'failed',
     code,
-    reason: GOOGLE_DRIVE_FAILURE_REASONS[code],
+    reason: describeDriveFailure(code, google),
+    ...(google ? { google } : {}),
   }
 }
 
@@ -223,12 +252,16 @@ async function findReusableCopy(
 
 function assertDownloadResult(
   result: GoogleDownloadResult,
+  stage: DriveRequestStage,
 ): Uint8Array {
   if (result.ok) {
     return result.bytes
   }
 
-  throw new DriveItemFailure(classifyDriveFailure(result.status, result.reason))
+  throw new DriveItemFailure(
+    classifyDriveFailure(result.status, result.reason),
+    toGoogleDetail(stage, result.status, result.reason),
+  )
 }
 
 async function exportCopy(
@@ -256,6 +289,7 @@ async function exportCopy(
   if (!canFallBack || !choice.fallback) {
     throw new DriveItemFailure(
       classifyDriveFailure(primary.status, primary.reason),
+      toGoogleDetail('export', primary.status, primary.reason),
     )
   }
 
@@ -265,7 +299,7 @@ async function exportCopy(
   })
 
   return {
-    bytes: assertDownloadResult(fallback),
+    bytes: assertDownloadResult(fallback, 'export'),
     mediaType: choice.fallback.mimeType,
     extension: choice.fallback.extension,
   }
@@ -284,7 +318,7 @@ async function copyBytes(
     })
 
     return {
-      bytes: assertDownloadResult(result),
+      bytes: assertDownloadResult(result, 'download'),
       mediaType: plan.mediaType,
       fileName: plan.fileName,
     }
@@ -309,16 +343,71 @@ async function copyBytes(
   }
 }
 
+/**
+ * The metadata read of a file the user has just picked. Google can answer
+ * 404 for a moment before the grant of a fresh pick is visible, so a 404 is
+ * asked again after 0.5, 1 and 2 seconds, one request at a time, and only
+ * when the caller says the file is a fresh pick. Any other answer, and a 404
+ * of a file that was not just picked, is final. The waits of all files of one
+ * request come out of one budget of 6 seconds, so ten files that all answer
+ * 404 cost 6 seconds of waiting, not ten times 3.5.
+ */
+async function fetchPickedMetadata(
+  context: ItemContext,
+): Promise<DriveMetadataResult & { retries: number }> {
+  const delays = context.input.retryFreshPick
+    ? FRESH_PICK_RETRY_DELAYS_MS
+    : []
+  const wait = context.input.wait ?? waitFor
+  let result = await fetchDriveFileMetadata(
+    context.item.id,
+    context.request,
+  )
+  let retries = 0
+
+  for (const delay of delays) {
+    const budget = context.retryBudget
+
+    if (result.ok || result.status !== 404) {
+      break
+    }
+
+    if (!budget || budget.remainingMs < delay) {
+      break
+    }
+
+    budget.remainingMs -= delay
+    await wait(delay)
+    retries += 1
+    result = await fetchDriveFileMetadata(context.item.id, context.request)
+  }
+
+  return { ...result, retries }
+}
+
 async function importOne(
   context: ItemContext,
 ): Promise<DriveImportItemResult> {
   const { item } = context
-  const metadataResult = await fetchDriveFileMetadata(item.id, context.request)
+  const metadataResult = await fetchPickedMetadata(context)
+
+  if (metadataResult.retries > 0) {
+    context.input.logger.set({
+      attributes: {
+        googleDrive: { metadataRetries: metadataResult.retries },
+      },
+    })
+  }
 
   if (!metadataResult.ok) {
     return failed(
       item.id,
       classifyDriveFailure(metadataResult.status, metadataResult.reason),
+      toGoogleDetail(
+        'metadata',
+        metadataResult.status,
+        metadataResult.reason,
+      ),
     )
   }
 
@@ -432,13 +521,13 @@ async function copyFromMetadata(
 function classifyItemException(
   context: ItemContext,
   exception: unknown,
-): DriveImportFailureCode {
+): { code: DriveImportFailureCode, google?: DriveGoogleDetail } {
   if (exception instanceof DriveItemFailure) {
-    return exception.code
+    return { code: exception.code, google: exception.google }
   }
 
   if (isStorageFullError(exception)) {
-    return 'storage_full'
+    return { code: 'storage_full' }
   }
 
   context.input.logger.set({
@@ -449,7 +538,7 @@ function classifyItemException(
     },
   })
 
-  return 'failed'
+  return { code: 'failed' }
 }
 
 async function importGuarded(
@@ -458,7 +547,9 @@ async function importGuarded(
   try {
     return await importOne(context)
   } catch (exception) {
-    return failed(context.item.id, classifyItemException(context, exception))
+    const { code, google } = classifyItemException(context, exception)
+
+    return failed(context.item.id, code, google)
   }
 }
 
@@ -507,6 +598,7 @@ export async function importDriveFiles(
   input: DriveImportInput,
 ): Promise<DriveImportItemResult[]> {
   const results: DriveImportItemResult[] = []
+  const retryBudget = { remainingMs: FRESH_PICK_RETRY_BUDGET_MS }
 
   for (const item of input.items) {
     const token = await readItemToken(input)
@@ -527,14 +619,26 @@ export async function importDriveFiles(
         accessToken: token.accessToken,
         resourceKey: item.resourceKey,
       },
+      retryBudget,
     }))
   }
 
   const failures: Record<string, number> = {}
+  const failureDetails: string[] = []
 
   for (const result of results) {
     if (result.status === 'failed') {
       failures[result.code] = (failures[result.code] ?? 0) + 1
+
+      if (
+        result.google
+        && failureDetails.length < FAILURE_DETAILS_LOGGED_MAX
+      ) {
+        failureDetails.push(
+          `${result.google.stage}:${result.google.status}:`
+          + `${result.google.reason ?? 'none'}`,
+        )
+      }
     }
   }
 
@@ -545,6 +649,7 @@ export async function importDriveFiles(
         imported: results.filter(result => result.status === 'imported').length,
         reused: results.filter(result => result.status === 'reused').length,
         failures,
+        failureDetails,
       },
     },
   })
@@ -694,7 +799,7 @@ async function refreshOne(
   } catch (exception) {
     return refreshFailed(
       target.fileId,
-      classifyItemException(context, exception),
+      classifyItemException(context, exception).code,
     )
   }
 }

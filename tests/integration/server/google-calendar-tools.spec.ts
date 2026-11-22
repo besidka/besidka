@@ -8,6 +8,7 @@ import {
   GOOGLE_CALENDAR_TOOL_NAMES,
 } from '#shared/utils/google-calendar-tools'
 import { readCalendarEventApprovalView } from '#shared/utils/google-calendar-event'
+import { CALENDAR_CREATE_NO_APPROVAL_TEXT } from '~~/server/utils/google/calendar-api'
 import {
   GOOGLE_GMAIL_SEARCH_TOOL_NAME,
 } from '#shared/utils/google-gmail-tools'
@@ -276,7 +277,7 @@ describe('Google Calendar tools on the owner\'s own client', () => {
   async function run(name: string, input: unknown, built?: ToolMap) {
     return await (built ?? await tools())[name]!.execute(
       input,
-      { toolCallId: 'call-1' },
+      { toolCallId: 'call-1', approvalId: 'approval-1' },
     )
   }
 
@@ -1376,27 +1377,39 @@ describe('Google Calendar tools on the owner\'s own client', () => {
       expect(other).toMatch(CLIENT_EVENT_ID)
     })
 
-    it('never reuses an id for the same tool call id of another approval, '
-      + 'and sends a random id when there is no approval', async () => {
+    it('never reuses an id for the same tool call id of another approval',
+      async () => {
+        const built = await tools()
+        const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
+        const sendWith = async (approvalId: string) => {
+          apis.requests.length = 0
+          await create.execute(NEW_EVENT, { toolCallId: 'call-1', approvalId })
+
+          return lastBody().id as string
+        }
+
+        expect(await sendWith('a-1')).not.toBe(await sendWith('a-2'))
+      })
+
+    it('refuses to create an event without an approval id and sends '
+      + 'nothing to Google', async () => {
       const built = await tools()
       const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
-      const sendWith = async (options: {
-        toolCallId: string
-        approvalId?: string
-      }) => {
+
+      for (const options of [
+        { toolCallId: 'call-1' },
+        { toolCallId: 'call-1', approvalId: '' },
+        undefined,
+      ]) {
         apis.requests.length = 0
-        await create.execute(NEW_EVENT, options)
 
-        return lastBody().id as string
+        const message = await rejectionOf(
+          create.execute(NEW_EVENT, options as never),
+        )
+
+        expect(message).toBe(CALENDAR_CREATE_NO_APPROVAL_TEXT)
+        expect(apis.requests).toHaveLength(0)
       }
-      const withoutFirst = await sendWith({ toolCallId: 'call-1' })
-      const withoutSecond = await sendWith({ toolCallId: 'call-1' })
-
-      expect(withoutFirst).toMatch(CLIENT_EVENT_ID)
-      expect(withoutSecond).toMatch(CLIENT_EVENT_ID)
-      expect(withoutFirst).not.toBe(withoutSecond)
-      expect(await sendWith({ toolCallId: 'call-1', approvalId: 'a-1' }))
-        .not.toBe(await sendWith({ toolCallId: 'call-1', approvalId: 'a-2' }))
     })
 
     it('derives the id from the user as well, so two users never share one',

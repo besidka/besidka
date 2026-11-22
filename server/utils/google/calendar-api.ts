@@ -85,6 +85,9 @@ export const CALENDAR_CREATE_UNCONFIRMED_TEXT = 'Google Calendar did not '
   + 'confirm the event, so it may or may not have been created. Ask the user '
   + 'to check their calendar before trying again.'
 
+export const CALENDAR_CREATE_NO_APPROVAL_TEXT = 'The event could not be '
+  + 'created. Nothing was sent to Google Calendar.'
+
 export type CalendarResult<Value>
   = | { ok: true, value: Value }
     | { ok: false, code: CalendarFailureCode }

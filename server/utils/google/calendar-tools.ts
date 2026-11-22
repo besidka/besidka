@@ -43,6 +43,7 @@ import { frameUntrustedResult } from '~~/server/utils/connectors/tool-definition
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
+  CALENDAR_CREATE_NO_APPROVAL_TEXT,
   CALENDAR_CREATE_UNCONFIRMED_TEXT,
   CALENDAR_FAILURE_TEXT,
   buildCalendarEventId,
@@ -830,15 +831,17 @@ export async function buildGoogleCalendarTools(
         throw toolFailure(event.message, 400)
       }
 
+      const approvalId = (options as { approvalId?: unknown } | undefined)
+        ?.approvalId
+
+      if (typeof approvalId !== 'string' || !approvalId) {
+        throw toolFailure(CALENDAR_CREATE_NO_APPROVAL_TEXT, 400)
+      }
+
       const context = await readContext(
         GOOGLE_CALENDAR_TOOL_SCOPES[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!,
       )
-      const approvalId = (options as { approvalId?: unknown }).approvalId
-      const eventId = await buildCalendarEventId(
-        typeof approvalId === 'string' && approvalId
-          ? `${userId}:${approvalId}`
-          : undefined,
-      )
+      const eventId = await buildCalendarEventId(`${userId}:${approvalId}`)
       const created = await createCalendarEvent(event.body, eventId, context)
 
       if (!created.ok) {

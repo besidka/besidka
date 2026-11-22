@@ -85,6 +85,14 @@ export type DriveImportFailureCode
     | 'empty'
     | 'failed'
 
+export type DriveRequestStage = 'metadata' | 'export' | 'download'
+
+export interface DriveGoogleDetail {
+  stage: DriveRequestStage
+  status: number
+  reason: string | null
+}
+
 export type DriveImportedFile = Pick<
   FileMetadata,
   'id' | 'storageKey' | 'name' | 'size' | 'type' | 'source' | 'expiresAt'
@@ -111,6 +119,7 @@ export type DriveImportItemResult
     status: 'failed'
     code: DriveImportFailureCode
     reason: string
+    google?: DriveGoogleDetail
   }
 
 export interface DriveImportResponse {
@@ -345,6 +354,77 @@ export const GOOGLE_DRIVE_FAILURE_REASONS: Readonly<
   reauthorize: 'Google no longer accepts the connection. Reconnect Google '
     + 'Drive on the API Keys page.',
   failed: 'This file could not be copied. Try again in a moment.',
+}
+
+export const GOOGLE_DRIVE_REASON_SENTENCES: Readonly<Record<string, string>> = {
+  notFound: 'Google Drive says Besidka cannot see this file. Pick it again '
+    + 'to give access. If it is still missing, it was deleted or moved.',
+  appNotAuthorizedToFile: 'Besidka has not been given access to this file '
+    + 'yet. Pick it again in Google Drive to give access.',
+  insufficientFilePermissions: 'Your Google account is not allowed to read '
+    + 'this file. Ask its owner to share it with you, then pick it again.',
+}
+
+const GOOGLE_DRIVE_REASON_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
+
+export function readDriveGoogleReason(value: unknown): string | null {
+  return typeof value === 'string' && GOOGLE_DRIVE_REASON_PATTERN.test(value)
+    ? value
+    : null
+}
+
+/**
+ * The sentence for a failed file: the generic one for its code, or a more
+ * specific one when Google named a reason that tells the user what to do.
+ * A file Besidka may not read for lack of access stays on the code's own
+ * sentence unless the reason is one of those below.
+ */
+export function describeDriveFailure(
+  code: DriveImportFailureCode,
+  google?: Pick<DriveGoogleDetail, 'reason'>,
+): string {
+  const reason = google?.reason ?? null
+  const isAccessCode = code === 'not_found' || code === 'no_access'
+
+  if (
+    isAccessCode
+    && reason
+    && Object.hasOwn(GOOGLE_DRIVE_REASON_SENTENCES, reason)
+  ) {
+    return GOOGLE_DRIVE_REASON_SENTENCES[reason]!
+  }
+
+  return GOOGLE_DRIVE_FAILURE_REASONS[code]
+}
+
+const PICK_AGAIN_CODES: ReadonlySet<DriveImportFailureCode> = new Set([
+  'not_found',
+  'no_access',
+  'rate_limited',
+  'failed',
+])
+
+/**
+ * Whether opening the Picker on the file again can fix the failure. A file
+ * that is too large, empty, a folder or of a kind that cannot be attached
+ * fails the same way however often it is picked, and a lost connection is
+ * fixed on the API Keys page.
+ */
+export function canPickDriveFileAgain(
+  code: DriveImportFailureCode | undefined,
+): boolean {
+  return code === undefined || PICK_AGAIN_CODES.has(code)
+}
+
+export function formatDriveGoogleDetail(
+  google: DriveGoogleDetail | undefined,
+): string | null {
+  if (!google) {
+    return null
+  }
+
+  return `Google: ${google.reason ?? `HTTP ${google.status}`}, `
+    + `${google.stage}`
 }
 
 export const GOOGLE_DRIVE_REFRESH_REASONS: Readonly<
