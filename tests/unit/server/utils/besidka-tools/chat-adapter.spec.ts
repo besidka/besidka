@@ -513,10 +513,20 @@ describe('Besidka tools in a send that holds Google data', () => {
   const SPREADING_TOOLS = [
     'add_project_text',
     'add_project_note',
+    'create_project',
+    'rename_file',
+    'share_artifact',
+    'update_chat',
+    'update_project',
     'update_project_instructions',
     'update_project_knowledge_item',
-    'share_artifact',
   ]
+  const FREE_TEXT_INPUTS: Record<string, unknown> = {
+    create_project: { name: 'Budget from the mail' },
+    rename_file: { fileId: 'file-1', name: 'Budget from the mail.txt' },
+    update_chat: { slug: CURRENT_SLUG, title: 'Budget from the mail' },
+    update_project: { projectId: 'prj_1', name: 'Budget from the mail' },
+  }
 
   beforeEach(() => {
     mocks.readMcpFile.mockReset()
@@ -562,7 +572,7 @@ describe('Besidka tools in a send that holds Google data', () => {
       )
     })
 
-  it('offers none of the five spreading tools, even set to Always allow',
+  it('offers none of the spreading tools, even set to Always allow',
     async () => {
       const allowEntries = SPREADING_TOOLS.map((name) => {
         return [name, 'allow' as ToolPermissionMode]
@@ -600,6 +610,25 @@ describe('Besidka tools in a send that holds Google data', () => {
 
       expect(failure.message).toContain('does not copy it into a project')
     })
+
+  it.each(Object.keys(FREE_TEXT_INPUTS))(
+    'refuses %s once Google content arrived mid-send',
+    async (name) => {
+      let tainted = false
+      const { run } = await build({
+        modes: modesWith({ [name]: 'allow' }),
+        holdsGoogleData: () => tainted,
+      })
+
+      tainted = true
+
+      const failure = await failureOf(
+        execute(run, toBesidkaChatToolName(name), FREE_TEXT_INPUTS[name]),
+      )
+
+      expect(failure.message).toContain('does not copy it into a project')
+    },
+  )
 
   it('withholds Google content from reads in a send without Google data, '
     + 'and allows it in a flagged send', async () => {
