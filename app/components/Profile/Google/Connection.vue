@@ -198,6 +198,11 @@ const CAPABILITY_LABELS: Partial<Record<GoogleCapability, string>> = {
 
 const RESULT_MESSAGES: Record<GoogleConnectResult, ResultMessage> = {
   connected: { type: 'success', title: 'Google Drive connected' },
+  partial: {
+    type: 'info',
+    title: 'Google Drive connected with less access',
+    description: 'Only what Google granted is listed on this card.',
+  },
   denied: {
     type: 'info',
     title: 'Google Drive was not connected',

@@ -65,6 +65,7 @@ function setStatus(patch: Partial<GoogleConnectionStatusResponse> = {}) {
     connection: null,
     canConnect: true,
     dedicatedClient: false,
+    byo: null,
     ...patch,
   }
 }
