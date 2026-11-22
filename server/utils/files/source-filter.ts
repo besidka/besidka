@@ -1,6 +1,7 @@
 import { and, eq, inArray, like, ne } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { DOCUMENT_MEDIA_TYPES } from '#shared/utils/documents'
+import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
 import {
   isFileLinkedToKnowledgeSql,
   isFileNotLinkedToKnowledgeSql,
@@ -12,6 +13,7 @@ export const filesSourceFilters = [
   'assistant',
   'project',
   'library',
+  'google',
 ] as const
 
 export type FilesSourceFilter = typeof filesSourceFilters[number]
@@ -31,6 +33,11 @@ function getSourceOnlyCondition(source: FilesSourceFilter) {
       return isFileLinkedToKnowledgeSql(schema.files.id)
     case 'library':
       return eq(schema.files.source, 'upload')
+    case 'google':
+      return and(
+        eq(schema.files.source, 'upload'),
+        inArray(schema.files.externalSource, GOOGLE_EXTERNAL_SOURCES),
+      )
     case 'upload':
     case 'assistant':
       return and(eq(schema.files.source, source), isNotLinked)

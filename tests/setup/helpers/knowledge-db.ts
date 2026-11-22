@@ -23,6 +23,8 @@ export interface KnowledgeTestDb {
     source?: 'upload' | 'assistant'
     expiresAt?: number | null
     createdAt?: number
+    externalSource?: 'google' | null
+    externalId?: string | null
   }) => void
   insertStorage: (input: {
     userId: number
@@ -302,13 +304,15 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
     source?: 'upload' | 'assistant'
     expiresAt?: number | null
     createdAt?: number
+    externalSource?: 'google' | null
+    externalId?: string | null
   }): void {
     const createdAt = input.createdAt ?? nowSeconds()
 
     sqlite.prepare(
       'insert into files (id, created_at, updated_at, user_id, storage_key,'
-      + ' name, size, type, source, expires_at)'
-      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      + ' name, size, type, source, expires_at, external_source,'
+      + ' external_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       createdAt,
@@ -320,6 +324,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       input.type ?? 'application/pdf',
       input.source ?? 'upload',
       input.expiresAt ?? null,
+      input.externalSource ?? null,
+      input.externalId ?? null,
     )
   }
 

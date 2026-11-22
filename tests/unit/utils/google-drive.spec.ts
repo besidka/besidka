@@ -8,6 +8,7 @@ import {
   buildDriveCopyName,
   buildDriveFileLink,
   driveFilePartFromFile,
+  getDriveRefreshFailureReason,
   isDriveFilePart,
   isDriveFileReference,
   isDriveFileId,
@@ -196,5 +197,22 @@ describe('Picker page and frame sources', () => {
     expect(isGooglePickerPagePath('/admin/legal')).toBe(false)
     expect(isGooglePickerPagePath('/artifacts/token')).toBe(false)
     expect(isGooglePickerPagePath('/profile/keys')).toBe(false)
+  })
+})
+
+describe('Drive refresh failure reasons', () => {
+  it('has a reason for the refresh-only codes', () => {
+    expect(getDriveRefreshFailureReason('unknown_version'))
+      .toContain('cannot tell whether your copy is current')
+    expect(getDriveRefreshFailureReason('deleted')).toContain('in the trash')
+    expect(getDriveRefreshFailureReason('not_a_copy'))
+      .toContain('not a copy')
+  })
+
+  it('falls back to the import reasons for every other code', () => {
+    expect(getDriveRefreshFailureReason('too_large'))
+      .toBe(GOOGLE_DRIVE_FAILURE_REASONS.too_large)
+    expect(getDriveRefreshFailureReason('no_access'))
+      .toBe(GOOGLE_DRIVE_FAILURE_REASONS.no_access)
   })
 })

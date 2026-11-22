@@ -225,6 +225,7 @@
       :resolve-delivery="resolveDelivery"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
+      @replace="onAttachedFileReplaced"
       @upload="uploadFiles"
     />
     <LazyChatInputArtifactPicker
@@ -669,6 +670,8 @@ const {
 } = useChatFiles(files, canAttachMediaType, resolveDelivery)
 
 const googleDriveFeature = useFeature('google.drive')
+const { routeSlug: chatRouteSlug } = useChatRoute()
+const { rememberChatGoogleData } = useChatGoogleData()
 const {
   driveImports,
   importingCount: driveImportingCount,
@@ -1559,6 +1562,14 @@ function onFilesAttached(attachedFiles: AttachedFile[]): number {
 
   files.value = [...files.value, ...newFiles as FileMetadata[]]
 
+  const holdsGoogleCopy = newFiles.some((file) => {
+    return file.externalSource === 'google'
+  })
+
+  if (holdsGoogleCopy && chatRouteSlug.value) {
+    rememberChatGoogleData(chatRouteSlug.value, true)
+  }
+
   return newFiles.length
 }
 
@@ -1566,6 +1577,24 @@ function onFilesDetached(fileIds: string[]) {
   const idsToDetach = new Set(fileIds)
 
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
+}
+
+function onAttachedFileReplaced(previousId: string, file: AttachedFile) {
+  const isAttached = files.value.some(candidate => candidate.id === previousId)
+
+  if (!isAttached || getFileRejection(file, resolveDelivery.value)) {
+    return
+  }
+
+  const isAlreadyAttached = files.value.some((candidate) => {
+    return candidate.storageKey === file.storageKey
+  })
+
+  files.value = isAlreadyAttached
+    ? files.value.filter(candidate => candidate.id !== previousId)
+    : files.value.map((candidate) => {
+      return candidate.id === previousId ? file as FileMetadata : candidate
+    })
 }
 
 const pastedTexts = usePastedTexts()

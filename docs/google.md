@@ -1265,6 +1265,7 @@ deletes it from Files.
 |---|---|---|
 | `POST /api/v1/google/drive/picker-token` | Answers `{ accessToken, expiresInSeconds, apiKey, appId }` with `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer` | Same-origin write guard, session, `google.drive` active, 30 per minute (`google-picker-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files` | Body `{ items: [{ id, resourceKey? }] }`, 1 to 5 items, unique ids; answers `{ results }`, one per file | Same gate, 10 per minute (`google-drive-import-rate-limit:<userId>`), body at most 8 KiB, legal consent; 404 or 409 before any read when Google is not connected or needs re-authorization |
+| `POST /api/v1/google/drive/files/refresh` | Body `{ ids }`, 1 to 5 unique Besidka file ids; answers `{ results }`, one per copy (section 12.12) | The same gate and the same `import` rate bucket |
 
 Ids match `^[A-Za-z0-9_-]{10,128}$` and resource keys `^[A-Za-z0-9_-]{1,128}$`
 (both go into a URL or a header), checked by the route and again before every
@@ -1616,9 +1617,9 @@ Where BES-278 differs from what was built, and the brief won:
 - The ticket sets a 5 MB snapshot cap. This build uses 20 MiB, the Office
   upload cap, because copies are normal files (section 12.4).
 - The ticket hides snapshots from the Uploaded list behind a `drive` source.
-  Copies stay in the Uploaded list here (nothing else lets a user see and
-  delete one before the file manager tab exists) and have their own storage
-  category. They stay out of MCP `list_files` and `read_file` as before
+  Copies stay in the Uploaded list here and have their own storage category;
+  the Drive tab (section 12.12) is a filtered view of the same rows and did
+  not move them. They stay out of MCP `list_files` and `read_file` as before
   (`fileHoldsNoGoogleContent`).
 - The ticket and the plan mention a CSP with script, connect and image
   sources. The app has no such directives, so only `frame-src` grows
@@ -1630,15 +1631,231 @@ Where BES-278 differs from what was built, and the brief won:
 
 ### 12.11 Not built, and known limits
 
-- No Drive tools for the model, no Drive tab in the file manager, no write to
-  Drive, no Gmail or Calendar.
+- No Drive tools for the model, no write to Drive, no Gmail or Calendar. The
+  file manager has a Google Drive tab (section 12.12).
 - When the Calendar child adds `calendar.events` to Besidka's client, the
   Picker token route will refuse every grant that holds it (section 12.3):
   an access token cannot be narrowed, so that child must give the Picker a
   Drive-only grant (a second client or a separate consent), not widen this
   route.
-- A copy is a snapshot: Drive edits show up only when the file is picked again
-  (a new `modifiedTime` makes a new copy; the older copy stays with the
-  messages that used it).
+- A copy is a snapshot: a Drive edit shows up only when the file is picked
+  again or refreshed from the Drive tab (a new `modifiedTime` makes a new
+  copy; the older copy stays with the messages that used it, section 12.12).
 - A resource key is used for the copy but not stored, so a later "Open in
-  Google Drive" for a file shared only by link may ask for access.
+  Google Drive" for a file shared only by link may ask for access, and a
+  refresh of such a copy may answer "no access" (section 12.12).
+
+### 12.12 The Drive tab (tab child, G-6)
+
+Built on `feat/google-drive-tab`. A "Google Drive" tab in the file manager
+lists the Drive copies the user already made, picks more, refreshes a copy
+whose original changed, attaches copies to the message and removes them.
+Code: `app/components/ChatInput/Files/Modal/Select/Drive.client.vue`,
+`app/composables/google-drive-library.ts`, `app/utils/{google-drive-tab,
+file-manager-dialog,file-manager-sources}.ts`,
+`server/api/v1/google/drive/files/refresh.post.ts`, `refreshDriveCopies` in
+`server/utils/google/drive-import.ts`, the `google` source in
+`server/utils/files/source-filter.ts`. The modal's tab contract is in
+`docs/files.md`, "Source Tabs".
+
+**Registration and visibility.** `getFileManagerExtraSourceTabs()` returns one
+entry (`id: 'google-drive'`, label "Google Drive", `data-testid`
+`files-source-google-drive`, a lazy component). It resolves
+`useFeature('google.drive')` when `Select.client.vue` sets up and reads it in
+`isEnabled`, so the tab shows only while the flag is active for the user
+(enabled and opted in) and appears or goes away live. The tab label has no
+icon (the tabs are radio inputs); the neutral `GOOGLE_DRIVE_ICON` marks the
+states, the empty state and the pick button, never Google's logo, and rows use
+the existing MIME icons, never Google's `iconLink`.
+
+**Requests.** A user without `google.drive` sees no tab and no request. For a
+user with the flag, nothing is requested when the modal opens: the tab's
+component, `GET /api/v1/google/connections` (the cached status, the same as the
+API Keys page) and `GET /api/v1/files?source=google` start only when the tab is
+selected. Google is never called when the list opens, and the Picker script
+loads only when "Pick from Google Drive" is pressed.
+
+**States.**
+
+| State | What shows |
+|---|---|
+| Status loading | The grid skeleton |
+| Not connected | "Connect Google Drive on the API Keys page to pick files from it." and "Open API Keys" (closes the dialog, goes to `/profile/keys?tab=google`) |
+| Needs re-authorization | "Google no longer accepts the connection. Reconnect Google Drive on the API Keys page." and "Reconnect" |
+| Status failed | "The Google Drive connection could not be checked." and "Try again" |
+| Connected, no copies | "No Google Drive files yet", "Pick files in Google Drive and Besidka saves a copy here, ready to attach to a message." and "Pick from Google Drive" |
+| Connected, copies | The list, a "Pick from Google Drive" button above it, "Load more" below, the footer when something is selected |
+| Search with no match | "No files found", "Try a different search term" |
+
+**List source.** The existing `GET /api/v1/files` got one more `source` value,
+`google`: `source = 'upload'` and `external_source` in
+`GOOGLE_EXTERNAL_SOURCES`, for the signed-in user only, newest first, the same
+search, `offset` and `limit` (at most 100), and the connector-image exclusion
+every source gets. Decision: copies are filterable, not excluded elsewhere.
+They still show in Uploaded, as before, because hiding them would change the
+list of a user without the flag and the Picker child left them there; the
+Drive tab is a view of the same rows, so deleting a copy in either place
+removes it in both (Select reloads its list when the user returns from the
+Drive tab after a change). MCP `list_files` keeps its own source list
+(`all`, `upload`, `assistant`, `project`) and cannot reach the new value; Drive
+copies stay out of MCP by `fileHoldsNoGoogleContent`, out of shares and out of
+project knowledge (section 5.3). The tab uses its own `useFileManager()`
+instance with `source = 'google'`, so the rows, selection (click, Shift range,
+select all), pagination, search, skeletons, `Load more`, rename and the delete
+and bulk-delete routes are the Uploaded tab's own code. Touch-swipe range
+selection is the same code too: `useFileTouchSelect`
+(`app/composables/file-touch-select.ts`), extracted from `Select.client.vue`
+and used by both. The `/` shortcut and the search field belong to
+`Select.client.vue`, which hands the tab its search text. A row is the existing row: in the list view the
+name, type and size, the date it was copied ("Added", from `lg` up) and the
+expiry; the grid tile shows the icon or image and the name, with no type, size
+or date. That is a deviation from "name, type, size, when copied" on every
+width, kept so the tab has exactly the Uploaded tab's rows. Whether the Drive
+original changed since the copy is NOT shown: D1 holds only the `modifiedTime`
+at the copy, so knowing it would take one Google call per row. The answer comes
+from Refresh.
+
+**Pick more and the dialog stacking decision.** The button runs the same
+`useGooglePicker().pick()` as the composer (consent first, at most 5 files),
+then `POST /api/v1/google/drive/files`, then reloads the first page. It does
+not use `useChatDriveFiles`, which attaches to the composer and counts message
+slots. The Picker is Google's iframe appended to `body`; the file manager is a
+`showModal()` dialog in the top layer, which covers everything outside it, and
+no z-index changes that. So the tab suspends the dialog: `Modal.client.vue`
+provides `FILE_MANAGER_DIALOG_KEY` (`close`, `suspend`, `resume`), `suspend()`
+closes the dialog without resetting the modal state (the open tab, its search
+and its pending Picker stay mounted, the same idea as `closeForPreview`), and
+`resume()` shows it again on every outcome (picked, canceled, failed, even a
+throw) before the copy request starts, so progress shows in the tab ("Opening
+Google Drive", then "Copying"). The send consent comes first, while the dialog
+is still open: both consent dialogs are `showModal()` dialogs opened later, so
+they sit above the file manager. The pick, copy and refresh buttons are
+disabled while any of them runs. Failures use the Picker's own messages as
+toasts; a Picker `not-connected` or `reauthorize` answer, or a 404 or 409 from
+a route, re-reads the connection status so the tab switches to the matching
+state. NOT VERIFIED without a browser and a Google account: that the dialog
+closing and reopening around the Picker behaves on iOS Safari and in the
+installed PWA (focus return, keyboard, scroll position of the list).
+
+**Refresh.** `POST /api/v1/google/drive/files/refresh`, body `{ ids }` with 1
+to 5 Besidka file ids, unique. Gate: the same as the import route (same-origin
+write guard, session, `google.drive`, the `import` rate bucket of 10 a minute
+shared with the import route, body at most 8 KiB through the shared reader,
+legal consent, 404 or 409 before any read when Google is not connected or needs
+re-authorization). `refreshDriveCopies` first loads the user's own rows with
+`external_source = 'google'`; an id that is not one (another user's, missing,
+or an ordinary upload) fails as `not_a_copy` with no Google call and no token.
+For each remaining copy, one at a time, with a fresh token, it makes one
+metadata call and:
+
+| Result | When |
+|---|---|
+| `up_to_date` | The Drive `modifiedTime` equals the one stored with this copy, to the second. Nothing is downloaded. |
+| `updated` | It differs: the file is copied again through the import code (same limits, export choices, Office checks and storage rules). The answer carries the new file. |
+| `newer_copy` | It differs, but a copy of the current version already exists (the reuse rule of section 12.4 found one), so nothing is copied and that copy is returned. This is what refreshing an older row again answers. |
+| `failed` | With `code` and `reason`: `deleted` (in the trash in Drive), `unknown_version`, `no_access`, `not_downloadable`, `too_large`, `export_too_large`, `storage_full`, `unsupported_type`, `rate_limited`, `reauthorize`, `empty`, `failed`, `not_a_copy` |
+
+The two null cases of the time comparison. Drive gives no `modifiedTime`: the
+version is unknown, so nothing is copied (a copy could be a duplicate of up to
+20 MiB each time) and the file fails as `unknown_version` ("Google Drive did
+not say when this file last changed, so Besidka cannot tell whether your copy
+is current. Your copy is unchanged."). The copy has no stored time (made when
+Drive gave none): Drive's `version` is not stored (no schema change was
+allowed), so there is nothing to compare it with, and the file is copied once;
+the new copy carries the time, so refreshing the older row again answers
+`newer_copy` and nothing more is downloaded.
+
+Decision: a refresh never rewrites a copy in place. The R2 object, the
+extracted Office text, the KV file cache, the storage statistics and a possible
+change of name or type on the export fallback all hang off a stored copy, and
+messages already sent point at its storage key. So a changed original becomes a
+new copy and the selected one stays: old messages keep showing (and sending
+to models) the earlier snapshot, as section 12.11 says, and new attachments use
+the new copy. The toast says "Copied the new version of <name>" with "The
+earlier copy stays in your files for the messages that used it." The list then
+shows both copies, newest first.
+
+Each refresh of a changed file adds one more copy; earlier copies stay until
+the user deletes them (the trash button on the row, or select them and press
+Delete, in the Drive tab or in Uploaded) or retention removes them (the
+account's file retention, as for any upload). Copies count against the storage
+allowance until then. A change within the same second as the stored time is not
+noticed (the stored time has one-second resolution, as in section 12.4).
+
+An attached copy is swapped. When the refreshed (or already newer) copy
+replaces one that is currently attached in the composer, the tab emits
+`replace`, `Select.client.vue` and `Modal.client.vue` forward it, and
+`ChatInput.client.vue` puts the new file in the same position of the attached
+files (one assignment, so the chip does not flicker; if the new copy is already
+attached, the old chip is dropped; a copy the model cannot read is not
+swapped). Copies in earlier, sent messages are never touched. The toast says
+"It replaced the copy attached to your message." before the earlier-copy
+sentence.
+
+A copy of a file that was shared only by link was made with a resource key that
+is not stored (no column, and no schema change was allowed), so refresh asks
+Drive without it and Drive may answer "not found" for such a file. A refresh
+cannot tell that case from a file whose access was lost, so every metadata 404
+is reported as `no_access`: "Besidka has no access to this file. Pick it again
+in Google Drive to give access." Picking it again stores a copy with the key
+the Picker returns. Whether Drive answers a file whose access was lost under
+`drive.file` with 404 or 403 is NOT VERIFIED; both give `no_access`. Requests
+from the UI carry at most 5 ids and go one after the other (a larger selection
+is split); results are reported per file by name.
+
+**Attach and remove.** "Attach" in the footer attaches the selected copies
+through the same `attach` event as the Select tab, so they become ordinary
+chips. The tab applies the composer's own model rules (the unsupported-file
+reasons and captions of Select, from `canAttachMediaType` and
+`resolveDelivery`, which the host now passes to every extra tab) and detaches
+copies that are deselected. The modal now keeps `externalSource` and
+`externalId` on an attached file, so the composer builds the Drive reference
+part live and, in an owned chat, marks it as holding Google data right away
+(`ChatInput.client.vue`), which greys the models the data rule refuses. The
+send path is unchanged and still flags the chat before the data guard
+(section 12.6). Remove uses `DELETE /api/v1/files/[id]` and
+`POST /api/v1/files/delete/bulk`, with the file manager's confirmation:
+"Delete "<name>" from Besidka? The original in Google Drive is not deleted."
+(for a selection: "Delete N files from Besidka? The originals in Google Drive
+are not deleted."). Deleting never calls Google, and deleted attachments are
+detached through the existing `files:deleted` hook.
+
+**Tests.** Google and the Picker are mocked everywhere: the refresh route
+(`tests/integration/api/google-drive-refresh.spec.ts`: gates, ownership, each
+result, sequential calls and tokens, the shared rate limit), the list filter
+(`files-index-google-source.spec.ts`), the composable
+(`google-drive-library.spec.ts`: suspend and resume order on every outcome,
+the single pick, chunking), the tab (`Drive.client.spec.ts`), the host
+(`Modal.client.spec.ts`, `Select.client.spec.ts`) and the additive row, menu
+and footer actions.
+
+NOT VERIFIED without a real Google account or a browser, for the owner:
+
+1. Open the file manager as a user with `google.drive`: the "Google Drive" tab
+   is there after Projects; for a user without the flag it is not, and
+   DevTools, Network shows no Google or `source=google` request when the modal
+   opens.
+2. Not connected, then connected with no copies, then after a pick: the states
+   above, and the list in grid and list view, search and "Load more".
+3. "Pick from Google Drive": the file manager closes, the Picker opens and is
+   usable, and after a pick or Cancel the file manager is back on the Drive tab
+   with the same search; on a pick, "Copying" shows and the new copies appear.
+   Repeat on iOS Safari and in the installed PWA (the Picker must receive
+   taps, and the dialog must reopen with the keyboard closed).
+4. Edit a picked Doc in Drive, then Refresh the row and a selection: the new
+   copy appears above the old one, the old one is still attachable, and an
+   older chat message still shows the earlier version. Refresh again: "<name> is
+   up to date" (or "A newer copy of <name> is already in your files" on the old
+   row). With the old copy attached to the message before refreshing, its chip
+   becomes the new copy in the same position.
+5. Trash a file in Drive and refresh it; remove a file's sharing and refresh it
+   (the "no access" wording either way); refresh a file that was shared only by
+   a link (picked with a resource key).
+5a. Touch-swipe over several rows in the Drive tab on a phone, in the list and
+   the grid view, on iOS Safari and in the installed PWA.
+6. Select copies and "Attach": they become chips; the model picker greys the
+   models the data rule refuses; send once.
+7. Delete one copy and a selection: the confirmation names the Drive original,
+   Uploaded no longer lists them and the storage bar updates.
+8. Disconnect Google on the API Keys page and reopen the tab: the copies are
+   gone and the "not connected" state shows.

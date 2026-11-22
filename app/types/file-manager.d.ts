@@ -39,7 +39,7 @@ export type AttachedFile = Pick<
 }
 
 export type ViewMode = 'grid' | 'list'
-export type FileSourceFilter = FileMetadata['source'] | 'project'
+export type FileSourceFilter = FileMetadata['source'] | 'project' | 'google'
 export type FileKind = 'image' | 'document'
 export type FileKindFilter = 'all' | FileKind
 

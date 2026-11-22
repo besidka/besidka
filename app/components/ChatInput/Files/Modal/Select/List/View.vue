@@ -182,6 +182,17 @@
               <Icon name="lucide:download" size="12" />
             </a>
             <button
+              v-if="refreshable"
+              type="button"
+              class="btn btn-circle btn-xs btn-ghost"
+              aria-label="Refresh from Google Drive"
+              title="Refresh from Google Drive"
+              data-testid="files-action-refresh"
+              @click="$emit('refresh', file)"
+            >
+              <Icon name="lucide:refresh-cw" size="12" />
+            </button>
+            <button
               type="button"
               class="btn btn-circle btn-xs btn-ghost"
               aria-label="Rename file"
@@ -219,11 +230,13 @@ withDefaults(defineProps<{
   allSelected: boolean
   hasSelection: boolean
   stickyOffset?: boolean
+  refreshable?: boolean
   unsupportedReasons?: Record<string, string>
   unsupportedCaptions?: Record<string, string>
   textNotes?: Record<string, FileDeliveryHint>
 }>(), {
   stickyOffset: false,
+  refreshable: false,
   unsupportedReasons: () => ({}),
   unsupportedCaptions: () => ({}),
   textNotes: () => ({}),
@@ -234,6 +247,7 @@ defineEmits<{
   'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
+  'refresh': [file: FileManagerFile]
   'toggle-select-all': []
 }>()
 

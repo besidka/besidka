@@ -45,7 +45,12 @@
         :attached-ids="attachedIds"
         :search="search"
         :view-mode="viewMode"
+        :can-attach-media-type="canAttachMediaType"
+        :resolve-delivery="resolveDelivery"
         @attach="onExtraSourceAttach"
+        @detach="onExtraSourceDetach"
+        @replace="onExtraSourceReplace"
+        @changed="onExtraSourceChanged"
       />
       <LazyChatInputFilesModalSelectGridSkeleton
         v-else-if="isInitialLoading && viewMode === 'grid'"
@@ -175,6 +180,7 @@
 
 <script setup lang="ts">
 import type {
+  AttachedFile,
   ExtraFileSourceTab,
   FileManagerFile,
   FileSourceFilter,
@@ -200,7 +206,9 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
   detach: [fileIds: string[]]
+  replace: [previousId: string, file: AttachedFile]
   deleted: []
+  changed: []
   preview: [file: FileManagerFile]
 }>()
 
@@ -316,6 +324,7 @@ const textNotes = computed<Record<string, FileDeliveryHint>>(() => {
 
 const extraSourceTabs = getFileManagerExtraSourceTabs()
 const activeExtraTabId = shallowRef<string | null>(null)
+const isListStale = shallowRef<boolean>(false)
 
 const sourceTabs = computed<FileSourceTab[]>(() => {
   return resolveFileManagerSourceTabs({
@@ -348,8 +357,16 @@ function selectSourceTab(tab: FileSourceTab): void {
     return
   }
 
+  const isSameSource = source.value === tab.id
+
   activeExtraTabId.value = null
   source.value = tab.id
+
+  if (isListStale.value && isSameSource) {
+    fetchFiles(true)
+  }
+
+  isListStale.value = false
 }
 
 watch(activeExtraTab, (tab) => {
@@ -364,8 +381,25 @@ function onExtraSourceAttach(attachedFiles: FileManagerFile[]): void {
   emit('attach', attachedFiles)
 }
 
+function onExtraSourceDetach(fileIds: string[]): void {
+  emit('detach', fileIds)
+}
+
+function onExtraSourceReplace(
+  previousId: string,
+  file: AttachedFile,
+): void {
+  emit('replace', previousId, file)
+}
+
+function onExtraSourceChanged(): void {
+  isListStale.value = true
+  emit('changed')
+}
+
 function reset(): void {
   activeExtraTabId.value = null
+  isListStale.value = false
   resetFileManager()
 }
 
@@ -484,105 +518,17 @@ const projectGroupsRef = shallowRef<{
 const searchInputRef = shallowRef<{ inputRef: HTMLInputElement } | null>(null)
 const activeElement = useActiveElement()
 
-const isTouchSelecting = shallowRef<boolean>(false)
-const touchStartIndex = shallowRef<number | null>(null)
-const touchedIndices = ref<Set<number>>(new Set())
-const touchGroupId = shallowRef<string | null>(null)
-const touchSwipeHandled = shallowRef<boolean>(false)
+const {
+  isTouchSelecting,
+  touchedIndices,
+  touchGroupId,
+  touchSwipeHandled,
+  attachTouchListeners,
+  detachTouchListeners,
+} = useFileTouchSelect({ selectRange, selectProjectGroupRange })
 const autoSelectedIds = ref<Set<string>>(new Set())
 const isComponentActive = shallowRef<boolean>(false)
 const scrollAreaRef = useTemplateRef<HTMLDivElement>('scrollAreaRef')
-
-function getFileIndexFromElement(element: Element | null): number | null {
-  if (!element) return null
-  const fileElement = element.closest('[data-file-index]')
-  if (!fileElement) return null
-  const index = fileElement.getAttribute('data-file-index')
-
-  return index !== null ? parseInt(index, 10) : null
-}
-
-function getProjectGroupIdFromElement(element: Element | null): string | null {
-  if (!element) return null
-
-  const groupElement = element.closest('.js-project-group')
-
-  return groupElement?.getAttribute('data-project-group-id') ?? null
-}
-
-function handleTouchStart(event: TouchEvent) {
-  const touch = event.touches[0]
-  if (!touch) return
-
-  const element = document.elementFromPoint(touch.clientX, touch.clientY)
-  const index = getFileIndexFromElement(element)
-
-  if (index !== null) {
-    isTouchSelecting.value = true
-    touchStartIndex.value = index
-    touchGroupId.value = getProjectGroupIdFromElement(element)
-    touchedIndices.value = new Set([index])
-  }
-}
-
-function handleTouchMove(event: TouchEvent) {
-  if (!isTouchSelecting.value || touchStartIndex.value === null) return
-
-  const touch = event.touches[0]
-  if (!touch) return
-
-  const element = document.elementFromPoint(touch.clientX, touch.clientY)
-  const index = getFileIndexFromElement(element)
-
-  if (getProjectGroupIdFromElement(element) !== touchGroupId.value) return
-
-  if (index !== null && !touchedIndices.value.has(index)) {
-    touchedIndices.value.add(index)
-    event.preventDefault()
-  }
-}
-
-function handleTouchEnd() {
-  if (!isTouchSelecting.value) return
-
-  if (touchedIndices.value.size > 1) {
-    const indices = Array.from(touchedIndices.value).sort((a, b) => a - b)
-    const startIndex = indices[0]!
-    const endIndex = indices[indices.length - 1]!
-
-    if (touchGroupId.value) {
-      selectProjectGroupRange(touchGroupId.value, startIndex, endIndex)
-    } else {
-      selectRange(startIndex, endIndex)
-    }
-
-    touchSwipeHandled.value = true
-    setTimeout(() => {
-      touchSwipeHandled.value = false
-    }, 100)
-  }
-
-  isTouchSelecting.value = false
-  touchStartIndex.value = null
-  touchGroupId.value = null
-  touchedIndices.value = new Set()
-}
-
-function attachTouchListeners(element: HTMLElement | null) {
-  if (!element) return
-
-  element.addEventListener('touchstart', handleTouchStart, { passive: true })
-  element.addEventListener('touchmove', handleTouchMove, { passive: false })
-  element.addEventListener('touchend', handleTouchEnd)
-}
-
-function detachTouchListeners(element: HTMLElement | null) {
-  if (!element) return
-
-  element.removeEventListener('touchstart', handleTouchStart)
-  element.removeEventListener('touchmove', handleTouchMove)
-  element.removeEventListener('touchend', handleTouchEnd)
-}
 
 function getViewContainers(): HTMLElement[] {
   const containers: Array<HTMLElement | null | undefined> = [
