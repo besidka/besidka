@@ -666,10 +666,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `user_settings.typesafe_roles` (the skill selector J7 is opt-in: off for a
   null column), the failure direction of each role, J1 to J7, the SS-7 and
   SS-14 evals, the delta audit fixes #560, and the `experimental_decide` seam
-  to re-check on SDK upgrades), the as-built phase map (section 5), and the
+  to re-check on SDK upgrades), the as-built phase map (section 5), the
   decision log (section 7: no expiry, singletons, entry caps, the write lock,
   the pending Anthropic token factor, non-atomic leases, deferred issues
-  #537 to #540)
+  #537 to #540), and the cross-project memory proposal (3.20: per-project
+  `share_memory`, the `search_other_projects` tool, no entry FTS)
 - `docs/artifacts.md` - Artifacts entry point (A-10): the six `artifacts.*`
   flags and their rollout rules, the golden-prompt evals
   (`tests/evals/artifacts/prompts.json`, `scripts/artifact-evals.mjs` run
