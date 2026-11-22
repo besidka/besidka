@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import {
   createFileAccessToken,
   hasShareTokenFileAccess,
 } from '~~/server/utils/files/file-share-access'
+
+mockNuxtImport('useRuntimeConfig', () => {
+  return () => ({ encryptionKey: 'fake-file-access-token-secret' })
+})
 
 const event = {} as Parameters<typeof createFileAccessToken>[1]
 
@@ -39,7 +44,6 @@ async function tokenFor(fileId: string) {
 describe('hasShareTokenFileAccess and chats that hold Google data', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
-    vi.stubGlobal('useRuntimeConfig', () => ({ encryptionKey: 'test-key' }))
   })
 
   it('serves a granted file of an ordinary chat', async () => {
