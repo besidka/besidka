@@ -9,9 +9,9 @@ type PurgeGoogleConnectionsDatabase = Pick<ReturnType<typeof useDb>, 'delete'>
 
 /**
  * Deletes a user's `google_connections` rows, which have no foreign key to
- * `users` and so never cascade. Rows only: the tokens they held are revoked
- * at Google by the connection flow before this runs, and the user's copies of
- * Google files are removed with the rest of their `files` rows.
+ * `users` and so never cascade. Rows only: revoking the tokens at Google
+ * belongs to the connection flow and is not done here, and the user's copies
+ * of Google files are removed with the rest of their `files` rows.
  */
 export async function purgeUserGoogleConnections(
   userId: number,

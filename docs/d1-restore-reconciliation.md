@@ -836,6 +836,14 @@ See "Google" above for why every connection is reset. Users reconnect and
 confirm the paid tier of their Gemini key again. Then set `chats.google_data_at`
 again for the chats that carry Google data, as described there.
 
+Known gaps, owned by later children of the Google stack: the access-ended
+sweep that deletes the Google file copies of a `needs_reauth` connection (child
+2) does not exist yet, so until it ships the wipe above removes only the
+tokens and users' copies stay; once it ships, this step deletes every user's
+Drive copies within 24 hours, which the user notice (step 7) must say. The
+command that re-derives `chats.google_data_at` is written with the data guard
+(child 3), which defines what counts as a Google part.
+
 ### 3. Push id sequences past the pre-restore high-water marks
 
 For each table from step 0.3 whose restored `seq` is lower:
