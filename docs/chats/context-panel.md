@@ -214,8 +214,18 @@ Rules for a new section:
 6. Add fixtures to `tests/unit/server/utils/chats/context/build-chat-context.spec.ts`.
 
 Planned: documents (Outputs, D-4), research reports from the new research
-flow (R-6), Drive files (Inputs, G-4), connectors and skills (Used, C-5,
-S-3).
+flow (R-6), connectors and skills (Used, C-5, S-3).
+
+### Google Drive files (Inputs, G-4)
+
+The `drive-files` section (Inputs, `public`) lists each `data-drive-file`
+reference of a user message as kind `drive-file` (the Drive mark, "Google
+Drive" as the detail). For the owner the row links to the file in Google Drive
+(`href`, a fixed `drive.google.com` link built on the server). The plain
+`uploaded-files` row of the same copy is skipped when its file part is
+followed by the reference, so a copy is listed once. In a shared chat the part
+has already been reduced to its name by `filterPublicParts` (no id, no link),
+so the row is the name only. See `docs/google.md`, section 11.7.
 
 ### Artifacts (A-4)
 

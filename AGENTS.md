@@ -203,9 +203,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
-- `docs/storage.md` - The one storage allowance (BES-393): the seven
-  categories (AI images, uploads, generated files, connector images,
-  artifacts, project knowledge, skills)
+- `docs/storage.md` - The one storage allowance (BES-393): the eight
+  categories (AI images, uploads, Google Drive copies, generated files,
+  connector images, artifacts, project knowledge, skills)
   and how
   each is told apart from existing `files` columns with no migration, what is
   not counted, the single usage number (`userStorageUsedBytesSql`, shared with
@@ -906,7 +906,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   local testing and the open items), and section 10, the owner-only
   bring-your-own client (one encrypted `keys` row of the
   `google-oauth-client` kind, the admin gate, `/api/v1/google/byo/callback`,
-  copies owned by Besidka's mode, the owner runbook in section 6)
+  copies owned by Besidka's mode, the owner runbook in section 6), and
+  section 11, the Drive Picker (the G-1 answers marked documented, inferred or
+  NOT VERIFIED in section 3; the token route and why only Besidka's client,
+  export choices and every limit, the one-hop download redirect rule, reuse of
+  an unchanged copy, the `data-drive-file` part rebuilt on the server, names
+  only in shares, the `frame-src` addition, and the owner's real-account
+  checklist)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
