@@ -3,6 +3,8 @@ import {
   BESIDKA_TOOL_NAME_PREFIX,
   isBesidkaChatToolName,
 } from '#shared/utils/besidka-tool-permissions'
+import { getGoogleDriveToolStepTitle } from '#shared/utils/google-drive-tools'
+import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 
 export interface ParsedReasoningSection {
   title: string
@@ -327,6 +329,12 @@ export function getToolStepTitle(
 ): string {
   if (isBesidkaChatToolName(toolName)) {
     return getBesidkaToolStepTitle(toolName, isPending, isFailed)
+  }
+
+  const isGoogleTool: boolean = isGoogleToolName(toolName)
+
+  if (isGoogleTool) {
+    return getGoogleDriveToolStepTitle(toolName, isPending, isFailed)
   }
 
   const knownTitles = TOOL_STEP_TITLES.get(toolName)

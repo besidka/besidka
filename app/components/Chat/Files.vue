@@ -113,6 +113,11 @@
           >
             <Icon name="lucide:download" size="12" />
           </a>
+          <ChatSaveToGoogleDrive
+            v-if="canSaveToDrive && message.role === 'assistant'"
+            :storage-key="file.links.storageKey"
+            :file-name="file.filename || 'file'"
+          />
         </div>
         <div
           v-if="file.filename"
@@ -157,6 +162,7 @@ interface DisplayFile {
 
 const props = defineProps<{
   message: UIMessage
+  canSaveToDrive?: boolean
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()

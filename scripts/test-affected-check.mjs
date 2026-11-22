@@ -2024,6 +2024,32 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
   ]
 
+  const googleDriveToolsTests = [
+    'tests/unit/utils/google-drive-tools.spec.ts',
+    'tests/unit/utils/google-step.spec.ts',
+    'tests/unit/server/utils/google/drive-upload.spec.ts',
+    'tests/unit/server/utils/google/tool-output.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/drive.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/integration/server/google-drive-tools.spec.ts',
+    'tests/integration/api/google-drive-saved-files.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/unit/composables/google-drive-save.spec.ts',
+    'tests/unit/components/Chat/SaveToGoogleDrive.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Files.spec.ts',
+    'tests/unit/components/Chat/Document.spec.ts',
+    'tests/unit/components/Chat/GeneratedImage.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.icons.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/composables/chat-scroll-spacer.spec.ts',
+    'tests/e2e/chat/scroll-spacer.spec.ts',
+    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  ]
+
   const googleToolApprovalTests = [
     'tests/unit/server/utils/tool-approval/google.spec.ts',
     'tests/unit/server/utils/tool-approval/round-state.spec.ts',
@@ -4012,6 +4038,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(google-drive|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/Preview\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
       tests: googleDrivePickerTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-drive-tools\.ts|server\/utils\/google\/(drive-tools|drive-picked|drive-save|drive-upload|tool-output|drive|http|route)\.ts|server\/api\/v1\/google\/drive\/saved-files\/.*\.ts|server\/utils\/tool-approval\/google-send-candidates\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/google-drive-save\.ts|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/(google-step|reasoning-step)\.d\.ts|app\/components\/Chat\/(SaveToGoogleDrive|Files|Document|GeneratedImage|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/(GoogleStep|Step)\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: googleDriveToolsTests,
     },
     {
       pattern:

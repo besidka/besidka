@@ -136,6 +136,11 @@
               <Icon name="lucide:download" size="12" />
             </a>
           </div>
+          <ChatSaveToGoogleDrive
+            v-if="canSaveToDrive && driveSaveStorageKey"
+            :storage-key="driveSaveStorageKey"
+            :file-name="cardDisplay.name"
+          />
         </template>
       </div>
       <LazyChatImagePreview
@@ -185,9 +190,10 @@ import {
   resolveAssistantGeneratedImageDisplay,
 } from '~/utils/generated-images'
 
-const { messageRole, part } = defineProps<{
+const { messageRole, part, canSaveToDrive = false } = defineProps<{
   messageRole: UIMessage['role']
   part: UIMessage['parts'][number]
+  canSaveToDrive?: boolean
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
@@ -295,6 +301,12 @@ const cardDisplay = computed<GeneratedImageCardDisplay | null>(() => {
     downloadUrl: fileDisplay.downloadUrl,
     isInlineData: fileDisplay.imageUrl.startsWith('data:'),
   }
+})
+
+const driveSaveStorageKey = computed<string | null>(() => {
+  const url = cardDisplay.value?.downloadUrl
+
+  return url ? extractLocalFileStorageKey(url) : null
 })
 
 const isRenderable = computed<boolean>(() => {

@@ -66,7 +66,10 @@
           }"
           @select="onMessageSelect"
         >
-          <ChatFiles :message="m" />
+          <ChatFiles
+            :message="m"
+            can-save-to-drive
+          />
           <ChatDriveFiles :message="m" />
           <ChatSkillInvocation
             v-if="m.role === 'user'"
@@ -116,6 +119,7 @@
               "
               :message-role="m.role"
               :part="part"
+              can-save-to-drive
             />
             <ChatArtifactCard
               v-else-if="isArtifactsActive && isArtifactMessagePart(part)"
