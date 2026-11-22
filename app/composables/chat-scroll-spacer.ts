@@ -545,6 +545,7 @@ export function useChatScrollSpacer(
   async function reservePinnedSpace(
     behavior: ScrollBehavior = 'smooth',
   ): Promise<void> {
+    continuationScrollTarget = null
     spacerComputedByPush.value = true
 
     const container = scrollContainerRef.value
@@ -601,6 +602,8 @@ export function useChatScrollSpacer(
   })
 
   nuxtApp.hook('chat:scroll-to-bottom', async () => {
+    continuationScrollTarget = null
+
     if (shouldResetSpacerOnScrollToBottom()) {
       await resetSpacer()
     }

@@ -426,6 +426,35 @@ describe('useChatScrollSpacer continuations and approval pauses', () => {
     expect(scrollTos).toEqual([])
   })
 
+  it('lets go of the pin when the user scrolls to the bottom during the '
+    + 'continuation', async () => {
+    const {
+      Harness,
+      chatSdk,
+      scrollTos,
+      spacerHeights,
+      moveMessagesEnd,
+    } = createContinuationHarness(400)
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+    await useNuxtApp().callHook('chat:scroll-to-bottom')
+    await nextTick()
+
+    const spacerCount = spacerHeights.length
+
+    scrollTos.length = 0
+    moveMessagesEnd(250)
+    await notifyContentResize()
+
+    expect(spacerHeights).toHaveLength(spacerCount)
+    expect(scrollTos).toEqual([])
+  })
+
   it('does not touch the spacer on a content resize outside a '
     + 'continuation', async () => {
     const { Harness, scrollTos, spacerHeights, moveMessagesEnd } = (

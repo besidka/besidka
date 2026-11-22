@@ -270,8 +270,11 @@ spacer, waits a tick and scrolls instantly back to the stored target. A
 `wheel` or `touchmove` on the scroll container during the continuation marks
 a user takeover: the spacer still grows, but the view is left where the user
 put it. Content growth never shrinks the spacer. The stored target is cleared
-by `adjustSpacerAfterResponse()`, `pushUserMessageToTop()`, `chat:submit` and
-an `error` status, so a settled layout is never touched. One frame at the
+by `adjustSpacerAfterResponse()`, `pushUserMessageToTop()`,
+`reservePinnedSpace()`, `chat:submit`, `chat:scroll-to-bottom` (the scroll
+button, or focusing or typing in the composer: the user asked for the bottom,
+so the pin must not pull the view back) and an `error` status, so a settled
+layout is never touched. One frame at the
 displaced position can still occur: the resize notification arrives after the
 layout that clamped. Do not replace this with a falling-edge
 `scrollIntoView()` (see the image-generation section for why).
