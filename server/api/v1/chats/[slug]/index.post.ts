@@ -385,10 +385,7 @@ import {
   CONNECTOR_TOOLS_PER_REQUEST,
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
-import {
-  TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
-  TOOL_APPROVAL_GOOGLE_READ_SOURCE,
-} from '#shared/utils/tool-approval-policy'
+import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import { findBuiltinCommandInvocation } from '#shared/utils/builtin-commands'
 import {
@@ -421,11 +418,7 @@ import {
 import type {
   AnthropicThinkingOption,
 } from '~~/server/utils/providers/anthropic'
-import {
-  CONNECTORS_NOTICE_PART_TYPE,
-  getConnectorToolPartName,
-  parseConnectorToolName,
-} from '#shared/utils/connectors-parts'
+import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
   auditConnectorCall,
   createConnectorArgsHasher,
@@ -480,19 +473,22 @@ import {
   withholdProviderTools,
   withProviderToolEgressGuard,
 } from '~~/server/utils/tool-approval/send'
+import { createApprovalState } from '~~/server/utils/tool-approval/state'
+import { createToolRoundApprovalState } from '~~/server/utils/tool-approval/round-state'
 import {
-  createApprovalState,
-  recordTaint,
-  recordToolRead,
-} from '~~/server/utils/tool-approval/state'
-import type { ApprovalState } from '~~/server/utils/tool-approval/state'
-import {
+  buildGoogleResultStash,
   chatHoldsGoogleData,
   deleteGoogleToolResults,
+  hasGoogleToolResult,
   loadGoogleToolResults,
+  markChatGoogleData,
   redactGoogleToolPartsForPersistence,
-  stashGoogleToolResults,
+  withholdCodeExecutionForGoogleData,
 } from '~~/server/utils/tool-approval/google'
+import {
+  getGoogleSendTools,
+  withGoogleSendTools,
+} from '~~/server/utils/tool-approval/google-send-tools'
 import {
   TOOL_ROUND_CONTINUE_PROMPT,
   TOOL_ROUND_STALE_CODE,
@@ -643,6 +639,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       projectId: true,
       branchedFromShareSlug: true,
+      googleDataAt: true,
     },
     with: {
       project: {
@@ -1052,9 +1049,16 @@ export default defineEventHandler(async (event) => {
     modelId: model?.id,
     logger,
   })
-  const codeExecutionGate = isResume
-    ? { ...resolvedCodeExecutionGate, filesActive: false }
-    : resolvedCodeExecutionGate
+  const holdsGoogleData = chatHoldsGoogleData({
+    googleDataAt: chat.googleDataAt,
+    messages: chat.messages,
+  })
+  const codeExecutionGate = withholdCodeExecutionForGoogleData(
+    isResume
+      ? { ...resolvedCodeExecutionGate, filesActive: false }
+      : resolvedCodeExecutionGate,
+    holdsGoogleData,
+  )
   const requestedTools: ModelTool[] = isResume
     ? codeExecutionGate.tools.filter((requestedTool) => {
       return requestedTool !== 'image_generation'
@@ -2237,7 +2241,7 @@ export default defineEventHandler(async (event) => {
       holdsBesidkaToolHistory: chat.messages.some((message) => {
         return hasBesidkaToolResult(message.parts)
       }),
-      holdsGoogleData: chatHoldsGoogleData(chat.messages),
+      holdsGoogleData,
     })
   }
 
@@ -2541,6 +2545,18 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    const googleSend = await getGoogleSendTools({
+      toolApprovalsActive,
+      userId,
+      chatPublicId: chat.id,
+      logger: aiLogger,
+    })
+
+    parsedTools = {
+      ...parsedTools,
+      tools: withGoogleSendTools(parsedTools.tools, googleSend),
+    }
+
     if (toolApprovalsActive) {
       toolApprovalSend.registerTools(
         parsedTools.tools,
@@ -2548,6 +2564,7 @@ export default defineEventHandler(async (event) => {
           ...besidkaToolsRun?.approvalEntries ?? [],
           ...connectorsRun?.approvalEntries ?? [],
           ...skillScriptsRun.gate.approvalEntries,
+          ...googleSend.entries,
         ]),
       )
       parsedTools = {
@@ -3673,6 +3690,7 @@ export default defineEventHandler(async (event) => {
             }
             : undefined,
           getConnectorSecrets: connectorsRun?.secrets,
+          chatGoogleDataAt: chat.googleDataAt,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -3721,19 +3739,7 @@ export default defineEventHandler(async (event) => {
             },
             hashArgs: hashConnectorArgs,
             db,
-            logger: aiLogger,
-          })
-        }
-
-        if (persistResult.pausedParts) {
-          await stashGoogleToolResults({
-            kv,
-            owner: {
-              userId,
-              chatPublicId: chat.id,
-              messagePublicId,
-            },
-            parts: persistResult.pausedParts,
+            pausedParts: persistResult.pausedParts ?? [],
             logger: aiLogger,
           })
         }
@@ -4571,40 +4577,6 @@ function decideToolBudgetPart(input: {
 }
 
 /**
- * The approval state a new round of a long tool task starts from: fresh
- * counters (each round has its own call budget) and the taint of the
- * connector, Besidka and Google results the reply already holds, which the
- * model reads again. A Google result also counts as a tool read of the
- * turn, so web search stays withheld in the new round.
- */
-function createToolRoundApprovalState(parts: unknown): ApprovalState {
-  const state = createApprovalState()
-
-  if (!Array.isArray(parts)) {
-    return state
-  }
-
-  for (const part of parts) {
-    const toolName = getConnectorToolPartName(part)
-
-    if (toolName && parseConnectorToolName(toolName)) {
-      recordTaint(state, 'connector')
-    }
-
-    if (hasBesidkaToolResult([part])) {
-      recordTaint(state, 'besidka')
-    }
-  }
-
-  if (chatHoldsGoogleData([{ parts }])) {
-    recordTaint(state, 'google')
-    recordToolRead(state, TOOL_APPROVAL_GOOGLE_READ_SOURCE)
-  }
-
-  return state
-}
-
-/**
  * Everything a request that answers approvals checks before it may do any
  * work, in this order: the `tool-approvals` flag (404 when off, like any
  * gated route), the per-user response limit, the answered message (it must
@@ -4837,11 +4809,24 @@ async function recordPendingToolApprovals(input: {
   collector: ReturnType<typeof createToolApprovalStreamCollector>
   snapshot: Parameters<typeof recordToolApprovalPause>[0]['snapshot']
   hashArgs: ReturnType<typeof createConnectorArgsHasher>
+  pausedParts: readonly unknown[]
   logger: { set: (fields: Record<string, unknown>) => void }
 }): Promise<void> {
   const collected = input.collector.getCollected()
 
   try {
+    const stash = await buildGoogleResultStash({
+      userId: input.userId,
+      chatPublicId: input.chatPublicId,
+      messagePublicId: input.messagePublicId,
+    }, input.pausedParts)
+
+    if (stash.oversized > 0) {
+      input.logger.set({
+        attributes: { googleTools: { oversized: stash.oversized } },
+      })
+    }
+
     const { written } = await recordToolApprovalPause({
       kv: input.kv,
       userId: input.userId,
@@ -4851,6 +4836,7 @@ async function recordPendingToolApprovals(input: {
       collected,
       stepCount: input.collector.getStepCount(),
       snapshot: input.snapshot,
+      resultStash: stash.entries,
       auditPending: async (pending) => {
         const connector = pending.pending.entry.connector
 
@@ -6056,6 +6042,7 @@ async function persistAssistantMessageFromStream(input: {
   pastChatChipPart?: UIMessage['parts'][number]
   skillActivationParts?: UIMessage['parts']
   getConnectorSecrets?: () => string[]
+  chatGoogleDataAt?: Date | null
   resume?: {
     storedMessage: UIMessage
     storedPartCount: number
@@ -6337,6 +6324,14 @@ async function persistAssistantMessageFromStream(input: {
         },
         publicId: input.publicId,
       })
+
+    if (
+      assistantMessage
+      && !input.chatGoogleDataAt
+      && hasGoogleToolResult(responseParts)
+    ) {
+      await markChatGoogleData(input.db, input.chatId, input.logger)
+    }
 
     if (assistantMessage && turn.stoppedReplies.length > 0) {
       const replacedStoppedReplies = await deleteStoppedReplies({

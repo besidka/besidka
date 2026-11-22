@@ -18,6 +18,7 @@ import {
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import {
   indexMessagesForSearch,
   type SearchIndexLogger,
@@ -141,6 +142,23 @@ export function isApprovalOnlyMessage(parts: unknown): boolean {
 }
 
 /**
+ * The `google_data_at` a branch starts with: the source chat's flag, or now
+ * when the copied messages still hold a Google result (a chat from before
+ * the flag). A branch strips tool parts, so without this the copy would
+ * lose the mark that keeps Google content behind its approvals.
+ */
+export function branchGoogleDataAt(source: {
+  googleDataAt: Date | null
+  messages: ReadonlyArray<{ parts: unknown }>
+}): Date | null {
+  if (source.googleDataAt) {
+    return source.googleDataAt
+  }
+
+  return chatHoldsGoogleData({ messages: source.messages }) ? new Date() : null
+}
+
+/**
  * Copies an owned chat, or its first messages up to and including
  * `messageId` (a message public id or internal id), into a new chat in the
  * same project with the same memory exclusion. The legal consent gate is the
@@ -163,6 +181,7 @@ export async function branchChat(
       title: true,
       projectId: true,
       memoryExcluded: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -211,6 +230,10 @@ export async function branchChat(
   }
 
   const title = buildBranchTitle(chat.title)
+  const googleDataAt = branchGoogleDataAt({
+    googleDataAt: chat.googleDataAt,
+    messages: messagesToCopy,
+  })
 
   const newChat = await db
     .insert(schema.chats)
@@ -219,6 +242,7 @@ export async function branchChat(
       title,
       ...(chat.projectId ? { projectId: chat.projectId } : {}),
       ...(chat.memoryExcluded ? { memoryExcluded: true } : {}),
+      ...(googleDataAt ? { googleDataAt } : {}),
     })
     .returning({
       id: schema.chats.id,

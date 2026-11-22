@@ -77,6 +77,7 @@ export const TOOL_APPROVAL_SECRET_HKDF_INFO = 'besidka/tool-approval/v1'
 export const TOOL_APPROVAL_PAYLOAD_MAX_BYTES = 64 * 1024
 export const TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS = 200
 export const TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES = 100
+export const TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS = 200
 export const TOOL_APPROVAL_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
 export const TOOL_APPROVAL_SUBJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 export const TOOL_APPROVAL_KV_PREFIX = 'tool-approval:'

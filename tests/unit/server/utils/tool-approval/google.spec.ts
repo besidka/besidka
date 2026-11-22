@@ -19,9 +19,10 @@ import type {
 } from '~~/server/utils/tool-approval/policy'
 import {
   buildConnectorApprovalEntry,
-  buildGoogleApprovalEntry,
+  buildGoogleApprovalEntry as buildStrictGoogleApprovalEntry,
   createSendToolApproval,
   presetApprovalTaint,
+  recordToolApprovalPause,
 } from '~~/server/utils/tool-approval/send'
 import {
   createApprovalState,
@@ -29,16 +30,29 @@ import {
 } from '~~/server/utils/tool-approval/state'
 import type { ApprovalState } from '~~/server/utils/tool-approval/state'
 import {
+  GOOGLE_TOOL_BODY_NOT_KEPT_NOTE,
+  GOOGLE_TOOL_BODY_TOO_LARGE_NOTE,
+  GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE,
   GOOGLE_TOOL_ERROR_PERSISTED_TEXT,
+  buildGoogleResultStash,
   chatHoldsGoogleData,
   collectGoogleToolResultBodies,
   deleteGoogleToolResults,
   hasGoogleToolResult,
   loadGoogleToolResults,
+  markChatGoogleData,
   readGoogleChatGrantHashes,
   redactGoogleToolPartsForPersistence,
-  stashGoogleToolResults,
+  withholdCodeExecutionForGoogleData,
 } from '~~/server/utils/tool-approval/google'
+import {
+  getGoogleSendTools,
+  withGoogleSendTools,
+} from '~~/server/utils/tool-approval/google-send-tools'
+import {
+  besidkaToolAccess,
+} from '~~/server/utils/besidka-tools/chat-adapter'
+import { listChatExposedBesidkaTools } from '~~/server/utils/besidka-tools/registry'
 import {
   deleteToolApprovalChatRecords,
   putToolApprovalResults,
@@ -104,6 +118,31 @@ function createFakeKv() {
 
 function logger() {
   return { set: vi.fn() }
+}
+
+function buildGoogleApprovalEntry(
+  input: Omit<
+    Parameters<typeof buildStrictGoogleApprovalEntry>[0],
+    'toolApprovalsActive'
+  >,
+) {
+  return buildStrictGoogleApprovalEntry({
+    ...input,
+    toolApprovalsActive: true,
+  })
+}
+
+async function stashGoogleToolResults(input: {
+  kv: ReturnType<typeof createFakeKv>
+  owner: typeof OWNER
+  parts: unknown[]
+  logger?: unknown
+}) {
+  const stash = await buildGoogleResultStash(input.owner, input.parts)
+
+  await putToolApprovalResults(input.kv as never, stash.entries)
+
+  return stash
 }
 
 function googleDescriptor(
@@ -414,6 +453,199 @@ describe('Google egress (rule 12)', () => {
   })
 })
 
+describe('Besidka writes after Google content (rule 13)', () => {
+  function besidkaWrite(
+    overrides: Partial<ToolApprovalDescriptor> = {},
+  ): ToolApprovalDescriptor {
+    return {
+      family: 'besidka',
+      access: 'write',
+      toolName: 'besidka__add_project_note',
+      definitionHash: HASH,
+      destructiveHint: false,
+      ...overrides,
+    }
+  }
+
+  function besidkaGrant(toolName: string): ToolApprovalGrant {
+    return { definitionHash: HASH, connectorId: null, toolName }
+  }
+
+  it('asks a Besidka write set to Always allow, with Allow once only', () => {
+    const decision = resolveToolApproval({
+      descriptor: besidkaWrite(),
+      state: googleTainted(),
+      permissionMode: 'allow',
+    })
+
+    expect(decision.rule).toBe(13)
+    expect(decision.status.type).toBe('user-approval')
+    expect(decision.rememberOptions).toEqual(['once'])
+  })
+
+  it('asks a Besidka write the user allowed in this chat', () => {
+    const decision = resolveToolApproval({
+      descriptor: besidkaWrite({ toolName: 'besidka__create_file' }),
+      state: googleTainted(),
+      permissionMode: 'ask',
+      chatGrant: besidkaGrant('besidka__create_file'),
+    })
+
+    expect(decision.rule).toBe(13)
+    expect(decision.rememberOptions).toEqual(['once'])
+  })
+
+  it('asks share_artifact, whatever its permission, after Google content',
+    () => {
+      const shareArtifact = listChatExposedBesidkaTools().find((tool) => {
+        return tool.name === 'share_artifact'
+      })!
+
+      for (const permissionMode of ['ask', 'allow'] as const) {
+        const decision = resolveToolApproval({
+          descriptor: {
+            family: 'besidka',
+            access: besidkaToolAccess(shareArtifact),
+            toolName: 'besidka__share_artifact',
+            definitionHash: HASH,
+            destructiveHint: shareArtifact.chat.tier === 'ask-every-time',
+          },
+          state: googleTainted(),
+          permissionMode,
+          chatGrant: besidkaGrant('besidka__share_artifact'),
+        })
+
+        expect(decision.rule, permissionMode).toBe(13)
+        expect(decision.rememberOptions, permissionMode).toEqual(['once'])
+      }
+    })
+
+  it('lets a Besidka read set to Always allow run after Google content', () => {
+    const decision = resolveToolApproval({
+      descriptor: besidkaWrite({
+        access: 'read',
+        toolName: 'besidka__list_chats',
+      }),
+      state: googleTainted(),
+      permissionMode: 'allow',
+    })
+
+    expect(decision.rule).toBe(6)
+  })
+
+  it('leaves Besidka writes alone in a send without Google content', () => {
+    const decision = resolveToolApproval({
+      descriptor: besidkaWrite(),
+      state: recordTaint(createApprovalState(), 'web'),
+      permissionMode: 'allow',
+    })
+
+    expect(decision.rule).toBe(6)
+  })
+})
+
+describe('the Google tool gate (tool approvals required)', () => {
+  it('refuses to build a Google entry without tool approvals', () => {
+    expect(() => buildStrictGoogleApprovalEntry({
+      toolName: GOOGLE_READ,
+      kind: 'read',
+      definitionHash: HASH,
+      summary: 'Search',
+      toolApprovalsActive: false,
+    })).toThrow()
+  })
+
+  it('offers no Google tools without tool approvals', async () => {
+    const google = await getGoogleSendTools({
+      toolApprovalsActive: false,
+      userId: 1,
+      chatPublicId: 'chat-1',
+      logger: logger(),
+    })
+
+    expect(google.tools).toEqual({})
+    expect(google.entries.size).toBe(0)
+  })
+
+  it('drops every google__ tool that did not come from the Google assembly',
+    () => {
+      const tools = {
+        web_search: { type: 'provider' },
+        google__drive_search: { execute: vi.fn() },
+        Google__Gmail_Send: { execute: vi.fn() },
+      } as never
+      const registered = { google__calendar_list: { execute: vi.fn() } }
+
+      expect(Object.keys(withGoogleSendTools(tools, {
+        tools: registered as never,
+        entries: new Map(),
+      })!)).toEqual(['web_search', 'google__calendar_list'])
+      expect(withGoogleSendTools(undefined, {
+        tools: {},
+        entries: new Map(),
+      })).toBeUndefined()
+    })
+
+  it('puts a mixed-case google__ tool in the Google family', () => {
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools({ GOOGLE__Drive_Search: {} } as never)
+
+    expect(approval.entries.get('GOOGLE__Drive_Search')?.descriptor)
+      .toMatchObject({ family: 'google', access: 'write' })
+  })
+})
+
+describe('the chat-level Google flag', () => {
+  it('holds Google data from the flag alone, with no Google part left', () => {
+    expect(chatHoldsGoogleData({
+      googleDataAt: new Date('2026-11-22T10:00:00Z'),
+      messages: [],
+    })).toBe(true)
+    expect(chatHoldsGoogleData({ googleDataAt: null, messages: [] }))
+      .toBe(false)
+  })
+
+  it('counts only static Google parts with an output', () => {
+    expect(hasGoogleToolResult([googleToolPart({
+      type: 'dynamic-tool',
+      toolName: GOOGLE_READ,
+    })])).toBe(false)
+    expect(hasGoogleToolResult([googleToolPart({
+      state: 'output-error',
+      output: undefined,
+      errorText: 'No such tool',
+    })])).toBe(false)
+    expect(hasGoogleToolResult([googleToolPart()])).toBe(true)
+  })
+
+  it('sets the flag once, only where it is still empty', async () => {
+    const where = vi.fn(async () => undefined)
+    const set = vi.fn(() => ({ where }))
+    const db = { update: vi.fn(() => ({ set })) }
+
+    await markChatGoogleData(db as never, 'chat-google', logger())
+
+    expect(set).toHaveBeenCalledWith({ googleDataAt: expect.any(Date) })
+    expect(where).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs a failed flag write without throwing', async () => {
+    const log = logger()
+    const db = {
+      update: vi.fn(() => {
+        throw new Error('D1 down')
+      }),
+    }
+
+    await markChatGoogleData(db as never, 'chat-google', log)
+
+    expect(log.set).toHaveBeenCalledWith({
+      attributes: { googleTools: { chatFlag: 'failed', error: 'D1 down' } },
+    })
+  })
+})
+
 describe('Google replay', () => {
   function pending(overrides: Record<string, unknown> = {}) {
     return {
@@ -648,7 +880,7 @@ describe('Google tools in a send', () => {
     expect(execute).toHaveBeenCalledTimes(1)
   })
 
-  it('presets Google taint for a chat that already holds Google data', () => {
+  function presetFor(holdsGoogleData: boolean): ApprovalState {
     const state = createApprovalState()
 
     presetApprovalTaint(state, {
@@ -658,17 +890,75 @@ describe('Google tools in a send', () => {
       holdsSkillText: false,
       holdsPastChatExcerpts: false,
       isBranchedFromShare: false,
-      holdsGoogleData: chatHoldsGoogleData([
+      holdsGoogleData,
+    })
+
+    return state
+  }
+
+  it('presets Google taint for a chat that already holds Google data', () => {
+    const state = presetFor(chatHoldsGoogleData({
+      messages: [
         { parts: [{ type: 'text', text: 'hi' }] },
         {
           parts: redactGoogleToolPartsForPersistence(
             [googleToolPart()] as never,
           ),
         },
-      ]),
-    })
+      ],
+    }))
 
     expect(state.taint.has('google')).toBe(true)
+  })
+
+  it('records the Google tool read in a later send, so web search and '
+    + 'Brave and Exa stay withheld', () => {
+    const state = presetFor(true)
+    const approval = createSendToolApproval({ state })
+    const tools = {
+      web_search: { type: 'provider' },
+      web_search_brave: { execute: vi.fn() },
+    } as never
+
+    approval.registerTools(tools)
+
+    expect(state.toolReadSources.has('google')).toBe(true)
+    expect(approval.listWithheldProviderTools(tools))
+      .toEqual(['web_search', 'web_search_brave'])
+  })
+
+  it('withholds code execution after Google content, in the same send',
+    () => {
+      const approval = createSendToolApproval({ state: createApprovalState() })
+      const tools = { code_execution: { type: 'provider' } } as never
+
+      approval.registerTools(tools, new Map([
+        [GOOGLE_READ, googleEntry('read', HASH)],
+      ]))
+
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
+
+      approval.toolApproval({
+        toolCall: { toolCallId: 'call-1', toolName: GOOGLE_READ, input: {} },
+      })
+
+      expect(approval.listWithheldProviderTools(tools))
+        .toEqual(['code_execution'])
+    })
+
+  it('does not offer code execution in a chat that holds Google data', () => {
+    const gate = {
+      tools: ['web_search', 'code_execution'],
+      active: true,
+      filesActive: true,
+    }
+
+    expect(withholdCodeExecutionForGoogleData(gate, false)).toBe(gate)
+    expect(withholdCodeExecutionForGoogleData(gate, true)).toEqual({
+      tools: ['web_search'],
+      active: false,
+      filesActive: false,
+    })
   })
 
   it('exports the output cap for tool authors', () => {
@@ -717,10 +1007,15 @@ describe('references-only persistence', () => {
         }),
       ] as never) as unknown as Array<{ output: unknown }>
 
-      expect(plain!.output).toEqual({ references: [], bodyRemoved: true })
+      expect(plain!.output).toEqual({
+        references: [],
+        bodyRemoved: true,
+        note: GOOGLE_TOOL_BODY_NOT_KEPT_NOTE,
+      })
       expect(unsafe!.output).toEqual({
         references: [{ id: 'x' }],
         bodyRemoved: true,
+        note: GOOGLE_TOOL_BODY_NOT_KEPT_NOTE,
       })
     })
 
@@ -858,45 +1153,75 @@ describe('the KV stash of a paused turn', () => {
       logger: logger(),
     })
 
-    expect(loaded.size).toBe(0)
+    expect(JSON.stringify(loaded.get('call-google-1')))
+      .not.toContain('someone else')
+    expect(loaded.get('call-google-1')?.output).toMatchObject({
+      bodyRemoved: true,
+      note: GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE,
+    })
   })
 
-  it('degrades to the references when the stash is missing or broken',
-    async () => {
-      const kv = createFakeKv()
+  it('tells the model the content is unavailable when the stash is missing '
+    + 'or broken', async () => {
+    const kv = createFakeKv()
+    const log = logger()
 
-      kv.get.mockRejectedValueOnce(new Error('KV down'))
+    kv.get.mockRejectedValueOnce(new Error('KV down'))
 
-      const loaded = await loadGoogleToolResults({
-        kv: kv as never,
-        owner: OWNER,
-        parts: [googleToolPart(), googleToolPart({ toolCallId: 'call-2' })],
-        logger: logger(),
-      })
-
-      expect(loaded.size).toBe(0)
+    const loaded = await loadGoogleToolResults({
+      kv: kv as never,
+      owner: OWNER,
+      parts: redactGoogleToolPartsForPersistence([
+        googleToolPart(),
+        googleToolPart({ toolCallId: 'call-2' }),
+      ] as never),
+      logger: log,
     })
 
-  it('does not stash an output over the cap, so the model sees references',
+    expect([...loaded.values()].map(result => result.output)).toEqual([
+      expect.objectContaining({
+        references: [expect.objectContaining({ id: 'file-1' })],
+        note: GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE,
+      }),
+      expect.objectContaining({ note: GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE }),
+    ])
+    expect(log.set).toHaveBeenCalledWith({
+      attributes: {
+        googleTools: {
+          stashCalls: 2,
+          stashLoaded: 0,
+          stashFailed: 1,
+          stashError: 'KV down',
+        },
+      },
+    })
+  })
+
+  it('keeps the references and a too-large note for an output over the cap',
     async () => {
       const kv = createFakeKv()
-      const log = logger()
-
-      await stashGoogleToolResults({
-        kv: kv as never,
+      const stash = await stashGoogleToolResults({
+        kv,
         owner: OWNER,
         parts: [googleToolPart({
           output: {
-            references: [],
+            references: [{ id: 'big-file' }],
             text: 'x'.repeat(GOOGLE_TOOL_OUTPUT_MAX_BYTES + 1),
           },
         })],
-        logger: log,
+      })
+      const loaded = await loadGoogleToolResults({
+        kv: kv as never,
+        owner: OWNER,
+        parts: [googleToolPart()],
+        logger: logger(),
       })
 
-      expect(kv.put).not.toHaveBeenCalled()
-      expect(log.set).toHaveBeenCalledWith({
-        attributes: { googleTools: { oversized: 1 } },
+      expect(stash.oversized).toBe(1)
+      expect(loaded.get('call-google-1')?.output).toEqual({
+        references: [{ id: 'big-file' }],
+        bodyRemoved: true,
+        note: GOOGLE_TOOL_BODY_TOO_LARGE_NOTE,
       })
     })
 
@@ -1016,18 +1341,136 @@ describe('the KV stash of a paused turn', () => {
     expect(indexWrites).toHaveLength(1)
   })
 
-  it('logs counts only, never a body', async () => {
-    const kv = createFakeKv()
-    const log = logger()
+  it('keeps result ids in their own list, never pushing approvals out',
+    async () => {
+      const kv = createFakeKv()
+      const parts = Array.from({ length: 210 }, (_value, index) => {
+        return googleToolPart({ toolCallId: `call-${index}` })
+      })
 
-    await stashGoogleToolResults({
-      kv: kv as never,
-      owner: OWNER,
-      parts: [googleToolPart()],
-      logger: log,
+      await putToolApprovalResults(kv as never, [{
+        resultId: 'approval-keep-me',
+        record: {
+          version: 1,
+          ...OWNER,
+          toolCallId: 'x',
+          isError: false,
+          output: 'x',
+          recordedAt: 1,
+        },
+      }])
+
+      const index = JSON.parse(kv.values.get(
+        `tool-approval:chat:${OWNER.chatPublicId}`,
+      )!)
+
+      index.approvalIds = ['approval-keep-me']
+      index.resultIds = []
+      kv.values.set(
+        `tool-approval:chat:${OWNER.chatPublicId}`,
+        JSON.stringify(index),
+      )
+
+      await stashGoogleToolResults({ kv, owner: OWNER, parts })
+
+      const after = JSON.parse(kv.values.get(
+        `tool-approval:chat:${OWNER.chatPublicId}`,
+      )!)
+
+      expect(after.approvalIds).toEqual(['approval-keep-me'])
+      expect(after.resultIds).toHaveLength(200)
+    })
+})
+
+describe('recording a paused Google turn', () => {
+  function pausedApproval() {
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools(undefined, new Map([
+      [GOOGLE_WRITE, buildGoogleApprovalEntry({
+        toolName: GOOGLE_WRITE,
+        kind: 'write',
+        definitionHash: HASH,
+        summary: 'Create an event',
+      })],
+    ]))
+    approval.toolApproval({
+      toolCall: { toolCallId: 'call-write', toolName: GOOGLE_WRITE, input: {} },
     })
 
-    expect(JSON.stringify(log.set.mock.calls)).not.toContain('document body')
+    return approval
+  }
+
+  async function record(
+    kv: ReturnType<typeof createFakeKv>,
+    collectedCount: number,
+  ) {
+    const approval = pausedApproval()
+    const stash = await buildGoogleResultStash(OWNER, [googleToolPart()])
+    const log = logger()
+
+    const result = await recordToolApprovalPause({
+      kv: kv as never,
+      userId: OWNER.userId,
+      chatPublicId: OWNER.chatPublicId,
+      messagePublicId: OWNER.messagePublicId,
+      approval,
+      collected: collectedCount === 0
+        ? []
+        : [{
+          approvalId: 'approval-0001',
+          toolCallId: 'call-write',
+          toolName: GOOGLE_WRITE,
+          input: {},
+          callProviderMetadata: null,
+          signature: 'sig',
+          pending: approval.getPendingDecision('call-write')!,
+        }],
+      stepCount: 1,
+      snapshot: {
+        model: 'claude-haiku-4-5',
+        gateway: null,
+        reasoning: 'off',
+        connectorIds: [],
+      },
+      auditPending: async () => null,
+      settleFailedAudit: async () => {},
+      logger: log,
+      resultStash: stash.entries,
+    })
+
+    return { result, log, stash }
+  }
+
+  it('writes the chat index once for the pending, turn and result ids',
+    async () => {
+      const kv = createFakeKv()
+      const { result, stash, log } = await record(kv, 1)
+      const indexWrites = kv.put.mock.calls.filter(([key]) => {
+        return key === `tool-approval:chat:${OWNER.chatPublicId}`
+      })
+      const index = JSON.parse(kv.values.get(
+        `tool-approval:chat:${OWNER.chatPublicId}`,
+      )!)
+
+      expect(result.written).toBe(1)
+      expect(indexWrites).toHaveLength(1)
+      expect(index).toMatchObject({
+        approvalIds: ['approval-0001'],
+        messageIds: [OWNER.messagePublicId],
+        resultIds: [stash.entries[0]!.resultId],
+      })
+      expect(kv.values.has(toolApprovalResultKey(stash.entries[0]!.resultId)))
+        .toBe(true)
+      expect(JSON.stringify(log.set.mock.calls)).not.toContain('document body')
+    })
+
+  it('stores no body when no pending record was written', async () => {
+    const kv = createFakeKv()
+
+    await record(kv, 0)
+
+    expect(kv.values.size).toBe(0)
   })
 })
 

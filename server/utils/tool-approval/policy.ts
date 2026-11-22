@@ -135,7 +135,7 @@ export interface ToolApprovalGrant {
 }
 
 export type ToolApprovalRule
-  = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+  = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -444,6 +444,26 @@ function needsGoogleEgressApproval(input: ResolveToolApprovalInput): boolean {
     && !grantMatches(input.googleEgressGrant, input.descriptor)
 }
 
+/**
+ * Rule 13: a Besidka tool that is not a plain read, while the send holds
+ * `google` taint, asks with Allow once only, whatever its Allow mode,
+ * Always allow or chat grant. A Besidka write can store or publish what it
+ * is given (a file, a project note, project instructions, a branch, an
+ * artifact share), so Google content never leaves through one unasked, and
+ * the answer never turns into a grant for later calls.
+ */
+function needsGoogleBesidkaWriteApproval(
+  descriptor: ToolApprovalDescriptor,
+  state: ApprovalState,
+): boolean {
+  const isPlainRead = descriptor.access === 'read'
+    && !isAlwaysAskTier(descriptor)
+
+  return descriptor.family === 'besidka'
+    && !isPlainRead
+    && state.taint.has('google')
+}
+
 function resolveNativeApproval(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
@@ -524,6 +544,9 @@ function resolveNativeApproval(
  *    `google-egress` (`once` or `chat`) before rules 6 and 7, unless the
  *    tool has a Google egress grant in this chat; with that grant the call
  *    falls through to the rules below.
+ * 13. A Besidka tool that is not a plain read, while the send holds
+ *    `google` taint, asks `untrusted-output` with `once` only, before rules
+ *    6 and 7: its Allow mode, Always allow and chat grants do not apply.
  *
  * A missing hash on either side never matches a grant.
  */
@@ -559,6 +582,10 @@ export function resolveToolApproval(
 
   if (needsGoogleEgressApproval(input)) {
     return ask(12, 'google-egress')
+  }
+
+  if (needsGoogleBesidkaWriteApproval(descriptor, state)) {
+    return ask(13, 'untrusted-output', GOOGLE_WRITE_REMEMBER_OPTIONS)
   }
 
   const isAlwaysAsk = isAlwaysAskTier(descriptor)

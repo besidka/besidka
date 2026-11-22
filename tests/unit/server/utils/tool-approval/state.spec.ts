@@ -162,7 +162,11 @@ describe('approval state', () => {
   })
 
   it('never returns a fresh state for a value that fails', () => {
-    const result = deserializeApprovalState({ taint: ['made-up'] })
+    const result = deserializeApprovalState({
+      taint: ['web'],
+      readSources: [''],
+      counters: { rounds: 0, steps: 0, connectorCalls: 0, builtInCalls: 0 },
+    })
 
     expect(result.ok).toBe(false)
     expect(result).not.toHaveProperty('state')

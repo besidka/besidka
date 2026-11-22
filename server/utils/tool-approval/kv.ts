@@ -5,6 +5,7 @@ import {
   TOOL_ACCESS_LEVELS,
   TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS,
   TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES,
+  TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS,
   TOOL_APPROVAL_ID_PATTERN,
   TOOL_APPROVAL_KV_PREFIX,
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
@@ -42,16 +43,14 @@ const storedFamilySchema = z.union([
   z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => null),
 ])
 
-/**
- * A reason this version does not know reads as `default`. The reason only
- * labels the prompt; the remember options are stored on their own.
- */
 const storedReasonSchema = z.union([
   z.enum(TOOL_APPROVAL_REASONS),
-  z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => {
-    return 'default' as const
-  }),
+  z.string().min(1).max(SUBJECT_ID_MAX_LENGTH).transform(() => null),
 ])
+
+const ONCE_ONLY: Array<typeof TOOL_APPROVAL_REMEMBER_OPTIONS[number]> = [
+  'once',
+]
 
 const pendingSnapshotSchema = z.object({
   model: z.string().min(1).max(TOOL_NAME_MAX_LENGTH),
@@ -60,6 +59,12 @@ const pendingSnapshotSchema = z.object({
   connectorIds: z.array(subjectIdSchema).max(TOOL_LIST_MAX),
 })
 
+/**
+ * A reason this version does not know (a record written by a newer or
+ * older deploy) reads as `default` and limits the answer to Allow once: the
+ * stored remember options were offered for a rule this version cannot
+ * check, so an answer applies to that one call and stores no grant.
+ */
 const pendingApprovalSchema = z.object({
   version: z.literal(TOOL_APPROVAL_RECORD_VERSION),
   userId: z.number().int().positive(),
@@ -83,6 +88,10 @@ const pendingApprovalSchema = z.object({
   summary: z.string().max(TOOL_APPROVAL_SUMMARY_MAX_LENGTH),
   auditCallId: z.number().int().positive().nullable(),
   snapshot: pendingSnapshotSchema,
+}).transform((record) => {
+  return record.reason === null
+    ? { ...record, reason: 'default' as const, rememberOptions: ONCE_ONLY }
+    : { ...record, reason: record.reason }
 })
 
 const turnRecordSchema = z.object({
@@ -112,6 +121,9 @@ const chatIndexSchema = z.object({
     .max(TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS),
   messageIds: z.array(z.string().regex(TOOL_APPROVAL_SUBJECT_ID_PATTERN))
     .max(TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES),
+  resultIds: z.array(z.string().regex(TOOL_APPROVAL_ID_PATTERN))
+    .max(TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS)
+    .default([]),
 })
 
 export type ToolApprovalPendingRecord = z.infer<typeof pendingApprovalSchema>
@@ -224,23 +236,28 @@ function addBounded(
 }
 
 /**
- * Adds approval ids and/or a message id to the per-chat index
- * `tool-approval:chat:<chatPublicId>`, which is how deleting a chat finds
- * the keys it has to remove: the pending keys are named by approval id, the
- * turn keys by message id and the result keys by a result id
- * (`toolApprovalResultIdOf`) listed with the approval ids, and nothing else
- * ties them to a chat. The index
- * lives 24 hours like the records it lists and is refreshed on every write.
- * It is bounded; past the bound the oldest ids fall off, and the record they
- * name expires on its own within 24 hours. The read-modify-write is not
- * atomic: two writers racing on one chat can lose an id, with the same
- * 24 hour residual. Written before the record it names, so a crash between
- * the two leaves only an id with no record behind it.
+ * Adds ids to the per-chat index `tool-approval:chat:<chatPublicId>`, which
+ * is how deleting a chat finds the keys it has to remove: the pending keys
+ * are named by approval id, the turn keys by message id and the result keys
+ * by a result id (`toolApprovalResultIdOf`), each in its own bounded list,
+ * so stashed results never push pending approvals out. Nothing else ties
+ * these keys to a chat. The index lives 24 hours like the records it lists
+ * and is refreshed on every write; KV takes about one write a second per
+ * key, so a pause writes it once for all its ids. Past a bound the oldest
+ * ids fall off, and the record they name expires on its own within 24
+ * hours. The read-modify-write is not atomic: two writers racing on one
+ * chat can lose an id, with the same 24 hour residual. Written before the
+ * records it names, so a crash between the two leaves only ids with no
+ * record behind them.
  */
-async function indexChatRecord(
+export async function indexToolApprovalChatRecords(
   kv: KVNamespace,
   chatPublicId: string,
-  ids: { approvalIds?: readonly string[], messageId?: string },
+  ids: {
+    approvalIds?: readonly string[]
+    messageIds?: readonly string[]
+    resultIds?: readonly string[]
+  },
 ): Promise<void> {
   const key = toolApprovalChatKey(chatPublicId)
   const current = await readRecord(kv, key, chatIndexSchema)
@@ -248,6 +265,7 @@ async function indexChatRecord(
     version: TOOL_APPROVAL_RECORD_VERSION,
     approvalIds: current?.approvalIds ?? [],
     messageIds: current?.messageIds ?? [],
+    resultIds: current?.resultIds ?? [],
   }
 
   for (const approvalId of ids.approvalIds ?? []) {
@@ -258,15 +276,32 @@ async function indexChatRecord(
     )
   }
 
-  if (ids.messageId) {
+  for (const messageId of ids.messageIds ?? []) {
     index.messageIds = addBounded(
       index.messageIds,
-      ids.messageId,
+      assertSubjectId(messageId),
       TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES,
     )
   }
 
+  for (const resultId of ids.resultIds ?? []) {
+    index.resultIds = addBounded(
+      index.resultIds,
+      assertApprovalId(resultId),
+      TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS,
+    )
+  }
+
   await putRecord(kv, key, index)
+}
+
+/**
+ * `alreadyIndexed` tells a put that the caller listed its id in the
+ * per-chat index already (`indexToolApprovalChatRecords`), so the index key
+ * is not written again right after.
+ */
+export interface ToolApprovalPutOptions {
+  alreadyIndexed?: boolean
 }
 
 async function readRecord<Schema extends z.ZodType>(
@@ -305,6 +340,7 @@ export async function putToolApproval(
   kv: KVNamespace,
   approvalId: string,
   record: ToolApprovalPendingRecord,
+  options: ToolApprovalPutOptions = {},
 ): Promise<void> {
   const key = toolApprovalKey(approvalId)
 
@@ -318,7 +354,13 @@ export async function putToolApproval(
   }
 
   assertReadable(pendingApprovalSchema, record)
-  await indexChatRecord(kv, record.chatPublicId, { approvalIds: [approvalId] })
+
+  if (!options.alreadyIndexed) {
+    await indexToolApprovalChatRecords(kv, record.chatPublicId, {
+      approvalIds: [approvalId],
+    })
+  }
+
   await putRecord(kv, key, record)
 }
 
@@ -348,13 +390,18 @@ export async function putToolApprovalTurn(
   kv: KVNamespace,
   messagePublicId: string,
   record: ToolApprovalTurnRecord,
+  options: ToolApprovalPutOptions = {},
 ): Promise<void> {
   const key = toolApprovalTurnKey(messagePublicId)
 
   assertReadable(turnRecordSchema, record)
-  await indexChatRecord(kv, record.chatPublicId, {
-    messageId: messagePublicId,
-  })
+
+  if (!options.alreadyIndexed) {
+    await indexToolApprovalChatRecords(kv, record.chatPublicId, {
+      messageIds: [messagePublicId],
+    })
+  }
+
   await putRecord(kv, key, record)
 }
 
@@ -452,11 +499,12 @@ export async function putToolApprovalResult(
 /**
  * Stores the bodies of tool results a paused turn must give back to the
  * model on its continuation (today: Google tool results, which D1 keeps as
- * references only). All ids go into the per-chat index in one index write,
- * then each record is written, one KV connection at a time, for 24 hours.
- * A result whose serialized output is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES`
- * is stored with the output replaced by a short marker, and its outcome says
- * so. Every entry must name the same chat.
+ * references only). All ids go into the result list of the per-chat index
+ * in one index write (none with `alreadyIndexed`), then each record is
+ * written, one KV connection at a time, for 24 hours. A result whose
+ * serialized output is over `TOOL_APPROVAL_PAYLOAD_MAX_BYTES` is stored
+ * with the output replaced by a short marker, and its outcome says so.
+ * Every entry must name the same chat.
  */
 export async function putToolApprovalResults(
   kv: KVNamespace,
@@ -464,6 +512,7 @@ export async function putToolApprovalResults(
     resultId: string
     record: ToolApprovalResultRecord
   }>,
+  options: ToolApprovalPutOptions = {},
 ): Promise<PutToolApprovalResultOutcome[]> {
   const first = entries[0]
 
@@ -492,9 +541,11 @@ export async function putToolApprovalResults(
     }
   })
 
-  await indexChatRecord(kv, first.record.chatPublicId, {
-    approvalIds: entries.map(entry => entry.resultId),
-  })
+  if (!options.alreadyIndexed) {
+    await indexToolApprovalChatRecords(kv, first.record.chatPublicId, {
+      resultIds: entries.map(entry => entry.resultId),
+    })
+  }
 
   for (const entry of keyed) {
     await putRecord(kv, entry.key, entry.stored)
@@ -542,20 +593,19 @@ export async function deleteToolApprovalChatRecords(
 
   const indexKey = toolApprovalChatKey(chatPublicId)
   const index = await readRecord(kv, indexKey, chatIndexSchema)
-  let keysDeleted = 0
+  const keys = new Set<string>([
+    ...(index?.approvalIds ?? []).flatMap((approvalId) => {
+      return [toolApprovalKey(approvalId), toolApprovalResultKey(approvalId)]
+    }),
+    ...(index?.messageIds ?? []).map(toolApprovalTurnKey),
+    ...(index?.resultIds ?? []).map(toolApprovalResultKey),
+  ])
 
-  for (const approvalId of index?.approvalIds ?? []) {
-    await kv.delete(toolApprovalKey(approvalId))
-    await kv.delete(toolApprovalResultKey(approvalId))
-    keysDeleted += 2
-  }
-
-  for (const messageId of index?.messageIds ?? []) {
-    await kv.delete(toolApprovalTurnKey(messageId))
-    keysDeleted += 1
+  for (const key of keys) {
+    await kv.delete(key)
   }
 
   await kv.delete(indexKey)
 
-  return { keysDeleted }
+  return { keysDeleted: keys.size }
 }

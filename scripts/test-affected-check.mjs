@@ -1885,6 +1885,10 @@ export function getAffectedTests(changedFiles) {
 
   const googleToolApprovalTests = [
     'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/round-state.spec.ts',
+    'tests/unit/utils/google-tool-approvals.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
     'tests/unit/server/utils/tool-approval/state.spec.ts',
     'tests/unit/server/utils/tool-approval/kv.spec.ts',
@@ -3850,7 +3854,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-tool-approvals|tool-approval-policy|tool-approval-parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue)$/,
+        /^(shared\/utils\/(google-tool-approvals|tool-approval-policy|tool-approval-parts)\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/connectors\/send-tools\.ts|server\/utils\/chats\/branch\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/(ContextPanelApprovals|Reasoning\/ApprovalStep)\.vue)$/,
       tests: googleToolApprovalTests,
     },
     {

@@ -20,9 +20,20 @@ export type GoogleToolKind = typeof GOOGLE_TOOL_KINDS[number]
 export const GOOGLE_EGRESS_REASON_TEXT = 'Content from Google in this chat '
   + 'may be sent to this connector'
 
+export const GOOGLE_EGRESS_GRANT_LABEL = 'May receive Google content in this '
+  + 'chat'
+
+export const GOOGLE_READ_GRANT_TITLE = 'Google'
+
+/**
+ * Whether a tool belongs to the Google family: its name starts with
+ * `google__` in any letter case and names something after the prefix. A
+ * name like `Google__Drive` is a Google tool too, so it asks like one and
+ * can never fall back to the native write entry, which runs unasked.
+ */
 export function isGoogleToolName(toolName: unknown): toolName is string {
   return typeof toolName === 'string'
-    && toolName.startsWith(GOOGLE_TOOL_NAME_PREFIX)
+    && toolName.toLowerCase().startsWith(GOOGLE_TOOL_NAME_PREFIX)
     && toolName.length > GOOGLE_TOOL_NAME_PREFIX.length
 }
 
@@ -44,4 +55,16 @@ export function googleChatGrantKey(toolName: string): string {
  */
 export function googleEgressGrantKey(exposedName: string): string {
   return `${GOOGLE_EGRESS_GRANT_KEY_PREFIX}${exposedName}`
+}
+
+/**
+ * Whether a tool approval may offer Google tools in this send at all. The
+ * approval family, the cleared-call guard and the references-only rules
+ * only run while tool approvals are active, so without them a Google tool
+ * must not be registered or offered.
+ */
+export function canOfferGoogleTools(input: {
+  toolApprovalsActive: boolean
+}): boolean {
+  return input.toolApprovalsActive === true
 }

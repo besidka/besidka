@@ -1,10 +1,12 @@
 import type { UIMessage } from 'ai'
 import type { KVNamespace } from '@cloudflare/workers-types'
+import { and, eq, isNull } from 'drizzle-orm'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
+import * as schema from '~~/server/db/schema'
 import { readBesidkaChatSettings } from '~~/server/utils/besidka-tools/chat-settings'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -12,14 +14,15 @@ import type { StashedResult } from '~~/server/utils/tool-approval/continuation'
 import {
   deleteToolApprovalResult,
   getToolApprovalResult,
-  putToolApprovalResults,
   toolApprovalResultIdOf,
 } from '~~/server/utils/tool-approval/kv'
 import type { ToolApprovalResultRecord } from '~~/server/utils/tool-approval/kv'
 
 type UiMessagePart = UIMessage['parts'][number]
+type DbClient = ReturnType<typeof useDb>
 
 const TOOL_PART_PREFIX = 'tool-'
+const CODE_EXECUTION_MODEL_TOOL = 'code_execution'
 const REFERENCES_MAX = 50
 const REFERENCE_ID_MAX_LENGTH = 256
 const REFERENCE_TITLE_MAX_LENGTH = 300
@@ -29,6 +32,18 @@ const REFERENCE_KIND_MAX_LENGTH = 32
 
 export const GOOGLE_TOOL_ERROR_PERSISTED_TEXT = 'The Google tool did not '
   + 'return a result.'
+
+export const GOOGLE_TOOL_BODY_NOT_KEPT_NOTE = 'The content of this Google '
+  + 'result is kept only for the reply that fetched it. Run the tool again '
+  + 'if you need it.'
+
+export const GOOGLE_TOOL_BODY_TOO_LARGE_NOTE = 'This Google result was larger '
+  + 'than 64 KiB, so its content was not kept. Ask the user to narrow the '
+  + 'request, for example to one file or a shorter date range.'
+
+export const GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE = 'The content of this Google '
+  + 'result could not be kept while the reply waited for approval. Run the '
+  + 'tool again if you need it.'
 
 /**
  * One item a Google tool result points at: a Drive file, a Calendar event,
@@ -52,18 +67,25 @@ export interface GoogleToolOutput {
 }
 
 /**
- * The stored form of a Google tool result: the sanitized references and a
- * marker that the body was removed.
+ * The stored form of a Google tool result: the sanitized references, a
+ * marker that the body was removed and a short note that tells the model
+ * why.
  */
 export interface GoogleToolPersistedOutput {
   references: GoogleToolReference[]
   bodyRemoved: true
+  note: string
 }
 
 export interface GoogleToolResultOwner {
   userId: number
   chatPublicId: string
   messagePublicId: string
+}
+
+export interface GoogleResultStashEntry {
+  resultId: string
+  record: ToolApprovalResultRecord
 }
 
 interface GoogleToolResultBody extends StashedResult {
@@ -92,10 +114,20 @@ function toolNameOfPart(part: Record<string, unknown>): string | null {
     : null
 }
 
+/**
+ * A tool part of a Google tool, static (`tool-google__*`) or dynamic. Every
+ * such part is redacted for D1, whatever its origin.
+ */
 export function isGoogleToolPart(
   part: unknown,
 ): part is Record<string, unknown> {
   return isRecord(part) && isGoogleToolName(toolNameOfPart(part))
+}
+
+function isStaticGoogleToolPart(part: unknown): boolean {
+  return isRecord(part)
+    && part.type !== 'dynamic-tool'
+    && isGoogleToolPart(part)
 }
 
 function hasRanState(part: Record<string, unknown>): boolean {
@@ -103,24 +135,86 @@ function hasRanState(part: Record<string, unknown>): boolean {
 }
 
 /**
- * Whether stored parts hold a Google tool call that ran (a result or an
- * error, references or body). Works on parts already redacted for D1.
+ * Whether parts hold a Google result: a static `tool-google__*` part with
+ * an output. A registered Google tool always produces a static part; a
+ * model-invented `google__x` call, or a Google call that failed, brought no
+ * content and does not count. Works on parts already redacted for D1.
  */
 export function hasGoogleToolResult(parts: unknown): boolean {
   return Array.isArray(parts) && parts.some((part) => {
-    return isGoogleToolPart(part) && hasRanState(part)
+    return isStaticGoogleToolPart(part)
+      && (part as Record<string, unknown>).state === 'output-available'
   })
 }
 
 /**
- * Whether a chat already holds content from Google, read from its stored
- * messages. The one place a send asks this, so a chat-level flag can
- * replace the scan later without touching the callers.
+ * Whether a chat holds content from Google: the sticky
+ * `chats.google_data_at` flag, set once and never cleared, or a Google
+ * result still in the given messages (a chat from before the flag). The one
+ * function every send, branch and later data guard asks.
  */
-export function chatHoldsGoogleData(
-  messages: ReadonlyArray<{ parts: unknown }>,
-): boolean {
-  return messages.some(message => hasGoogleToolResult(message.parts))
+export function chatHoldsGoogleData(input: {
+  googleDataAt?: Date | number | null
+  messages?: ReadonlyArray<{ parts: unknown }>
+}): boolean {
+  if (input.googleDataAt) {
+    return true
+  }
+
+  return (input.messages ?? []).some((message) => {
+    return hasGoogleToolResult(message.parts)
+  })
+}
+
+/**
+ * The code execution gate of a send in a chat that holds Google data: Run
+ * code is not offered at all, because its code, output and files are
+ * stored without any Google marking and the provider runs it inside its
+ * own response, where no approval can stop it.
+ */
+export function withholdCodeExecutionForGoogleData<
+  Gate extends { tools: string[], active: boolean, filesActive: boolean },
+>(gate: Gate, holdsGoogleData: boolean): Gate {
+  if (!holdsGoogleData) {
+    return gate
+  }
+
+  return {
+    ...gate,
+    tools: gate.tools.filter(tool => tool !== CODE_EXECUTION_MODEL_TOOL),
+    active: false,
+    filesActive: false,
+  } as Gate
+}
+
+/**
+ * Sets `chats.google_data_at` once for a chat that just recorded a Google
+ * result; a chat that already has it keeps the first time. Best effort: a
+ * failure is logged and the parts scan of `chatHoldsGoogleData` still finds
+ * the stored result.
+ */
+export async function markChatGoogleData(
+  db: DbClient,
+  chatPublicId: string,
+  logger: LoggerLike,
+): Promise<void> {
+  try {
+    await db.update(schema.chats)
+      .set({ googleDataAt: new Date() })
+      .where(and(
+        eq(schema.chats.id, chatPublicId),
+        isNull(schema.chats.googleDataAt),
+      ))
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        googleTools: {
+          chatFlag: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 }
 
 export function isGooglePersistedOutput(
@@ -144,15 +238,11 @@ function clampText(value: unknown, maxLength: number): string | undefined {
 function safeLink(value: unknown): string | undefined {
   const link = clampText(value, REFERENCE_LINK_MAX_LENGTH)
 
-  if (!link) {
+  if (!link || !URL.canParse(link)) {
     return undefined
   }
 
-  try {
-    return new URL(link).protocol === 'https:' ? link : undefined
-  } catch {
-    return undefined
-  }
+  return new URL(link).protocol === 'https:' ? link : undefined
 }
 
 function toReference(value: unknown): GoogleToolReference | null {
@@ -183,11 +273,13 @@ function toReference(value: unknown): GoogleToolReference | null {
 /**
  * The references-only form of a Google tool output: each reference keeps
  * its id and, when well formed, kind, title, an https link and a date;
- * everything else (the body) is dropped. An output with no `references`
- * list keeps none, so an unexpected shape never leaks a body.
+ * everything else (the body) is dropped and `note` says why. An output with
+ * no `references` list keeps none, so an unexpected shape never leaks a
+ * body.
  */
 export function toGooglePersistedOutput(
   output: unknown,
+  note: string = GOOGLE_TOOL_BODY_NOT_KEPT_NOTE,
 ): GoogleToolPersistedOutput {
   const references = isRecord(output) && Array.isArray(output.references)
     ? output.references
@@ -198,7 +290,7 @@ export function toGooglePersistedOutput(
       })
     : []
 
-  return { references, bodyRemoved: true }
+  return { references, bodyRemoved: true, note }
 }
 
 /**
@@ -222,7 +314,9 @@ export function redactGoogleToolPartsForPersistence(
     const redacted: Record<string, unknown> = { ...record }
 
     if ('output' in record) {
-      redacted.output = toGooglePersistedOutput(record.output)
+      redacted.output = isGooglePersistedOutput(record.output)
+        ? toGooglePersistedOutput(record.output, record.output.note)
+        : toGooglePersistedOutput(record.output)
     }
 
     if ('errorText' in record) {
@@ -284,90 +378,87 @@ export function googleToolCallIdsOf(parts: readonly unknown[]): string[] {
   }))]
 }
 
+function stashedBodyOf(body: GoogleToolResultBody): StashedResult {
+  if (serializedBytes(body.output) <= GOOGLE_TOOL_OUTPUT_MAX_BYTES) {
+    return { isError: body.isError, output: body.output }
+  }
+
+  return body.isError
+    ? { isError: true, output: GOOGLE_TOOL_ERROR_PERSISTED_TEXT }
+    : {
+      isError: false,
+      output: toGooglePersistedOutput(
+        body.output,
+        GOOGLE_TOOL_BODY_TOO_LARGE_NOTE,
+      ),
+    }
+}
+
 /**
- * Keeps the Google tool result bodies of a turn paused for approval in KV
- * (`tool-approval:result:<id>`, 24 hours, listed in the per-chat index), so
- * the continuation can give them back to the model while D1 keeps only the
- * references. A new user message, deleting the chat and deleting the
- * account remove them through the index; a finished continuation removes
- * them (`deleteGoogleToolResults`). A body over
- * `GOOGLE_TOOL_OUTPUT_MAX_BYTES` is not stashed, so its call reaches the
- * model as its references rather than as a cut-off marker. Best effort: a
- * failure is logged with counts only and the continuation then sees the
- * references.
+ * The KV records that keep the Google result bodies of a reply paused for
+ * approval (`tool-approval:result:<id>`, 24 hours), so the continuation can
+ * give them back to the model while D1 keeps only the references. A body
+ * over `GOOGLE_TOOL_OUTPUT_MAX_BYTES` is replaced by its references and a
+ * note that tells the model it was too large. `recordToolApprovalPause`
+ * writes them with the pause records, under one index write.
  */
-export async function stashGoogleToolResults(input: {
-  kv: KVNamespace
-  owner: GoogleToolResultOwner
-  parts: readonly unknown[]
-  logger: LoggerLike
-}): Promise<void> {
-  const collected = collectGoogleToolResultBodies(input.parts)
-  const bodies = collected.filter((body) => {
-    return serializedBytes(body.output) <= GOOGLE_TOOL_OUTPUT_MAX_BYTES
-  })
-  const oversized = collected.length - bodies.length
+export async function buildGoogleResultStash(
+  owner: GoogleToolResultOwner,
+  parts: readonly unknown[],
+): Promise<{ entries: GoogleResultStashEntry[], oversized: number }> {
+  const entries: GoogleResultStashEntry[] = []
+  let oversized = 0
 
-  if (oversized > 0) {
-    input.logger.set({ attributes: { googleTools: { oversized } } })
-  }
+  for (const body of collectGoogleToolResultBodies(parts)) {
+    const stashed = stashedBodyOf(body)
 
-  if (bodies.length === 0) {
-    return
-  }
-
-  try {
-    const entries: Array<{
-      resultId: string
-      record: ToolApprovalResultRecord
-    }> = []
-
-    for (const body of bodies) {
-      entries.push({
-        resultId: await toolApprovalResultIdOf(
-          input.owner.messagePublicId,
-          body.toolCallId,
-        ),
-        record: {
-          version: TOOL_APPROVAL_RECORD_VERSION,
-          userId: input.owner.userId,
-          chatPublicId: input.owner.chatPublicId,
-          messagePublicId: input.owner.messagePublicId,
-          toolCallId: body.toolCallId,
-          isError: body.isError,
-          output: body.output,
-          recordedAt: Date.now(),
-        },
-      })
+    if (stashed.output !== body.output) {
+      oversized += 1
     }
 
-    const outcomes = await putToolApprovalResults(input.kv, entries)
+    entries.push({
+      resultId: await toolApprovalResultIdOf(
+        owner.messagePublicId,
+        body.toolCallId,
+      ),
+      record: {
+        version: TOOL_APPROVAL_RECORD_VERSION,
+        userId: owner.userId,
+        chatPublicId: owner.chatPublicId,
+        messagePublicId: owner.messagePublicId,
+        toolCallId: body.toolCallId,
+        isError: stashed.isError,
+        output: stashed.output,
+        recordedAt: Date.now(),
+      },
+    })
+  }
 
-    input.logger.set({
-      attributes: {
-        googleTools: {
-          stashed: outcomes.length,
-          truncated: outcomes.filter(outcome => outcome.truncated).length,
-        },
-      },
-    })
-  } catch (exception) {
-    input.logger.set({
-      attributes: {
-        googleTools: {
-          stash: 'failed',
-          error: exceptionMessage(exception),
-        },
-      },
-    })
+  return { entries, oversized }
+}
+
+function unavailableResultOf(
+  part: Record<string, unknown>,
+): StashedResult | null {
+  if (part.state !== 'output-available') {
+    return null
+  }
+
+  return {
+    isError: false,
+    output: toGooglePersistedOutput(
+      part.output,
+      GOOGLE_TOOL_BODY_UNAVAILABLE_NOTE,
+    ),
   }
 }
 
 /**
  * The stashed bodies of the Google tool calls in a paused message, keyed by
  * tool call id. A record is used only when its user, chat, message and tool
- * call id all match; a missing, foreign or unreadable record is left out,
- * so that call reaches the model as its references.
+ * call id all match. A missing, foreign or unreadable record gives that call
+ * its references with a note that the content could not be kept, so the
+ * model knows why and the continuation never fails over it.
  */
 export async function loadGoogleToolResults(input: {
   kv: KVNamespace
@@ -376,14 +467,23 @@ export async function loadGoogleToolResults(input: {
   logger: LoggerLike
 }): Promise<Map<string, StashedResult>> {
   const results = new Map<string, StashedResult>()
-  const toolCallIds = googleToolCallIdsOf(input.parts)
+  const googleParts = input.parts.filter((part) => {
+    return isGoogleToolPart(part)
+      && hasRanState(part)
+      && typeof part.toolCallId === 'string'
+  }) as Array<Record<string, unknown> & { toolCallId: string }>
+  let loaded = 0
   let failed = 0
+  let lastError: string | null = null
 
-  for (const toolCallId of toolCallIds) {
+  for (const part of googleParts) {
     try {
       const record = await getToolApprovalResult(
         input.kv,
-        await toolApprovalResultIdOf(input.owner.messagePublicId, toolCallId),
+        await toolApprovalResultIdOf(
+          input.owner.messagePublicId,
+          part.toolCallId,
+        ),
       )
 
       if (
@@ -391,25 +491,36 @@ export async function loadGoogleToolResults(input: {
         && record.userId === input.owner.userId
         && record.chatPublicId === input.owner.chatPublicId
         && record.messagePublicId === input.owner.messagePublicId
-        && record.toolCallId === toolCallId
+        && record.toolCallId === part.toolCallId
       ) {
-        results.set(toolCallId, {
+        results.set(part.toolCallId, {
           isError: record.isError,
           output: record.output,
         })
+        loaded += 1
+
+        continue
       }
-    } catch {
+    } catch (exception) {
       failed += 1
+      lastError = exceptionMessage(exception)
+    }
+
+    const unavailable = unavailableResultOf(part)
+
+    if (unavailable) {
+      results.set(part.toolCallId, unavailable)
     }
   }
 
-  if (toolCallIds.length > 0) {
+  if (googleParts.length > 0) {
     input.logger.set({
       attributes: {
         googleTools: {
-          stashCalls: toolCallIds.length,
-          stashLoaded: results.size,
+          stashCalls: googleParts.length,
+          stashLoaded: loaded,
           stashFailed: failed,
+          ...(lastError ? { stashError: lastError } : {}),
         },
       },
     })
@@ -426,7 +537,7 @@ export async function loadGoogleToolResults(input: {
  * and means no grants, so every Google read asks.
  */
 export async function readGoogleChatGrantHashes(
-  db: ReturnType<typeof useDb>,
+  db: DbClient,
   userId: number,
   chatPublicId: string,
   logger: LoggerLike,
@@ -466,6 +577,7 @@ export async function deleteGoogleToolResults(input: {
 }): Promise<void> {
   const toolCallIds = googleToolCallIdsOf(input.parts)
   let failed = 0
+  let lastError: string | null = null
 
   for (const toolCallId of toolCallIds) {
     try {
@@ -473,14 +585,21 @@ export async function deleteGoogleToolResults(input: {
         input.kv,
         await toolApprovalResultIdOf(input.messagePublicId, toolCallId),
       )
-    } catch {
+    } catch (exception) {
       failed += 1
+      lastError = exceptionMessage(exception)
     }
   }
 
   if (failed > 0) {
     input.logger.set({
-      attributes: { googleTools: { stashDelete: 'failed', failed } },
+      attributes: {
+        googleTools: {
+          stashDelete: 'failed',
+          failed,
+          ...(lastError ? { error: lastError } : {}),
+        },
+      },
     })
   }
 }

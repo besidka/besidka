@@ -215,16 +215,31 @@ describe('pending approval records', () => {
     expect(record?.family).toBeNull()
   })
 
-  it('reads a reason from another deploy as default', async () => {
+  it('reads a reason from another deploy as default, for this call only',
+    async () => {
+      const kv = createFakeKv()
+
+      kv.values.set(
+        toolApprovalKey(APPROVAL_ID),
+        JSON.stringify({ ...pendingRecord(), reason: 'future-reason' }),
+      )
+
+      const record = await getToolApproval(kv as never, APPROVAL_ID)
+
+      expect(record?.reason).toBe('default')
+      expect(record?.rememberOptions).toEqual(['once'])
+    })
+
+  it('keeps the stored remember options of a known reason', async () => {
     const kv = createFakeKv()
 
     kv.values.set(
       toolApprovalKey(APPROVAL_ID),
-      JSON.stringify({ ...pendingRecord(), reason: 'future-reason' }),
+      JSON.stringify(pendingRecord()),
     )
 
-    expect((await getToolApproval(kv as never, APPROVAL_ID))?.reason)
-      .toBe('default')
+    expect((await getToolApproval(kv as never, APPROVAL_ID))?.rememberOptions)
+      .toEqual(['once', 'chat', 'always'])
   })
 
   it('requires a signature', async () => {
@@ -555,6 +570,24 @@ describe('per-chat index', () => {
       version: 1,
       approvalIds: [APPROVAL_ID],
       messageIds: [MESSAGE_ID],
+      resultIds: [APPROVAL_ID],
+    })
+  })
+
+  it('reads an index written before the result list', async () => {
+    const kv = createFakeKv()
+
+    kv.values.set(toolApprovalChatKey('chat123'), JSON.stringify({
+      version: 1,
+      approvalIds: ['approval_old_1'],
+      messageIds: [],
+    }))
+
+    await putToolApproval(kv as never, APPROVAL_ID, pendingRecord())
+
+    expect(readIndex(kv)).toMatchObject({
+      approvalIds: ['approval_old_1', APPROVAL_ID],
+      resultIds: [],
     })
   })
 
