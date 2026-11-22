@@ -6,6 +6,7 @@ import {
   MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT,
   MCP_PRIVATE_DELETE_RATE_LIMIT,
   MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT,
+  MCP_PRIVATE_DISCONNECT_GOOGLE_RATE_LIMIT,
   MCP_PRIVATE_TOOL_RATE_LIMIT,
   MCP_PRIVATE_WRITE_RATE_LIMIT,
 } from '~~/config/mcp-server'
@@ -94,6 +95,20 @@ export async function requireMcpLegalConsent(
     message: buildMcpConsentRefusalMessage(status, siteUrl),
     data: { reason: 'legal-consent', consentStatus: status },
   })
+}
+
+async function consumeDisconnectGoogleLimit(
+  userId: number,
+  kv: KVNamespace,
+): Promise<void> {
+  const result = await createAuthRateLimitStorage(
+    kv,
+    `${MCP_RATE_LIMIT_KEY_PREFIX}:disconnect-google`,
+  ).consume(String(userId), MCP_PRIVATE_DISCONNECT_GOOGLE_RATE_LIMIT)
+
+  if (!result.allowed) {
+    throw createRateLimitError(result.retryAfter)
+  }
 }
 
 function createRateLimitError(retryAfter: number | null) {
@@ -185,6 +200,12 @@ export async function enforceMcpToolRateLimit(
 
   if (toolName === 'delete_connectors') {
     await consumeDeleteConnectorsLimit(userId, kv)
+
+    return
+  }
+
+  if (toolName === 'disconnect_google') {
+    await consumeDisconnectGoogleLimit(userId, kv)
 
     return
   }
