@@ -72,7 +72,7 @@ Rules:
 - Rebase a child onto `origin/<parent-branch>` only after the previous child has
   landed. Never pre-rebase children onto each other's branches: a squash merge
   gives the commits new SHAs, so the replayed commits conflict.
-- With `N` children merged back to back the cost is `N-1` cancelled partial runs
+- With `N` children merged back to back the cost is `N-1` canceled partial runs
   (the Claude review included) plus one full run.
 - The parent only builds once the first code child lands. A docs-only commit is
   in `paths-ignore`, and a docs-only change on top of a built commit reuses that
@@ -81,8 +81,8 @@ Rules:
 Escalation for large umbrellas (not implemented, documented only): replace the
 `cancel-in-progress` value in `preview-build.yml` with
 `${{ !contains(github.event.pull_request.labels.*.name, 'umbrella') }}` and put
-the `umbrella` label on the parent PR. A labelled parent then queues instead of
-cancelling, which gives at most one running and one pending build at a time.
+the `umbrella` label on the parent PR. A labeled parent then queues instead of
+canceling, which gives at most one running and one pending build at a time.
 
 ## Native stack (S)
 
@@ -111,7 +111,7 @@ Day to day:
   PR) atomically: all or nothing, one squash commit per layer, so `main` gets
   `n` commits. Each layer title must be a conventional commit.
 
-## CI behaviour
+## CI behavior
 
 GitHub runs Actions for a stacked PR as if it targeted the base of the whole
 stack, so `on.pull_request.branches: [main]` matches every layer. The
@@ -171,7 +171,7 @@ How the non-top skip works:
   a PR joins a stack, so `stack` is absent at that moment and creating a new
   bottom layer triggers one full build and a `pr-<n>` preview deploy. That
   deploy applied the layer's D1 migration to `besidka-preview`. Later events
-  carry `stack`, so the zero-build behaviour only starts after creation. Plan
+  carry `stack`, so the zero-build behavior only starts after creation. Plan
   for one full build and a preview for each new bottom layer, and take the
   `besidka-preview` Time Travel bookmark before creating a bottom layer that
   carries a migration.
@@ -190,3 +190,34 @@ How the non-top skip works:
   in `paths-ignore`, so the PR that introduced this setup was not built, and
   `workflow_run` workflows always run the default-branch copy. The first real
   exercise is the first native stack after merge.
+
+## Lessons from the artifacts stack (2026-11)
+
+The artifacts feature ran as a native stack of several layers. These are the
+traps it hit.
+
+- **A conflicting layer silently skips CI.** When a layer's branch conflicts
+  with `main`, GitHub reports `mergeable: UNKNOWN` for that PR and does not
+  start any `pull_request` workflow. Only `pull_request_target` workflows
+  run. No error or banner says why, and the PR looks like it is waiting.
+  The conflict can show only at the top of the stack.
+- **Diagnose with a temporary draft PR.** Open a draft PR from the same
+  branch with base `main`. GitHub computes the real merge state there and
+  shows `dirty` when the branch conflicts. Close the draft when done.
+- **Fix by merging `main` into each layer, bottom-up.** Use merge commits,
+  one layer at a time, starting at the bottom. Do not rebase and
+  force-push a stack that CI already tested.
+- **A stacked PR cannot change its base.** The API answers 422. To move a
+  layer, rebuild the stack.
+- **`gh stack` cannot drop a single layer.** A parked layer above the one you
+  want to ship stays in the stack and blocks the preview of the stack top
+  (only the top layer builds). Workaround: open a temporary draft PR to
+  `main` from the branch you want to preview, and delete its preview Worker
+  when the PR closes.
+- **The artifacts runtime preview step uses `main`'s config.** It deploys
+  with `workers/artifacts-runtime/wrangler.jsonc` as it is on `main`, not the
+  one in the PR. A change to that file is only tested after it merges.
+- **Subagents cannot open PRs.** The `require-pr-writing-skill` hook does
+  not see a Skill call made inside a subagent, so PR creation is blocked
+  there. The subagent pushes the branch and writes the PR body to a file; the
+  coordinator opens the PR from the main session.

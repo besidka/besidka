@@ -10,14 +10,89 @@ const featureAccessCounts = {
   featureAuditRowsAnonymised: 4,
 }
 
+const legalNoticePurgeCounts = {
+  legalNoticeOptOutsDeleted: 1,
+}
+
+const artifactPurgeCounts = {
+  artifactsDeleted: 2,
+  artifactsHeld: 1,
+  artifactObjectsDeleted: 3,
+  artifactViewerStorageDeleted: 4,
+}
+
+const documentPurgeCounts = {
+  documentsDeleted: 5,
+  documentObjectsDeleted: 6,
+}
+
+const skillPurgeCounts = {
+  skillsDeleted: 3,
+  skillVersionsDeleted: 7,
+  skillFilesDeleted: 21,
+  skillChatSettingsDeleted: 2,
+  projectSkillsDeleted: 4,
+  skillObjectsDeleted: 9,
+  skillStagingObjectsDeleted: 1,
+}
+
+const connectorPurgeCounts = {
+  connectorsDeleted: 2,
+  connectorCredentialsDeleted: 2,
+  connectorToolSettingsDeleted: 8,
+  connectorChatSettingsDeleted: 3,
+  connectorToolCallsDeleted: 12,
+}
+
+const toolApprovalPurgeCounts = {
+  besidkaToolPermissionsDeleted: 4,
+  besidkaChatSettingsDeleted: 2,
+  toolApprovalClaimsDeleted: 5,
+}
+
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
   invalidateStorageCache: vi.fn(),
   purgeUserFeatureAccess: vi.fn(),
+  purgeUserLegalNoticeData: vi.fn(),
+  purgeUserArtifacts: vi.fn(),
+  purgeUserDocuments: vi.fn(),
+  purgeUserSkills: vi.fn(),
+  purgeUserConnectors: vi.fn(),
+  purgeUserToolApprovals: vi.fn(),
+  artifactBlobStore: { delete: vi.fn() },
+}))
+
+vi.mock('~~/server/utils/artifacts/store', () => ({
+  purgeUserArtifacts: mocks.purgeUserArtifacts,
+}))
+
+vi.mock('~~/server/utils/documents/cleanup', () => ({
+  purgeUserDocuments: mocks.purgeUserDocuments,
+}))
+
+vi.mock('~~/server/utils/skills/cleanup', () => ({
+  purgeUserSkills: mocks.purgeUserSkills,
+}))
+
+vi.mock('~~/server/utils/connectors/cleanup', () => ({
+  purgeUserConnectors: mocks.purgeUserConnectors,
+}))
+
+vi.mock('~~/server/utils/tool-approval/cleanup', () => ({
+  purgeUserToolApprovals: mocks.purgeUserToolApprovals,
+}))
+
+vi.mock('~~/server/utils/artifacts/blob-store', () => ({
+  useArtifactBlobStore: () => mocks.artifactBlobStore,
 }))
 
 vi.mock('~~/server/utils/account/purge-feature-access', () => ({
   purgeUserFeatureAccess: mocks.purgeUserFeatureAccess,
+}))
+
+vi.mock('~~/server/utils/legal/purge', () => ({
+  purgeUserLegalNoticeData: mocks.purgeUserLegalNoticeData,
 }))
 
 vi.mock('~~/server/utils/files/convert-files-for-ai', () => ({
@@ -89,7 +164,7 @@ function createStorage(knowledgeKeys: string[] = []) {
 
 function createKv() {
   return {
-    delete: vi.fn(async () => undefined),
+    delete: vi.fn(async (_key: string) => undefined),
   }
 }
 
@@ -107,6 +182,12 @@ describe('purgeUserData', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.purgeUserFeatureAccess.mockResolvedValue(featureAccessCounts)
+    mocks.purgeUserLegalNoticeData.mockResolvedValue(legalNoticePurgeCounts)
+    mocks.purgeUserArtifacts.mockResolvedValue(artifactPurgeCounts)
+    mocks.purgeUserDocuments.mockResolvedValue(documentPurgeCounts)
+    mocks.purgeUserSkills.mockResolvedValue(skillPurgeCounts)
+    mocks.purgeUserConnectors.mockResolvedValue(connectorPurgeCounts)
+    mocks.purgeUserToolApprovals.mockResolvedValue(toolApprovalPurgeCounts)
   })
 
   it('removes every R2 object in a single batched delete call', async () => {
@@ -133,12 +214,60 @@ describe('purgeUserData', () => {
       storageKeysDeleted: 3,
       storageBatches: 1,
       knowledgeObjectsDeleted: 0,
+      ...artifactPurgeCounts,
+      ...documentPurgeCounts,
+      ...skillPurgeCounts,
+      ...connectorPurgeCounts,
+      ...toolApprovalPurgeCounts,
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
       ...featureAccessCounts,
+      ...legalNoticePurgeCounts,
       sessionKeysDeleted: 1,
     })
+  })
+
+  it('removes the extracted text next to every Office file', async () => {
+    const storageKeys = ['users/1/a.docx', 'users/1/b.png', 'users/1/c.xlsx']
+    const db = createDb(storageKeys)
+    const storage = createStorage()
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 1,
+      logger: { set: vi.fn() },
+    })
+
+    expect(storage.delete).toHaveBeenCalledWith([
+      ...storageKeys,
+      'users/1/a.docx.text.md',
+      'users/1/c.xlsx.text.md',
+    ])
+    expect(result.filesFound).toBe(3)
+    expect(result.fileCacheKeysInvalidated).toBe(3)
+  })
+
+  it('keeps every R2 batch within 1000 keys once sidecars are added', async () => {
+    const storageKeys = Array.from({ length: 600 }, (_value, index) => {
+      return `users/1/file-${index}.docx`
+    })
+    const db = createDb(storageKeys)
+    const storage = createStorage()
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 1, logger: { set: vi.fn() } })
+
+    const batchSizes = storage.delete.mock.calls.map(([keys]) => {
+      return keys.length
+    })
+
+    expect(batchSizes).toEqual([1000, 200])
   })
 
   it('deletes the memory entries scoped to the user id', async () => {
@@ -277,7 +406,13 @@ describe('purgeUserData', () => {
           memoryEntriesDeleted: result.memoryEntriesDeleted,
           memoryBackfillJobsDeleted: result.memoryBackfillJobsDeleted,
           knowledgeObjectsDeleted: 2,
+          ...artifactPurgeCounts,
+          ...documentPurgeCounts,
+          ...skillPurgeCounts,
+          ...connectorPurgeCounts,
+          ...toolApprovalPurgeCounts,
           ...featureAccessCounts,
+          ...legalNoticePurgeCounts,
         },
       },
     }))
@@ -287,6 +422,181 @@ describe('purgeUserData', () => {
     expect(storage.delete).toHaveBeenCalledTimes(2)
     expect(storage.delete).toHaveBeenLastCalledWith(knowledgeKeys)
     expect(result.knowledgeObjectsDeleted).toBe(2)
+  })
+
+  it('purges the user artifacts with the artifact blob store', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 9, logger })
+
+    expect(mocks.purgeUserArtifacts).toHaveBeenCalledWith({
+      db,
+      storage: mocks.artifactBlobStore,
+      userId: 9,
+      logger,
+    })
+    expect(result).toEqual(expect.objectContaining(artifactPurgeCounts))
+  })
+
+  it('rethrows an artifact purge failure so the deletion aborts', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserArtifacts.mockRejectedValueOnce(new Error('r2 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 9, logger })).rejects.toThrow(
+      'r2 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'artifacts-delete', userId: 9 },
+    }))
+  })
+
+  it('purges the user documents with the same db before the cache work', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 11, logger })
+
+    expect(mocks.purgeUserDocuments).toHaveBeenCalledWith(db, 11, logger)
+    expect(result).toEqual(expect.objectContaining(documentPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the document purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserDocuments.mockRejectedValueOnce(new Error('r2 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 12, logger })).rejects.toThrow(
+      'r2 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'documents-delete', userId: 12 },
+    }))
+  })
+
+  it('purges the user skills with the same db before the cache work', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 13, logger })
+
+    expect(mocks.purgeUserSkills).toHaveBeenCalledWith(db, 13, logger)
+    expect(result).toEqual(expect.objectContaining(skillPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the skills purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserSkills.mockRejectedValueOnce(new Error('r2 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 14, logger })).rejects.toThrow(
+      'r2 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'skills-delete', userId: 14 },
+    }))
+  })
+
+  it('purges the user connectors with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 15, logger })
+
+    expect(mocks.purgeUserConnectors).toHaveBeenCalledWith(db, 15, logger)
+    expect(result).toEqual(expect.objectContaining(connectorPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the connectors purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserConnectors.mockRejectedValueOnce(new Error('d1 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 16, logger })).rejects.toThrow(
+      'd1 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'connectors-delete', userId: 16 },
+    }))
+  })
+
+  it('purges the tool approval rows with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 17, logger })
+
+    expect(mocks.purgeUserToolApprovals).toHaveBeenCalledWith(db, 17, logger)
+    expect(result).toEqual(expect.objectContaining(toolApprovalPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the tool approval purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserToolApprovals.mockRejectedValueOnce(new Error('d1 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 18, logger })).rejects.toThrow(
+      'd1 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'tool-approvals-delete', userId: 18 },
+    }))
   })
 
   it('purges knowledge objects even when the user has no files', async () => {
@@ -342,11 +652,59 @@ describe('purgeUserData', () => {
     })
 
     expect(kv.delete.mock.calls.map(([key]) => key)).toEqual([
+      'usage-stats:42:7d',
+      'usage-stats:42:30d',
+      'usage-stats:42:all',
       'auth:token-a',
       'auth:token-b',
       'auth:active-sessions-42',
     ])
     expect(result.sessionKeysDeleted).toBe(3)
+  })
+
+  it('deletes the cached usage stats of every period', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 9, logger: { set: vi.fn() } })
+
+    expect(kv.delete.mock.calls.map(([key]) => key)).toEqual(
+      expect.arrayContaining([
+        'usage-stats:9:7d',
+        'usage-stats:9:30d',
+        'usage-stats:9:all',
+      ]),
+    )
+  })
+
+  it('keeps purging when a usage stats cache delete fails', async () => {
+    const db = createDb([], ['token-a'])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    kv.delete.mockImplementation(async (key: string) => {
+      if (key.startsWith('usage-stats:')) {
+        throw new Error('kv unavailable')
+      }
+    })
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 1, logger })
+
+    expect(result.sessionKeysDeleted).toBe(2)
+    expect(kv.delete).toHaveBeenCalledWith('auth:token-a')
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        usageStats: { cacheDeleteError: 'kv unavailable' },
+      },
+    })
   })
 
   it('deletes message_search rows scoped to the user owner tag', async () => {
@@ -430,10 +788,16 @@ describe('purgeUserData', () => {
       storageKeysDeleted: 0,
       storageBatches: 0,
       knowledgeObjectsDeleted: 0,
+      ...artifactPurgeCounts,
+      ...documentPurgeCounts,
+      ...skillPurgeCounts,
+      ...connectorPurgeCounts,
+      ...toolApprovalPurgeCounts,
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
       ...featureAccessCounts,
+      ...legalNoticePurgeCounts,
       sessionKeysDeleted: 1,
     })
   })
@@ -455,6 +819,49 @@ describe('purgeUserData', () => {
       attributes: {
         accountPurge: expect.objectContaining(featureAccessCounts),
       },
+    }))
+  })
+
+  it('purges legal notice opt-outs with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 42, logger })
+
+    expect(mocks.purgeUserLegalNoticeData).toHaveBeenCalledWith(42, db)
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: {
+        accountPurge: expect.objectContaining(legalNoticePurgeCounts),
+      },
+    }))
+  })
+
+  it('rethrows a legal notice purge failure so the deletion aborts', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserLegalNoticeData.mockRejectedValueOnce(
+      new Error('d1 unavailable'),
+    )
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
+      'd1 unavailable',
+    )
+    expect(mocks.purgeUserFeatureAccess).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: expect.objectContaining({
+        phase: 'legal-notice-purge',
+        userId: 1,
+      }),
     }))
   })
 
@@ -486,7 +893,11 @@ describe('purgeUserData', () => {
     const storage = createStorage()
     const kv = createKv()
 
-    kv.delete.mockRejectedValueOnce(new Error('kv unavailable'))
+    kv.delete.mockImplementation(async (key: string) => {
+      if (key.startsWith('auth:')) {
+        throw new Error('kv unavailable')
+      }
+    })
     stubBindings(db, storage, kv)
 
     const { purgeUserData } = await importPurgeUserData()

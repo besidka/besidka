@@ -158,6 +158,19 @@
             </div>
 
             <div
+              v-if="targetUsedConnector"
+              data-testid="share-connector-warning"
+              role="note"
+              class="alert alert-warning alert-soft text-sm"
+            >
+              <Icon name="lucide:cable" size="16" />
+              <span>
+                Replies may repeat data from a connected service, such as
+                your issues or documents. Anyone with the link can read it.
+              </span>
+            </div>
+
+            <div
               data-testid="share-pii-slot"
               class="min-h-36 sm:min-h-28"
             >
@@ -316,6 +329,7 @@ const {
   isModalOpen,
   targetChatSlug,
   targetHasFiles,
+  targetUsedConnector,
   share,
   shareCheck,
   isLoading,

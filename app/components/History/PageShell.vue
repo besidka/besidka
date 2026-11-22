@@ -14,47 +14,32 @@
   <UiBubble class="flex flex-col gap-4">
     <nav
       aria-label="History sections"
-      class="tabs tabs-border"
+      class="tabs tabs-border @container"
     >
       <NuxtLink
-        to="/chats/history"
-        class="tab grow"
-        :class="{ 'tab-active': activeTab === 'chats' }"
-        :aria-current="activeTab === 'chats' ? 'page' : undefined"
+        v-for="tab in tabs"
+        :key="tab.id"
+        :to="tab.to"
+        class="tab grow gap-2"
+        :class="[
+          { 'tab-active': activeTab === tab.id },
+          tightPaddingClass,
+        ]"
+        :aria-current="activeTab === tab.id ? 'page' : undefined"
+        :aria-label="tab.label"
+        :data-testid="`tab-${tab.id}`"
       >
         <Icon
           size="14"
-          name="lucide:message-circle"
-          class="mr-2"
+          :name="tab.icon"
         />
-        Chats
-      </NuxtLink>
-      <NuxtLink
-        to="/chats/projects"
-        class="tab grow"
-        :class="{ 'tab-active': activeTab === 'projects' }"
-        :aria-current="activeTab === 'projects' ? 'page' : undefined"
-      >
-        <Icon
-          name="lucide:folder"
-          size="14"
-          class="mr-2"
-        />
-        Projects
-      </NuxtLink>
-      <NuxtLink
-        to="/chats/shared"
-        class="tab grow"
-        data-testid="tab-shared"
-        :class="{ 'tab-active': activeTab === 'shared' }"
-        :aria-current="activeTab === 'shared' ? 'page' : undefined"
-      >
-        <Icon
-          name="lucide:share-2"
-          size="14"
-          class="mr-2"
-        />
-        Shared
+        <span
+          :class="tabs.length > BASE_TAB_COUNT && activeTab !== tab.id
+            ? collapseClass
+            : ''"
+        >
+          {{ tab.label }}
+        </span>
       </NuxtLink>
     </nav>
 
@@ -69,7 +54,121 @@
 </template>
 
 <script setup lang="ts">
+type HistoryTab
+  = | 'chats'
+    | 'projects'
+    | 'artifacts'
+    | 'documents'
+    | 'skills'
+    | 'connectors'
+    | 'shared'
+
+interface HistoryTabLink {
+  id: HistoryTab
+  to: string
+  label: string
+  icon: string
+}
+
+const BASE_TAB_COUNT = 3
+const FIVE_TAB_COUNT = 5
+const SIX_TAB_COUNT = 6
+const SEVEN_TAB_COUNT = 7
+
 defineProps<{
-  activeTab: 'chats' | 'projects' | 'shared'
+  activeTab: HistoryTab
 }>()
+
+const artifactsFeature = useFeature('artifacts')
+const documentsFeature = useFeature('documents')
+const skillsFeature = useFeature('skills')
+const connectorsFeature = useFeature('connectors')
+
+/**
+ * Inactive tabs keep only their icon when the row cannot hold every label.
+ * Six labeled tabs need about 570px (measured with Nunito: 82, 96, 100, 118,
+ * 80 and 91px), five need about 480px, and seven (Connectors adds about
+ * 105px more) need about 790px, so the container width that triggers the
+ * collapse grows with the tab count. The class strings are written out in
+ * full so Tailwind can see them.
+ */
+const collapseClass = computed<string>(() => {
+  if (tabs.value.length >= SEVEN_TAB_COUNT) {
+    return '@max-[50rem]:sr-only'
+  }
+
+  if (tabs.value.length >= SIX_TAB_COUNT) {
+    return '@max-[40rem]:sr-only'
+  }
+
+  return tabs.value.length === FIVE_TAB_COUNT
+    ? '@max-[34rem]:sr-only'
+    : '@max-md:sr-only'
+})
+
+const tightPaddingClass = computed<string>(() => {
+  return tabs.value.length >= SEVEN_TAB_COUNT ? 'max-sm:[--tab-p:0.5rem]' : ''
+})
+
+const tabs = computed<HistoryTabLink[]>(() => {
+  const tabLinks: HistoryTabLink[] = [
+    {
+      id: 'chats',
+      to: '/chats/history',
+      label: 'Chats',
+      icon: 'lucide:message-circle',
+    },
+    {
+      id: 'projects',
+      to: '/chats/projects',
+      label: 'Projects',
+      icon: 'lucide:folder',
+    },
+  ]
+
+  if (artifactsFeature.value.active) {
+    tabLinks.push({
+      id: 'artifacts',
+      to: '/chats/artifacts',
+      label: 'Artifacts',
+      icon: 'lucide:app-window',
+    })
+  }
+
+  if (documentsFeature.value.active) {
+    tabLinks.push({
+      id: 'documents',
+      to: '/chats/documents',
+      label: 'Documents',
+      icon: 'lucide:file-text',
+    })
+  }
+
+  if (skillsFeature.value.active) {
+    tabLinks.push({
+      id: 'skills',
+      to: '/chats/skills',
+      label: 'Skills',
+      icon: 'lucide:sparkles',
+    })
+  }
+
+  if (connectorsFeature.value.active) {
+    tabLinks.push({
+      id: 'connectors',
+      to: '/chats/connectors',
+      label: 'Connectors',
+      icon: 'lucide:cable',
+    })
+  }
+
+  tabLinks.push({
+    id: 'shared',
+    to: '/chats/shared',
+    label: 'Shared',
+    icon: 'lucide:share-2',
+  })
+
+  return tabLinks
+})
 </script>

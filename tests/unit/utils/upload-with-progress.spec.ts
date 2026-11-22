@@ -167,7 +167,7 @@ describe('uploadWithProgress', () => {
 
     await expect(promise).rejects.toBeInstanceOf(UploadError)
     await expect(promise).rejects.toMatchObject({
-      message: 'Upload was cancelled',
+      message: 'Upload was canceled',
     })
   })
 })

@@ -102,7 +102,7 @@ before the `users` row is deleted, so a purge that aborts earlier leaves the
 user's opt-outs and objections in place. It deletes the user's rows from
 `user_roles`, `feature_grants` and `feature_opt_ins`, nulls the grantor ids
 the user left on other users' rows (`granted_by`, `feature_flag_rules
-.updated_by`), and anonymises the audit rows instead of deleting them: one
+.updated_by`), and anonymizes the audit rows instead of deleting them: one
 `UPDATE` nulls `actor_user_id` and `target_user_id` where they equal the user
 **and** runs `json_remove` over the personal keys of `before` and `after` in
 every row that references the user (C5). A value that is not valid JSON is
@@ -110,7 +110,7 @@ set to null rather than blocking the deletion. The counts go to
 `attributes.accountPurge`. A failure aborts the purge, so the deletion stays
 retryable.
 
-Why anonymise and not delete: the audit log is the admin's accountability
+Why anonymize and not delete: the audit log is the admin's accountability
 record (GDPR Art. 5(2) and 32). Deleting every row that mentions a deleted
 user would also delete the record of what an admin changed for that user,
 and, when the deleted user was an admin, the record of every rule they
@@ -145,12 +145,22 @@ table too. The replay source is therefore Axiom, not the audit table
 
 Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 `artifacts` (and `.react`, `.storage`, `.llm-bridge`, `.share`, `.mcp`),
-`documents` (and `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.mcp`), `code-execution`
+`documents` (and `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.mcp`), `files.office`,
+`code-execution`
 (and `.files`, `.skills`), `research.custom` (and `research.custom.max`,
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
 `.native`), `google.drive` (and `google.calendar`, `google.byo`,
-`google.gmail`), `skills` (and `.import-url`, `.scripts`), and
-`ui.side-panel-demo`.
+`google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`),
+`tool-approvals`, `besidka-tools`, and `ui.side-panel-demo`. Of the `connectors` flags only
+`connectors` and `connectors.oauth` are `available: true` (C-4, still
+`internal`, so admin- and grant-only); `.registry` and `.native` stay
+unavailable. `tool-approvals` (C-6) is `available: true`, spends nothing and
+is evaluated once per chat send (`resolveSendFeatures`); off, the send
+behaves exactly as before C-6 (`docs/connectors.md` section 7.6).
+`besidka-tools` (BES-394 L8) is `available: true` with `optIn: 'required'`
+and `spend: 'none'`: it spends nothing, and the opt-in is the user's consent
+to let a model use their Besidka tools, with a permission for each tool
+(`docs/besidka-tools.md`).
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
 `FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is
@@ -199,7 +209,7 @@ no variant). **Only rollout results (step 9) get a hash variant**
 cohort and C1's "never for grant, role, default or anonymous" holds for
 exposure too. Grant, role and default results get no variant, except a
 grant's forced variant (`variantSource: 'grant'`). The variant split has the
-same C2 and C3 gates as step 9. Rule rows are sanitised on load: basis points
+same C2 and C3 gates as step 9. Rule rows are sanitized on load: basis points
 are clamped to 0..10000, unknown roles and malformed variants are dropped.
 
 A child flag is off whenever its parent is off. The child is evaluated
@@ -257,7 +267,7 @@ how to object (C2).
   row (email, `email_verified`, `two_factor_enabled`, read fresh for the
   admin check instead of trusting the cached session), roles, unexpired
   grants and opt-ins. `useFeatureContext(event)`
-  (`server/utils/features/context.ts`) memoises rules, user state, config,
+  (`server/utils/features/context.ts`) memoizes rules, user state, config,
   `isAdmin` and the exposure set as one promise on `event.context.features`,
   so every guard in a request shares them. Nothing per-user is stored in KV,
   so a grant takes effect on the next request.
@@ -303,7 +313,7 @@ and the secret in the previews base config. Without 2FA an admin is not even
 an `admin` for `allowRoles`. The owner must turn on TOTP before the first
 admin use.
 
-Known limits, accepted for v1: `twoFactorEnabled` is enrolment, not proof
+Known limits, accepted for v1: `twoFactorEnabled` is enrollment, not proof
 that this session passed a 2FA challenge (passkey and OAuth sign-ins skip the
 challenge, `docs/auth-security.md`); and a `CI=true` var or secret on a
 deployed Worker would drop the 2FA rule, as it already drops email
@@ -405,8 +415,8 @@ As built:
   sitemap `exclude` and the agent-discovery `excludePrefixes`. A signed-out
   visitor is redirected to `/signin` by the global auth middleware, like
   every other signed-in route.
-- **Entry**: the Search popup shows "Admin" (`search-option-admin`, last in
-  Settings) only when `useIsAdmin()` is true. Admin never gets a nav pill
+- **Entry**: the Search popup shows "Admin" (`search-option-admin`, in its own
+  Admin group before Interface) only when `useIsAdmin()` is true. Admin never gets a nav pill
   slot.
 - Rule changes take effect within 5 minutes on other locations (the KV TTL);
   the UI says so.
@@ -507,7 +517,7 @@ Search popup row) lists the features the user can access:
 
 The opt-in route is `server/api/v1/profiles/features/[flag]/opt-in.post.ts`.
 Opt-ins and the objection switch are never exposed over MCP: opting in
-authorises spend.
+authorizes spend.
 
 As built (P0-7):
 
@@ -558,7 +568,7 @@ As built (P0-7):
 
 Labs copy says "experimental, may change or be removed". It never says
 "premium", "exclusive", "members" or "early access", and no email or push
-notification announces Labs features (C12; `docs/legal/monetisation-readiness.md`).
+notification announces Labs features (C12; `docs/legal/monetization-readiness.md`).
 
 **MCP (P0-8).**
 
@@ -669,7 +679,7 @@ capability and reports:
 | `route_prefix_without_routes` | A `routesPrefix` directory has no route files |
 | `route_without_feature_guard` | A `.ts` file under `server/api/v1/<prefix>/` does not call `requireFeature(event, '<flag>')` with the capability's flag or a child of it (comments are ignored) |
 | `mcp_tool_without_scope` | An `mcpTools` name is missing from `MCP_PRIVATE_TOOL_SCOPES` |
-| `mcp_tool_without_private_wrapper` | `server/mcp/tools/<name-with-dashes>.ts` is missing or does not call `withMcpPrivateTool(` |
+| `mcp_tool_without_private_wrapper` | `server/mcp/tools/<name-with-dashes>.ts` is missing or calls neither `withMcpPrivateTool(` nor `toMcpToolDefinition(` (the shim over a Besidka tool) |
 | `job_without_feature` | A job has no `feature`, or one outside the capability's flag tree |
 
 The checks read source text, so they are a heuristic: a guard inside a

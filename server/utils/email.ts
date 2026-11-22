@@ -102,12 +102,14 @@ export const useEmail = (
     html,
     text,
     from = 'noreply' as From,
+    replyTo,
   }: {
     to: string
     subject: string
     html: string
     text?: string
     from?: From
+    replyTo?: string
   }) {
     if (!to || !subject || !html) {
       throw createError('Missing required parameters: to, subject, or html')
@@ -141,6 +143,7 @@ export const useEmail = (
         subject,
         html,
         text: text ?? htmlToText(html),
+        ...(replyTo ? { replyTo } : {}),
       })
     } catch (exception: any) {
       throw createError({

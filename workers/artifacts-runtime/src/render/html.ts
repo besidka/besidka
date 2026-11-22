@@ -1,17 +1,49 @@
 import { removeNavigatingElements } from './inert.ts'
+import {
+  beginInlineScript,
+  countScriptLines,
+  endInlineScript,
+  findInlineScripts,
+  forgetModuleScript,
+  matchScriptLines,
+  registerModuleScript,
+} from './script-location.ts'
+import type { ScriptSpan } from './script-location.ts'
 
 const DEFERRED_SCRIPT_ATTRIBUTE = 'data-besidka-script-type'
 
 const DEFERRED_SCRIPT_TYPE = 'text/x-besidka-deferred'
 
-function deferScripts(parsed: Document) {
-  for (const script of parsed.querySelectorAll('script')) {
+const SCRIPT_LINE_ATTRIBUTE = 'data-besidka-script-line'
+
+const RUNTIME_SCRIPT_ATTRIBUTES = new Set([
+  'type',
+  DEFERRED_SCRIPT_ATTRIBUTE,
+  SCRIPT_LINE_ATTRIBUTE,
+])
+
+function deferScripts(parsed: Document, html: string) {
+  const scripts = [...parsed.querySelectorAll('script')]
+  const startLines = matchScriptLines(
+    findInlineScripts(html),
+    scripts.map((script) => {
+      return script.textContent ?? ''
+    }),
+  )
+
+  scripts.forEach((script, index) => {
+    const startLine = startLines[index]
+
+    if (startLine) {
+      script.setAttribute(SCRIPT_LINE_ATTRIBUTE, String(startLine))
+    }
+
     script.setAttribute(
       DEFERRED_SCRIPT_ATTRIBUTE,
       script.getAttribute('type') ?? '',
     )
     script.setAttribute('type', DEFERRED_SCRIPT_TYPE)
-  }
+  })
 }
 
 function createRunnableScript(deferred: Element): HTMLScriptElement {
@@ -19,10 +51,7 @@ function createRunnableScript(deferred: Element): HTMLScriptElement {
   const originalType = deferred.getAttribute(DEFERRED_SCRIPT_ATTRIBUTE)
 
   for (const attribute of deferred.attributes) {
-    if (
-      attribute.name === 'type'
-      || attribute.name === DEFERRED_SCRIPT_ATTRIBUTE
-    ) {
+    if (RUNTIME_SCRIPT_ATTRIBUTES.has(attribute.name)) {
       continue
     }
 
@@ -48,15 +77,32 @@ function createRunnableScript(deferred: Element): HTMLScriptElement {
   return script
 }
 
+function readScriptSpan(deferred: Element): ScriptSpan | null {
+  const startLine = Number(deferred.getAttribute(SCRIPT_LINE_ATTRIBUTE))
+
+  if (!Number.isSafeInteger(startLine) || startLine < 1) {
+    return null
+  }
+
+  return {
+    startLine,
+    lineCount: countScriptLines(deferred.textContent ?? ''),
+  }
+}
+
 const SCRIPT_WAIT_LIMIT_MS = 5_000
 
 function waitForScript(script: HTMLScriptElement): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, SCRIPT_WAIT_LIMIT_MS)
+    const timer = setTimeout(() => {
+      forgetModuleScript(script.src)
+      resolve()
+    }, SCRIPT_WAIT_LIMIT_MS)
     const finish = () => {
       clearTimeout(timer)
 
       if (script.src.startsWith('blob:')) {
+        forgetModuleScript(script.src)
         URL.revokeObjectURL(script.src)
       }
 
@@ -89,8 +135,19 @@ async function runDeferredScripts(isCurrent: () => boolean) {
       && !script.hasAttribute('async')
       && !isModule
     const loaded = isBlockingExternal || isModule ? waitForScript(script) : null
+    const span = readScriptSpan(deferred)
 
-    deferred.replaceWith(script)
+    if (isModule && script.src.startsWith('blob:')) {
+      registerModuleScript(script.src, span)
+    }
+
+    beginInlineScript(script.hasAttribute('src') ? null : span)
+
+    try {
+      deferred.replaceWith(script)
+    } finally {
+      endInlineScript()
+    }
 
     if (isModule && loaded) {
       pendingModules.push(loaded)
@@ -106,7 +163,7 @@ export function replaceDocumentRoot(html: string, afterReplace: () => void) {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
 
   removeNavigatingElements(parsed)
-  deferScripts(parsed)
+  deferScripts(parsed, html)
   document.replaceChild(
     document.importNode(parsed.documentElement, true),
     document.documentElement,

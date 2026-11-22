@@ -3,6 +3,7 @@ export type AccountEmailCategory
     | 'account-deletion'
     | 'security-notice'
     | 'legal-notice'
+    | 'content-report'
 
 export interface AccountEmail {
   id: string
@@ -45,6 +46,11 @@ const CATEGORY_PRESENTATION: Record<
   },
   'legal-notice': {
     label: 'Legal notices:',
+    lead: '',
+    conjunction: 'and',
+  },
+  'content-report': {
+    label: 'Reports about shared content:',
     lead: '',
     conjunction: 'and',
   },
@@ -132,6 +138,22 @@ export const ACCOUNT_EMAILS = [
       + 'the change takes effect (14 days if the law or security requires '
       + 'it), and emails go out from then on, a limited number a day, so '
       + 'yours can arrive a few days after publication',
+  },
+  {
+    id: 'content-report-receipt',
+    category: 'content-report',
+    policyText: 'a receipt for a report you send about a shared artifact',
+  },
+  {
+    id: 'content-report-decision',
+    category: 'content-report',
+    policyText: 'the decision on that report',
+  },
+  {
+    id: 'content-statement-of-reasons',
+    category: 'content-report',
+    policyText: 'a statement of reasons when I remove or restrict an '
+      + 'artifact you shared',
   },
 ] as const satisfies readonly AccountEmail[]
 

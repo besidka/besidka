@@ -130,6 +130,20 @@
             v-if="data.kind === 'owned'"
             type="button"
             class="btn btn-sm btn-soft"
+            :disabled="pinSavingSlug === routeSlug"
+            data-testid="chat-context-pin"
+            @click="onTogglePin"
+          >
+            <Icon
+              :name="isPinned ? 'lucide:pin-off' : 'lucide:pin'"
+              size="16"
+            />
+            {{ isPinned ? 'Unpin' : 'Pin' }}
+          </button>
+          <button
+            v-if="data.kind === 'owned'"
+            type="button"
+            class="btn btn-sm btn-soft"
             :disabled="memoryExclusionSavingSlug === routeSlug"
             :title="isMemoryExcluded
               ? CHAT_MEMORY_USE_HINT
@@ -144,6 +158,63 @@
               size="16"
             />
             {{ memoryToggleLabel }}
+          </button>
+          <button
+            v-if="data.kind === 'owned'"
+            type="button"
+            class="btn btn-sm btn-soft"
+            :disabled="isCopyingDebugInfo"
+            :title="DEBUG_INFO_TITLE"
+            data-testid="chat-context-debug-info"
+            @click="onCopyDebugInfo"
+          >
+            <Icon
+              :name="debugInfoCopied ? 'lucide:check' : 'lucide:bug'"
+              size="16"
+            />
+            {{ debugInfoCopied ? 'Copied' : 'Copy debug info' }}
+          </button>
+          <button
+            v-if="data.kind === 'owned' && isStandalone"
+            type="button"
+            class="btn btn-sm btn-soft"
+            data-testid="chat-context-copy-url"
+            @click="copyUrl"
+          >
+            <Icon
+              :name="urlCopied ? 'lucide:check' : 'lucide:link-2'"
+              size="16"
+            />
+            {{ urlCopied ? 'Copied' : 'Copy URL' }}
+          </button>
+          <span
+            class="sr-only"
+            role="status"
+          >
+            {{ debugInfoCopied ? 'Debug info copied' : '' }}
+            {{ urlCopied ? 'URL copied' : '' }}
+          </span>
+        </div>
+        <div
+          v-if="debugInfoFallback"
+          class="grid gap-2"
+        >
+          <textarea
+            readonly
+            rows="8"
+            class="textarea textarea-sm w-full font-mono text-xs"
+            aria-label="Debug info to copy"
+            data-testid="chat-context-debug-info-fallback"
+            :value="debugInfoFallback"
+            @focus="selectFallbackText"
+          />
+          <button
+            type="button"
+            class="btn btn-xs btn-ghost justify-self-end"
+            data-testid="chat-context-debug-info-hide"
+            @click="clearDebugInfoFallback"
+          >
+            Hide
           </button>
         </div>
       </header>
@@ -237,8 +308,55 @@
               </button>
             </li>
           </ul>
+          <div
+            v-if="group.id === 'outputs' && hasAllArtifactsLink"
+            class="mt-2 border-t border-base-300 pt-2"
+          >
+            <NuxtLink
+              to="/chats/artifacts"
+              class="chat-context-row min-h-11 text-sm"
+              data-testid="chat-context-all-artifacts"
+              @click="close"
+            >
+              <Icon
+                name="lucide:app-window"
+                size="14"
+                class="shrink-0"
+              />
+              <span class="grow">All artifacts</span>
+              <Icon
+                name="lucide:arrow-right"
+                size="12"
+                class="shrink-0 text-base-content/50"
+              />
+            </NuxtLink>
+          </div>
+          <div
+            v-if="group.id === 'used' && hasManageConnectorsLink"
+            class="mt-2 border-t border-base-300 pt-2"
+          >
+            <NuxtLink
+              :to="manageConnectorsLink"
+              class="chat-context-row min-h-11 text-sm"
+              data-testid="chat-context-manage-connectors"
+              @click="close"
+            >
+              <Icon
+                name="lucide:cable"
+                size="14"
+                class="shrink-0"
+              />
+              <span class="grow">Manage connectors</span>
+              <Icon
+                name="lucide:arrow-right"
+                size="12"
+                class="shrink-0 text-base-content/50"
+              />
+            </NuxtLink>
+          </div>
         </div>
       </section>
+      <ChatContextPanelApprovals v-if="data.kind === 'owned'" />
     </template>
     <LazyChatImagePreview
       v-if="previewImage && previewSourceUrl"
@@ -254,11 +372,14 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { LazyChatDocumentPreview } from '#components'
 import type {
   ChatContextChat,
   ChatContextItem,
 } from '#shared/types/chat-context.d'
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
+import { isArtifactKind } from '#shared/utils/artifacts'
+import { isDocumentFormat } from '#shared/utils/documents'
 import { formatMessageCost } from '#shared/utils/message-format'
 import {
   CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
@@ -272,11 +393,17 @@ interface ContextGroup {
   total: number
 }
 
+const DEBUG_INFO_TITLE = 'Copy ids and statuses to send to support. '
+  + 'Never includes message text or keys.'
+
 const idPrefix = useId()
 const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
-const { close } = useSidePanel()
+const { close, push: pushSidePanelView } = useSidePanel()
+const { open: openArtifact } = useArtifactPanel()
+const artifactsFeature = useFeature('artifacts')
+const connectorsFeature = useFeature('connectors')
 const {
   openShareModal,
   branchOwnedChat,
@@ -290,6 +417,19 @@ const {
   isChatMemoryExcluded,
   setChatMemoryExcluded,
 } = useChatMemoryExclusion()
+
+const { savingSlug: pinSavingSlug, toggleChatPin } = useChatPin()
+
+const { isStandalone } = useStandaloneDisplay()
+const { copied: urlCopied, copyUrl } = useCurrentUrlCopy()
+
+const {
+  isCopying: isCopyingDebugInfo,
+  copied: debugInfoCopied,
+  fallbackReport: debugInfoFallback,
+  copyDebugInfo,
+  clearFallbackReport: clearDebugInfoFallback,
+} = useChatDebugInfo()
 
 const collapsedOverrides = useState<Record<string, boolean>>(
   'chat-context-collapsed-sections',
@@ -336,6 +476,10 @@ const isMemoryExcluded = computed<boolean>(() => {
   return isChatMemoryExcluded(routeSlug.value, data.value.chat.memoryExcluded)
 })
 
+const isPinned = computed<boolean>(() => {
+  return data.value?.kind === 'owned' && !!data.value.chat.pinnedAt
+})
+
 const memoryToggleLabel = computed<string>(() => {
   return isMemoryExcluded.value
     ? CHAT_MEMORY_USE_LABEL
@@ -373,6 +517,33 @@ const hasHeaderBadges = computed<boolean>(() => {
 
 const hasActions = computed<boolean>(() => {
   return data.value?.kind === 'owned' || canBranchShared.value
+})
+
+const hasAllArtifactsLink = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && artifactsFeature.value.active
+    && data.value.outputs.some((item) => {
+      return item.kind === 'artifact'
+    })
+})
+
+const hasManageConnectorsLink = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && connectorsFeature.value.active
+    && data.value.used.some((item) => {
+      return item.kind === 'connector'
+    })
+})
+
+const manageConnectorsLink = computed<string>(() => {
+  const connectorIds = new Set((data.value?.used ?? [])
+    .filter(item => item.kind === 'connector' && item.meta?.connectorId)
+    .map(item => item.meta!.connectorId!))
+  const [connectorId] = connectorIds
+
+  return connectorIds.size === 1 && connectorId
+    ? `/chats/connectors?connector=${encodeURIComponent(connectorId)}`
+    : '/chats/connectors'
 })
 
 const visibleGroups = computed<ContextGroup[]>(() => {
@@ -425,6 +596,14 @@ function toggleGroup(group: ContextGroup) {
   }
 }
 
+async function onTogglePin() {
+  if (data.value?.kind !== 'owned') {
+    return
+  }
+
+  await toggleChatPin(data.value.chat)
+}
+
 function onShare() {
   openShareModal(routeSlug.value)
 }
@@ -439,6 +618,18 @@ function onBranch() {
   branchOwnedChat(routeSlug.value)
 }
 
+watch(routeSlug, () => {
+  clearDebugInfoFallback()
+})
+
+async function onCopyDebugInfo() {
+  await copyDebugInfo(routeSlug.value)
+}
+
+function selectFallbackText(event: FocusEvent) {
+  (event.target as HTMLTextAreaElement).select()
+}
+
 async function onToggleMemoryExclusion() {
   await setChatMemoryExcluded(routeSlug.value, !isMemoryExcluded.value)
 }
@@ -451,7 +642,61 @@ function scrollToMessage(messageId: string) {
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+function openArtifactItem(item: ChatContextItem): boolean {
+  const meta = item.meta
+  const artifactId = meta?.artifactId
+  const isSharedContext = data.value?.kind === 'shared'
+  const version = isSharedContext
+    ? meta?.version
+    : meta?.latestVersion ?? meta?.version
+
+  if (!artifactId || !version) {
+    return false
+  }
+
+  openArtifact({
+    artifactId,
+    version,
+    kind: isArtifactKind(meta.artifactKind) ? meta.artifactKind : null,
+    title: item.title,
+    source: isSharedContext ? 'shared' : 'owner',
+    shareSlug: isSharedContext ? routeSlug.value : undefined,
+  }, { push: true })
+
+  return true
+}
+
+function openDocumentItem(item: ChatContextItem): boolean {
+  const { documentId, documentFormat } = item.meta ?? {}
+
+  if (!documentId || !isDocumentFormat(documentFormat)) {
+    return false
+  }
+
+  pushSidePanelView({
+    viewKey: `document:${documentId}`,
+    title: item.title,
+    mode: 'detail',
+    component: LazyChatDocumentPreview,
+    props: {
+      documentId,
+      format: documentFormat,
+      title: item.title,
+    },
+  })
+
+  return true
+}
+
 async function onItemClick(item: ChatContextItem) {
+  if (item.kind === 'document' && openDocumentItem(item)) {
+    return
+  }
+
+  if (item.kind === 'artifact' && openArtifactItem(item)) {
+    return
+  }
+
   if (item.kind === 'image' && toSafeLocalUrl(item.meta?.url)) {
     previewImage.value = item
     isImagePreviewOpen.value = true

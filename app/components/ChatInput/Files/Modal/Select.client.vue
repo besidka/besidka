@@ -29,9 +29,16 @@
         @change="selectSourceTab(tab)"
       >
     </div>
+    <ChatInputFilesModalSelectKindFilter
+      v-if="isKindFilterVisible"
+      v-model="kind"
+    />
 
     <!-- Scrollable Files Area -->
-    <div class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+    <div
+      ref="scrollAreaRef"
+      class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1"
+    >
       <component
         :is="activeExtraTab.component"
         v-if="activeExtraTab"
@@ -74,9 +81,13 @@
         :is-touch-selecting="isTouchSelecting"
         :touched-indices="touchedIndices"
         :touch-group-id="touchGroupId"
+        :unsupported-reasons="unsupportedReasons"
+        :unsupported-captions="unsupportedCaptions"
+        :text-notes="textNotes"
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
+        @preview="onPreview"
         @rename="openRenameModal"
         @delete="confirmDelete"
         @toggle-select-all="handleToggleProjectGroupSelectAll"
@@ -91,7 +102,11 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting"
             :touched-indices="touchedIndices"
+            :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             @file-click="onFileClick"
+            @preview="onPreview"
             @rename="openRenameModal"
             @delete="confirmDelete"
           />
@@ -104,7 +119,11 @@
             :touched-indices="touchedIndices"
             :all-selected="allSelected"
             :has-selection="hasSelection"
+            :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             @file-click="onFileClick"
+            @preview="onPreview"
             @rename="openRenameModal"
             @delete="confirmDelete"
             @toggle-select-all="handleToggleSelectAll"
@@ -161,19 +180,28 @@ import type {
   FileSourceFilter,
   FileSourceTab,
 } from '~/types/file-manager'
+import type {
+  FileDeliveryHint,
+  FileDeliveryResolver,
+  FileRejection,
+} from '~/utils/file-delivery-hints'
 
 const props = withDefaults(defineProps<{
   attachedIds: Set<string>
   initialSource?: FileSourceFilter
-  isImageInputSupported?: boolean
+  canAttachMediaType?: (mediaType: string) => boolean
+  resolveDelivery?: FileDeliveryResolver
 }>(), {
-  isImageInputSupported: true,
+  initialSource: undefined,
+  canAttachMediaType: () => true,
+  resolveDelivery: undefined,
 })
 
 const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
   detach: [fileIds: string[]]
   deleted: []
+  preview: [file: FileManagerFile]
 }>()
 
 const nuxtApp = useNuxtApp()
@@ -195,6 +223,7 @@ const {
   isDeletingSelected,
   search,
   source,
+  kind,
   viewMode,
   pagination,
   projectGroups,
@@ -223,12 +252,73 @@ const {
   reset: resetFileManager,
 } = useFileManager()
 
+const fileRejections = computed<Map<string, FileRejection>>(() => {
+  const resolve = props.resolveDelivery
+    ?? createPredicateDeliveryResolver(props.canAttachMediaType)
+  const rejections = new Map<string, FileRejection>()
+
+  for (const file of loadedFiles.value) {
+    const rejection = getFileRejection(file, resolve)
+
+    if (rejection) {
+      rejections.set(file.id, rejection)
+    }
+  }
+
+  return rejections
+})
+
+const unsupportedReasons = computed<Record<string, string>>(() => {
+  const reasons: Record<string, string> = {}
+
+  for (const [fileId, rejection] of fileRejections.value) {
+    const [message] = getRejectionMessages(
+      [rejection],
+      props.canAttachMediaType,
+    )
+
+    reasons[fileId] = message || ''
+  }
+
+  return reasons
+})
+
+const unsupportedCaptions = computed<Record<string, string>>(() => {
+  const captions: Record<string, string> = {}
+
+  for (const [fileId, rejection] of fileRejections.value) {
+    captions[fileId] = getRejectionCaption(rejection.reason)
+  }
+
+  return captions
+})
+
+const textNotes = computed<Record<string, FileDeliveryHint>>(() => {
+  const resolve = props.resolveDelivery
+    ?? createPredicateDeliveryResolver(props.canAttachMediaType)
+  const notes: Record<string, FileDeliveryHint> = {}
+  const groupFiles = projectGroups.value.flatMap(group => group.files)
+
+  for (const file of [...loadedFiles.value, ...groupFiles]) {
+    if (fileRejections.value.has(file.id)) {
+      continue
+    }
+
+    const note = getFileDeliveryHint(file, resolve)
+
+    if (note) {
+      notes[file.id] = note
+    }
+  }
+
+  return notes
+})
+
 const extraSourceTabs = getFileManagerExtraSourceTabs()
 const activeExtraTabId = shallowRef<string | null>(null)
 
 const sourceTabs = computed<FileSourceTab[]>(() => {
   return resolveFileManagerSourceTabs({
-    isImageInputSupported: props.isImageInputSupported,
     extraTabs: extraSourceTabs,
   })
 })
@@ -285,17 +375,11 @@ watch(() => props.initialSource, (newSource) => {
   }
 
   activeExtraTabId.value = null
-  source.value = newSource === 'assistant' && !props.isImageInputSupported
-    ? 'upload'
-    : newSource
+  source.value = newSource
 }, { immediate: true })
 
-watch(() => props.isImageInputSupported, (supported) => {
-  if (supported || source.value !== 'assistant') {
-    return
-  }
-
-  source.value = 'upload'
+const isKindFilterVisible = computed<boolean>(() => {
+  return !activeExtraTab.value && source.value === 'assistant'
 })
 
 const isProjectSource = computed<boolean>(() => source.value === 'project')
@@ -319,6 +403,10 @@ const isEmpty = computed<boolean>(() => {
 })
 
 const emptyStateIcon = computed<string>(() => {
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'lucide:file-text'
+  }
+
   if (source.value === 'assistant') {
     return 'lucide:image-plus'
   }
@@ -339,6 +427,14 @@ const emptyStateTitle = computed<string>(() => {
     return 'No files found'
   }
 
+  if (source.value === 'assistant' && kind.value === 'image') {
+    return 'No AI-generated images yet'
+  }
+
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'No AI-generated documents yet'
+  }
+
   if (source.value === 'assistant') {
     return 'No AI-generated files yet'
   }
@@ -355,8 +451,16 @@ const emptyStateDescription = computed<string>(() => {
     return 'Try a different search term or file source'
   }
 
-  if (source.value === 'assistant') {
+  if (source.value === 'assistant' && kind.value === 'image') {
     return 'Images created in chat will appear here'
+  }
+
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'Documents created in chat will appear here'
+  }
+
+  if (source.value === 'assistant') {
+    return 'Images and documents created in chat will appear here'
   }
 
   if (source.value === 'project') {
@@ -387,6 +491,7 @@ const touchGroupId = shallowRef<string | null>(null)
 const touchSwipeHandled = shallowRef<boolean>(false)
 const autoSelectedIds = ref<Set<string>>(new Set())
 const isComponentActive = shallowRef<boolean>(false)
+const scrollAreaRef = useTemplateRef<HTMLDivElement>('scrollAreaRef')
 
 function getFileIndexFromElement(element: Element | null): number | null {
   if (!element) return null
@@ -533,6 +638,12 @@ watch([viewMode, source, activeExtraTabId], async (_, __, onCleanup) => {
 function onSearchShortcut(event: KeyboardEvent) {
   if (event.key !== '/') return
 
+  const hostDialog = scrollAreaRef.value?.closest('dialog')
+
+  if (hostDialog && !hostDialog.open) {
+    return
+  }
+
   const tagName = activeElement.value?.tagName
   const isEditable = activeElement.value?.hasAttribute?.('contenteditable')
 
@@ -558,6 +669,14 @@ function onFileClick(
     return
   }
 
+  const unsupportedReason = unsupportedReasons.value[file.id]
+
+  if (unsupportedReason) {
+    useWarningMessage(unsupportedReason)
+
+    return
+  }
+
   const isCurrentlySelected = selectedIds.value.has(file.id)
   const isAttached = props.attachedIds.has(file.id)
   const isShiftClick = event.shiftKey
@@ -573,6 +692,10 @@ function onFileClick(
   }
 
   handleSelect(file.id, index, event.shiftKey)
+}
+
+function onPreview(file: FileManagerFile) {
+  emit('preview', file)
 }
 
 const renameModalRef = shallowRef<{
@@ -637,8 +760,31 @@ async function confirmDeleteSelected() {
 
 function attachSelected() {
   const selected = getSelectedForAttach()
+  const attachable = selected.filter((file) => {
+    return !unsupportedReasons.value[file.id]
+  })
+  const rejected = selected.filter((file) => {
+    return unsupportedReasons.value[file.id]
+  })
 
-  emit('attach', selected)
+  if (rejected.length > 0) {
+    const rejections = rejected.flatMap((file) => {
+      return fileRejections.value.get(file.id) ?? []
+    })
+
+    for (const message of getRejectionMessages(
+      rejections,
+      props.canAttachMediaType,
+    )) {
+      useWarningMessage(message)
+    }
+  }
+
+  if (attachable.length === 0) {
+    return
+  }
+
+  emit('attach', attachable)
 }
 
 function handleDeselectAll() {
@@ -760,8 +906,22 @@ onUnmounted(() => {
   reset()
 })
 
+function getScrollTop(): number {
+  return scrollAreaRef.value?.scrollTop ?? 0
+}
+
+function setScrollTop(scrollTop: number): void {
+  if (!scrollAreaRef.value) {
+    return
+  }
+
+  scrollAreaRef.value.scrollTop = scrollTop
+}
+
 defineExpose({
   reset,
   fetchFiles,
+  getScrollTop,
+  setScrollTop,
 })
 </script>

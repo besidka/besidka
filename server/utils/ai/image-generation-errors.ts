@@ -41,7 +41,7 @@ const imageGenerationErrors = {
     code: 'storage-quota',
     message: 'Not enough storage space to generate an image.',
     why: 'Image generation requires at least 10 MB of available file storage.',
-    fix: 'Delete files in the file manager, then try again.',
+    fix: 'Free space on the Storage page, then try again.',
     status: 400,
     persistenceText: IMAGE_GENERATION_FAILURE_TEXT.storageQuota,
   },

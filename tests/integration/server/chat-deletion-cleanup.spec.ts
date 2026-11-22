@@ -128,6 +128,31 @@ describe('cleanupFilesOrphanedByChatDeletion', () => {
     })
   })
 
+  it('removes the extracted text next to an Office file in the same batch', async () => {
+    const storageDelete = vi.fn(async () => undefined)
+    const deleteQuery = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
+
+    vi.stubGlobal('useFileStorage', () => ({ delete: storageDelete }))
+    vi.stubGlobal('useDb', () => ({
+      select: vi.fn(() => createJoinWhereChain([])),
+      delete: deleteQuery,
+    }))
+
+    const { cleanupFilesOrphanedByChatDeletion } = await loadModule()
+
+    await cleanupFilesOrphanedByChatDeletion([
+      { id: 'file-1', storageKey: 'a.docx' },
+      { id: 'file-2', storageKey: 'b.png' },
+    ], 1, createLogger())
+
+    expect(storageDelete).toHaveBeenCalledWith([
+      'a.docx',
+      'b.png',
+      'a.docx.text.md',
+    ])
+    expect(mocks.invalidateFileCache).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps a file whose storage key is still referenced by another message', async () => {
     const storageDelete = vi.fn(async () => undefined)
     const deleteWhere = vi.fn(async () => undefined)
@@ -165,6 +190,50 @@ describe('cleanupFilesOrphanedByChatDeletion', () => {
       deletedCount: 1,
       failedCount: 0,
     })
+  })
+
+  it('keeps a connector image a later step of the chat still shows', async () => {
+    const storageDelete = vi.fn(async () => undefined)
+    const deleteWhere = vi.fn(async () => undefined)
+    const deleteQuery = vi.fn(() => ({ where: deleteWhere }))
+    const laterMessage = {
+      parts: [
+        {
+          type: 'data-connector-image',
+          id: 'connector-image-call-2-0',
+          data: {
+            toolCallId: 'call-2',
+            fileId: 'file-2',
+            url: '/files/connector-abc.png',
+            mediaType: 'image/png',
+            width: 8,
+            height: 8,
+            size: 75,
+            name: 'doop-get_frame_screenshot.png',
+          },
+        },
+      ],
+    }
+
+    vi.stubGlobal('useFileStorage', () => ({ delete: storageDelete }))
+    vi.stubGlobal('useDb', () => ({
+      select: vi.fn(() => createJoinWhereChain([laterMessage])),
+      delete: deleteQuery,
+    }))
+
+    const { cleanupFilesOrphanedByChatDeletion } = await loadModule()
+    const result = await cleanupFilesOrphanedByChatDeletion(
+      [
+        { id: 'file-1', storageKey: 'key-1' },
+        { id: 'file-2', storageKey: 'connector-abc.png' },
+      ],
+      1,
+      createLogger(),
+    )
+
+    expect(storageDelete).toHaveBeenCalledWith(['key-1'])
+    expect(result.stillReferencedCount).toBe(1)
+    expect(result.deletedCount).toBe(1)
   })
 
   it('ignores data: URLs and non-file parts when scanning for reuse', async () => {

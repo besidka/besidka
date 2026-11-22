@@ -23,14 +23,31 @@
     >
       <summary
         :id="`reasoning-${message.id}-label`"
-        :aria-controls="`reasoning-${message.id}-content`"
+        :aria-controls="isMainExpanded
+          ? `reasoning-${message.id}-content`
+          : undefined
+        "
         class="collapse-title flex items-center gap-1 px-0 py-1.5 min-h-0"
+        data-testid="reasoning-header"
         @click.prevent="toggleMain"
       >
-        <component
+        <span
+          aria-hidden="true"
+          :data-kind="headerStepIcon ? headerStepIcon.kind : 'thinking'"
+          data-testid="reasoning-header-icon"
+          class="inline-flex size-4 shrink-0 items-center justify-center"
+        >
+          <ChatReasoningStepIcon
+            v-if="headerStepIcon"
+            :icon="headerStepIcon"
+            class="size-4!"
+          />
+          <component
             :is="reasoningIcon"
+            v-else
             class="size-4 text-base-content/80"
           />
+        </span>
         <span
           :title="isHiddenReasoningSummary ? HIDDEN_REASONING_TITLE : undefined"
           :data-testid="
@@ -74,132 +91,52 @@
         </span>
         <Icon
           name="lucide:chevron-right"
-          class="size-4 text-base-content/60 transition-transform group-open:rotate-90"
+          class="size-4 shrink-0 text-base-content/60 transition-transform group-open:rotate-90"
         />
+        <span
+          v-if="headerImages.length > 0 && !isMainExpanded"
+          class="-my-1 ml-auto flex h-6 shrink-0 items-center gap-1 pl-2"
+          data-testid="reasoning-header-images"
+        >
+          <ChatReasoningConnectorThumbnail
+            :image="headerImages[0]!.image"
+            :alt="headerImages[0]!.alt"
+            size="sm"
+            :gallery="headerImages"
+            :stack-label="headerStackLabel"
+          />
+        </span>
       </summary>
       <div
+        v-if="isMainExpanded"
         :id="`reasoning-${message.id}-content`"
         class="collapse-content mt-3 pb-2 px-0"
       >
-        <div class="max-h-[360px] overflow-y-auto overscroll-contain pr-1">
+        <div
+          ref="stepsScroller"
+          class="max-h-[360px] overflow-y-auto overscroll-contain pr-1"
+          data-testid="reasoning-steps-scroller"
+          @scroll.passive="onStepsScroll"
+        >
           <ul
+            ref="stepsList"
             data-testid="reasoning-steps"
             class="flex flex-col"
           >
-            <li
+            <ChatReasoningStep
               v-for="(step, index) in reasoningSteps"
               :key="step.id"
-              class="relative flex min-w-0 gap-2"
-            >
-              <div
-                class="relative flex w-5 shrink-0 items-start justify-center"
-              >
-                <span
-                  v-if="index > 0"
-                  aria-hidden="true"
-                  data-testid="reasoning-step-connector-top"
-                  class="
-                    absolute top-0 left-1/2 h-2 w-1 -translate-x-1/2 bg-base-100
-                  "
-                />
-                <span
-                  v-if="index < reasoningSteps.length - 1"
-                  aria-hidden="true"
-                  data-testid="reasoning-step-connector-bottom"
-                  class="
-                    absolute top-7 bottom-0 left-1/2 w-1 -translate-x-1/2
-                    bg-base-100
-                  "
-                />
-                <span
-                  class="
-                    relative z-10 mt-2 flex size-5 items-center justify-center
-                    rounded-full border border-base-100 bg-base-100
-                  "
-                >
-                  <SvgoLoader
-                    v-if="step.pending"
-                    class="size-3.5 text-accent"
-                  />
-                  <span
-                    v-else-if="step.failed"
-                    aria-hidden="true"
-                    class="reasoning-step-failed"
-                  />
-                  <span
-                    v-else
-                    aria-hidden="true"
-                    class="reasoning-step-complete"
-                  />
-                </span>
-              </div>
-              <ChatReasoningSearchStep
-                v-if="step.search"
-                :data="step.search"
-                :title="step.title"
-                :pending="step.pending"
-                :searched-at="searchedAt"
-              />
-              <ChatReasoningMemoryStep
-                v-else-if="step.memory"
-                :data="step.memory"
-                :title="step.title"
-                :pending="step.pending"
-              />
-              <details
-                v-else
-                :open="expandedStepId === step.id"
-                class="group/point collapse my-2.5 min-w-0 flex-1"
-              >
-                <summary
-                  :aria-controls="`reasoning-${message.id}-${step.id}-content`"
-                  class="collapse-title flex min-w-0 items-center p-0 text-xs"
-                  @click.prevent="toggleStep(step)"
-                >
-                  <span
-                    :title="step.title"
-                    data-testid="reasoning-step-title"
-                    class="min-w-0"
-                    :class="[
-                      step.body.length > 0
-                        ? 'truncate'
-                        : 'break-words',
-                      step.pending
-                        ? 'skeleton skeleton-text reasoning-main-title-skeleton'
-                        : undefined,
-                    ]"
-                  >
-                    {{
-                      step.body.length > 0
-                        ? truncateReasoningTitle(step.title)
-                        : step.title
-                    }}
-                  </span>
-                  <Icon
-                    v-if="step.body.length > 0"
-                    name="lucide:chevron-right"
-                    class="
-                      ml-1 size-4 shrink-0 transition-transform
-                      group-open/point:rotate-90
-                    "
-                  />
-                </summary>
-                <div
-                  v-if="step.body.length > 0"
-                  :id="`reasoning-${message.id}-${step.id}-content`"
-                  class="collapse-content mt-2 min-w-0 pb-0 px-0"
-                >
-                  <MDCCached
-                    :key="`reasoning-${message.id}-${step.id}-${status}`"
-                    :cache-key="`reasoning-${message.id}-${step.id}-${status}`"
-                    :value="stripModelCitationMarkers(step.body)"
-                    :components="imageComponents"
-                    :parser-options="{ highlight: false }"
-                    class="chat-markdown text-xs !text-text/80"
-                  />
-                </div>
-              </details>
-            </li>
+              :step="step"
+              :message-id="message.id"
+              :is-first="index === 0"
+              :is-last="index === reasoningSteps.length - 1"
+              :is-expanded="expandedStepId === step.id"
+              :body-cache-key="`reasoning-${message.id}-${step.id}-${status}`"
+              :can-manage-grants="!!approvalController"
+              :searched-at="searchedAt"
+              @toggle="toggleStep"
+              @manage-grants="openGrantsPanel"
+            />
           </ul>
         </div>
       </div>
@@ -209,15 +146,44 @@
 
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
+import { LazyChatContextPanel } from '#components'
+import { CHAT_CONTEXT_VIEW_KEY } from '~/composables/chat-context'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import type { MemoryStepData } from '~/types/memory-step.d'
-import type { SearchStepData } from '~/types/search-step.d'
+import type { ReasoningStep } from '~/types/reasoning-step.d'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import type { ConnectorImagePartData } from '#shared/utils/connector-image-parts'
+import { getConnectorImagesByToolCallId } from '#shared/utils/connector-image-parts'
+import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
+import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
+import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
+import { getGrantMarkersByToolCallId } from '~/utils/tool-approval-step'
+import {
+  getConnectorImageAlt,
+  getConnectorImageStackLabel,
+  getConnectorStepTitle,
+  isConnectorStepFailed,
+} from '~/utils/connector-step'
 import { formatTokenCount } from '#shared/utils/message-format'
+import {
+  getToolPartDocumentFormat,
+  resolveReasoningStepSource,
+} from '~/utils/reasoning-step-icons'
+import type {
+  ReasoningStepIcon,
+  ReasoningStepSource,
+  ReasoningStepSourceInput,
+} from '~/utils/reasoning-step-icons'
+import {
+  createReasoningSectionsCache,
+  reuseStableReasoningSteps,
+} from '~/utils/reasoning-steps'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
 const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
   + 'the reasoning text is not available for this response. Reasoning '
   + 'tokens are billed as output tokens.'
+
+const STEPS_PIN_THRESHOLD_PX = 24
 
 const props = defineProps<{
   message: UIMessage
@@ -227,19 +193,33 @@ const props = defineProps<{
   reasoningAccumulatedMs: number
   reasoningSegmentStartedAt: number
   isTurnThinkingHeld: boolean
+  isShared?: boolean
 }>()
 
-const { imageComponents } = useChatFormat()
+const { titlesBySlug, connectorsBySlug } = useConnectorTitles()
+const sidePanel = useSidePanel()
+const {
+  controller: approvalController,
+  entries: approvalEntries,
+  buildApprovalStep,
+  buildApprovalView,
+} = useMessageApprovals(() => props.message, {
+  isShared: () => props.isShared,
+})
 
-interface ReasoningStep {
-  id: string
+function openGrantsPanel() {
+  sidePanel.open({
+    viewKey: CHAT_CONTEXT_VIEW_KEY,
+    title: 'Chat',
+    mode: 'context',
+    component: LazyChatContextPanel,
+  })
+}
+
+interface HeaderConnectorImage {
+  image: ConnectorImagePartData
+  alt: string
   title: string
-  body: string
-  kind: 'reasoning' | 'tool'
-  pending: boolean
-  failed: boolean
-  search: SearchStepData | null
-  memory: MemoryStepData | null
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -260,6 +240,23 @@ const reasoningIcon = computed<string>(() => {
 const searchedAt = computed<string | number | Date | undefined>(() => {
   return getMessageMetadata(props.message).createdAt
 })
+
+const searchProvider = computed<string | undefined>(() => {
+  return getMessageMetadata(props.message).usage?.searchProvider
+})
+
+function resolveStepSource(
+  input: Omit<
+    ReasoningStepSourceInput,
+    'searchProvider' | 'allowConnectorIcon'
+  >,
+): ReasoningStepSource {
+  return resolveReasoningStepSource({
+    ...input,
+    searchProvider: searchProvider.value,
+    allowConnectorIcon: !props.isShared,
+  })
+}
 
 const reasoningParts = computed<ReasoningUIPart[]>(() => {
   return props.message.parts.filter((part) => {
@@ -285,18 +282,35 @@ const isThinkingStreaming = computed<boolean>(() => {
   return props.status === 'streaming' && props.isTurnThinkingHeld
 })
 
-const reasoningSteps = computed<ReasoningStep[]>(() => {
+const isAssistantMessage = computed<boolean>(() => {
+  return props.message.role === 'assistant'
+})
+
+const reasoningSectionsCache = createReasoningSectionsCache()
+
+/**
+ * One step per reasoning section and per tool call, rebuilt on every
+ * streamed update. The connector images and grant markers are read once per
+ * update, and steps whose values did not change keep their previous object
+ * (see `reuseStableReasoningSteps`), so only the changed steps re-render.
+ */
+const reasoningSteps = computed<ReasoningStep[]>((previousSteps) => {
   const steps: ReasoningStep[] = []
+  const { parts } = props.message
+  const imagesByToolCallId = isAssistantMessage.value && !props.isShared
+    ? getConnectorImagesByToolCallId(parts)
+    : new Map<string, ConnectorImagePartData[]>()
+  const grantMarkersByToolCallId = getGrantMarkersByToolCallId(parts)
   let reasoningPartIndex = 0
   let lastReasoningStepIndex = -1
 
-  for (const [partIndex, part] of props.message.parts.entries()) {
+  for (const [partIndex, part] of parts.entries()) {
     if (part.type === 'reasoning') {
       if (!part.text?.length) {
         continue
       }
 
-      for (const [sectionIndex, section] of parseReasoningSections(
+      for (const [sectionIndex, section] of reasoningSectionsCache.parse(
         part.text,
       ).entries()) {
         lastReasoningStepIndex = steps.length
@@ -309,6 +323,8 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           failed: false,
           search: null,
           memory: null,
+          skill: null,
+          connector: null,
         })
       }
 
@@ -317,31 +333,155 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       continue
     }
 
-    if (!isThinkingToolPart(part)) {
+    const skillStep = isAssistantMessage.value
+      ? getReasoningSkillStep(parts, partIndex)
+      : null
+
+    if (skillStep) {
+      const skillSource = resolveStepSource({
+        toolName: SKILL_ACTIVATE_TOOL_NAME,
+        title: getSkillStepTitle(skillStep),
+      })
+
+      steps.push({
+        id: `skill-${partIndex}`,
+        title: skillSource.label,
+        icon: skillSource.icon,
+        body: '',
+        kind: 'tool',
+        pending: props.status === 'streaming' && skillStep.state === 'working',
+        failed: skillStep.state === 'failed',
+        search: null,
+        memory: null,
+        skill: skillStep,
+        connector: null,
+      })
+
+      continue
+    }
+
+    const approvalEntry = approvalEntries.value.get(partIndex)
+
+    if (approvalEntry && approvalEntry.state !== 'approved') {
+      const approvalView = buildApprovalView(approvalEntry)
+
+      steps.push({
+        id: approvalView.id,
+        title: approvalView.title,
+        icon: approvalView.icon,
+        body: '',
+        kind: 'tool',
+        pending: approvalEntry.state === 'sending',
+        failed: approvalEntry.state === 'expired'
+          || approvalEntry.state === 'interrupted',
+        waiting: approvalEntry.state === 'pending'
+          || approvalEntry.state === 'answered',
+        search: null,
+        memory: null,
+        skill: null,
+        connector: null,
+        approval: approvalView.approval,
+      })
+
+      continue
+    }
+
+    const approvalOutcome = approvalEntry
+      ? buildApprovalStep(approvalEntry).outcome
+      : ''
+    const toolCallId = (part as { toolCallId?: string }).toolCallId
+
+    const connectorCall = isAssistantMessage.value
+      ? getConnectorToolCall(part)
+      : null
+
+    if (connectorCall) {
+      const connectorTitle = titlesBySlug.value.get(connectorCall.slug)
+        || connectorCall.slug
+      const connectorSource = resolveStepSource({
+        toolName: `${CONNECTOR_TOOL_NAME_PREFIX}${connectorCall.slug}`
+          + `__${connectorCall.tool}`,
+        title: getConnectorStepTitle(
+          connectorCall,
+          titlesBySlug.value.get(connectorCall.slug),
+        ),
+        connectorId: connectorsBySlug.value.get(connectorCall.slug)?.id,
+        connectorTitle,
+      })
+
+      steps.push({
+        id: `tool-${toolCallId || partIndex}`,
+        title: connectorSource.label,
+        icon: connectorSource.icon,
+        body: '',
+        kind: 'tool',
+        pending: props.status === 'streaming' && connectorCall.isRunning,
+        failed: isConnectorStepFailed(connectorCall),
+        search: null,
+        memory: null,
+        skill: null,
+        connector: connectorCall,
+        connectorTitle,
+        connectorImages: toolCallId
+          ? imagesByToolCallId.get(toolCallId) ?? []
+          : [],
+        approvalOutcome,
+        grantMarker: toolCallId
+          ? grantMarkersByToolCallId.get(toolCallId) ?? ''
+          : '',
+      })
+
+      continue
+    }
+
+    if (
+      !isThinkingToolPart(part)
+      || isSupersededInvalidDocumentPart(parts, partIndex)
+    ) {
       continue
     }
 
     const isPending = props.status === 'streaming' && isPendingToolPart(part)
     const isFailed = isFailedToolPart(part)
-    const toolCallId = (part as { toolCallId?: string }).toolCallId
     const searchData = getSearchStepData(part)
     const isPreRetrievedStep = searchData?.preRetrieval === true
       && !isPending
       && !isFailed
+    const toolStepTitle = isAwaitingApprovalToolPart(part)
+      ? `Waiting for approval: ${getToolPartName(part)}`
+      : getToolStepTitle(getToolPartName(part), isPending, isFailed)
+
+    const toolSource = resolveStepSource({
+      toolName: getToolPartName(part),
+      title: searchData && isPreRetrievedStep
+        ? formatPastChatPreRetrievalTitle(searchData.results.length)
+        : toolStepTitle,
+      isPending,
+      isFailed,
+      isAwaitingApproval: isAwaitingApprovalToolPart(part),
+      documentFormat: getToolPartDocumentFormat(part),
+    })
 
     steps.push({
       id: `tool-${toolCallId || partIndex}`,
-      title: searchData && isPreRetrievedStep
-        ? formatPastChatPreRetrievalTitle(searchData.results.length)
-        : getToolStepTitle(getToolPartName(part), isPending, isFailed),
+      title: toolSource.label,
+      icon: toolSource.icon,
       body: '',
       kind: 'tool',
       pending: isPending,
       failed: isFailed,
       search: searchData,
       memory: getMemoryStepData(part),
+      skill: null,
+      connector: null,
+      approvalOutcome,
+      grantMarker: toolCallId
+        ? grantMarkersByToolCallId.get(toolCallId) ?? ''
+        : '',
     })
   }
+
+  reasoningSectionsCache.commit()
 
   if (lastReasoningStepIndex >= 0 && isReasoningTextStreaming.value) {
     const lastReasoningStep = steps[lastReasoningStepIndex]
@@ -351,7 +491,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     }
   }
 
-  return steps
+  return reuseStableReasoningSteps(previousSteps ?? [], steps)
 })
 
 const expandableSteps = computed<ReasoningStep[]>(() => {
@@ -379,10 +519,11 @@ const hiddenReasoningTokens = computed<number>(() => {
 })
 
 const streamingTitle = shallowRef<string>('')
+const streamingTitleIcon = shallowRef<ReasoningStepIcon | null>(null)
 const streamingTitleUpdateTimer = shallowRef<
   ReturnType<typeof setTimeout> | null
 >(null)
-const latestStreamingTitleCandidate = computed<string>(() => {
+const latestPendingToolStep = computed<ReasoningStep | null>(() => {
   const pendingToolStep = reasoningSteps.value
     .filter((step) => {
       return step.kind === 'tool' && step.pending
@@ -390,12 +531,22 @@ const latestStreamingTitleCandidate = computed<string>(() => {
     .at(-1)
 
   if (pendingToolStep && !isReasoningTextStreaming.value) {
-    return pendingToolStep.title
+    return pendingToolStep
+  }
+
+  return null
+})
+const latestStreamingTitleCandidate = computed<string>(() => {
+  if (latestPendingToolStep.value) {
+    return latestPendingToolStep.value.title
   }
 
   return extractLastCompleteReasoningTitle(
     reasoningParts.value.at(-1)?.text || '',
   )
+})
+const latestStreamingIconCandidate = computed<ReasoningStepIcon | null>(() => {
+  return latestPendingToolStep.value?.icon ?? null
 })
 
 const isHiddenReasoningSummary = computed<boolean>(() => {
@@ -422,20 +573,114 @@ const activeStreamingTitle = computed<string>(() => {
   return streamingTitle.value
 })
 
+const headerImages = computed<HeaderConnectorImage[]>(() => {
+  return reasoningSteps.value.flatMap((step) => {
+    const title = step.connectorTitle ?? ''
+    const alt = getConnectorImageAlt(title)
+
+    return (step.connectorImages ?? [])
+      .filter(image => !image.deleted)
+      .map(image => ({ image, alt, title }))
+  })
+})
+
+const headerStackLabel = computed<string>(() => {
+  const count = headerImages.value.length
+  const titles = new Set(headerImages.value.map(entry => entry.title))
+
+  return getConnectorImageStackLabel(
+    count,
+    titles.size === 1 ? [...titles][0] : undefined,
+  )
+})
+
+const headerStepIcon = computed<ReasoningStepIcon | null>(() => {
+  if (!isThinkingStreaming.value || !activeStreamingTitle.value.length) {
+    return null
+  }
+
+  return streamingTitleIcon.value
+})
+
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
 const {
-  reasoningExpanded: isReasoningExpanded,
-  reasoningAutoHide,
+  stepsExpanded: isStepsExpanded,
+  stepsAutoHide,
 } = useUserSetting()
 
 const isMainExpanded = shallowRef<boolean>(false)
 const expandedStepId = shallowRef<string>('')
 const isStreamingExpandOverride = shallowRef<boolean>(false)
 const hasAutoHiddenThisMessage = shallowRef<boolean>(false)
+const isMainCollapsedByUser = shallowRef<boolean>(false)
 const reasoningInterval = shallowRef<
   ReturnType<typeof setInterval> | null
 >(null)
+
+const stepsScroller = useTemplateRef<HTMLDivElement>('stepsScroller')
+const stepsList = useTemplateRef<HTMLUListElement>('stepsList')
+const isStepsPinnedToBottom = shallowRef<boolean>(true)
+let lastStepsScrollTop = 0
+
+const isStepsAutoScrollActive = computed<boolean>(() => {
+  return props.status === 'streaming' && isMainExpanded.value
+})
+
+function onStepsScroll() {
+  const scroller = stepsScroller.value
+
+  if (!scroller) {
+    return
+  }
+
+  const isScrolledUp = scroller.scrollTop < lastStepsScrollTop
+
+  lastStepsScrollTop = scroller.scrollTop
+
+  if (isScrolledUp) {
+    isStepsPinnedToBottom.value = false
+
+    return
+  }
+
+  isStepsPinnedToBottom.value = scroller.scrollHeight
+    - scroller.scrollTop
+    - scroller.clientHeight <= STEPS_PIN_THRESHOLD_PX
+}
+
+function scrollStepsToBottom() {
+  const scroller = stepsScroller.value
+
+  if (!scroller) {
+    return
+  }
+
+  scroller.scrollTop = scroller.scrollHeight
+  lastStepsScrollTop = scroller.scrollTop
+}
+
+useResizeObserver(stepsList, () => {
+  if (!isStepsAutoScrollActive.value || !isStepsPinnedToBottom.value) {
+    return
+  }
+
+  scrollStepsToBottom()
+})
+
+watch(isStepsAutoScrollActive, async (isActive) => {
+  if (!isActive) {
+    return
+  }
+
+  isStepsPinnedToBottom.value = true
+  lastStepsScrollTop = 0
+  await nextTick()
+  scrollStepsToBottom()
+}, {
+  immediate: true,
+  flush: 'post',
+})
 
 const reasoningLabel = computed<string>(() => {
   if (isThinkingStreaming.value && reasoningSeconds.value > 0) {
@@ -460,7 +705,7 @@ watch(
     isThinkingStreaming,
     () => reasoningSteps.value.at(-1)?.id,
     latestExpandableStepId,
-    isReasoningExpanded,
+    isStepsExpanded,
     isStreamingExpandOverride,
   ],
   ([
@@ -474,7 +719,7 @@ watch(
       return
     }
 
-    if (hasAutoHiddenThisMessage.value) {
+    if (hasAutoHiddenThisMessage.value || isMainCollapsedByUser.value) {
       return
     }
 
@@ -495,7 +740,7 @@ watch(hasTextPart, (textStarted, hadText) => {
     return
   }
 
-  if (!reasoningAutoHide.value) {
+  if (!stepsAutoHide.value) {
     return
   }
 
@@ -544,22 +789,34 @@ watch(isThinkingStreaming, (streaming, wasStreaming) => {
 })
 
 watch(
-  [isThinkingStreaming, latestStreamingTitleCandidate],
-  ([streaming, candidateTitle]) => {
+  [
+    isThinkingStreaming,
+    latestStreamingTitleCandidate,
+    latestStreamingIconCandidate,
+  ],
+  ([streaming, candidateTitle, candidateIcon]) => {
     if (!streaming) {
       streamingTitle.value = ''
+      streamingTitleIcon.value = null
       clearStreamingTitleTimer()
 
       return
     }
 
-    if (!candidateTitle || candidateTitle === streamingTitle.value) {
+    if (
+      !candidateTitle
+      || (
+        candidateTitle === streamingTitle.value
+        && isSameStepIcon(candidateIcon, streamingTitleIcon.value)
+      )
+    ) {
       return
     }
 
     clearStreamingTitleTimer()
     streamingTitleUpdateTimer.value = setTimeout(() => {
       streamingTitle.value = candidateTitle
+      streamingTitleIcon.value = candidateIcon
       streamingTitleUpdateTimer.value = null
     }, 250)
   },
@@ -593,6 +850,13 @@ watch(
   },
 )
 
+function isSameStepIcon(
+  first: ReasoningStepIcon | null,
+  second: ReasoningStepIcon | null,
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second)
+}
+
 function clearStreamingTitleTimer() {
   if (!streamingTitleUpdateTimer.value) {
     return
@@ -606,13 +870,17 @@ function toggleMain() {
   const willExpand = !isMainExpanded.value
 
   isMainExpanded.value = willExpand
+  isMainCollapsedByUser.value = !willExpand
+
+  if (!willExpand) {
+    isStreamingExpandOverride.value = false
+  }
 
   if (!isThinkingStreaming.value) {
     return
   }
 
   if (!willExpand) {
-    isStreamingExpandOverride.value = false
     expandedStepId.value = ''
 
     return
@@ -640,6 +908,7 @@ function toggleStep(step: ReasoningStep) {
     return
   }
 
+  isStepsPinnedToBottom.value = false
   expandedStepId.value = step.id
 }
 
@@ -736,32 +1005,6 @@ onBeforeUnmount(() => {
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 0% 40%,
     color-mix(in oklab, var(--color-base-content) 45%, transparent) 50%,
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 60% 100%
-  );
-}
-</style>
-
-<style scoped>
-.reasoning-step-complete {
-  display: inline-flex;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 9999px;
-  background-color: color-mix(
-    in oklab,
-    var(--color-accent) 20%,
-    transparent
-  );
-}
-
-.reasoning-step-failed {
-  display: inline-flex;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 9999px;
-  background-color: color-mix(
-    in oklab,
-    var(--color-error) 20%,
-    transparent
   );
 }
 </style>

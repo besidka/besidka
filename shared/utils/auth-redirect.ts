@@ -1,4 +1,8 @@
 import {
+  ARTIFACT_SHARE_PATH,
+  ARTIFACT_SHARE_RETURN_SEGMENT,
+} from '#shared/utils/artifacts'
+import {
   enabledGateways,
   enabledMemoryCheckProviders,
   enabledSearchProviders,
@@ -16,6 +20,8 @@ export const KEYS_PAGE_TAB_IDS = [
 
 const KEYS_PAGE_PATHNAME = '/profile/keys'
 const NEW_CHAT_PATHNAME = '/chats/new'
+const ARTIFACT_SHARE_RETURN_PATHNAME
+  = `${ARTIFACT_SHARE_PATH}/${ARTIFACT_SHARE_RETURN_SEGMENT}`
 const URL_PARSE_BASE = 'http://localhost'
 const NEXT_MAX_LENGTH = 200
 const LAST_CONTROL_CODE_POINT = 0x1f
@@ -89,7 +95,9 @@ function sanitizeKeysPageQuery(
 /**
  * Open-redirect guard for the post-auth `next` parameter. Accepts only
  * same-origin relative paths whose pathname is allowlisted and rebuilds the
- * query from validated keys, so nothing attacker-controlled survives.
+ * query from validated keys, so nothing attacker-controlled survives. The
+ * public artifact link page comes back as `/artifacts/return`: the token is
+ * restored from sessionStorage by the page, never carried in `next`.
  */
 export function resolveSafeNextPath(value: unknown): string | null {
   const candidate = firstValue(value)
@@ -124,6 +132,10 @@ export function resolveSafeNextPath(value: unknown): string | null {
 
   if (parsedUrl.pathname === NEW_CHAT_PATHNAME) {
     return NEW_CHAT_PATHNAME
+  }
+
+  if (parsedUrl.pathname === ARTIFACT_SHARE_RETURN_PATHNAME) {
+    return ARTIFACT_SHARE_RETURN_PATHNAME
   }
 
   if (parsedUrl.pathname !== KEYS_PAGE_PATHNAME) {

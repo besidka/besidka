@@ -126,6 +126,104 @@ describe('memory extraction input', () => {
       expect(window.consumedCount).toBe(5)
     })
 
+  it('excludes assistant turns that called a connector tool', async () => {
+    const { loadMemoryExtractionWindow } = await loadInput()
+
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('List my open issues'),
+    ], minutesBefore(50))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__linear__list_issues',
+        output: '<untrusted_tool_result>x</untrusted_tool_result>',
+      },
+      textPart('CONNECTOR-DATA-IN-ANSWER'),
+    ], minutesBefore(49))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      textPart('A normal answer'),
+    ], minutesBefore(48))
+
+    const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+    expect(window.transcript).not.toContain('CONNECTOR-DATA')
+    expect(window.transcript).toContain('List my open issues')
+    expect(window.transcript).toContain('A normal answer')
+    expect(window.consumedCount).toBe(3)
+  })
+
+  it('excludes assistant turns that used a Besidka tool', async () => {
+    const { loadMemoryExtractionWindow } = await loadInput()
+
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('List my projects'),
+    ], minutesBefore(50))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      {
+        type: 'tool-besidka__list_projects',
+        state: 'output-available',
+        output: '<untrusted_tool_result>x</untrusted_tool_result>',
+      },
+      textPart('BESIDKA-DATA-IN-ANSWER'),
+    ], minutesBefore(49))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      textPart('A normal answer'),
+    ], minutesBefore(48))
+
+    const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+    expect(window.transcript).not.toContain('BESIDKA-DATA')
+    expect(window.transcript).toContain('List my projects')
+    expect(window.transcript).toContain('A normal answer')
+  })
+
+  it('excludes a built-in command and the report Besidka wrote', async () => {
+    const { loadMemoryExtractionWindow } = await loadInput()
+
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('COMMAND-NOTE'),
+      { type: 'data-command-invocation', data: { command: 'stats' } },
+    ], minutesBefore(50))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      { type: 'data-command-report', data: { command: 'stats' } },
+      textPart('REPORT-FAVORITE-MODEL'),
+    ], minutesBefore(49))
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('A normal question'),
+    ], minutesBefore(48))
+
+    const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+    expect(window.transcript).not.toContain('COMMAND-NOTE')
+    expect(window.transcript).not.toContain('REPORT-FAVORITE-MODEL')
+    expect(window.transcript).toContain('A normal question')
+  })
+
+  it('excludes a branched turn that kept only the connector marker',
+    async () => {
+      const { loadMemoryExtractionWindow } = await loadInput()
+
+      await seedMessage(testDb.db, chatId, 'user', [
+        textPart('List my open issues'),
+      ], minutesBefore(50))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        textPart('CONNECTOR-DATA-IN-BRANCHED-ANSWER'),
+        {
+          type: 'data-connectors-notice',
+          data: { lines: [], usedConnector: true },
+        },
+      ], minutesBefore(49))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        textPart('A normal answer'),
+      ], minutesBefore(48))
+
+      const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+      expect(window.transcript).not.toContain('CONNECTOR-DATA')
+      expect(window.transcript).toContain('A normal answer')
+      expect(window.consumedCount).toBe(3)
+    })
+
   it('excludes the turn that carries the past-chat pre-retrieval chip',
     async () => {
       const { loadMemoryExtractionWindow } = await loadInput()
@@ -318,7 +416,7 @@ describe('memory extraction input', () => {
         expect(window.userTexts).toEqual(['first message'])
       })
 
-    it('still honours the last extraction stamp', async () => {
+    it('still honors the last extraction stamp', async () => {
       const { loadMemoryExtractionWindow } = await loadInput()
       const branchId = await seedBranchChat(true)
 
@@ -538,7 +636,7 @@ describe('memory extraction input', () => {
     expect(rendered).toContain('<entry ref="topics/imported" access="editable">')
   })
 
-  describe('evidence normaliser', () => {
+  describe('evidence normalizer', () => {
     it('unifies typographic apostrophes, quotes, dashes and ellipsis',
       async () => {
         const { memoryExtractionNormalizeText } = await loadInput()
@@ -821,8 +919,8 @@ describe('memory extraction input', () => {
     })
   })
 
-  describe('tag neutralisation', () => {
-    it('neutralises fullwidth and look-alike angle brackets', async () => {
+  describe('tag neutralization', () => {
+    it('neutralizes fullwidth and look-alike angle brackets', async () => {
       const { buildMemoryExtractionPromptContent } = await loadInput()
       const content = buildMemoryExtractionPromptContent({
         scope: 'profile',
@@ -838,7 +936,7 @@ describe('memory extraction input', () => {
       expect(content).not.toContain('<entry ')
     })
 
-    it('neutralises a tag split by zero-width characters', async () => {
+    it('neutralizes a tag split by zero-width characters', async () => {
       const { buildMemoryExtractionPromptContent } = await loadInput()
       const content = buildMemoryExtractionPromptContent({
         scope: 'profile',
@@ -895,7 +993,7 @@ describe('memory extraction input', () => {
   })
 
   describe('import prompt', () => {
-    it('wraps the pasted text and neutralises forged tags', async () => {
+    it('wraps the pasted text and neutralizes forged tags', async () => {
       const { buildMemoryExtractionPromptContent } = await loadInput()
       const content = buildMemoryExtractionPromptContent({
         scope: 'profile',

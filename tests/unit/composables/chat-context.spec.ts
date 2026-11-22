@@ -21,8 +21,10 @@ mockNuxtImport('$fetch', () => mocks.fetch)
 
 const OWNED_RESPONSE = {
   chat: {
+    id: 'chat-id-1',
     slug: 'chat-1',
     title: 'Roadmap',
+    pinnedAt: null,
     project: null,
     memoryExcluded: false,
     share: { active: false },

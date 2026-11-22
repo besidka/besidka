@@ -14,6 +14,17 @@ describe('extractMessageSearchText', () => {
     expect(extractMessageSearchText({})).toBe('')
   })
 
+  it('indexes the messages of a built-in command as an empty body', () => {
+    expect(extractMessageSearchText([
+      { type: 'data-command-invocation', data: { command: 'stats' } },
+      { type: 'text', text: '7d' },
+    ])).toBe('')
+    expect(extractMessageSearchText([
+      { type: 'data-command-report', data: { command: 'cost' } },
+      { type: 'text', text: '```text\nChat cost (estimated)\n```' },
+    ])).toBe('')
+  })
+
   it('keeps only text parts and joins them with a newline', () => {
     const parts = [
       { type: 'text', text: 'Hello world' },
@@ -148,7 +159,7 @@ describe('extractMessageSearchText', () => {
 })
 
 describe('normalizeSearchText', () => {
-  it('canonicalises every apostrophe variant to U+02BC', () => {
+  it('canonicalizes every apostrophe variant to U+02BC', () => {
     const variants = [
       'п\'ять',
       'п’ять',
@@ -161,7 +172,7 @@ describe('normalizeSearchText', () => {
     }
   })
 
-  it('applies NFC normalisation', () => {
+  it('applies NFC normalization', () => {
     const decomposed = 'é'
     const composed = 'é'
 

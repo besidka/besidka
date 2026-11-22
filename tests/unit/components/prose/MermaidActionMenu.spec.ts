@@ -37,6 +37,7 @@ const COPY_ACTION_IDS: DiagramExportAction[] = [
   'copy-source',
   'copy-markdown',
   'copy-svg',
+  'copy-png',
   'copy-drawio',
 ]
 
@@ -118,7 +119,30 @@ describe('prose/MermaidActionMenu.vue', () => {
     }))
     expect(wrapper.findAll('li button').map((button) => {
       return button.text()
+    })).toEqual(['Code', 'Markdown', 'SVG', 'PNG', 'For draw.io'])
+  })
+
+  it('hides the PNG copy item where the browser cannot write images', async () => {
+    vi.stubGlobal('ClipboardItem', undefined)
+
+    const { wrapper } = await mountMenu('copy')
+
+    expect(wrapper.find('[data-testid="mermaid-export-copy-png"]').exists())
+      .toBe(false)
+    expect(wrapper.findAll('li button').map((button) => {
+      return button.text()
     })).toEqual(['Code', 'Markdown', 'SVG', 'For draw.io'])
+    vi.unstubAllGlobals()
+  })
+
+  it('hides the PNG copy item when image/png is reported unsupported', async () => {
+    vi.stubGlobal('ClipboardItem', { supports: () => false })
+
+    const { wrapper } = await mountMenu('copy')
+
+    expect(wrapper.find('[data-testid="mermaid-export-copy-png"]').exists())
+      .toBe(false)
+    vi.unstubAllGlobals()
   })
 
   it('uses icon-only triggers below the sm breakpoint', async () => {
@@ -235,6 +259,18 @@ describe('prose/MermaidActionMenu.vue', () => {
     expect(mocks.useErrorMessage).toHaveBeenCalledWith(
       'Couldn\'t export diagram',
     )
+  })
+
+  it('adds no second toast for a download the helper already reported', async () => {
+    mocks.runExportAction.mockResolvedValue('reported')
+
+    const { wrapper } = await mountMenu('download')
+
+    await wrapper.get('[data-testid="mermaid-export-download-drawio"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(mocks.useErrorMessage).not.toHaveBeenCalled()
   })
 
   it('does not export when the theme element is unavailable', async () => {

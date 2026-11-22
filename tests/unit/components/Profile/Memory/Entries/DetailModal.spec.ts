@@ -152,7 +152,7 @@ describe('Profile/Memory/Entries/DetailModal', () => {
   })
 
   describe('view mode', () => {
-    it('opens the dialog and lays out the entry in labelled sections',
+    it('opens the dialog and lays out the entry in labeled sections',
       async () => {
         const wrapper = await mountModal()
         const view = byTestId(wrapper, 'memory-entry-view')
@@ -236,7 +236,7 @@ describe('Profile/Memory/Entries/DetailModal', () => {
         .not.toBe(firstKey)
     })
 
-    it('closes from the back button labelled Memory by default', async () => {
+    it('closes from the back button labeled Memory by default', async () => {
       const wrapper = await mountModal()
       const back = byTestId(wrapper, 'memory-entry-back')
 
@@ -900,7 +900,6 @@ describe('Profile/Memory/Entries/DetailModal', () => {
       expect(textarea.classes()).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'w-full',
         'resize-none',
         'overflow-y-auto',

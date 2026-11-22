@@ -1,7 +1,7 @@
 <template>
   <div
     ref="containerRef"
-    class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 py-1 select-none"
+    class="grid grid-cols-3 max-[22.5rem]:grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 py-1 select-none"
   >
     <div
       v-for="(file, index) in files"
@@ -10,9 +10,12 @@
       tabindex="0"
       :data-file-index="index"
       :aria-pressed="selectedIds.has(file.id)"
+      :aria-disabled="unsupportedReasons[file.id] ? true : undefined"
+      :title="unsupportedReasons[file.id]"
       class="group relative aspect-square rounded-box overflow-hidden bg-base-200 hover:ring-2 hover:ring-text/50 transition-all focus:outline-none focus:ring-2 focus:ring-text"
       :class="{
         'ring-2 ring-text': selectedIds.has(file.id),
+        'opacity-40 cursor-not-allowed': unsupportedReasons[file.id],
         'ring-2 ring-secondary-content/50':
           isTouchSelecting && touchedIndices.has(index)
       }"
@@ -34,7 +37,7 @@
       <!-- File Icon for non-images -->
       <div
         v-else
-        class="size-full flex flex-col items-center justify-center p-2"
+        class="size-full flex flex-col items-center justify-center p-2 max-sm:pt-9"
         :class="{
           'opacity-50': selectedIds.has(file.id)
         }"
@@ -78,16 +81,42 @@
       </div>
 
       <span
-        v-if="file.source === 'assistant'"
+        v-if="unsupportedCaptions[file.id]"
+        class="badge badge-neutral badge-xs absolute top-1 left-1 z-10 max-w-[calc(100%-0.5rem)] truncate leading-none"
+        data-testid="files-unsupported-caption"
+      >
+        {{ unsupportedCaptions[file.id] }}
+      </span>
+      <span
+        v-else-if="textNotes[file.id]"
+        class="badge badge-soft badge-xs absolute top-1 left-1 z-10 max-w-[calc(100%-0.5rem)] truncate leading-none"
+        :title="textNotes[file.id]?.description"
+        data-testid="files-text-note"
+      >
+        {{ textNotes[file.id]?.label }}
+      </span>
+      <span
+        v-if="isAiGeneratedFile(file)"
         class="badge badge-secondary badge-xs absolute bottom-1 left-1 z-10 text-2xs leading-none gap-0.5"
+        data-testid="files-ai-badge"
       >
         <Icon name="lucide:sparkles" size="10" />
         {{ getAiBadgeLabel(file) }}
+      </span>
+      <span
+        v-else-if="isConnectedAppFile(file)"
+        class="badge badge-soft badge-xs absolute bottom-1 left-1 z-10 text-2xs leading-none gap-0.5"
+        :title="CONNECTED_APP_FILE_BADGE_TITLE"
+        data-testid="files-app-badge"
+      >
+        <Icon name="lucide:plug" size="10" />
+        {{ CONNECTED_APP_FILE_BADGE_LABEL }}
       </span>
 
       <!-- Hover/Focus Actions -->
       <div
         class="absolute top-1 right-1 flex gap-0.5"
+        data-testid="files-tile-actions"
         :class="{
           [`
             md:opacity-0
@@ -98,18 +127,37 @@
         }"
         @click.stop
       >
+        <button
+          v-if="canPreviewFile(file)"
+          type="button"
+          class="btn btn-circle btn-xs btn-soft"
+          aria-label="Preview document"
+          title="Preview"
+          data-testid="files-action-preview"
+          @click="$emit('preview', file)"
+        >
+          <Icon name="lucide:eye" size="12" />
+        </button>
         <a
           :href="getFileDownloadUrl(file.storageKey)"
           class="btn btn-circle btn-xs btn-soft"
           :aria-label="`Download ${file.name}`"
           title="Download"
-          @click.stop
+          @click.stop="onDownloadClick($event, {
+            url: getFileDownloadUrl(file.storageKey),
+            fileName: file.name,
+          })"
         >
           <Icon name="lucide:download" size="12" />
         </a>
+        <ChatInputFilesModalSelectGridActionsMenu
+          :file-name="file.name"
+          @rename="$emit('rename', file)"
+          @delete="$emit('delete', file)"
+        />
         <button
           type="button"
-          class="btn btn-circle btn-xs btn-soft"
+          class="btn btn-circle btn-xs btn-soft max-sm:hidden"
           aria-label="Rename file"
           title="Rename"
           @click="$emit('rename', file)"
@@ -118,7 +166,7 @@
         </button>
         <button
           type="button"
-          class="btn btn-circle btn-xs btn-error btn-soft"
+          class="btn btn-circle btn-xs btn-error btn-soft max-sm:hidden"
           aria-label="Delete file"
           title="Delete"
           @click="$emit('delete', file)"
@@ -132,20 +180,32 @@
 
 <script setup lang="ts">
 import type { FileManagerFile } from '~/types/file-manager'
+import type { FileDeliveryHint } from '~/utils/file-delivery-hints'
 import { formatMessageCost } from '#shared/utils/message-format'
 
-defineProps<{
+withDefaults(defineProps<{
   files: FileManagerFile[]
   selectedIds: Set<string>
   isTouchSelecting: boolean
   touchedIndices: Set<number>
-}>()
+  unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
+  textNotes?: Record<string, FileDeliveryHint>
+}>(), {
+  unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
+  textNotes: () => ({}),
+})
 
 const emit = defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
 }>()
+
+const { canPreviewFile } = useDocumentPreview()
+const { onDownloadClick } = useFileDownload()
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 

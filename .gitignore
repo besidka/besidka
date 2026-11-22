@@ -72,3 +72,6 @@ tests/.nuxtrc
 
 # ChatGPT plugin upload archive (see plugins/besidka/README.md)
 besidka-plugin.zip
+
+# Artifact eval results (scripts/artifact-evals.mjs, docs/artifacts.md)
+.evals/

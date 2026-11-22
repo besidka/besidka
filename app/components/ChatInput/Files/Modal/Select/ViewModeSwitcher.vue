@@ -13,7 +13,10 @@
       <Icon name="lucide:grid-2x2" class="size-4" />
       <span class="sr-only">Grid</span>
     </label>
-    <label class="tab aspect-square">
+    <label
+      class="tab aspect-square"
+      data-testid="files-view-mode-list"
+    >
       <input
         type="radio"
         name="view_mode"

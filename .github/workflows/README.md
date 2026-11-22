@@ -1,5 +1,5 @@
 One production deployment at a time. A new merge queues behind the running
-deploy (newest pending run wins) instead of cancelling it, because a cancel
+deploy (newest pending run wins) instead of canceling it, because a cancel
 between `migrations apply` and the Worker deploy can leave production with a
 new schema and old code.
 
@@ -18,7 +18,7 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  ├─ preview-build.yml (pull_request, unprivileged)               │
 │  │   ├─ gate (PR open? build or reuse?)                          │
 │  │   ├─ static | unit | integration | build (full suite)         │
-│  │   ├─ e2e x3 shards (after build)                              │
+│  │   ├─ e2e x6 shards (after build)                              │
 │  │   └─ summary (PR comment + pending deploy status)             │
 │  │                                                               │
 │  ├─ scripts-check.yml (only when scripts/ or their tests change) │
@@ -40,7 +40,7 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  └─ production.yml                                               │
 │      ├─ gate (reuse the merged PR's full-suite result?)          │
 │      ├─ static | unit | integration (skipped when reused)        │
-│      ├─ build (always) → e2e x3 shards (skipped when reused)     │
+│      ├─ build (always) → e2e x6 shards (skipped when reused)     │
 │      ├─ deploy job (main only, after all of the above)           │
 │      │   Migrates the DBs and deploys main's own build           │
 │      │                                                           │
@@ -88,7 +88,7 @@ The jobs form a parallel graph instead of one long serial job:
 gate ─┬─ static ───────────────────────────────┐
       ├─ unit ─────────────────────────────────┤
       ├─ integration ──────────────────────────┼─ summary
-      └─ build ─── e2e (shard 1/3, 2/3, 3/3) ──┘
+      └─ build ─── e2e (shards 1/6 to 6/6) ───┘
 ```
 
 1. `gate` checks the PR is still open, then runs
@@ -109,8 +109,8 @@ gate ─┬─ static ───────────────────�
 4. `build` builds the application and uploads the `preview-build` and
    `preview-drizzle` artifacts. The `preview-drizzle` artifact holds the
    committed `.drizzle` directory; nothing generates migrations in CI
-5. `e2e` runs after `build` as three parallel shards of the full suite
-   (`playwright test --shard=i/3`). Each shard downloads the
+5. `e2e` runs after `build` as six parallel shards of the full suite
+   (`playwright test --shard=i/6`). Each shard downloads the
    `preview-build` artifact and has its own `wrangler dev`, local D1 and
    `auth.setup` user, so shards never share state. `workers` stays at 1 inside
    a shard because most specs share the single `auth.setup` user. Every shard
@@ -147,7 +147,7 @@ downloads both artifacts from the source run and re-uploads them under the same
 names with the same retention, comments which build was reused, and sets the
 pending `Preview Deploy` status. `preview-deploy.yml` is unchanged and finds the
 artifacts on the skipping run, so it re-deploys the last built code. This
-also redeploys a preview whose earlier deploy was cancelled. All of this logic
+also redeploys a preview whose earlier deploy was canceled. All of this logic
 lives in `preview-build.yml` because `workflow_run` workflows always execute
 the copy on the default branch. See `docs/cloudflare-previews.md` →
 "Skipping builds".
@@ -221,7 +221,7 @@ form a parallel graph:
 gate ─┬─ static ───────────────────┐
       ├─ unit ─────────────────────┤
       ├─ integration ──────────────┼─ deploy ─┬─ indexnow
-      ├─ build ─── e2e (3 shards) ─┘          └─ deploy-preview ─┐
+      ├─ build ─── e2e (6 shards) ─┘          └─ deploy-preview ─┐
       └─ playwright-cache                                       └─ cleanup
 ```
 
@@ -256,7 +256,7 @@ tests. The script never fails the job; it writes `skip-tests`, `source-run-id`,
 The `gate` job is not a single point of failure. The downstream jobs use
 `!cancelled()` in their `if:`, so a failed `gate` (an empty `skip-tests`
 output) does not skip them: the test jobs and `build` still run and `deploy`
-still requires every test job to succeed. Only a cancelled run stops them.
+still requires every test job to succeed. Only a canceled run stops them.
 
 **static**, **unit**, **integration**: Lint + typecheck and the "Check that
 migrations are committed" step, the full unit suite plus the cookie-consent
@@ -266,7 +266,7 @@ and are skipped when `gate` outputs `skip-tests=true`.
 
 **build**: Builds the application, extracts the bundle size and uploads the
 `preview-build` artifact (retention one day). It always runs (unless the run
-is cancelled), even when the tests are skipped: main builds and deploys its own
+is canceled), even when the tests are skipped: main builds and deploys its own
 build, so the artifact's `buildId` is the `main` commit SHA.
 
 **playwright-cache** ("Warm Playwright cache"): Runs only when the tests are
@@ -276,8 +276,8 @@ Playwright version, and a new PR branch can only restore the cache that `main`
 saved. It is `continue-on-error`, so a failed install never reddens the run.
 
 **e2e**: After a successful `build`, and skipped with the other test jobs when
-`gate` outputs `skip-tests=true`, three parallel shards of the full Playwright
-suite (`playwright test --shard=i/3`), each with its own `wrangler dev`, local
+`gate` outputs `skip-tests=true`, six parallel shards of the full Playwright
+suite (`playwright test --shard=i/6`), each with its own `wrangler dev`, local
 D1 and `auth.setup` user. Each shard downloads the `preview-build` artifact, so
 E2E tests the exact bundle that `deploy` ships. Shards upload
 `playwright-report-<i>` and, on failure, `wrangler-logs-<i>`.
@@ -287,7 +287,7 @@ E2E tests the exact bundle that `deploy` ships. Shards upload
 test jobs do not skip it. It runs only for `github.ref == refs/heads/main` with
 `dry-run` not set, when `build` succeeded, and either `gate` output
 `skip-tests=true` or `static`, `unit`, `integration` and every `e2e` shard
-succeeded. A failed or cancelled test job that ran therefore blocks the deploy.
+succeeded. A failed or canceled test job that ran therefore blocks the deploy.
 It downloads the `preview-build` artifact (no rebuild), applies the committed
 remote migrations to both production databases (`DB`, then `CONSENT_DB`) and
 deploys the Worker. It then reads the job timings and writes a markdown run
@@ -346,9 +346,9 @@ without it.
 `deploy-preview` both succeed and deletes the run's `preview-build` artifact.
 It runs only when `deploy` and `deploy-preview` both report `success`, not
 under `if: always()`, on purpose: the E2E shards and `deploy` download that
-artifact, so keeping it after a failed, cancelled or dry run lets "Re-run
+artifact, so keeping it after a failed, canceled or dry run lets "Re-run
 failed jobs" re-run a failed E2E shard or deploy job without an "Artifact not
-found" error. A failed run, a cancelled run or a dry run leaves the artifact in
+found" error. A failed run, a canceled run or a dry run leaves the artifact in
 place until its one-day retention expires it, and a failed-jobs re-run that
 then succeeds also re-runs this skipped cleanup job.
 
@@ -496,7 +496,7 @@ manually via `workflow_dispatch` (tick **full** to re-sync every document).
 1. Runs `scripts/linear-docs-sync.mjs`, which mirrors `docs/**/*.md` into
    Linear team documents (team BES) and rebuilds the "Docs index" document.
    Only files changed since the last synced commit (recorded in the Docs
-   index) are synced, so cancelled or skipped runs are caught up; renames keep
+   index) are synced, so canceled or skipped runs are caught up; renames keep
    the same Linear document, deleted files delete their Linear document
    (restorable from Linear's "Recently deleted" for 30 days).
 2. Commits `docs/.linear-docs.json` (path → Linear document id) back to
@@ -648,7 +648,7 @@ longer open. After `wrangler preview` succeeds it checks again; if the PR was
 closed meanwhile, it runs `wrangler preview delete` itself (a missing Preview
 counts as success) and skips the PR comment and success status.
 
-Remaining window: a run cancelled (`cancel-in-progress` by a newer build) after
+Remaining window: a run canceled (`cancel-in-progress` by a newer build) after
 `wrangler preview` finished but before its post-deploy PR state check ran,
 while the PR closed and cleanup already ran in between, can leave an orphaned
 Preview. Delete it by hand with
@@ -664,7 +664,7 @@ Pushes to `main` and non-dry-run dispatches from `main` share the `production`
 group. A dry run, or a dispatch from any other ref, gets its own
 `production-dry-run-{ref}` group so it can never queue behind, or replace a
 pending, deploy from `main`. One production deployment at a time. A new merge
-queues behind the running deploy instead of cancelling it, because a
+queues behind the running deploy instead of canceling it, because a
 cancellation between `migrations apply` and the Worker deploy can leave
 production with a new schema and old code. GitHub keeps at most one pending
 run; a newer pending run replaces the older one, so the newest commit still

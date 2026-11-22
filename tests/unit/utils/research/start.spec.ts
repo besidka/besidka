@@ -422,7 +422,7 @@ describe('startResearchJobForChat', () => {
     expect(renderedWhere).toContain('running')
   })
 
-  it('returns the job\'s real state and cancels the provider job when it was cancelled during start', async () => {
+  it('returns the job\'s real state and cancels the provider job when it was canceled during start', async () => {
     const cancel = vi.fn(async () => undefined)
 
     mocks.getResearchAdapter.mockReturnValue({

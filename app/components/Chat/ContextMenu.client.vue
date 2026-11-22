@@ -268,6 +268,7 @@ const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search_brave: 'Web search (Brave)',
   web_search_exa: 'Web search (Exa)',
   image_generation: 'Image generation',
+  code_execution: CODE_EXECUTION_TOOL_LABEL,
   deep_research: 'Deep research',
 }
 
@@ -538,9 +539,36 @@ async function onCopyMarkdown() {
   markdownCopyState.trigger()
 }
 
+const { isOpen: isSidePanelOpen } = useSidePanel()
+
+async function waitForSidePanelLayout() {
+  await new Promise((resolve) => {
+    requestAnimationFrame(resolve)
+  })
+
+  const shellTransitions = document.querySelector('.side-panel-inset')
+    ?.getAnimations()
+    .filter((animation) => {
+      return 'transitionProperty' in animation
+        && animation.transitionProperty === 'margin-right'
+    }) ?? []
+
+  await Promise.allSettled(shellTransitions.map((animation) => {
+    return animation.finished
+  }))
+}
+
 onMounted(async () => {
   await nextTick()
 
+  if (isSidePanelOpen.value) {
+    await waitForSidePanelLayout()
+  }
+
+  positionMenu()
+})
+
+function positionMenu() {
   if (!props.anchorEl || !menu.value) return
 
   const anchorRect = props.anchorEl.getBoundingClientRect()
@@ -613,7 +641,7 @@ onMounted(async () => {
     right: `${right}px`,
     maxHeight: `${availableHeight}px`,
   }
-})
+}
 
 function dismiss() {
   emit('close')

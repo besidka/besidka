@@ -16,6 +16,10 @@
       :class="isExpandable ? 'cursor-pointer' : undefined"
       @click="toggle"
     >
+      <ChatReasoningStepIcon
+        :icon="icon ?? null"
+        class="order-0"
+      />
       <span
         data-testid="reasoning-search-step-title"
         class="order-1 min-w-0"
@@ -153,12 +157,14 @@
 <script setup lang="ts">
 import { isHttpUrl } from '#shared/utils/http-url'
 import type { SearchStepData, SearchStepResult } from '~/types/search-step.d'
+import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 
 const props = defineProps<{
   data: SearchStepData
   title: string
   pending: boolean
   searchedAt?: string | number | Date
+  icon?: ReasoningStepIcon | null
 }>()
 
 interface SearchStepResultRow {

@@ -1,8 +1,21 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { computed, ref } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SNIPPET_END, SNIPPET_START } from '#shared/utils/search'
 import HistoryChatRow from '../../../../app/components/History/ChatRow.vue'
 import { createHistoryChat } from '../../../setup/helpers/history-fixtures'
+
+const artifactsActive = ref<boolean>(false)
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: artifactsActive.value,
+      active: artifactsActive.value,
+      variant: null,
+    }
+  })
+})
 
 function mountChatRow(chat: ReturnType<typeof createHistoryChat>) {
   return mountSuspended(HistoryChatRow, {
@@ -101,4 +114,48 @@ describe('History/ChatRow', () => {
       expect(included.find('[data-testid="chat-memory-excluded-badge"]')
         .exists()).toBe(false)
     })
+
+  describe('artifact badge', () => {
+    function chatWith(artifactCount: number) {
+      return createHistoryChat({ artifactCount })
+    }
+
+    beforeEach(() => {
+      artifactsActive.value = true
+    })
+
+    afterEach(() => {
+      artifactsActive.value = false
+    })
+
+    it('shows no badge for a chat without artifacts', async () => {
+      const wrapper = await mountChatRow(chatWith(0))
+
+      expect(wrapper.find('[data-testid="chat-artifact-badge"]').exists())
+        .toBe(false)
+    })
+
+    it('shows the count for one artifact', async () => {
+      const wrapper = await mountChatRow(chatWith(1))
+      const badge = wrapper.get('[data-testid="chat-artifact-badge"]')
+
+      expect(badge.text()).toContain('1 artifact')
+    })
+
+    it('shows the count for several artifacts', async () => {
+      const wrapper = await mountChatRow(chatWith(3))
+      const badge = wrapper.get('[data-testid="chat-artifact-badge"]')
+
+      expect(badge.text()).toContain('3 artifacts')
+    })
+
+    it('hides the badge without artifacts access', async () => {
+      artifactsActive.value = false
+
+      const wrapper = await mountChatRow(chatWith(2))
+
+      expect(wrapper.find('[data-testid="chat-artifact-badge"]').exists())
+        .toBe(false)
+    })
+  })
 })

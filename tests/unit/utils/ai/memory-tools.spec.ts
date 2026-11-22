@@ -15,7 +15,7 @@ import {
 } from '~~/server/utils/memory/tools/memory-constants'
 
 describe('isMemoryToolName', () => {
-  it('recognises the four memory tools', () => {
+  it('recognizes the four memory tools', () => {
     expect(MEMORY_TOOL_NAMES).toEqual([
       MEMORY_LIST_TOOL_NAME,
       MEMORY_READ_TOOL_NAME,

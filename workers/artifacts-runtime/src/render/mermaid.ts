@@ -1,28 +1,46 @@
-import mermaid from 'mermaid'
-import { createMermaidConfig } from './mermaid-config.ts'
+import { MERMAID_ELEMENT_NAME } from '../kit/elements.ts'
+import { DiagramLimitError } from './diagram-limit.ts'
+import { renderDiagramSvg } from './diagram.ts'
 import type { Renderer } from './types.ts'
 
-type MermaidConfig = Parameters<typeof mermaid.initialize>[0]
+const LIMIT_PLACEHOLDER_TEXT = 'This diagram is too large to draw.'
 
-let diagramCount = 0
+function showLimitPlaceholder(root: HTMLElement) {
+  const placeholder = document.createElement('p')
 
+  placeholder.className = 'besidka-diagram-limit'
+  placeholder.dataset.testid = 'besidka-diagram-limit'
+  placeholder.textContent = LIMIT_PLACEHOLDER_TEXT
+  root.replaceChildren(placeholder)
+}
+
+/**
+ * Renders the diagram once before showing it, so a syntax error still
+ * reaches the host as an artifact error (the panel's Ask to fix works) and a
+ * source over the shared limits becomes a `DiagramLimitError`. The diagram is
+ * then drawn by `<besidka-mermaid>`, which has the chat's Copy, Download and
+ * Fullscreen actions and renders with the same options as the chat.
+ */
 export const renderMermaid: Renderer = async (payload, context) => {
-  mermaid.initialize(createMermaidConfig(context.theme) as MermaidConfig)
+  try {
+    await renderDiagramSvg(payload.content, undefined)
+  } catch (exception) {
+    if (exception instanceof DiagramLimitError && context.isCurrent()) {
+      showLimitPlaceholder(context.root)
+    }
 
-  diagramCount += 1
-
-  const { svg } = await mermaid.render(
-    `besidka-mermaid-${diagramCount}`,
-    payload.content,
-  )
+    throw exception
+  }
 
   if (!context.isCurrent()) {
     return
   }
 
   const container = document.createElement('main')
+  const diagram = document.createElement(MERMAID_ELEMENT_NAME)
 
   container.className = 'besidka-mermaid'
-  container.innerHTML = svg
+  diagram.textContent = payload.content
+  container.append(diagram)
   context.root.replaceChildren(container)
 }

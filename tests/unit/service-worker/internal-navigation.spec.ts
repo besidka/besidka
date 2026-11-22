@@ -16,7 +16,7 @@ describe('resolveInternalNavigationTarget', () => {
       .toBe('/chats/abc?x=1#top')
   })
 
-  it('normalises dot segments against the origin', () => {
+  it('normalizes dot segments against the origin', () => {
     expect(resolveInternalNavigationTarget('/chats/../shared/abc', ORIGIN))
       .toBe('/shared/abc')
   })

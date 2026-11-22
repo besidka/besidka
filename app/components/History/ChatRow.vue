@@ -77,6 +77,7 @@
           <Icon name="lucide:link" size="10" />
           Shared
         </span>
+        <HistoryArtifactBadge :count="chat.artifactCount" />
         <span
           v-if="isMemoryExcluded"
           data-testid="chat-memory-excluded-badge"

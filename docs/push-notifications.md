@@ -208,7 +208,7 @@ is missed first.
 - **Mail alerts to admins** (`internal/mail-alert/index.post.ts`, see
   `docs/mail-alerts.md`): the one push whose body is not a fixed string. It
   goes only to admins, about mail sent to the controller's own mailboxes, and
-  carries a sanitised subject of at most 80 characters (encrypted end to end
+  carries a sanitized subject of at most 80 characters (encrypted end to end
   like every payload). Urgent mail uses `urgency: 'high'` and `ttl: 600`.
 
 ## Service worker behavior (`app/service-worker/`)

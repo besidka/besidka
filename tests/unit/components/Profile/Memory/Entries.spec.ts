@@ -1124,7 +1124,7 @@ describe('Profile/Memory/Entries', () => {
         expect(refresh).toHaveBeenCalledOnce()
       })
 
-      it('keeps the list when the project reset is cancelled', async () => {
+      it('keeps the list when the project reset is canceled', async () => {
         entriesData.value = createProjectResponse()
         mocks.confirm.mockResolvedValue(null)
 
@@ -1703,7 +1703,7 @@ describe('Profile/Memory/Entries', () => {
           expect(fetchCalls()).toEqual([])
         })
 
-      it('does not clear the text for a normal create after a cancelled save',
+      it('does not clear the text for a normal create after a canceled save',
         async () => {
           const wrapper = await mountLegacy('too-long')
 

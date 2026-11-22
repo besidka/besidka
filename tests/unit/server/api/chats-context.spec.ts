@@ -5,6 +5,13 @@ import type { ChatContextTestDb } from '../../../setup/helpers/chat-context-db'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
+  artifactsActive: false,
+}))
+
+vi.mock('~~/server/utils/features/context', () => ({
+  evaluateFeatureForEvent: vi.fn(async () => ({
+    active: mocks.artifactsActive,
+  })),
 }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -111,12 +118,31 @@ describe('GET /api/v1/chats/[slug]/context', () => {
   beforeEach(() => {
     vi.resetModules()
     mocks.loggerSet.mockReset()
+    mocks.artifactsActive = false
     testDb = createChatContextTestDb()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     testDb.close()
+  })
+
+  it('returns the chat id and its pinned time', async () => {
+    testDb.insertChat({
+      id: 1,
+      userId: OWNER_ID,
+      slug: CHAT_SLUG,
+      pinnedAtSeconds: 1_790_000_000,
+    })
+    stubServerGlobals(testDb, { user: { id: String(OWNER_ID) } })
+
+    const handler = await loadHandler()
+    const response = await handler(createEvent(CHAT_SLUG))
+
+    expect(response.chat.id).toBeTruthy()
+    expect(response.chat.pinnedAt).toBe(
+      new Date(1_790_000_000 * 1000).toISOString(),
+    )
   })
 
   it('returns the context of the owner\'s chat', async () => {
@@ -129,6 +155,7 @@ describe('GET /api/v1/chats/[slug]/context', () => {
     expect(response.chat).toMatchObject({
       slug: CHAT_SLUG,
       title: 'A chat',
+      pinnedAt: null,
       project: null,
       memoryExcluded: false,
       share: { active: false },
@@ -342,6 +369,93 @@ describe('GET /api/v1/chats/[slug]/context', () => {
           message: 'Invalid request parameters',
         })
     })
+
+  describe('artifacts section', () => {
+    function artifactPart(artifactId: string, version: number, title: string) {
+      return {
+        type: 'data-artifact',
+        data: { artifactId, version, kind: 'html', title },
+      }
+    }
+
+    function seedArtifactChat() {
+      testDb.insertChat({ id: 1, userId: OWNER_ID, slug: CHAT_SLUG })
+      testDb.insertMessage({
+        id: 1,
+        chatId: 1,
+        role: 'assistant',
+        parts: [
+          artifactPart('pub-5', 1, 'Quiz'),
+          artifactPart('pub-6', 1, 'Taken down'),
+          artifactPart('pub-7', 1, 'Foreign'),
+          artifactPart('pub-8', 1, 'Deleted'),
+        ],
+      })
+      testDb.insertMessage({
+        id: 2,
+        chatId: 1,
+        role: 'assistant',
+        parts: [artifactPart('pub-5', 2, 'Quiz v2')],
+      })
+      testDb.insertArtifact({
+        id: 5,
+        userId: OWNER_ID,
+        title: 'Quiz v3',
+        currentVersion: 3,
+      })
+      testDb.insertArtifact({
+        id: 6,
+        userId: OWNER_ID,
+        title: 'Taken down',
+        currentVersion: 1,
+        takedownAtSeconds: 1_790_000_100,
+      })
+      testDb.insertArtifact({
+        id: 7,
+        userId: OTHER_USER_ID,
+        title: 'Foreign',
+        currentVersion: 1,
+      })
+    }
+
+    it('lists the owner\'s artifacts with the current version', async () => {
+      seedArtifactChat()
+      mocks.artifactsActive = true
+      stubServerGlobals(testDb, { user: { id: String(OWNER_ID) } })
+
+      const handler = await loadHandler()
+      const response = await handler(createEvent(CHAT_SLUG))
+
+      expect(response.outputs).toEqual([
+        {
+          id: 'artifact:pub-5',
+          sectionId: 'artifacts',
+          kind: 'artifact',
+          title: 'Quiz v3',
+          messageId: 'message-1',
+          meta: {
+            artifactId: 'pub-5',
+            artifactKind: 'html',
+            version: 2,
+            latestVersion: 3,
+          },
+        },
+      ])
+      expect(response.counts.outputs).toBe(1)
+      expect(response.kindCounts.artifact).toBe(1)
+    })
+
+    it('omits artifacts when the feature is not active', async () => {
+      seedArtifactChat()
+      stubServerGlobals(testDb, { user: { id: String(OWNER_ID) } })
+
+      const handler = await loadHandler()
+      const response = await handler(createEvent(CHAT_SLUG))
+
+      expect(response.outputs).toEqual([])
+      expect(response.kindCounts.artifact).toBeUndefined()
+    })
+  })
 
   it('answers 401 without a session', async () => {
     seedOwnedChat(testDb)

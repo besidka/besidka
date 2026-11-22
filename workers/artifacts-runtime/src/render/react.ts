@@ -30,7 +30,31 @@ const REACT_ELEMENT_TYPES = new Set([
   'react.lazy',
 ])
 
+const COMMIT_WAIT_LIMIT_MS = 400
+
 let currentRoot: ReactRoot | null = null
+
+function waitForCommit(container: Element): Promise<void> {
+  return new Promise((resolve) => {
+    if (container.firstChild) {
+      resolve()
+
+      return
+    }
+
+    const observer = new MutationObserver(() => {
+      observer.disconnect()
+      clearTimeout(timer)
+      resolve()
+    })
+    const timer = setTimeout(() => {
+      observer.disconnect()
+      resolve()
+    }, COMMIT_WAIT_LIMIT_MS)
+
+    observer.observe(container, { childList: true })
+  })
+}
 
 function loadSharedModule<Module>(specifier: string): Promise<Module> {
   return import(specifier)
@@ -120,4 +144,5 @@ export const renderReact: Renderer = async (payload, context) => {
     },
   })
   currentRoot.render(react.createElement(artifactModule.default))
+  await waitForCommit(container)
 }

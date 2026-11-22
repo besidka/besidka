@@ -274,6 +274,105 @@ export function useChatScrollSpacer(
     })
 
     rebroadcastSpacerChange(resultSpacer)
+    revealApprovalBubble()
+  }
+
+  /**
+   * Brings the approval bubble under the paused reply into view, above the
+   * composer, after the reply was placed like any finished turn. A reply
+   * that pauses for an approval is taller than the viewport more often than
+   * not, and the bubble is the only thing the user has to act on. The
+   * bubble's top never moves above the container's top. An absolute
+   * `scrollTo` keeps a second call during the smooth scroll from adding
+   * its distance again, as a relative `scrollBy` would in Chromium.
+   */
+  function revealApprovalBubble() {
+    const container = scrollContainerRef.value
+    const bubble = container?.querySelector<HTMLElement>(
+      '.js-tool-approval-bubble',
+    )
+
+    if (!container || !bubble) {
+      return
+    }
+
+    const containerRect = container.getBoundingClientRect()
+    const bubbleRect = bubble.getBoundingClientRect()
+    const visibleBottom = containerRect.top + container.clientHeight
+      - inputHeight.value
+      - keyboardInset.value
+      - INITIAL_SPACER_PADDING
+    const overflow = bubbleRect.bottom - visibleBottom
+    const roomAbove = bubbleRect.top - containerRect.top
+      - INITIAL_SPACER_PADDING
+
+    if (overflow <= 0 || roomAbove <= 0) {
+      return
+    }
+
+    container.scrollTo({
+      top: container.scrollTop + Math.min(overflow, roomAbove),
+      behavior: 'smooth',
+    })
+  }
+
+  function getLastUserMessageElement(): HTMLDivElement | null {
+    return [...(messagesDomRefs.value ?? [])].reverse().find((element) => {
+      return element.dataset.role === 'user'
+    }) ?? null
+  }
+
+  /**
+   * A request that continues the last reply (answered approvals, a resend
+   * of those answers, an automatic tool round) has no new user message, so
+   * nothing pinned it and the reply was already measured. It is placed like
+   * a new send instead: the last user message is pinned to the top with
+   * room for the reply to grow below it, and the reply is measured again
+   * when it finishes, so `adjustSpacerAfterResponse()` gives it the final
+   * layout of a plain send.
+   */
+  async function pinUserMessageForContinuation() {
+    const container = scrollContainerRef.value
+    const messagesEnd = messagesEndRef.value
+    const userElement = getLastUserMessageElement()
+    const lastElement = messagesDomRefs.value?.at(-1)
+
+    if (lastElement?.dataset.role === 'assistant') {
+      const messageId = lastElement.dataset.messageId
+
+      if (messageId) {
+        capturedAssistantMessages.delete(messageId)
+      }
+    }
+
+    if (!container || !messagesEnd || !userElement?.dataset.messageId) {
+      return
+    }
+
+    const userMessage: MessageData = {
+      id: userElement.dataset.messageId,
+      height: userElement.offsetHeight,
+      offsetTop: userElement.offsetTop,
+    }
+    const extraForTallUserMessage = userMessage.height > MESSAGE_3_LINES_HEIGHT
+      ? userMessage.height + 16 - MESSAGE_3_LINES_HEIGHT
+      : 0
+    const scrollTarget = userMessage.offsetTop
+      + extraForTallUserMessage
+      - INITIAL_SPACER_PADDING
+
+    userMessageData.value = userMessage
+    spacerComputedByPush.value = true
+    spacerHeight.value = Math.max(
+      scrollTarget - messagesEnd.offsetTop + container.clientHeight,
+      inputHeight.value + INITIAL_SPACER_PADDING,
+    )
+
+    await nextTick()
+
+    container.scrollTo({ top: scrollTarget, behavior: 'smooth' })
+
+    rebroadcastSpacerChange(spacerHeight.value)
   }
 
   async function pushUserMessageToTop(behavior: ScrollBehavior = 'smooth') {
@@ -509,6 +608,7 @@ export function useChatScrollSpacer(
   }
 
   nuxtApp.hook('chat:regenerate', pushUserMessageToTop)
+  nuxtApp.hook('chat:continue', pinUserMessageForContinuation)
 
   return {
     spacerHeight: renderedSpacerHeight,

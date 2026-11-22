@@ -377,7 +377,7 @@ describe('memory backfill API', () => {
     it.each([
       ['a run that read every past chat', 'completed', 3],
       ['a run that stopped at its cap', 'completed', 200],
-      ['a cancelled run', 'cancelled', 5],
+      ['a canceled run', 'cancelled', 5],
     ] as const)('estimates a fresh window for ?restart=true after %s',
       async (_label, status, processedChats) => {
         const cursorChat = await chat(10)

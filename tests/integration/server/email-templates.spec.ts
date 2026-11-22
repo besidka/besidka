@@ -83,6 +83,29 @@ describe('email template rendering', () => {
       expect(html).toContain('prefers-color-scheme: dark')
     })
 
+  it('keeps the paragraphs of a multi-line NoticeEmail body apart',
+    async () => {
+      const { render } = await importRealRender()
+      const html = await render(NoticeEmail, {
+        ...noticeEmailProps,
+        body: 'First paragraph.\n\nSecond paragraph.',
+      })
+
+      expect(html).toMatch(/white-space:\s*pre-line/)
+      expect(html).toContain('First paragraph.\n\nSecond paragraph.')
+    })
+
+  it('adds no line break around a one-line body under pre-line',
+    async () => {
+      const { render } = await importRealRender()
+      const html: string = await render(NoticeEmail, noticeEmailProps)
+      const paragraph = html.match(/class="email-text"[^>]*>([\s\S]*?)<\/p>/)
+
+      expect(paragraph?.[1]).toBeDefined()
+      expect(paragraph![1]).not.toContain('\n')
+      expect(paragraph![1].trim()).toBe(noticeEmailProps.body)
+    })
+
   it('renders ActionEmail plain text with heading, body and raw url',
     async () => {
       const { render } = await importRealRender()

@@ -180,7 +180,7 @@ export async function finalizeResearchJob(
       db,
       job.id,
       'cancelled',
-      buildProviderCancelledError(),
+      buildProviderCanceledError(),
     )
 
     return { outcome: 'failed' }
@@ -491,9 +491,9 @@ function buildProviderJobGoneError(
   })
 }
 
-function buildProviderCancelledError(): ChatErrorPayload {
+function buildProviderCanceledError(): ChatErrorPayload {
   return normalizeChatError({
-    error: new Error('The research job was cancelled by the provider'),
+    error: new Error('The research job was canceled by the provider'),
     code: 'research-cancelled',
   })
 }

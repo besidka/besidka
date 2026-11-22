@@ -102,6 +102,21 @@
                 />
                 Works once {{ findBlockingParentTitle(feature) }} is on
               </span>
+              <button
+                v-if="hasToolPermissions(feature)"
+                type="button"
+                class="btn btn-sm btn-soft mt-2 w-fit"
+                data-testid="labs-besidka-tool-permissions-open"
+                @click="openToolPermissions"
+              >
+                <Icon
+                  name="lucide:sliders-horizontal"
+                  size="16"
+                  class="shrink-0"
+                  aria-hidden="true"
+                />
+                Tool permissions
+              </button>
               <NuxtLink
                 v-for="kind in missingKeyKinds(feature)"
                 :key="kind"
@@ -186,6 +201,14 @@
 import type { LabsFeature } from '#shared/types/features.d'
 import type { FeatureKeyKind } from '#shared/utils/features/registry'
 import { parseError } from 'evlog'
+import BesidkaToolPermissions from '~/components/Profile/BesidkaTools/Permissions.vue'
+import {
+  BESIDKA_TOOL_PERMISSIONS_CONNECTORS_PATH,
+  BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
+  BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE,
+} from '~/utils/besidka-tool-permissions'
+
+const BESIDKA_TOOLS_FEATURE_KEY = 'besidka-tools'
 
 definePageMeta({
   layout: 'profile',
@@ -205,6 +228,10 @@ const { data, status, refresh } = await useFetch(
 )
 const { keyStatusForProvider } = useUserKeys()
 const { refreshFeatures } = useFeatures()
+const { setFeatureOptIn } = useFeatureOptIn()
+const connectorsFeature = useFeature('connectors')
+const route = useRoute()
+const { open: openSidePanel } = useSidePanel()
 
 const optInOverrides = shallowRef<Record<string, boolean>>({})
 const savingFlags = shallowRef<string[]>([])
@@ -247,6 +274,55 @@ function findBlockingParentTitle(feature: LabsFeature): string | null {
   return parent.title
 }
 
+function hasToolPermissions(feature: LabsFeature): boolean {
+  return feature.key === BESIDKA_TOOLS_FEATURE_KEY && isOptedIn(feature)
+}
+
+async function openToolPermissions() {
+  if (connectorsFeature.value.active) {
+    await navigateTo(BESIDKA_TOOL_PERMISSIONS_CONNECTORS_PATH)
+
+    return
+  }
+
+  openSidePanel({
+    viewKey: BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
+    title: 'Tool permissions',
+    component: BesidkaToolPermissions,
+  })
+}
+
+async function openToolPermissionsFromQuery() {
+  if (route.query.panel !== BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE) {
+    return
+  }
+
+  const besidkaTools = data.value?.features.find((feature) => {
+    return feature.key === BESIDKA_TOOLS_FEATURE_KEY
+  })
+
+  if (besidkaTools && hasToolPermissions(besidkaTools)) {
+    if (connectorsFeature.value.active) {
+      await navigateTo(
+        BESIDKA_TOOL_PERMISSIONS_CONNECTORS_PATH,
+        { replace: true },
+      )
+
+      return
+    }
+
+    await openToolPermissions()
+  }
+
+  await navigateTo({ path: route.path, query: {} }, { replace: true })
+}
+
+onMounted(openToolPermissionsFromQuery)
+
+watch(() => route.query.panel, openToolPermissionsFromQuery, {
+  flush: 'post',
+})
+
 function restoreCheckbox(event: Event, checked: boolean) {
   if (event.target instanceof HTMLInputElement) {
     event.target.checked = checked
@@ -282,11 +358,8 @@ async function toggleOptIn(feature: LabsFeature, event: Event) {
   setOverride(feature.key, optedIn)
 
   try {
-    await $fetch(`/api/v1/profiles/features/${feature.key}/opt-in`, {
-      method: 'POST',
-      body: { optedIn },
-    })
-    await Promise.all([refresh(), refreshFeatures()])
+    await setFeatureOptIn(feature.key, optedIn)
+    await refresh()
   } catch (exception) {
     const parsedException = parseError(exception)
 

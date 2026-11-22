@@ -11,31 +11,41 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: 'ae4fe9e053d0fa9a70f3fdecef7a9254c5ecbde647c7cbe7a8eb1b911079eba5',
+    hash: 'ab30dd635f4fff8c39774f17cc39539b92bbb3206457f517313ebeba3d089bba',
     classification: 'material',
-    noticeId: '2026-12-artifacts',
-    note: 'Artifacts: stored content and versions, public artifact links, '
-      + 'saved progress for signed-in visitors, AI requests on the '
-      + 'visitor\'s key, the runtime host, the report form with Turnstile, '
-      + 'report and removal-order retention, and the artifact MCP '
-      + 'permissions. Body still includes the 2026-11-experimental-features '
-      + 'changes, effective 2026-12-19.',
+    noticeId: '2026-11-support-requests',
+    note: 'Support requests (new purpose): support@besidka.com, the debug '
+      + 'block from get_debug_info and Copy debug info, lookup by ids in D1 '
+      + 'and Axiom, the chat itself only on request or with agreement, '
+      + 'basis 6(1)(b) or (f), closed plus 12 months. New recipient: Google '
+      + '(Gmail), the owner\'s personal mailbox every besidka.com alias is '
+      + 'forwarded to, with US transfer under the DPF. Read your chats now '
+      + 'also covers debug details, chat cost and usage statistics '
+      + '(get_debug_info, get_chat_cost, get_usage_stats). Body still '
+      + 'includes the 2026-12-code-and-documents changes, effective '
+      + '2026-12-19. Owner approved the notice and its dates in chat on '
+      + '2026-11-20.',
   },
   'terms-of-use': {
-    hash: 'f031d8b6eedf821cdbe4c5f1db8fcd4f34aa027ad659599089f15b4e5afae741',
+    hash: 'ea8bea655aff9ae6cf4f5ba5849d7361776fee83ea70163e8e667af546e5d985',
     classification: 'material',
-    noticeId: '2026-12-artifacts',
-    note: 'Artifact links and what the publisher promises, new prohibited '
-      + 'uses for artifacts, the report form and its categories, the '
-      + 'terrorist-content policy and removal-order contact point, artifact '
-      + 'takedown and its statement of reasons, artifact AI marks.',
+    noticeId: '2026-11-support-requests',
+    note: 'Contact: support@besidka.com for help with the app, with a link '
+      + 'to the Privacy Policy support section; the privacy address stays '
+      + 'the single address for everything else. Body still includes the '
+      + '2026-12-code-and-documents changes, effective 2026-12-19. Owner '
+      + 'approved the notice and its dates in chat on 2026-11-20.',
   },
   'cookie-policy': {
-    hash: 'cd134d77f65c412a5c76a25d9199c0a62ed13c4cd86fbe889ac31ba73009ac39',
+    hash: '23698e9dfcd63b36e96015181acd14ee63db8d28cf75e09ea09993897450f58c',
     classification: 'minor',
     note: 'Turnstile also on the artifact report form for signed-out '
       + 'visitors (same bot-protection purpose and recipient), the '
-      + 'artifacts:auto-opened sessionStorage row, and no Web Analytics on '
-      + 'public artifact pages; no new cookie, purpose or recipient.',
+      + 'artifacts:auto-opened and artifacts:share-return sessionStorage '
+      + 'rows, and no Web Analytics on public artifact pages; no new '
+      + 'cookie, purpose or recipient.'
+      + ' Latest edit is spelling only (British variants changed to '
+      + 'American English), with no change of meaning, so it adds no '
+      + 'new classification.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

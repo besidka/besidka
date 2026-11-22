@@ -1,7 +1,7 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-10-29
+updatedAt: 2026-11-20
 summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Artifact links make an AI-generated artifact openable by anyone who has the link; such pages are never indexed and say they are AI-generated and not reviewed by me, and an artifact must not phish, ask visitors for passwords, payment details, who they are or how to contact them, redirect them, try to spend their keys, target children or serve as website hosting. Anyone can report illegal content to me by email, or with the report form on an artifact, and a person will look at it; rights holders can send a copyright notice to the same address, and the same address takes removal orders for terrorist content. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
@@ -13,7 +13,7 @@ The hosted Besidka service at **besidka.com** is provided by **Serhii Chernenko*
 - Email: **:privacy-email-link{}**
 - Location: **Poland (European Union)**
 
-That one address handles everything — general questions, privacy requests, reports of illegal content, and enquiries from authorities. It is read by a person, not a bot, and it is the fastest way to reach me.
+That one address handles everything — general questions, privacy requests, reports of illegal content, and inquiries from authorities. It is read by a person, not a bot, and it is the fastest way to reach me.
 
 In these terms, "I" and "me" mean the person above, and "you" means the person using the service.
 
@@ -49,7 +49,7 @@ Because you never pay me for anything, there is nothing to refund and no right o
 
 ### If that ever changes
 
-The absence of any revenue is not an accident, and it is part of what these terms are built on. If I ever introduce advertising, sponsorship, donations (including a "buy me a coffee" style button to cover hosting), a paid tier, or any monetisation of user data, the service stops being a non-gainful personal project. I would then publish a full set of service-provider details, including a postal address, and update these terms before that change takes effect, with advance notice as described under [Changes to these terms](#changes-to-these-terms).
+The absence of any revenue is not an accident, and it is part of what these terms are built on. If I ever introduce advertising, sponsorship, donations (including a "buy me a coffee" style button to cover hosting), a paid tier, or any monetization of user data, the service stops being a non-gainful personal project. I would then publish a full set of service-provider details, including a postal address, and update these terms before that change takes effect, with advance notice as described under [Changes to these terms](#changes-to-these-terms).
 
 
 ## Who may use it
@@ -78,6 +78,7 @@ This section applies to every key you enter: an AI provider key, an AI gateway k
 - **TypeSafe AI is a separate cost too.** Every check you leave on is billed to your TypeSafe AI account, a fraction of a cent each, separately from your model usage. You can switch single checks off, or delete the key to stop all of them.
 - **An AI gateway bills you itself.** If you route a chat through a gateway, the model usage is charged through your gateway account, under the gateway's own pricing and terms.
 - I cannot see, refund or cap your spending with any of them. Set spending limits in your provider, gateway and search provider accounts if you want a ceiling.
+- **Running code is the provider's service, on your key.** If you turn on **Run code**, the code runs in the sandbox of your own Anthropic, OpenAI or Google account, under that provider's terms and usage policy, which apply to you directly. I do not run the code and I cannot see or cap what it costs. Anthropic's document skills, if I offer them, are Anthropic's: they run under your own agreement with Anthropic, and I do not license or distribute them.
 
 ## You are interacting with an AI system
 
@@ -89,7 +90,9 @@ You are using an **AI system**. The text, code, summaries, images and reports yo
 - Output is not unique to you. Another user with a similar prompt may receive substantially the same answer.
 - Do not use output to make decisions about other people (hiring, credit, eligibility, discipline) without a human being who is competent to make that decision reviewing it.
 - **Artifacts are AI-generated too.** An artifact is marked as AI-generated in the app, and every public artifact page carries a banner saying it was made by AI for a Besidka user and not reviewed by me, plus a machine-readable `ai-generated` tag. When you download an artifact as an HTML page, the file carries the same tag and a comment that names only the model, where it is recorded; Markdown and SVG downloads carry a one-line comment. Downloads of React components and diagrams as source code carry no mark. Like the image tag, these marks hold no prompt, account or other personal details and disappear when someone edits the file.
-- Images the model generates are labelled as AI-generated in the app and on share pages. Where the provider adds Content Credentials (C2PA) to an image, Besidka keeps them. Otherwise Besidka tries to add a standard IPTC metadata tag that says the image was made by AI and names the model. The mark can be missing from some files, images saved before this was added were not changed, and re-saving an image or taking a screenshot removes it. The tag holds no prompt, account or other personal details. If you publish AI-generated content that could pass for real, label it where the law requires.
+- **Documents and code results are AI output that I do not check.** That covers the PDF, Word, PowerPoint and Excel files the assistant makes, and the code and files that Run code produces. Check them before you use them. A spreadsheet can show empty cells where a formula should be until your program recalculates it.
+- **Documents carry a mark.** A file the assistant makes has a machine-readable mark in its properties. It says the file was made by AI and names the model. It holds no prompt, account or other personal details. Standard document and metadata tools can read it. It can be missing from files that your provider's code or skills made. It is lost when someone re-saves, prints or copies the file. A document made by a connected app is marked as created by a connected app. It is marked as AI-generated only if the app says so.
+- Images the model generates are labeled as AI-generated in the app and on share pages. Where the provider adds Content Credentials (C2PA) to an image, Besidka keeps them. Otherwise Besidka tries to add a standard IPTC metadata tag that says the image was made by AI and names the model. The mark can be missing from some files, images saved before this was added were not changed, and re-saving an image or taking a screenshot removes it. The tag holds no prompt, account or other personal details. If you publish AI-generated content that could pass for real, label it where the law requires.
 
 ## Memory and project knowledge
 
@@ -117,9 +120,10 @@ Do not use Besidka to:
 - Break the law, or to produce, store or distribute illegal content, including child sexual abuse material, terrorist content, or content that infringes somebody else's copyright or trade marks.
 - Harass, threaten, defame, stalk or doxx anyone.
 - Produce malware, exploits, phishing pages or other material designed to break into systems or defraud people.
-- Present AI output as human-written where doing so deceives someone to their detriment, or impersonate a real person or organisation.
+- Use code that you or the assistant write or run through Besidka, including with **Run code**, to attack or disrupt systems. That means no malware, no denial-of-service attacks or botnets, and no bypassing security controls without authorization. It also means no attacks on critical infrastructure, such as energy, water, transport, health or communications networks. The usage policy of your AI provider applies to code run on your key as well.
+- Present AI output as human-written where doing so deceives someone to their detriment, or impersonate a real person or organization.
 - Attack the service — no scraping at scale, no brute forcing, no attempt to bypass rate limits or access other users' data, no probing for vulnerabilities beyond good-faith reporting to me.
-- Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the licence is for.
+- Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the license is for.
 - Make or publish an [artifact](#artifact-links) that imitates a sign-in or payment form, asks visitors for passwords or payment details, asks them to identify themselves or for their contact details, account details or age, redirects visitors or tries to navigate its frame to another address (a link the visitor confirms in Besidka is fine), tries to spend visitors' API keys or to get more out of them than the request they confirm, is aimed at children under 13, or uses artifact links as general website hosting, a landing page or advertising.
 
 ## Sensitive information
@@ -128,7 +132,7 @@ You may share sensitive information about yourself in Besidka, such as details o
 
 - It is stored with the rest of the chat and sent to the AI provider, AI gateway or search provider you chose, and to TypeSafe AI if you added a key and left a check on, under your own account with them. On a free Google Gemini key outside the EEA, Switzerland and the UK, Google may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
 - I store and send it only with your explicit consent, which I ask for in the app, separately from these terms. The [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats) explains it, including how to withdraw it. If you do not give that consent, or you withdraw it, you can still read, export and delete your data, but you cannot send new messages or add new content.
-- Please take particular care with other people's sensitive information, and with anything about criminal offences; see [Other people's data](#other-peoples-data).
+- Please take particular care with other people's sensitive information, and with anything about criminal offenses; see [Other people's data](#other-peoples-data).
 
 I do not read your chats. What the app does with chat content beyond storing and sending it, such as memory and looking up your earlier chats, is described in the [Privacy Policy](/privacy-policy). None of it is used to make decisions about you.
 
@@ -140,16 +144,16 @@ If you put someone else's personal data into a chat, you are responsible for hav
 
 You keep all rights in what you write and upload. I claim no ownership of it.
 
-To run the service, I need a **narrow, limited permission** from you. You grant me a non-exclusive, royalty-free licence, limited strictly to operating the service for you, to:
+To run the service, I need a **narrow, limited permission** from you. You grant me a non-exclusive, royalty-free license, limited strictly to operating the service for you, to:
 
 1. store your content and serve it back to you;
 2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge and excerpts of your earlier chats; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key; transmit the text the TypeSafe AI checks you left on need to TypeSafe AI, using your key, as described in the [Privacy Policy](/privacy-policy#typesafe-ai-checks);
 3. keep the memory entries and project knowledge you create or allow, and use them as context for your own later chats; and
 4. render your content on a share page or an artifact link **that you yourself created**, and in a chat you shared, for as long as that share or link is active, and run the artifacts in it in a sealed frame for the people who open it.
 
-That is the whole licence. It is not perpetual, not transferable and not for any other purpose. It ends for any given content when you delete that content or your account. I do not use your content to train models, to advertise, or to build any other product.
+That is the whole license. It is not perpetual, not transferable and not for any other purpose. It ends for any given content when you delete that content or your account. I do not use your content to train models, to advertise, or to build any other product.
 
-The rights of an AI provider, an AI gateway, a search provider or TypeSafe AI over what you send it come from **your** agreement with that company, not from this licence.
+The rights of an AI provider, an AI gateway, a search provider or TypeSafe AI over what you send it come from **your** agreement with that company, not from this license.
 
 ## Share links
 
@@ -234,18 +238,18 @@ I do not publish transparency reports and I do not run a formal internal complai
 
 ## Copyright complaints
 
-If you hold the rights in a work and believe something on Besidka infringes them, send a copyright notice to **:privacy-email-link{}**. It goes through the same process as a report of illegal content above, and I will tell the user who published the content what I did and why. The elements below are modelled on United States law (17 U.S.C. § 512), so a notice written for it works here too. I have not designated an agent with the US Copyright Office and do not claim the US safe harbour; every notice is handled by the process described here.
+If you hold the rights in a work and believe something on Besidka infringes them, send a copyright notice to **:privacy-email-link{}**. It goes through the same process as a report of illegal content above, and I will tell the user who published the content what I did and why. The elements below are modeled on United States law (17 U.S.C. § 512), so a notice written for it works here too. I have not designated an agent with the US Copyright Office and do not claim the US safe harbor; every notice is handled by the process described here.
 
 ### What a copyright notice must contain
 
 A notice needs all of these, so I can act on it:
 
-1. Your physical or electronic signature, as the owner of the right or as a person authorised to act for the owner.
+1. Your physical or electronic signature, as the owner of the right or as a person authorized to act for the owner.
 2. Which copyrighted work you say is infringed.
 3. Which material you say infringes it, and its **exact URL on besidka.com**, with enough detail for me to find it. For a shared chat, that is the share link; for an artifact, the artifact link.
 4. Your name and email address, and, if you act for the owner, the owner's name.
-5. A statement that you believe in good faith that the use is not authorised by the copyright owner, its agent or the law.
-6. A statement that the information in the notice is accurate and that you are the owner of the right or authorised to act for the owner.
+5. A statement that you believe in good faith that the use is not authorized by the copyright owner, its agent or the law.
+6. A statement that the information in the notice is accurate and that you are the owner of the right or authorized to act for the owner.
 
 If a notice is missing something, I may ask you to complete it before I act.
 
@@ -300,12 +304,12 @@ The change history lists every material change to these terms, with the date I a
 
 ## Open source, self-hosting and the Besidka name
 
-Besidka's source code is published under the **MIT licence**. You are free to use, modify and self-host it on those terms.
+Besidka's source code is published under the **MIT license**. You are free to use, modify and self-host it on those terms.
 
 Two things follow that people often get wrong:
 
-1. **The MIT licence covers the source code, not this hosted service.** The MIT "AS IS" disclaimer applies to the code you obtain under that licence. It does not disclaim anything about the service at besidka.com. My disclaimers for the service are the ones set out below, and they are subject to the mandatory law described there.
-2. **The MIT licence does not license the "Besidka" name, logo or brand.** You may run your own copy; please do not present it as being Besidka, or use the name or logo in a way that suggests I run it or endorse it.
+1. **The MIT license covers the source code, not this hosted service.** The MIT "AS IS" disclaimer applies to the code you obtain under that license. It does not disclaim anything about the service at besidka.com. My disclaimers for the service are the ones set out below, and they are subject to the mandatory law described there.
+2. **The MIT license does not license the "Besidka" name, logo or brand.** You may run your own copy; please do not present it as being Besidka, or use the name or logo in a way that suggests I run it or endorse it.
 
 If you self-host, you are the operator: your users' data is yours to protect, these terms do not apply to your deployment, and you must write your own.
 
@@ -342,7 +346,7 @@ Subject to the above, and to the extent the law allows, I am not liable for:
 
 These terms are governed by **Polish law**.
 
-That choice of law is not a way to strip protections from you. To the extent the consumer rules apply to you as someone habitually resident in another EU or EEA country, Art. 6(2) of the Rome I Regulation applies: choosing Polish law cannot deprive you of the protection of the mandatory rules of the country where you habitually live, and those rules apply where they are more favourable to you.
+That choice of law is not a way to strip protections from you. To the extent the consumer rules apply to you as someone habitually resident in another EU or EEA country, Art. 6(2) of the Rome I Regulation applies: choosing Polish law cannot deprive you of the protection of the mandatory rules of the country where you habitually live, and those rules apply where they are more favorable to you.
 
 If you live in the EU or EEA, you can bring a dispute in the courts of your own country, and I will not argue that you had to go to Poland.
 
@@ -350,8 +354,10 @@ I would much rather sort a problem out by email first. Write to **:privacy-email
 
 ## Contact
 
-One address covers everything in these terms — general questions, privacy and data protection requests, reports of illegal content, and enquiries from authorities:
+One address covers everything in these terms — general questions, privacy and data protection requests, reports of illegal content, and inquiries from authorities:
 
 **:privacy-email-link{}**
+
+For help with the app itself, for example a reply that stops or a connector that does not work, write to **[support@besidka.com](mailto:support@besidka.com)**. You can paste the debug info Besidka gives you for a chat; the [Privacy Policy](/privacy-policy#support-requests) says what it holds and how I handle it.
 
 See also the [Privacy Policy](/privacy-policy) and the [Cookie Policy](/cookie-policy).

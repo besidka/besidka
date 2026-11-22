@@ -5,10 +5,22 @@ import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
   cleanupFilesOrphanedByChatDeletion,
+  deleteConnectorImagesOfDeletedChats,
   findChatsOriginFiles,
+  withoutConnectorImageFiles,
 } from '~~/server/utils/files/chat-deletion-cleanup'
+import { findChatsConnectorImageFiles } from '~~/server/utils/files/connector-images'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
+import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
+import { cleanupDocumentsForDeletedChats } from '~~/server/utils/documents/cleanup'
+import { cleanupSkillsForDeletedChats } from '~~/server/utils/skills/cleanup'
+import {
+  cleanupConnectorsForDeletedChats,
+} from '~~/server/utils/connectors/cleanup'
+import {
+  cleanupToolApprovalsForDeletedChats,
+} from '~~/server/utils/tool-approval/cleanup'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -60,9 +72,14 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  const originFiles = await findChatsOriginFiles(
+  const connectorImageFiles = await findChatsConnectorImageFiles(
+    db,
     chats.map(chat => chat.id),
     userId,
+  )
+  const originFiles = withoutConnectorImageFiles(
+    await findChatsOriginFiles(chats.map(chat => chat.id), userId),
+    connectorImageFiles,
   )
 
   await detachChatsFromMemory({
@@ -70,6 +87,12 @@ export default defineEventHandler(async (event) => {
     userId,
     chatIds: chats.map(chat => chat.id),
     logger,
+  })
+
+  await detachArtifactsFromChats({
+    db,
+    userId,
+    chatIds: chats.map(chat => chat.id),
   })
 
   await removeChatsFromSearchIndex({
@@ -112,6 +135,37 @@ export default defineEventHandler(async (event) => {
       },
     })
   }
+
+  await deleteConnectorImagesOfDeletedChats(
+    db,
+    userId,
+    connectorImageFiles,
+    logger,
+  )
+
+  await cleanupDocumentsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
+  await cleanupSkillsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
+  await cleanupConnectorsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
+  await cleanupToolApprovalsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
 
   return { success: true }
 })

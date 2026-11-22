@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
   isChatSearchToolEnabled: false,
   isMemoryToolsEnabled: false,
   memoryWriteSawUntrustedResult: [] as boolean[],
+  activeFlags: new Set<string>(),
   uiStreamOptions: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
   loadKnowledgeSendData: vi.fn(),
@@ -58,6 +59,10 @@ const mocks = vi.hoisted(() => ({
   kvStore: new Map<string, string>(),
   kvGet: vi.fn(),
   kvPut: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -158,6 +163,12 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
       fileIds: [],
     }),
   ),
+}))
+
+vi.mock('~~/server/utils/features/send-features', () => ({
+  resolveSendFeatures: async () => ({
+    isFeatureActive: (flag: string) => mocks.activeFlags.has(flag),
+  }),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -652,6 +663,7 @@ describe('project knowledge send-path wiring', () => {
     mocks.isChatSearchToolEnabled = false
     mocks.isMemoryToolsEnabled = false
     mocks.memoryWriteSawUntrustedResult = []
+    mocks.activeFlags = new Set()
     mocks.uiStreamOptions = []
     mocks.loadKnowledgeSendData.mockReset()
     mocks.rerankModel = null
@@ -1055,6 +1067,33 @@ describe('project knowledge send-path wiring', () => {
     expect(memoryWritePart?.state).toBe('output-error')
   })
 
+  it('asks before memory_write after a knowledge tool result when tool '
+    + 'approvals are on', async () => {
+    mocks.isMemoryToolsEnabled = true
+    mocks.activeFlags = new Set(['tool-approvals'])
+
+    const { assistantInsert } = await runSend({
+      scenario: { mode: 'search' },
+      steps: [
+        createToolStep([
+          createToolCallChunk('call-1', 'search_project_knowledge', {
+            query: 'Aurora',
+          }),
+        ]),
+        createToolStep([
+          createToolCallChunk('call-2', 'memory_write', { title: 'Aurora' }),
+        ]),
+        createTextChunks('Not saved.'),
+      ],
+    })
+    const memoryWritePart = assistantInsert?.parts.find((part: any) => {
+      return part.toolCallId === 'call-2'
+    })
+
+    expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
+    expect(memoryWritePart?.state).toBe('approval-requested')
+  })
+
   it('measures history from the previous answer of the same token family',
     async () => {
       const previousMessages = [
@@ -1280,6 +1319,27 @@ describe('project knowledge send-path wiring', () => {
       expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
       expect(findMemoryWritePart(assistantInsert)?.state)
         .toBe('output-error')
+    })
+
+    it('asks before memory_write on a full-mode send with documents when '
+      + 'tool approvals are on, and says so in the prompt', async () => {
+      mocks.isMemoryToolsEnabled = true
+      mocks.activeFlags = new Set(['tool-approvals'])
+
+      const { assistantInsert, doStream } = await runSend({
+        steps: memoryWriteSteps(),
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(systemPrompt).toContain('<project_knowledge>')
+      expect(systemPrompt).toContain(
+        'Saving to memory needs the user\'s approval in this turn',
+      )
+      expect(systemPrompt).not.toContain('Saving to memory is unavailable')
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
+      expect(findMemoryWritePart(assistantInsert)?.state)
+        .toBe('approval-requested')
+      expect(doStream).toHaveBeenCalledTimes(1)
     })
 
     it('refuses memory_write on a full-mode send with media only', async () => {

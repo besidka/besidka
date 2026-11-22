@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { SQLiteDialect } from 'drizzle-orm/sqlite-core/dialect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { JEV_ROLE_IDS } from '#shared/utils/jev-policy'
+import { JEV_OPT_IN_ROLE_IDS, JEV_ROLE_IDS } from '#shared/utils/jev-policy'
 import {
   isJevRoleEnabled,
   jevRoleSettingsUpdateValue,
@@ -75,17 +75,35 @@ describe('isJevRoleEnabled', () => {
     }
   })
 
-  it('treats null settings and a missing role as on', () => {
-    for (const role of JEV_ROLE_IDS) {
-      expect(isJevRoleEnabled({
-        typesafeRoles: null,
-        hasTypesafeKey: true,
-      }, role)).toBe(true)
-      expect(isJevRoleEnabled({
-        typesafeRoles: {},
-        hasTypesafeKey: true,
-      }, role)).toBe(true)
-    }
+  it('treats null settings and a missing role as on, except opt-in roles',
+    () => {
+      for (const role of JEV_ROLE_IDS) {
+        const expected = !JEV_OPT_IN_ROLE_IDS.includes(role)
+
+        expect(isJevRoleEnabled({
+          typesafeRoles: null,
+          hasTypesafeKey: true,
+        }, role)).toBe(expected)
+        expect(isJevRoleEnabled({
+          typesafeRoles: {},
+          hasTypesafeKey: true,
+        }, role)).toBe(expected)
+      }
+    })
+
+  it('runs the skill selection role only when it is switched on', () => {
+    expect(isJevRoleEnabled({
+      typesafeRoles: { skillSelection: true },
+      hasTypesafeKey: true,
+    }, 'skillSelection')).toBe(true)
+    expect(isJevRoleEnabled({
+      typesafeRoles: { skillSelection: false },
+      hasTypesafeKey: true,
+    }, 'skillSelection')).toBe(false)
+    expect(isJevRoleEnabled({
+      typesafeRoles: { rerank: true },
+      hasTypesafeKey: true,
+    }, 'skillSelection')).toBe(false)
   })
 
   it('is off only for a role explicitly switched off', () => {

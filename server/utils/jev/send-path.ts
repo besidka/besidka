@@ -5,6 +5,7 @@ import {
 } from '#shared/utils/jev-policy'
 import { jevDecide } from '~~/server/utils/jev/client'
 import type { JevDecideResult, JevQuestions } from '~~/server/utils/jev/client'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { redactNeverStore } from '~~/server/utils/memory/compliance'
 
 export type SendPathTurnRole = 'user' | 'assistant'
@@ -17,6 +18,11 @@ export type SendPathTurn = {
 export type SendPathJevState = {
   message: string
   recent_turns: SendPathTurn[]
+}
+
+export type SendPathJevExtra = {
+  state: Record<string, string>
+  questions: JevQuestions
 }
 
 interface SendPathMessage {
@@ -45,7 +51,9 @@ function prepareTurnText(text: string): string {
 
 /**
  * The last `limit` user and assistant turns that carry text, oldest first,
- * as plain text. Pass the persisted messages before the one being sent.
+ * as plain text. Pass the persisted messages before the one being sent. The
+ * messages of a built-in command (the user's `/cost` and the report Besidka
+ * wrote back) are left out: they never reach a model or a third party.
  */
 export function readSendPathTurns(
   messages: readonly SendPathMessage[],
@@ -54,6 +62,10 @@ export function readSendPathTurns(
   const turns: SendPathTurn[] = []
 
   for (const message of messages) {
+    if (isBuiltinCommandMessage(message)) {
+      continue
+    }
+
     const text = readTextParts(message.parts)
 
     if (isSendPathTurnRole(message.role) && text) {
@@ -84,19 +96,22 @@ export function buildSendPathJevState(input: {
 
 /**
  * One Jev call on the send path for any set of questions, so roles that
- * read the same message (Auto web search, past-chat retrieval) can share a
- * single round trip by merging their question maps. Never throws.
+ * read the same message can share a single round trip by merging their
+ * question maps. `extra` carries another role's state keys and questions
+ * (the skill selector's `skill_<i>`); a key of the base `state` or of
+ * `questions` always wins over an extra one of the same name. Never throws.
  */
 export async function decideSendPathJev(input: {
   model: Experimental_DecisionModel
   state: SendPathJevState
   questions: JevQuestions
+  extra?: SendPathJevExtra
   abortSignal?: AbortSignal
 }): Promise<JevDecideResult> {
   return await jevDecide({
     model: input.model,
-    state: input.state,
-    questions: input.questions,
+    state: { ...input.extra?.state, ...input.state },
+    questions: { ...input.extra?.questions, ...input.questions },
     timeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
     abortSignal: input.abortSignal,
   })

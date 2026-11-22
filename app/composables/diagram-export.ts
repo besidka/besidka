@@ -1,6 +1,8 @@
+import { isImageClipboardSupported } from '@besidka/artifacts-protocol/diagram-menus'
 import type {
   DiagramExportAction,
   DiagramExportInput,
+  DiagramExportOutcome,
 } from '~/types/diagram-export.d'
 import {
   createColorContext,
@@ -34,8 +36,8 @@ const DARK_PAGE_BACKGROUND: string = '#292524'
 const DARK_COLOR_SCHEME_QUERY: string = '(prefers-color-scheme: dark)'
 const FALLBACK_DIMENSIONS = { width: 800, height: 600 }
 const SVG_MIME_TYPE: string = 'image/svg+xml'
+const PNG_MIME_TYPE: string = 'image/png'
 const DRAWIO_MIME_TYPE: string = 'application/vnd.jgraph.mxfile'
-const DOWNLOAD_REVOKE_DELAY_MS: number = 4000
 const DOWNLOAD_FILE_NAMES: Partial<Record<DiagramExportAction, string>> = {
   'download-svg': 'diagram.svg',
   'download-png': 'diagram.png',
@@ -113,22 +115,6 @@ function createTextBlob(text: string, type: string): Blob {
   return new Blob([text], { type })
 }
 
-function triggerDownload(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-
-  anchor.href = url
-  anchor.download = fileName
-  anchor.style.display = 'none'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url)
-  }, DOWNLOAD_REVOKE_DELAY_MS)
-}
-
 async function writeTextFallback(
   textPromise: Promise<string>,
 ): Promise<boolean> {
@@ -180,6 +166,27 @@ function copyText(
   }
 }
 
+/**
+ * Writes the diagram as `image/png` with no text fallback: the item exists
+ * only where images can be copied, and a failure must reach the caller so
+ * it can ask for a click instead of pasting source text where an image was
+ * expected. The `ClipboardItem` is handed to `clipboard.write` before any
+ * `await`, with the rendering inside the Promise, as Safari requires.
+ */
+function copyPng(pngPromise: Promise<Blob>): Promise<boolean> {
+  if (!isImageClipboardSupported()) {
+    return Promise.resolve(false)
+  }
+
+  try {
+    return navigator.clipboard
+      .write([new ClipboardItem({ [PNG_MIME_TYPE]: pngPromise })])
+      .then(() => true, () => false)
+  } catch {
+    return Promise.resolve(false)
+  }
+}
+
 async function buildDrawioDocument(
   input: DiagramExportInput,
   build: typeof buildDrawioFile,
@@ -192,21 +199,26 @@ async function buildDrawioDocument(
 
 async function download(
   action: DiagramExportAction,
+  input: DiagramExportInput,
   buildBlob: () => Promise<Blob>,
-): Promise<boolean> {
-  try {
-    triggerDownload(await buildBlob(), DOWNLOAD_FILE_NAMES[action] ?? action)
+): Promise<DiagramExportOutcome> {
+  const result = await useFileDownload().downloadBlob({
+    key: `diagram:${action}:${hashText(input.source)}`,
+    fileName: DOWNLOAD_FILE_NAMES[action] ?? action,
+    build: buildBlob,
+  })
 
-    return true
-  } catch {
-    return false
+  if (result === 'reported') {
+    return 'reported'
   }
+
+  return result === 'ok'
 }
 
 function runExportAction(
   action: DiagramExportAction,
   input: DiagramExportInput,
-): boolean | Promise<boolean> {
+): DiagramExportOutcome | Promise<DiagramExportOutcome> {
   try {
     switch (action) {
       case 'copy-source':
@@ -216,23 +228,27 @@ function runExportAction(
 
         return copyText(svgPromise, svgPromise)
       }
+      case 'copy-png':
+        return copyPng(
+          buildStandaloneSvg(input).then(svg => svgToPngBlob(svg)),
+        )
       case 'copy-markdown':
         return copyText(Promise.resolve(buildMermaidMarkdown(input.source)))
       case 'copy-drawio':
         return copyText(buildDrawioDocument(input, buildDrawioClipboardXml))
       case 'download-svg':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return createTextBlob(
             await buildStandaloneSvg(input),
             `${SVG_MIME_TYPE};charset=utf-8`,
           )
         })
       case 'download-png':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return svgToPngBlob(await buildStandaloneSvg(input))
         })
       case 'download-drawio':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return createTextBlob(
             await buildDrawioDocument(input, buildDrawioFile),
             DRAWIO_MIME_TYPE,

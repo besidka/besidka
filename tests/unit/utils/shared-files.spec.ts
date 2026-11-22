@@ -23,6 +23,22 @@ describe('shared files utils', () => {
     expect(getPreferredFileExtension('text/markdown')).toBe('md')
   })
 
+  it('maps PDF and Office media types to their extensions', () => {
+    expect(getPreferredFileExtension('application/pdf')).toBe('pdf')
+    expect(getPreferredFileExtension(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )).toBe('docx')
+    expect(getPreferredFileExtension(
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )).toBe('pptx')
+    expect(getPreferredFileExtension(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )).toBe('xlsx')
+    expect(getPreferredFileExtension(
+      'Application/PDF; charset=binary',
+    )).toBe('pdf')
+  })
+
   it('falls back to structured subtype parsing when possible', () => {
     expect(getPreferredFileExtension('application/problem+json')).toBe('json')
     expect(getPreferredFileExtension('application/x-tar')).toBe('tar')
@@ -31,7 +47,7 @@ describe('shared files utils', () => {
   it('falls back to bin for unsupported subtype shapes', () => {
     expect(
       getPreferredFileExtension(
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel.sheet.macroEnabled.12',
       ),
     ).toBe('bin')
   })

@@ -663,7 +663,7 @@ length in `buildFamilyTemplates()`.
   behaves — image cost comes from `getImageGenerationCost()` instead.
 - `resolvePriceTier()` parses `'$0.04 / image'` → 0.04 ≤ 0.05 → tier `'$'`.
 - `controllerModel: 'grok-4.20-0309-non-reasoning'` is the cheapest non-reasoning
-  xAI chat model already in the catalog — the structural analogue of
+  xAI chat model already in the catalog — the structural analog of
   `gpt-5-nano` for `gpt-image-2`.
 
 ### 5.5 `EXEMPT_IDS` edit — `scripts/fetch-models-metadata.mjs`

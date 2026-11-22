@@ -6,6 +6,10 @@ NUXT_OPENAI_APPS_CHALLENGE=
 # Contact address published in the legal pages — see docs/legal.md
 NUXT_PUBLIC_PRIVACY_EMAIL=privacy@besidka.com
 
+# Support address shown in the copyable debug info report (not the GDPR
+# privacy mailbox) — see docs/besidka-tools.md, "Debug info"
+NUXT_PUBLIC_SUPPORT_EMAIL=support@besidka.com
+
 # Author profile linked from the footer credit
 NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE=https://github.com/serhii-chernenko
 
@@ -106,6 +110,12 @@ NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=
 # DeepSeek Search API cost (billed per successful request with non-empty
 # results). The real public rate is committed in wrangler.jsonc.
 NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=
+
+# Provider code execution rates shown in the "Run code" note and used for the
+# cost estimate. The real public rates are committed in wrangler.jsonc.
+NUXT_PUBLIC_OPENAI_CODE_INTERPRETER_COST_PER_SESSION_USD=
+NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_COST_PER_HOUR_USD=
+NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_FREE_HOURS_PER_MONTH=
 
 # Brave Search API (owner dev/testing key) — https://api-dashboard.search.brave.com/
 NUXT_BRAVE_SEARCH_API_KEY=

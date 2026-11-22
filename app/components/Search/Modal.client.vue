@@ -31,6 +31,31 @@
           data-testid="search-modal-results"
           class="flex-1 min-h-0 overflow-y-auto -mx-1.5 px-1.5"
         >
+          <div
+            v-if="isRecentSkeletonShown"
+            class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+            :class="isRecentLoading
+              ? 'grid-rows-[1fr] opacity-100'
+              : 'grid-rows-[0fr] opacity-0'"
+            data-testid="search-recent-skeleton"
+          >
+            <div
+              class="min-h-0 overflow-hidden"
+              aria-hidden="true"
+            >
+              <div class="px-3 pt-3 pb-1 text-xs font-semibold uppercase text-base-content/70">
+                Recent
+              </div>
+              <div
+                v-for="skeletonIndex in RECENT_CHATS_LIMIT"
+                :key="skeletonIndex"
+                class="h-13.5 py-1"
+              >
+                <div class="skeleton skeleton--default size-full rounded-box" />
+              </div>
+            </div>
+          </div>
+
           <template
             v-for="group in groups"
             :key="group.id"
@@ -100,6 +125,7 @@
 import type { HistoryChat } from '#shared/types/history.d'
 import { parseError } from 'evlog'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
+import { getBesidkaToolPermissionsPath } from '~/utils/besidka-tool-permissions'
 
 interface SearchInputInstance {
   inputRef: HTMLInputElement | null
@@ -129,6 +155,11 @@ const SEARCH_DEBOUNCE_MS = 180
 const route = useRoute()
 const { loggedIn } = useAuth()
 const isAdmin = useIsAdmin()
+const artifactsFeature = useFeature('artifacts')
+const documentsFeature = useFeature('documents')
+const skillsFeature = useFeature('skills')
+const besidkaToolsFeature = useFeature('besidka-tools')
+const connectorsFeature = useFeature('connectors')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -146,21 +177,31 @@ const list = useTemplateRef<HTMLElement>('list')
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 
 const RECENT_CHATS_LIMIT = 3
+const RECENT_SKELETON_COLLAPSE_MS = 220
 
 const query = shallowRef<string>('')
 const results = shallowRef<HistoryChat[]>([])
 const recentChats = shallowRef<HistoryChat[]>([])
 const isSearching = shallowRef<boolean>(false)
+const hasLoadedRecentChats = shallowRef<boolean>(false)
+const isRecentLoading = shallowRef<boolean>(false)
+const isRecentCollapsing = shallowRef<boolean>(false)
 const activeIndex = shallowRef<number>(0)
 const pendingPinChatId = shallowRef<string | null>(null)
 
 let requestId = 0
 let recentChatsRequestId = 0
+let collapseTimer: ReturnType<typeof setTimeout> | undefined
 
 const trimmedQuery = computed<string>(() => query.value.trim())
 
 const hasSearchQuery = computed<boolean>(() => {
   return trimmedQuery.value.length >= MIN_SEARCH_LENGTH
+})
+
+const isRecentSkeletonShown = computed<boolean>(() => {
+  return !hasSearchQuery.value
+    && (isRecentLoading.value || isRecentCollapsing.value)
 })
 
 const themeIconName = computed<string>(() => {
@@ -224,6 +265,128 @@ async function findInChats() {
   await navigateTo({ path: '/chats/history', query: { search } })
 }
 
+/**
+ * Exactly the pages under `/profile`, in the order of the profile tabs. Shown
+ * to a signed-in user only: every row needs an account.
+ */
+function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
+  return {
+    id: 'settings',
+    heading: 'Settings',
+    items: [
+      {
+        id: 'search-option-security',
+        iconName: 'lucide:shield-check',
+        label: 'Security',
+        run: () => goTo('/profile/security'),
+      },
+      {
+        id: 'search-option-keys',
+        iconName: 'lucide:key-round',
+        label: 'API Keys',
+        run: () => goTo('/profile/keys'),
+      },
+      {
+        id: 'search-option-memory',
+        iconName: 'lucide:book-user',
+        label: 'Memory',
+        run: () => goTo('/profile/memory'),
+      },
+      {
+        id: 'search-option-preferences',
+        iconName: 'lucide:sliders-horizontal',
+        label: 'Preferences',
+        run: () => goTo('/profile/preferences'),
+      },
+      {
+        id: 'search-option-storage',
+        iconName: 'lucide:hard-drive',
+        label: 'Storage',
+        run: () => goTo('/profile/storage'),
+      },
+      {
+        id: 'search-option-connected-apps',
+        iconName: 'lucide:plug',
+        label: 'Connected apps',
+        run: () => goTo('/profile/connected-apps'),
+      },
+      {
+        id: 'search-option-labs',
+        iconName: 'lucide:flask-conical',
+        label: 'Labs',
+        run: () => goTo('/profile/labs'),
+      },
+      ...(besidkaToolsFeature.value.active
+        ? [{
+          id: 'search-option-besidka-tool-permissions',
+          iconName: 'lucide:wrench',
+          label: 'Besidka tool permissions',
+          run: () => goTo(
+            getBesidkaToolPermissionsPath(connectorsFeature.value.active),
+          ),
+        }]
+        : []),
+    ],
+  }
+}
+
+function buildAdminGroup(): SearchModalGroup<SearchModalEntry> {
+  return {
+    id: 'admin',
+    heading: 'Admin',
+    items: [
+      {
+        id: 'search-option-admin',
+        iconName: 'lucide:shield-ellipsis',
+        label: 'Admin',
+        run: () => goTo('/admin'),
+      },
+      {
+        id: 'search-option-admin-reports',
+        iconName: 'lucide:flag-triangle-right',
+        label: 'Content reports',
+        run: () => goTo('/admin/artifact-reports'),
+      },
+    ],
+  }
+}
+
+/**
+ * The look and the chrome of the app, last in the list. Pinning the sidebar is
+ * saved to the account through the user settings, so "This device" would be
+ * untrue; the group is simply "Interface". Cookie settings stays a visible
+ * row: withdrawing consent must be as easy as giving it. The group shows
+ * signed out too, when the Settings rows are hidden.
+ */
+function buildInterfaceGroup(): SearchModalGroup<SearchModalEntry> {
+  return {
+    id: 'interface',
+    heading: 'Interface',
+    items: [
+      {
+        id: 'search-option-theme',
+        iconName: themeIconName.value,
+        label: 'Toggle Theme',
+        run: toggleTheme,
+      },
+      ...(showPinToggle.value
+        ? [{
+          id: 'search-option-pin-sidebar',
+          iconName: sidebarPinned.value ? 'lucide:pin-off' : 'lucide:pin',
+          label: sidebarPinned.value ? 'Unpin sidebar' : 'Pin sidebar',
+          run: toggleSidebarPin,
+        }]
+        : []),
+      {
+        id: 'search-option-cookies',
+        iconName: 'lucide:cookie',
+        label: 'Cookie settings',
+        run: openCookieSettings,
+      },
+    ],
+  }
+}
+
 function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
   const commandGroups: SearchModalGroup<SearchModalEntry>[] = []
 
@@ -264,78 +427,43 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Projects',
           run: () => goTo('/chats/projects'),
         },
-      ],
-    },
-    {
-      id: 'settings',
-      heading: 'Settings',
-      items: [
-        {
-          id: 'search-option-theme',
-          iconName: themeIconName.value,
-          label: 'Toggle Theme',
-          run: toggleTheme,
-        },
-        {
-          id: 'search-option-security',
-          iconName: 'lucide:shield-check',
-          label: 'Security',
-          run: () => goTo('/profile/security'),
-        },
-        {
-          id: 'search-option-keys',
-          iconName: 'lucide:key-round',
-          label: 'API Keys',
-          run: () => goTo('/profile/keys'),
-        },
-        {
-          id: 'search-option-memory',
-          iconName: 'lucide:book-user',
-          label: 'Memory',
-          run: () => goTo('/profile/memory'),
-        },
-        {
-          id: 'search-option-preferences',
-          iconName: 'lucide:sliders-horizontal',
-          label: 'Preferences',
-          run: () => goTo('/profile/preferences'),
-        },
-        {
-          id: 'search-option-connected-apps',
-          iconName: 'lucide:plug',
-          label: 'Connected apps',
-          run: () => goTo('/profile/connected-apps'),
-        },
-        {
-          id: 'search-option-labs',
-          iconName: 'lucide:flask-conical',
-          label: 'Labs',
-          run: () => goTo('/profile/labs'),
-        },
-        ...(showPinToggle.value
+        ...(artifactsFeature.value.active
           ? [{
-            id: 'search-option-pin-sidebar',
-            iconName: sidebarPinned.value ? 'lucide:pin-off' : 'lucide:pin',
-            label: sidebarPinned.value ? 'Unpin sidebar' : 'Pin sidebar',
-            run: toggleSidebarPin,
+            id: 'search-option-artifacts',
+            iconName: 'lucide:app-window',
+            label: 'Artifacts',
+            run: () => goTo('/chats/artifacts'),
           }]
           : []),
-        {
-          id: 'search-option-cookies',
-          iconName: 'lucide:cookie',
-          label: 'Cookie settings',
-          run: openCookieSettings,
-        },
-        ...(isAdmin.value
+        ...(documentsFeature.value.active
           ? [{
-            id: 'search-option-admin',
-            iconName: 'lucide:shield-ellipsis',
-            label: 'Admin',
-            run: () => goTo('/admin'),
+            id: 'search-option-documents',
+            iconName: 'lucide:file-text',
+            label: 'Documents',
+            run: () => goTo('/chats/documents'),
+          }]
+          : []),
+        ...(skillsFeature.value.active
+          ? [{
+            id: 'search-option-skills',
+            iconName: 'lucide:sparkles',
+            label: 'Skills',
+            run: () => goTo('/chats/skills'),
+          }]
+          : []),
+        ...(connectorsFeature.value.active
+          ? [{
+            id: 'search-option-connectors',
+            iconName: 'lucide:cable',
+            label: 'Connectors',
+            run: () => goTo('/chats/connectors'),
           }]
           : []),
       ],
     },
+    ...(loggedIn.value ? [buildSettingsGroup()] : []),
+    ...(loggedIn.value && isAdmin.value ? [buildAdminGroup()] : []),
+    buildInterfaceGroup(),
   )
 
   return commandGroups
@@ -518,6 +646,21 @@ const runSearch = useDebounceFn(async () => {
   isSearching.value = false
 }, SEARCH_DEBOUNCE_MS)
 
+function finishRecentLoading() {
+  hasLoadedRecentChats.value = true
+  isRecentLoading.value = false
+
+  if (recentChats.value.length) {
+    return
+  }
+
+  isRecentCollapsing.value = true
+  clearTimeout(collapseTimer)
+  collapseTimer = setTimeout(() => {
+    isRecentCollapsing.value = false
+  }, RECENT_SKELETON_COLLAPSE_MS)
+}
+
 async function fetchRecentChats() {
   recentChatsRequestId += 1
 
@@ -543,6 +686,8 @@ async function fetchRecentChats() {
       return
     }
   }
+
+  finishRecentLoading()
 }
 
 function replaceChat(
@@ -642,6 +787,9 @@ watch(loggedIn, (isLoggedIn) => {
 
   recentChatsRequestId += 1
   recentChats.value = []
+  hasLoadedRecentChats.value = false
+  isRecentLoading.value = false
+  isRecentCollapsing.value = false
 })
 
 watch(activeDescendantId, () => {
@@ -671,6 +819,8 @@ watch([isModalOpen, modal], ([open, dialog]) => {
   focusSearchInput()
 
   if (!hasSearchQuery.value) {
+    isRecentLoading.value = loggedIn.value && !hasLoadedRecentChats.value
+
     setTimeout(() => {
       fetchRecentChats()
     })
@@ -716,6 +866,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(collapseTimer)
   document.removeEventListener('keydown', onGlobalKeydown)
   requestId += 1
   recentChatsRequestId += 1

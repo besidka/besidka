@@ -20,20 +20,20 @@ could not be checked, say so.
 | cursor.directory | Needs the owner | Community list, GitHub sign-in |
 | Google Connected Apps (Gemini, AI Mode) | Needs the owner: join the waitlist | Preview with phased access; eligibility of individuals is not documented |
 | Grok connectors | Does not fit | No submission path. Users add Besidka as a custom connector |
-| Meta Muse | Does not fit | Business verification of an organisation |
+| Meta Muse | Does not fit | Business verification of an organization |
 | Microsoft 365 Copilot Agent Store | Does not fit | Partner Center needs a registered business; MCP certification needs static client credentials |
 | Salesforce AgentExchange | Does not fit | Company partner program and agreements |
 | AWS Marketplace, AI Agents and Tools | Does not fit | AWS says sole proprietors without a registered business cannot pass verification |
 | Glama, PulseMCP, mcp.directory | Follow the official registry | Nothing to submit separately |
 
 The four "does not fit" rows that need a registered business change only
-when Besidka has one. `docs/legal/monetisation-readiness.md` covers that
+when Besidka has one. `docs/legal/monetization-readiness.md` covers that
 decision (JDG, address); do not open a business just for a listing.
 
 ## Official MCP Registry
 
 The registry at `registry.modelcontextprotocol.io` is the upstream list that
-other directories copy. It is still labelled preview. There is no review
+other directories copy. It is still labeled preview. There is no review
 before publishing; moderation afterwards covers only illegal content,
 malware, spam and servers that do not work.
 
@@ -200,7 +200,7 @@ That is deliberate, even for a one-word description edit.
 Choose the level like this: major for a removed tool, a removed or renamed
 input, a new required input, a changed required scope or a new OAuth scope
 (owner decision for the agentic roadmap: `admin:features` shipped as 2.0.0,
-`artifacts:share` would be the next major if it does not ride along); minor
+the artifacts scopes as 3.0.0); minor
 for an added tool or an added optional input; patch for text-only changes.
 
 Known trade-offs: a zod upgrade that changes the JSON Schema output, or a
@@ -243,7 +243,7 @@ listings: its guidelines forbid any mention of pricing.
 | Field | Value |
 | --- | --- |
 | Name | Besidka |
-| One-liner (Claude, up to 200) | Read and organise your Besidka chats, projects, project knowledge, memory, files and settings from Claude. |
+| One-liner (Claude, up to 200) | Read and organize your Besidka chats, projects, project knowledge, memory, files and settings from Claude. |
 | Short description (ChatGPT, up to 30) | Chats, projects and memory |
 | Server description (registry, up to 100) | Besidka models, providers and key guides, plus your chats, projects, files, memory and settings. |
 | Category | Productivity (Claude: also Knowledge management, if offered) |
@@ -259,7 +259,7 @@ listings: its guidelines forbid any mention of pricing.
 Long description (Claude up to 2000, ChatGPT up to 4000):
 
 > Work with your Besidka account from your assistant. Find and read your
-> chats, organise them into projects, add notes and text to project
+> chats, organize them into projects, add notes and text to project
 > knowledge, review and edit what Besidka remembers, save and read text
 > files, and change your Besidka settings. Every action uses your own
 > Besidka data after you sign in and approve each permission, and deleting
@@ -283,11 +283,11 @@ Example prompts:
 
 MCP 3.0.0 adds eight artifact tools under `artifacts:read`,
 `artifacts:write`, `artifacts:share` and `data:delete` (the scope table
-below and `docs/mcp-server.md` arrive with stack #766). Artifacts are behind
-internal feature flags, and the `2026-12-artifacts` legal notice takes
-effect on 19 December 2026, so a directory listing must not mention them
-before 3.0.0 is published to the registry and artifacts are rolled out to
-accounts. Until then, submit the text above unchanged. Afterwards, use these
+below and `docs/mcp-server.md` list them). The tools shipped in 3.0.0, but
+artifacts are behind internal feature flags, and the `2026-12-artifacts`
+legal notice takes effect on 19 December 2026, so a directory listing must
+not mention them before artifacts are rolled out to accounts. Until then,
+submit the text above unchanged. Afterwards, use these
 replacements and additions in every store, with no pricing:
 
 | Field | Value |
@@ -313,7 +313,7 @@ Reviewer test cases for the artifact tools, on the reviewer account:
 - `update_artifact` with one find-and-replace edit returns version 2;
   `list_artifacts` shows it.
 - Without `artifacts:share`, `share_artifact` is refused. With it,
-  `share_artifact` (`expiresInDays: 1`) returns a `/a#<token>` link that
+  `share_artifact` (`expiresInDays: 1`) returns a `/artifacts/<token>` link that
   opens signed out with the AI banner and a Report button, and
   `revoke_artifact_shares` makes the link stop working (404).
 - `delete_artifacts` needs `data:delete` and `confirm: true`.
@@ -321,22 +321,29 @@ Reviewer test cases for the artifact tools, on the reviewer account:
 ### Tools and scopes
 
 Four public tools need no token: `list_models`, `list_providers`,
-`get_key_guide`, `get_page`. The 32 private tools need these scopes; the
+`get_key_guide`, `get_page`. The 44 private tools need these scopes; the
 consent page lets the user approve each scope separately.
 
 | Scope | Tools |
 | --- | --- |
-| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats` |
+| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats`, `get_debug_info`, `get_chat_cost`, `get_usage_stats` |
 | `chats:write` | `update_chat`, `move_chats_to_project`, `revoke_chat_shares`, `branch_chat` |
 | `projects:read` | `list_projects`, `get_project`, `read_project_knowledge_item` |
 | `projects:write` | `create_project`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_project`, `update_project_knowledge_item` |
 | `memory:read` | `list_memory` |
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
-| `files:write` | `create_file`, `rename_file` |
+| `files:write` | `create_file`, `create_document`, `rename_file` |
 | `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
-| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
+| `artifacts:write` | `create_artifact`, `update_artifact`, `revoke_artifact_shares` |
+| `artifacts:share` | `share_artifact` (publishes a public link: up to 30 days, never indexed, no saved progress or AI features, 10 a day) |
+| `connectors:read` | `list_connectors`, `get_connector` |
+| `connectors:write` | `add_connector` (created switched off, never enabled over MCP), `update_connector_tools` (only turns tools off or back to ask), `delete_connectors` |
+| `skills:read` | `list_skills`, `get_skill` |
+| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (saved switched off for the user's review, never enabled over MCP), `delete_skills`, `set_project_skills` (pins existing skills to a project; never enables one) |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (Besidka admins only; hidden on the consent page and stripped on the server for everyone else) |
 
 Identity scopes: `openid`, `profile`, `email`, `offline_access`. Every tool
@@ -348,7 +355,11 @@ ChatGPT reviews require. `delete_project` also needs `confirmName` and
 What the connector does not do, useful for compliance questions: it sends no
 chat messages and runs no model, so it spends nothing on the user's provider
 keys; it never reads, returns or stores provider API keys; it does no
-payments, no image, audio or video generation, and no ads. The full list is
+payments, no image, audio or video generation, and no ads. It can publish
+one thing: a public link to an artifact, only with the separate, unticked
+`artifacts:share` scope (expires within 30 days, never indexed, at most 10 a
+day, personal-data warnings returned, revocable and reportable); it cannot
+publish a chat. Tell reviewers so. The full list is
 "What MCP does not do (and why)" in `docs/mcp-server.md`.
 
 ### Reviewer test account
@@ -412,7 +423,7 @@ codes, no magic links, no sign-up during review.
   guidelines at https://developers.openai.com/apps-sdk/app-submission-guidelines.
   Submit at https://platform.openai.com, Plugins, Upload new or existing
   plugin.
-- Who: a verified individual or organisation. Individual verification needs
+- Who: a verified individual or organization. Individual verification needs
   a government ID and possibly a selfie, with no company and no address
   (https://help.openai.com/en/articles/10910291-api-organization-verification).
   Business verification needs a registered address, so use the individual

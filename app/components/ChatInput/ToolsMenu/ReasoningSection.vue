@@ -43,24 +43,6 @@
         </template>
       </p>
     </div>
-    <ChatInputToolsMenuReveal :is-open="reasoning !== 'off'">
-      <ChatInputToolsMenuToggleRow
-        label="Show steps expanded"
-        :icon="REASONING_EXPANDED_ICON"
-        test-id="reasoning-expanded-toggle"
-        :model-value="reasoningExpanded"
-        @update:model-value="setReasoningExpanded"
-      />
-    </ChatInputToolsMenuReveal>
-    <ChatInputToolsMenuReveal :is-open="isAutoHideAvailable">
-      <ChatInputToolsMenuToggleRow
-        label="Auto-hide when done"
-        :icon="REASONING_AUTO_HIDE_ICON"
-        test-id="reasoning-auto-hide-toggle"
-        :model-value="reasoningAutoHide"
-        @update:model-value="setReasoningAutoHide"
-      />
-    </ChatInputToolsMenuReveal>
   </template>
 </template>
 
@@ -87,18 +69,7 @@ const emit = defineEmits<{
   'save-default': [level: ReasoningLevel]
 }>()
 
-const {
-  reasoningExpanded,
-  reasoningAutoHide,
-  setReasoningExpanded,
-  setReasoningAutoHide,
-} = useUserSetting()
-
 const groupId = useId()
-
-const isAutoHideAvailable = computed<boolean>(() => {
-  return props.reasoning !== 'off' && reasoningExpanded.value
-})
 
 const isToggleMode = computed<boolean>(() => {
   return props.levels.length === 1

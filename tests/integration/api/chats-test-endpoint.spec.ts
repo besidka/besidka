@@ -154,6 +154,32 @@ describe('test chat endpoints', () => {
     expect(assistantMessage.reasoning).toBe('medium')
   })
 
+  it('returns a Besidka read and a Besidka delete waiting for approval',
+    async () => {
+      const handler = await getGetHandler()
+      const response = await handler(createEvent({
+        scenario: 'besidka-tool-approval',
+      }) as any)
+      const assistantParts = response.messages[1].parts
+
+      expect(response.messages).toHaveLength(2)
+      expect(assistantParts).toContainEqual(expect.objectContaining({
+        type: 'tool-besidka__list_projects',
+        state: 'output-available',
+      }))
+      expect(assistantParts).toContainEqual(expect.objectContaining({
+        type: 'tool-besidka__delete_chats',
+        state: 'approval-requested',
+      }))
+      expect(assistantParts).toContainEqual(expect.objectContaining({
+        type: 'data-tool-approval',
+        data: expect.objectContaining({
+          reason: 'always-ask',
+          rememberOptions: ['once', 'chat', 'always'],
+        }),
+      }))
+    })
+
   it('supports off effort and returns no reasoning parts', async () => {
     const getHandler = await getGetHandler()
     const getResponse = await getHandler(createEvent({

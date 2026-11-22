@@ -154,11 +154,19 @@ describe('mcp settings tools', () => {
       expect(mocks.applyUserSettingsUpdate).toHaveBeenCalledWith({
         db: testDb.db,
         userId: USER,
-        fieldUpdates: expectedUpdates,
+        fieldUpdates: {
+          stepsExpanded: true,
+          defaultReasoningLevel: null,
+          favoriteModels: ['a/b', 'c/d'],
+          favoriteGatewayModels: { openrouter: ['x/y'] },
+          sidebarPinned: false,
+          memoryEnabled: false,
+          chatSearchEnabled: true,
+        },
       })
     })
 
-    it('rejects every setting that authorises spend or moves data',
+    it('rejects every setting that authorizes spend or moves data',
       async () => {
         const { updateMcpSettings } = await load()
         const excludedSettings = [

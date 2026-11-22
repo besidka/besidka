@@ -12,6 +12,20 @@ Vercel AI Gateway by default (`.agents/skills/ai-sdk/SKILL.md`) does not apply
 here — gateway usage in this project is always an explicit user choice, never
 an agent default.
 
+## 🚨 Legal notices and consent versions: owner only 🚨
+
+Only the owner may announce a legal change to users. An agent must never, without the owner's explicit approval in chat for that exact change:
+
+- add, schedule or reschedule an entry in `LEGAL_NOTICES` (`shared/utils/legal-notices.ts`), or change its `sendFrom`, `publishedAt` or `effectiveAt`;
+- bump `CURRENT_CONSENT_VERSION` or anything else that re-prompts users;
+- turn on `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` or send legal notice emails in any other way.
+
+This holds even when a feature is finished, every phase is done, and the legal checklist in `docs/legal.md` says a change is material. Write the Privacy Policy or Terms text, record the hash, and stop: tell the owner that a notice is needed and wait. Do not batch, schedule ahead or "prepare" a notice with a future date either.
+
+Why: on 2026-11-15 three notices that agents had scheduled earlier emailed every user three times in one morning about one Privacy Policy update, and users asked to unsubscribe. The sweep was stopped (#906). Announcing legal changes is the owner's decision, made in the admin area.
+
+The admin area enforces this (BES-396): a notice is emailed only after the owner approves it in `/admin/legal` and while `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on, and a `CURRENT_CONSENT_VERSION` bump re-prompts nobody until the owner approves that version there. An agent never approves, withdraws or seeds an approval (`legal_notice_approvals`, `legal_consent_version_approvals`), in code, SQL, a migration or a test fixture that reaches a real database. See `docs/legal.md`, "Owner approval in the admin area".
+
 ## Package Manager
 
 Use **pnpm** exclusively for this project. Do not use npm, npx, bun, bunx, or other package managers.
@@ -96,7 +110,15 @@ These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `u
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
-`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
+`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymizes `feature_audit_log` (see `docs/feature-flags.md`).
+
+`legal_notice_approvals`, `legal_consent_version_approvals` and `legal_notice_email_optouts` (`server/db/schemas/legal-approvals.ts`) have no FK and no cascade: `purgeUserData` deletes the user's opt-out and nulls their id as an approver (see `docs/legal.md`, "Owner approval in the admin area", and `docs/d1-restore-reconciliation.md`).
+
+`documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
+
+The skills tables (`skills`, `skill_versions`, `skill_files`, `skill_chat_settings`, `server/db/schemas/skills.ts`) have no FK and no cascade: `purgeUserSkills` deletes their rows and the objects under `user-skills/u<userId>/` and `skills-staging/u<userId>/`, and `cleanupSkillsForDeletedChats` removes the per-chat rows (see `docs/d1-restore-reconciliation.md`). `project_skills` (`server/db/schemas/project-skills.ts`) is the same: no FK, deleted by `deleteProject`, `deleteUserSkill` and `purgeUserSkills`.
+
+The tool approval tables (`besidka_tool_permissions`, `besidka_chat_settings`, `tool_approval_claims`, `server/db/schemas/tool-approvals.ts`) have no FK and no cascade: `purgeUserToolApprovals` deletes their rows, `cleanupToolApprovalsForDeletedChats` removes the per-chat rows and claims, and the hourly `tool-approval-claim-sweep` plugin deletes claims older than 48 hours; the `tool-approval:` KV records expire after 24 hours, and the chat deletion and account purge hooks also delete the ones the per-chat index `tool-approval:chat:<chatPublicId>` lists (see `docs/d1-restore-reconciliation.md`, which also resets restored "allow" permissions and "always" grants to ask).
 
 ### MANDATORY pre-apply checklist
 
@@ -179,6 +201,18 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
+- `docs/storage.md` - The one storage allowance (BES-393): the seven
+  categories (AI images, uploads, generated files, connector images,
+  artifacts, project knowledge, skills)
+  and how
+  each is told apart from existing `files` columns with no migration, what is
+  not counted, the single usage number (`userStorageUsedBytesSql`, shared with
+  the atomic knowledge guards), enforcement on every write path (413 `Storage
+  is full` with a link to `/profile/storage`, plain tool errors for models, the
+  retired 25 MB artifact quota), the `storage-stats:<userId>` cache, the
+  Storage page, the `get_settings` storage block, the skills category (unique
+  blobs per skill, no byte cap of its own, atomic guards) and how a feature
+  registers a category with one entry
 - `docs/d1-restore-reconciliation.md` - What a whole-database D1 Time Travel
   restore brings back that users had already revoked or deleted: sessions
   revived through Better Auth's D1 fallback, `users.id` reuse handing
@@ -198,7 +232,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   KV collapse (2 min, urgent 60 s), what is logged (mailbox, urgent, outcome
   only), the legal note (no Privacy Policy change, no new Art. 30 row), the
   `MAIL_ALERTS_DEPLOY_ENABLED` CI gate, and the owner runbook (secrets, test
-  rule, `cf email-routing rules update` per mailbox, restore to forward)
+  rule, `cf email-routing rules update` per mailbox, restore to forward), and
+  why there is no cover person (owner works alone, the push is the only
+  safeguard)
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
   components, Studio local-vs-preview-vs-prod flow, deploy runbook
 - `docs/landing-production-todo.md` - Owner checklist of remaining manual steps
@@ -212,8 +248,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   client disconnect mid-stream kills the Worker invocation, and the
   generation-in-progress KV guard (once a fixed 660s TTL) held the chat ~11
   min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
-  Axiom investigation runbook, and unresolved options (waitUntil,
-  Queues/Workflows, Durable Objects) for surviving the disconnect itself
+  Axiom investigation runbook, unresolved options (waitUntil,
+  Queues/Workflows, Durable Objects) for surviving the disconnect itself,
+  and the client stall watchdog (relies on the send route's 15s
+  `data-heartbeat` from the connector-approvals branch; 45s of silence
+  after one aborts the stream and recovers it like a dropped connection)
 - `docs/chats/chat-input-tools-menu.md` - The chat input "+" tools menu
   (popover at md+, bottom sheet below) and the setting tiles in the
   attachments row: component map, tile rules and order, capability gating
@@ -225,7 +264,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (`useMarkdownTextarea`, also on the project instructions card): HTML paste
   conversion from Apple Mail, Gmail and web pages (the `shouldConvertHtml` gate
   that lets VS Code span soup fall through, `htmlToChatMarkdown`, bullet glyph
-  normalisation for `text/plain`), long paste (over 1200 characters or 40
+  normalization for `text/plain`), long paste (over 1200 characters or 40
   lines) becoming a visual-only "Pasted text" chip (edit, Insert as text, max
   10) that is appended to the message as plain text on send, and why it is
   neither an uploaded file nor a message part, the keyboard rules (Enter
@@ -239,11 +278,23 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   header, the Outputs, Inputs and Used sections, the
   `GET /api/v1/chats/[slug]/context` and shared aggregates, the section
   registry later features add to, and the `get_chat` context summary
+- `docs/chats/code-execution.md` - Provider-native "Run code" (Anthropic,
+  OpenAI, Gemini sandboxes on the user's key): which models, the Labs opt-in
+  gate and the silent drop when off, the stream transform that compacts runs
+  and saves container files, the output allowlist and validation seam over
+  `@besidka/doc-renderer`, what Besidka deletes at each provider and what it
+  cannot (Anthropic container data), input uploads, cost recording, and the
+  known limits (`pause_turn`, cache impact)
 - `docs/chats/model-picker.md` - The chat input model picker: dropdown at
   md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/ui/semantic-colors.md` - The daisyUI semantic color pairs and their
+  measured contrast (light `success-content` was emerald-950 on emerald-700 at
+  2.8:1, fixed once in `main.css`), the rule to never patch a solid success,
+  warning or error element per component, and why `btn-soft` alone renders
+  solid on a button with `aria-checked` (the `btn-soft-selected` utility)
 - `docs/ui/side-panel.md` - The shared right side panel (`UiSidePanel`,
   `useSidePanel()`): one surface for every "view a result" screen, docked at
   lg with the nav pill on the seam, overlay at md, full-screen bottom sheet
@@ -261,6 +312,28 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   keyboard-open class matrix, the scroll spacer inset, why not
   `interactive-widget` or the VirtualKeyboard API, the deferred focus-pan
   suppression, and the iOS Simulator verification recipe
+- `docs/chats/documents-spec-package.md` - `@besidka/doc-renderer` (D-2,
+  BES-282): the versioned JSON spec, `render()`, `validate()` and the
+  provenance stamp for PDF, DOCX, PPTX and XLSX; subpath exports and weights,
+  the validation code table and how each check avoids the obvious bypass
+  (linear XML tokenizer, streaming inflate cap, structural PDF scan),
+  provenance `ai | channel-only | missing`, determinism pins, the notices
+  collector, the browser Worker smoke, and the deviations from the ticket
+- `docs/chats/documents-renderer-worker.md` - The `DOC_RENDERER` renderer
+  Worker (D-3, BES-286): `workers/doc-renderer` as an RPC `WorkerEntrypoint`
+  with errors returned as values, the contract and payload bounds (32 MiB RPC
+  limit, why bytes and not R2 keys), the code mapping from the package, spec
+  version negotiation in `server/utils/documents/renderer.ts`, the build
+  aliases and `fflate` shim, measured CPU per format against
+  `limits.cpu_ms: 15000`, the local two-process dev setup, the
+  `deploy-satellites` order and why the renderer has no opt-in variable, why
+  there is no per-PR renderer preview, and the deviations from the ticket
+- `docs/chats/documents-chat.md` - The `create_document` chat tool (D-4,
+  BES-293): the capability and tool, spec in R2, the `data-document` part
+  rewrite, the client Web Worker render with server validation and fallback,
+  the claim lease and its identity, retention and deletion hooks, share and
+  branch handling, the card and side-panel preview, the file manager `kind`
+  filter, flags, deviations and what is not verified
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no
@@ -284,6 +357,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `esbuild`: a Vite 8 default-change + DaisyUI/Lightning CSS `:is()`
   specificity bug that broke the light theme in production builds only;
   when to prefer lightningcss vs esbuild, and revert criteria
+- `docs/code-highlighting.md` - Chat code highlighting: shiki core loaded
+  only in the browser (the rule that shiki is never imported statically from
+  server-reachable code, and the grep that checks the Worker), the JavaScript
+  regex engine, grammars from `shiki/langs` on first use, one highlighter per
+  root language (shiki freezes injections and lazy embeds at first
+  reference), the line-by-line `ProseCodeStream` renderer on
+  `@shikijs/stream`, the byte-for-byte parity script against the old
+  `shiki/bundle/web` (`pnpm run shiki:parity`), before/after numbers (Worker,
+  first highlight, streaming 1,047 lines), why rangi was rejected, and when to
+  revisit
 - `docs/nuxt-icon-collections.md` - Why `icon.collections`/
   `icon.serverBundle.collections` are pinned to four prefixes: `@nuxt/icon`'s
   per-`<Icon>` reactive-array sort over the default ~220-entry catalog, the
@@ -316,8 +399,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   list, and "Notifying users of changes": the three signals (git-derived Last
   updated date, `CURRENT_CONSENT_VERSION`, `LEGAL_NOTICES` for material
   changes: email, in-app banner and the generated `::legal-change-history`),
-  the CI hash gate (`legal-document-revisions.ts`, `pnpm run legal:hash`),
-  the WP260 materiality checklist, the 30/14-day rule, and how to add a notice
+  the owner approval in `/admin/legal` that every notice email and consent
+  version bump needs (two switches for email, the notice content hash, the
+  stated recipient count, the effective consent version and its
+  `2026-11-a` baseline, opt-outs, audit actions), the CI hash gate
+  (`legal-document-revisions.ts`, `pnpm run legal:hash`), the WP260
+  materiality checklist, the 30/14-day rule, and how to add a notice
 - `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
   (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
   is the only basis, why it was not shipped, option (b) with its launch
@@ -373,7 +460,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   breach record template (Art. 33(5), never in this public repo), and the
   unconfirmed points (e-form for a private individual, Cloudflare notice
   channel, KSC amendment, CERT Polska)
-- `docs/legal/monetisation-readiness.md` - Everything that must happen before
+- `docs/legal/monetization-readiness.md` - Everything that must happen before
   and when Besidka earns in any form (donations, ads, affiliate links, a paid
   tier, credits, paid support; selling data excluded), engineer-drafted,
   research date 2026-10-28: decision triggers (an unused tip link already
@@ -385,13 +472,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
   and the repo files to change; read before adding any payment or donation link
 - `docs/legal/agentic-capabilities-precheck.md` - Compliance pre-checks for
-  the Agentic capabilities programme (engineer-drafted, not lawyer-reviewed,
+  the Agentic capabilities program (engineer-drafted, not lawyer-reviewed,
   2026-11-07): the shared gate G1 to G7 every track runs before building
   (GDPR records and transfers, public documents, materiality and consent
-  version, review items and breach runbook, third-party terms, monetisation
+  version, review items and breach runbook, third-party terms, monetization
   guard, accessibility), the accessibility decision for all tracks (European
   Accessibility Act most likely not applicable through the microenterprise
-  services exemption, revisit on monetisation; WCAG 2.2 AA as the engineering
+  services exemption, revisit on monetization; WCAG 2.2 AA as the engineering
   target with the criteria that matter, such as 2.5.7 dragging alternatives
   and 2.4.11 focus not obscured), and the Phase 0 verdict GO with changes:
   bucketing is not profiling, Art. 6(1)(f) for rollout, no bucket in
@@ -414,7 +501,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
   skeleton
 - `docs/legal/prechecks/` - Per-track compliance pre-checks for the agentic
-  capabilities programme (engineer-drafted, not lawyer-reviewed, 2026-11-07):
+  capabilities program (engineer-drafted, not lawyer-reviewed, 2026-11-07):
   one file per track (`research.md` R-11, `google.md` G-11, `artifacts.md`
   A-12, `documents.md` D-10, `connectors.md` C-12, `skills.md` S-8), each with
   a verdict, a question table with sources, the shared gate from P0-14, the
@@ -443,7 +530,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   from-scratch client-side QR encoder), passkeys (the RP-ID vs.
   `allowedHosts` mismatch that blocks versioned preview URLs), and why
   password-only 2FA gating (no challenge via passkey/OAuth sign-in) is a
-  confirmed, accepted design decision rather than a gap
+  confirmed, accepted design decision rather than a gap; also the auth
+  instance init rule on Workers (only a settled instance is shared across
+  requests) and rate-limit storage failures (a KV error answers 429, never
+  allows; `/get-session`, `/.well-known/**` and key-route reads do not write
+  KV)
 - `docs/analytics-utm.md` - Campaign attribution + activation funnel: UTM
   sanitizer, URL-only propagation (no cookie) into `user_attribution`, the
   `user_activation_events` ledger (once per user), the Analytics Engine blob
@@ -523,12 +614,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   exiting mid-suite in ~4% of CI runs (empty `[ERROR]`, then
   `ERR_CONNECTION_REFUSED`): the signature, why the exit reason was
   invisible, the stdout piping and `wrangler-logs` artifact diagnostics, and
-  what to do on the next occurrence
+  what to do on the next occurrence; also the local cold-`nuxt dev` e2e flake
+  (Vite discovering dependencies at runtime reloads every page, mocked reply
+  vanishes), `devPrebundledDependencies` in `nuxt.config.ts` and how to
+  refresh it
 - `docs/ci-speed-audit.md` - Where CI time went, measured across 300 runs
   (serial E2E with `workers: 1`, one serial job, a dead Playwright cache on
   `main` from an unexpanded `~`, `main` re-testing what the PR already
   tested), the target job graph with 3 E2E shards on free GitHub-hosted
-  runners, and the staged plan (stages 0-1 implemented, 2-3 open)
+  runners (raised to 6 on 2026-11-22: the suite outgrew the 10-minute step
+  limit, and unit tests are the next bound), and the staged plan (stages 0-1
+  implemented, 2-3 open)
 - `docs/cloudflare-previews.md` - PR and `main` previews on Cloudflare
   Workers Previews (one Worker, `env.production.previews`) instead of the
   separate `besidka-preview` Worker: `wrangler preview --env production`
@@ -545,7 +641,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   commands, the per-workflow CI table, merge order and squash semantics, the
   no-build gate in `preview-deploy.yml`, and warnings (the "Add to stack"
   banner, retarget-on-merge firing only `edited`, previews only for the
-  parent/top, unverified stack-event behavior, migrations in children)
+  parent/top, unverified stack-event behavior, migrations in children), and
+  the artifacts-stack lessons (a conflicting layer silently skips CI)
 - `docs/nuxt-entry-import-map.md` - Why `experimental.entryImportMap` is
   pinned to `false`: with it on, lazy chunks keep the same filename while
   their embedded `entry.<hash>.css` preload changes, so immutable-cached
@@ -565,31 +662,89 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   2026-10-26 security audit dispositions (3.17), the "tell Besidka what to
   remember" editor (3.18), the optional TypeSafe AI Jev checks (3.19: one role
   table matching `shared/utils/jev-policy.ts`, the add-only memory check, the
-  `memory-check` key kind, the seven per-role toggles in
-  `user_settings.typesafe_roles`, the failure direction of each role, J1 to
-  J6, the delta audit fixes #560, and the `experimental_decide` seam to
-  re-check on SDK upgrades), the as-built phase map (section 5), and the
+  `memory-check` key kind, the eight per-role toggles in
+  `user_settings.typesafe_roles` (the skill selector J7 is opt-in: off for a
+  null column), the failure direction of each role, J1 to J7, the SS-7 and
+  SS-14 evals, the delta audit fixes #560, and the `experimental_decide` seam
+  to re-check on SDK upgrades), the as-built phase map (section 5), the
   decision log (section 7: no expiry, singletons, entry caps, the write lock,
   the pending Anthropic token factor, non-atomic leases, deferred issues
-  #537 to #540)
+  #537 to #540), and the cross-project memory proposal (3.20: per-project
+  `share_memory`, the `search_other_projects` tool, no entry FTS)
+- `docs/artifacts.md` - Artifacts entry point (A-10): the six `artifacts.*`
+  flags and their rollout rules, the golden-prompt evals
+  (`tests/evals/artifacts/prompts.json`, `scripts/artifact-evals.mjs` run
+  through a preview as the test account, the opt-in render spec
+  `tests/e2e/artifacts/evals-render.spec.ts`), the results per model with
+  cost, the client `artifact_open`/`artifact_runtime_error` events, the Axiom
+  dashboard `besidka-artifacts` and `scripts/artifact-rollout-report.mjs`,
+  the staged rollout tied to the 2026-12-19 notices with the P0-16 schedule
+  to enter in the admin UI, and the stop rules
 - `docs/artifacts-runtime.md` - The sandboxed artifacts runtime Worker
   `besidka-artifacts` (`workers/artifacts-runtime`, assets only, no bindings)
   and `packages/artifacts-protocol` (JSON-RPC over one MessagePort, shaped
   like MCP Apps `ui/*`): the isolation layers (iframe + header `sandbox`,
   the CSP, port-only trust, the self-navigation tripwire and its residual
   URL leak), why the HTML renderer replaces the root element instead of
-  `document.write()`, the vendored import allowlist (no esm.sh), the licence
+  `document.write()`, the vendored import allowlist (no esm.sh), the license
   scan and `THIRD_PARTY_NOTICES.txt` (ELK excluded, dagre layout), the
   consent error codes for A-5/A-6, the separate Playwright sandbox spec, and
   the CI jobs guarded by the `ARTIFACTS_RUNTIME_DEPLOY_ENABLED` variable with
   the owner steps before the first deploy
+- `docs/artifacts/panel.md` - Artifact cards and the artifact side panel
+  (A-4): card states (streaming, ready, failed, unavailable), the detail view
+  (Preview and Code tabs, version select, copy and download, runtime errors
+  with Ask to fix through the `chat-input:prefill` hook), the Frame host end
+  of the protocol (handshake capabilities, 250ms partial throttle, link
+  confirm, tripwire, 10s timeout), capabilities per viewer in v1, the
+  shared-chat read rule (global `artifacts` kill switch, active share,
+  `json_each` membership, artifact owner equals chat owner, 404 vs 410,
+  `private, no-store`), the report route and its 5-per-hour KV limit, the
+  `artifacts:auto-opened:<chat id>` sessionStorage marker and its Cookie
+  Policy row, the `frame-src` CSP as a route header plus a script-inserted
+  meta tag for client-side navigation (and why), the standalone export rule
+  (no third-party hosts, React and Mermaid as source only), and the open
+  items (the non-atomic report limiter, MCP `get_chat` omits artifacts)
+- `docs/artifacts/viewer-storage.md` - Saved progress for artifacts (A-5):
+  who gets `persistent` storage (signed in, `artifacts.storage`, own chat,
+  saved artifact) and why shared chats stay in memory until A-7, the owner
+  resolver, the four routes (reset is `DELETE storage`, not `reset.post`),
+  limits (64 keys, 100 KB, 32 KB per value, key pattern, 120 writes/min),
+  the per-artifact write queue and error-code mapping, Reset saved progress,
+  and the hourly non-owner purge (30 days after the last share ended,
+  takedown, deleted artifact)
+- `docs/artifacts/llm-bridge.md` - The artifact LLM bridge (A-6):
+  `window.besidka.complete(prompt, { system, maxOutputTokens })` on the
+  viewer's own direct provider key, who gets it (signed in, flag plus Labs
+  opt-in, own chat), the confirmation modal (full prompt and system text,
+  invisible characters revealed, cost estimate, remaining calls, Cancel
+  focused, keyboard guard, session-only "Don't ask again"), the server order
+  (consent before key before caps before the provider), caps (200 per day,
+  30 per hour per artifact), 502 for provider errors, id-only logging and
+  `artifact_bridge_call` analytics, the `resolve-cheapest-model` extraction
+  from memory, and the JSON-RPC error codes
+- `docs/artifacts/shares.md` - Public artifact links, reports and takedown
+  (A-7): the token model (32 random bytes, sha256 lookup, encrypted copy for
+  the owner, `sh_` share ids, token only in the `x-besidka-artifact-share`
+  header), owner, public and admin routes with bodies and error codes, the
+  404 versus 410 states, the kill-switch and flag gates, share mode in the
+  viewer resolver (403 when a link does not allow storage or the bridge), the
+  link token in the path (`/artifacts/<token>`; the API calls keep it in the
+  header; sign-in returns through a `sessionStorage` key and
+  `next=/artifacts/return`), the `/artifacts` route rules, the 404 for
+  `/artifacts/<token>/<more>` and mis-cased paths, the merged
+  `frame-src` CSP, log redaction of every link form, the
+  report flow (Turnstile, rate limit,
+  copyright notice elements, no IP), report decisions, direct takedowns by
+  link, token, artifact or user with the six-month legal hold, restore
+  without email, the T1 to T3 emails, soft revoke and D1 restore replay
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
   per-send fit check), R2 text and packs, the owner decisions, and, now that
   it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
   and XLSX ZIP-bomb limits, the send path, the spike results)
-- `docs/agentic-capabilities-roadmap.md` - The Agentic capabilities programme
+- `docs/agentic-capabilities-roadmap.md` - The Agentic capabilities program
   (Linear P-BES-3), the repo source of truth that the Linear roadmap document
   mirrors: phases 0 to 7 with a status table every merged ticket updates
   (0 foundation, 1 artifacts, 2 documents and code execution, 3 custom
@@ -611,7 +766,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/feature-flags.md` - Per-user feature access design (P0-2 to P0-10):
   the five tables (`user_roles`, `feature_flag_rules`, `feature_grants`,
   `feature_opt_ins`, `feature_audit_log`; no FK to `users`, explicit purge,
-  audit rows anonymised and kept 12 months), the registry entry shape
+  audit rows anonymized and kept 12 months), the registry entry shape
   (`spend` implies opt-in, variants only on non-spending flags), the
   evaluation precedence (unknown, `NUXT_FEATURES_DISABLED`, host mode, rule
   disabled, anonymous, deny, allow, role, sticky salted-hash rollout gated by
@@ -625,7 +780,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  61 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -644,7 +799,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/connectors.md` - Connectors design (Phase 4a, C-1, not built yet):
   user-brought remote MCP servers that Besidka calls as an MCP client
   (outbound, unlike Connected apps); the threat model with the mitigating
-  ticket per row (SSRF, DNS rebinding and `global_fetch_strictly_public`,
+  ticket per row (SSRF, DNS rebinding and the Workers limits of section 4.5,
   LibreChat-style interpolation, token passthrough, lookalike hosts, rug
   pulls, cross-connector exfiltration, CIMD tampering); the SSRF validator
   rules and test vectors; the add-without-request, connect, consent and
@@ -654,16 +809,79 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   ends the send"); the data model, limits table (`connectors-policy.ts`),
   UI placement, MCP tools and scopes, the OpenAI-only native path, the
   `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
-  and the ticket changes it imposes on C-2 to C-11
-- `docs/skills.md` - Skills design (Phase 4c, not built yet): Agent Skills
-  (agentskills.io) imported by GitHub, link, zip, paste or MCP; pinning,
-  archive rules, findings, the licence classifier (Anthropic's 2026-11-06
-  Apache-2.0 relicence, content-based blocking), the R2 layout
-  (`user-skills/`), the runtime (catalog budget, `activate_skill`,
-  `read_skill_file`, re-injection past the text-only sanitizer), the threat
-  model, Anthropic-only provider-container scripts, the data model, limits,
-  review UI, MCP tools, the never-public invariant, and the ticket changes
-  it imposes on S-1 to S-7
+  and the ticket changes it imposes on C-2 to C-11; section 7.10 for the
+  reasoning step icons (one registry, connector icons only through the
+  owner-only KV-backed route, never a remote image); section 10.2 for the
+  directory (Browse and search over the registry mirror, the Featured
+  presets), icons on directory cards through the Besidka registry icon
+  route (registry `icons`, favicon, page `<link rel=icon>`, SVG allowlist) and
+  the admin-only "Sync now"; section 10.3 for directory v2 (Yours and
+  Discover tabs, the curated Top list in `config/connectors-directory.ts` and
+  how to edit it, New, keyword categories, the quality filter, ranked search,
+  the Featured and Community marks, the verified presets for services the registry lacks, the detail view with its anonymous tool probe, the
+  KV directory index, and icons for every connector); section 6.2 for the tool index (C-15): the
+  `tool_index__load` tool over `prepareStep` `activeTools`, the per-connector
+  mode (`connectors.tool_mode`: `manual`, `auto` or `always-on`, null is
+  Auto through `CONNECTOR_UNSET_TOOL_MODE`; Off is `enabled`), the room kept
+  for loading, the prompt-cache effect, and the "Turn it on?" chip triggered
+  only by the user's own text; section 6.3 for Auto connectors in every
+  chat: the per-chat plan (an off always wins), the 30-day tool-definition
+  snapshot with no connection at send start, warm-ups, the live hash check
+  on first call, the `<connector_catalog>` block and `use_connector`; section
+  6.5 for images in tool results (shown to the model in the same send and
+  kept with the chat as hidden `connector` files: the `data-connector-image`
+  part, dedupe per chat, the step thumbnails, deletion with the chat or from
+  the Storage page; the direct Anthropic and OpenAI allowlist, caps,
+  continuation placeholder); section 6.6 for the runtime fixes of
+  2026-11-20 (model-readable cap refusals instead of `over-cap`, caps 12 to
+  50 calls and 4 to 12 steps, per-minute pacing and the KV one-write-a-second
+  trap, `settleOnAbort`, SSE answers closed at their response, the 900 KiB
+  stored-output budget, DeepSeek first-chunk and chunk timeouts with the
+  `provider-queued` and `provider-stalled` errors, the `data-heartbeat`
+  chunk) and long tasks in rounds (the `data-tool-budget` part, the
+  `{ continue }` body, 10 rounds per message, the background-runner design
+  not built); section 7.12 for the owner decision of 2026-11-20: the user's
+  grant wins over taint, another source and the always-ask tier, the
+  Delete and share group takes Always allow, MCP stays reduce-only, and the
+  accepted cross-connector exfiltration risk
+- `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
+  amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
+  from templates, or added by archive (zip, `.skill`), pasted text, GitHub link
+  or MCP; commands as skills with two user-set columns (`model_invocable`,
+  `slash_command`) and the `data-skill-invocation` part; numbered versions (20
+  kept) over content-addressed R2 blobs (`user-skills/`); pinning, archive rules,
+  findings, the license classifier (Anthropic's 2026-11-06 Apache-2.0 relicense,
+  content-based blocking, class `authored`), the narrow allowlisted GitHub
+  fetcher (not C-3), the runtime (catalog budget, `activate_skill`,
+  `read_skill_file`, re-injection past the text-only sanitizer, the interim tool
+  rule until C-6), the threat model, Anthropic-only provider-container scripts,
+  the data model, limits, the manager, editor and `/` picker, project
+  skills that always load or are preferred in a project's chats (S-15,
+  section 5.8), the optional TypeSafe AI skill selector (S-14, section 5.9),
+  the built-in commands `/cost`, `/stats` and `/debug` (section 5.6: a shared
+  registry, answered by the server with no model, key or spend, never sent to
+  a model or shown in a share; their names are reserved for skills) and
+  command uniqueness (one normalized form, "The command /x is already used
+  by the skill y"),
+  MCP tools
+  (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
+  `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
+  invariant and the optional S-13 sharing design, and the ticket changes it
+  imposes on S-1 to S-14
+- `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
+  (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
+  Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
+  Always allow since 2026-11-20, with a warning line), `besidka_tool_permissions` with the default "ask" and no
+  row, the `GET` and `PUT /api/v1/besidka-tools/permissions` routes and their
+  guards, `resolveBesidkaPermissionMode` and the continuation replay seam that
+  denies a tool blocked after approval, the Labs "Tool permissions" panel and
+  the Search row, why MCP has no tool for it, and the chat exposure (L9): the
+  four-part gate, `besidka__` tools from the registry, the current-chat
+  guard, no scopes for handlers, the mode-by-taint table (Besidka reads
+  ignore Besidka taint), the 24 tools offered up front with the rest in the
+  tool index (C-15: loaded on demand, never cut, no notice or Labs line),
+  the per-chat Besidka row in the connector picker, the approval step and
+  Besidka grants in the chat panel
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
@@ -698,6 +916,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   defaults to 1.2.15); the migration friction list (`bunfig.toml` release
   age, `trustedDependencies`, missing `NODE_PATH` in bin shims, hardcoded
   `pnpm` call sites); and the criteria for revisiting the decision
+- `docs/dependency-holds.md` - Packages deliberately kept below their newest
+  release (nuxt-studio, vue-router, @nuxtjs/color-mode, vitest, stylistic,
+  msw, nuxt-email-renderer, @vite-pwa/nuxt, typescript, @types/node): the
+  version held, the version blocked, the concrete error or upstream issue, what
+  unblocks each, the matching `ignore` entries in `.github/dependabot.yml`, and
+  the rule to remove the ignore entry in the same PR that does the upgrade
 - `docs/security-audit-2026-10.md` - The 2026-10-24 security-audit skill run
   (source-only, standard profile, 21 leads + 2 rejected): the table of fixes
   (Better Auth rate limit and reset revocation, MDC directive-prop stripping,
@@ -745,7 +969,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - **Canonical and `og:url` are derived per route in `app/app.vue`** from
   `useRoute()` — a single source of truth that every page inherits. Do NOT add a
   per-page `canonical` or `ogUrl`; the global one is already correct and a second
-  tag risks a duplicate. `new URL()` normalises `/` to a trailing slash so the
+  tag risks a duplicate. `new URL()` normalizes `/` to a trailing slash so the
   canonical matches the `<loc>` the sitemap emits.
 - Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
   `/cookie-policy`, `/guides/<slug>` (public key guides from
@@ -776,7 +1000,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (deliberately a section and not an FAQ entry — see `docs/seo.md`).
 - Full audit, brand-entity strategy, the rejected options (`nuxt-og-image`,
   `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
-  checklist live in `docs/seo.md`. Read it before changing SEO behaviour.
+  checklist live in `docs/seo.md`. Read it before changing SEO behavior.
 - `/llms.txt` ships (`nuxt-llms`, `prerender: false`). Agent discovery lives in
   `docs/agent-readiness.md`: this app owns every `/.well-known/*` file and
   `/auth.md`. The production WAF rule "URL attackers" allows only an explicit
@@ -820,6 +1044,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 **Database schema**: Defined in `server/db/schemas/*.ts`, exported from `server/db/schema.ts`. Uses snake_case column naming.
 
 **API routes**: Located in `server/api/v1/`. Chat endpoints stream AI responses.
+Never put `debug`, `login`, `.key`, `uploads`, `php`, `aws` or an unlisted
+`.well-known` in a route path: the production zone WAF rule "URL attackers"
+answers 403 before the app sees the request (a Cloudflare HTML block page, and
+preview hosts do not show it). `tests/unit/server/routes/waf-blocked-paths.spec.ts`
+fails on such a path; see `docs/agent-readiness.md`, owner runbook step 1.
 
 **API route file layout (consistency rule)**: When a resource has more than one
 route (a base route plus sub-actions), group them all under a directory named
@@ -869,6 +1098,9 @@ Configured in `wrangler.jsonc`:
 - `KV` - KV namespace binding
 - `DATA_BUCKET` - R2 storage bucket
 - `IMAGES` - Cloudflare Images binding
+- `DOC_RENDERER` - Service binding (RPC `DocRenderer` entrypoint) to the
+  document renderer Worker; missing binding means 503 and the `documents`
+  features off (see `docs/chats/documents-renderer-worker.md`)
 
 **Binding access patterns**:
 ```ts
@@ -973,6 +1205,11 @@ $fetch('/api/v1/files/delete/bulk', { method: 'POST', body: { ids } })
 
 - Prefer sequential operations for per-item R2/KV calls.
 - Use batch APIs when available (for example, R2 batch delete where applicable).
+- Never cache an unsettled promise across requests on Workers: a promise
+  that waits on I/O belongs to the request that started it and never settles
+  once that request ends. Cache only the settled value, and let each request
+  await its own init until one is ready (see `docs/auth-security.md`, "Auth
+  instance init on Workers").
 
 ## File Management
 
@@ -1019,8 +1256,10 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 
 ## Code Style
 
+- Use American English spelling in all UI copy, code, docs and commit messages (license, color, behavior, canceled). Never mix British and American spellings.
 - ESLint with `@stylistic` plugin enforces 2-space indentation, no semicolons, single quotes
 - Max line length: 80 characters (imports, URLs, strings exempt)
+- Textareas get the box radius globally from `main.css` (`:where(.textarea)`), because the theme's `--radius-field: 2rem` would make them pills; do not add `rounded-*` to a `.textarea` to undo the pill shape.
 - When line length limit requires breaking single-line statements, use explicit braces:
   ```typescript
   // Correct - explicit braces when breaking lines
@@ -1046,6 +1285,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
   files.findIndex(file =>
     file.storageKey === storageKey)
   ```
+- Use American English spelling in all UI copy, code, docs and commit messages (license, color, behavior, canceled).
 - Remove unused variables entirely instead of prefixing with `_`. For function parameters, omit them from the signature:
   ```typescript
   // Correct - omit unused parameter
@@ -1398,6 +1638,10 @@ try {
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
 **Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
+A new source file (component, composable, util, route) must be added to a pattern in that script in the same change.
+Map each file to every suite that covers its behavior, not only its mirror spec. A file that renders inside the chat page or changes its layout or scroll also maps to `tests/e2e/chat/scroll-spacer.spec.ts`, `tests/e2e/chat/composer-overlays-spacer.spec.ts` and `tests/unit/composables/chat-scroll-spacer.spec.ts`; a file that touches tool approvals also maps to the approval suites.
+Before finishing, run the script's `getAffectedTests([file])` for each new or changed source file and check that the resolved list contains those suites.
+Why: on 2026-11-20 the approval bubble shipped with its own specs registered, but its files did not trigger the scroll spacer suites, and a scroll regression reached production.
 
 ## iOS Simulator Testing
 
@@ -1429,7 +1673,7 @@ other.
 Show the on-screen keyboard (the simulator hides it while a hardware
 keyboard is connected) and focus fields by tapping, the way a user does:
 toggling the keyboard on an already focused field does not reproduce real
-behaviour. Report which build and mode each result came from.
+behavior. Report which build and mode each result came from.
 
 ## Commit Messages
 

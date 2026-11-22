@@ -89,7 +89,7 @@ describe('GET /.well-known/oauth-protected-resource', () => {
     expect(mocks.handler).toHaveBeenCalledWith(event.req)
   })
 
-  it('normalises a configured site URL with a path to its origin', async () => {
+  it('normalizes a configured site URL with a path to its origin', async () => {
     mocks.runtimeConfig = {
       public: { baseUrl: 'https://preview.besidka.dev/' },
     }

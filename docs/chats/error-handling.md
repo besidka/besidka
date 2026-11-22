@@ -50,6 +50,59 @@ interface ChatErrorPayload {
 }
 ```
 
+### What the provider said (2026-11-14)
+
+A spend cap or quota problem used to read as a generic "the provider returned
+an internal error". For `provider-unavailable`, `provider-quota-exceeded` and
+`provider-rate-limit`, `normalizeChatError` now puts a short line in `why`
+built by `summarizeProviderError` (`server/utils/chats/provider-error-summary.ts`):
+
+- Google: `Google returned 429 RESOURCE_EXHAUSTED: <message>` (the code is
+  `error.status`).
+- Anthropic: `Anthropic returned 529 overloaded_error: Overloaded` (the code is
+  `error.type`).
+- OpenAI: `OpenAI returned 429 insufficient_quota: <message>` (the code is
+  `error.type` or a string `error.code`).
+- No body: `Google returned 500`. No status at all: the generic copy stays.
+
+Only 402, 429 and 5xx are summarized, because there the provider's text is
+about its own state. A 400 can echo the user's content ("Invalid value: '...'"),
+so it is never included. URLs, key-shaped tokens (`sk-`, `AIza`, `xai-`, long
+opaque strings) and `api_key`/`token`/`Bearer` assignments are removed, control
+characters and runs of spaces collapse, a free-text field cannot pose as the
+code (it must look like an identifier), and the line stops at 160 characters.
+An explicit `why` from the caller always wins.
+
+### Retried errors and spend caps (2026-11-21)
+
+The AI SDK retries a 408, 409, 429 or 5xx twice (2 s, then 4 s) and then
+hands `onError` a `RetryError` ("Failed after 3 attempts. Last error: ...")
+that has no status of its own. The provider's `APICallError`, with the status
+and body, is `RetryError.lastError`. Before this change the status was lost,
+so the summary above never ran and the "failed after 3 attempts" text fallback
+turned every retried 429 into `provider-unavailable` ("The upstream model
+provider returned an internal error"). Owner report: a Google AI Studio
+project over its monthly spend cap failed every Gemini send after about 7 s
+that way. `unwrapRetryError` now reads status, request id and summary from
+`lastError`; the code is still classified from the full `RetryError` text, so
+a retried network failure with no status keeps `provider-unavailable`.
+
+A billing limit is `provider-quota-exceeded` with its own copy, matched on the
+provider's text:
+
+- Spend cap (`spend cap` or `spending cap`): Google answers 429
+  `RESOURCE_EXHAUSTED` "Your project has exceeded its monthly spending cap."
+  or "Your billing account has exceeded its monthly spending cap." (wording
+  from Google AI developer forum reports; Google's billing docs do not list
+  the response). Message "Your Google API key reached its spend cap.", fix
+  pointing to the Spend page, `aistudio.google.com/spend`.
+- Empty prepaid balance: Anthropic answers 400 `invalid_request_error` "Your
+  credit balance is too low to access the Anthropic API." Message "Your
+  Anthropic account is out of credits." It is a 400, so no provider line is
+  added to `why`.
+- OpenAI `insufficient_quota` and any 402 were already
+  `provider-quota-exceeded` and keep the generic copy.
+
 ### Pre-stream failures
 
 Failures that happen before the AI stream starts return a non-2xx JSON response body that contains the full `ChatErrorPayload`.
@@ -79,6 +132,16 @@ The server logs stage-specific metadata with `evlog`:
 - `providerStatus`
 - `providerRequestId`
 - safe request context such as provider/model/reasoning/file counts
+
+The dedicated `AI stream completed` wide event (the one shipped to Axiom)
+also carries a failed send: the flat `errorCode`, and
+`attributes.streamError` with `stage`, `code`, `status` (what the client got),
+`providerStatus` and `providerCode` (the provider's own HTTP status and short
+code, for example `RESOURCE_EXHAUSTED`), `attempts` (the SDK's retry count)
+and `summary` (the safe line above, only for 402, 429 and 5xx). Before
+2026-11-21 these fields went only to the request logger and a standalone
+`log.error`, never to `aiLogger`, so the owner's failed Gemini sends showed
+`toolLoop.steps 0` and no error fields in Axiom.
 
 The server does not log raw prompts or file contents.
 
@@ -302,6 +365,47 @@ propagation lag inside the lease, so a healthy invocation's flag never lapses.
 The timer is interval-driven, not chunk-driven, because a single provider step
 can stream nothing for 60-90s. The tool-loop timeouts no longer size the
 guard.
+
+### Runs, Stop and takeover (2026-11-20)
+
+The chat send no longer uses `startGenerationGuardHeartbeat` for its own
+lease (memory leases still do). Each send or continuation is a run with a
+random id (`server/utils/chats/generation-lease.ts`):
+
+- The lease value is `{ runId, renewedAt }` instead of `'1'`. The run checks
+  every 10 s (`GENERATION_STOP_CHECK_INTERVAL_MS`) and renews the lease when
+  30 s have passed since the last renewal. Every KV read uses
+  `cacheTtl: 30`, the documented minimum.
+- Stop in the app calls `POST /api/v1/chats/[slug]/stop`
+  (`{ messageId }`, keepalive). The route writes the stop marker
+  `chat-generation-stop:<runId>`, deletes the lease and answers
+  `{ stopped, runId }`. The run aborts `streamText` with `stopped-by-user`
+  (the `abort` chunk stays, no error card) and stores what it streamed as a
+  stopped reply: the parts end with `data-reply-stopped`, unfinished tool
+  calls are dropped, and no "reply ready" push is sent.
+- A send for the same message takes the lease over when the holder was
+  stopped (marker, or the `stoppedRunId` the client got from the stop
+  route) or missed its heartbeat window (90 s, `GENERATION_LEASE_STALE_MS`)
+  instead of answering `data-generation-pending`; a live holder (a second
+  tab) still gets the pending answer.
+- Retry of a message whose stored reply is stopped generates a fresh reply:
+  the replay short-circuit skips stopped replies, the model history leaves
+  them out, and the new reply deletes them once its own insert succeeded
+  (`readTurnBeforeReply`, `server/utils/chats/stopped-replies.ts`).
+- Two retries that take over the same stopped run (two tabs) both write
+  the lease at the start of the stream, wait 300 ms and read it back; only
+  the run whose write landed last calls the provider (`confirmLeaseHolder`).
+- A stopped continuation ends the lease of its unfinished tool-approval
+  claims (`expireUnfinishedClaims`), so its retry says "Interrupted. Ask
+  again" at once.
+- A run that was taken over stores nothing. Right before any send stores
+  its reply it reads D1 for the messages after its user message: the first
+  answered reply of a turn wins, and a stopped reply never lands after
+  anything.
+- `release()` deletes the lease only while the run still holds it.
+
+Details, the KV caching analysis and the incident:
+`docs/chats/stuck-generation-guard.md`, "Stop and retry".
 
 ## `/chats/test` support
 

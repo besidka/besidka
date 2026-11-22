@@ -135,3 +135,194 @@ describe('admin path query stripping', () => {
     expect(JSON.stringify(context.event)).not.toContain('jane')
   })
 })
+
+describe('connector OAuth callback query stripping', () => {
+  const callbackPath = '/api/v1/connectors/oauth/callback'
+    + '?code=auth-code-secret&state=state-secret&iss=https%3A%2F%2Fa.example'
+
+  it('keeps the code and the state out of every drained field', () => {
+    const context = {
+      request: { method: 'GET', path: callbackPath },
+      headers: {},
+      event: { path: callbackPath },
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/api/v1/connectors/oauth/callback',
+      message: 'GET /api/v1/connectors/oauth/callback',
+    })
+    expect(context.request.path).toBe('/api/v1/connectors/oauth/callback')
+    expect(JSON.stringify(context)).not.toContain('auth-code-secret')
+    expect(JSON.stringify(context)).not.toContain('state-secret')
+  })
+})
+
+describe('artifact share token redaction', () => {
+  const TOKEN = 'Q2hhbmdlTWVQbGVhc2VJdHNBU2VjcmV0VG9rZW4xMjM0NQ'
+
+  it('replaces the token of a public artifact link with the route pattern',
+    async () => {
+      const { redactArtifactSharePath } = await import(
+        '~~/server/utils/artifacts/share-redaction'
+      )
+
+      expect(redactArtifactSharePath(`/artifacts/${TOKEN}`))
+        .toBe('/artifacts/[token]')
+      expect(redactArtifactSharePath(`/artifacts/${TOKEN}/_payload.json?x=1`))
+        .toBe('/artifacts/[token]/_payload.json?x=1')
+      expect(redactArtifactSharePath(
+        `GET https://besidka.com/artifacts/${TOKEN}`,
+      )).toBe('GET https://besidka.com/artifacts/[token]')
+      expect(redactArtifactSharePath(`https://besidka.com/artifacts/${TOKEN}#x`))
+        .toBe('https://besidka.com/artifacts/[token]#x')
+      expect(redactArtifactSharePath(`Failed on /Artifacts/${TOKEN} x`))
+        .toBe('Failed on /artifacts/[token] x')
+      expect(redactArtifactSharePath(42)).toBe(42)
+      expect(redactArtifactSharePath('/data/files')).toBe('/data/files')
+    })
+
+  it('replaces the token of a percent-encoded link', async () => {
+    const { redactArtifactSharePath } = await import(
+      '~~/server/utils/artifacts/share-redaction'
+    )
+
+    expect(redactArtifactSharePath(`/signup?next=%2Fartifacts%2F${TOKEN}`))
+      .toBe('/signup?next=%2Fartifacts%2F[token]')
+    expect(redactArtifactSharePath(`/signin?next=%2fartifacts%2f${TOKEN}&x=1`))
+      .toBe('/signin?next=%2fartifacts%2f[token]&x=1')
+    expect(redactArtifactSharePath(`/signin?next=%252Fartifacts%252F${TOKEN}`))
+      .toBe('/signin?next=%252Fartifacts%252F[token]')
+    expect(redactArtifactSharePath(`x=%25252fArtifacts%25252f${TOKEN}`))
+      .toBe('x=%25252fartifacts%25252f[token]')
+    expect(redactArtifactSharePath(
+      `x?url=https%3A%2F%2Fb.com%2Fartifacts%2F${TOKEN}`,
+    )).toBe('x?url=https%3A%2F%2Fb.com%2Fartifacts%2F[token]')
+  })
+
+  it('leaves artifact API paths and the bare page path alone', async () => {
+    const { redactArtifactSharePath } = await import(
+      '~~/server/utils/artifacts/share-redaction'
+    )
+
+    expect(redactArtifactSharePath('/api/v1/artifacts/Abc123Def456Ghi7/shares'))
+      .toBe('/api/v1/artifacts/Abc123Def456Ghi7/shares')
+    expect(redactArtifactSharePath('/chats/artifacts')).toBe('/chats/artifacts')
+    expect(redactArtifactSharePath('/artifacts')).toBe('/artifacts')
+  })
+
+  it('redacts a browser-ingested error that carries the page address', () => {
+    const context = {
+      request: { method: 'POST', path: '/api/_evlog/ingest' },
+      headers: { 'cf-ray': 'ray-2' },
+      event: {
+        source: 'client',
+        level: 'error',
+        message: `Unhandled error on https://besidka.com/artifacts/${TOKEN}`,
+        attributes: {
+          clientError: {
+            route: `/artifacts/${TOKEN}`,
+            stack: `at onMounted (https://besidka.com/artifacts/${TOKEN}:1:1)`,
+          },
+          client: { href: `https://besidka.com/artifacts/${TOKEN}` },
+        },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
+    expect(context.event.attributes).toMatchObject({
+      clientError: { route: '/artifacts/[token]' },
+      client: { href: 'https://besidka.com/artifacts/[token]' },
+    })
+  })
+
+  it('keeps the token out of every drained field of a page request', () => {
+    const context = {
+      request: { method: 'GET', path: `/artifacts/${TOKEN}` },
+      headers: { 'x-besidka-artifact-share': TOKEN, 'cf-ray': 'ray-1' },
+      event: {
+        path: `/artifacts/${TOKEN}`,
+        error: {
+          message: `Render failed for /artifacts/${TOKEN}`,
+          stack: `at render (/artifacts/${TOKEN})`,
+        },
+        attributes: { client: { url: `https://besidka.com/artifacts/${TOKEN}#top` } },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/artifacts/[token]',
+      message: 'GET /artifacts/[token]',
+      requestMeta: { cfRay: 'ray-1' },
+    })
+    expect(context.request.path).toBe('/artifacts/[token]')
+    expect(JSON.stringify(context.event)).not.toContain(TOKEN)
+    expect(JSON.stringify(context.event)).not.toContain(
+      'x-besidka-artifact-share',
+    )
+    expect(context.headers).toEqual({ 'cf-ray': 'ray-1' })
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
+  })
+})
+
+describe('artifact viewer storage key redaction', () => {
+  const KEY = 'jane.doe@example.com'
+
+  it('keeps the storage key out of every drained field', () => {
+    const context = {
+      request: {
+        method: 'PUT',
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+      },
+      headers: {},
+      event: {
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+        error: {
+          message: `Failed /api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+        },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/api/v1/artifacts/ArtifactId1/storage/[key]',
+      message: 'PUT /api/v1/artifacts/ArtifactId1/storage/[key]',
+    })
+    expect(context.request.path)
+      .toBe('/api/v1/artifacts/ArtifactId1/storage/[key]')
+    expect(JSON.stringify(context)).not.toContain(KEY)
+  })
+
+  it('strips a query string after the key and leaves other paths alone', () => {
+    const context = {
+      request: {
+        method: 'DELETE',
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}?x=1`,
+      },
+      headers: {},
+      event: {} as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event.message)
+      .toBe('DELETE /api/v1/artifacts/ArtifactId1/storage/[key]')
+
+    const other = {
+      request: { method: 'GET', path: '/api/v1/artifacts/ArtifactId1/storage' },
+      headers: {},
+      event: {} as Record<string, unknown>,
+    }
+
+    enrich(other)
+
+    expect(other.event.message)
+      .toBe('GET /api/v1/artifacts/ArtifactId1/storage')
+  })
+})

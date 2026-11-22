@@ -155,7 +155,15 @@ describe('admin API routes', () => {
 
   it('covers every documented route', () => {
     expect(listAdminRouteFiles()).toEqual([
+      'artifact-reports/[id]/action.post.ts',
+      'artifact-reports/[id]/index.get.ts',
+      'artifact-reports/index.get.ts',
+      'artifact-takedowns/index.post.ts',
+      'artifact-takedowns/restore.post.ts',
+      'artifacts/[id]/versions/[version].get.ts',
       'audit/index.get.ts',
+      'connectors/registry/index.get.ts',
+      'connectors/registry/sync.post.ts',
       'features/[flag]/grants/index.get.ts',
       'features/[flag]/grants/index.post.ts',
       'features/[flag]/index.get.ts',
@@ -165,6 +173,12 @@ describe('admin API routes', () => {
       'features/grants/[id]/revoke.post.ts',
       'features/index.get.ts',
       'features/schedules/apply-due.post.ts',
+      'legal/consent-version/approve.post.ts',
+      'legal/index.get.ts',
+      'legal/notices/[id]/approve.post.ts',
+      'legal/notices/[id]/withdraw.post.ts',
+      'legal/opt-outs/[id]/remove.post.ts',
+      'legal/opt-outs/index.post.ts',
       'roles/[id]/revoke.post.ts',
       'roles/index.get.ts',
       'roles/index.post.ts',

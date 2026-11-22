@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { parsePersistedChatFailureNotice } from '#shared/utils/chat-failure-text'
 
 export const SEARCH_APOSTROPHE = 'ʼ'
@@ -22,10 +23,13 @@ const PRE_NORMALIZE_LENGTH_MULTIPLIER = 2
  * `parsePersistedChatFailureNotice`) is excluded too, so it never becomes
  * searchable content: it is not something the user wrote or asked for, and
  * indexing it would surface the same boilerplate notice across every failed
- * turn.
+ * turn. The messages of a built-in command (the user's `/cost` and the report
+ * Besidka wrote back) index as an empty body: the `search_chats` tool hands
+ * snippets to a model, and a report must never reach one. The empty row is
+ * still written, so the sweeper does not pick the message up again.
  */
 export function extractMessageSearchText(parts: unknown): string {
-  if (!Array.isArray(parts)) {
+  if (!Array.isArray(parts) || isBuiltinCommandMessage({ parts })) {
     return ''
   }
 
@@ -55,7 +59,7 @@ export function extractMessageSearchText(parts: unknown): string {
 }
 
 /**
- * NFC-normalises, canonicalises every apostrophe variant (U+0027, U+2019,
+ * NFC-normalizes, canonicalizes every apostrophe variant (U+0027, U+2019,
  * U+0060, U+00B4) to U+02BC, strips the private-use-area FTS5 snippet
  * sentinels (U+E000/U+E001) so message content can never inject fake
  * highlight boundaries into a `snippet()` result, and collapses

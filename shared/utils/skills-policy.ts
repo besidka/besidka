@@ -1,0 +1,254 @@
+import {
+  BUILTIN_COMMAND_NAMES,
+  PLANNED_BUILTIN_COMMAND_NAMES,
+} from '#shared/utils/builtin-commands'
+
+const KIBIBYTE = 1024
+const MEBIBYTE = 1024 * KIBIBYTE
+
+export const SKILL_SOURCE_KINDS = [
+  'editor',
+  'template',
+  'zip',
+  'text',
+  'github',
+  'url',
+  'mcp',
+  'share',
+] as const
+
+export const SKILL_LICENSE_CLASSES = [
+  'open',
+  'custom',
+  'none',
+  'restricted',
+  'authored',
+] as const
+
+export const SKILL_STATUSES = ['ready', 'needs-review', 'broken'] as const
+
+export const SKILL_CREATED_VIA = ['app', 'mcp', 'share'] as const
+
+export const SKILL_VERSION_ORIGINS = [
+  'import',
+  'update',
+  'editor',
+  'template',
+  'mcp',
+  'rename',
+  'restore',
+  'share',
+] as const
+
+export const SKILL_FILE_KINDS = [
+  'skill-md',
+  'reference',
+  'script',
+  'asset',
+  'license',
+  'other',
+] as const
+
+export const SKILL_AUTHORED_SOURCE_KINDS: readonly SkillSourceKind[] = [
+  'editor',
+  'template',
+]
+
+export type SkillSourceKind = typeof SKILL_SOURCE_KINDS[number]
+export type SkillLicenseClass = typeof SKILL_LICENSE_CLASSES[number]
+export type SkillStatus = typeof SKILL_STATUSES[number]
+export type SkillCreatedVia = typeof SKILL_CREATED_VIA[number]
+export type SkillVersionOrigin = typeof SKILL_VERSION_ORIGINS[number]
+export type SkillFileKind = typeof SKILL_FILE_KINDS[number]
+export type ProjectSkillLevel = typeof PROJECT_SKILL_LEVELS[number]
+
+export const SKILL_MAX_FILES = 200
+export const SKILL_MAX_ARCHIVE_ENTRIES = 1000
+export const SKILL_MAX_TOTAL_BYTES = 5 * MEBIBYTE
+export const SKILL_MAX_FILE_BYTES = MEBIBYTE
+export const SKILL_MAX_SKILL_MD_BYTES = 256 * KIBIBYTE
+export const SKILL_MAX_UPLOAD_BYTES = 5 * MEBIBYTE
+export const SKILL_MAX_GITHUB_ARCHIVE_BYTES = 15 * MEBIBYTE
+export const SKILL_GITHUB_MAX_ARCHIVE_ENTRIES = 20000
+export const SKILL_GITHUB_REFS_MAX_BYTES = 8 * MEBIBYTE
+export const SKILL_GITHUB_TIMEOUT_MS = 30 * 1000
+export const SKILL_GITHUB_REQUEST_DEADLINE_MS = 60 * 1000
+export const SKILL_GITHUB_REF_CACHE_SECONDS = 60
+export const SKILL_DIFF_TOTAL_CELL_BUDGET = 8_000_000
+export const SKILL_DIFF_MAX_LINES = 2000
+export const SKILL_MAX_RATIO = 100
+export const SKILL_RATIO_MIN_BYTES = KIBIBYTE
+export const SKILL_MAX_PATH_LENGTH = 200
+export const SKILL_MAX_PATH_DEPTH = 6
+export const SKILL_MAX_FRONTMATTER_BYTES = 16 * KIBIBYTE
+export const SKILLS_PER_USER = 50
+export const SKILL_IMPORTS_PER_HOUR = 10
+export const SKILL_SCREENS_PER_HOUR = 60
+export const SKILL_STAGE_TTL = 60 * 60
+export const SKILL_FINDING_LONG_LINE = 2000
+export const SKILL_FINDING_BLANK_RUN = 50
+export const SKILL_FINDINGS_MAX_PER_FILE = 200
+export const SKILL_FINDINGS_MAX_TOTAL = 500
+export const SKILL_VERSIONS_KEPT = 20
+export const SKILL_SAVES_PER_HOUR = 120
+export const SKILL_SAVE_MAX_CHANGES = 50
+export const SKILL_SAVE_MAX_BYTES = 2 * MEBIBYTE
+export const SKILL_EDIT_MAX_FILE_BYTES = 256 * KIBIBYTE
+export const SKILL_VIEWER_FILE_MAX_BYTES = MEBIBYTE
+export const SKILL_SAVE_REQUEST_MAX_BYTES = 4 * MEBIBYTE
+export const SKILL_NOTE_MAX = 200
+export const SKILL_DIFF_MAX_FILES = 50
+export const SKILL_ARGUMENT_HINT_MAX = 100
+export const SKILL_INVOCATIONS_PER_MESSAGE = 1
+export const SKILL_GITHUB_PICK_MAX = 10
+export const SKILL_ACTIVATE_MAX_TOKENS = 6000
+export const SKILL_ACTIVATE_MAX_BYTES = 40 * KIBIBYTE
+export const SKILL_ARGUMENTS_MAX_BYTES = 8 * KIBIBYTE
+export const SKILL_READ_FILE_MAX_BYTES = 64 * KIBIBYTE
+export const SKILL_CATALOG_BUDGET_TOKENS = 1500
+export const SKILL_ACTIVE_BLOCK_MAX_TOKENS = 12000
+export const SKILL_TOOL_STEPS = 4
+export const PROJECT_SKILL_LEVELS = ['always', 'prefer'] as const
+export const PROJECT_SKILLS_ALWAYS_MAX = 3
+export const PROJECT_SKILLS_MAX = 20
+export const PROJECT_SKILLS_ALWAYS_MAX_TOKENS = 12000
+export const SKILL_DESCRIPTION_CATALOG_SOFT_MAX = 300
+export const SKILL_NAME_MAX = 64
+export const SKILL_MCP_FILES_MAX = 50
+export const SKILL_MCP_FILE_MAX_CHARS = 200_000
+export const SKILL_MCP_TOTAL_MAX_BYTES = 400 * KIBIBYTE
+export const SKILL_MCP_DELETE_BATCH = 20
+export const SKILL_MCP_LIST_LIMIT_MAX = 50
+export const SKILL_MCP_WRITES_PER_HOUR = 30
+export const SKILL_MCP_READS_PER_HOUR = 600
+export const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
+
+/**
+ * Commands a skill can never take: the built-in commands Besidka runs
+ * (`BUILTIN_COMMANDS`) and the ones it keeps for later. Both lists live in
+ * `#shared/utils/builtin-commands`, the one source of truth.
+ */
+export const SKILL_RESERVED_SLASH_NAMES: readonly string[] = [
+  ...PLANNED_BUILTIN_COMMAND_NAMES,
+  ...BUILTIN_COMMAND_NAMES,
+]
+
+export type SkillSlashNameRejection = 'invalid-name' | 'reserved'
+
+export type SkillSlashNameValidation
+  = | { valid: true }
+    | {
+      valid: false
+      reason: SkillSlashNameRejection
+      message: string
+    }
+
+const reservedSlashNames: ReadonlySet<string> = new Set(
+  SKILL_RESERVED_SLASH_NAMES,
+)
+
+/**
+ * Only text the user wrote in the editor, or took from a Besidka template,
+ * is trusted; every other source (and any kind added later) is third-party
+ * text and keeps `memory_write` locked while it sits in the prompt.
+ */
+export function isAuthoredSkillSource(sourceKind: string): boolean {
+  return (SKILL_AUTHORED_SOURCE_KINDS as readonly string[])
+    .includes(sourceKind)
+}
+
+export function isSkillNameValid(name: string): boolean {
+  return name.length > 0
+    && name.length <= SKILL_NAME_MAX
+    && SKILL_NAME_PATTERN.test(name)
+}
+
+export function isReservedSkillSlashName(name: string): boolean {
+  return reservedSlashNames.has(name.trim().toLowerCase())
+}
+
+/**
+ * What the user typed in a Command field, ready to validate: trimmed,
+ * lowercased and one leading `/` dropped (the placeholder is `/my-command`,
+ * so people type it). Every write path and the client use this one rule, so
+ * `/Review` and `review` are the same command. Empty means "no command" and
+ * is `null`.
+ */
+export function normalizeSkillCommand(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = (value ?? '').trim().toLowerCase()
+  const withoutSlash = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed
+
+  return withoutSlash.length > 0 ? withoutSlash : null
+}
+
+/**
+ * A command follows the same pattern as a skill name and must not be one of
+ * the names Besidka reserves for its built-in commands. A skill name and its
+ * command are separate: a skill may keep a reserved name, only a reserved
+ * command is refused.
+ */
+export function validateSkillSlashName(
+  name: string,
+): SkillSlashNameValidation {
+  if (!isSkillNameValid(name)) {
+    return {
+      valid: false,
+      reason: 'invalid-name',
+      message: 'Use lowercase letters, digits and single hyphens (max 64)',
+    }
+  }
+
+  if (isReservedSkillSlashName(name)) {
+    return {
+      valid: false,
+      reason: 'reserved',
+      message: `/${name} is reserved by Besidka`,
+    }
+  }
+
+  return { valid: true }
+}
+
+/**
+ * The one sentence for a command another skill of the same user already
+ * uses, on every write path and in the Command field.
+ */
+export function formatSkillCommandTakenMessage(
+  command: string,
+  skillName: string | null,
+): string {
+  return skillName
+    ? `The command /${command} is already used by the skill ${skillName}`
+    : `The command /${command} is already used by another skill`
+}
+
+/**
+ * The inline message for what the user typed in a Command field, or an empty
+ * string when it is empty (no command) or valid. `usedCommands` maps the
+ * commands of the user's other skills to their names, so a duplicate is
+ * named before the server is asked.
+ */
+export function getSkillCommandProblem(
+  value: string | null | undefined,
+  usedCommands?: ReadonlyMap<string, string>,
+): string {
+  const command = normalizeSkillCommand(value)
+
+  if (command === null) {
+    return ''
+  }
+
+  const validation = validateSkillSlashName(command)
+
+  if (!validation.valid) {
+    return validation.message
+  }
+
+  const usedBy = usedCommands?.get(command)
+
+  return usedBy === undefined
+    ? ''
+    : formatSkillCommandTakenMessage(command, usedBy)
+}

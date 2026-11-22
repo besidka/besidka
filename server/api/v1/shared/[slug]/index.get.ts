@@ -1,7 +1,11 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
-import { filterPublicParts } from '~~/server/utils/chats/share-public-parts'
+import {
+  dropEmptyUserMessages,
+  filterPublicParts,
+} from '~~/server/utils/chats/share-public-parts'
+import { resolveSharedDocumentParts } from '~~/server/utils/documents/share'
 import {
   hideFileParts,
   rewriteShareFileParts,
@@ -90,13 +94,24 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-  const publicMessages = filterPublicParts(persistedMessages)
+  const publicMessages = dropEmptyUserMessages(
+    filterPublicParts(persistedMessages),
+  )
 
   const messagesWithResolvedFiles = share.showFiles
     ? await rewriteShareFileParts(publicMessages, share.id)
     : hideFileParts(publicMessages)
 
-  const messages = messagesWithResolvedFiles.map((message) => {
+  const messagesWithResolvedDocuments = await resolveSharedDocumentParts(
+    messagesWithResolvedFiles,
+    {
+      shareId: share.id,
+      chatId: share.chatId,
+      showFiles: share.showFiles,
+    },
+  )
+
+  const messages = messagesWithResolvedDocuments.map((message) => {
     return {
       id: message.id,
       role: message.role,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
+import { getTableName } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import {
   createProject,
@@ -570,9 +571,21 @@ describe('projects API', () => {
         update: vi.fn(() => ({
           set: chatsSet,
         })),
-        delete: vi.fn(() => ({
-          where: projectsWhere,
-        })),
+        delete: vi.fn((table: unknown) => {
+          if (getTableName(table as never) === 'project_skills') {
+            return {
+              where: vi.fn(() => ({
+                returning: vi.fn(async () => {
+                  callOrder.push('delete-project-skills')
+
+                  return []
+                }),
+              })),
+            }
+          }
+
+          return { where: projectsWhere }
+        }),
       }
 
       return { db, chatsSet, chatsWhere, projectsWhere }
@@ -620,6 +633,7 @@ describe('projects API', () => {
         'detach-chats',
         'unlink',
         'delete-project',
+        'delete-project-skills',
         'purge',
         'invalidate-storage',
       ])

@@ -26,7 +26,7 @@
           tabindex="0"
           class="menu menu-sm bg-base-100 rounded-box shadow-lg w-44 p-1"
         >
-          <li v-for="item in actions" :key="item.action">
+          <li v-for="item in visibleActions" :key="item.action">
             <button
               type="button"
               :disabled="isItemDisabled(item)"
@@ -52,8 +52,13 @@
 </template>
 
 <script setup lang="ts">
+import {
+  IMAGE_COPY_ACTION,
+  isImageClipboardSupported,
+} from '@besidka/artifacts-protocol/diagram-menus'
 import type {
   DiagramExportAction,
+  DiagramExportOutcome,
   DiagramMenuAction,
   DiagramMenuInput,
 } from '~/types/diagram-export.d'
@@ -76,16 +81,27 @@ const { runExportAction } = useDiagramExport()
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
 const isCopied = shallowRef<boolean>(false)
 const isOpen = shallowRef<boolean>(false)
+const canCopyImage = shallowRef<boolean>(false)
 const announcement = shallowRef<string>('')
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+const visibleActions = computed<DiagramMenuAction[]>(() => {
+  return props.actions.filter((item) => {
+    return item.action !== IMAGE_COPY_ACTION || canCopyImage.value
+  })
+})
 
 function isItemDisabled(item: DiagramMenuAction): boolean {
   return item.needsSvg && !props.input.svg
 }
 
 const isTriggerDisabled = computed<boolean>(() => {
-  return props.actions.every(isItemDisabled)
+  return visibleActions.value.every(isItemDisabled)
+})
+
+onMounted(() => {
+  canCopyImage.value = isImageClipboardSupported()
 })
 
 onClickOutside(dropdownRef, () => {
@@ -183,11 +199,15 @@ function reportFailure() {
 
 async function reportOutcome(
   action: DiagramExportAction,
-  outcome: boolean | Promise<boolean>,
+  outcome: DiagramExportOutcome | Promise<DiagramExportOutcome>,
 ) {
-  const isSuccess = await outcome
+  const result = await outcome
 
-  if (!isSuccess) {
+  if (result === 'reported') {
+    return
+  }
+
+  if (!result) {
     reportFailure()
 
     return
@@ -200,7 +220,9 @@ async function reportOutcome(
 
 function onAction(action: DiagramExportAction) {
   const themeElement = props.input.themeElement()
-  const item = props.actions.find(candidate => candidate.action === action)
+  const item = visibleActions.value.find((candidate) => {
+    return candidate.action === action
+  })
 
   if (!item || isItemDisabled(item) || !themeElement) {
     closeDropdown()

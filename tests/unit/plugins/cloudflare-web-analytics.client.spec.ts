@@ -11,6 +11,13 @@ interface ConsentPayload {
 type ConsentListener = (payload: ConsentPayload) => void
 type ReceiptListener = (payload: ConsentPayload) => Promise<void> | void
 type NavigationGuard = (to: { fullPath: string }) => boolean
+interface RouteTarget {
+  path: string
+  fullPath: string
+  query: Record<string, unknown>
+}
+type ResolveGuard = (to: RouteTarget) => boolean
+type AfterEachHook = (to: RouteTarget) => void
 
 const BEACON_TOKEN = 'test-beacon-token'
 
@@ -21,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   isAnalyticsAllowed: false,
   routePath: '/',
   navigationGuards: [] as NavigationGuard[],
+  resolveGuards: [] as ResolveGuard[],
+  afterEachHooks: [] as AfterEachHook[],
   useScript: vi.fn(),
   load: vi.fn(),
   consentListeners: [] as ConsentListener[],
@@ -68,6 +77,16 @@ function createFakeNuxtApp() {
         return { path: mocks.routePath }
       },
     },
+    beforeResolve: (guard: ResolveGuard) => {
+      mocks.resolveGuards.push(guard)
+
+      return () => {}
+    },
+    afterEach: (hook: AfterEachHook) => {
+      mocks.afterEachHooks.push(hook)
+
+      return () => {}
+    },
     beforeEach: (guard: NavigationGuard) => {
       mocks.navigationGuards.push(guard)
 
@@ -108,6 +127,28 @@ function navigate(fullPath: string): boolean {
   return guard ? guard({ fullPath }) : true
 }
 
+function toRouteTarget(fullPath: string): RouteTarget {
+  const url = new URL(fullPath, 'https://besidka.test')
+
+  return {
+    path: url.pathname,
+    fullPath,
+    query: Object.fromEntries(url.searchParams),
+  }
+}
+
+function resolveNavigation(fullPath: string): boolean {
+  return mocks.resolveGuards.every((guard) => {
+    return guard(toRouteTarget(fullPath))
+  })
+}
+
+function finishNavigation(fullPath: string) {
+  for (const hook of mocks.afterEachHooks) {
+    hook(toRouteTarget(fullPath))
+  }
+}
+
 function emitConsentChange(payload: ConsentPayload) {
   for (const listener of mocks.consentListeners) {
     listener(payload)
@@ -138,6 +179,8 @@ describe('cloudflare-web-analytics plugin', () => {
     mocks.isAnalyticsAllowed = false
     mocks.routePath = '/'
     mocks.navigationGuards = []
+    mocks.resolveGuards = []
+    mocks.afterEachHooks = []
     mocks.load.mockReset()
     mocks.load.mockResolvedValue(undefined)
     mocks.useScript.mockReset()
@@ -145,8 +188,20 @@ describe('cloudflare-web-analytics plugin', () => {
     reload.mockReset()
     assign.mockReset()
 
-    vi.stubGlobal('location', { ...window.location, reload, assign })
+    stubLocation('/')
   })
+
+  function stubLocation(fullPath: string) {
+    const url = new URL(fullPath, 'https://besidka.test')
+
+    vi.stubGlobal('location', {
+      ...window.location,
+      pathname: url.pathname,
+      search: url.search,
+      reload,
+      assign,
+    })
+  }
 
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -419,5 +474,78 @@ describe('cloudflare-web-analytics plugin', () => {
 
     expect(reload).toHaveBeenCalledTimes(1)
     expect(mocks.navigationGuards).toHaveLength(0)
+  })
+  describe('on public artifact links', () => {
+    it('never loads the beacon on the link page, even with consent', () => {
+      stubLocation('/artifacts/secret-token')
+      mocks.routePath = '/artifacts/secret-token'
+      mocks.isDecided = true
+      mocks.granted = ['necessary', 'analytics']
+      mocks.isAnalyticsAllowed = true
+
+      install()
+      emitConsentChange(grantAnalytics)
+
+      expect(mocks.load).not.toHaveBeenCalled()
+    })
+
+    it('never loads the beacon on sign-in that returns to a link', () => {
+      stubLocation('/signin?next=/artifacts/return')
+      mocks.isAnalyticsAllowed = true
+
+      install()
+      emitConsentChange(grantAnalytics)
+      finishNavigation('/signup?next=/artifacts/return')
+
+      expect(mocks.load).not.toHaveBeenCalled()
+    })
+
+    it('loads the deferred beacon once the viewer leaves the link', () => {
+      stubLocation('/artifacts/secret-token')
+      mocks.isAnalyticsAllowed = true
+
+      install()
+      emitConsentChange(grantAnalytics)
+      finishNavigation('/artifacts/other-token')
+
+      expect(mocks.load).not.toHaveBeenCalled()
+
+      finishNavigation('/chats/new')
+
+      expect(mocks.load).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not load the deferred beacon when consent was withdrawn',
+      () => {
+        stubLocation('/artifacts/secret-token')
+
+        install()
+        emitConsentChange(grantAnalytics)
+        emitConsentChange(withdrawAnalytics)
+        finishNavigation('/chats/new')
+
+        expect(mocks.load).not.toHaveBeenCalled()
+      })
+
+    it('turns a client-side visit to a link into a full page load once '
+      + 'the beacon is loaded', async () => {
+      install()
+      emitConsentChange(grantAnalytics)
+      await vi.waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(1))
+
+      expect(resolveNavigation('/artifacts/secret-token')).toBe(false)
+      expect(assign).toHaveBeenCalledWith('/artifacts/secret-token')
+      expect(resolveNavigation('/Artifacts/x')).toBe(false)
+      expect(resolveNavigation('/signin?next=/artifacts/return')).toBe(false)
+      expect(resolveNavigation('/about')).toBe(true)
+      expect(resolveNavigation('/profile')).toBe(true)
+    })
+
+    it('lets the navigation through when the beacon never loaded', () => {
+      install()
+
+      expect(resolveNavigation('/artifacts/secret-token')).toBe(true)
+      expect(assign).not.toHaveBeenCalled()
+    })
   })
 })

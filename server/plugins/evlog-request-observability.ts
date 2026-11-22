@@ -1,3 +1,13 @@
+import { ARTIFACT_SHARE_HEADER } from '#shared/utils/artifacts'
+import {
+  redactArtifactStorageKeyPath,
+  redactArtifactStorageKeys,
+} from '~~/server/utils/artifacts/log-redaction'
+import {
+  redactArtifactSharePath,
+  redactArtifactShareTokens,
+} from '~~/server/utils/artifacts/share-redaction'
+
 interface MutableLogger {
   set: (data: Record<string, unknown>) => void
 }
@@ -62,11 +72,16 @@ export function moveMcpContextToAttributes(event: Record<string, unknown>) {
   delete event.mcp
 }
 
-const QUERY_FREE_PATH_PREFIXES = ['/api/v1/admin/']
+const QUERY_FREE_PATH_PREFIXES = [
+  '/api/v1/admin/',
+  '/api/v1/connectors/oauth/callback',
+]
 
 /**
  * Drops the query string from admin API paths, so an admin's user search
- * text (`?q=`) never reaches the wide event (compliance pre-check C15).
+ * text (`?q=`) never reaches the wide event (compliance pre-check C15), and
+ * from the connector OAuth callback, whose query carries the authorization
+ * code and the state.
  */
 export function toLoggedPath(path: unknown): unknown {
   if (typeof path !== 'string' || !path.includes('?')) {
@@ -99,6 +114,19 @@ export default defineNitroPlugin((nitroApp) => {
   })
 
   nitroApp.hooks.hook('evlog:enrich', (context) => {
+    if (typeof context.request?.path === 'string') {
+      context.request.path = toLoggedPath(redactArtifactStorageKeyPath(
+        redactArtifactSharePath(context.request.path),
+      )) as string
+    }
+
+    redactArtifactShareTokens(context.event)
+    redactArtifactStorageKeys(context.event)
+
+    if (context.headers) {
+      Reflect.deleteProperty(context.headers, ARTIFACT_SHARE_HEADER)
+    }
+
     const requestId = context.request?.requestId
     const cfRay = context.headers?.['cf-ray']
     const method = context.request?.method

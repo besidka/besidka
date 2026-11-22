@@ -68,7 +68,7 @@ describe('buildCanonicalUrl', () => {
     'keeps the origin host when the path itself contains ? or # — '
     + 'both real call sites only ever pass route.path (never containing '
     + 'a query or hash) or a literal asset path, so this is a safety '
-    + 'net rather than a behaviour guarantee for that input shape',
+    + 'net rather than a behavior guarantee for that input shape',
     () => {
       const canonicalUrl = buildCanonicalUrl(
         ORIGIN,

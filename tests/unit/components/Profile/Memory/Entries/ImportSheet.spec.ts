@@ -147,7 +147,7 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
   })
 
   describe('layout', () => {
-    it('opens a labelled bottom-sheet dialog with fixed header and footer',
+    it('opens a labeled bottom-sheet dialog with fixed header and footer',
       async () => {
         const wrapper = await mountSheet()
         const dialog = wrapper.get('dialog')
@@ -183,14 +183,13 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
         .toContain('overflow-y-auto')
     })
 
-    it('uses rounded-box for the textarea and no pill radius', async () => {
+    it('uses a bordered textarea and no pill radius', async () => {
       const wrapper = await mountSheet()
       const textarea = byTestId(wrapper, 'memory-import-textarea')
 
       expect(textarea.classes()).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'resize-none',
         'overflow-y-auto',
         'min-h-48',
@@ -327,7 +326,7 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
       expect(has(wrapper, 'memory-import-summary')).toBe(true)
     })
 
-    it('summarises counts, dropped reasons, blocked kinds and the model',
+    it('summarizes counts, dropped reasons, blocked kinds and the model',
       async () => {
         mocks.fetch.mockResolvedValue(createResponse({
           created: 3,

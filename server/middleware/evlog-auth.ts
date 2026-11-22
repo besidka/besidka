@@ -2,50 +2,47 @@ import { createAuthMiddleware } from 'evlog/better-auth'
 import type { BetterAuthInstance } from 'evlog/better-auth'
 import type { AuthSession } from '~~/server/types/h3-context'
 import { defineEventHandler } from 'nuxt/server'
+import { retryOnEndedRequestPromise } from '~~/server/utils/auth-instance'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
-type Identify = ReturnType<typeof createAuthMiddleware>
+const SKIPPED_SESSION_PATHS = [
+  '/api/auth/**',
+  '/api/_evlog/**',
+  '/api/_nuxt_icon/**',
+  '/api/v1/stats*',
+  '/api/v1/consents*',
+  '/api/v1/internal/mail-alert',
+  '/mcp',
+  '/.well-known/**',
+  '/_nuxt/**',
+  '/health',
+]
 
-let identify: Identify | undefined
-
-function getIdentify(): Identify {
-  if (identify) {
-    return identify
-  }
-
-  identify = createAuthMiddleware(
-    useServerAuth() as unknown as BetterAuthInstance,
-    {
-      // Skip session resolution on auth flows and high-traffic public paths.
-      exclude: [
-        '/api/auth/**',
-        '/api/_evlog/**',
-        '/api/_nuxt_icon/**',
-        '/api/v1/stats*',
-        '/api/v1/consents*',
-        '/api/v1/internal/mail-alert',
-        '/mcp',
-        '/.well-known/**',
-        '/_nuxt/**',
-        '/health',
-      ],
-      maskEmail: true,
-      onIdentify: (_logger, session) => {
-        useEvent().context.authSession = session as AuthSession
-      },
-      onAnonymous: (logger) => {
-        logger.set({ anonymous: true })
-      },
+const sessionResolver = {
+  api: {
+    getSession: (context: { headers: Headers }) => {
+      return retryOnEndedRequestPromise(() => {
+        return useServerAuth().api.getSession(context)
+      }, () => dropServerAuth())
     },
-  )
+  },
+} as unknown as BetterAuthInstance
 
-  return identify
-}
+const identify = createAuthMiddleware(sessionResolver, {
+  exclude: SKIPPED_SESSION_PATHS,
+  maskEmail: true,
+  onIdentify: (_logger, session) => {
+    useEvent().context.authSession = session as AuthSession
+  },
+  onAnonymous: (logger) => {
+    logger.set({ anonymous: true })
+  },
+})
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
 
   const { pathname, search } = event.url
 
-  await getIdentify()(logger, event.req.headers, `${pathname}${search}`)
+  await identify(logger, event.req.headers, `${pathname}${search}`)
 })

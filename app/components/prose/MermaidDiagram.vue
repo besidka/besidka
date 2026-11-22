@@ -95,8 +95,8 @@ watch([() => props.code, isMounted], async ([code], _previous, onCleanup) => {
     return
   }
 
-  svg.value = result.svg
-  emit('rendered', { svg: result.svg, source: code })
+  svg.value = sanitizeDiagramSvg(result.svg)
+  emit('rendered', { svg: svg.value, source: code })
 })
 
 onMounted(() => {

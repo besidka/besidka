@@ -78,6 +78,7 @@ async function loadHandler(path: string): Promise<Handler> {
 describe('legal consent gate', () => {
   let testDb: MemoryExtractionTestDb
   let userId: number
+  let kv: ReturnType<typeof createFakeKnowledgeKv>
 
   beforeEach(async () => {
     vi.resetModules()
@@ -105,7 +106,7 @@ describe('legal consent gate', () => {
       throw Object.assign(new Error('Unauthorized'), { status: 401 })
     })
     vi.stubGlobal('useDb', () => testDb.db)
-    const kv = createFakeKnowledgeKv()
+    kv = createFakeKnowledgeKv()
 
     vi.stubGlobal('useKV', () => kv)
     vi.stubGlobal('useUserSession', vi.fn(async () => ({
@@ -179,6 +180,50 @@ describe('legal consent gate', () => {
         version: CURRENT_CONSENT_VERSION,
         sensitiveContentConsent: true,
       })).rejects.toMatchObject({ status: 400 })
+    })
+
+    it('refuses with 503 and records nothing when the approved version cannot be read',
+      async () => {
+        const readKv = kv.get.bind(kv)
+
+        vi.stubGlobal('useKV', () => ({
+          ...kv,
+          get: async (key: string, ...rest: unknown[]) => {
+            if (key === 'legal:consent-version:approved') {
+              throw new Error('kv down')
+            }
+
+            return await (readKv as (...args: unknown[]) => unknown)(
+              key,
+              ...rest,
+            )
+          },
+        }))
+        testDb.sqlite.exec('DROP TABLE legal_consent_version_approvals')
+
+        await expect(giveConsent()).rejects.toMatchObject({ status: 503 })
+
+        const settings = await testDb.db.query.userSettings.findFirst({
+          where: { userId },
+        })
+
+        expect(settings?.termsVersion ?? null).toBeNull()
+      })
+
+    it('checks and records the same effective version', async () => {
+      await kv.put('legal:consent-version:approved', '2026-10-a')
+
+      await expect(giveConsent(CURRENT_CONSENT_VERSION))
+        .rejects.toMatchObject({ status: 409 })
+
+      const state = await giveConsent('2026-10-a')
+
+      expect(state).toMatchObject({
+        status: 'current',
+        currentVersion: '2026-10-a',
+        termsVersion: '2026-10-a',
+        sensitiveContentConsentVersion: '2026-10-a',
+      })
     })
 
     it('refuses a consent given to an older text version', async () => {

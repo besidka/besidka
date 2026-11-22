@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тест: історія Києва</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6fb; margin: 0; padding: 16px; color: #1d2433; }
+  .card { max-width: 620px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .progress { font-size: 14px; color: #6b7280; margin-bottom: 16px; }
+  .bar { height: 6px; background: #e5e7eb; border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
+  .bar-fill { height: 100%; background: #2563eb; transition: width 0.3s; }
+  .question { font-size: 18px; font-weight: 600; margin-bottom: 16px; line-height: 1.4; }
+  .option { display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 10px; border: 2px solid #d1d5db; border-radius: 10px; background: #fff; font-size: 16px; cursor: pointer; color: inherit; }
+  .option:hover:not(:disabled) { border-color: #2563eb; background: #eff6ff; }
+  .option:disabled { cursor: default; }
+  .option.correct { border-color: #16a34a; background: #dcfce7; }
+  .option.wrong { border-color: #dc2626; background: #fee2e2; }
+  .feedback { margin: 14px 0; padding: 12px 14px; border-radius: 10px; font-size: 15px; line-height: 1.4; display: none; }
+  .feedback.ok { display: block; background: #dcfce7; color: #14532d; }
+  .feedback.bad { display: block; background: #fee2e2; color: #7f1d1d; }
+  .btn { margin-top: 8px; padding: 12px 20px; border: none; border-radius: 10px; background: #2563eb; color: #fff; font-size: 16px; cursor: pointer; display: none; }
+  .btn:hover { background: #1d4ed8; }
+  .result { text-align: center; }
+  .score { font-size: 48px; font-weight: 700; color: #2563eb; margin: 12px 0; }
+  .msg { font-size: 18px; margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Тест: історія Києва</h1>
+  <div class="progress" id="progress"></div>
+  <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+  <div id="quiz"></div>
+</div>
+
+<script>
+const questions = [
+  {
+    q: "Хто, за легендою, був засновником Києва?",
+    options: ["Кий", "Олег", "Ярослав Мудрий", "Святослав"],
+    answer: 0,
+    explain: "За легендою, Київ заснували брати Кий, Щек і Хорив та їхня сестра Либідь. Старшим був Кий."
+  },
+  {
+    q: "Який князь переніс столицю з Новгорода до Києва у 882 році?",
+    options: ["Рюрик", "Олег", "Ігор", "Володимир"],
+    answer: 1,
+    explain: "Олег захопив Київ у 882 році й зробив його центром Київської Русі."
+  },
+  {
+    q: "Яка видатна споруда була збудована Ярославом Мудрим у 1037–1044 роках?",
+    options: ["Десятинна церква", "Софійський собор", "Михайлівський Золотоверхий собор", "Успенський собор Лаври"],
+    answer: 1,
+    explain: "Софійський собор заклав Ярослав Мудрий. Його назва походить від грецького слова «софія», тобто «мудрість» і є пам'яткою ЮНЕСКО."
+  },
+  {
+    q: "У якому році Київ було розграбовано монголо-татарами?",
+    options: ["1204", "1240", "1362", "1654"],
+    answer: 1,
+    explain: "У грудні 1240 року військо хана Батия взяло й зруйнувало Київ, що значно послабило місто."
+  },
+  {
+    q: "Хто з князів ухвалив хрещення Русі у 988 році?",
+    options: ["Ярослав Мудрий", "Ольга", "Володимир Великий", "Святополк"],
+    answer: 2,
+    explain: "Князь Володимир Великий прийняв християнство у 988 році і охрестив Київ та Русь."
+  },
+  {
+    q: "У якому році було відкрито першу лінію київського метро?",
+    options: ["1954", "1960", "1970", "1975"],
+    answer: 1,
+    explain: "Першу чергу київського метро відкрили 6 листопада 1960 року."
+  }
+];
+
+let current = 0;
+let score = 0;
+const quizEl = document.getElementById("quiz");
+const progressEl = document.getElementById("progress");
+const barFill = document.getElementById("barFill");
+
+function render() {
+  const q = questions[current];
+  progressEl.textContent = "Питання " + (current + 1) + " з " + questions.length;
+  barFill.style.width = (current / questions.length * 100) + "%";
+
+  let html = '<div class="question">' + q.q + '</div>';
+  q.options.forEach((opt, i) => {
+    html += '<button class="option" data-i="' + i + '">' + opt + '</button>';
+  });
+  html += '<div class="feedback" id="fb"></div>';
+  html += '<button class="btn" id="next">' + (current === questions.length - 1 ? "Переглянути результат" : "Наступне питання") + '</button>';
+  quizEl.innerHTML = html;
+
+  document.querySelectorAll(".option").forEach(btn => {
+    btn.addEventListener("click", () => choose(parseInt(btn.dataset.i)));
+  });
+  document.getElementById("next").addEventListener("click", next);
+}
+
+function choose(i) {
+  const q = questions[current];
+  const buttons = document.querySelectorAll(".option");
+  buttons.forEach(b => b.disabled = true);
+  const fb = document.getElementById("fb");
+  buttons[q.answer].classList.add("correct");
+
+  if (i === q.answer) {
+    score++;
+    fb.className = "feedback ok";
+    fb.textContent = "✅ Правильно! " + q.explain;
+  } else {
+    buttons[i].classList.add("wrong");
+    fb.className = "feedback bad";
+    fb.textContent = "❌ Неправильно. Правильна відповідь: " + q.options[q.answer] + ". " + q.explain;
+  }
+  document.getElementById("next").style.display = "inline-block";
+}
+
+function next() {
+  current++;
+  if (current < questions.length) {
+    render();
+  } else {
+    showResult();
+  }
+}
+
+function showResult() {
+  barFill.style.width = "100%";
+  progressEl.textContent = "Тест завершено";
+  let msg;
+  if (score === questions.length) msg = "Чудово! Ви знаєте історію Києва бездоганно!";
+  else if (score >= 4) msg = "Дуже добре! Ви гарно знаєте історію столиці.";
+  else if (score >= 2) msg = "Непогано. Варто трохи більше дізнатися про минуле Києва.";
+  else msg = "Є над чим попрацювати. Спробуйте пройти тест ще раз!";
+
+  quizEl.innerHTML =
+    '<div class="result">' +
+    '<div>Ваш результат</div>' +
+    '<div class="score">' + score + ' / ' + questions.length + '</div>' +
+    '<div class="msg">' + msg + '</div>' +
+    '<button class="btn" id="restart" style="display:inline-block">Пройти ще раз</button>' +
+    '</div>';
+  document.getElementById("restart").addEventListener("click", () => {
+    current = 0; score = 0; render();
+  });
+}
+
+render();
+</script>
+</body>
+</html>

@@ -6,6 +6,13 @@ import type { ChatContextTestDb } from '../../../setup/helpers/chat-context-db'
 
 const mocks = vi.hoisted(() => ({
   rewriteShareFileParts: vi.fn(),
+  artifactsEnabled: true,
+}))
+
+vi.mock('~~/server/utils/features/global', () => ({
+  isFeatureGloballyEnabledForEvent: vi.fn(async () => {
+    return mocks.artifactsEnabled
+  }),
 }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -170,6 +177,7 @@ describe('GET /api/v1/shared/[slug]/context', () => {
   beforeEach(() => {
     vi.resetModules()
     mocks.rewriteShareFileParts.mockReset()
+    mocks.artifactsEnabled = true
     mockShareFileRewrite()
     testDb = createChatContextTestDb()
   })
@@ -417,5 +425,87 @@ describe('GET /api/v1/shared/[slug]/context', () => {
       'title',
     ])
     expect(JSON.stringify(response)).not.toContain(CHAT_SLUG)
+  })
+  describe('artifacts section', () => {
+    function artifactPart(artifactId: string, version: number, title: string) {
+      return {
+        type: 'data-artifact',
+        data: { artifactId, version, kind: 'svg', title },
+      }
+    }
+
+    function seedArtifactShare() {
+      testDb.insertChat({ id: 1, userId: 7, slug: CHAT_SLUG, title: 'Shared' })
+      testDb.insertShare({ id: 1, chatId: 1, slug: SHARE_SLUG })
+      testDb.insertMessage({
+        id: 1,
+        chatId: 1,
+        role: 'assistant',
+        parts: [
+          artifactPart('pub-5', 1, 'Logo'),
+          artifactPart('pub-6', 1, 'Branched foreign'),
+          artifactPart('pub-7', 1, 'Deleted'),
+        ],
+      })
+      testDb.insertMessage({
+        id: 2,
+        chatId: 1,
+        role: 'assistant',
+        parts: [artifactPart('pub-5', 2, 'Logo shared v2')],
+      })
+      testDb.insertArtifact({
+        id: 5,
+        userId: 7,
+        kind: 'svg',
+        title: 'Logo private v4 title',
+        currentVersion: 4,
+      })
+      testDb.insertArtifact({
+        id: 6,
+        userId: 99,
+        kind: 'svg',
+        title: 'Branched foreign',
+        currentVersion: 1,
+      })
+    }
+
+    it('lists only the shared versions of the owner\'s artifacts',
+      async () => {
+        seedArtifactShare()
+        stubServerGlobals(testDb)
+
+        const handler = await loadHandler()
+        const response = await handler(createEvent(SHARE_SLUG))
+
+        expect(response.outputs).toEqual([
+          {
+            id: 'artifact:pub-5',
+            sectionId: 'artifacts',
+            kind: 'artifact',
+            title: 'Logo shared v2',
+            messageId: 'message-1',
+            meta: {
+              artifactId: 'pub-5',
+              artifactKind: 'svg',
+              version: 2,
+              latestVersion: 2,
+            },
+          },
+        ])
+        expect(response.counts.outputs).toBe(1)
+        expect(JSON.stringify(response)).not.toContain('private v4')
+      })
+
+    it('omits artifacts when the global rule is disabled', async () => {
+      seedArtifactShare()
+      mocks.artifactsEnabled = false
+      stubServerGlobals(testDb)
+
+      const handler = await loadHandler()
+      const response = await handler(createEvent(SHARE_SLUG))
+
+      expect(response.outputs).toEqual([])
+      expect(response.kindCounts.artifact).toBeUndefined()
+    })
   })
 })

@@ -45,6 +45,7 @@
         <button
           v-if="showDelete"
           type="button"
+          data-testid="bulk-delete"
           class="btn btn-sm btn-error btn-outline max-sm:btn-block"
           :disabled="isDeleting"
           :title="isDeleting ? 'Deleting' : 'Delete'"

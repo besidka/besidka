@@ -318,6 +318,42 @@ package versions, not assumed from a prior investigation:
   be mislabeled. This has not been checked against the live catalog. See
   `docs/chat-reasoning.md`.
 
+## Claude through a gateway keeps a fixed tool list (C-15)
+
+Anthropic rejects a signed thinking block ("Invalid signature in thinking
+block", "tools list differs") when the tools of the request that replays it
+differ from the tools of the request that produced it. The on-demand tool
+index (`docs/connectors.md`, section 6.2) grows `activeTools` in the middle of
+a send, and two gateways replay the signed thinking: OpenRouter
+(`reasoning_details` with signatures) and the Vercel AI Gateway (forwarded
+`providerMetadata`). The direct Anthropic path drops the thinking block
+instead (`withAnthropicThinkingBinding`); the gateways cannot, so they keep the
+list fixed. Cloudflare has no reasoning and is not affected.
+
+For an `anthropic/...` model (or `~anthropic/...`) through OpenRouter or
+Vercel (`keepsFixedToolList`, `server/utils/ai/tool-index.ts`):
+
+- No `tool_index__load` or `use_connector` tool, no `<tool_index>` or
+  `<connector_catalog>` block, and no `withActivation`: every step offers the
+  same tools.
+- The up-front tools stay as they are. The deferred Besidka and connector
+  tools are offered up front too, in their existing order, while they fit in
+  the same caps (40 tools, 32 KiB of definitions; the room the index tools
+  would have used is spent on them). The rest are not offered, and their
+  approval, taint and definition-hash gating is unchanged for the tools that
+  are (`selectFixedToolListEntries`, logged as `toolIndex.fixedList`,
+  `fixedKept`, `fixedDropped`).
+- The list does not depend on the user's message, so an approval continuation
+  sees the same list as the step that paused. That is why the prefetch is not
+  used here.
+- Limitation: fewer tools are reachable on Claude through these gateways
+  than on other routes. Tools of Auto connectors (the catalog) are not
+  reachable at all, and Besidka's last tools (destructive ones sort last) may
+  be out of reach when many connector tools are up front. Use the direct
+  Anthropic route, or another model, for those.
+
+Other gateway models keep on-demand loading.
+
 ## Gateway prompt caching
 
 Direct providers are covered in
@@ -717,7 +753,7 @@ undeclared `open_file` with `{ "cursor": … }`. The SDK rejects the first as
 tool parts with `state: 'output-error'`, never a stream error, and the
 forced-step rejection is dropped by `withSearchAnswerGuarantee()`. Since
 `ai@7.0.153` the forced-step call (`toolChoice: 'none'`) is instead a single
-step `error` with a `ToolChoiceViolationError`, which is labelled and dropped
+step `error` with a `ToolChoiceViolationError`, which is labeled and dropped
 the same way (see "Multi-step tool loop" in `general.md`). Because
 `toUIMessageStream()` routes tool-part errors through the same `onError` as
 stream failures, both used to be persisted as an `unknown` 500 attributed to

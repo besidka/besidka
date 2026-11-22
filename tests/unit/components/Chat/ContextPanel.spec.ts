@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import {
   mockComponent,
   mockNuxtImport,
@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatContextItem } from '../../../../shared/types/chat-context.d'
 import ChatContextPanel from '../../../../app/components/Chat/ContextPanel.vue'
 import { useSidePanel } from '../../../../app/composables/side-panel'
+import { useArtifactPanel } from '../../../../app/composables/artifacts'
 
 enableAutoUnmount(afterEach)
 
@@ -30,6 +31,27 @@ const branchOwnedChat = vi.fn()
 const branchSharedChat = vi.fn()
 const setChatMemoryExcluded = vi.fn()
 const memoryOverride = ref<boolean | null>(null)
+const pinSavingSlug = ref<string | null>(null)
+const toggleChatPin = vi.fn()
+const artifactsActive = ref<boolean>(false)
+const isCopyingDebugInfo = ref<boolean>(false)
+const debugInfoCopied = ref<boolean>(false)
+const debugInfoFallback = ref<string>('')
+const copyDebugInfo = vi.fn()
+const clearFallbackReport = vi.fn()
+const isStandalone = ref<boolean>(false)
+const urlCopied = ref<boolean>(false)
+const copyUrl = vi.fn()
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: artifactsActive.value,
+      active: artifactsActive.value,
+      variant: null,
+    }
+  })
+})
 
 mockNuxtImport('useChatRoute', () => {
   return () => ({ routeSlug })
@@ -37,6 +59,19 @@ mockNuxtImport('useChatRoute', () => {
 
 mockNuxtImport('useChatContext', () => {
   return () => ({ data, error, refresh })
+})
+
+mockNuxtImport('useChatToolApprovalGrants', () => {
+  return () => ({
+    grants: computed(() => []),
+    hasChatGrants: computed(() => false),
+    isEnabled: computed(() => false),
+    busyKey: ref(''),
+    error: ref(null),
+    refresh: async () => {},
+    resetChatGrants: async () => {},
+    revokeAlwaysGrant: async () => {},
+  })
 })
 
 mockNuxtImport('useSidePanelLayout', () => {
@@ -52,6 +87,28 @@ mockNuxtImport('useChatShare', () => {
     isBranching,
     isModalOpen: isShareModalOpen,
   })
+})
+
+mockNuxtImport('useStandaloneDisplay', () => {
+  return () => ({ isStandalone })
+})
+
+mockNuxtImport('useCurrentUrlCopy', () => {
+  return () => ({ copied: urlCopied, copyUrl })
+})
+
+mockNuxtImport('useChatDebugInfo', () => {
+  return () => ({
+    isCopying: isCopyingDebugInfo,
+    copied: debugInfoCopied,
+    fallbackReport: debugInfoFallback,
+    copyDebugInfo,
+    clearFallbackReport,
+  })
+})
+
+mockNuxtImport('useChatPin', () => {
+  return () => ({ savingSlug: pinSavingSlug, toggleChatPin })
 })
 
 mockNuxtImport('useChatMemoryExclusion', () => {
@@ -102,8 +159,10 @@ function ownedData(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'owned',
     chat: {
+      id: 'chat-id-1',
       slug: CHAT_SLUG,
       title: 'Roadmap',
+      pinnedAt: null,
       project: null,
       memoryExcluded: false,
       share: { active: false },
@@ -159,12 +218,25 @@ describe('Chat/ContextPanel', () => {
     sharedBranchTarget.value = null
     memoryExclusionSavingSlug.value = null
     memoryOverride.value = null
+    pinSavingSlug.value = null
+    artifactsActive.value = false
     refresh.mockReset()
     openShareModal.mockReset()
     branchOwnedChat.mockReset()
     branchSharedChat.mockReset()
     setChatMemoryExcluded.mockReset()
     setChatMemoryExcluded.mockResolvedValue(true)
+    toggleChatPin.mockReset()
+    toggleChatPin.mockResolvedValue(true)
+    isCopyingDebugInfo.value = false
+    debugInfoCopied.value = false
+    debugInfoFallback.value = ''
+    copyDebugInfo.mockReset()
+    clearFallbackReport.mockReset()
+    isStandalone.value = false
+    urlCopied.value = false
+    copyUrl.mockReset()
+    copyDebugInfo.mockResolvedValue(true)
     clearNuxtState('chat-context-collapsed-sections')
     useSidePanel().close()
     document.body.innerHTML = ''
@@ -431,6 +503,151 @@ describe('Chat/ContextPanel', () => {
         .attributes('disabled')).toBeDefined()
     })
 
+    it('offers Pin for an unpinned chat and pins it on click', async () => {
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+      const pin = wrapper.get(testId('chat-context-pin'))
+
+      expect(pin.text()).toBe('Pin')
+      expect(pin.html()).toContain('lucide:pin')
+      expect(pin.html()).not.toContain('lucide:pin-off')
+
+      await pin.trigger('click')
+
+      expect(toggleChatPin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'chat-id-1',
+          slug: CHAT_SLUG,
+          pinnedAt: null,
+        }),
+      )
+    })
+
+    it('offers Unpin with the pin-off icon for a pinned chat', async () => {
+      data.value = ownedData({
+        chat: {
+          ...ownedData().chat,
+          pinnedAt: '2026-11-10T10:00:00.000Z',
+        },
+      })
+
+      const wrapper = await mountPanel()
+      const pin = wrapper.get(testId('chat-context-pin'))
+
+      expect(pin.text()).toBe('Unpin')
+      expect(pin.html()).toContain('lucide:pin-off')
+
+      await pin.trigger('click')
+
+      expect(toggleChatPin).toHaveBeenCalledWith(
+        expect.objectContaining({ pinnedAt: '2026-11-10T10:00:00.000Z' }),
+      )
+    })
+
+    it('disables Pin while the pin request is saving', async () => {
+      pinSavingSlug.value = CHAT_SLUG
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get(testId('chat-context-pin'))
+        .attributes('disabled')).toBeDefined()
+    })
+
+    it('copies the debug info of the owned chat on click', async () => {
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+      const button = wrapper.get(testId('chat-context-debug-info'))
+
+      expect(button.text()).toContain('Copy debug info')
+
+      await button.trigger('click')
+
+      expect(copyDebugInfo).toHaveBeenCalledWith(CHAT_SLUG)
+    })
+
+    it('confirms the copy and disables the action while copying',
+      async () => {
+        data.value = ownedData()
+        debugInfoCopied.value = true
+        isCopyingDebugInfo.value = true
+
+        const wrapper = await mountPanel()
+        const button = wrapper.get(testId('chat-context-debug-info'))
+
+        expect(button.text()).toContain('Copied')
+        expect(button.attributes('disabled')).toBeDefined()
+      })
+
+    it('shows the report to select when copying did not work', async () => {
+      data.value = ownedData()
+      debugInfoFallback.value = 'Besidka debug info'
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get(testId('chat-context-debug-info-fallback'))
+        .element.value).toBe('Besidka debug info')
+    })
+
+    it('offers Copy URL only in an installed PWA', async () => {
+      data.value = ownedData()
+
+      const browserTab = await mountPanel()
+
+      expect(browserTab.find(testId('chat-context-copy-url')).exists())
+        .toBe(false)
+
+      isStandalone.value = true
+
+      const installed = await mountPanel()
+
+      await installed.get(testId('chat-context-copy-url')).trigger('click')
+
+      expect(copyUrl).toHaveBeenCalled()
+    })
+
+    it('hides the fallback report on request', async () => {
+      data.value = ownedData()
+      debugInfoFallback.value = 'Besidka debug info'
+
+      const wrapper = await mountPanel()
+
+      await wrapper.get(testId('chat-context-debug-info-hide'))
+        .trigger('click')
+
+      expect(clearFallbackReport).toHaveBeenCalled()
+    })
+
+    it('clears the fallback report when the chat changes', async () => {
+      data.value = ownedData()
+
+      await mountPanel()
+      routeSlug.value = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
+      await nextTick()
+
+      expect(clearFallbackReport).toHaveBeenCalled()
+    })
+
+    it('hides the fallback when there is nothing to show', async () => {
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find(testId('chat-context-debug-info-fallback')).exists())
+        .toBe(false)
+    })
+
+    it('offers no debug info on a shared chat', async () => {
+      data.value = sharedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find(testId('chat-context-debug-info')).exists())
+        .toBe(false)
+    })
+
     it('offers to exclude an included chat from memory', async () => {
       data.value = ownedData()
 
@@ -527,6 +744,7 @@ describe('Chat/ContextPanel', () => {
       const wrapper = await mountPanel()
 
       expect(wrapper.find(testId('chat-context-share')).exists()).toBe(false)
+      expect(wrapper.find(testId('chat-context-pin')).exists()).toBe(false)
       expect(wrapper.find(testId('chat-context-memory-exclusion')).exists())
         .toBe(false)
       expect(wrapper.find(testId('chat-context-project')).exists())
@@ -1062,5 +1280,253 @@ describe('Chat/ContextPanel', () => {
       expect(used).toContain('Saved')
       expect(used).toContain('Searched chats')
     })
+  })
+
+  describe('artifacts', () => {
+    function artifactItem(meta: ChatContextItem['meta'] = {}) {
+      return item({
+        id: 'artifact:art_1',
+        sectionId: 'artifacts',
+        kind: 'artifact',
+        title: 'Landing page',
+        meta: {
+          artifactId: 'art_1',
+          artifactKind: 'html',
+          version: 2,
+          latestVersion: 3,
+          ...meta,
+        },
+      })
+    }
+
+    it('lists an artifact under Outputs with its kind and version',
+      async () => {
+        data.value = ownedData({
+          outputs: [artifactItem()],
+          counts: { outputs: 1, inputs: 0, used: 0 },
+        })
+
+        const wrapper = await mountPanel()
+        const row = wrapper.get(testId('chat-context-item-artifact'))
+
+        expect(row.text()).toContain('Landing page')
+        expect(row.text()).toContain('HTML · v2')
+      })
+
+    it('pushes the owner detail on top so Back returns to the context',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({ outputs: [artifactItem()] })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-artifact')).trigger('click')
+
+        expect(useSidePanel().stack.value.map(view => view.viewKey))
+          .toEqual(['chat-context', 'artifact:art_1'])
+        expect(useArtifactPanel().state.value).toMatchObject({
+          artifactId: 'art_1',
+          version: 3,
+          source: 'owner',
+        })
+
+        useSidePanel().back()
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+
+    it('links to the library from Outputs when artifacts are available',
+      async () => {
+        artifactsActive.value = true
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({ outputs: [artifactItem()] })
+
+        const wrapper = await mountPanel()
+        const link = wrapper.get(testId('chat-context-all-artifacts'))
+
+        expect(link.text()).toContain('All artifacts')
+        expect(link.attributes('to')).toBe('/chats/artifacts')
+        expect(link.classes()).toContain('min-h-11')
+        expect(link.element.parentElement?.classList.contains('border-t'))
+          .toBe(true)
+
+        await link.trigger('click')
+
+        expect(useSidePanel().isOpen.value).toBe(false)
+      })
+
+    it('hides the library link without the feature, without an artifact '
+      + 'output and on a shared chat', async () => {
+      data.value = ownedData({ outputs: [artifactItem()] })
+
+      const withoutFeature = await mountPanel()
+
+      expect(withoutFeature.find(testId('chat-context-all-artifacts')).exists())
+        .toBe(false)
+
+      artifactsActive.value = true
+      data.value = ownedData({ outputs: [item()] })
+
+      const withoutArtifact = await mountPanel()
+
+      expect(withoutArtifact.find(testId('chat-context-all-artifacts')).exists())
+        .toBe(false)
+
+      routeSlug.value = 'share-slug'
+      data.value = sharedData({ outputs: [artifactItem()] })
+
+      const shared = await mountPanel()
+
+      expect(shared.find(testId('chat-context-all-artifacts')).exists())
+        .toBe(false)
+    })
+
+    it('opens the referenced version on a shared chat', async () => {
+      routeSlug.value = 'share-slug'
+      data.value = sharedData({
+        outputs: [artifactItem({ latestVersion: 2 })],
+      })
+
+      const wrapper = await mountPanel()
+
+      await wrapper.get(testId('chat-context-item-artifact')).trigger('click')
+
+      expect(useArtifactPanel().state.value).toMatchObject({
+        artifactId: 'art_1',
+        version: 2,
+        source: 'shared',
+        shareSlug: 'share-slug',
+      })
+    })
+  })
+
+  describe('documents', () => {
+    function documentItem(meta: ChatContextItem['meta'] = {}) {
+      return item({
+        id: 'document:doc_1',
+        sectionId: 'documents',
+        kind: 'document',
+        title: 'Quarterly plan',
+        meta: { documentId: 'doc_1', documentFormat: 'docx', ...meta },
+      })
+    }
+
+    it('lists a document under Outputs with its format', async () => {
+      data.value = ownedData({ outputs: [documentItem()] })
+
+      const wrapper = await mountPanel()
+      const row = wrapper.get(testId('chat-context-item-document'))
+
+      expect(row.text()).toContain('Quarterly plan')
+      expect(row.text()).toContain('Document · DOCX')
+    })
+
+    it('pushes the preview on top so Back returns to the context',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({ outputs: [documentItem()] })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-document'))
+          .trigger('click')
+
+        const view = useSidePanel().currentView.value
+
+        expect(useSidePanel().stack.value.map(entry => entry.viewKey))
+          .toEqual(['chat-context', 'document:doc_1'])
+        expect(view?.title).toBe('Quarterly plan')
+        expect(view?.props).toEqual({
+          documentId: 'doc_1',
+          format: 'docx',
+          title: 'Quarterly plan',
+        })
+
+        useSidePanel().back()
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+
+    it('does not open the preview when the document id is missing',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({
+          outputs: [documentItem({ documentId: undefined })],
+        })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-document'))
+          .trigger('click')
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+  })
+
+  describe('Manage connectors link', () => {
+    function connectorItem(tool: string, connectorId?: string) {
+      return item({
+        id: `connector:linear:${tool}`,
+        sectionId: 'connectors',
+        kind: 'connector',
+        title: 'Linear',
+        meta: {
+          tool,
+          outcome: 'ok',
+          ...(connectorId ? { connectorId } : {}),
+        },
+      })
+    }
+
+    it('opens the one connector the chat used on the Connectors page',
+      async () => {
+        artifactsActive.value = true
+        data.value = ownedData({
+          used: [
+            connectorItem('search_issues', 'conn1'),
+            connectorItem('get_issue', 'conn1'),
+          ],
+          counts: { outputs: 0, inputs: 0, used: 2 },
+        })
+
+        const wrapper = await mountPanel()
+        const link = wrapper.get(testId('chat-context-manage-connectors'))
+
+        expect(link.attributes('to'))
+          .toBe('/chats/connectors?connector=conn1')
+      })
+
+    it('links the page itself when the chat used several connectors',
+      async () => {
+        artifactsActive.value = true
+        data.value = ownedData({
+          used: [
+            connectorItem('search_issues', 'conn1'),
+            connectorItem('search_pages', 'conn2'),
+          ],
+          counts: { outputs: 0, inputs: 0, used: 2 },
+        })
+
+        const wrapper = await mountPanel()
+
+        expect(wrapper.get(testId('chat-context-manage-connectors'))
+          .attributes('to')).toBe('/chats/connectors')
+      })
   })
 })

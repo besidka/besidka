@@ -22,10 +22,10 @@ export const userSettings = snakeCase.table(
     userId: integer({ mode: 'number' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    reasoningExpanded: integer({ mode: 'boolean' })
+    stepsExpanded: integer('reasoning_expanded', { mode: 'boolean' })
       .notNull()
       .default(false),
-    reasoningAutoHide: integer({ mode: 'boolean' })
+    stepsAutoHide: integer('reasoning_auto_hide', { mode: 'boolean' })
       .notNull()
       .default(true),
     defaultReasoningLevel: text().$type<ReasoningLevel>(),

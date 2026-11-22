@@ -44,10 +44,15 @@ vi.mock('~~/server/utils/mcp/private-access', async (importOriginal) => {
   }
 })
 
-vi.mock('~~/server/utils/settings/apply-user-settings', () => {
+vi.mock('~~/server/utils/settings/apply-user-settings', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/settings/apply-user-settings')
+  >()
+
   return {
     applyUserSettingsUpdate: mocks.applyUserSettingsUpdate,
     dedupeFavoriteGatewayModels: mocks.dedupeFavoriteGatewayModels,
+    toPublicSettingsFields: original.toPublicSettingsFields,
   }
 })
 

@@ -136,15 +136,20 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   `docs/legal-memory-sensitive-data.md`) is superseded.
 - **The predicate is `server/utils/legal/consent.ts`.** Status is `current` only
   when `sensitive_content_consent_version` **and** `terms_version` both equal
-  `CURRENT_CONSENT_VERSION`, `terms_accepted_at` and `age_confirmed_at` are set,
+  the effective consent version (`CURRENT_CONSENT_VERSION` capped at the
+  owner-approved one), `terms_accepted_at` and `age_confirmed_at` are set,
   and the consent was not withdrawn after it was given. One version string
   therefore gates the Terms acceptance, the age confirmation and the Art. 9
   consent together. `currentLegalConsentCondition()` is the same rule as SQL for
   the background memory passes.
-- **Bumping the version re-prompts everyone.** Change `CURRENT_CONSENT_VERSION`
-  when the consent text changes in a way that matters (a new purpose, a new kind
-  of recipient). Every user then has status `outdated` and must confirm the gate
-  again before the next send. `CURRENT_CONSENT_TEXT_SHA256`, next to the
+- **Bumping the version re-prompts everyone, once the owner approves it.**
+  Change `CURRENT_CONSENT_VERSION` (owner only) when the consent text changes
+  in a way that matters (a new purpose, a new kind of recipient). Nothing
+  happens until the owner approves the new version in `/admin/legal`; from
+  then every user has status `outdated` and must confirm the gate again before
+  the next send. The predicates compare with the effective version, the lower
+  of the code version and the approved one (see "Owner approval in the admin
+  area"). `CURRENT_CONSENT_TEXT_SHA256`, next to the
   version, is a hash of the two consent boxes' wording in
   `app/components/Legal/ConsentModal.client.vue` (the `data-consent-text`
   spans). `tests/unit/server/utils/legal/consent-text-version.spec.ts` fails
@@ -289,7 +294,7 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   **not** on `user_settings`, **not** in `CONSENT_DB`, and **not** a copy of the
   gate record above. Two things it is, and it must not be read as anything
   more:
-  - an **authorisation instruction** to Besidka to disclose the approved data
+  - an **authorization instruction** to Besidka to disclose the approved data
     to that client (the Art. 6(1)(b) basis, a judgment call: `docs/legal/dpia.md`
     section 6, item 13), and
   - the carrier of the **Art. 9(2)(a) explicit consent** for sensitive data in
@@ -335,6 +340,41 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   needs `chats:write` too). The Privacy Policy says this ("When a permission
   grows"). A future scope must keep the first rule: never extend a stored
   `oauth_consents` row without the user ticking the scope.
+- **Three artifact scopes, no consent version bump (2026-11-09, A-8).**
+  `artifacts:read`, `artifacts:write` and `artifacts:share` (MCP 3.0.0, 14
+  resource scopes) follow the same rule: new scope names, so no existing
+  approval reaches the artifact tools; the write and share scopes are unticked
+  by default; deleting artifacts stays behind `data:delete`. `artifacts:share`
+  is the only MCP path that publishes anything (public `/a/` links, at most 30
+  days, always `noindex`, storage and the bridge off, 10 a day,
+  deterministic personal-data warnings returned to the client). The Privacy
+  Policy already names the three scopes (A-9), so no legal text, hash or
+  notice changes here.
+- **Two connector scopes, no consent version bump (2026-11-15, C-9).**
+  `connectors:read` and `connectors:write` (MCP 4.0.0, 16 resource scopes)
+  are new scope names, so no existing approval reaches the connector tools;
+  `connectors:write` is unticked by default. The tools can add a connector
+  switched off, turn tools off or back to ask, and delete connectors, never
+  switch one on, sign in, take a key or allow a tool without asking. The
+  Privacy Policy lists both permissions under "What a connected app can
+  reach"; the revision hash in `legal-document-revisions.ts` moved with an
+  extended note and the classification and notice id stayed as they were.
+  Whether the pending notice should mention connectors is the owner's
+  decision, together with the C-10 wording on connectors as recipients.
+- **Two skills scopes, no consent version bump (2026-11-15, S-6).**
+  `skills:read` and `skills:write` (MCP 5.0.0, 18 resource scopes) are new
+  scope names, so no existing approval reaches the skill tools;
+  `skills:write` is unticked by default. The tools list and read the user's
+  own skills, add, change and rename them (always saved switched off with
+  status `needs-review`, through the same validation, license classifier and
+  content scanner as an import), and `delete_skills` sits under `skills:write`
+  (like `delete_connectors`) with its own hourly cap. They never switch a
+  skill on, set it to Auto, give it a command, share it or import it from a
+  link. The Privacy Policy lists both permissions and names the skills
+  exception to "Delete your data"; the revision hash in
+  `legal-document-revisions.ts` moved with an extended note, and the
+  classification and notice id stayed as they were. Whether the pending
+  notice should mention skills is the owner's decision.
 - **Gate integration for connected clients (required, built).** The MCP
   server must treat a user whose gate status is not `current` like the in-app
   routes do: read nothing and change nothing for a connected client until the
@@ -371,8 +411,15 @@ users when it is material. Three signals exist, and they are independent:
 | Signal | Source of truth | Means | Effect |
 | --- | --- | --- | --- |
 | Last updated date | git commit date of the page (and of the registries it renders), `config/legal-updated-at.ts` | Cosmetic: something was committed | Date shown on the page, nothing else |
-| `CURRENT_CONSENT_VERSION` | `server/utils/legal/consent.ts` | The consent text changed in a way that needs a fresh agreement | Everyone re-confirms the consent gate (see "Consent records"), unchanged by this feature |
-| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | Email to every verified account that exists when the notice is published, an in-app banner and an entry in the public change history |
+| `CURRENT_CONSENT_VERSION` | `server/utils/legal/consent.ts`, capped by the owner's approval in `/admin/legal` | The consent text changed in a way that needs a fresh agreement | Nothing until the owner approves that version in the admin area; then everyone re-confirms the consent gate (see "Consent records") |
+| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | An in-app banner and an entry in the public change history. An email only after the owner approves the notice in `/admin/legal` **and** `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on; both are off in production (see "Owner approval in the admin area") |
+
+**Announcing a legal change is the owner's decision, made in the admin
+area.** An agent never adds, schedules or changes a `LEGAL_NOTICES` entry or
+raises `CURRENT_CONSENT_VERSION` without the owner's approval in chat for that
+exact change (`CLAUDE.md`, "Legal notices and consent versions: owner only"),
+and even a merged entry or bump does nothing to users until the owner
+approves it in `/admin/legal`.
 
 **Who decides materiality: the author of the change, forced by CI.**
 `shared/utils/legal-document-revisions.ts` records, per document, the hash of
@@ -386,7 +433,7 @@ list that document. The failure message prints the new hash.
 
 **The hash covers only the markdown body.** The frontmatter (`title`,
 `description`, `summary`, `updatedAt`) is excluded and line endings are
-normalised, so a date change and the git-derived date never trigger the gate.
+normalized, so a date change and the git-derived date never trigger the gate.
 The lists generated from registries (`::account-email-list`,
 `::legal-change-history`) are directives in the body, so growing
 `shared/utils/account-emails.ts` or `LEGAL_NOTICES` never moves a hash and a new
@@ -406,7 +453,7 @@ Material, so a `LEGAL_NOTICES` entry is required:
 - a change in which rights users have, or how to exercise them;
 - a change of controller or contact;
 - in the Terms: new obligations or restrictions on users, fees or
-  monetisation, changes to liability, grounds for termination or suspension,
+  monetization, changes to liability, grounds for termination or suspension,
   or dispute rules.
 
 Minor, so record the new hash as `minor` with a note:
@@ -422,12 +469,114 @@ Minor, so record the new hash as `minor` with a note:
 When unsure, treat it as material: an unneeded notice costs one email, a missed
 one costs trust and may breach the duty below.
 
+### Owner approval in the admin area
+
+Built in BES-396 after the incident of 2026-11-15: three Privacy Policy
+notices that agents had scheduled in code emailed every user three times in
+one morning, and users asked to unsubscribe. Production then set
+`NUXT_LEGAL_NOTICE_SWEEP_ENABLED=false` (#906, #909), every user got a
+`skipped` delivery row for those three notices (`E_OWNER_STOPPED`, and
+`E_RECIPIENT_UNSUBSCRIBED` for the user who asked), and the owner decided
+that **legal notice emails stay off until there are many more users**, and
+that only the owner approves a notice email or a consent version, in the
+admin area.
+
+**Notice emails need two switches.** The sweep emails a notice only when
+both hold:
+
+1. `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on in the Worker (off in production,
+   and the sweep never runs in development). It is read strictly: only the
+   boolean `true` or the string `'true'` turn it on, and anything else,
+   including the string `'false'`, leaves emails off; and
+2. the notice has an active approval in `legal_notice_approvals`, made in
+   `/admin/legal` (**Legal** tab), whose stored hash still matches the
+   notice in code. The hash covers the id, documents, the three dates, the
+   short-notice reason, `alreadyAvailable` and the summary, so editing an
+   approved notice in code stops its emails (the page shows "Changed after
+   approval") until the owner approves it again.
+
+The dates still apply on top: an approved notice is emailed only from
+`sendFrom` until `effectiveAt`, and a notice already in effect cannot be
+approved.
+
+**An approval covers the number the owner confirmed, no more.** Once the
+deliveries sent or in flight since the approval reach its
+`recipientEstimate`, the notice stops (logged as `exhaustedNoticeIds`), so a
+user who signs up earlier, verifies later or is retried never gets an email
+without a new approval. The page shows "Approved for N, sent M".
+
+**Every send is re-checked.** After a recipient is claimed and before the
+email goes out, the sweep checks in one round trip that the approval is
+still the active one, that the user has not opted out and that the confirmed
+number is not exceeded. A withdrawal stops the next send of that notice, and
+an opt-out skips that user, even in the middle of a tick. A withheld claim
+is removed, or a retried one goes back to `failed` with its attempt
+refunded (`E_APPROVAL_WITHDRAWN`, `E_APPROVAL_EXHAUSTED`,
+`E_RECIPIENT_OPTED_OUT`, counted as `withheldCount`). The sweep
+logs `unapprovedNoticeIds` and `changedNoticeIds` and stops with
+`no-approved-notice` when nothing in its window is approved; if the approvals
+cannot be read it stops with `error` and sends nothing.
+
+**The confirmation states the number of recipients.** The page shows, for
+each notice, the sent, skipped and failed counts and how many users the sweep
+would email right now (`countLegalNoticeRecipients`, the same rule the sweep
+selects with: verified, created before `publishedAt`, no `sent` or `skipped`
+row, not opted out). For the three incident notices that number is 0, because
+every user already has a `skipped` row. The approve request carries the
+number the owner confirmed, and the server refuses it with 409 when the count
+changed in between.
+
+**Consent versions.** The version users are asked for and recorded under is
+the lower of `CURRENT_CONSENT_VERSION` and the newest version in
+`legal_consent_version_approvals` (`getEffectiveConsentVersion()` in
+`server/utils/legal/consent.ts`). With no row it is the baseline
+`2026-11-a` (`BASELINE_APPROVED_CONSENT_VERSION` in
+`server/utils/legal/consent-version.ts`): `CURRENT_CONSENT_VERSION` was set to
+that value in #531 and never changed, so every stored consent carries it, and
+introducing the gate changed nobody's status. The migration seeds nothing.
+Only the version currently in code can be approved, and only when it is newer
+than the approved one. The approved version is cached in KV
+(`legal:consent-version:approved`, 1 hour) and per isolate (1 minute); a
+failed read keeps the last known value, so a storage outage never lets a
+code bump take effect. When an isolate has never read it and both KV and D1
+fail, Besidka does not guess: recording a consent answers 503, a stored
+consent between the baseline and the code version still counts as current
+(nobody is asked again because of the outage), and the memory extraction and
+backfill sweeps skip the tick. The consent route reads the effective version
+once and uses that value for both the 409 check and the record. Known limit: a bump in code still ships
+the new consent wording to first-time users at once, recorded under the old
+approved version until the owner approves the new one.
+
+**Opt-outs.** `legal_notice_email_optouts` holds accounts that never get a
+legal notice email; they still see the in-app banner. The owner adds or
+removes one in `/admin/legal` (search by email or name). There is no
+self-service switch. The published Privacy Policy still says the only way to
+stop these emails is to delete the account; an opt-out the owner records on
+request is more than the policy promises, but align the wording when the
+policy is next revised.
+
+**Audit and access.** Every approval, withdrawal, consent version approval
+and opt-out change writes a `feature_audit_log` row (actions
+`legal-notice.approve`, `legal-notice.withdraw`,
+`legal-consent-version.approve`, `legal-notice-opt-out.add`,
+`legal-notice-opt-out.remove`; user ids only in the target column) and an
+Axiom line under `attributes.legalAdmin`. The routes under
+`/api/v1/admin/legal/` are admin-only (`requireAdmin`, which requires a
+verified email and 2FA), writes are same-origin only, and the writers refuse
+any actor other than the admin UI, so MCP cannot reach them
+(`docs/mcp-server.md`, "What MCP does not do"). The tables have no foreign
+key to `users`: `purgeUserData` deletes the user's opt-out and nulls their id
+as an approver. A D1 restore can revive a withdrawn approval; see
+`docs/d1-restore-reconciliation.md`, runbook step 2c.
+
 ### How the email is delivered
 
 The email half is sent by the `legal-notice-sweep` cron job
 (`server/utils/legal/notice-sweep.ts`, `server/plugins/legal-notice-sweep.ts`),
-which is off by default and on only in the production Worker. It mails every
-verified account created before `publishedAt`, from `sendFrom` until
+which is off by default and sends only notices the owner approved (see
+above). It mails every
+verified account without an opt-out created before `publishedAt`, from
+`sendFrom` until
 `effectiveAt`, 25 a tick and 300 a day at most, renders the email once per
 notice per tick, and records each delivery in
 `legal_notice_deliveries` (one row per user and notice; kept until the account
@@ -484,9 +633,11 @@ rules. Two consequences for whoever publishes a notice:
   telling the user before a new purpose. Art. 6(1)(f) for the rest, with the
   right to object (Art. 21). The Privacy Policy legal-basis row and
   `docs/legal/art30-record.md` row 20 carry the same wording.
-- **No unsubscribe.** The email is a legal notice about the service, not
+- **No unsubscribe link.** The email is a legal notice about the service, not
   marketing, like the security notices. The policies say so. Do not add a
-  marketing-style opt-out, and keep the email free of promotion.
+  marketing-style unsubscribe link, and keep the email free of promotion. The
+  owner can still record an opt-out for a user who asks (see "Owner approval
+  in the admin area").
 
 ### In-app banner dismissal
 
@@ -517,7 +668,7 @@ retention (until the account is deleted).
   every notice in its send window oldest first, and both stay in the change
   history. The dismissal race above stays harmless because the two ids are
   dismissed through separate banners, never together. A component test pins
-  the newest-wins behaviour with the real registry.
+  the newest-wins behavior with the real registry.
 - **Three active notices (decided 2026-11-08).** `2026-12-artifacts`
   (Privacy Policy and Terms) is published at 2026-11-15T07:00Z, one hour after
   `2026-11-experimental-features`, so that both take effect on 2026-12-19, the
@@ -533,6 +684,16 @@ retention (until the account is deleted).
   move earlier (the registry is ordered by `publishedAt`), so move
   `effectiveAt` later instead and hold any `artifacts.*` rollout by hand until
   then.
+- **Four active notices (decided 2026-11-11).** `2026-12-code-and-documents`
+  (Privacy Policy and Terms) is published at 2026-11-15T08:00Z, after
+  `2026-12-artifacts`, and takes effect on 2026-12-19 as well. It adds a third
+  email to every verified account and shares the 300-a-day cap from
+  2026-11-15: the last notice must land by about 2026-11-19, which leaves about
+  3.6 sending days, so the limit is about 360 verified accounts across three
+  notices. Check the verified account count before 2026-11-15; if it is higher,
+  move `effectiveAt` later (`sendFrom` cannot move earlier) and keep the
+  `documents*` and `code-execution*` flags at `internal` until then. The
+  banner shows only the newest notice, and every email still goes out.
 
 Nothing is written to browser storage for it. The older key
 `legal-notice:dismissed:<user id>:<notice id>` is deleted on load by the
@@ -548,7 +709,10 @@ Users who dismissed the banner before this change see it once more.
 3. Decide with the checklist above. Minor: set the document's `hash` to the new
    value, `classification: 'minor'`, drop any `noticeId` and write a one-line
    `note`. Stop here.
-4. Material: add an entry at the end of `LEGAL_NOTICES` in
+4. Material: **stop and tell the owner.** Only the owner adds a notice, and
+   only the owner approves its email in `/admin/legal`. With the owner's
+   approval in chat for that exact notice, add an entry at the end of
+   `LEGAL_NOTICES` in
    `shared/utils/legal-notices.ts` with a unique `id` (`YYYY-MM-name`),
    `documents`, `publishedAt` (when the in-app notice appears; it must be at
    or after the deploy that ships the new text, because anyone who signs up
@@ -566,8 +730,13 @@ Users who dismissed the banner before this change see it once more.
    (`publishedAt`) before `effectiveAt - 30 days`. Write the page so it is
    accurate from the day it ships and say in the notice when each change
    applies if that is later.
-6. Raise `CURRENT_CONSENT_VERSION` separately, and only if the consent text
-   itself changed (see "Consent records").
+6. The entry alone emails nobody. The owner approves the email in
+   `/admin/legal` after reading the stated number of recipients, and the
+   sweep switch must be on as well.
+7. Raise `CURRENT_CONSENT_VERSION` separately, only if the consent text
+   itself changed (see "Consent records"), and only with the owner's
+   approval. The bump takes effect when the owner approves the version in
+   `/admin/legal`.
 
 ## How legal text reaches production
 
@@ -676,8 +845,8 @@ defensible while the service generates no revenue at all:
   address satisfies both. Art. 12(2) preserves existing ECD duties, it does not
   import an address duty onto someone outside their scope.
 
-Consequences of monetising in any form (ads, sponsorship, donations, a paid
-tier, data monetisation):
+Consequences of monetizing in any form (ads, sponsorship, donations, a paid
+tier, data monetization):
 1. The activity becomes `zarobkowa`, so UŚUDE Art. 5(2) attaches and a postal
    address MUST be published.
 2. The operator may become a `przedsiębiorca` (KC Art. 43-1), which creates a
@@ -688,13 +857,13 @@ tier, data monetisation):
    implementing act's fines can reach the operator (see "2026-10-28 compliance
    review: decisions").
 
-So: before adding any monetisation, revisit this file, the Privacy Policy and
+So: before adding any monetization, revisit this file, the Privacy Policy and
 the Cookie Policy.
 
-The ordered checklist for monetising (business form, virtual office address,
+The ordered checklist for monetizing (business form, virtual office address,
 tax, VAT and merchant of record, consumer and subscription law, DMCA agent,
 legal text, consent bump, and the repo files to change) is
-`docs/legal/monetisation-readiness.md`. Owner decision 2026-10-28: nothing of
+`docs/legal/monetization-readiness.md`. Owner decision 2026-10-28: nothing of
 the kind is published for now.
 
 ## Status of the underlying research
@@ -770,7 +939,7 @@ re-prompted.
   transactional or relationship messages, never marketing. The notices are
   listed with a legitimate-interests basis (Art. 6(1)(f)). A new email kind
   means editing that section, the legal-basis row and Art. 30 row 20.
-- **DSA: stop self-labelling as an "online platform".** The Terms said "I host
+- **DSA: stop self-labeling as an "online platform".** The Terms said "I host
   user content and treat myself as an online platform". It now says Besidka
   hosts content users choose to publish and voluntarily follows the DSA
   notice-and-action rules (Arts. 11, 12, 14, 16, 17, 18), with the existing
@@ -795,14 +964,14 @@ re-prompted.
     law yet.
   - *Even if the DSA applies.* A natural person is at most a micro enterprise,
     exempt from Arts. 15 and 19 to 28 except Art. 24(3).
-  - Monetisation breaks all of this at once: the "no revenue" premise carries
+  - Monetization breaks all of this at once: the "no revenue" premise carries
     the postal-address conclusion, the DSA fining conclusion and the
     non-`przedsiębiorca` position. Revisit this file before adding any.
 - **DMCA / copyright.** The Terms have a "Copyright complaints" section (after
   illegal-content reporting): notice elements from 17 U.S.C. §512(c)(3)(A),
   removal and notice to the user, and a way to say a removal was a mistake
   (reply to the statement of reasons or write to the contact address). The
-  §512(g)(3) counter-notice procedure is not offered and no US safe harbour is
+  §512(g)(3) counter-notice procedure is not offered and no US safe harbor is
   claimed; the user's name and contact details go to the complainant only with
   the user's consent. The Terms also have a repeat-infringement rule (material
   repeatedly removed on copyright notices: sharing restricted, account
@@ -810,8 +979,8 @@ re-prompted.
   warning. The Privacy Policy has a "Reports and notices about content"
   section, a legal-basis row (Art. 6(1)(c)/(f)) and a retention row: 12 months,
   24 months for the note on a copyright removal (compliance review, follow-ups).
-  - **Decided 2026-10-28 (owner): no DMCA designated agent, no US safe harbour
-    claimed; revisit only if a JDG is opened.** The §512(c)(2) safe harbour
+  - **Decided 2026-10-28 (owner): no DMCA designated agent, no US safe harbor
+    claimed; revisit only if a JDG is opened.** The §512(c)(2) safe harbor
     needs a registered designated agent.
     Registration is at dmca.copyright.gov through Login.gov, $6 per designation,
     renewed every 3 years. Under 37 CFR 201.38(b)(1)(i) the **service
@@ -824,13 +993,13 @@ re-prompted.
     Terms stays as published, written to be complete without agent details;
     nothing in the text names an agent or a registration. DSA Art. 6
     notice-and-takedown is the primary shield. Register when a business
-    address exists (`docs/legal/monetisation-readiness.md` section 4.7), then
+    address exists (`docs/legal/monetization-readiness.md` section 4.7), then
     add the agent to the Terms.
-- **Owner decision 2026-10-28: no monetisation, donations or earning
-  intentions are published.** Same reason as the DMCA decision: monetising
+- **Owner decision 2026-10-28: no monetization, donations or earning
+  intentions are published.** Same reason as the DMCA decision: monetizing
   would require a published address (UŚUDE Art. 5) and a business form, and
   the owner cannot open a JDG at present. What would have to happen first is
-  in `docs/legal/monetisation-readiness.md`.
+  in `docs/legal/monetization-readiness.md`.
 - **Owner decision 2026-10-28: existing shared chats keep their saved
   settings.** There is no bulk change to their indexing or other flags; the
   new OFF defaults apply to new shares only. Most existing shares were made

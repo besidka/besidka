@@ -42,7 +42,7 @@ interface SheetOptions {
   plan?: KnowledgePlanSummary | null
   syncSummary?: KnowledgeSyncSummary | null
   syncResult?: KnowledgeSyncResult | null
-  wasCancelled?: boolean
+  wasCanceled?: boolean
   entries?: KnowledgeUploadEntry[]
   progress?: {
     done: number
@@ -68,7 +68,7 @@ async function mountSheet(options: SheetOptions = {}) {
       plan: options.plan === undefined ? plan : options.plan,
       syncSummary: options.syncSummary ?? null,
       syncResult: options.syncResult ?? null,
-      wasCancelled: options.wasCancelled ?? false,
+      wasCanceled: options.wasCanceled ?? false,
       entries: options.entries ?? [],
       progress: options.progress ?? {
         done: 0,
@@ -402,15 +402,15 @@ describe('Projects/Knowledge/UploadSheet', () => {
       expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
     })
 
-    it('says so when the upload was cancelled', async () => {
+    it('says so when the upload was canceled', async () => {
       const wrapper = await mountSheet({
         phase: 'done',
-        wasCancelled: true,
+        wasCanceled: true,
         entries: [entry('a', 'ready')],
       })
 
-      expect(byTestId(wrapper, 'knowledge-upload-cancelled').text())
-        .toContain('cancelled')
+      expect(byTestId(wrapper, 'knowledge-upload-canceled').text())
+        .toContain('canceled')
     })
 
     it('shows the folder sync result', async () => {
@@ -431,7 +431,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
         .toBe('1 new, 0 to check, 0 missing, 5 unchanged.')
     })
 
-    it('summarises the real sync result with its notices', async () => {
+    it('summarizes the real sync result with its notices', async () => {
       const wrapper = await mountSheet({
         phase: 'done',
         syncSummary: {

@@ -17,9 +17,17 @@ import {
 } from '../src/vendor.ts'
 import { SHELL_HEAD } from '../src/shell.ts'
 import { createHeadersFile } from './headers.mjs'
+import {
+  INTEGRITY_FILE_NAME,
+  compareDesignIntegrity,
+  computeDesignIntegrity,
+  readDesignIntegrity,
+  writeDesignIntegrity,
+} from './integrity.mjs'
 import { collectLicenses, renderNotices } from './licenses.mjs'
 
 const isDevelopment = process.argv.includes('--dev')
+const shouldUpdateIntegrity = process.argv.includes('--update-integrity')
 const workerDirectory = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const distDirectory = path.join(workerDirectory, 'dist')
 const versionDirectory = path.join(distDirectory, 'v1')
@@ -94,37 +102,6 @@ function sharedReactPlugin(ownSpecifier) {
   }
 }
 
-/**
- * Mermaid lazy-loads the ELK layout engine (elkjs, EPL-2.0 or GPL-3.0).
- * The runtime ships only permissively licensed code, so that import resolves
- * to a stub that fails with a clear message; diagrams keep the default
- * layout.
- */
-function excludeElkLayoutPlugin() {
-  return {
-    name: 'besidka-exclude-elk',
-    setup(pluginBuild) {
-      pluginBuild.onResolve({ filter: /^elkjs(\/|$)/ }, (args) => {
-        return { path: args.path, namespace: 'besidka-excluded' }
-      })
-
-      pluginBuild.onLoad({ filter: /.*/, namespace: 'besidka-excluded' }, () => {
-        return {
-          contents: [
-            'export default class UnavailableLayout {',
-            '  constructor() {',
-            '    throw new Error(\'The ELK diagram layout is not available in Besidka artifacts. Remove the elk layout option to use the default layout.\')',
-            '  }',
-            '}',
-            '',
-          ].join('\n'),
-          loader: 'js',
-        }
-      })
-    },
-  }
-}
-
 function createVendorEntrySource(vendorModule) {
   const specifier = JSON.stringify(vendorModule.specifier)
 
@@ -178,10 +155,12 @@ async function buildRuntime() {
     outdir: assetsDirectory,
     entryNames: '[name]-[hash]',
     chunkNames: 'chunks/[name]-[hash]',
+    assetNames: 'fonts/[name]-[hash]',
+    publicPath: ASSETS_BASE_PATH,
+    loader: { '.css': 'text', '.woff2': 'file' },
     splitting: true,
     absWorkingDir: workerDirectory,
     external: [...SHARED_REACT_SPECIFIERS],
-    plugins: [excludeElkLayoutPlugin()],
   })
   const entryOutput = Object.entries(result.metafile.outputs).find(
     ([, output]) => {
@@ -208,6 +187,39 @@ function createIndexHtml(importMap, runtimeFile) {
     '</html>',
     '',
   ].join('\n')
+}
+
+/**
+ * Fails the build when the bundled Tailwind, daisyUI or Nunito bytes differ
+ * from the digests recorded in design-system.integrity.json, so a version
+ * bump of the vendored design system is reviewed (theme, sizes, evals)
+ * before it ships. `--update-integrity` records the new digests.
+ */
+function checkDesignIntegrity(metafile) {
+  const actual = computeDesignIntegrity(metafile, workerDirectory)
+
+  if (shouldUpdateIntegrity) {
+    writeDesignIntegrity(workerDirectory, actual)
+    console.log(`Recorded design-system digests in ${INTEGRITY_FILE_NAME}`)
+
+    return
+  }
+
+  const problems = compareDesignIntegrity(
+    actual,
+    readDesignIntegrity(workerDirectory),
+  )
+
+  if (problems.length === 0) {
+    return
+  }
+
+  for (const problem of problems) {
+    console.error(`Design system integrity: ${problem}`)
+  }
+
+  console.error('Review the change (docs/artifacts-runtime.md "Design system"), then run: pnpm --filter artifacts-runtime build --update-integrity')
+  process.exit(1)
 }
 
 async function listFiles(directory) {
@@ -284,18 +296,20 @@ async function main() {
 
   if (disallowed.length > 0) {
     for (const entry of disallowed) {
-      console.error(`Licence not allowed: ${entry.name}@${entry.version} (${entry.declaredLicense})`)
+      console.error(`License not allowed: ${entry.name}@${entry.version} (${entry.declaredLicense})`)
     }
 
     process.exit(1)
   }
+
+  checkDesignIntegrity(runtimeResult.metafile)
 
   const withoutLicenseText = entries.filter((entry) => {
     return !entry.licenseText
   })
 
   for (const entry of withoutLicenseText) {
-    console.warn(`No licence file shipped: ${entry.name}@${entry.version} (${entry.chosenLicense}); the notice names the licence only`)
+    console.warn(`No license file shipped: ${entry.name}@${entry.version} (${entry.chosenLicense}); the notice names the license only`)
   }
 
   await writeFile(
@@ -314,7 +328,7 @@ async function main() {
   const noticesSize = (await stat(path.join(versionDirectory, 'THIRD_PARTY_NOTICES.txt'))).size
 
   console.log(`Built artifacts runtime (${isDevelopment ? 'development' : 'production'} headers)`)
-  console.log(`Third-party packages: ${entries.length}, notices ${(noticesSize / 1024).toFixed(1)} KiB, licences: ${[...new Set(entries.map((entry) => {
+  console.log(`Third-party packages: ${entries.length}, notices ${(noticesSize / 1024).toFixed(1)} KiB, licenses: ${[...new Set(entries.map((entry) => {
     return entry.chosenLicense
   }))].sort().join(', ')}`)
 

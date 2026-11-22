@@ -1,11 +1,16 @@
+import { withDerivedKeys } from '#shared/utils/office-files'
 import { and, eq, inArray, like, or } from 'drizzle-orm'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
+import { isConnectorImageDataPart } from '#shared/utils/connector-image-parts'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import * as schema from '~~/server/db/schema'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { findKnowledgeLinkedFileIds } from '~~/server/utils/knowledge/linked-files'
+import { cleanupDocumentsForDeletedFiles } from '~~/server/utils/documents/cleanup'
+import { deleteConnectorImageFiles } from '~~/server/utils/files/connector-images'
+import type { ConnectorImageFile } from '~~/server/utils/files/connector-images'
 
 const MAX_BATCH_QUERY_PARAMS = 90
 
@@ -105,13 +110,33 @@ export async function findMessageOriginFiles(
     ))
 }
 
+function referencedFileUrlOf(part: unknown): string | null {
+  if (isConnectorImageDataPart(part)) {
+    return part.data.url
+  }
+
+  if (
+    typeof part !== 'object'
+    || part === null
+    || (part as { type?: unknown }).type !== 'file'
+  ) {
+    return null
+  }
+
+  const { url } = part as { url?: unknown }
+
+  return typeof url === 'string' && !url.startsWith('data:') ? url : null
+}
+
 /**
  * A file's `originMessageId` only records where it was first uploaded or
  * generated — branching a chat copies message parts (including file URLs)
  * into a new chat, and the "attach existing file" flow lets a user reuse the
  * same file across unrelated chats, both without ever touching that column.
  * So a file whose origin message is being deleted may still be referenced by
- * a `file` part in some other surviving message. This must run after the
+ * a `file` part in some other surviving message, or by a
+ * `data-connector-image` part of a later step that reused the same saved
+ * connector image. This must run after the
  * origin row(s) being deleted are already gone, so the origin chat's own
  * self-references don't shadow the check.
  */
@@ -136,11 +161,13 @@ async function findStorageKeysStillReferenced(
 
     for (const message of matchingMessages) {
       for (const part of message.parts) {
-        if (part.type !== 'file' || part.url.startsWith('data:')) {
+        const url = referencedFileUrlOf(part)
+
+        if (!url) {
           continue
         }
 
-        const storageKey = extractLocalFileStorageKey(part.url)
+        const storageKey = extractLocalFileStorageKey(url)
 
         if (storageKey) {
           stillReferencedStorageKeys.add(storageKey)
@@ -194,7 +221,7 @@ export async function cleanupFilesOrphanedByChatDeletion(
     const storageKeys = chunk.map(file => file.storageKey)
 
     try {
-      await storage.delete(storageKeys)
+      await storage.delete(withDerivedKeys(storageKeys))
     } catch (exception) {
       failedCount += chunk.length
       batchDeleteErrors.push(exceptionMessage(exception))
@@ -211,6 +238,12 @@ export async function cleanupFilesOrphanedByChatDeletion(
         eq(schema.files.userId, userId),
         inArray(schema.files.id, chunk.map(file => file.id)),
       ))
+
+    await cleanupDocumentsForDeletedFiles(db, {
+      userId,
+      fileIds: chunk.map(file => file.id),
+      logger,
+    })
   }
 
   const deletedCount = filesToDelete.length - failedCount
@@ -234,4 +267,49 @@ export async function cleanupFilesOrphanedByChatDeletion(
   })
 
   return result
+}
+
+/**
+ * The origin files minus the connector images, which a chat deletion removes
+ * on its own (`deleteConnectorImagesOfDeletedChats`) instead of keeping them
+ * while something still refers to them.
+ */
+export function withoutConnectorImageFiles(
+  originFiles: ChatOriginFile[],
+  connectorImageFiles: readonly ConnectorImageFile[],
+): ChatOriginFile[] {
+  const connectorImageIds = new Set(connectorImageFiles.map(file => file.id))
+
+  return originFiles.filter(file => !connectorImageIds.has(file.id))
+}
+
+/**
+ * Connector images are hidden from every file list, so a deleted chat takes
+ * them with it: left behind they could only be reached from the Storage
+ * page. Best effort, never fails the delete.
+ */
+export async function deleteConnectorImagesOfDeletedChats(
+  db: ReturnType<typeof useDb>,
+  userId: number,
+  files: readonly ConnectorImageFile[],
+  logger: LoggerLike,
+): Promise<void> {
+  if (files.length === 0) {
+    return
+  }
+
+  try {
+    const result = await deleteConnectorImageFiles(db, userId, files, logger)
+
+    logger.set({ attributes: { connectorImagesChatDelete: result } })
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        connectorImagesChatDelete: {
+          candidateCount: files.length,
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 }

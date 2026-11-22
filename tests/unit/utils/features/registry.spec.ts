@@ -91,6 +91,27 @@ describe('feature registry', () => {
     expect(hidden).toEqual([])
   })
 
+  it('turns documents off wherever the renderer binding is missing', () => {
+    expect(FEATURE_REGISTRY.documents.requires.bindings)
+      .toEqual(['DOC_RENDERER'])
+    expect(FEATURE_REGISTRY['documents.mcp'].requires.bindings)
+      .toEqual(['DOC_RENDERER'])
+  })
+
+  it('gates Office attachments on the renderer binding', () => {
+    const definition = FEATURE_REGISTRY['files.office']
+
+    expect(definition.available).toBe(true)
+    expect(definition.stage).toBe('internal')
+    expect(definition.default).toBe(false)
+    expect(definition.spend).toBe('none')
+    expect(definition.requires.bindings).toEqual(['DOC_RENDERER'])
+  })
+
+  it('makes documents over MCP available so create_document can run', () => {
+    expect(FEATURE_REGISTRY['documents.mcp'].available).toBe(true)
+  })
+
   it('treats prototype keys as unknown', () => {
     expect(isFeatureKey('constructor')).toBe(false)
     expect(getFeatureDefinition('toString')).toBeUndefined()

@@ -54,7 +54,10 @@
               md:flex-row md:items-center md:justify-between
             "
           >
-            <div class="min-w-0">
+            <div class="flex min-w-0 items-center gap-2">
+              <div class="max-sm:hidden">
+                <SharedExitLink />
+              </div>
               <h1
                 data-testid="shared-chat-title"
                 class="text-sm sm:text-base font-semibold truncate"
@@ -178,14 +181,15 @@
             :reasoning-accumulated-ms="0"
             :reasoning-segment-started-at="0"
             :is-turn-thinking-held="false"
+            is-shared
           />
           <div
-            v-for="(part, index) in getDisplayMessageParts(m)"
-            :key="`message-${m.id}-part-${index}`"
+            v-for="(part, index) in getRenderedMessageParts(m)"
+            :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
-              'mt-4': isTextPartAfterGeneratedImage(
+              'mt-4': hasGapBeforePart(
                 m,
-                getDisplayMessageParts(m),
+                getRenderedMessageParts(m),
                 index,
               ),
             }"
@@ -196,6 +200,17 @@
               "
               :message-role="m.role"
               :part="part"
+            />
+            <ChatArtifactCard
+              v-else-if="isArtifactMessagePart(part)"
+              :part="part"
+              source="shared"
+              :share-slug="shareSlug"
+            />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="false"
             />
             <div
               v-else-if="isChatErrorTextPart(part)"
@@ -266,10 +281,16 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { hasGapBeforePart } from '~/utils/message-part-spacing'
+import {
+  collectArtifactVersions,
+  getRenderedPartKeys,
+  isArtifactMessagePart,
+  orderOutputCardPartsLast,
+} from '~/utils/artifact-parts'
 
 interface SharedChatMessage {
   id: string
@@ -324,6 +345,12 @@ const hydratedMessages = computed(() => {
   return (data.value?.messages ?? []).map(hydrateMessageUsage)
 })
 
+const sharedArtifactVersions = useSharedArtifactVersions()
+
+watch(hydratedMessages, (messages) => {
+  sharedArtifactVersions.value = collectArtifactVersions(messages)
+}, { immediate: true })
+
 const isNotFound = computed<boolean>(() => {
   return Boolean(error.value) || !data.value
 })
@@ -377,6 +404,9 @@ const {
   getUnwrap,
   getParserOptions,
 } = useChatFormat()
+
+useConnectorLibrary()
+
 const { loggedIn } = useAuth()
 const {
   isBranching,
@@ -399,6 +429,20 @@ const isSharedChatMessageSelected = useState<boolean>(
   'shared-chat-message-selected',
   () => false,
 )
+
+function getRenderedMessageParts(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): UIMessage['parts'] {
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
+}
+
+function getRenderedPartKey(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+  index: number,
+): string {
+  return getRenderedPartKeys(getDisplayMessageParts(message))[index]
+    ?? `part-${index}`
+}
 
 function isTextUIPart(
   message: Pick<UIMessage, 'role'>,

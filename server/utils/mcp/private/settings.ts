@@ -7,9 +7,12 @@ import {
   favoriteGatewayModelsSchema,
   favoriteModelIdsSchema,
 } from '#shared/utils/user-settings-schemas'
+import { getEffectiveUserFilePolicy } from '~~/server/utils/files/file-governance'
+import { getUserStorageBreakdown } from '~~/server/utils/storage/usage'
 import {
   applyUserSettingsUpdate,
   dedupeFavoriteGatewayModels,
+  toPublicSettingsFields,
 } from '~~/server/utils/settings/apply-user-settings'
 import type {
   UserSettingsFieldUpdates,
@@ -38,8 +41,8 @@ export async function getMcpSettings(db: DbClient, userId: number) {
       userId,
     },
     columns: {
-      reasoningExpanded: true,
-      reasoningAutoHide: true,
+      stepsExpanded: true,
+      stepsAutoHide: true,
       defaultReasoningLevel: true,
       sidebarPinned: true,
       favoriteModels: true,
@@ -53,8 +56,8 @@ export async function getMcpSettings(db: DbClient, userId: number) {
   })
 
   return {
-    reasoningExpanded: settings?.reasoningExpanded ?? false,
-    reasoningAutoHide: settings?.reasoningAutoHide ?? true,
+    reasoningExpanded: settings?.stepsExpanded ?? false,
+    reasoningAutoHide: settings?.stepsAutoHide ?? true,
     defaultReasoningLevel: parseReasoningLevel(
       settings?.defaultReasoningLevel,
     ),
@@ -72,15 +75,32 @@ export async function getMcpSettings(db: DbClient, userId: number) {
   }
 }
 
+/**
+ * The one storage allowance and what fills it, in the same categories as the
+ * Storage page. Read-only: space is freed with the existing delete tools.
+ */
+export async function getMcpStorage(db: DbClient, userId: number) {
+  const [policy, breakdown] = await Promise.all([
+    getEffectiveUserFilePolicy(userId, db),
+    getUserStorageBreakdown(userId, db),
+  ])
+
+  return {
+    usedBytes: breakdown.totalBytes,
+    totalBytes: policy.maxStorageBytes,
+    categories: breakdown.categories,
+  }
+}
+
 function buildFieldUpdates(patch: McpSettingsPatch): UserSettingsFieldUpdates {
   const fieldUpdates: UserSettingsFieldUpdates = {}
 
   if (patch.reasoningExpanded !== undefined) {
-    fieldUpdates.reasoningExpanded = patch.reasoningExpanded
+    fieldUpdates.stepsExpanded = patch.reasoningExpanded
   }
 
   if (patch.reasoningAutoHide !== undefined) {
-    fieldUpdates.reasoningAutoHide = patch.reasoningAutoHide
+    fieldUpdates.stepsAutoHide = patch.reasoningAutoHide
   }
 
   if (patch.defaultReasoningLevel !== undefined) {
@@ -143,7 +163,7 @@ async function assertMemoryEnableDoesNotResumeExtraction(
 
 /**
  * Updates the display and chat preferences a connected app may change.
- * Settings that authorise spend or change who receives data (automatic
+ * Settings that authorize spend or change who receives data (automatic
  * memory extraction, the memory models and gateways, the TypeSafe AI roles,
  * the "about me" text, consents) are not in the schema, and a strict
  * schema refuses any key it does not list. Writes go through the same
@@ -180,5 +200,5 @@ export async function updateMcpSettings(
 
   await applyUserSettingsUpdate({ db, userId, fieldUpdates })
 
-  return fieldUpdates
+  return toPublicSettingsFields(fieldUpdates)
 }

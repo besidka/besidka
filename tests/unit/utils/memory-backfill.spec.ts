@@ -100,7 +100,7 @@ describe('memory backfill utils', () => {
       expect(MEMORY_BACKFILL_COOLDOWN_MS).toBe(3_000)
     })
 
-    it('honours a Retry-After header in seconds', () => {
+    it('honors a Retry-After header in seconds', () => {
       expect(getBackfillRetryAfterMs(
         createRejection(429, 'Slow', 'x', '7'),
       )).toBe(7000)
@@ -112,7 +112,7 @@ describe('memory backfill utils', () => {
       )).toBe(MEMORY_BACKFILL_COOLDOWN_MS)
     })
 
-    it('honours a retryAfter number in the error payload', () => {
+    it('honors a retryAfter number in the error payload', () => {
       const exception = {
         data: {
           statusCode: 429,

@@ -217,7 +217,7 @@ describe('chat detail API — activeResearchJob visibility', () => {
     expect(response.activeResearchJob).toBeNull()
   })
 
-  it('excludes a cancelled job even when it is recent', async () => {
+  it('excludes a canceled job even when it is recent', async () => {
     const handler = await getChatHandler()
     const { db } = createDb({
       latestJob: createJob({

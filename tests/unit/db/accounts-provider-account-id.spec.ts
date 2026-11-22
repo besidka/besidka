@@ -11,7 +11,7 @@ const INITIAL_MIGRATION = '20250617221739_fast_the_call'
 const TARGET_MIGRATION = '20261013154526_yummy_penance'
 
 const GOOGLE_SUBJECT = '123456789012345678901'
-const NEIGHBOUR_GOOGLE_SUBJECT = '123456789012345678902'
+const NEIGHBOR_GOOGLE_SUBJECT = '123456789012345678902'
 const SEVENTEEN_DIGIT_ID = '12345678901234567'
 
 type SqliteDatabase = InstanceType<typeof Database>
@@ -187,7 +187,7 @@ describe('accounts.provider_account_id migration', () => {
     expect(credentialAccount?.accountId).toBe('1')
   })
 
-  it('no longer matches a neighbouring Google subject that rounds to the same double', () => {
+  it('no longer matches a neighboring Google subject that rounds to the same double', () => {
     const sqlite = createDatabase(true)
     const db = drizzle({ client: sqlite })
 
@@ -209,6 +209,6 @@ describe('accounts.provider_account_id migration', () => {
     }
 
     expect(findGoogleAccounts(GOOGLE_SUBJECT)).toHaveLength(1)
-    expect(findGoogleAccounts(NEIGHBOUR_GOOGLE_SUBJECT)).toHaveLength(0)
+    expect(findGoogleAccounts(NEIGHBOR_GOOGLE_SUBJECT)).toHaveLength(0)
   })
 })

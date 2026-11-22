@@ -14,6 +14,7 @@ import {
 import {
   assertUserRequestQuote,
   buildMemoryHandle,
+  buildMemoryWriteDescriptions,
   getMemoryTools,
   normalizeUserRequestText,
 } from '~~/server/utils/memory/tools/memory-tools'
@@ -51,6 +52,11 @@ describe('memory tools', () => {
     userMessageText?: string | null
     budget?: ReturnType<typeof createChatSearchBudget>
     db?: typeof testDb.db
+    isApprovedByUser?: (call: {
+      toolCallId: string | undefined
+      toolName: string
+      input: unknown
+    }) => boolean
   } = {}) {
     const budget = overrides.budget ?? createChatSearchBudget()
     const { tools } = getMemoryTools({
@@ -69,6 +75,9 @@ describe('memory tools', () => {
         ? DEFAULT_MESSAGE
         : overrides.userMessageText,
       budget,
+      ...(overrides.isApprovedByUser
+        ? { isApprovedByUser: overrides.isApprovedByUser }
+        : {}),
       logger: { set: loggerSet },
     })
 
@@ -551,7 +560,7 @@ describe('memory tools', () => {
   })
 
   describe('user request quote gate', () => {
-    it('normalises case, punctuation, whitespace and compatibility forms',
+    it('normalizes case, punctuation, whitespace and compatibility forms',
       () => {
         expect(normalizeUserRequestText('  Remember,   THIS!! ')).toBe(
           'rememberthis',
@@ -592,7 +601,7 @@ describe('memory tools', () => {
       }).toThrow(/does not appear/)
     })
 
-    it('rejects a quote under four characters after normalising', () => {
+    it('rejects a quote under four characters after normalizing', () => {
       expect(() => {
         assertUserRequestQuote('a b!', 'a b! and more text')
       }).toThrow(/wrong length/)
@@ -1881,6 +1890,50 @@ describe('memory tools', () => {
         expect(readRow(1)).toBeDefined()
       })
 
+    it('lets a write the user approved past the lock, for that call only',
+      async () => {
+        const budget = createChatSearchBudget()
+        const { tools } = build({
+          budget,
+          isApprovedByUser: (call) => {
+            return call.toolCallId === 'approved-call'
+              && call.toolName === 'memory_write'
+          },
+        })
+
+        budget.untrustedResultSeen = true
+
+        await expect(tools.memory_write!.execute(writeInput(), toolOptions))
+          .rejects.toMatchObject({ status: 403 })
+
+        const written = await tools.memory_write!.execute(
+          writeInput({ title: 'Baking', body: 'Bakes bread.' }),
+          { ...toolOptions, toolCallId: 'approved-call' },
+        )
+
+        expect(written.action).toBe('created')
+      })
+
+    it('still runs the never-store gate on an approved write', async () => {
+      const budget = createChatSearchBudget()
+      const { tools } = build({
+        budget,
+        userMessageText: `Remember my card ${CARD_NUMBER} please`,
+        isApprovedByUser: () => true,
+      })
+
+      budget.untrustedResultSeen = true
+
+      await expect(tools.memory_write!.execute(
+        writeInput({
+          body: `Card ${CARD_NUMBER}`,
+          userRequestQuote: 'Remember my card',
+        }),
+        toolOptions,
+      )).rejects.toMatchObject({ status: 422 })
+      expect(testDb.countEntries()).toBe(1)
+    })
+
     it('still spends the budget on a guarded call', async () => {
       const budget = createChatSearchBudget()
       const { tools } = build({ budget })
@@ -2009,5 +2062,34 @@ describe('memory tools', () => {
         slug: 'launch-plan',
       })).toBe('project/topics/launch-plan')
     })
+  })
+})
+
+describe('buildMemoryWriteDescriptions', () => {
+  const REFUSED = 'The call is refused in any message that uses web search or '
+    + 'reads files, project documents or other chats; when it is refused, do '
+    + 'not retry it in the same message.'
+
+  it('keeps the refusal sentence with tool approvals off', () => {
+    const { write, forget } = buildMemoryWriteDescriptions(false)
+
+    expect(write).toContain(`${REFUSED} After saving, confirm it`)
+    expect(forget).toContain(`${REFUSED} After removing it, confirm it`)
+    expect(write).not.toContain('approval')
+  })
+
+  it('says the call needs approval instead of being refused with tool '
+    + 'approvals on', () => {
+    const { write, forget } = buildMemoryWriteDescriptions(true)
+
+    for (const description of [write, forget]) {
+      expect(description).toContain(
+        'the call needs the user\'s approval in this turn',
+      )
+      expect(description).toContain('so still call it when the user asked')
+      expect(description).not.toContain('is refused in any message')
+    }
+
+    expect(write).toMatch(/do not retry it in the same message\. After saving/)
   })
 })

@@ -318,3 +318,74 @@ export function addResearchCostEstimateToUsage(
     costEstimated: true,
   }
 }
+
+const SUMMED_USAGE_FIELDS = [
+  'reasoningTokens',
+  'cachedInputTokens',
+  'cacheWriteTokens',
+  'inputCost',
+  'outputCost',
+  'totalCost',
+  'searchUnits',
+  'searchCost',
+] as const
+
+/**
+ * The usage of one assistant message that was produced by several requests
+ * (a paused send and the continuations that answered its approvals): tokens
+ * and costs add up, a field stays unset when neither side had it, the model
+ * and provider are the latest request's, and the knowledge and auto web
+ * search fields keep the first request's values, because only the first
+ * request measured them. Either side may be missing.
+ */
+export function sumMessageUsages(
+  previous: MessageUsage | null | undefined,
+  current: MessageUsage | undefined,
+): MessageUsage | undefined {
+  if (!previous) {
+    return current
+  }
+
+  if (!current) {
+    return previous
+  }
+
+  const summed: MessageUsage = {
+    ...current,
+    inputTokens: previous.inputTokens + current.inputTokens,
+    outputTokens: previous.outputTokens + current.outputTokens,
+    totalTokens: previous.totalTokens + current.totalTokens,
+  }
+
+  for (const field of SUMMED_USAGE_FIELDS) {
+    if (previous[field] === undefined && current[field] === undefined) {
+      continue
+    }
+
+    summed[field] = (previous[field] ?? 0) + (current[field] ?? 0)
+  }
+
+  const firstRequestFields = {
+    knowledgeTokens: previous.knowledgeTokens,
+    knowledgeMode: previous.knowledgeMode,
+    autoWebSearch: previous.autoWebSearch,
+    firstStepInputTokens: previous.firstStepInputTokens,
+  }
+
+  for (const [field, value] of Object.entries(firstRequestFields)) {
+    if (value !== undefined) {
+      Object.assign(summed, { [field]: value })
+    }
+  }
+
+  if (previous.costEstimated || current.costEstimated) {
+    summed.costEstimated = true
+  }
+
+  if (previous.searchProvider && !current.searchProvider) {
+    summed.searchProvider = previous.searchProvider
+    summed.searchBillingUnit = previous.searchBillingUnit
+  }
+
+  return summed
+}

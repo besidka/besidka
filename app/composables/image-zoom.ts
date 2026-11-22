@@ -80,13 +80,13 @@ export function createDoubleTapDetector(options: DoubleTapOptions = {}) {
   const maxIntervalMs = options.maxIntervalMs ?? DOUBLE_TAP_MAX_INTERVAL_MS
   const maxDistance = options.maxDistance ?? DOUBLE_TAP_MAX_DISTANCE_PX
   const activePointerIds = new Set<number>()
-  let isGestureCancelled: boolean = false
+  let isGestureCanceled: boolean = false
   let downPoint: ZoomPointerEvent | null = null
   let lastTap: TapRecord | null = null
 
   function reset() {
     activePointerIds.clear()
-    isGestureCancelled = false
+    isGestureCanceled = false
     downPoint = null
     lastTap = null
   }
@@ -99,14 +99,14 @@ export function createDoubleTapDetector(options: DoubleTapOptions = {}) {
     activePointerIds.add(event.pointerId)
 
     if (activePointerIds.size > 1) {
-      isGestureCancelled = true
+      isGestureCanceled = true
       downPoint = null
       lastTap = null
 
       return
     }
 
-    isGestureCancelled = false
+    isGestureCanceled = false
     downPoint = event
   }
 
@@ -116,23 +116,23 @@ export function createDoubleTapDetector(options: DoubleTapOptions = {}) {
     lastTap = null
 
     if (activePointerIds.size === 0) {
-      isGestureCancelled = false
+      isGestureCanceled = false
     }
   }
 
   function onPointerUp(event: ZoomPointerEvent): boolean {
     activePointerIds.delete(event.pointerId)
 
-    const wasCancelled = isGestureCancelled
+    const wasCanceled = isGestureCanceled
     const start = downPoint
 
     downPoint = null
 
     if (activePointerIds.size === 0) {
-      isGestureCancelled = false
+      isGestureCanceled = false
     }
 
-    if (wasCancelled || !start || event.button > 0) {
+    if (wasCanceled || !start || event.button > 0) {
       return false
     }
 
@@ -174,7 +174,7 @@ export function createDoubleTapDetector(options: DoubleTapOptions = {}) {
 
 /**
  * In-modal image zoom. Native browser zoom is not usable here: the global
- * viewport meta disables it and installed PWAs honour that.
+ * viewport meta disables it and installed PWAs honor that.
  */
 export function useImageZoom(
   surfaceRef: Readonly<ShallowRef<HTMLElement | null>>,

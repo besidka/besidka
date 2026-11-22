@@ -11,6 +11,9 @@ import * as schema from '~~/server/db/schema'
 import { buildActiveShareFilter } from '~~/server/utils/chats/share-management'
 import type { ChatContextItems } from '~~/server/utils/chats/context/build-chat-context'
 import { buildChatContext } from '~~/server/utils/chats/context/build-chat-context'
+import { loadChatContextArtifacts } from '~~/server/utils/chats/context/artifacts'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { loadChatContextConnectors } from '~~/server/utils/chats/context/connectors'
 import type { ChatContextMessage } from '~~/server/utils/chats/context/sections'
 
 type ContextDb = ReturnType<typeof useDb>
@@ -134,6 +137,7 @@ export async function loadOwnedChatContext(
   db: ContextDb,
   userId: number,
   slug: string,
+  options: { includeArtifacts?: boolean, includeConnectors?: boolean } = {},
 ): Promise<ChatContextResponse | null> {
   const chat = await db.select({
     id: schema.chats.id,
@@ -142,6 +146,7 @@ export async function loadOwnedChatContext(
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
     memoryExcluded: schema.chats.memoryExcluded,
+    pinnedAt: schema.chats.pinnedAt,
   })
     .from(schema.chats)
     .leftJoin(
@@ -170,15 +175,35 @@ export async function loadOwnedChatContext(
     .limit(1)
     .get()
   const { rows, truncated } = await loadChatContextRows(db, chat.id)
-  const context = buildChatContext(toChatContextMessages(rows), {
+  const messages = toChatContextMessages(rows)
+  const artifacts = options.includeArtifacts
+    ? await loadChatContextArtifacts({
+      db,
+      chatOwnerUserId: userId,
+      messages,
+      visibility: 'private',
+    })
+    : undefined
+  const usesConnectors = options.includeConnectors === true
+    && messages.some((message) => {
+      return message.parts.some(part => getConnectorToolCall(part) !== null)
+    })
+  const connectors = usesConnectors
+    ? await loadChatContextConnectors(db, userId)
+    : undefined
+  const context = buildChatContext(messages, {
     visibility: 'private',
     truncated,
+    artifacts,
+    connectors,
   })
 
   return {
     chat: {
+      id: chat.id,
       slug: chat.slug,
       title: chat.title ?? '',
+      pinnedAt: chat.pinnedAt ? chat.pinnedAt.toISOString() : null,
       project: chat.projectId && chat.projectName
         ? { id: String(chat.projectId), name: chat.projectName }
         : null,

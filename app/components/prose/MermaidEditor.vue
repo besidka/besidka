@@ -6,7 +6,7 @@
       class="
         textarea w-full min-h-24 max-h-72 resize-none overflow-y-auto
         bg-base-200 p-3 font-code text-sm leading-relaxed
-        [--radius-field:0.5rem] focus:shadow-none focus:outline-offset-0
+        focus:shadow-none focus:outline-offset-0
       "
       wrap="off"
       spellcheck="false"

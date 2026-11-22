@@ -13,8 +13,11 @@ import {
   installDocumentHooks,
   renderArtifact,
   renderPartial,
+  setRenderedNotifier,
 } from './artifact.ts'
 import { createBesidkaApi, installBesidkaApi } from './bridge.ts'
+import { defineKitElements } from './kit/elements.ts'
+import { setHostActionConnection } from './kit/host-actions.ts'
 import { installLinkInterception } from './links.ts'
 import { reportError, setHostNotifier } from './report.ts'
 import { ROOT_ELEMENT_ID } from './shell.ts'
@@ -87,6 +90,7 @@ async function boot() {
   }
 
   disableWebRtc()
+  defineKitElements()
   installDocumentHooks()
 
   const connection = await connectRuntime({
@@ -108,6 +112,10 @@ async function boot() {
   setHostNotifier((params) => {
     connection.notify(METHODS.message, params)
   })
+  setRenderedNotifier((params) => {
+    connection.notify(METHODS.rendered, params)
+  })
+  setHostActionConnection(connection)
   installLinkInterception((url) => {
     openLinkThroughHost(connection, url)
   })
@@ -117,7 +125,7 @@ async function boot() {
       METHODS.initialize,
       {
         protocolVersion: PROTOCOL_VERSION,
-        appCapabilities: { kinds: [...ARTIFACT_KINDS] },
+        appCapabilities: { kinds: [...ARTIFACT_KINDS], rendered: true },
       },
     )
 

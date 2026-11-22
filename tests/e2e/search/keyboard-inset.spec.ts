@@ -229,7 +229,7 @@ test.describe('search modal above the keyboard on a phone', () => {
 test.describe('search modal on desktop', () => {
   test.use({ viewport: DESKTOP_VIEWPORT })
 
-  test('stays centred with rounded corners and no keyboard padding', async ({
+  test('stays centered with rounded corners and no keyboard padding', async ({
     page,
   }) => {
     const modal = await openSearchModal(page)

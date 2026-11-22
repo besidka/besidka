@@ -3,17 +3,19 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import AccountEmailList from '../../../../app/components/content/AccountEmailList.vue'
 
 describe('AccountEmailList.vue', () => {
-  it('renders the four ordered items with their labels', async () => {
+  it('renders the five ordered items with their labels', async () => {
     const wrapper = await mountSuspended(AccountEmailList)
     const items = wrapper.findAll('li')
 
     expect(wrapper.find('ol[data-testid="account-email-list"]').exists())
       .toBe(true)
-    expect(items).toHaveLength(4)
+    expect(items).toHaveLength(5)
     expect(items[0]?.find('strong').text()).toBe('Address and password:')
     expect(items[1]?.find('strong').text()).toBe('Account deletion:')
     expect(items[2]?.find('strong').text()).toBe('Security notices')
     expect(items[3]?.find('strong').text()).toBe('Legal notices:')
+    expect(items[4]?.find('strong').text())
+      .toBe('Reports about shared content:')
   })
 
   it('renders the registry phrases as visible text', async () => {

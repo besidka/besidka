@@ -14,7 +14,7 @@
       ref="textarea"
       v-model="text"
       class="
-        textarea textarea-bordered rounded-box min-h-20 w-full resize-none
+        textarea textarea-bordered min-h-20 w-full resize-none
         max-h-[40dvh] overflow-y-auto
       "
       :class="{ 'textarea-error': isOverLimit }"

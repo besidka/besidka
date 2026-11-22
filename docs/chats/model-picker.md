@@ -33,6 +33,13 @@ window) closes it.
 
 ## The sheet
 
+The footer's safe-area padding is the shared `--sheet-bottom-padding`
+(`app/assets/css/main.css`): the safe-area inset plus `1.5rem`, plus `2rem` in
+the installed PWA. The box sets `--models-sheet-bottom-padding` to it, the
+gateway rail reads that property, and the keyboard lift overrides it with
+`0.375rem` inline. The same value pads the tools sheet; see "Bottom space in
+the sheet" in `docs/chats/chat-input-tools-menu.md`.
+
 - A `<dialog class="modal modal-bottom">` opened with `showModal()`: focus is
   trapped, the page is inert and scroll-locked (daisyUI). The box has the
   tools sheet chrome: grab handle, a "Models" title that labels the dialog,
@@ -48,11 +55,11 @@ window) closes it.
   the box's `autofocus` and focuses the first link or text field in the
   dialog (buttons are skipped), which was the search field for any user with
   keys and the "Add a key" link for a user without. Chromium and macOS
-  WebKit (Playwright) honour the box, so only a real iPhone or the iOS
+  WebKit (Playwright) honor the box, so only a real iPhone or the iOS
   Simulator shows it (reproduced on iOS 18.5 Safari, 2026-10-28). The panel
   is therefore `inert` during the render before `showModal()`, the box is
   focused explicitly right after it, and the panel is released in the same
-  call. The sheet spec emulates the iOS behaviour with a `showModal` stub that
+  call. The sheet spec emulates the iOS behavior with a `showModal` stub that
   focuses the first non-inert link or field.
 - Fixed header: search with the filter toggle, the inline filter chips when
   open, and the provider chip row. Only the model list scrolls

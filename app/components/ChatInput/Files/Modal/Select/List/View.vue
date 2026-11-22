@@ -35,10 +35,13 @@
         v-for="(file, index) in files"
         :key="file.id"
         :data-file-index="index"
+        :aria-disabled="unsupportedReasons[file.id] ? true : undefined"
+        :title="unsupportedReasons[file.id]"
         class="hover cursor-pointer"
         :class="{
           'bg-primary/10 dark:bg-primary-content/10':
-            selectedIds.has(file.id)
+            selectedIds.has(file.id),
+          'opacity-40 cursor-not-allowed': unsupportedReasons[file.id]
         }"
         @click="$emit('file-click', $event, file, index)"
       >
@@ -74,7 +77,7 @@
           </div>
         </td>
         <td>
-          <div class="max-w-[150px] lg:max-w-sm">
+          <div class="max-w-[110px] xs:max-w-[150px] lg:max-w-sm">
             <span
               class="block lg:hidden"
               :title="file.name"
@@ -88,11 +91,36 @@
               {{ truncateFilenameMiddle(file.name, 48) }}
             </span>
             <span
-              v-if="file.source === 'assistant'"
+              v-if="unsupportedCaptions[file.id]"
+              class="badge badge-soft badge-xs mt-1 leading-none"
+              data-testid="files-unsupported-caption"
+            >
+              {{ unsupportedCaptions[file.id] }}
+            </span>
+            <span
+              v-else-if="textNotes[file.id]"
+              class="badge badge-soft badge-xs mt-1 leading-none"
+              :title="textNotes[file.id]?.description"
+              data-testid="files-text-note"
+            >
+              {{ textNotes[file.id]?.label }}
+            </span>
+            <span
+              v-if="isAiGeneratedFile(file)"
               class="badge badge-secondary badge-xs mt-1 text-2xs leading-none gap-0.5"
+              data-testid="files-ai-badge"
             >
               <Icon name="lucide:sparkles" size="10" />
               {{ getAiBadgeLabel(file) }}
+            </span>
+            <span
+              v-else-if="isConnectedAppFile(file)"
+              class="badge badge-soft badge-xs mt-1 text-2xs leading-none gap-0.5"
+              :title="CONNECTED_APP_FILE_BADGE_TITLE"
+              data-testid="files-app-badge"
+            >
+              <Icon name="lucide:plug" size="10" />
+              {{ CONNECTED_APP_FILE_BADGE_LABEL }}
             </span>
             <span class="text-base-content/60 text-2xs sm:hidden">
               Size: {{ formatFileSize(file.size) }}, Type:
@@ -130,12 +158,26 @@
         </td>
         <td @click.stop>
           <div class="flex justify-end gap-0.5">
+            <button
+              v-if="canPreviewFile(file)"
+              type="button"
+              class="btn btn-circle btn-xs btn-ghost"
+              aria-label="Preview document"
+              title="Preview"
+              data-testid="files-action-preview"
+              @click="$emit('preview', file)"
+            >
+              <Icon name="lucide:eye" size="12" />
+            </button>
             <a
               :href="getFileDownloadUrl(file.storageKey)"
               class="btn btn-circle btn-xs btn-ghost"
               :aria-label="`Download ${file.name}`"
               title="Download"
-              @click.stop
+              @click.stop="onDownloadClick($event, {
+                url: getFileDownloadUrl(file.storageKey),
+                fileName: file.name,
+              })"
             >
               <Icon name="lucide:download" size="12" />
             </a>
@@ -166,6 +208,7 @@
 
 <script setup lang="ts">
 import type { FileManagerFile } from '~/types/file-manager'
+import type { FileDeliveryHint } from '~/utils/file-delivery-hints'
 import { formatMessageCost } from '#shared/utils/message-format'
 
 withDefaults(defineProps<{
@@ -176,20 +219,34 @@ withDefaults(defineProps<{
   allSelected: boolean
   hasSelection: boolean
   stickyOffset?: boolean
+  unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
+  textNotes?: Record<string, FileDeliveryHint>
 }>(), {
   stickyOffset: false,
+  unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
+  textNotes: () => ({}),
 })
 
 defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
   'toggle-select-all': []
 }>()
 
+const { canPreviewFile } = useDocumentPreview()
+const { onDownloadClick } = useFileDownload()
+
 const containerRef = useTemplateRef<HTMLTableElement>('containerRef')
 
 function getFileTypeLabel(type: string): string {
+  if (isOfficeMediaType(type)) {
+    return getUploadFormatLabel(type)
+  }
+
   const parts = type.split('/')
 
   return parts[1]?.toUpperCase() || type

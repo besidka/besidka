@@ -94,6 +94,33 @@ describe('buildMcpChatTranscript', () => {
     })
   })
 
+  it('leaves the messages of a built-in command out and counts them', () => {
+    const report: McpChatMessageRow = {
+      ...messageRow(3, 'assistant', '```text\nSECRET REPORT\n```'),
+      parts: [
+        { type: 'data-command-report', data: { command: 'cost' } },
+        { type: 'text', text: '```text\nSECRET REPORT\n```' },
+      ],
+    }
+    const command: McpChatMessageRow = {
+      ...messageRow(2, 'user', '7d'),
+      parts: [
+        { type: 'data-command-invocation', data: { command: 'stats' } },
+        { type: 'text', text: '7d' },
+      ],
+    }
+    const transcript = buildMcpChatTranscript([
+      report,
+      command,
+      messageRow(1, 'user', 'question'),
+    ], { messageMaxChars: 100, totalMaxChars: 1000 })
+
+    expect(transcript.messages.map(message => message.text))
+      .toEqual(['question'])
+    expect(transcript.omittedMessages).toBe(2)
+    expect(JSON.stringify(transcript)).not.toContain('SECRET REPORT')
+  })
+
   it('truncates long messages and drops the oldest past the total cap',
     () => {
       const transcript = buildMcpChatTranscript([

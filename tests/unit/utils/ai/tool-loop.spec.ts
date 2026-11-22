@@ -770,3 +770,160 @@ describe('tool loop trigger', () => {
       })
   })
 })
+
+describe('untrusted tool results', () => {
+  function stepWith(toolName: string) {
+    return { content: [{ type: 'tool-result', toolName }] }
+  }
+
+  async function runGuard(toolName: string) {
+    const guard = { untrustedResultSeen: false }
+    const resolved = resolveToolLoop({
+      lookup: withFollowUpTurn(tool({
+        description: 'Lookup',
+        inputSchema: z.object({}),
+        execute: async () => ({}),
+      })),
+    }, { guard })
+
+    await resolved?.options.prepareStep({
+      steps: [stepWith(toolName)],
+      stepNumber: 1,
+      model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+      instructions: undefined,
+    } as any)
+
+    return guard.untrustedResultSeen
+  }
+
+  it('does not treat artifact tool results as untrusted content', async () => {
+    await expect(runGuard('create_artifact')).resolves.toBe(false)
+    await expect(runGuard('update_artifact')).resolves.toBe(false)
+    await expect(runGuard('web_search_brave')).resolves.toBe(true)
+  })
+
+  it('does not treat a create_document result as untrusted content', async () => {
+    await expect(runGuard('create_document')).resolves.toBe(false)
+    await expect(runGuard('create_documents')).resolves.toBe(true)
+  })
+
+  describe('separate skill step budget', () => {
+    function createSkillTools() {
+      return {
+        activate_skill: createFixtureFollowUpTool(),
+        read_skill_file: createFixtureFollowUpTool(),
+      }
+    }
+
+    it('grants only the skill steps when skill tools are the only follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createSkillTools(), { skillSteps: 4 }))
+        .toBe(5)
+    })
+
+    it('never counts a skill tool as a web tool', () => {
+      expect(getToolLoopMaxSteps(createSkillTools(), {
+        skillSteps: 2,
+      })).toBe(3)
+    })
+
+    it('adds the skill steps on top of web search, without eating its rounds', () => {
+      expect(getToolLoopMaxSteps({
+        web_search_brave: createFixtureFollowUpTool(),
+        ...createSkillTools(),
+      }, { skillSteps: 4 })).toBe(8)
+    })
+
+    it('falls back to the default tool steps without a skill allowance', () => {
+      expect(getToolLoopMaxSteps(createSkillTools()))
+        .toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('flags a skill tool result as untrusted for the memory write guard', async () => {
+      const guard = { untrustedResultSeen: false }
+      const options = resolveToolLoopOptions(createSkillTools(), {
+        skillSteps: 4,
+        guard,
+      })
+
+      await options?.prepareStep({
+        stepNumber: 1,
+        steps: [{
+          content: [{
+            type: 'tool-result',
+            toolName: 'activate_skill',
+          }],
+        }],
+        model: { provider: 'anthropic', modelId: 'claude' },
+        instructions: undefined,
+      } as any)
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+  })
+
+  describe('separate connector step budget', () => {
+    function createConnectorTools() {
+      return {
+        mcp__linear__list_issues: createFixtureFollowUpTool(),
+        mcp__linear__get_issue: createFixtureFollowUpTool(),
+      }
+    }
+
+    it('grants only the connector steps when connector tools are the only '
+      + 'follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createConnectorTools(), {
+        connectorSteps: 4,
+      })).toBe(5)
+    })
+
+    it('never counts a connector tool as a web tool', () => {
+      expect(getToolLoopMaxSteps(createConnectorTools(), {
+        connectorSteps: 2,
+      })).toBe(3)
+    })
+
+    it('adds the connector steps on top of web search without eating its '
+      + 'rounds', () => {
+      expect(getToolLoopMaxSteps({
+        web_search_brave: createFixtureFollowUpTool(),
+        ...createConnectorTools(),
+      }, { connectorSteps: 4 })).toBe(8)
+    })
+
+    it('falls back to the default tool steps without a connector '
+      + 'allowance', () => {
+      expect(getToolLoopMaxSteps(createConnectorTools()))
+        .toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('adds nothing for connector steps when no connector tool is '
+      + 'registered', () => {
+      expect(getToolLoopMaxSteps({
+        web_search_brave: createFixtureFollowUpTool(),
+      }, { connectorSteps: 4 })).toBe(4)
+    })
+
+    it('flags a connector tool result as untrusted for the memory write '
+      + 'guard', async () => {
+      const guard = { untrustedResultSeen: false }
+      const options = resolveToolLoopOptions(createConnectorTools(), {
+        connectorSteps: 4,
+        guard,
+      })
+
+      await options?.prepareStep({
+        stepNumber: 1,
+        steps: [{
+          content: [{
+            type: 'tool-result',
+            toolName: 'mcp__linear__list_issues',
+          }],
+        }],
+        model: { provider: 'anthropic', modelId: 'claude' },
+        instructions: undefined,
+      } as any)
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+  })
+})

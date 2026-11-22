@@ -61,7 +61,7 @@ echo "🔍 Searching for workflow runs matching patterns..."
 printf '   - "%s"\n' "${PATTERNS[@]}"
 echo "   - skipped runs (conclusion == skipped)"
 echo "   - failed runs (conclusion == failure)"
-echo "   - cancelled runs (conclusion == cancelled)"
+echo "   - canceled runs (conclusion == cancelled)"
 echo ""
 
 # Build jq filter for multiple patterns
@@ -125,7 +125,7 @@ if [ "$AUTO_YES" = false ]; then
   read -p "❓ Delete these $RUN_COUNT run(s)? [y/N] " -n 1 -r
   echo ""
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "❌ Cancelled."
+    echo "❌ Canceled."
     exit 1
   fi
 fi

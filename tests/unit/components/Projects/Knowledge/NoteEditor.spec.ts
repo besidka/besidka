@@ -127,14 +127,13 @@ describe('Projects/Knowledge/NoteEditor', () => {
       )
     })
 
-    it('uses a rounded-box textarea that grows up to 60dvh', async () => {
+    it('uses a textarea that grows up to 60dvh', async () => {
       const wrapper = await mountEditor()
       const classes = byTestId(wrapper, 'knowledge-note-body').classes()
 
       expect(classes).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'w-full',
         'resize-none',
         'overflow-y-auto',
@@ -286,7 +285,7 @@ describe('Projects/Knowledge/NoteEditor', () => {
       expect(isSaveDisabled(wrapper)).toBe(false)
     })
 
-    it('sends a normalised title and never an extractor for new notes', async () => {
+    it('sends a normalized title and never an extractor for new notes', async () => {
       const wrapper = await mountEditor()
 
       await fill(wrapper, 'Cafe\u0301\t  plan', 'Body')

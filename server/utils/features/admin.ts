@@ -50,6 +50,14 @@ export type FeatureAdminAction
     | 'role.revoke'
     | 'schedule.create'
     | 'schedule.cancel'
+    | 'artifact.takedown'
+    | 'artifact.restore'
+    | 'artifact-report.reject'
+    | 'legal-notice.approve'
+    | 'legal-notice.withdraw'
+    | 'legal-consent-version.approve'
+    | 'legal-notice-opt-out.add'
+    | 'legal-notice-opt-out.remove'
 
 interface FeatureRuleLedgerState {
   enabled: boolean
@@ -319,7 +327,7 @@ async function requireExistingUser(
   }
 }
 
-function toGrantSnapshot(grant: {
+export function toGrantSnapshot(grant: {
   userId: number
   effect: string
   variant: string | null

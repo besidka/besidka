@@ -4,6 +4,7 @@ import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createOpenAI } from '@ai-sdk/openai'
+import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import {
   resolveReasoningLevelForModel,
   toReasoningEffort,
@@ -20,6 +21,7 @@ export async function useOpenAI(
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
   cacheKey?: string,
+  codeInterpreterFileIds: string[] = [],
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -92,9 +94,22 @@ export async function useOpenAI(
 
       result.tools['web_search_preview'] = openai.tools.webSearch({})
 
-      result.toolChoice = {
-        type: 'tool',
-        toolName: 'web_search_preview',
+      if (!requestedTools.includes('code_execution')) {
+        result.toolChoice = {
+          type: 'tool',
+          toolName: 'web_search_preview',
+        }
+      }
+    }
+
+    if (requestedTools.includes('code_execution')) {
+      result.tools = {
+        ...result.tools,
+        [CODE_EXECUTION_TOOL_NAME]: openai.tools.codeInterpreter(
+          codeInterpreterFileIds.length > 0
+            ? { container: { fileIds: codeInterpreterFileIds } }
+            : {},
+        ),
       }
     }
 

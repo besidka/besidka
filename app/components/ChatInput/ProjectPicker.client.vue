@@ -5,7 +5,7 @@
       data-testid="project-picker-dialog"
       class="modal modal-bottom sm:modal-middle"
     >
-      <div class="modal-box max-w-2xl">
+      <div class="modal-box sheet-safe-padding max-w-2xl">
         <div class="flex items-start justify-between gap-3 mb-4">
           <div>
             <h3 class="font-bold text-lg">

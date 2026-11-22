@@ -21,8 +21,9 @@ in `docs/mail-alerts.md`.
 All transactional mail is built from 3 Vue SFC template shapes rendered by
 `nuxt-email-renderer` (see [Templates](#templates) below). The flow counts are
 deliberately not written down here: the list of senders changes, and a hard
-number drifts. The sources of truth are `server/utils/auth.ts` and
-`server/utils/account/security-emails.ts`.
+number drifts. The sources of truth are `server/utils/auth.ts`,
+`server/utils/account/security-emails.ts` and, for content reports and
+takedowns, `server/utils/artifacts/report-emails.ts`.
 
 The list of emails Besidka sends is `shared/utils/account-emails.ts`, one
 entry per email, with the exact phrase the Privacy Policy uses for it
@@ -66,6 +67,7 @@ exactly like the `DB`, `KV`, and `DATA_BUCKET` bindings.
 | `app/emails/**` | The three Vue SFC templates (`ActionEmail.vue`, `NoticeEmail.vue`, `LegalNoticeEmail.vue`) plus shared layout pieces (`components/EmailLayout.vue`, `EmailHeader.vue`, `EmailFooter.vue`, `theme.ts`) |
 | `server/utils/auth.ts` | Better Auth `sendResetPassword` / `sendVerificationEmail` / `sendChangeEmailConfirmation` / `sendDeleteAccountVerification` callers, all via `sendTemplateEmail()` with `ActionEmail` |
 | `server/utils/account/security-emails.ts` | The security-notice senders, all via `sendTemplateEmail()`: `NoticeEmail` for the plain notices, `ActionEmail` for the connected-app notice (it carries a "Review connected apps" link) |
+| `server/utils/artifacts/report-emails.ts` | Artifact report and takedown emails (A-7, `docs/artifacts/shares.md`): the privacy-mailbox notice, the receipt and decision to the reporter, and the statement of reasons to the owner. Renders `NoticeEmail` for HTML, sends its own plain-text part through `sendRenderedEmail()`, and sets `replyTo` to the privacy mailbox (`useEmail().send()` and `sendRenderedEmail()` accept `replyTo`, passed to the binding only when set) |
 | `wrangler.jsonc` | `send_email` binding + `NUXT_EMAIL_SENDER_*` vars (preview + production) |
 | `nuxt.config.ts` / `index.d.ts` | `emailNoopEnabled`, `emailSenderNoreply`, `emailSenderPersonalized` runtime config; the `nuxtEmailRenderer` module options block and the `forceInlineVueI18nForEmailRenderer` local module (see [Templates](#templates)) |
 | `.dev.vars.example` | documents `NUXT_EMAIL_NOOP_ENABLED` |
@@ -203,9 +205,16 @@ the notice is sent by `server/utils/legal/notice-sweep.ts`, run by the
 string match, like the other sweeps). The in-app banner and the public change
 history are separate.
 
-**Who gets it.** For each notice with `sendFrom <= now < effectiveAt`, oldest
-first: every user with `email_verified = 1` and `created_at <
-notice.publishedAt`, in `users.id` order. An account created after the notice
+**Nothing is sent without the owner.** The sweep runs only with
+`NUXT_LEGAL_NOTICE_SWEEP_ENABLED` on (off in production since 2026-11-15), and
+it emails only notices with an active, unchanged approval from `/admin/legal`
+(`legal_notice_approvals`, see `docs/legal.md`, "Owner approval in the admin
+area").
+
+**Who gets it.** For each approved notice with `sendFrom <= now <
+effectiveAt`, oldest first: every user with `email_verified = 1` and
+`created_at < notice.publishedAt` and no row in `legal_notice_email_optouts`,
+in `users.id` order. An account created after the notice
 was published has already agreed to the new text and gets no email. The page
 and the in-app banner publish at `publishedAt`; emails follow from `sendFrom`
 at a limited number a day, so a recipient can get theirs a few days after
@@ -288,8 +297,14 @@ sweep stops with `email-noop` on the first send and marks nobody as told.
 `attributes.legalNoticeSweepResult`: `selectedCount`, `sentCount`,
 `skippedCount`, `failedCount`, `lateDeliveries` (sent less than 30 days before
 `effectiveAt`, or 14 with a `shortNoticeReason`), `claimMissedCount`,
-`userDeletedCount`, `errorCodes`, the per-notice counts, `stopReason` and
-`runtimeMs`. Never an address or a name. Stop reasons: `no-active-notice`,
+`userDeletedCount`, `errorCodes`, the per-notice counts,
+`unapprovedNoticeIds` and `changedNoticeIds` (notices in their window without
+an approval, or changed since it), `exhaustedNoticeIds` (notices whose
+approval reached its confirmed number of recipients), `withheldCount`
+(claims dropped by the re-check before a send: `E_APPROVAL_WITHDRAWN`,
+`E_APPROVAL_EXHAUSTED`, `E_RECIPIENT_OPTED_OUT`), `stopReason` and
+`runtimeMs`. Never an
+address or a name. Stop reasons: `no-active-notice`, `no-approved-notice`,
 `completed`, `quota`, `daily-cap`, `max-runtime`, `privacy-email-missing`,
 `consecutive-failures`, `email-noop`, `error`. The last three set the event
 status to 500.

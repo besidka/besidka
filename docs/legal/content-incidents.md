@@ -4,7 +4,7 @@
 > What to do when someone reports published content, when an authority sends a
 > removal order, when a report points to a threat to someone's life, and when
 > Cloudflare forwards an abuse complaint. Written for public artifact links
-> (`/a/<token>`) and the artifacts inside shared chats, and it applies to
+> (`/artifacts/<token>`) and the artifacts inside shared chats, and it applies to
 > shared chats as well. Most of the tooling it names is planned in A-1, A-4 and
 > A-7; until it ships, use the fallbacks marked **Fallback**.
 >
@@ -18,24 +18,34 @@
 
 | Channel | What arrives | Who sees it |
 |---|---|---|
-| Report form on `/a/<token>` and next to artifacts in shared chats (A-7) | Name, email (both required except for `csam`), reason, details, good-faith statement, the URL filled in by the form, the reporter's account if signed in | The admin reports list, and an email to the privacy mailbox. `threat-to-life` and `terrorism` reports carry a priority flag and a subject prefix |
+| Report form on `/artifacts/<token>` and next to artifacts in shared chats (A-7) | Name, email (both required except for `csam`), reason, details, good-faith statement, the URL filled in by the form, the reporter's account if signed in | The admin reports list, and an email to the privacy mailbox. `threat-to-life` and `terrorism` reports carry a priority flag and a subject prefix |
 | Privacy mailbox (the address the `:privacy-email-link{}` component renders on every legal page) | Email reports, copyright notices, disputes, TCO removal orders, authority requests, Cloudflare abuse forwards | The controller |
 | Cloudflare abuse email to the account address | Complaints Cloudflare received about a URL it hosts | The controller |
 
 **Phone alert (owner item 3 of the pre-check).** The one-hour rule in section 3
-cannot be met without a push alert on the controller's phone and a named
-person who covers absences. Mail to `privacy@`, `abuse@`, `security@` and
-`contact@` goes through the `besidka-mail-alerts` Email Worker, which forwards
+cannot be met without a push alert on the controller's phone. Mail to
+`privacy@`, `abuse@`, `security@` and `contact@` goes through the `besidka-mail-alerts` Email Worker, which forwards
 it to the Gmail inbox as before and pushes "New mail to privacy@" with the
 subject to every admin's subscribed devices; removal orders, authority mail
 and breach or security reports push as urgent, at most once per mailbox per
 minute (`docs/mail-alerts.md`). The owner switches the four Email Routing rules with
-the runbook there, turns push on in the installed PWA for the admin account,
-and names the cover person (an admin with push on, recorded privately).
+the runbook there and turns push on in the installed PWA for the admin
+account.
 **Not covered:** Cloudflare abuse email to the account address still needs a
 phone notification from the mail app (for example a Gmail filter with
 notifications on for that sender). Do this before `artifacts.share` is granted
 to anyone beyond the controller.
+
+**No cover person (owner decision, 2026-11-09).** The owner works alone, so
+nobody covers holidays, travel or nights. The phone push is the only
+safeguard for the one-hour rule. It fails when the phone is off, has no
+signal, silences Besidka (Focus mode, notification settings), or when the
+owner cannot be reached for any other reason. In those cases a TCO removal
+order can run past the hour. If that happens, tell the authority as described
+in section 3 (Art. 3(7), 3(8)). Revisit this when a second operator exists,
+when Besidka starts to earn money or the owner registers a business
+(`docs/legal/monetization-readiness.md`), or when the user base grows enough
+to make orders or reports likely.
 
 ## 2. Triage, in this order
 
@@ -47,7 +57,7 @@ to anyone beyond the controller.
    (which route fits best is **[U]**, counsel question). Never forward, copy or
    download the material. Do not set a hold of your own: keep the disabled
    artifact as it is and preserve it only if an authority asks (possession of
-   such material is itself an offence, kk art. 202).
+   such material is itself an offense, kk art. 202).
 4. **`terrorism` report without an order**: take down if it is plainly
    terrorist content, then decide on Art. 18 (section 4). Set a hold only if an
    authority asks for one or issues an order.
@@ -89,7 +99,7 @@ be acted on **within one hour of receipt** (Art. 3(3)).
    that nothing may be disclosed (Art. 11(3)), say nothing until that period
    ends, then send T4.
 7. If the order shows an **imminent threat to life**, also inform the
-   authorities competent for criminal offences in the Member States concerned
+   authorities competent for criminal offenses in the Member States concerned
    (TCO Art. 14(5)); if they cannot be identified, the ABW contact point and
    Europol.
 8. Record the order privately (section 8).
@@ -102,7 +112,7 @@ nothing is due.
 ## 4. Threat to life or safety (DSA Art. 18)
 
 Applies when anything (a report, an artifact the controller opens, an email)
-gives rise to a suspicion that a criminal offence threatening someone's life or
+gives rise to a suspicion that a criminal offense threatening someone's life or
 safety has happened, is happening or is likely. It does not depend on a report.
 The Terms promise it.
 
@@ -146,6 +156,13 @@ For each decision on a report:
    is restored, tell the reporter, and for copyright do not pass on the
    owner's contact details without their consent.
 
+A user-scope takedown (every artifact of one owner, direct takedown with
+scope `user`) also withdraws link sharing: it writes a deny grant for
+`artifacts.share` on that account in the same batch, and the T3 email tells
+the owner. Restoring the artifacts does not lift it; restore link sharing by
+removing the deny grant in Admin → Features → `artifacts.share` once a
+person has reviewed the dispute.
+
 Report rows outlive the artifact: they are deleted 12 months after the matter
 is closed (24 for a copyright removal) by a sweep (A-1), and never by
 `deleteArtifacts` or the account purge.
@@ -157,7 +174,12 @@ option C). Cloudflare's Self-Serve Subscription Agreement lets it suspend all or
 part of the services; its abuse policy says terminating all services is not
 normally the response, but repeated hosting of violating content with "no
 meaningful steps" can lead to suspension of hosting services (Workers, R2, D1).
-A complaint will usually name `besidka.com/a/<token>`.
+A complaint will usually name `besidka.com/artifacts/<token>`. The token is
+the last path segment; the admin takedown form accepts the full link,
+`/artifacts/<token>`, `artifacts/<token>` or the bare token. Besidka's own
+logs show the token as `[token]` (Cloudflare Workers Logs on Cloudflare's side
+record the URL); ask the complainant for the full link if they quote only
+`besidka.com/artifacts`.
 
 1. Read the complaint the same day. Open the URL in a private window.
 2. If it breaches the Terms or the law, take it down (section 5) and send the
@@ -192,6 +214,13 @@ Plain text, sent from the privacy mailbox or by A-7 through `useEmail`. English;
 send in Polish when the report was in Polish. Never name the reporter to the
 owner, never quote a CSAM report, and never attach the reported material.
 Placeholders are in angle brackets.
+
+In the emails A-7 sends, `<URL>` in T1 and T2 is a reference id (the share
+id, or the artifact id for a shared chat), never the link and never the
+artifact title, because the reporter chooses the address. T1 goes to the
+typed address only for signed-out reporters; a signed-in reporter gets it
+at their verified account email, and each address gets at most 3 receipts a
+day. T3 names the artifact by title and id.
 
 ### T1. Receipt to the reporter (DSA Art. 16(4))
 
@@ -233,6 +262,10 @@ Subject: Your artifact "<title>" was <removed / restricted>
 > disabled, not deleted, and you can still delete it <unless: it is held until
 > <date> because an authority ordered its removal or asked me to preserve
 > it>.
+>
+> <only after a user-scope takedown: Link sharing is also turned off for your
+> account: you cannot create new public links to artifacts until a person
+> reviews this decision again.>
 >
 > Facts: <what was found, including whether the decision followed a report
 > made under the notice process, without the reporter's name>.

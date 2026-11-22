@@ -1,3 +1,6 @@
+import type { ArtifactKind } from '#shared/utils/artifacts'
+import type { DocumentFormat } from '#shared/utils/documents'
+
 export type ChatContextGroup = 'outputs' | 'inputs' | 'used'
 
 export type ChatContextItemKind
@@ -9,6 +12,13 @@ export type ChatContextItemKind
     | 'chat-search'
     | 'web-source'
     | 'web-search'
+    | 'artifact'
+    | 'code-execution'
+    | 'document'
+    | 'skill'
+    | 'connector'
+
+export type ChatContextConnectorOutcome = 'ok' | 'error' | 'denied' | 'limited'
 
 export interface ChatContextItemMeta {
   url?: string
@@ -18,6 +28,15 @@ export interface ChatContextItemMeta {
   provider?: string
   count?: number
   domain?: string
+  artifactId?: string
+  artifactKind?: ArtifactKind
+  version?: number
+  latestVersion?: number
+  documentId?: string
+  documentFormat?: DocumentFormat
+  tool?: string
+  outcome?: ChatContextConnectorOutcome
+  connectorId?: string
 }
 
 export interface ChatContextItem {
@@ -42,8 +61,10 @@ export interface ChatContextCost {
 }
 
 export interface ChatContextChat {
+  id: string
   slug: string
   title: string
+  pinnedAt: string | null
   project: { id: string, name: string } | null
   memoryExcluded: boolean
   share: ChatContextShare | null

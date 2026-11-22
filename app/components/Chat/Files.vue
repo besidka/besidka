@@ -106,6 +106,10 @@
             class="btn btn-circle btn-xs btn-soft"
             :aria-label="`Download ${file.filename || 'file'}`"
             title="Download"
+            @click="onDownloadClick($event, {
+              url: file.links.downloadUrl,
+              fileName: file.filename || 'file',
+            })"
           >
             <Icon name="lucide:download" size="12" />
           </a>
@@ -156,11 +160,20 @@ const props = defineProps<{
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+const { onDownloadClick } = useFileDownload()
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 const failedUrls = reactive<Record<string, boolean>>({})
 const previewFile = shallowRef<DisplayFile | null>(null)
 const isImagePreviewOpen = shallowRef<boolean>(false)
+
+function readStreamedFileName(part: {
+  providerMetadata?: Record<string, Record<string, unknown>>
+}): string | undefined {
+  const filename = part.providerMetadata?.besidka?.filename
+
+  return typeof filename === 'string' ? filename : undefined
+}
 
 const parts = computed<DisplayFile[]>(() => {
   return props.message.parts.flatMap((part, index): DisplayFile[] => {
@@ -182,9 +195,11 @@ const parts = computed<DisplayFile[]>(() => {
       return []
     }
 
+    const filename = part.filename ?? readStreamedFileName(part)
+
     return [{
-      displayKey: `${index}:${part.filename || 'file'}`,
-      filename: part.filename,
+      displayKey: `${index}:${filename || 'file'}`,
+      filename,
       mediaType: part.mediaType,
       links: getSafeFileLinks(part.url),
       isHidden: false,

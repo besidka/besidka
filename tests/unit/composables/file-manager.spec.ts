@@ -205,6 +205,68 @@ describe('useFileManager', () => {
     })
   })
 
+  it('starts with the all kind filter and sends no kind query', async () => {
+    const manager = useFileManager()
+
+    expect(manager.kind.value).toBe('all')
+
+    manager.source.value = 'assistant'
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/files', {
+        query: {
+          offset: 0,
+          limit: 20,
+          source: 'assistant',
+        },
+      })
+    })
+  })
+
+  it('sends the kind query on the generated source and resets', async () => {
+    const manager = useFileManager()
+
+    await manager.fetchFiles(true)
+    manager.source.value = 'assistant'
+
+    await vi.waitFor(() => {
+      expect(manager.files.value).toHaveLength(1)
+    })
+
+    manager.selectedIds.value = new Set(['file-2'])
+    manager.pagination.offset = 20
+    manager.kind.value = 'document'
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/files', {
+        query: {
+          offset: 0,
+          limit: 20,
+          source: 'assistant',
+          kind: 'document',
+        },
+      })
+    })
+
+    expect(manager.selectedIds.value.size).toBe(0)
+    expect(manager.pagination.offset).toBe(0)
+  })
+
+  it('keeps the kind query out of non-generated sources', async () => {
+    const manager = useFileManager()
+
+    manager.kind.value = 'image'
+    await manager.fetchFiles(true)
+
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/files', {
+      query: {
+        offset: 0,
+        limit: 20,
+        source: 'upload',
+      },
+    })
+  })
+
   describe('Projects source', () => {
     const sharedFile = {
       id: 'file-shared',

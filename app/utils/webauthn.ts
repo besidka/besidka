@@ -21,11 +21,11 @@ export async function browserSupportsWebAuthnAutofill(): Promise<boolean> {
   return isConditionalMediationAvailable()
 }
 
-const passkeyCeremonyCancelledCodes = [
+const passkeyCeremonyCanceledCodes = [
   'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY',
   'ERROR_CEREMONY_ABORTED',
 ]
 
-export function isPasskeyCeremonyCancelled(code?: string): boolean {
-  return !!code && passkeyCeremonyCancelledCodes.includes(code)
+export function isPasskeyCeremonyCanceled(code?: string): boolean {
+  return !!code && passkeyCeremonyCanceledCodes.includes(code)
 }

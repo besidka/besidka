@@ -105,12 +105,33 @@
               class="text-base-content/40"
             />
           </div>
-          <p
-            class="pr-2 text-xs font-medium truncate"
-            :title="file.name"
-          >
-            {{ truncateFilename(file.name) }}
-          </p>
+          <div class="flex flex-col items-start gap-1 min-w-0">
+            <p
+              class="pr-2 text-xs font-medium truncate"
+              :title="file.name"
+            >
+              {{ truncateFilename(file.name) }}
+            </p>
+            <span
+              v-if="deliveryHints.get(file.storageKey)"
+              class="badge badge-soft badge-xs leading-none"
+              :class="{
+                'badge-warning': deliveryHints.get(file.storageKey)?.isBlocking
+              }"
+              :title="deliveryHints.get(file.storageKey)?.description"
+              data-testid="files-delivery-hint"
+            >
+              {{ deliveryHints.get(file.storageKey)?.label }}
+            </span>
+            <span
+              v-if="convertedFromXlsKeys.has(file.storageKey)"
+              class="text-[10px] leading-none text-base-content/60"
+              :title="XLS_CONVERTED_NOTE_DESCRIPTION"
+              data-testid="files-converted-note"
+            >
+              {{ XLS_CONVERTED_NOTE }}
+            </span>
+          </div>
         </div>
         <button
           class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
@@ -321,6 +342,11 @@
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
+import type { AttachedFile } from '~/types/file-manager'
+import type {
+  FileDeliveryHint,
+  FileDeliveryResolver,
+} from '~/utils/file-delivery-hints'
 import type { UploadingFile } from '~/composables/chat-files'
 import type { PastedText } from '~/utils/pasted-text'
 import type {
@@ -330,13 +356,29 @@ import type {
 } from '~/types/chat-input-tools'
 
 const props = withDefaults(defineProps<{
-  files: Pick<FileMetadata, 'storageKey' | 'name' | 'type' | 'size'>[]
+  files: (
+    Pick<FileMetadata, 'storageKey' | 'name' | 'type' | 'size'>
+    & Partial<Pick<
+      AttachedFile,
+      | 'textStatus'
+      | 'textBytes'
+      | 'textTruncated'
+      | 'textOmittedMedia'
+      | 'textOmittedCharts'
+    >>
+  )[]
+  resolveDelivery?: FileDeliveryResolver
+  resolveDeliveryWithRunCode?: FileDeliveryResolver
   uploadingFiles?: Map<string, UploadingFile>
+  convertedFromXlsKeys?: ReadonlySet<string>
   uploadingCount?: number
   tiles?: ChatInputTile[]
   pastedTexts?: PastedText[]
 }>(), {
+  resolveDelivery: undefined,
+  resolveDeliveryWithRunCode: undefined,
   uploadingFiles: undefined,
+  convertedFromXlsKeys: () => new Set<string>(),
   uploadingCount: undefined,
   tiles: () => [],
   pastedTexts: () => [],
@@ -353,6 +395,29 @@ const emit = defineEmits<{
   'open-tile': [section: ToolsSection | null, origin: HTMLElement]
   'remove-tile': [id: ChatInputTileId]
 }>()
+
+const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
+  const hints = new Map<string, FileDeliveryHint>()
+  const resolve = props.resolveDelivery
+
+  if (!resolve) {
+    return hints
+  }
+
+  for (const file of props.files) {
+    const hint = getFileDeliveryHint(
+      file,
+      resolve,
+      props.resolveDeliveryWithRunCode,
+    )
+
+    if (hint) {
+      hints.set(file.storageKey, hint)
+    }
+  }
+
+  return hints
+})
 
 const carouselRef = useTemplateRef<HTMLDivElement>('carouselRef')
 const detachAllItemRef = useTemplateRef<HTMLDivElement>('detachAllItemRef')

@@ -215,9 +215,10 @@ describe('project knowledge items API', () => {
 
       await expect(post({ items: [textItem()] })).rejects.toMatchObject({
         status: 413,
-        message: 'Not enough storage space. Please delete some files.',
-        why: 'The upload is larger than the remaining storage quota',
-        fix: 'Delete some files or upload a smaller file',
+        message: 'Storage is full',
+        why: '0 B of 4 B used',
+        fix: 'Free space on the Storage page',
+        link: '/profile/storage',
       })
       expect(harness.testDb.countItems()).toBe(0)
       expect(harness.bucket.calls).toEqual([])

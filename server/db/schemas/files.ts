@@ -16,7 +16,7 @@ export const files = snakeCase.table(
     name: text().notNull(),
     size: integer({ mode: 'number' }).notNull(),
     type: text().notNull(),
-    source: text({ enum: ['upload', 'assistant'] })
+    source: text({ enum: ['upload', 'assistant', 'connector'] })
       .notNull()
       .default('upload'),
     expiresAt: integer({ mode: 'timestamp' }),
@@ -25,6 +25,13 @@ export const files = snakeCase.table(
     originProvider: text(),
     originModel: text(),
     generationCost: real(),
+    textStatus: text({
+      enum: ['ready', 'empty', 'failed', 'too_large'],
+    }),
+    textBytes: integer({ mode: 'number' }),
+    textVersion: integer({ mode: 'number' }),
+    textOmittedMedia: integer({ mode: 'number' }),
+    textOmittedCharts: integer({ mode: 'number' }),
   },
   table => [
     uniqueIndex('uq_file_user').on(table.id, table.userId),

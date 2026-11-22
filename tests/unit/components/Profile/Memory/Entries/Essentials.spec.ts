@@ -62,7 +62,7 @@ describe('Profile/Memory/Entries/Essentials', () => {
       .text()).toBe('Essentials')
   })
 
-  it('lists each entry as a row labelled by its category in order',
+  it('lists each entry as a row labeled by its category in order',
     async () => {
       const wrapper = await mountEssentials()
       const rows = wrapper.findAll('[data-testid="memory-entry-row"]')

@@ -13,6 +13,10 @@ import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
 import * as schema from '~~/server/db/schema'
 import { buildChatSharedColumn } from '~~/server/utils/chats/share'
 import {
+  buildChatArtifactCountColumn,
+} from '~~/server/utils/artifacts/chat-artifacts'
+import { evaluateFeatureForEvent } from '~~/server/utils/features/context'
+import {
   createHistoryCursor,
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
@@ -69,6 +73,25 @@ export default defineEventHandler(async (event) => {
     limit,
   })
 
+  let isArtifactsActive = false
+
+  try {
+    const artifactsFeature = await evaluateFeatureForEvent(
+      event,
+      'artifacts',
+      { recordExposure: false },
+    )
+
+    isArtifactsActive = artifactsFeature.active
+  } catch (exception) {
+    logger.set({
+      artifactCount: {
+        stage: 'feature-evaluation',
+        error: exceptionSummary(exception),
+      },
+    })
+  }
+
   const columns = {
     id: schema.chats.id,
     slug: schema.chats.slug,
@@ -80,6 +103,9 @@ export default defineEventHandler(async (event) => {
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
     shared: buildChatSharedColumn(),
+    ...(isArtifactsActive
+      ? { artifactCount: buildChatArtifactCountColumn(userId) }
+      : {}),
   }
 
   const cursorFilter = parsedCursor

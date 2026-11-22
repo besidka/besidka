@@ -58,7 +58,7 @@ cheapest suitable curated one: `gemini-3.1-flash-lite` (Google),
 `kimi-k2.6` (Moonshot AI) and `qwen3.8-flash` (Qwen). Each provider spec
 asserts its single flagged id.
 
-Research agents are recognised by their curated `research` block, so the
+Research agents are recognized by their curated `research` block, so the
 policy never hardcodes model ids.
 
 ### `excludedInputModalities`: a delivery limit, not a model capability
@@ -96,10 +96,33 @@ gpt-4o, gpt-4.1, o3 and gpt-5.4. Text-only models (o3-mini, gpt-4,
 gpt-3.5-turbo) stay without `pdf`. Drop the entry if models.dev starts
 reporting OpenAI PDF support accurately.
 
+### Which inputs reach a model: the delivery resolver
+
+`modalities.input` says what a model can read natively. How a file actually
+reaches it is decided by `resolveFileDelivery()`
+(`shared/utils/file-delivery.ts`), which takes the route (`direct` or a
+gateway), the provider id, the model's input modalities, the file's media type
+and, for Office files, the extraction status. It returns `native`, `text` or
+`unsupported` with a reason, and it is total: an unknown type is
+`unsupported`, never an exception.
+
+Images and PDFs are `native` when `modalities.input` has `image` or `pdf` (the
+merged list described above, so `excludedInputModalities` and
+`impliedInputModalities` apply); an unknown list fails open, as the gateway
+checks always have. `text/*` is `text`. A DOCX, XLSX or PPTX is `text` for
+every provider and gateway once its text was extracted when the file was
+stored, because Office has no `modalities.input` entry: no provider reads
+these files uniformly, and sending extracted text works everywhere. The
+per-provider `office: 'extract'` rows in that file are the seam for turning
+OpenAI's native `input_file` path on later. The carried-files predicate
+(`server/utils/files/carried-media-types.ts`) and the newest-message checks
+(`docs/files.md`) read the same rules. A new modality (audio, video) belongs in
+this resolver, not in a one-off check.
+
 ## Reasoning capability sync rule
 
 The models.dev `reasoning` boolean is never merged into the catalog: a
-model's reasoning behaviour comes only from the two curated fields,
+model's reasoning behavior comes only from the two curated fields,
 `reasoning` (selectable effort levels or an on/off toggle) and
 `reasoningAlwaysOn` (the model always reasons and accepts no effort
 parameter). A model never carries both.
@@ -109,7 +132,7 @@ Every consumer reads those two fields through one shared helper,
 `'configurable'`, `'always-on'` or `'none'`:
 
 - the model picker's brain badge and detail badge (`ModelItem.vue`,
-  `ModelDetail.vue`) show for any state but `'none'`, labelled "Always
+  `ModelDetail.vue`) show for any state but `'none'`, labeled "Always
   reasons" for `'always-on'`;
 - the chat input (`useChatInput().reasoningControlState`) shows the effort
   dropdown for `'configurable'` and a forced-on, disabled reasoning button
@@ -1054,8 +1077,8 @@ automatic add:
 - **`claude-fable-5-1`** — the same declined premium tier as
   `claude-fable-5` above, just a later dated release (2026-09-01).
 - **`gpt-daybreak-red-latest`, `gpt-daybreak-blue-latest`** — rolling
-  "-latest" aliases for cybersecurity-specialised models ($12.50/$75 and
-  $4/$20); specialised positioning plus a moving target (the same reasons as
+  "-latest" aliases for cybersecurity-specialized models ($12.50/$75 and
+  $4/$20); specialized positioning plus a moving target (the same reasons as
   the `gpt-5.3-codex` and `gpt-5.2-chat-latest` entries above).
 - **`gemini-flash-latest`, `gemini-flash-lite-latest`** — rolling aliases of
   the already curated Flash and Flash-Lite ids; same rule as

@@ -21,7 +21,7 @@ export interface ChatToolMocks {
 
 export interface ChatToolContract {
   name: string
-  scope: 'chats:read' | 'chats:write' | 'data:delete'
+  scope: string
   annotations: Record<string, boolean>
   descriptionIncludes: string[]
   validInput: Record<string, unknown>

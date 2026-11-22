@@ -21,8 +21,12 @@ import {
 const TOOLS_DIRECTORY = fileURLToPath(
   new URL('../../../../../server/mcp/tools/', import.meta.url),
 )
+const IMPLEMENTATIONS_DIRECTORY = fileURLToPath(
+  new URL('../../../../../server/utils/besidka-tools/tools/', import.meta.url),
+)
 const TOOL_NAME = /name: '([a-z_]+)'/
 const PRIVATE_WRAPPER = /withMcpPrivateTool\(\s*'([a-z_]+)'/
+const REGISTRY_SHIM = /toMcpToolDefinition\(/
 const DELETE_SCOPE_MENTION = /\(data:delete\)/
 const READ_ONLY_HINT = /readOnlyHint: (true|false)/
 const DESTRUCTIVE_HINT = /destructiveHint: (true|false)/
@@ -40,9 +44,16 @@ const DESTRUCTIVE_TOOLS = [
   'delete_project_knowledge_items',
   'rename_file',
   'delete_files',
+  'delete_connector_images',
   'reset_memory',
   'update_settings',
   'set_feature_access',
+  'revoke_artifact_shares',
+  'delete_artifacts',
+  'delete_connectors',
+  'update_skill',
+  'delete_skills',
+  'set_project_skills',
 ]
 
 function readToolSources() {
@@ -51,13 +62,20 @@ function readToolSources() {
       return file.endsWith('.ts')
     })
     .map((file) => {
-      const source = readFileSync(`${TOOLS_DIRECTORY}${file}`, 'utf8')
+      const shimSource = readFileSync(`${TOOLS_DIRECTORY}${file}`, 'utf8')
+      const isRegistryShim = REGISTRY_SHIM.test(shimSource)
+      const source = isRegistryShim
+        ? readFileSync(`${IMPLEMENTATIONS_DIRECTORY}${file}`, 'utf8')
+        : shimSource
+      const name = TOOL_NAME.exec(source)?.[1] ?? ''
 
       return {
         file,
-        name: TOOL_NAME.exec(source)?.[1] ?? '',
+        name,
         mentionsDeleteScope: DELETE_SCOPE_MENTION.test(source),
-        wrapperName: PRIVATE_WRAPPER.exec(source)?.[1] ?? null,
+        wrapperName: isRegistryShim
+          ? name
+          : PRIVATE_WRAPPER.exec(source)?.[1] ?? null,
         readOnly: READ_ONLY_HINT.exec(source)?.[1] === 'true',
         destructive: DESTRUCTIVE_HINT.exec(source)?.[1] === 'true',
       }
@@ -97,8 +115,10 @@ describe('mcp tool scopes', () => {
       'delete_project',
       'delete_project_knowledge_items',
       'delete_files',
+      'delete_connector_images',
       'delete_memory',
       'reset_memory',
+      'delete_artifacts',
     ] as const
 
     for (const name of deleteTools) {
@@ -137,6 +157,95 @@ describe('mcp tool scopes', () => {
     expect(isMcpWriteTool('set_feature_access')).toBe(true)
     expect(isMcpWriteTool('list_feature_flags')).toBe(false)
     expect(isMcpWriteTool('list_feature_access')).toBe(false)
+  })
+
+  it('puts the artifact tools behind their own scopes', () => {
+    const readTools = [
+      'list_artifacts',
+      'get_artifact',
+      'list_artifact_shares',
+    ] as const
+    const writeTools = [
+      'create_artifact',
+      'update_artifact',
+      'revoke_artifact_shares',
+    ] as const
+
+    for (const name of readTools) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['artifacts:read'])
+      expect(isMcpWriteTool(name), name).toBe(false)
+    }
+
+    for (const name of writeTools) {
+      expect(getMcpToolRequiredScopes(name), name)
+        .toEqual(['artifacts:write'])
+      expect(isMcpWriteTool(name), name).toBe(true)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(getMcpToolRequiredScopes('share_artifact'))
+      .toEqual(['artifacts:share'])
+    expect(isMcpWriteTool('share_artifact')).toBe(true)
+    expect(isMcpDeleteTool('share_artifact')).toBe(false)
+    expect(getMcpToolRequiredScopes('delete_artifacts'))
+      .toEqual(['data:delete'])
+    expect(isMcpWriteScope('artifacts:write')).toBe(true)
+    expect(isMcpWriteScope('artifacts:share')).toBe(true)
+    expect(isMcpWriteScope('artifacts:read')).toBe(false)
+  })
+
+  it('puts the connector tools behind their own scopes', () => {
+    for (const name of ['list_connectors', 'get_connector'] as const) {
+      expect(getMcpToolRequiredScopes(name), name)
+        .toEqual(['connectors:read'])
+      expect(isMcpWriteTool(name), name).toBe(false)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    for (const name of [
+      'add_connector',
+      'update_connector_tools',
+      'delete_connectors',
+    ] as const) {
+      expect(getMcpToolRequiredScopes(name), name)
+        .toEqual(['connectors:write'])
+      expect(isMcpWriteTool(name), name).toBe(true)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(isMcpWriteScope('connectors:write')).toBe(true)
+    expect(isMcpWriteScope('connectors:read')).toBe(false)
+    expect(isMcpDeleteScope('connectors:write')).toBe(false)
+  })
+
+  it('puts the skill tools behind their own scopes', () => {
+    for (const name of ['list_skills', 'get_skill'] as const) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['skills:read'])
+      expect(isMcpWriteTool(name), name).toBe(false)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    for (const name of [
+      'create_skill',
+      'update_skill',
+      'rename_skill',
+      'delete_skills',
+      'set_project_skills',
+    ] as const) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['skills:write'])
+      expect(isMcpWriteTool(name), name).toBe(true)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(isMcpWriteScope('skills:write')).toBe(true)
+    expect(isMcpWriteScope('skills:read')).toBe(false)
+    expect(isMcpDeleteScope('skills:write')).toBe(false)
+  })
+
+  it('has no skills:share scope, which is reserved in the docs only', () => {
+    expect(MCP_OAUTH_SCOPES as readonly string[]).not.toContain(
+      'skills:share',
+    )
   })
 
   it('never lets a tool write feature rules', () => {

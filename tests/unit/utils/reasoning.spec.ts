@@ -7,6 +7,7 @@ import {
   hasPendingToolPart,
   hasStreamingReasoningPart,
   isFailedToolPart,
+  isPendingToolPart,
   isThinkingActive,
   isThinkingToolPart,
   normalizeReasoningTitle,
@@ -399,6 +400,73 @@ describe('isThinkingToolPart / getToolPartName', () => {
     }
   })
 
+  it('treats the activate_skill call as a reasoning step', () => {
+    for (const state of ['input-streaming', 'input-available']) {
+      const part = {
+        type: 'tool-activate_skill',
+        state,
+      } as UIMessage['parts'][number]
+
+      expect(isThinkingToolPart(part)).toBe(true)
+      expect(isPendingToolPart(part)).toBe(true)
+    }
+
+    const done = {
+      type: 'tool-activate_skill',
+      state: 'output-available',
+    } as UIMessage['parts'][number]
+
+    expect(isThinkingToolPart(done)).toBe(true)
+    expect(isPendingToolPart(done)).toBe(false)
+  })
+
+  it('keeps a skill file read as a reasoning step', () => {
+    const part = {
+      type: 'tool-read_skill_file',
+      state: 'input-available',
+    } as UIMessage['parts'][number]
+
+    expect(isThinkingToolPart(part)).toBe(true)
+    expect(isPendingToolPart(part)).toBe(true)
+  })
+
+  it('never treats an artifact tool part as a thinking part', () => {
+    const states = ['input-streaming', 'input-available', 'output-available', 'output-error']
+
+    for (const name of ['create_artifact', 'update_artifact']) {
+      for (const state of states) {
+        const part = {
+          type: `tool-${name}`,
+          state,
+        } as UIMessage['parts'][number]
+
+        expect(getToolPartName(part)).toBe(name)
+        expect(isThinkingToolPart(part)).toBe(false)
+        expect(isPendingToolPart(part)).toBe(false)
+      }
+    }
+  })
+
+  it('never treats a code_execution tool part as a reasoning step', () => {
+    const states = [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'output-error',
+    ]
+
+    for (const state of states) {
+      const part = {
+        type: 'tool-code_execution',
+        state,
+      } as UIMessage['parts'][number]
+
+      expect(getToolPartName(part)).toBe('code_execution')
+      expect(isThinkingToolPart(part)).toBe(false)
+      expect(isPendingToolPart(part)).toBe(false)
+    }
+  })
+
   it('names a dynamic-tool part from its toolName field', () => {
     const part = {
       type: 'dynamic-tool',
@@ -517,6 +585,15 @@ describe('isThinkingActive', () => {
 })
 
 describe('getToolStepTitle', () => {
+  it('names Besidka tools as Besidka actions', () => {
+    expect(getToolStepTitle('besidka__list_projects', true, false))
+      .toBe('Besidka: list projects…')
+    expect(getToolStepTitle('besidka__list_projects', false, false))
+      .toBe('Besidka: list projects')
+    expect(getToolStepTitle('besidka__delete_chats', false, true))
+      .toBe('Besidka could not delete chats')
+  })
+
   it('titles a known web_search_preview tool by pending state', () => {
     expect(getToolStepTitle('web_search_preview', true, false))
       .toBe('Searching the web')

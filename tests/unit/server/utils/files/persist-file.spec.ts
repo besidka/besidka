@@ -99,4 +99,117 @@ describe('persistFile logging', () => {
     expect(logged).toContain('"fileExtension":"csv"')
     expect(logged).toContain(`"fileNameLength":${SECRET_NAME.length}`)
   })
+
+  it('keeps the object another row owns when a fixed key is taken',
+    async () => {
+      mocks.put.mockResolvedValue({ key: 'connector-abc.png' })
+      vi.stubGlobal('useDb', () => {
+        return {
+          insert: () => ({
+            values: () => ({
+              returning: () => ({
+                get: async () => {
+                  throw new Error('UNIQUE constraint failed: files.storage_key')
+                },
+              }),
+            }),
+          }),
+          select: () => ({
+            from: () => ({
+              where: () => ({ get: async () => ({ id: 'other-row' }) }),
+            }),
+          }),
+        }
+      })
+
+      const { persistFile, isStorageKeyTakenError } = await import(
+        '~~/server/utils/files/persist-file'
+      )
+      const failure = await persistFile({
+        userId: 1,
+        fileName: 'doop-get_frame_screenshot.png',
+        mediaType: 'image/png',
+        fileData: new Uint8Array([1, 2, 3]),
+        source: 'connector',
+        storageKey: 'connector-abc.png',
+        logger: mocks.logger,
+        policy: {
+          maxStorageBytes: 1000,
+          fileRetentionDays: null,
+        } as never,
+        totalFilesSize: 0,
+      }).catch((exception: unknown) => exception)
+
+      expect(isStorageKeyTakenError(failure)).toBe(true)
+      expect(failure).toMatchObject({ status: 409 })
+      expect(mocks.put.mock.calls[0]![0]).toBe('connector-abc.png')
+      expect(mocks.remove).not.toHaveBeenCalled()
+    })
+
+  it('still removes its object when a fixed key insert fails for another '
+    + 'reason', async () => {
+    mocks.put.mockResolvedValue({ key: 'connector-abc.png' })
+    vi.stubGlobal('useDb', () => {
+      return {
+        insert: () => ({
+          values: () => ({
+            returning: () => ({
+              get: async () => {
+                throw new Error('D1 unavailable')
+              },
+            }),
+          }),
+        }),
+        select: () => ({
+          from: () => ({
+            where: () => ({ get: async () => undefined }),
+          }),
+        }),
+      }
+    })
+
+    const { persistFile } = await import('~~/server/utils/files/persist-file')
+
+    await expect(persistFile({
+      userId: 1,
+      fileName: 'doop-get_frame_screenshot.png',
+      mediaType: 'image/png',
+      fileData: new Uint8Array([1, 2, 3]),
+      source: 'connector',
+      storageKey: 'connector-abc.png',
+      logger: mocks.logger,
+      policy: {
+        maxStorageBytes: 1000,
+        fileRetentionDays: null,
+      } as never,
+      totalFilesSize: 0,
+    })).rejects.toMatchObject({ status: 500 })
+    expect(mocks.remove).toHaveBeenCalledWith('connector-abc.png')
+  })
+
+  it('refuses a file over the shared allowance before writing anything', async () => {
+    const { persistFile } = await import('~~/server/utils/files/persist-file')
+
+    await expect(persistFile({
+      userId: 1,
+      fileName: 'notes.txt',
+      mediaType: 'text/plain',
+      fileData: new Uint8Array([1, 2, 3]),
+      logger: mocks.logger,
+      policy: {
+        maxStorageBytes: 10,
+        fileRetentionDays: 30,
+      } as never,
+      totalFilesSize: 8,
+    })).rejects.toMatchObject({
+      status: 413,
+      message: 'Storage is full',
+      code: 'storage_full',
+      why: '8 B of 10 B used',
+      fix: 'Free space on the Storage page',
+      link: '/profile/storage',
+    })
+
+    expect(mocks.put).not.toHaveBeenCalled()
+  })
 })

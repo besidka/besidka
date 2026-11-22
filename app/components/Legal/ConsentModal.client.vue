@@ -123,6 +123,10 @@
             download
             class="btn btn-ghost btn-ghost-legacy btn-sm min-w-40"
             data-testid="legal-consent-export"
+            @click="onDownloadClick($event, {
+              url: '/api/v1/memory/export',
+              fileName: 'besidka-memory-export.json',
+            })"
           >
             <Icon
               name="lucide:download"
@@ -166,6 +170,7 @@ const {
   resolveConsentModal,
 } = useLegalConsent()
 const { requestAccountDeletion } = useAccountDeletion()
+const { onDownloadClick } = useFileDownload()
 
 const dialog = useTemplateRef<HTMLDialogElement>('dialog')
 const isTermsAccepted = shallowRef<boolean>(false)

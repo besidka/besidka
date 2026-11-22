@@ -1,6 +1,7 @@
 import { createError, useLogger } from 'evlog'
+import { retryOnEndedRequestPromise } from '~~/server/utils/auth-instance'
 
-export function useUnauthorizedError() {
+export function useUnauthorizedError(): never {
   throw createError({
     message: `You don't have access to this resource. Try to sign out and sign in again.`,
     status: 401,
@@ -20,10 +21,13 @@ export async function useUserSession() {
     return event.context.authSession
   }
 
-  const session = await useServerAuth().api.getSession({
-    // @ts-ignore
-    headers: getHeaders(event),
-  })
+  const headers = getHeaders(event)
+  const session = await retryOnEndedRequestPromise(() => {
+    return useServerAuth().api.getSession({
+      // @ts-ignore
+      headers,
+    })
+  }, () => dropServerAuth())
 
   if (!session) {
     // Issue #235 diagnostic: distinguish a missing/expired session-token

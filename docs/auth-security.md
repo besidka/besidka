@@ -82,7 +82,7 @@ is overridden to also match wildcard patterns via `matchesHostnamePattern()`
 `pr-442-besidka.chernenko.workers.dev` matches but
 `evil-besidka.chernenko.workers.dev.attacker.com` and
 `besidka.chernenko.workers.dev` do not). Without wildcards (production)
-the plain array is returned and behaviour is exact-match, byte-for-byte as
+the plain array is returned and behavior is exact-match, byte-for-byte as
 before. If a future Better Auth stops calling `.includes`, the override
 stops being consulted and the check falls back to the literal entries,
 which rejects wildcard hosts (403) rather than letting them through.
@@ -168,7 +168,22 @@ abuse containment instead of raw burst suppression.
 | `/oauth2/consent` | 60s | 20 |
 | `/oauth2/revoke` | 60s | 120 |
 | `/oauth2/introspect` | 60s | 120 |
+| `/get-session` | not limited | — |
+| `/.well-known/**` | not limited | — |
 | everything else (default) | 60s | 60 |
+
+`/get-session` and the public discovery documents under `/.well-known/` are
+exempt (`authRateLimitExemptPaths`, passed to Better Auth as `false` by
+`buildAuthRateLimitCustomRules()`, the documented way to switch a path off:
+<https://better-auth.com/docs/concepts/rate-limit>). `/get-session` reads the
+caller's own session and answers nothing a guess could learn from, yet every
+page load calls it, so under the 60-per-60s default it cost one KV write per
+call and was the main source of KV's per-key 429s (see
+[Rate-limit storage failures](#rate-limit-storage-failures)). The
+`/.well-known/**` documents are static public metadata that MCP clients fetch
+from shared egress IPs; the WAF rate-limit rule still covers them. `**` is
+needed because Better Auth's `*` stops at a `/`, and the protected resource
+document also lives at `/.well-known/oauth-protected-resource/mcp`.
 
 The `/oauth2/*` rows are explained in
 [OAuth authorization server (MCP)](#oauth-authorization-server-mcp).
@@ -273,6 +288,12 @@ catalog rule above:
 | `POST /api/v1/profiles/keys/exa` | 60s | 10 |
 | `DELETE /api/v1/profiles/keys/exa` | 60s | 10 |
 
+Since the 2026-11-18 rate-limit storage fix, `GET` and `HEAD` on these routes
+are counted in isolate memory (`consumeMemoryRateLimit()`), not KV, with the
+same windows and maxes. A read returns only `hasKey` or a list of providers,
+so per-isolate counting is enough, and a page load no longer costs a KV
+write. `POST` and `DELETE` still count in KV.
+
 The summary route is read-mostly and fetched from chat pages, so it gets a
 much looser 300-per-60s row (raised from 30 in `749473d`). Every gateway
 `GET` is read-mostly, user-initiated, and low-frequency — a single DB lookup
@@ -340,6 +361,99 @@ improvement over the previous `get`/`set`-only implementation (which had
 the same gap, plus the TTL bug above) — not a hard guarantee. A truly
 atomic implementation would need Durable Objects or D1, which is out of
 scope for this PR.
+
+## Rate-limit storage failures
+
+Cloudflare KV accepts about one write per second to the same key and answers
+`KV PUT failed: 429 Too Many Requests` beyond that. Every rate-limited
+request writes its bucket key, so two requests for one key in the same
+second made the second write fail, and the error reached the route as a 500.
+In the 24 hours before the fix, production logged about 160 of these 500s on
+`GET /api/auth/get-session` alone, plus more on `GET /api/v1/profiles/keys`.
+
+The rule since then:
+
+- **A KV error never allows the request.** A brute-force burst is exactly
+  what makes one key take more than one write per second, so letting an
+  uncounted attempt through would switch the limit off when it matters most.
+  Better Auth's storage and the key routes create the storage with
+  `createAuthRateLimitStorage(kv, prefix, { denyOnKvError: true })`: a failed
+  KV read or write logs `attributes.rateLimit` (`keyPrefix`, `kvReadFailed`,
+  `kvWriteFailed`, `denied`, and the error's name and code from
+  `exceptionSummary()`; never the error message or the bucket key, which
+  holds the client IP) and answers 429 with a one-second retry (`X-Retry-After: 1` from
+  Better Auth, `Retry-After: 1` from the key routes). This covers sign-in,
+  sign-up, password reset, 2FA, passkeys and every other row in the table.
+- **Low-risk reads do not write KV at all.** `/get-session` and
+  `/.well-known/**` are exempt from Better Auth's limiter, and key-route
+  reads count in isolate memory.
+- **Why not leave it to Better Auth.** Its rate-limit page documents
+  `customStorage.consume` as one check-and-increment step but says nothing
+  about a storage that throws
+  (<https://better-auth.com/docs/concepts/rate-limit>). In 1.7.14 the error
+  propagates out of `onRequestRateLimit` and the router answers 500, which is
+  what production showed, so the decision is made in our storage.
+- **Other callers keep their own policy.** Without `denyOnKvError` the KV
+  error still propagates, as before, so features that already decide what a
+  KV failure means (the artifact bridge, viewer storage, documents, reports)
+  are unchanged.
+
+## Auth instance init on Workers
+
+The Better Auth instance starts an asynchronous init (`auth.$context`, then
+the Drizzle adapter's schema check) when it is built. It used to be built
+once into a module-level variable by whichever request first called
+`useServerAuth()`, and every later request awaited that same promise. On
+Workers a promise that waits on I/O belongs to the request that started it.
+When that request ends first, the promise never settles, and every other
+request that awaits it fails with "This promise was created by a request
+that has since ended, so it can never settle" until the isolate is evicted.
+The `evlog-auth` middleware made this likely: it built the instance on every
+request, including paths it then skipped without awaiting anything, such as
+`/api/_nuxt_icon/**`. Production showed it as clusters of 500s on every route
+that reads the session (`get-session`, features, settings, keys, connectors,
+`/.well-known/oauth-*`, once a chat send), about 100 a day.
+
+The init does real request-bound I/O. In Better Auth 1.7.14 the `mcp`
+plugin adds the `/mcp` resource to the OAuth provider's `resources`, and the
+provider's plugin `init` seeds it with a D1 `findOne` (`seedResourcesOnce` in
+`@better-auth/oauth-provider`). Better Auth's own Cloudflare guide states
+the constraint: "Workers don't allow I/O across requests"
+(<https://better-auth.com/docs/guides/cloudflare>). Neither that guide nor
+the options reference (<https://better-auth.com/docs/reference/options>) says
+whether to build the instance per request or once per isolate, so the rule
+below is ours.
+
+This root cause matches the stack (`run` in `toAuthEndpoints` awaiting the
+context, under `useUserSession`) but was not reproduced locally. The
+confirmation is the Workers Observability count of that message (about 100 a
+day before the fix) after the deploy.
+
+The rule now (`server/utils/auth-instance.ts`):
+
+- Only a **settled** instance is shared across requests. Until one exists,
+  each request builds its own (memoized for that request) and the first one
+  whose init and schema check settle is published. A request that dies
+  mid-init leaves nothing behind.
+- The middleware passes evlog a resolver that calls `useServerAuth()` per
+  request instead of capturing one instance, so skipped paths never build
+  the instance.
+- `useUserSession()` and the middleware retry the session read once after
+  that error, through `retryOnEndedRequestPromise()`, which drops the cached
+  instance first and logs `attributes.authInit`. Reading a session is safe
+  to repeat.
+- The routes that hand requests to `auth.handler()` (`/api/auth/**` and the
+  `/.well-known/` documents) go through `runOnceAfterInit()`: only the wait
+  for `auth.$context` is retried, and the handler runs exactly once. A
+  handler run can have side effects before it fails (`/sign-in/email`,
+  `/sign-up/email` and `/send-verification-email` read a clone of the body,
+  and `/callback/*`, `/verify-email`, `/delete-user/callback` and
+  `/oauth2/authorize` read none), so checking the body could not tell a safe
+  retry from a second sign-in. If the error still comes out of the handler,
+  the cache is dropped and the error rethrown.
+
+`useToolApprovalSecret()` had the same shape (a module-level pending HKDF
+promise) and now caches only the derived string.
 
 ## Rate limiting is explicit; password reset revokes sessions
 
@@ -707,7 +821,7 @@ rendering below it.
   hang on a dead widget.
 - **Testing the interactive path locally.** Cloudflare's dummy sitekey
   `3x00000000000000000000FF` always forces the interactive checkbox,
-  which exercises the expand/collapse behaviour above. The other test
+  which exercises the expand/collapse behavior above. The other test
   keys never leave the invisible path.
 
 ## Changing an account's email address cannot lose any account data
@@ -943,7 +1057,7 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | Setting | Value | Why |
 | --- | --- | --- |
 | `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
-| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `data:delete`, `admin:features` |
+| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `artifacts:read`, `connectors:read`, `skills:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `artifacts:write`, `artifacts:share`, `connectors:write`, `skills:write`, `data:delete`, `admin:features` |
 | `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline; disconnecting is still immediate because `/mcp` also checks the consent row |
 | `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
 | PKCE | required, S256 only | library default |
@@ -998,7 +1112,7 @@ browser, so they keep tighter per-user-IP limits. `/oauth2/revoke` and
 
 Unauthenticated registration cannot set privileged client fields. The
 plugin's registration schema rejects `skip_consent` (`z.never()`) and
-strips unknown keys such as `enable_end_session`. As defence in depth
+strips unknown keys such as `enable_end_session`. As defense in depth
 against a library change, a `hooks.before` on `/oauth2/register`
 (`stripPrivilegedClientRegistrationFields`) removes `skip_consent`,
 `skipConsent`, `enable_end_session` and `enableEndSession` from the body
@@ -1006,7 +1120,7 @@ before validation.
 
 **Registration bounds.** The same `hooks.before` also rejects, with
 `400 invalid_client_metadata`, a registration whose body is over 16 KiB
-(the `content-length` header, or the serialised body when there is none),
+(the `content-length` header, or the serialized body when there is none),
 whose `client_name` is over 120 characters, whose `client_uri`, `logo_uri`,
 `tos_uri`, `policy_uri`, `jwks_uri` or `backchannel_logout_uri` is over
 2048 characters, with more than 10 `redirect_uris` or
@@ -1144,7 +1258,7 @@ happened. Success logs `oauth_revoked_all` with the trigger path. The plugin's
 
 Approving an app sends "A new app was connected to your Besidka account"
 (`notifyOAuthAppConnected`): the app name (control characters stripped,
-capped at 120, labelled unverified), the scopes in plain words, the time
+capped at 120, labeled unverified), the scopes in plain words, the time
 and a link to `/profile/connected-apps`.
 
 `server/plugins/oauth-grant-sweep.ts` runs on the hourly cron

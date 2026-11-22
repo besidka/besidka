@@ -48,6 +48,7 @@
   <ChatInput
     v-model:message="message"
     v-model:files="files"
+    v-model:attached-artifacts="attachedArtifacts"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     v-model:memory-excluded="memoryExcluded"
@@ -73,6 +74,8 @@ import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { AttachedArtifact } from '~/types/chat-input-tools'
+import { toArtifactAttachmentPart } from '#shared/utils/artifacts'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
@@ -111,10 +114,15 @@ const message = customRef<string>((track, trigger) => ({
   },
 }))
 const files = ref<FileMetadata[]>([])
+const attachedArtifacts = ref<AttachedArtifact[]>([])
+const skillInvocation = useComposerSkillInvocation()
+const builtinCommand = useComposerBuiltinCommand()
 const savedWebSearchTool = prefStorage.getItem('settings_web_search_tool')
 const tools = shallowRef<Tools>(
   isWebSearchTool(savedWebSearchTool) ? [savedWebSearchTool] : [],
 )
+const connectorSelection = useChatConnectorSelection()
+const besidkaToolsSelection = useBesidkaToolsSelection()
 const pending = shallowRef<boolean>(false)
 const isClarifying = shallowRef<boolean>(false)
 const isCreatingResearchChat = shallowRef<boolean>(false)
@@ -590,12 +598,19 @@ async function onSubmit() {
   // must never lose what the user typed or attached.
   const draft = message.value
   const draftFiles = [...files.value]
+  const draftArtifacts = [...attachedArtifacts.value]
+  const draftSkillInvocation = skillInvocation.invocation.value
+    ? { ...skillInvocation.invocation.value }
+    : null
+  const draftSkillPart = skillInvocation.part.value
+  const draftBuiltinPart = builtinCommand.part.value
   const draftBackup = useChatDraftBackup()
   const { model } = getModel(userModel.value)
 
   if (
     isDeepResearchModel(model)
     && !pendingClarification.value
+    && !draftBuiltinPart
     && draft.trim()
   ) {
     await requestResearchClarification(draft, draftFiles)
@@ -610,10 +625,13 @@ async function onSubmit() {
       method: 'put',
       body: {
         parts: [
-          {
-            type: 'text',
-            text: draft,
-          } as TextUIPart,
+          ...(draft.trim() || (!draftSkillPart && !draftBuiltinPart)
+            ? [{
+              type: 'text',
+              text: draft,
+            } as TextUIPart]
+            : []
+          ),
           ...(draftFiles.length
             ? draftFiles.map((file): FileUIPart => ({
               type: 'file',
@@ -623,6 +641,9 @@ async function onSubmit() {
             }))
             : []
           ),
+          ...draftArtifacts.map(toArtifactAttachmentPart),
+          ...(draftSkillPart ? [draftSkillPart] : []),
+          ...(draftBuiltinPart ? [draftBuiltinPart] : []),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         webSearchMode: resolveWebSearchMode(tools.value),
@@ -641,13 +662,19 @@ async function onSubmit() {
     }
 
     draftBackup.clear()
+    connectorSelection.handOff(response.slug)
+    besidkaToolsSelection.handOff(response.slug)
     await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
     // Back up the draft only on a real failure (a successful send never leaves
     // one behind) and restore the optimistically-cleared input and files.
     draftBackup.save(draft)
-    message.value = draft
+    message.value = draftBuiltinPart
+      ? `/${draftBuiltinPart.data.command} ${draft}`
+      : draft
     files.value = draftFiles
+    attachedArtifacts.value = draftArtifacts
+    skillInvocation.restore(draftSkillInvocation)
 
     if (await handleConsentError(exception)) {
       return

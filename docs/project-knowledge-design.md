@@ -575,7 +575,7 @@ opens, so the main app bundle does not grow:
 
 | Format | Library | License | Size (gzipped) | Notes |
 |---|---|---|---|---|
-| PDF | `unpdf` 1.9.x (pdf.js 6.4 serverless build) [S23] | MIT (pdf.js Apache-2.0) | ~503 KB | `extractText` per page. Plain text, no tables. Optional heading/table heuristics from `extractTextItems` (font sizes, positions). Needs the global `Iterator` (Safari ≥ 18.4) |
+| PDF | `unpdf` 2.2.x (pdf.js 6.5 serverless build) [S23] | MIT (pdf.js Apache-2.0) | ~503 KB | `extractText` per page. Plain text, no tables. Optional heading/table heuristics from `extractTextItems` (font sizes, positions). Needs the global `Iterator` (Safari ≥ 18.4) |
 | DOCX | `mammoth` 1.13 → HTML **in the Worker** (DOM-free), then `turndown` 7.2 + `@joplin/turndown-plugin-gfm` → Markdown **on the main thread** [S37] | BSD-2 / MIT / MIT | ~101 KB + ~7 KB + plugin | `turndown` parses HTML with `DOMParser`, which a dedicated Web Worker lacks. Converting a few hundred KB of HTML on the main thread is fast. Headings, lists and tables survive; borders and styles do not |
 | XLSX | `read-excel-file` 9.3, its `read-excel-file/web-worker` entry [S38] | MIT | ~14 KB | Each sheet becomes a Markdown table, capped rows per sheet |
 | PPTX | `officeparser` slim (K4, nice-to-have) [S39] | MIT | ~1.7 MB raw | Only maintained option found |
@@ -656,6 +656,15 @@ yml, toml, xml, html, css, scss, js, mjs, cjs, ts, tsx, jsx, vue, svelte, py,
 rb, go, rs, java, kt, swift, c, h, cpp, hpp, cs, php, sh, sql, graphql,
 proto, ini, Dockerfile, Makefile`, plus PDF, DOCX, XLSX and PNG/JPEG/WebP.
 Text files are capped at 1 MB.
+
+The chat attachment list is separate and still unchanged for everything
+except Office: with the `files.office` flag a chat accepts `.docx`, `.xlsx`
+and `.pptx` too (BES-370, `docs/files.md` "Office attachments"). That path
+extracts the text on the server, when the file is stored, with the
+`besidka-doc-renderer` satellite, and keeps it as a `<storageKey>.text.md`
+sidecar. Knowledge extraction (K1 to K3) is unchanged: it still runs in the
+browser worker with its own limits and never reads that sidecar, so the two
+extractors can disagree on a file and neither feeds the other.
 
 ## 8. Folders
 
@@ -816,7 +825,7 @@ Audit fixes in the limits (P3, findings 5 to 8 of the memory security audit):
   (empty list, unknown, foreign or out-of-folder ids), and an items `POST`
   with `commit: true` whose every item is a duplicate, no longer bump
   `knowledge_version` or rebuild the pack. A stale pack is rebuilt through
-  `ensureKnowledgePackFresh` (no bump, honours the build backoff); only a
+  `ensureKnowledgePackFresh` (no bump, honors the build backoff); only a
   never-committed project (version 0) takes the full commit once. The
   `commit: true` duplicates path used to force a build per request.
 - **Uncommitted inserts mark the pack pending.** An items `POST` without
@@ -933,7 +942,7 @@ D1 storage 5 GB included then $0.75 / GB-month, 10 GB hard cap per database
 - **Data crossing providers**: full-inject sends knowledge to the send's
   provider or gateway. The panel says so once.
 
-## 11. UI behaviour
+## 11. UI behavior
 
 ### 11.1 Knowledge panel
 
@@ -1543,7 +1552,7 @@ invalidate the prompt cache twice.
 - **Abuse limits**: mutating routes share a 60 requests per 60 seconds
   per-user KV limiter (`enforceKnowledgeWriteRateLimit`); text is rejected
   when it holds C0 control characters other than tab, newline, carriage
-  return and form feed; titles, paths and descriptions are NFC-normalised and
+  return and form feed; titles, paths and descriptions are NFC-normalized and
   refuse invisible formatting characters; counts and byte sizes are always
   recomputed server-side.
 - **Deletion**: files and projects cascade to item rows through the FKs; the

@@ -5,7 +5,10 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./mermaid-limits": "./src/mermaid-limits.ts",
+    "./diagram-render": "./src/diagram-render.ts",
+    "./diagram-menus": "./src/diagram-menus.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

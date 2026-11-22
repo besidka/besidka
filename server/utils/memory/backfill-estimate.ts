@@ -279,7 +279,7 @@ async function resolvePrice(
  * conversion. Every pass also carries the instructions and the memory index,
  * which for many short chats dominates, so the index is priced at the
  * midpoint between its current size and its full budget. Unknown prices give
- * `null`, never a guess. Everything is labelled approximate.
+ * `null`, never a guess. Everything is labeled approximate.
  */
 export async function estimateBackfill(
   input: EstimateBackfillInput,

@@ -1,0 +1,13 @@
+{
+	"$schema": "../../../node_modules/wrangler/config-schema.json",
+	"name": "doc-renderer-extract-harness",
+	"main": "worker.js",
+	"compatibility_date": "2026-01-28",
+	"services": [
+		{
+			"binding": "RENDERER",
+			"service": "besidka-doc-renderer",
+			"entrypoint": "DocRenderer"
+		}
+	]
+}

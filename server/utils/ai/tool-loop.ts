@@ -5,6 +5,12 @@ import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
 import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
 import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
+import { isArtifactToolName } from '~~/server/utils/artifacts/message-parts'
+import { isDocumentToolName } from '~~/server/utils/documents/message-parts'
+import { isSkillToolName } from '#shared/utils/skills/runtime'
+import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
+import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -37,7 +43,12 @@ export interface UntrustedContentGuard {
 export interface ToolLoopBudget {
   chatSearchSteps?: number
   knowledgeSteps?: number
+  skillSteps?: number
+  connectorSteps?: number
+  besidkaSteps?: number
+  toolIndexSteps?: number
   guard?: UntrustedContentGuard
+  finalStepInstructions?: () => string | undefined
 }
 
 export interface ResolvedToolLoop {
@@ -78,6 +89,10 @@ export function toolRequiresFollowUpTurn(tool: unknown): boolean {
   return (tool as Record<string, unknown>).requiresFollowUpTurn === true
 }
 
+export function isConnectorToolName(toolName: string): boolean {
+  return toolName.startsWith(CONNECTOR_TOOL_NAME_PREFIX)
+}
+
 function isBudgetedLookupToolName(toolName: string): boolean {
   return isChatSearchToolName(toolName) || isMemoryToolName(toolName)
 }
@@ -85,6 +100,10 @@ function isBudgetedLookupToolName(toolName: string): boolean {
 function isWebFollowUpToolName(toolName: string): boolean {
   return !isBudgetedLookupToolName(toolName)
     && !isProjectKnowledgeToolName(toolName)
+    && !isSkillToolName(toolName)
+    && !isConnectorToolName(toolName)
+    && !isBesidkaChatToolName(toolName)
+    && !isToolIndexLoadToolName(toolName)
 }
 
 function isUntrustedToolResultPart(part: unknown): boolean {
@@ -97,6 +116,8 @@ function isUntrustedToolResultPart(part: unknown): boolean {
   return (type === 'tool-result' || type === 'tool-error')
     && typeof toolName === 'string'
     && !isMemoryToolName(toolName)
+    && !isArtifactToolName(toolName)
+    && !isDocumentToolName(toolName)
 }
 
 function stepHasUntrustedToolResult(step: unknown): boolean {
@@ -116,12 +137,13 @@ function stepHasUntrustedToolResult(step: unknown): boolean {
 
 function buildToolLoopFinalStepInstructions(
   instructions: Instructions | undefined,
+  finalStepInstructions: string = TOOL_LOOP_FINAL_STEP_INSTRUCTIONS,
 ): string {
   if (typeof instructions !== 'string' || !instructions) {
-    return TOOL_LOOP_FINAL_STEP_INSTRUCTIONS
+    return finalStepInstructions
   }
 
-  return `${instructions}\n\n${TOOL_LOOP_FINAL_STEP_INSTRUCTIONS}`
+  return `${instructions}\n\n${finalStepInstructions}`
 }
 
 function isAnthropicGatewayModelId(modelId: string): boolean {
@@ -156,10 +178,16 @@ function isAnthropicGatewayModelId(modelId: string): boolean {
  * memory tool. The flag is never reset and the declared tools are left
  * untouched, so the memory write tools can refuse the rest of the request
  * without churning the provider's prompt cache.
+ *
+ * `finalStepInstructions`, read when the last step starts, replaces the
+ * default "answer now" text: a send that ran connector or Besidka tools and
+ * may continue in another round asks for a short progress note instead
+ * (`server/utils/ai/tool-rounds.ts`); undefined keeps the default.
  */
 function createToolLoopPrepareStep(
   maxSteps: number,
   guard: UntrustedContentGuard | undefined,
+  finalStepInstructions?: () => string | undefined,
 ): PrepareStepFunction<ToolSet> {
   return ({ steps, stepNumber, model, instructions }) => {
     if (guard && !guard.untrustedResultSeen && Array.isArray(steps)) {
@@ -170,7 +198,10 @@ function createToolLoopPrepareStep(
       return undefined
     }
 
-    const finalInstructions = buildToolLoopFinalStepInstructions(instructions)
+    const finalInstructions = buildToolLoopFinalStepInstructions(
+      instructions,
+      finalStepInstructions?.(),
+    )
 
     if (typeof model === 'string') {
       return { toolChoice: 'none' as const, instructions: finalInstructions }
@@ -211,10 +242,15 @@ function createToolLoopPrepareStep(
  * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are granted when at least one
  * registered follow-up tool is neither a chat-search, a memory nor a
  * project-knowledge tool (web search), `chatSearchSteps` more when a
- * chat-search or memory tool is registered, and `knowledgeSteps` more when a
- * project-knowledge tool is registered, so no lookup family ever eats another
- * family's rounds. When the follow-up tools grant no steps at all (lookup
- * tools with a non-positive allowance), the cap falls back to
+ * chat-search or memory tool is registered, `knowledgeSteps` more when a
+ * project-knowledge tool is registered, `skillSteps` more when a skill
+ * tool is registered, and `connectorSteps` more when a connector tool
+ * (`mcp__<slug>__<tool>`) is registered, and `besidkaSteps` more when a
+ * Besidka tool (`besidka__<name>`) is registered, and `toolIndexSteps` more
+ * when the tool index load tool is registered, so no lookup family ever
+ * eats another family's rounds.
+ * When the follow-up tools grant no steps at all (lookup tools with a
+ * non-positive allowance), the cap falls back to
  * `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a single step.
  * Each step is a full provider round-trip, and the KV generation-in-progress
  * guard this route sets is a short heartbeat-renewed lease (see
@@ -244,11 +280,23 @@ export function resolveToolLoop(
   const hasWebFollowUpTool = followUpToolNames.some(isWebFollowUpToolName)
   const hasChatSearchTool = followUpToolNames.some(isBudgetedLookupToolName)
   const hasKnowledgeTool = followUpToolNames.some(isProjectKnowledgeToolName)
+  const hasSkillTool = followUpToolNames.some(isSkillToolName)
+  const hasConnectorTool = followUpToolNames.some(isConnectorToolName)
+  const hasBesidkaTool = followUpToolNames.some(isBesidkaChatToolName)
+  const hasToolIndexTool = followUpToolNames.some(isToolIndexLoadToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
   const knowledgeSteps = Math.max(0, budget?.knowledgeSteps ?? 0)
+  const skillSteps = Math.max(0, budget?.skillSteps ?? 0)
+  const connectorSteps = Math.max(0, budget?.connectorSteps ?? 0)
+  const besidkaSteps = Math.max(0, budget?.besidkaSteps ?? 0)
+  const toolIndexSteps = Math.max(0, budget?.toolIndexSteps ?? 0)
   const toolSteps = (hasWebFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)
     + (hasKnowledgeTool ? knowledgeSteps : 0)
+    + (hasSkillTool ? skillSteps : 0)
+    + (hasConnectorTool ? connectorSteps : 0)
+    + (hasBesidkaTool ? besidkaSteps : 0)
+    + (hasToolIndexTool ? toolIndexSteps : 0)
   const maxSteps = (toolSteps || TOOL_LOOP_MAX_TOOL_STEPS) + 1
 
   return {
@@ -258,7 +306,11 @@ export function resolveToolLoop(
         totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
         toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
       },
-      prepareStep: createToolLoopPrepareStep(maxSteps, budget?.guard),
+      prepareStep: createToolLoopPrepareStep(
+        maxSteps,
+        budget?.guard,
+        budget?.finalStepInstructions,
+      ),
     },
     maxSteps,
   }

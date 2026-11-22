@@ -67,10 +67,10 @@ import {
   getRelyingPartyId,
   isSecureBaseUrl,
 } from './auth-hosts'
+import { createSettledInstanceCache } from '~~/server/utils/auth-instance'
+import { buildAuthRateLimitCustomRules } from '~~/server/utils/auth-rate-limit'
 
 type ServerAuth = ReturnType<typeof createAuth>
-
-let _auth: ServerAuth | undefined
 
 const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email'])
 const DEFAULT_SITE_URL = 'https://besidka.com'
@@ -212,12 +212,41 @@ export function resolveOAuthConsentDecision(
   }
 }
 
-export function useServerAuth(): ServerAuth {
-  if (!_auth) {
-    _auth = createAuth()
+async function waitUntilServerAuthReady(auth: ServerAuth): Promise<void> {
+  const context = await auth.$context
+  const pendingSchemaCheck = context.checkSchema?.()
+
+  if (!pendingSchemaCheck) {
+    return
   }
 
-  return _auth
+  try {
+    await pendingSchemaCheck
+  } catch {
+    return
+  }
+}
+
+function resolveAuthRequestScope(): object | null {
+  try {
+    return useEvent()
+  } catch {
+    return null
+  }
+}
+
+const serverAuthCache = createSettledInstanceCache<ServerAuth>({
+  create: createAuth,
+  whenReady: waitUntilServerAuthReady,
+  resolveRequestScope: resolveAuthRequestScope,
+})
+
+export function useServerAuth(): ServerAuth {
+  return serverAuthCache.get()
+}
+
+export function dropServerAuth(): void {
+  serverAuthCache.drop()
 }
 
 async function revokeSupersededOAuthConnections(
@@ -387,10 +416,11 @@ function createAuth() {
       enabled: isRateLimitEnabled,
       window: authRateLimitDefaults.window,
       max: authRateLimitDefaults.max,
-      customRules: authRateLimitRules,
+      customRules: buildAuthRateLimitCustomRules(),
       customStorage: createAuthRateLimitStorage(
         kv,
         `${dataKey}:rate-limit`,
+        { denyOnKvError: true },
       ),
     },
     advanced: {

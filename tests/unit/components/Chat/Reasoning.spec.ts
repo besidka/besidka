@@ -4,6 +4,8 @@ import { shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import type { VueWrapper } from '@vue/test-utils'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { expandReasoningSteps } from './Reasoning/expand-steps'
+import { useSkillPreview } from '../../../../app/composables/composer-skills'
 import { isThinkingActive } from '../../../../app/utils/reasoning'
 
 const mocks = vi.hoisted(() => ({
@@ -13,12 +15,12 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 
 function setReasoningUserSetting(
-  reasoningExpanded: boolean,
-  reasoningAutoHide: boolean,
+  stepsExpanded: boolean,
+  stepsAutoHide: boolean,
 ) {
   mocks.useUserSetting.mockReturnValue({
-    reasoningExpanded: shallowRef<boolean>(reasoningExpanded),
-    reasoningAutoHide: shallowRef<boolean>(reasoningAutoHide),
+    stepsExpanded: shallowRef<boolean>(stepsExpanded),
+    stepsAutoHide: shallowRef<boolean>(stepsAutoHide),
   })
 }
 
@@ -31,6 +33,16 @@ const multiStepReasoning = [
   '',
   'Second body',
 ].join('\n')
+
+async function mountExpanded(
+  ...args: Parameters<typeof mountSuspended<typeof Reasoning>>
+) {
+  const wrapper = await mountSuspended(...args)
+
+  await expandReasoningSteps(wrapper)
+
+  return wrapper
+}
 
 function createMessage(parts: UIMessage['parts']): UIMessage {
   return {
@@ -511,7 +523,7 @@ describe('Chat/Reasoning', () => {
     expect(isMainExpanded(wrapper)).toBe(false)
   })
 
-  it('never auto-collapses or suppresses re-expansion when reasoningAutoHide is off',
+  it('never auto-collapses or suppresses re-expansion when stepsAutoHide is off',
     async () => {
       setReasoningUserSetting(true, false)
 
@@ -693,6 +705,8 @@ describe('Chat/Reasoning', () => {
   it('constrains the reasoning steps to an inner max-height scroll wrapper', async () => {
     const wrapper = await mountSettledReasoning('Thinking about the request.')
 
+    await expandReasoningSteps(wrapper)
+
     const steps = wrapper.get('[data-testid="reasoning-steps"]')
     const scrollWrapper = steps.element.parentElement
 
@@ -704,6 +718,8 @@ describe('Chat/Reasoning', () => {
   it('lays the steps out without daisyUI timeline classes', async () => {
     const wrapper = await mountSettledReasoning(multiStepReasoning)
 
+    await expandReasoningSteps(wrapper)
+
     expect(wrapper.html()).not.toMatch(/\btimeline(-[a-z-]+)?\b/)
 
     const steps = wrapper.get('[data-testid="reasoning-steps"]')
@@ -714,6 +730,8 @@ describe('Chat/Reasoning', () => {
 
   it('never lets a step row rely on a full-width box with side margins', async () => {
     const wrapper = await mountSettledReasoning(multiStepReasoning)
+
+    await expandReasoningSteps(wrapper)
 
     const rows = wrapper.findAll('[data-testid="reasoning-steps"] > li')
 
@@ -733,6 +751,8 @@ describe('Chat/Reasoning', () => {
 
   it('draws the connector only between steps, not past the first or last', async () => {
     const wrapper = await mountSettledReasoning(multiStepReasoning)
+
+    await expandReasoningSteps(wrapper)
 
     const rows = wrapper.findAll('[data-testid="reasoning-steps"] > li')
     const topSelector = '[data-testid="reasoning-step-connector-top"]'
@@ -760,6 +780,8 @@ describe('Chat/Reasoning', () => {
       = 'Analyzing the request in considerable depth before answering'
     const wrapper = await mountSettledReasoning(`${longTitle}.\n\nSome body text.`)
 
+    await expandReasoningSteps(wrapper)
+
     const title = wrapper.get('[data-testid="reasoning-step-title"]')
 
     expect(title.text()).toBe('Analyzing the request in…')
@@ -770,6 +792,8 @@ describe('Chat/Reasoning', () => {
 
   it('leaves a short step title untouched', async () => {
     const wrapper = await mountSettledReasoning('Thinking about the request.')
+
+    await expandReasoningSteps(wrapper)
 
     const title = wrapper.get('[data-testid="reasoning-step-title"]')
 
@@ -785,6 +809,8 @@ describe('Chat/Reasoning', () => {
         = 'The user wants to compare the Toyota Corolla and Camry 2026 '
           + 'to the Kia Ceed.'
       const wrapper = await mountSettledReasoning(longSentence)
+
+      await expandReasoningSteps(wrapper)
 
       const title = wrapper.get('[data-testid="reasoning-step-title"]')
       const expectedTitle = longSentence.slice(0, -1)
@@ -821,7 +847,7 @@ describe('Chat/Reasoning', () => {
   )
 
   it('renders a step and mounts the box for a tool part alone', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           {
@@ -849,7 +875,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('interleaves reasoning and tool steps in true chronological order', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'reasoning', text: 'Step A.', state: 'done' },
@@ -1007,7 +1033,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('shows the done title and no spinner once a tool call settles to output-available', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-available' },
@@ -1028,7 +1054,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('renders a failed title for output-error, never spinning indefinitely', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-error' },
@@ -1049,8 +1075,60 @@ describe('Chat/Reasoning', () => {
     expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
   })
 
+  describe('create_document attempts the model got wrong', () => {
+    const invalidAttempt = {
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'output-error',
+      input: { format: 'docx' },
+      errorText: 'The document input did not match the schema.',
+    }
+
+    function mountSteps(parts: unknown[]) {
+      return mountExpanded(Reasoning, {
+        props: {
+          message: createMessage(parts as UIMessage['parts']),
+          status: 'ready',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+      })
+    }
+
+    it('shows an invalid attempt as a failed step', async () => {
+      const wrapper = await mountSteps([invalidAttempt])
+
+      expect(wrapper.get('[data-testid="reasoning-step-title"]').text())
+        .toBe('Document call failed')
+      expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
+    })
+
+    it('hides the attempt when a later call created a document', async () => {
+      const wrapper = await mountSteps([
+        invalidAttempt,
+        {
+          type: 'data-document',
+          data: {
+            documentId: 'doc_1',
+            format: 'docx',
+            title: 'Plan',
+            specVersion: 1,
+            status: 'spec_ready',
+          },
+        },
+      ])
+
+      expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(0)
+      expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
+        .toHaveLength(0)
+    })
+  })
+
   it('renders a failed title for output-denied, never spinning indefinitely', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-denied' },
@@ -1071,8 +1149,8 @@ describe('Chat/Reasoning', () => {
     expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
   })
 
-  it('renders the plain done title and green dot for approval-requested, not spinning nor failed', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+  it('renders a waiting-for-approval title and green dot for approval-requested, not spinning nor failed', async () => {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'approval-requested' },
@@ -1088,13 +1166,13 @@ describe('Chat/Reasoning', () => {
 
     const title = wrapper.get('[data-testid="reasoning-step-title"]')
 
-    expect(title.text()).toBe('Searched the web')
+    expect(title.text()).toBe('Waiting for approval: web_search_preview')
     expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(1)
     expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(0)
   })
 
   it('treats an orphaned pending tool call as settled once status leaves streaming', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'input-available' },
@@ -1117,7 +1195,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('never turns a generate_image tool part into a reasoning step', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           {
@@ -1146,7 +1224,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('titles a Moonshot-shaped dynamic tool key and a generic tool name', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-$web_search', state: 'input-available' },
@@ -1167,6 +1245,168 @@ describe('Chat/Reasoning', () => {
       'Searching the web',
       'Using some other thing',
     ])
+  })
+
+  describe('collapsing the block while a multi-step turn streams', () => {
+    const firstReasoning = {
+      type: 'reasoning',
+      text: '**Plan the document**\n\nFirst body\n\n**Pick a format**\n\nMore',
+      state: 'done',
+    }
+    const createDocumentTool = {
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+      input: {},
+    }
+    const secondReasoning = {
+      type: 'reasoning',
+      text: '**Write the body**\n\nSecond body',
+      state: 'streaming',
+    }
+
+    async function mountStreamingTurn(
+      stepsExpandedSetting: boolean,
+    ): Promise<VueWrapper> {
+      setReasoningUserSetting(stepsExpandedSetting, true)
+
+      const firstStreamingParts = [
+        { ...firstReasoning, state: 'streaming' },
+      ] as UIMessage['parts']
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage(firstStreamingParts),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: Date.now(),
+          isTurnThinkingHeld: heldFor(firstStreamingParts),
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      await wrapper.vm.$nextTick()
+
+      if (!isMainExpanded(wrapper)) {
+        await wrapper.get('summary').trigger('click')
+        await wrapper.vm.$nextTick()
+      }
+
+      const nextStepParts = [
+        firstReasoning,
+        createDocumentTool,
+        secondReasoning,
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(nextStepParts),
+        isTurnThinkingHeld: heldFor(nextStepParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      return wrapper
+    }
+
+    it.each([
+      ['off', false],
+      ['on', true],
+    ])(
+      'lets the user collapse the expanded block once the next step starts, with the expanded-by-default setting %s',
+      async (_label, stepsExpandedSetting) => {
+        const wrapper = await mountStreamingTurn(stepsExpandedSetting)
+
+        expect(isMainExpanded(wrapper)).toBe(true)
+
+        await wrapper.get('summary').trigger('click')
+        await wrapper.vm.$nextTick()
+
+        expect(isMainExpanded(wrapper)).toBe(false)
+      },
+    )
+
+    it('keeps the block collapsed while later steps keep streaming', async () => {
+      const wrapper = await mountStreamingTurn(true)
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const laterParts = [
+        firstReasoning,
+        createDocumentTool,
+        { ...secondReasoning, text: `${secondReasoning.text}\n\n**Review**\n\nThird` },
+        { type: 'tool-create_document', toolCallId: 'call-2', state: 'input-streaming', input: {} },
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(laterParts),
+        isTurnThinkingHeld: heldFor(laterParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+    })
+
+    it('keeps the block collapsed when the user collapses it while answer text streams and a later reasoning segment starts', async () => {
+      setReasoningUserSetting(true, false)
+
+      const answeringParts = [
+        { ...firstReasoning, state: 'done' },
+        { type: 'text', text: 'Answer so far.', state: 'streaming' },
+      ] as UIMessage['parts']
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage(answeringParts),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 1000,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+
+      const nextSegmentParts = [
+        ...answeringParts,
+        secondReasoning,
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(nextSegmentParts),
+        reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: heldFor(nextSegmentParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+    })
+
+    it('expands again when the user reopens the collapsed block', async () => {
+      const wrapper = await mountStreamingTurn(true)
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(true)
+    })
   })
 
   it('still auto-expands the single expandable step once settled, with a tool step present', async () => {
@@ -1204,8 +1444,31 @@ describe('Chat/Reasoning', () => {
     expect(reasoningStepDetails?.attributes('open')).toBeDefined()
   })
 
+  it('exposes a chevron for a step with a body, which the bodyless check relies on', async () => {
+    const wrapper = await mountExpanded(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: '**Plan**\n\nBody of the step.', state: 'done' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
+      },
+      global: { stubs: { MDCCached: true } },
+    })
+    const stepSummary = wrapper.findAll('details')[1]!.get('summary')
+    const chevrons = stepSummary.findAll('.iconify').filter((icon) => {
+      return icon.classes().join(' ').includes('chevron')
+    })
+
+    expect(chevrons).toHaveLength(1)
+  })
+
   it('exposes no chevron for a bodyless tool step and ignores clicks on it', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           { type: 'tool-web_search_preview', state: 'output-available' },
@@ -1222,7 +1485,11 @@ describe('Chat/Reasoning', () => {
     const stepDetails = wrapper.findAll('details')[1]
     const stepSummary = stepDetails!.get('summary')
 
-    expect(stepSummary.find('.iconify').exists()).toBe(false)
+    const chevrons = stepSummary.findAll('.iconify').filter((icon) => {
+      return icon.classes().join(' ').includes('chevron')
+    })
+
+    expect(chevrons).toHaveLength(0)
 
     await stepSummary.trigger('click')
     await wrapper.vm.$nextTick()
@@ -1329,6 +1596,8 @@ describe('Chat/Reasoning', () => {
       'Found the figure 【5†L1-L8】 in the report 【3†source】.',
     ].join('\n'))
 
+    await expandReasoningSteps(wrapper)
+
     const renderedValues = wrapper
       .findAllComponents({ name: 'MDCCached' })
       .map(component => String(component.props('value')))
@@ -1340,7 +1609,7 @@ describe('Chat/Reasoning', () => {
 
   it('renders an expandable search step with query, freshness and count '
     + 'for an external search tool part', async () => {
-    const wrapper = await mountSuspended(Reasoning, {
+    const wrapper = await mountExpanded(Reasoning, {
       props: {
         message: createMessage([
           {
@@ -1387,7 +1656,7 @@ describe('Chat/Reasoning', () => {
 
   it('titles a past-chat pre-retrieval step by its count with links',
     async () => {
-      const wrapper = await mountSuspended(Reasoning, {
+      const wrapper = await mountExpanded(Reasoning, {
         props: {
           message: createMessage([
             {
@@ -1431,7 +1700,7 @@ describe('Chat/Reasoning', () => {
 
   it('shows a streaming external search step with a partial input',
     async () => {
-      const wrapper = await mountSuspended(Reasoning, {
+      const wrapper = await mountExpanded(Reasoning, {
         props: {
           message: createMessage([
             {
@@ -1462,7 +1731,7 @@ describe('Chat/Reasoning', () => {
 
   it('renders memory tool parts as memory steps, not generic ones',
     async () => {
-      const wrapper = await mountSuspended(Reasoning, {
+      const wrapper = await mountExpanded(Reasoning, {
         props: {
           message: createMessage([
             {
@@ -1530,6 +1799,178 @@ describe('Chat/Reasoning', () => {
       expect(wrapper.find('[data-testid="reasoning-search-step"]').exists())
         .toBe(false)
     })
+
+  describe('skill step', () => {
+    const skillCall = {
+      type: 'tool-activate_skill',
+      toolCallId: 'call-skill',
+      state: 'output-available',
+      input: { name: 'writing-style' },
+      output: { status: 'activated', skillId: 'skl1', name: 'writing-style' },
+    }
+
+    async function mountSkillMessage(
+      parts: unknown[],
+      options: { status?: 'ready' | 'streaming', role?: UIMessage['role'] } = {},
+    ) {
+      return await mountExpanded(Reasoning, {
+        props: {
+          message: {
+            id: 'msg-skill',
+            role: options.role ?? 'assistant',
+            parts,
+          } as UIMessage,
+          status: options.status ?? 'ready',
+          reasoningLevel: 'off',
+          turnStartedAt: 0,
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: { stubs: { MDCCached: true } },
+      })
+    }
+
+    it('renders an applied skill as a step, even with no reasoning text',
+      async () => {
+        const wrapper = await mountSkillMessage([skillCall])
+
+        expect(wrapper.find('[data-testid="reasoning-steps"]').exists())
+          .toBe(true)
+        expect(wrapper.get('[data-testid="reasoning-skill-step-title"]').text())
+          .toBe('Applied skill · writing-style')
+        expect(wrapper.find('[data-testid="skill-step"]').exists()).toBe(false)
+      })
+
+    it('renders a lone project activation as a Project skill step',
+      async () => {
+        const wrapper = await mountSkillMessage([{
+          type: 'data-skill-activation',
+          data: {
+            skillId: 'skl1',
+            name: 'writing-style',
+            version: 1,
+            source: 'project',
+          },
+        }])
+
+        expect(wrapper.get('[data-testid="reasoning-skill-step-title"]').text())
+          .toBe('Project skill · writing-style')
+        expect(wrapper.get('[data-testid="reasoning-skill-step-open"]').text())
+          .toBe('writing-style')
+      })
+
+    it('shows a running call as Reading skill and a failed call as failed',
+      async () => {
+        const running = await mountSkillMessage([{
+          ...skillCall,
+          state: 'input-available',
+          output: undefined,
+        }], { status: 'streaming' })
+
+        expect(running.get('[data-testid="reasoning-skill-step-title"]')
+          .text()).toContain('Reading skill · writing-style')
+        expect(running.find('[data-testid="reasoning-skill-step-open"]')
+          .exists()).toBe(false)
+
+        const failed = await mountSkillMessage([{
+          ...skillCall,
+          state: 'output-error',
+          output: undefined,
+        }])
+
+        expect(failed.get('[data-testid="reasoning-skill-step-title"]')
+          .text()).toBe('Could not use skill · writing-style')
+      })
+
+    it('keeps the order the steps happened in', async () => {
+      const wrapper = await mountSkillMessage([
+        skillCall,
+        {
+          type: 'tool-memory_list',
+          toolCallId: 'call-2',
+          state: 'output-available',
+          input: {},
+          output: { notice: 'data', entries: [] },
+        },
+        { type: 'text', text: 'Answer' },
+      ])
+      const steps = wrapper.findAll('[data-testid="reasoning-steps"] > li')
+
+      expect(steps).toHaveLength(2)
+      expect(steps[0]!.find('[data-testid="reasoning-skill-step"]').exists())
+        .toBe(true)
+      expect(steps[1]!.find('[data-testid="reasoning-memory-step"]').exists())
+        .toBe(true)
+    })
+
+    it('makes one step for a call and its activation part, and opens the preview',
+      async () => {
+        const preview = useSkillPreview()
+
+        preview.close()
+
+        const wrapper = await mountSkillMessage([
+          skillCall,
+          {
+            type: 'data-skill-activation',
+            data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+          },
+        ])
+
+        expect(wrapper.findAll('[data-testid="reasoning-skill-step"]'))
+          .toHaveLength(1)
+
+        await wrapper.get('[data-testid="reasoning-skill-step-open"]')
+          .trigger('click')
+
+        expect(preview.skillId.value).toBe('skl1')
+        preview.close()
+      })
+
+    it('builds no step from message metadata alone, as on a shared page',
+      async () => {
+        const wrapper = await mountSuspended(Reasoning, {
+          props: {
+            message: {
+              id: 'msg-shared',
+              role: 'assistant',
+              parts: [{ type: 'text', text: 'Rewritten.' }],
+              metadata: {
+                tools: ['activate_skill'],
+                skills: [{ skillId: 'skl1', name: 'private-skill-name' }],
+              },
+            } as unknown as UIMessage,
+            status: 'ready',
+            reasoningLevel: 'off',
+            turnStartedAt: 0,
+            reasoningAccumulatedMs: 0,
+            reasoningSegmentStartedAt: 0,
+            isTurnThinkingHeld: false,
+          },
+          global: { stubs: { MDCCached: true } },
+        })
+
+        expect(wrapper.find('[data-testid="reasoning-skill-step"]').exists())
+          .toBe(false)
+        expect(wrapper.html()).not.toContain('private-skill-name')
+      })
+
+    it('steps for a lone activation part on an assistant message only',
+      async () => {
+        const activation = {
+          type: 'data-skill-activation',
+          data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+        }
+        const assistant = await mountSkillMessage([activation])
+        const user = await mountSkillMessage([activation], { role: 'user' })
+
+        expect(assistant.get('[data-testid="reasoning-skill-step-title"]')
+          .text()).toBe('Applied skill · writing-style')
+        expect(user.find('[data-testid="reasoning-skill-step"]').exists())
+          .toBe(false)
+      })
+  })
 
   describe('hidden reasoning indicator', () => {
     function createMessageWithUsage(
@@ -1623,6 +2064,8 @@ describe('Chat/Reasoning', () => {
           ],
           900,
         ))
+
+        await expandReasoningSteps(wrapper)
 
         expect(findIndicator(wrapper).exists()).toBe(false)
         expect(wrapper.find('[data-testid="reasoning-steps"]').exists())

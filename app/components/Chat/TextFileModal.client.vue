@@ -10,7 +10,7 @@
       @close="onClose"
     >
       <div
-        class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3 [--text-file-sheet-bottom-padding:max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))] max-sm:pb-[var(--text-file-sheet-bottom-padding)]"
+        class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3 [--text-file-sheet-bottom-padding:var(--sheet-bottom-padding)] max-sm:pb-[var(--text-file-sheet-bottom-padding)]"
         :style="sheetBoxStyle"
         data-testid="text-file-modal-box"
       >
@@ -128,6 +128,10 @@
                 :href="downloadUrl"
                 class="btn btn-sm btn-ghost"
                 data-testid="text-file-modal-download"
+                @click="onDownloadClick($event, {
+                  url: downloadUrl,
+                  fileName: name,
+                })"
               >
                 <Icon name="lucide:download" size="14" aria-hidden="true" />
                 Download
@@ -214,6 +218,7 @@ const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const closeButtonRef = useTemplateRef<HTMLButtonElement>('closeButtonRef')
 const textareaRef = useTemplateRef<HTMLTextAreaElement>('textareaRef')
 const clipboard = useClipboard()
+const { onDownloadClick } = useFileDownload()
 const { isDesktop } = useDevice()
 const isCenteredLayout = useMediaQuery('(min-width: 40rem)')
 const { isKeyboardOpen } = useVisualViewportInset()

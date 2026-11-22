@@ -2,6 +2,14 @@ import type {
   ChatContextGroup,
   ChatContextItem,
 } from '#shared/types/chat-context.d'
+import type { ArtifactKind } from '#shared/utils/artifacts'
+import {
+  isDataArtifactAttachmentPart,
+  isDataArtifactPart,
+} from '#shared/utils/artifacts'
+import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { isDataDocumentPart } from '#shared/utils/documents'
 import { isHiddenFilePart } from '#shared/utils/files'
 import {
   MEMORY_FORGET_TOOL_NAME,
@@ -14,6 +22,12 @@ import {
   SEARCH_CHATS_TOOL_NAME,
 } from '~~/server/utils/memory/tools/constants'
 import { PROJECT_KNOWLEDGE_TOOL_NAMES } from '~~/server/utils/ai/knowledge-tools'
+import {
+  SKILL_ACTIVATE_TOOL_NAME,
+  isDataSkillActivationPart,
+  isDataSkillInvocationPart,
+  isProjectSkillActivationPart,
+} from '#shared/utils/skills/runtime'
 
 export type ChatContextVisibility = 'private' | 'public'
 
@@ -32,6 +46,30 @@ export interface ChatContextAccumulator {
   ) => void
 }
 
+export interface ChatContextArtifact {
+  title: string
+  kind: ArtifactKind
+  version: number
+  latestVersion: number
+}
+
+/**
+ * Data a section needs beyond the message parts, loaded once per request
+ * before the build: artifacts maps each listable artifact id (owned by the
+ * chat owner, not deleted, not taken down) to its row; connectors maps each
+ * of the owner's connector slugs to its id and title, and is null while the
+ * `connectors` flag is off, which keeps the connectors section empty.
+ */
+export interface ChatContextScope {
+  artifacts: ReadonlyMap<string, ChatContextArtifact>
+  connectors: ReadonlyMap<string, ChatContextConnector> | null
+}
+
+export interface ChatContextConnector {
+  id: string
+  title: string
+}
+
 /**
  * One block of the chat context panel. A feature that produces or consumes
  * something in a chat adds its own section here (see
@@ -45,6 +83,7 @@ export interface ChatContextSection {
   collect: (
     message: ChatContextMessage,
     accumulator: ChatContextAccumulator,
+    scope: ChatContextScope,
   ) => void
 }
 
@@ -197,6 +236,101 @@ const researchReportsSection: ChatContextSection = {
         meta: {
           provider: readString(data.provider) ?? undefined,
           action: readString(data.level) ?? undefined,
+        },
+      })
+    }
+  },
+}
+
+const artifactsSection: ChatContextSection = {
+  id: 'artifacts',
+  group: 'outputs',
+  visibility: 'public',
+  collect(message, accumulator, scope) {
+    for (const part of message.parts) {
+      if (!isDataArtifactPart(part)) {
+        continue
+      }
+
+      const artifact = scope.artifacts.get(part.data.artifactId)
+
+      if (!artifact) {
+        continue
+      }
+
+      accumulator.add('outputs', {
+        id: `artifact:${part.data.artifactId}`,
+        sectionId: 'artifacts',
+        kind: 'artifact',
+        title: toTitle(artifact.title) || 'Artifact',
+        messageId: message.id,
+        meta: {
+          artifactId: part.data.artifactId,
+          artifactKind: artifact.kind,
+          version: artifact.version,
+          latestVersion: artifact.latestVersion,
+        },
+      })
+    }
+  },
+}
+
+const documentsSection: ChatContextSection = {
+  id: 'documents',
+  group: 'outputs',
+  visibility: 'private',
+  collect(message, accumulator) {
+    for (const part of message.parts) {
+      if (!isDataDocumentPart(part) || part.data.documentId === null) {
+        continue
+      }
+
+      accumulator.add('outputs', {
+        id: `document:${part.data.documentId}`,
+        sectionId: 'documents',
+        kind: 'document',
+        title: toTitle(part.data.title) || 'Document',
+        messageId: message.id,
+        meta: {
+          documentId: part.data.documentId,
+          documentFormat: part.data.format,
+        },
+      })
+    }
+  },
+}
+
+const attachedArtifactsSection: ChatContextSection = {
+  id: 'attached-artifacts',
+  group: 'inputs',
+  visibility: 'private',
+  collect(message, accumulator, scope) {
+    if (message.role !== 'user') {
+      return
+    }
+
+    for (const part of message.parts) {
+      if (!isDataArtifactAttachmentPart(part)) {
+        continue
+      }
+
+      const artifact = scope.artifacts.get(part.data.artifactId)
+
+      if (!artifact) {
+        continue
+      }
+
+      accumulator.add('inputs', {
+        id: `attached-artifact:${part.data.artifactId}`,
+        sectionId: 'attached-artifacts',
+        kind: 'artifact',
+        title: toTitle(artifact.title) || 'Artifact',
+        messageId: message.id,
+        meta: {
+          artifactId: part.data.artifactId,
+          artifactKind: artifact.kind,
+          version: part.data.version,
+          latestVersion: artifact.latestVersion,
         },
       })
     }
@@ -455,12 +589,142 @@ const webSourcesSection: ChatContextSection = {
   },
 }
 
+const codeExecutionSection: ChatContextSection = {
+  id: 'code-execution',
+  group: 'used',
+  visibility: 'private',
+  collect(message, accumulator) {
+    if (message.role !== 'assistant') {
+      return
+    }
+
+    for (const part of message.parts) {
+      if (getContextPartToolName(part) !== CODE_EXECUTION_TOOL_NAME) {
+        continue
+      }
+
+      accumulator.increment('used', {
+        id: 'code-execution',
+        sectionId: 'code-execution',
+        kind: 'code-execution',
+        title: 'Code execution',
+        messageId: message.id,
+      })
+    }
+  },
+}
+
+const skillsSection: ChatContextSection = {
+  id: 'skills',
+  group: 'used',
+  visibility: 'private',
+  collect(message, accumulator) {
+    for (const part of message.parts) {
+      if (isDataSkillInvocationPart(part)) {
+        accumulator.add('used', {
+          id: `skill:${part.data.skillId}`,
+          sectionId: 'skills',
+          kind: 'skill',
+          title: toTitle(part.data.name),
+          messageId: message.id,
+          meta: { action: 'Attached', version: part.data.version },
+        })
+
+        continue
+      }
+
+      if (isDataSkillActivationPart(part)) {
+        accumulator.add('used', {
+          id: `skill:${part.data.skillId}`,
+          sectionId: 'skills',
+          kind: 'skill',
+          title: toTitle(part.data.name),
+          messageId: message.id,
+          meta: {
+            action: isProjectSkillActivationPart(part)
+              ? 'Project skill'
+              : 'Used',
+            version: part.data.version,
+          },
+        })
+
+        continue
+      }
+
+      if (
+        !isRecord(part)
+        || getContextPartToolName(part) !== SKILL_ACTIVATE_TOOL_NAME
+        || part.state !== 'output-available'
+        || !isRecord(part.output)
+      ) {
+        continue
+      }
+
+      const skillId = readString(part.output.skillId)
+      const name = readString(part.output.name)
+
+      if (!skillId || !name) {
+        continue
+      }
+
+      accumulator.add('used', {
+        id: `skill:${skillId}`,
+        sectionId: 'skills',
+        kind: 'skill',
+        title: toTitle(name),
+        messageId: message.id,
+        meta: { action: 'Used' },
+      })
+    }
+  },
+}
+
+const connectorsSection: ChatContextSection = {
+  id: 'connectors',
+  group: 'used',
+  visibility: 'private',
+  collect(message, accumulator, scope) {
+    if (message.role !== 'assistant' || !scope.connectors) {
+      return
+    }
+
+    for (const part of message.parts) {
+      const call = getConnectorToolCall(part)
+
+      if (!call || !call.outcome) {
+        continue
+      }
+
+      const connector = scope.connectors.get(call.slug)
+
+      accumulator.increment('used', {
+        id: `connector:${call.slug}:${call.tool}`,
+        sectionId: 'connectors',
+        kind: 'connector',
+        title: toTitle(connector?.title ?? call.slug),
+        messageId: message.id,
+        meta: {
+          tool: call.tool,
+          outcome: call.outcome,
+          ...(connector ? { connectorId: connector.id } : {}),
+        },
+      })
+    }
+  },
+}
+
 export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
+  artifactsSection,
+  documentsSection,
+  attachedArtifactsSection,
   uploadedFilesSection,
   projectKnowledgeSection,
   memorySection,
   chatSearchSection,
+  skillsSection,
+  connectorsSection,
+  codeExecutionSection,
   webSourcesSection,
 ]

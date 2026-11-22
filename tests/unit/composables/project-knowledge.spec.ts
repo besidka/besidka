@@ -334,7 +334,7 @@ describe('useProjectKnowledge', () => {
     })
   })
 
-  describe('serialised mutations', () => {
+  describe('serialized mutations', () => {
     it('runs one request at a time in call order', async () => {
       const first = createDeferred<VersionResult>()
       const second = createDeferred<VersionResult>()

@@ -1,6 +1,7 @@
 # Mail alerts: a phone push for the legal and security mailboxes
 
-Mail to `privacy@`, `abuse@`, `security@` and `contact@besidka.com` can start a
+Mail to `privacy@`, `abuse@`, `security@`, `contact@` and `support@besidka.com`
+can start a
 legal clock: a TCO removal order must be acted on within one hour
 (`docs/legal/content-incidents.md`, section 3), and a personal-data breach must
 be reported within 72 hours (`docs/legal/breach-runbook.md`). Until this
@@ -11,7 +12,7 @@ The `besidka-mail-alerts` Email Worker keeps that forward and adds a Web Push
 to every admin's phone, normally within seconds.
 
 **Status (2026-11-09):** code ready, not deployed. The owner deploys the
-Worker and switches the four rules by hand with the runbook below. Nothing in
+Worker and switches the five rules by hand with the runbook below. Nothing in
 CI changes Email Routing rules.
 
 ## How it works
@@ -36,7 +37,7 @@ sender ──SMTP──> Cloudflare Email Routing (rule: privacy@ → Worker)
 | `workers/mail-alerts/src/main.ts` | `email()` handler: forward, then the signed alert call |
 | `workers/mail-alerts/src/classify.ts` | RFC 2047 subject decoding, urgency rules, mailbox mapping |
 | `workers/mail-alerts/wrangler.jsonc` | Worker `besidka-mail-alerts`, service binding `APP` → `besidka`, no `workers.dev`, no previews, observability off |
-| `shared/utils/mail-alert-protocol.ts` | The contract both sides import: mailboxes, route, header names, HMAC sign and verify, subject sanitiser |
+| `shared/utils/mail-alert-protocol.ts` | The contract both sides import: mailboxes, route, header names, HMAC sign and verify, subject sanitizer |
 | `server/api/v1/internal/mail-alert/index.post.ts` | The internal route: secret check, bounded body, HMAC, schema, push |
 | `server/utils/mail-alerts/notify.ts` | Admin push: title, collapse window, urgency |
 | `server/utils/features/admin-recipients.ts` | Who is an admin (shared with scheduled feature changes) |
@@ -142,8 +143,8 @@ switch the affected rule back to forward (step 7) and tighten the rules.
 A forward that fails sends no alert: the handler throws before the alert is
 scheduled. The Email Routing activity log is the only signal then.
 
-Mail to an address outside the five mailboxes in
-`MAIL_ALERT_MAILBOXES` (`privacy`, `abuse`, `security`, `contact`,
+Mail to an address outside the six mailboxes in
+`MAIL_ALERT_MAILBOXES` (`privacy`, `abuse`, `security`, `contact`, `support`,
 `mail-alerts-test`; plus addressing like `privacy+x@` maps to `privacy`) is
 forwarded and gets no alert.
 
@@ -192,18 +193,22 @@ forwarded and gets no alert.
 Do the steps in order. Never paste the destination address into a file in the
 repo or into a chat; keep it in a shell variable only.
 
-### 1. Phone and cover
+### 1. Phone, and why there is no cover person
 
 1. On the phone, open the installed Besidka PWA (Add to Home Screen on iOS),
    sign in with the admin account, and turn push on (bell in the sidebar
    dropdown, or Profile). Allow notifications when the system asks. On iOS,
    allow Besidka in any Focus mode you use, otherwise the alert is silenced.
-2. Name a person who covers absences (holidays, travel, nights you cannot be
-   woken). They need a Besidka account with the `admin` role (Admin → Users)
-   or in `NUXT_ADMIN_EMAILS`, the PWA installed and push on, access to the
-   Gmail inbox or a forward of it, and the admin takedown steps in
-   `docs/legal/content-incidents.md`. Record their name and how to reach them
-   in your private incident record, not in this public repo.
+2. There is no cover person (owner decision, 2026-11-09: the owner works
+   alone). Nobody else is woken for holidays, travel or nights. The push to
+   your phone is the only safeguard for the TCO one-hour rule
+   (`docs/legal/content-incidents.md`, section 3). Residual risk: when the
+   phone is off, has no signal, or silences Besidka, or when you are
+   unreachable, an order can run past the hour. Then tell the authority as
+   that document describes. Revisit this when a second operator exists, when
+   Besidka earns money or you register a business, or when the user base
+   grows. A second admin also makes the Privacy Policy "Security" sentence
+   false (`docs/legal/agentic-capabilities-precheck.md`, question 4).
 
 ### 2. Merge and deploy the app
 
@@ -238,7 +243,7 @@ unset MAIL_ALERT_SECRET
 ```
 
 Keep `FORWARD_TO` set in this shell for steps 6 and 7. `FORWARD_TO` must be an
-already verified destination address (it is the one the four rules use
+already verified destination address (it is the one the five rules use
 today). Setting a secret on `besidka` deploys a new version of it; the route
 answers 404 to unsigned calls either way.
 
@@ -273,10 +278,18 @@ Check:
   If it is missing, the DMARC-checked authority-domain rule never fires
   (subject and display-name rules still work); report it as a follow-up.
 
-If nothing arrives in Gmail, stop and delete the test rule; the four real
+If nothing arrives in Gmail, stop and delete the test rule; the five real
 rules are untouched.
 
-### 6. Switch the four rules, one at a time
+### 6. Switch the five rules, one at a time
+
+`support@besidka.com` (added with the debug report, `NUXT_PUBLIC_SUPPORT_EMAIL`)
+is a normal mailbox here: it is in `MAIL_ALERT_MAILBOXES`, its mail is never
+treated as urgent by mailbox (urgency comes only from the subject and sender
+rules), and until the owner wants a push for it its Email Routing rule stays a
+plain forward. To switch it, create or update the `support@` rule to the
+Worker action below, exactly like the other four, with its own backup file and
+test mail.
 
 List the rules and note each one's id, name and priority:
 
@@ -303,7 +316,7 @@ cf email-routing rules update <privacy-rule-id> -z besidka.com \
 ```
 
 Send a test mail to `privacy@` and confirm the Gmail copy and the push. Then
-repeat for `abuse@`, `security@` and `contact@`, one at a time, each with its
+repeat for `abuse@`, `security@`, `contact@` and `support@`, one at a time, each with its
 own backup file and test mail. Finally delete the test rule:
 
 ```bash
@@ -323,7 +336,7 @@ cf email-routing rules update <privacy-rule-id> -z besidka.com \
   --actions "[{\"type\":\"forward\",\"value\":[\"$FORWARD_TO\"]}]"
 ```
 
-Same for `abuse@`, `security@`, `contact@` with their ids. Compare the result
+Same for `abuse@`, `security@`, `contact@`, `support@` with their ids. Compare the result
 with the backup file. The Worker can stay deployed; without a rule it receives
 nothing.
 

@@ -31,18 +31,7 @@
             />
           </template>
           <template #labelAfter>
-            <UiButton
-              mode="default"
-              text="Paste"
-              icon-name="lucide:clipboard-paste"
-              :icon-size="16"
-              icon-only
-              circle
-              ghost
-              size="xs"
-              tooltip-position="left"
-              @click="pasteApiKey"
-            />
+            <UiFormPasteButton @paste="pasteApiKey" />
           </template>
           <template #noteAfter>
             <span class="block">
@@ -138,7 +127,6 @@ const form = ref<InstanceType<typeof UiForm> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
-const { paste } = useClipboardWithPaste()
 const {
   keyStatusForProvider,
   refresh: refreshUserKeys,
@@ -181,8 +169,8 @@ const placeholder = computed<string>(() => {
   return meta.value.keyPlaceholder || defaultKeyPlaceholder
 })
 
-async function pasteApiKey() {
-  apiKey.value = await paste()
+async function pasteApiKey(text: string) {
+  apiKey.value = text
   await nextTick()
   apiKeyInput.value?.dispatchChange()
 }
@@ -244,9 +232,43 @@ async function deleteKey() {
   }
 }
 
+const LIVE_UPLOAD_NAMES_SHOWN = 5
+
+async function describeLiveUploads(): Promise<string> {
+  if (props.providerId !== 'anthropic') {
+    return ''
+  }
+
+  try {
+    const { skills } = await $fetch(
+      '/api/v1/profiles/keys/anthropic/skill-copies',
+    )
+
+    if (skills.length === 0) {
+      return ''
+    }
+
+    const names = skills
+      .slice(0, LIVE_UPLOAD_NAMES_SHOWN)
+      .map(skill => skill.name)
+      .join(', ')
+    const more = skills.length > LIVE_UPLOAD_NAMES_SHOWN
+      ? ` and ${skills.length - LIVE_UPLOAD_NAMES_SHOWN} more`
+      : ''
+
+    return ` Skills you allowed scripts for are still uploaded to your `
+      + `Anthropic workspace (${names}${more}). Without the key Besidka `
+      + 'cannot delete those copies: turn scripts off for them first, or '
+      + 'delete them in the Anthropic Console.'
+  } catch {
+    return ''
+  }
+}
+
 async function onDeleteKey() {
   const result = await useConfirm({
     text: `Are you sure you want to delete your ${meta.value.label} API key?`,
+    subtitle: (await describeLiveUploads()).trim() || undefined,
     actions: ['Confirm'],
   })
 

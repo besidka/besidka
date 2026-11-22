@@ -48,7 +48,7 @@ function handleClick(event: MouseEvent) {
 }
 
 /**
- * Every link click is cancelled, so a link never navigates the frame (the
+ * Every link click is canceled, so a link never navigates the frame (the
  * host treats any frame navigation as a compromise). External http(s) links
  * are handed to the host, which shows the address and opens it only after
  * the viewer clicks.

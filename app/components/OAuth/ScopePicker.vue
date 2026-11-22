@@ -41,8 +41,12 @@
         aria-hidden="true"
       />
       <span>
-        Write access lets this app change your chats, projects, files, memory
-        and settings, and Delete your data lets it permanently delete them.
+        Write access lets this app change your chats, projects, files, memory,
+        settings and artifacts, publishing an artifact lets it create a public
+        link anyone can open, connectors access lets it add and remove
+        connectors (it cannot switch one on), skills access lets it add,
+        change and delete skills (what it saves stays switched off until you
+        review it), and Delete your data lets it permanently delete the rest.
         Each one is off unless you turn it on.
       </span>
     </p>

@@ -381,7 +381,7 @@ is hidden while the video keeps playing, a new `autoplay` or `user` session
 - `hidden` and `unmount` use `fetch` with `keepalive: true` so the request
   survives the page unload. `pause` and `ended` use a normal request.
 
-The consent behaviour is unchanged: these events carry no user id and no
+The consent behavior is unchanged: these events carry no user id and no
 cookie and use the same endpoint as the other landing events.
 
 ```kusto

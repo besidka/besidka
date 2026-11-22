@@ -183,7 +183,7 @@ describe('ChatInput/ModelsTrigger below md', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens a labelled bottom sheet with the tools sheet chrome', async () => {
+  it('opens a labeled bottom sheet with the tools sheet chrome', async () => {
     const wrapper = await mountPicker()
     const trigger = wrapper.get('[data-testid="current-model-trigger"]')
 
@@ -204,6 +204,9 @@ describe('ChatInput/ModelsTrigger below md', () => {
     expect(heading.text()).toBe('Models')
     expect(box.classes()).toEqual(
       expect.arrayContaining(['rounded-t-box', 'rounded-b-none', 'h-[85dvh]']),
+    )
+    expect(box.classes()).toContain(
+      '[--models-sheet-bottom-padding:var(--sheet-bottom-padding)]',
     )
     expect(box.attributes('autofocus')).toBeDefined()
     expect(sheet.find('[data-testid="models-picker-close"]').exists())

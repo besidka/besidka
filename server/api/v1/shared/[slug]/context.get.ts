@@ -11,6 +11,8 @@ import {
   rewriteShareFileParts,
 } from '~~/server/utils/files/rewrite-share-file-urls'
 import { buildChatContext } from '~~/server/utils/chats/context/build-chat-context'
+import { loadChatContextArtifacts } from '~~/server/utils/chats/context/artifacts'
+import { isFeatureGloballyEnabledForEvent } from '~~/server/utils/features/global'
 import {
   collectContextModels,
   getContextCost,
@@ -44,7 +46,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDb()
-  const chat = await db.select({ title: schema.chats.title })
+  const chat = await db.select({
+    title: schema.chats.title,
+    userId: schema.chats.userId,
+  })
     .from(schema.chats)
     .where(eq(schema.chats.id, share.chatId))
     .get()
@@ -68,9 +73,19 @@ export default defineEventHandler(async (event) => {
   const visibleRows = share.showFiles
     ? await rewriteShareFileParts(publicRows, share.id)
     : hideFileParts(publicRows)
-  const context = buildChatContext(toChatContextMessages(visibleRows), {
+  const messages = toChatContextMessages(visibleRows)
+  const artifacts = await isFeatureGloballyEnabledForEvent(event, 'artifacts')
+    ? await loadChatContextArtifacts({
+      db,
+      chatOwnerUserId: chat.userId,
+      messages,
+      visibility: 'public',
+    })
+    : undefined
+  const context = buildChatContext(messages, {
     visibility: 'public',
     truncated,
+    artifacts,
   })
   const response: SharedChatContextResponse = {
     chat: {

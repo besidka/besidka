@@ -348,7 +348,7 @@ describe('resolveSearchUsage', () => {
     expect(result).toBeUndefined()
   })
 
-  it('leaves existing provider-branch behaviour byte-identical when '
+  it('leaves existing provider-branch behavior byte-identical when '
     + 'externalSearchProvider is absent', () => {
     const result = resolveSearchUsage({
       providerId: 'google',

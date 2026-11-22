@@ -9,6 +9,7 @@ export const ALLOWED_LICENSES = new Set([
   'CC0-1.0',
   'ISC',
   'MIT',
+  'OFL-1.1',
   'Unlicense',
   'Zlib',
 ])
@@ -39,7 +40,7 @@ export function isAllowedLicense(expression) {
   })
 }
 
-function findPackageDirectory(filePath) {
+export function findPackageDirectory(filePath) {
   let directory = path.dirname(filePath)
 
   while (directory !== path.dirname(directory)) {
@@ -141,9 +142,9 @@ export function renderNotices(entries) {
     'Third-party software notices for the Besidka artifacts runtime',
     '',
     'The runtime at /v1/ bundles the open-source packages listed below.',
-    'Each entry names the package, its version, the licence it is used',
-    'under and the licence text shipped with the package.',
-    'Where a package offers a choice of licences, the chosen one is shown.',
+    'Each entry names the package, its version, the license it is used',
+    'under and the license text shipped with the package.',
+    'Where a package offers a choice of licenses, the chosen one is shown.',
   ].join('\n')
   const separator = '='.repeat(72)
   const sections = entries.map((entry) => {
@@ -151,7 +152,7 @@ export function renderNotices(entries) {
       ? `License: ${entry.chosenLicense}`
       : `License: ${entry.chosenLicense} (chosen from ${entry.declaredLicense})`
     const text = entry.licenseText
-      || `No licence file is shipped with this package. It is licensed under ${entry.chosenLicense}.`
+      || `No license file is shipped with this package. It is licensed under ${entry.chosenLicense}.`
 
     return [
       separator,

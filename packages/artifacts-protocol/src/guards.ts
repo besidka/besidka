@@ -1,9 +1,15 @@
 import {
   ARTIFACT_KINDS,
+  CLIPBOARD_FAILURE_REASONS,
+  CLIPBOARD_MIME_TYPES,
+  DIAGRAM_EXPORT_ACTIONS,
   DISPLAY_MODES,
   LOG_LEVELS,
   MAX_COMPLETE_OUTPUT_TOKENS,
+  MAX_CLIPBOARD_TEXT_LENGTH,
   MAX_COMPLETE_PROMPT_LENGTH,
+  MAX_COMPLETE_SYSTEM_LENGTH,
+  MAX_DIAGRAM_SOURCE_LENGTH,
   MAX_FRAME_HEIGHT,
   MAX_JSON_DEPTH,
   MAX_JSON_NODES,
@@ -11,14 +17,20 @@ import {
   MAX_LOG_MESSAGE_LENGTH,
   MAX_STORAGE_KEY_LENGTH,
   MAX_STORAGE_VALUE_BYTES,
+  REQUESTABLE_DISPLAY_MODES,
   STORAGE_MODES,
   THEMES,
 } from './constants.ts'
 import { isRecord } from './jsonrpc.ts'
+import { isDiagramLimitCode } from './mermaid-limits.ts'
 import type {
   ArtifactKind,
   ArtifactPayload,
+  ClipboardWriteParams,
+  ClipboardWriteResult,
   CompleteParams,
+  DiagramExportParams,
+  DiagramExportResult,
   DisplayMode,
   HostContext,
   HostContextChangedParams,
@@ -26,7 +38,11 @@ import type {
   InitializeResult,
   JsonValue,
   LogMessageParams,
+  OpenDiagramViewerParams,
   OpenLinkParams,
+  RequestDisplayModeParams,
+  RequestDisplayModeResult,
+  RenderedParams,
   SizeChangedParams,
   StorageGetResult,
   StorageKeyParams,
@@ -262,6 +278,12 @@ export function isHostContextChangedParams(
     && (value.displayMode === undefined || isDisplayMode(value.displayMode))
 }
 
+export function isRenderedParams(value: unknown): value is RenderedParams {
+  return isRecord(value)
+    && isArtifactKind(value.kind)
+    && typeof value.partial === 'boolean'
+}
+
 export function isSizeChangedParams(
   value: unknown,
 ): value is SizeChangedParams {
@@ -308,6 +330,23 @@ export function isLogMessageParams(value: unknown): value is LogMessageParams {
     && (value.data.stack === undefined
       || (typeof value.data.stack === 'string'
         && value.data.stack.length <= MAX_LOG_MESSAGE_LENGTH))
+      && hasValidDiagramLimitFields(value.data)
+}
+
+function hasValidDiagramLimitFields(data: Record<string, unknown>): boolean {
+  if (data.code === undefined) {
+    return data.limit === undefined && data.found === undefined
+  }
+
+  return isDiagramLimitCode(data.code)
+    && typeof data.limit === 'number'
+    && isOptionalPositiveInteger(data.limit)
+    && isOptionalPositiveInteger(data.found)
+}
+
+function isOptionalPositiveInteger(value: unknown): boolean {
+  return value === undefined
+    || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
 }
 
 export function isStorageKey(value: unknown): value is string {
@@ -362,11 +401,14 @@ export function isCompleteParams(value: unknown): value is CompleteParams {
     && typeof value.prompt === 'string'
     && value.prompt.length > 0
     && value.prompt.length <= MAX_COMPLETE_PROMPT_LENGTH
-    && (value.maxOutputTokens === undefined
-      || (typeof value.maxOutputTokens === 'number'
-        && Number.isInteger(value.maxOutputTokens)
-        && value.maxOutputTokens > 0
-        && value.maxOutputTokens <= MAX_COMPLETE_OUTPUT_TOKENS))
+    && (value.system === undefined
+      || (typeof value.system === 'string'
+        && value.system.length <= MAX_COMPLETE_SYSTEM_LENGTH))
+      && (value.maxOutputTokens === undefined
+        || (typeof value.maxOutputTokens === 'number'
+          && Number.isInteger(value.maxOutputTokens)
+          && value.maxOutputTokens > 0
+          && value.maxOutputTokens <= MAX_COMPLETE_OUTPUT_TOKENS))
 }
 
 export function isCompleteResult(value: unknown): value is CompleteResult {
@@ -375,4 +417,72 @@ export function isCompleteResult(value: unknown): value is CompleteResult {
 
 export function isEmptyParams(value: unknown): boolean {
   return value === undefined || isRecord(value)
+}
+
+export function isClipboardWriteParams(
+  value: unknown,
+): value is ClipboardWriteParams {
+  return isRecord(value)
+    && typeof value.text === 'string'
+    && value.text.length <= MAX_CLIPBOARD_TEXT_LENGTH
+    && typeof value.userActivation === 'boolean'
+    && (value.mimeType === undefined
+      || isOneOf(CLIPBOARD_MIME_TYPES, value.mimeType))
+}
+
+export function isClipboardWriteResult(
+  value: unknown,
+): value is ClipboardWriteResult {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  if (value.copied === true) {
+    return true
+  }
+
+  return value.copied === false
+    && isOneOf(CLIPBOARD_FAILURE_REASONS, value.reason)
+}
+
+export function isRequestDisplayModeParams(
+  value: unknown,
+): value is RequestDisplayModeParams {
+  return isRecord(value)
+    && isOneOf(REQUESTABLE_DISPLAY_MODES, value.mode)
+    && typeof value.userActivation === 'boolean'
+}
+
+export function isRequestDisplayModeResult(
+  value: unknown,
+): value is RequestDisplayModeResult {
+  return isRecord(value) && isDisplayMode(value.displayMode)
+}
+
+export function isDiagramExportParams(
+  value: unknown,
+): value is DiagramExportParams {
+  return isRecord(value)
+    && typeof value.source === 'string'
+    && value.source.trim().length > 0
+    && value.source.length <= MAX_DIAGRAM_SOURCE_LENGTH
+    && typeof value.action === 'string'
+    && (DIAGRAM_EXPORT_ACTIONS as readonly string[]).includes(value.action)
+    && typeof value.userActivation === 'boolean'
+}
+
+export function isDiagramExportResult(
+  value: unknown,
+): value is DiagramExportResult {
+  return isRecord(value) && typeof value.completed === 'boolean'
+}
+
+export function isOpenDiagramViewerParams(
+  value: unknown,
+): value is OpenDiagramViewerParams {
+  return isRecord(value)
+    && typeof value.source === 'string'
+    && value.source.trim().length > 0
+    && value.source.length <= MAX_DIAGRAM_SOURCE_LENGTH
+    && typeof value.userActivation === 'boolean'
 }

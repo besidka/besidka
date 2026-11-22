@@ -62,6 +62,26 @@ describe('Chat/ShareModal.client', () => {
     vi.unstubAllGlobals()
   })
 
+  it('warns that replies may repeat data from a connected service only '
+    + 'when the chat used a connector', async () => {
+    const { targetUsedConnector } = useChatShare()
+
+    targetUsedConnector.value = true
+
+    const withConnector = await mountSuspended(ShareModal)
+
+    expect(withConnector.find('[data-testid="share-connector-warning"]')
+      .exists()).toBe(true)
+
+    withConnector.unmount()
+    targetUsedConnector.value = false
+
+    const without = await mountSuspended(ShareModal)
+
+    expect(without.find('[data-testid="share-connector-warning"]').exists())
+      .toBe(false)
+  })
+
   it('hides the file warning while files stay hidden by default', async () => {
     const { targetHasFiles } = useChatShare()
 

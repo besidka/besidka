@@ -25,6 +25,8 @@ import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
 } from '#shared/utils/chat-failure-text'
+import { isOfficeMediaType } from '#shared/utils/office-files'
+import { isBuiltinCommandMessage } from '#shared/utils/builtin-commands'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   CARRIED_FILES_MAX_BYTES,
@@ -47,6 +49,7 @@ export interface NormalizeAssistantMessagePartsInput {
 
 export interface ModelContextFileOptions {
   fileSizesByStorageKey?: ReadonlyMap<string, number>
+  officeTextBytesByStorageKey?: ReadonlyMap<string, number>
   canCarryMediaType?: (mediaType: string) => boolean
 }
 
@@ -81,6 +84,11 @@ export function sanitizeMessagesForModelContext(
   return buildModelContextMessages(messages, options).messages
 }
 
+/**
+ * The messages a model sees, text and carried files only. The messages of a
+ * built-in command (the user's `/cost` and the report Besidka wrote back)
+ * never reach a model, so a later turn cannot read a report as its own.
+ */
 export function buildModelContextMessages(
   messages: UIMessage[],
   options: ModelContextFileOptions = {},
@@ -95,6 +103,10 @@ export function buildModelContextMessages(
   for (const message of messages) {
     if (!Array.isArray(message.parts)) {
       sanitizedMessages.push(message)
+      continue
+    }
+
+    if (isBuiltinCommandMessage(message)) {
       continue
     }
 
@@ -214,7 +226,8 @@ function selectCarriedFileParts(
   const carriedFileParts = new Set<MessagePart>()
   const omittedFiles: ModelContextOmittedFile[] = []
   const latestUserMessage = findLatestUserMessage(messages)
-  const { fileSizesByStorageKey, canCarryMediaType } = options
+  const { canCarryMediaType } = options
+  const fileSizesByStorageKey = getEffectiveFileSizes(options)
 
   if (!latestUserMessage) {
     return { carriedFileParts, omittedFiles }
@@ -261,11 +274,20 @@ function selectCarriedFileParts(
           continue
         }
 
+        const hasOfficeText = !!storageKey
+          && !!options.officeTextBytesByStorageKey?.has(storageKey)
+
+        if (isOfficeMediaType(part.mediaType) && !hasOfficeText) {
+          omittedFiles.push(toOmittedFile(part, 'unsupported-by-model'))
+          continue
+        }
+
         if (
           remainingCount < 1
           || size > remainingBytes
-          || (isTextMediaType(part.mediaType)
-            && size > CARRIED_TEXT_FILE_MAX_BYTES)
+          || ((isTextMediaType(part.mediaType)
+            || isOfficeMediaType(part.mediaType))
+          && size > CARRIED_TEXT_FILE_MAX_BYTES)
         ) {
           omittedFiles.push(toOmittedFile(part, 'over-limit'))
           continue
@@ -289,6 +311,30 @@ function selectCarriedFileParts(
   }
 
   return { carriedFileParts, omittedFiles }
+}
+
+/**
+ * An Office file reaches the model as its extracted text, so the carry-over
+ * budgets count the text bytes instead of the size of the file.
+ */
+function getEffectiveFileSizes(
+  options: ModelContextFileOptions,
+): ReadonlyMap<string, number> | undefined {
+  const { fileSizesByStorageKey, officeTextBytesByStorageKey } = options
+
+  if (!fileSizesByStorageKey || !officeTextBytesByStorageKey) {
+    return fileSizesByStorageKey
+  }
+
+  const sizes = new Map(fileSizesByStorageKey)
+
+  for (const [storageKey, textBytes] of officeTextBytesByStorageKey) {
+    if (sizes.has(storageKey)) {
+      sizes.set(storageKey, textBytes)
+    }
+  }
+
+  return sizes
 }
 
 function sumKnownFileBytes(

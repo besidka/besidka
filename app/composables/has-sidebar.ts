@@ -2,7 +2,7 @@
 // a sidebar by default, and only layouts that bring their own header/footer
 // chrome opt out. app.vue mounts the Sidebar from this, and the cookie trigger
 // derives its mobile offset from it, so the two can never disagree.
-const CHROME_ONLY_LAYOUTS = ['landing', 'legal']
+const CHROME_ONLY_LAYOUTS = ['landing', 'legal', 'artifact-share']
 
 export function useHasSidebar() {
   const layout = useLayout()

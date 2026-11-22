@@ -213,7 +213,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     env:
       CI: true
       NUXT_PUBLIC_BASE_URL: http://localhost:3000
@@ -292,7 +292,6 @@ jobs:
       !cancelled()
       && github.ref == 'refs/heads/main'
       && inputs.dry-run != true
-      && vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
       && needs.build.result == 'success'
       && (needs.gate.outputs.skip-tests == 'true'
       || (needs.static.result == 'success'
@@ -303,7 +302,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
-      group: satellite-besidka-artifacts
+      group: satellites-besidka
       cancel-in-progress: false
     permissions:
       contents: read
@@ -332,15 +331,14 @@ jobs:
           fi
 
       - name: Setup project
-        if: steps.changes.outputs.artifacts-runtime == 'true'
         uses: ./.github/actions/setup
 
       - name: Build the artifacts runtime
-        if: steps.changes.outputs.artifacts-runtime == 'true'
+        if: steps.changes.outputs.artifacts-runtime == 'true' && vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
         run: pnpm run artifacts:build
 
       - name: Deploy the artifacts runtime
-        if: steps.changes.outputs.artifacts-runtime == 'true'
+        if: steps.changes.outputs.artifacts-runtime == 'true' && vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -349,6 +347,26 @@ jobs:
           workingDirectory: workers/artifacts-runtime
           wranglerVersion: '4.151.1'
           command: deploy
+
+      - name: Deploy the document renderer
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          workingDirectory: workers/doc-renderer
+          wranglerVersion: '4.151.1'
+          command: deploy
+
+      - name: Deploy the document renderer for previews
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          workingDirectory: workers/doc-renderer
+          wranglerVersion: '4.151.1'
+          command: deploy --env preview
 
   deploy:
     name: Deploy to Production
@@ -462,7 +480,7 @@ jobs:
             echo "| Lint & typecheck | $STATIC_DURATION |"
             echo "| Unit tests | $UNIT_DURATION |"
             echo "| Integration tests | $INTEGRATION_DURATION |"
-            echo "| E2E tests (slowest of 3 shards) | $E2E_DURATION |"
+            echo "| E2E tests (slowest shard) | $E2E_DURATION |"
             echo "| Nuxt build | $BUILD_DURATION |"
             echo "| Bundle size | $BUNDLE_SIZE |"
             echo "| Total time | $TOTAL_DURATION |"

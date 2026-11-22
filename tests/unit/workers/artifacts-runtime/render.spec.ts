@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { ARTIFACT_KINDS } from '@besidka/artifacts-protocol'
 import { RENDERERS, selectRenderer } from '~~/workers/artifacts-runtime/src/render/index'
 import { renderMarkdown } from '~~/workers/artifacts-runtime/src/render/markdown'
-import { createMermaidConfig } from '~~/workers/artifacts-runtime/src/render/mermaid-config'
 import { renderSourcePreview, tailLines } from '~~/workers/artifacts-runtime/src/render/partial'
 import {
   DYNAMIC_IMPORT_LABEL,
@@ -77,16 +76,6 @@ describe('renderer selection', () => {
     expect(context.root.querySelector('pre')?.textContent)
       .toBe('<script>window.ran = true</script>')
     expect(tailLines('1\n2\n3\n4', 2)).toBe('3\n4')
-  })
-
-  it('configures mermaid strictly with the permissive dagre layout', () => {
-    expect(createMermaidConfig('dark')).toMatchObject({
-      securityLevel: 'strict',
-      theme: 'dark',
-      layout: 'dagre',
-      startOnLoad: false,
-    })
-    expect(createMermaidConfig('light')).toMatchObject({ theme: 'default' })
   })
 })
 

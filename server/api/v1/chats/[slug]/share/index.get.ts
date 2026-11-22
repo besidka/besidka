@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import {
+  chatUsedConnector,
   enumerateChatFileIds,
   getActiveShareForChat,
 } from '~~/server/utils/chats/share'
@@ -53,11 +54,12 @@ export default defineEventHandler(async (event) => {
 
   const fileIds = await enumerateChatFileIds(chat.id, userId)
   const hasFiles = fileIds.length > 0
+  const usedConnector = await chatUsedConnector(chat.id)
 
   const share = await getActiveShareForChat(chat.id)
 
   if (!share) {
-    return { share: null, hasFiles }
+    return { share: null, hasFiles, usedConnector }
   }
 
   const baseUrl = (useRuntimeConfig().public.baseUrl as string)
@@ -65,6 +67,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     hasFiles,
+    usedConnector,
     share: {
       slug: share.slug,
       url: share.slug ? `${baseUrl}/shared/${share.slug}` : null,

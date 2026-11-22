@@ -5,6 +5,7 @@ import {
   isSecureBaseUrl,
   matchesHostnamePattern,
   parseAdditionalHosts,
+  resolvePublicOrigin,
 } from '../../../server/utils/auth-hosts'
 
 describe('getAllowedHosts', () => {
@@ -241,5 +242,47 @@ describe('matchesHostnamePattern', () => {
       'a-besidkaXchernenko.dev',
       '*-besidka.chernenko.dev',
     )).toBe(false)
+  })
+})
+
+describe('resolvePublicOrigin', () => {
+  const previewHosts = '*-besidka.chernenko.workers.dev'
+  const longLivedPreview = 'https://preview-besidka.chernenko.workers.dev'
+
+  it('links a PR preview request to that preview', () => {
+    expect(resolvePublicOrigin(
+      new URL('https://pr-778-besidka.chernenko.workers.dev/api/v1/x'),
+      longLivedPreview,
+      previewHosts,
+    )).toBe('https://pr-778-besidka.chernenko.workers.dev')
+  })
+
+  it('keeps the configured base URL in production', () => {
+    expect(resolvePublicOrigin(
+      new URL('https://besidka.com/api/v1/x'),
+      'https://besidka.com/',
+      '',
+    )).toBe('https://besidka.com')
+    expect(resolvePublicOrigin(
+      new URL('https://www.besidka.com/api/v1/x'),
+      'https://besidka.com',
+      '',
+    )).toBe('https://besidka.com')
+  })
+
+  it('ignores hosts outside the additional allowed hosts', () => {
+    expect(resolvePublicOrigin(
+      new URL('https://evil.example.com/api/v1/x'),
+      longLivedPreview,
+      previewHosts,
+    )).toBe(longLivedPreview)
+  })
+
+  it('ignores plain-http requests', () => {
+    expect(resolvePublicOrigin(
+      new URL('http://pr-1-besidka.chernenko.workers.dev/'),
+      longLivedPreview,
+      previewHosts,
+    )).toBe(longLivedPreview)
   })
 })

@@ -35,7 +35,9 @@
             />
             Admin
           </h1>
-          <p class="mt-2">Feature access for Besidka accounts</p>
+          <p class="mt-2">
+            Feature access, content reports and legal notices
+          </p>
         </div>
         <nav
           aria-label="Admin sections"
@@ -75,6 +77,18 @@ const tabs = [
     to: '/admin/users',
     label: 'Users',
     icon: 'lucide:users',
+  },
+  {
+    id: 'reports',
+    to: '/admin/artifact-reports',
+    label: 'Reports',
+    icon: 'lucide:flag-triangle-right',
+  },
+  {
+    id: 'legal',
+    to: '/admin/legal',
+    label: 'Legal',
+    icon: 'lucide:scale',
   },
   {
     id: 'audit',

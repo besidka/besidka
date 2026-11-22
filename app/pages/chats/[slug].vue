@@ -2,6 +2,7 @@
   <div
     ref="scrollContainerRef"
     class="
+      js-chat-scroll-container
       overflow-y-auto overflow-x-hidden z-10
       flex-1
       pb-[var(--sab)]
@@ -13,15 +14,6 @@
   >
     <ChatContainer class="!gap-0">
       <UiSidePanelDemoCard v-if="isSidePanelDemoVisible" />
-      <p
-        v-if="isMemoryExcluded"
-        data-testid="chat-memory-excluded-indicator"
-        class="flex items-center justify-center gap-1 text-xs text-base-content/70"
-        :title="CHAT_MEMORY_EXCLUSION_HELPER"
-      >
-        <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="12" />
-        {{ CHAT_MEMORY_EXCLUSION_INDICATOR }}
-      </p>
       <ChatProjectInstructions
         v-if="projectInstructionsText || projectMemoryText"
         :project-id="projectContext?.id || null"
@@ -75,7 +67,19 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatSkillInvocation
+            v-if="m.role === 'user'"
+            :message="m"
+          />
+          <ChatArtifactAttachments
+            v-if="isArtifactsActive && m.role === 'user'"
+            :message="m"
+          />
           <ChatOmittedContextFiles
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
+          <ChatConnectorsNotice
             v-if="m.role === 'assistant'"
             :message="m"
           />
@@ -86,24 +90,23 @@
           <ChatReasoning
             :message="m"
             :reasoning-level="getMessageReasoning(m, messageIndex)"
-            :status="chatSdk.status"
+            v-bind="getReasoningLiveProps(
+              isLastAssistantMessage(messageIndex),
+              chatSdk.status,
+              isTurnThinkingHeld,
+            )"
             :turn-started-at="currentTurnStartedAt"
             :reasoning-accumulated-ms="currentTurnReasoningAccumulatedMs"
             :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
-            :is-turn-thinking-held="isTurnThinkingHeld"
           />
           <div
-            v-for="(part, index) in getDisplayMessageParts(m)"
-            :key="`message-${m.id}-part-${index}`"
+            v-for="(part, index) in getRenderedMessageParts(m)"
+            :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
-              'mt-4': isTextPartAfterGeneratedImage(
-                m,
-                getDisplayMessageParts(m),
-                index,
-              ),
+              'mt-4': getMessageRenderModel(m).gaps[index],
             }"
           >
             <ChatGeneratedImage
@@ -112,6 +115,31 @@
               "
               :message-role="m.role"
               :part="part"
+            />
+            <ChatArtifactCard
+              v-else-if="isArtifactsActive && isArtifactMessagePart(part)"
+              :part="part"
+              source="owner"
+              :chat-id="artifactChatId"
+            />
+            <ChatCodeExecution
+              v-else-if="isCodeExecutionPart(part)"
+              :part="part"
+              :skipped-files="isLastCodeExecutionPart(
+                getRenderedMessageParts(m),
+                part,
+              )
+                ? getCodeExecutionSkippedFiles(m.parts)
+                : []"
+              :fallback-key="`${m.id}-${index}`"
+            />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="isLastAssistantMessage(messageIndex)
+                && ['submitted', 'streaming'].includes(chatSdk.status)
+              "
+              :model-id="getMessageModelId(m)"
             />
             <div
               v-else-if="isChatErrorTextPart(part)"
@@ -176,7 +204,21 @@
             v-if="m.role === 'assistant'"
             :message="m"
           />
+          <ChatToolRounds
+            v-if="m.role === 'assistant'"
+            :message="m"
+            :is-last="isLastAssistantMessage(messageIndex)"
+          />
+          <ChatReplyStopped
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
         </ChatMessage>
+        <ChatToolApprovalBubble
+          v-if="isLastAssistantMessage(messageIndex)"
+          :message="m"
+          :any-selected="selectedMessageId !== null"
+        />
       </div>
       <ChatMessage
         v-if="pendingClarification"
@@ -219,7 +261,10 @@
         />
       </ChatMessage>
       <LazyChatLoader
-        :show="(isLoading && !hasImageGenerationProgress) || isClarifying"
+        :show="(isLoading && !hasImageGenerationProgress) || isClarifying
+          || waitingLoaderSince > 0"
+        :waiting-since="waitingLoaderSince"
+        @cancel="cancelWaiting"
       />
       <div ref="messagesEndRef" />
     </ChatContainer>
@@ -228,6 +273,7 @@
   <ChatInput
     v-model:message="input"
     v-model:files="files"
+    v-model:attached-artifacts="attachedArtifacts"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     display-project-picker
@@ -286,9 +332,14 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { getPartGaps } from '~/utils/message-part-spacing'
+import {
+  getRenderedPartKeys,
+  isArtifactMessagePart,
+  orderOutputCardPartsLast,
+} from '~/utils/artifact-parts'
 
 definePageMeta({
   layout: 'chat',
@@ -304,6 +355,12 @@ useSeoMeta({
 
 const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
+
+const artifactsFeature = useFeature('artifacts')
+
+const isArtifactsActive = computed<boolean>(() => {
+  return artifactsFeature.value.active
+})
 
 const isSidePanelDemoVisible = computed<boolean>(() => {
   return isSidePanelDemoEnabled(route.query)
@@ -387,18 +444,15 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const {
-  isChatMemoryExcluded,
-  rememberChatMemoryExcluded,
-} = useChatMemoryExclusion()
+const { rememberChatMemoryExcluded } = useChatMemoryExclusion()
 
 rememberChatMemoryExcluded(chat.value.slug, chat.value.memoryExcluded)
 
-const isMemoryExcluded = computed<boolean>(() => {
-  return !!chat.value && isChatMemoryExcluded(chat.value.slug)
-})
-
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
+
+const artifactChatId = computed<string>(() => {
+  return chat.value?.id ? String(chat.value.id) : ''
+})
 const projectContext = shallowRef<{ id: string, name: string } | null>(
   projectId.value
     ? {
@@ -419,12 +473,15 @@ const {
   regenerate,
   displayRegenerate,
   displayStop,
+  waitingLoaderSince,
+  cancelWaiting,
   reasoning,
   getMessageReasoning,
   isLastUserMessage,
   isLastAssistantMessage,
   shouldDisplayMessage,
   files,
+  attachedArtifacts,
   currentTurnStartedAt,
   currentTurnReasoningAccumulatedMs,
   currentReasoningSegmentStartedAt,
@@ -773,6 +830,47 @@ const { hapticRigid, hapticSoft } = useHaptics()
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
+
+interface MessageRenderModel {
+  parts: UIMessage['parts']
+  keys: string[]
+  gaps: boolean[]
+}
+
+const messageRenderModels = new WeakMap<object, MessageRenderModel>()
+
+/**
+ * The parts a message renders, their keys and gaps, built once per parts
+ * array: the template reads them for every part of every message on each
+ * streamed update, and earlier messages keep their parts array.
+ */
+function getMessageRenderModel(message: UIMessage): MessageRenderModel {
+  const cached = messageRenderModels.get(message.parts)
+
+  if (cached) {
+    return cached
+  }
+
+  const displayParts = getDisplayMessageParts(message)
+  const parts = orderOutputCardPartsLast(displayParts)
+  const model: MessageRenderModel = {
+    parts,
+    keys: getRenderedPartKeys(displayParts),
+    gaps: getPartGaps(message, parts),
+  }
+
+  messageRenderModels.set(message.parts, model)
+
+  return model
+}
+
+function getRenderedMessageParts(message: UIMessage): UIMessage['parts'] {
+  return getMessageRenderModel(message).parts
+}
+
+function getRenderedPartKey(message: UIMessage, index: number): string {
+  return getMessageRenderModel(message).keys[index] ?? `part-${index}`
+}
 
 function isTextUIPart(
   message: Pick<UIMessage, 'role'>,

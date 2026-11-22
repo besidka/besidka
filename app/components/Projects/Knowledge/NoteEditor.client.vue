@@ -173,7 +173,7 @@
                   ref="textarea"
                   v-model="draftBody"
                   class="
-                    textarea textarea-bordered rounded-box w-full resize-none
+                    textarea textarea-bordered w-full resize-none
                     overflow-y-auto min-h-48 max-h-[60dvh]
                   "
                   :class="{ 'textarea-error': isBodyOverLimit }"

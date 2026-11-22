@@ -1,4 +1,7 @@
-import type { LoggerLike } from '~~/server/utils/files/logger'
+import type {
+  BesidkaToolContext,
+  BesidkaToolLogValue,
+} from '~~/server/utils/besidka-tools/types'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { resolveMcpSiteUrl } from '~~/server/utils/mcp/auth'
 import {
@@ -15,16 +18,9 @@ import {
   isMcpWriteTool,
 } from '~~/server/utils/mcp/tool-scopes'
 
-export type McpLogValue = string | number | boolean
+export type McpLogValue = BesidkaToolLogValue
 
-export interface McpPrivateToolContext {
-  userId: number
-  clientId: string
-  scopes: readonly string[]
-  db: ReturnType<typeof useDb>
-  logger: LoggerLike
-  log: (fields: Record<string, McpLogValue>) => void
-}
+export type McpPrivateToolContext = BesidkaToolContext
 
 /**
  * Wraps a private MCP tool: the token and scope the request guard verified,

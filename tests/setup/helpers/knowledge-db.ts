@@ -65,7 +65,8 @@ export interface KnowledgeTestDb {
 
 /**
  * Creates an in-memory SQLite DB with the tables the project knowledge code
- * touches (`project_knowledge_items`, `projects`, `files`, `storages`) as the
+ * touches (`project_knowledge_items`, `projects`, `files`, `storages`,
+ * `documents`, `artifacts`, `skills`, `skill_files`, `project_skills`) as the
  * migrations define them, minus the foreign keys, so a spec can seed a user,
  * a project or a file without a `users` row. The `project_knowledge_items`
  * DDL and its indexes are the exact `20261025214938_project_knowledge`
@@ -152,7 +153,12 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       origin_message_id integer,
       origin_provider text,
       origin_model text,
-      generation_cost real
+      generation_cost real,
+      text_status text,
+      text_bytes integer,
+      text_version integer,
+      text_omitted_media integer,
+      text_omitted_charts integer
     );
 
     CREATE UNIQUE INDEX uq_file_storageKey ON files (storage_key);
@@ -174,6 +180,77 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
     );
 
     CREATE UNIQUE INDEX uq_storage_user ON storages (user_id);
+
+    CREATE TABLE documents (
+      id integer PRIMARY KEY,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      user_id integer NOT NULL,
+      origin_chat_id integer,
+      origin_message_id integer,
+      origin_message_public_id text,
+      format text NOT NULL,
+      title text,
+      spec_r2_key text,
+      spec_version integer,
+      spec_bytes integer,
+      stats text,
+      status text NOT NULL,
+      render_lease_until integer,
+      render_attempts integer NOT NULL,
+      file_id integer,
+      rendered_by text,
+      error_code text,
+      created_via text NOT NULL,
+      origin_provider text,
+      origin_model text,
+      ai_generated integer
+    );
+
+    CREATE INDEX idx_documents_file ON documents (file_id);
+
+    CREATE TABLE artifacts (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      user_id integer NOT NULL,
+      origin_chat_id integer,
+      origin_message_id text,
+      kind text NOT NULL,
+      title text NOT NULL,
+      current_version integer NOT NULL,
+      total_bytes integer NOT NULL,
+      created_via text NOT NULL,
+      takedown_at integer,
+      takedown_reason text,
+      legal_hold_until integer
+    );
+
+    CREATE TABLE skills (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      user_id integer NOT NULL
+    );
+
+    CREATE TABLE skill_files (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      skill_id integer NOT NULL,
+      user_id integer NOT NULL,
+      version integer NOT NULL DEFAULT 1,
+      path text NOT NULL DEFAULT 'SKILL.md',
+      blob_sha256 text NOT NULL DEFAULT '',
+      bytes integer NOT NULL DEFAULT 0,
+      kind text NOT NULL DEFAULT 'other'
+    );
+
+    CREATE TABLE project_skills (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      project_id integer NOT NULL,
+      skill_id integer NOT NULL,
+      user_id integer NOT NULL,
+      level text NOT NULL DEFAULT 'always',
+      position integer NOT NULL DEFAULT 0,
+      created_at integer NOT NULL DEFAULT 0
+    );
   `)
 
   const db = drizzle({ client: sqlite, relations }) as unknown as ReturnType<

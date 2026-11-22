@@ -95,8 +95,11 @@ describe('sweepResearchJobs', () => {
   })
 
   it('stops processing once the max runtime budget is exceeded', async () => {
+    let clockMs = 0
+
+    vi.spyOn(Date, 'now').mockImplementation(() => clockMs)
     mocks.finalizeResearchJob.mockImplementation(async () => {
-      await new Promise(resolve => setTimeout(resolve, 30))
+      clockMs += 30
 
       return { outcome: 'still-running' }
     })

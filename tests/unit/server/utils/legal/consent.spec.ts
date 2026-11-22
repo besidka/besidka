@@ -308,12 +308,12 @@ describe('legal consent storage', () => {
 
       const job = await seedBackfillJob(testDb.db, userId)
       const withdrawn = await withdrawLegalConsent(userId, testDb.db, LATER)
-      const cancelledJob = await testDb.db.query.memoryBackfillJobs
+      const canceledJob = await testDb.db.query.memoryBackfillJobs
         .findFirst({ where: { id: job.id } })
 
       expect(getLegalConsentStatus(withdrawn)).toBe('withdrawn')
       expect(withdrawn.sensitiveContentConsentAt).toEqual(GRANTED_AT)
-      expect(cancelledJob?.status).toBe('cancelled')
+      expect(canceledJob?.status).toBe('cancelled')
 
       const reConsentedAt = new Date(LATER.getTime() + 60_000)
       const reConsented = await recordLegalConsent(

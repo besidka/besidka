@@ -258,7 +258,7 @@ describe('sweepMemoryExtraction', () => {
       expect(await wasProcessed(dirty.id)).toBe(true)
     })
 
-    it('honours the attempt backoff', async () => {
+    it('honors the attempt backoff', async () => {
       const backedOff = await dueChat({
         memoryExtractionAttemptedAt: minutesBefore(10),
       })

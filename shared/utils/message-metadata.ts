@@ -1,3 +1,9 @@
+import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import {
+  DOCUMENT_DATA_PART_TYPE,
+  DOCUMENT_TOOL_PART_TYPE,
+} from '#shared/utils/documents'
+import { isCodeExecutionToolPart } from '#shared/utils/code-execution'
 import type {
   ChatMessageMetadata,
   MessageUsage,
@@ -31,12 +37,12 @@ export type MessageMenuInfo = {
   searchProvider?: SearchProvider
 }
 
-type DisplayCost = {
+export type DisplayCost = {
   amount: number
   isEstimated: boolean
 }
 
-type MenuMessage = {
+export type MenuMessage = {
   id?: string
   role: string
   metadata?: unknown
@@ -51,6 +57,7 @@ const persistedModelTools: ModelTool[] = [
   'web_search_brave',
   'web_search_exa',
   'image_generation',
+  'code_execution',
 ]
 
 export function isWebSearchTool(
@@ -175,6 +182,53 @@ export function hasVisibleTextPart(message: { parts?: unknown }): boolean {
   })
 }
 
+/**
+ * Whether a message carries an artifact: a persisted `data-artifact`
+ * reference or a finished artifact tool part while streaming. Artifacts are
+ * not a `ModelTool`, so they stay out of `getMessageUsedTools`.
+ */
+export function hasArtifactPart(message: { parts?: unknown }): boolean {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+
+  return parts.some((part) => {
+    if (typeof part !== 'object' || part === null || !('type' in part)) {
+      return false
+    }
+
+    if (part.type === ARTIFACT_DATA_PART_TYPE) {
+      return true
+    }
+
+    return (part.type === 'tool-create_artifact'
+      || part.type === 'tool-update_artifact')
+    && 'state' in part
+    && part.state === 'output-available'
+  })
+}
+
+/**
+ * Whether a message carries a document: a persisted `data-document`
+ * reference or a finished `create_document` tool part while streaming.
+ * Documents are not a `ModelTool`, so they stay out of `getMessageUsedTools`.
+ */
+export function hasDocumentPart(message: { parts?: unknown }): boolean {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+
+  return parts.some((part) => {
+    if (typeof part !== 'object' || part === null || !('type' in part)) {
+      return false
+    }
+
+    if (part.type === DOCUMENT_DATA_PART_TYPE) {
+      return true
+    }
+
+    return part.type === DOCUMENT_TOOL_PART_TYPE
+      && 'state' in part
+      && part.state === 'output-available'
+  })
+}
+
 export function getMessageUsedTools(
   message: { parts?: unknown, tools?: unknown },
 ): Array<ModelTool | 'deep_research'> {
@@ -216,6 +270,8 @@ export function getMessageUsedTools(
     )
   })
 
+  const hasCodeExecutionPart = parts.some(isCodeExecutionToolPart)
+
   // `message.tools` is only ever populated on the persisted *user* message
   // row, never on the assistant row this function is normally called with
   // (see persist-user-message.ts) — so `storedTools` is always `[]` in
@@ -250,10 +306,11 @@ export function getMessageUsedTools(
         && !storedTools.some(isWebSearchTool)
       )
       || (tool === 'image_generation' && hasImageGenerationPart)
+      || (tool === 'code_execution' && hasCodeExecutionPart)
   })
 }
 
-function getFollowingAssistantUsage(
+export function getFollowingAssistantUsage(
   messages: MenuMessage[],
   messageIndex: number,
 ) {
@@ -274,7 +331,7 @@ function getFollowingAssistantUsage(
 // shown in full on the assistant row, the one place `usage` is actually
 // persisted; the paired user row contributes nothing so sumMessageCosts()
 // below never double-counts it.
-function getPerMessageCost(
+export function getPerMessageCost(
   messages: MenuMessage[],
   messageIndex: number,
 ): DisplayCost | undefined {
@@ -340,7 +397,7 @@ function resolveProviderDisplay(
 // cumulative totals (costToMessage/chatTotalCost) can flip to estimated
 // while a message's own `cost` (Current message, token/image cost only)
 // stays unflagged.
-function getPerMessageSearchCost(
+export function getPerMessageSearchCost(
   messages: MenuMessage[],
   messageIndex: number,
 ): DisplayCost | undefined {

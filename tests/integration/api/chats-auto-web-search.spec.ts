@@ -525,7 +525,7 @@ describe('Auto web search on the chat send path', () => {
         tools: ['web_search_brave'],
         webSearchMode: 'auto',
         hasTypesafeKey: true,
-        text: 'Summarise https://example.com/changelog',
+        text: 'Summarize https://example.com/changelog',
       })
 
       expect(mocks.decide).not.toHaveBeenCalled()

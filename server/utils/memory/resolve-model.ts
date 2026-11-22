@@ -1,5 +1,3 @@
-import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
-import type { LanguageModel } from 'ai'
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type {
@@ -7,11 +5,8 @@ import type {
   MemoryScope,
   ResolvedMemoryModelSelection,
 } from '#shared/types/memory.d'
-import type { SupportedProviderId } from '#shared/types/providers.d'
 import { getModel } from '#shared/utils/model'
 import { providerMeta } from '#shared/utils/provider-meta'
-import { createError } from 'evlog'
-import { providers } from '~~/providers'
 import {
   keyProviderIdForGateway,
   useGateway,
@@ -25,39 +20,35 @@ import {
   isTextGatewayModel,
   isUsableMemoryCatalogModel,
 } from '~~/server/utils/memory/catalog-usability'
+import type {
+  DirectModelInstance,
+  DirectModelProviderOptions,
+} from '~~/server/utils/ai/resolve-cheapest-model'
+import {
+  DIRECT_MODEL_PROVIDER_ORDER,
+  instantiateDirectModel,
+  isDirectModelProvider,
+  readAvailableKeys,
+  resolveCheapestDirectModel,
+} from '~~/server/utils/ai/resolve-cheapest-model'
 import type { LegalConsentRecord } from '~~/server/utils/legal/consent'
 import {
   assertProviderTransferConsent,
   hasModelTransferConsent,
   readLegalConsent,
-  withoutUnconsentedTransferProviders,
 } from '~~/server/utils/legal/consent'
 import { resolveTransferConsentProviderId } from '#shared/utils/legal-consent'
 
-export const MEMORY_MODEL_PROVIDER_ORDER = [
-  'openai',
-  'anthropic',
-  'qwen',
-  'deepseek',
-  'google',
-  'moonshotai',
-  'xai',
-] as const
+export const MEMORY_MODEL_PROVIDER_ORDER = DIRECT_MODEL_PROVIDER_ORDER
 
 const RECENT_ASSISTANT_MESSAGES_SCANNED = 10
 const RECENT_PROJECT_CHATS_SCANNED = 5
 
 type DbClient = ReturnType<typeof useDb>
 
-type MemoryModelReasoning = 'low' | 'medium' | 'high' | undefined
+type MemoryModelProviderOptions = DirectModelProviderOptions
 
-type MemoryModelProviderOptions = Record<string, SharedV2ProviderOptions>
-
-export interface MemoryModelInstance {
-  model: LanguageModel
-  reasoning: MemoryModelReasoning
-  providerOptions: MemoryModelProviderOptions
-}
+export type MemoryModelInstance = DirectModelInstance
 
 export interface MemoryModelLogger {
   set: (fields: Record<string, unknown>) => void
@@ -81,12 +72,7 @@ type MemoryModelCandidate = Omit<
   'scope' | 'source'
 >
 
-function isMemoryModelProvider(
-  providerId: string,
-): providerId is SupportedProviderId {
-  return (MEMORY_MODEL_PROVIDER_ORDER as readonly string[])
-    .includes(providerId)
-}
+const isMemoryModelProvider = isDirectModelProvider
 
 function buildGatewayIdByKeyProviderId(): Map<string, GatewayId> {
   const gatewayIdByKeyProviderId = new Map<string, GatewayId>()
@@ -132,25 +118,6 @@ function resolutionErrorLabel(exception: unknown): string {
   return httpStatus === undefined
     ? exception.name
     : `${exception.name}:${httpStatus}`
-}
-
-async function readAvailableKeys(
-  userId: number,
-  db: DbClient,
-  legalConsent: LegalConsentRecord,
-): Promise<Set<string>> {
-  const savedKeys = await db.query.keys.findMany({
-    where: { userId },
-    columns: {
-      provider: true,
-    },
-  })
-
-  const providerIds = new Set<string>(savedKeys.map((key) => {
-    return key.provider
-  }))
-
-  return withoutUnconsentedTransferProviders(providerIds, legalConsent)
 }
 
 function resolveDirectCandidate(
@@ -420,33 +387,15 @@ async function resolveFromChat(
 function resolveFromFallback(
   context: MemoryModelResolutionContext,
 ): MemoryModelCandidate | null {
-  for (const providerId of MEMORY_MODEL_PROVIDER_ORDER) {
-    if (!context.availableKeys.has(providerId)) {
-      continue
-    }
+  const cheapest = resolveCheapestDirectModel(context.availableKeys)
 
-    const provider = providers.find((candidate) => {
-      return candidate.id === providerId
-    })
-    const memoryModel = provider?.models.find((model) => {
-      return model.forProjectMemory && isUsableMemoryCatalogModel(model)
-    })
+  if (!cheapest) {
+    context.skipped.push('fallback:no-key')
 
-    if (!memoryModel) {
-      continue
-    }
-
-    return {
-      providerId,
-      gatewayId: null,
-      modelId: memoryModel.id,
-      modelName: memoryModel.name,
-    }
+    return null
   }
 
-  context.skipped.push('fallback:no-key')
-
-  return null
+  return { ...cheapest, gatewayId: null }
 }
 
 async function runResolutionStep(
@@ -545,13 +494,6 @@ export async function resolveMemoryModel(
   }
 }
 
-function toProviderOptions(
-  providerId: SupportedProviderId,
-  providerOptions: SharedV2ProviderOptions,
-): MemoryModelProviderOptions {
-  return { [providerId]: providerOptions }
-}
-
 export async function instantiateMemoryModel(
   selection: ResolvedMemoryModelSelection,
   userId: number,
@@ -590,114 +532,5 @@ export async function instantiateMemoryModel(
     }
   }
 
-  if (providerId === 'google') {
-    const { instance, reasoning, providerOptions } = await useGoogle(
-      userIdValue,
-      modelId,
-      [],
-      'off',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  if (providerId === 'openai') {
-    const { instance, reasoning, providerOptions } = await useOpenAI(
-      userIdValue,
-      modelId,
-      [],
-      'low',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  if (providerId === 'anthropic') {
-    const { instance, reasoning, providerOptions } = await useAnthropic(
-      userIdValue,
-      modelId,
-      [],
-      'off',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  if (providerId === 'xai') {
-    const { instance, reasoning, providerOptions } = await useXai(
-      userIdValue,
-      modelId,
-      [],
-      'off',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  if (providerId === 'deepseek') {
-    const { instance, reasoning, providerOptions } = await useDeepSeek(
-      userIdValue,
-      modelId,
-      [],
-      'off',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  if (providerId === 'moonshotai') {
-    const { instance, reasoning, providerOptions } = await useMoonshotAi(
-      userIdValue,
-      modelId,
-      [],
-      'off',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  if (providerId === 'qwen') {
-    const { instance, reasoning, providerOptions } = await useQwen(
-      userIdValue,
-      modelId,
-      [],
-      'off',
-    )
-
-    return {
-      model: instance,
-      reasoning,
-      providerOptions: toProviderOptions(providerId, providerOptions),
-    }
-  }
-
-  throw createError({
-    message: 'Unsupported memory provider',
-    status: 400,
-    why: `Provider ${providerId} is not supported for memory.`,
-  })
+  return instantiateDirectModel(providerId, modelId, userId)
 }

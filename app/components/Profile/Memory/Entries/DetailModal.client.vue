@@ -116,7 +116,7 @@
                 ref="textarea"
                 v-model="draftBody"
                 class="
-                  textarea textarea-bordered rounded-box min-h-36 w-full
+                  textarea textarea-bordered min-h-36 w-full
                   resize-none max-h-[50dvh] overflow-y-auto
                 "
                 :class="{ 'textarea-error': isBodyErrorShown }"

@@ -5,6 +5,7 @@ import {
   getSafeImageGenerationError,
   isPersistedImageGenerationFailureText,
 } from '../../../../server/utils/ai/image-generation-errors'
+import { createStorageFullError } from '../../../../server/utils/storage/errors'
 
 describe('isPersistedImageGenerationFailureText', () => {
   it('recognizes a direct-provider persistence text', () => {
@@ -95,6 +96,18 @@ describe('getPersistedImageGenerationFailureText', () => {
       + ' Attach it again, then try again.',
     )
     expect(isPersistedImageGenerationFailureText(persistedText)).toBe(true)
+  })
+
+  it('maps the shared storage full error to the storage quota failure', () => {
+    const error = getSafeImageGenerationError(
+      createStorageFullError({ usedBytes: 20, totalBytes: 20 }),
+      'openai',
+    )
+
+    expect(error).toMatchObject({
+      code: 'storage-quota',
+      fix: 'Free space on the Storage page, then try again.',
+    })
   })
 
   it('resolves the persistence text by code', () => {

@@ -362,7 +362,7 @@ async function createCloudflareCatalogError(
  * `pricing` array of `{type, unit, cost_usd}` entries and its own
  * constraints (`supported_inputs.max_context_length.value` for context
  * length, `max_length.value` for max output tokens on the text output
- * modality). Tool-calling support is signalled by the presence of a `tools`
+ * modality). Tool-calling support is signaled by the presence of a `tools`
  * key in a text output modality's `supported_parameters` map, not a
  * top-level `supported_parameters: string[]` array.
  *
@@ -717,7 +717,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * hold one: `context_window`, `function_calling` and `reasoning` arrive as
  * `"128000"`/`"true"`, while `price` arrives as a real JSON array. Every
  * reader below coerces rather than trusts, and returns `undefined` on
- * anything it does not positively recognise.
+ * anything it does not positively recognize.
  */
 function coerceCloudflareBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {
@@ -824,7 +824,7 @@ function resolveCloudflarePriceDirection(
 /**
  * Cloudflare publishes these as `"per M input tokens"` with a price of e.g.
  * `0.35`, meaning USD per million tokens, while `GatewayModel.pricing` is
- * per-token — hence the division. A unit this does not positively recognise
+ * per-token — hence the division. A unit this does not positively recognize
  * yields `undefined` rather than a guess, so an unfamiliar spelling costs a
  * missing badge instead of a price wrong by six orders of magnitude.
  */
@@ -953,7 +953,7 @@ function isCloudflareTokenRejection(exception: unknown): boolean {
  * Cloudflare's catalog needs the caller's own account id + token, so it
  * cannot share `getCachedGatewayCatalog`'s global, zero-arg cache further
  * down in this file — each account gets its own cache entry. Mirrors the
- * same freshness/stale-fallback/non-fatal-cache-write-failure behaviour as
+ * same freshness/stale-fallback/non-fatal-cache-write-failure behavior as
  * the public gateways, with one deliberate exception: a fresh fetch that
  * fails with a 401/403 (the token lost, or never had, Workers AI
  * permission) always propagates instead of falling back to a stale cache

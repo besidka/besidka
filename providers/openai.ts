@@ -64,7 +64,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -77,7 +77,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -88,7 +88,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -100,7 +100,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -111,7 +111,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -122,7 +122,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -133,7 +133,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -144,7 +144,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -155,7 +155,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -167,7 +167,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -178,7 +178,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -190,7 +190,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -202,7 +202,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -216,7 +216,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -230,7 +230,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['image_generation'],
+      tools: ['image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -244,7 +244,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -257,28 +257,28 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
     },
     {
       id: 'gpt-4.1-mini',
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
     },
     {
       id: 'gpt-4o',
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
     },
     {
       id: 'gpt-4o-mini',
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
     },
     {
       id: 'o4-mini',
@@ -287,7 +287,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -302,7 +302,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
     },
     {
       id: 'o3-mini',
@@ -311,7 +311,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],

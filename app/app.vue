@@ -14,9 +14,10 @@
           flex-1 overflow-y-auto overflow-x-hidden
           motion-safe:scroll-smooth
           pt-[var(--sat)]
-          max-sm:pb-[calc(var(--spacing)_*_24_+_var(--sab))]
           [-webkit-overflow-scrolling:touch]
         `]: $route.name !== 'chats-slug',
+        'max-sm:pb-[calc(var(--spacing)_*_24_+_var(--sab))]':
+          $route.name !== 'chats-slug' && $route.name !== 'artifacts-token',
       }"
       :tabindex="$route.name !== 'chats-slug' ? 0 : undefined"
       :role="$route.name !== 'chats-slug' ? 'region' : undefined"
@@ -128,6 +129,12 @@ async function onException(exception: unknown) {
   const parsedException = parseError(exception)
 
   reportException(exception, parsedException.message)
+
+  if (isChunkLoadError(exception)) {
+    useNuxtApp().$recoverFromChunkError?.()
+
+    return
+  }
 
   if (parsedException.status === 401) {
     const { fetchSession, session } = useAuth()

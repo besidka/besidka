@@ -59,7 +59,7 @@
               :class="statusClass(schedule.status)"
               :data-testid="`admin-schedule-status-${schedule.id}`"
             >
-              {{ schedule.status }}
+              {{ statusLabel(schedule.status) }}
             </span>
           </span>
           <span class="flex flex-wrap gap-1">
@@ -358,6 +358,10 @@ function isOpen(schedule: FeatureScheduleStepView): boolean {
   return schedule.status === 'pending' || schedule.status === 'blocked'
 }
 
+function statusLabel(status: FeatureScheduleStepView['status']): string {
+  return status === 'cancelled' ? 'canceled' : status
+}
+
 function statusClass(status: FeatureScheduleStepView['status']): string {
   const tone = scheduleStatusTone(status)
 
@@ -492,7 +496,7 @@ async function cancelStep(schedule: FeatureScheduleStepView) {
       { method: 'POST' },
     )
     emit('changed')
-    useSuccessMessage('Step cancelled')
+    useSuccessMessage('Step canceled')
   } catch (exception) {
     const parsedException = parseError(exception)
 

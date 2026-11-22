@@ -22,7 +22,7 @@ deleted.
 
 ## The ceiling: what a package manager can speed up
 
-`bun run` and `bunx` honour the `#!/usr/bin/env node` shebang of `nuxt`,
+`bun run` and `bunx` honor the `#!/usr/bin/env node` shebang of `nuxt`,
 `vitest`, `wrangler`, `eslint` and `playwright`, so those tools still run on
 Node unless `--bun` is passed. Swapping the package manager therefore only
 moves the install step and per-script startup.
@@ -208,7 +208,7 @@ Not run in the scratch trial: E2E (needs `.dev.vars`), `wrangler dev`,
 
 Same commit, same Apple Silicon machine, isolated copies, Node 24.18 as the
 runtime, two rounds. pnpm always ran before Bun in each round, so Bun ran with
-warmer OS file caches: an ordering bias in Bun's favour.
+warmer OS file caches: an ordering bias in Bun's favor.
 
 | Command | pnpm r1 / r2 | Bun r1 / r2 |
 | --- | --- | --- |

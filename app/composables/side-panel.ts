@@ -11,16 +11,24 @@ export interface SidePanelView {
   component?: Component
   toolbar?: Component
   headerActions?: Component
+  preserveFocus?: boolean
   props?: Record<string, unknown>
 }
 
 export const SIDE_PANEL_WIDTH_STORAGE_KEY = 'besidka:side-panel-width'
 export const SIDE_PANEL_DEFAULT_WIDTH = 480
 export const SIDE_PANEL_MIN_WIDTH = 360
+export const SIDE_PANEL_ABSOLUTE_MAX_WIDTH = 2400
 export const SIDE_PANEL_MAX_VIEWPORT_RATIO = 0.6
-export const SIDE_PANEL_MIN_CHAT_WIDTH = 560
+export const SIDE_PANEL_MIN_CHAT_WIDTH = 768
+export const SIDE_PANEL_DOCK_MIN_VIEWPORT
+  = SIDE_PANEL_MIN_WIDTH + SIDE_PANEL_MIN_CHAT_WIDTH
 export const SIDE_PANEL_KEYBOARD_STEP = 24
 export const SIDE_PANEL_TRANSITION_MS = 300
+export const SIDE_PANEL_TRANSITION_DURATION
+  = 'var(--side-panel-transition-duration)'
+export const SIDE_PANEL_TRANSITION_EASING
+  = 'var(--side-panel-transition-easing)'
 export const SIDE_PANEL_WIDTH_PRESETS = [360, 480, 640] as const
 
 export function getSidePanelMaxWidth(viewportWidth: number): number {
@@ -44,6 +52,17 @@ export function clampSidePanelWidth(
   return Math.round(Math.min(
     Math.max(width, SIDE_PANEL_MIN_WIDTH),
     getSidePanelMaxWidth(viewportWidth),
+  ))
+}
+
+export function clampStoredSidePanelWidth(width: number): number {
+  if (!Number.isFinite(width)) {
+    return SIDE_PANEL_DEFAULT_WIDTH
+  }
+
+  return Math.round(Math.min(
+    Math.max(width, SIDE_PANEL_MIN_WIDTH),
+    SIDE_PANEL_ABSOLUTE_MAX_WIDTH,
   ))
 }
 
@@ -81,6 +100,7 @@ function readStoredWidth(): number | null {
 export function useSidePanel() {
   const stack = useState<SidePanelView[]>('side-panel:stack', () => [])
   const isFullWidth = useState<boolean>('side-panel:full-width', () => false)
+  const isCollapsed = useState<boolean>('side-panel:collapsed', () => false)
   const preferredWidth = useState<number | null>(
     'side-panel:preferred-width',
     () => null,
@@ -92,6 +112,10 @@ export function useSidePanel() {
 
   const isOpen = computed<boolean>(() => {
     return stack.value.length > 0
+  })
+
+  const isVisible = computed<boolean>(() => {
+    return stack.value.length > 0 && !isCollapsed.value
   })
 
   const mode = computed<SidePanelMode | null>(() => {
@@ -166,6 +190,20 @@ export function useSidePanel() {
   function close(): void {
     stack.value = []
     isFullWidth.value = false
+    isCollapsed.value = false
+  }
+
+  /**
+   * Hides the panel without touching the stack, so the mounted view keeps its
+   * iframe, tab, scroll and data. Used while a focus-mode overlay (the message
+   * context menu) is open; `expand()` brings back the same state.
+   */
+  function collapse(): void {
+    isCollapsed.value = true
+  }
+
+  function expand(): void {
+    isCollapsed.value = false
   }
 
   function toggle(view: SidePanelView): void {
@@ -182,19 +220,21 @@ export function useSidePanel() {
     isFullWidth.value = !isFullWidth.value
   }
 
+  /**
+   * Remembers the width the user chose, bounded only by the absolute limits.
+   * The per-viewport limit is applied when the width is rendered, so a width
+   * chosen on a wide screen survives a visit on a narrow one.
+   */
   function setWidth(value: number, options: { persist?: boolean } = {}) {
-    const viewportWidth = import.meta.client
-      ? window.innerWidth
-      : Number.POSITIVE_INFINITY
-    const clamped = clampSidePanelWidth(value, viewportWidth)
+    const stored = clampStoredSidePanelWidth(value)
 
-    preferredWidth.value = clamped
+    preferredWidth.value = stored
 
     if (options.persist) {
-      persistWidth(clamped)
+      persistWidth(stored)
     }
 
-    return clamped
+    return stored
   }
 
   function persistWidth(value: number = width.value): void {
@@ -209,6 +249,8 @@ export function useSidePanel() {
     stack,
     currentView,
     isOpen,
+    isCollapsed,
+    isVisible,
     mode,
     title,
     viewKey,
@@ -219,6 +261,8 @@ export function useSidePanel() {
     push,
     back,
     close,
+    collapse,
+    expand,
     toggle,
     toggleFullWidth,
     setWidth,
@@ -226,12 +270,20 @@ export function useSidePanel() {
   }
 }
 
+/**
+ * Docks only when the chat column keeps at least the md width after the
+ * narrowest panel, which is the same as the clamped panel width leaving
+ * `SIDE_PANEL_MIN_CHAT_WIDTH`. Below that the chat would render its desktop
+ * layout in a mobile-width column, so the panel overlays instead.
+ */
 export function useSidePanelLayout() {
-  const isLarge = useMediaQuery('(min-width: 64rem)')
+  const canDock = useMediaQuery(
+    `(min-width: ${SIDE_PANEL_DOCK_MIN_VIEWPORT}px)`,
+  )
   const isMedium = useMediaQuery('(min-width: 48rem)')
 
   return computed<SidePanelLayout>(() => {
-    if (isLarge.value) {
+    if (canDock.value) {
       return 'docked'
     }
 

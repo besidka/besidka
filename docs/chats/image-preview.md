@@ -8,7 +8,7 @@ opened from generated and attached images. Zoom lives in
 
 The global viewport meta in `nuxt.config.ts` is
 `width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no`.
-iOS Safari tabs ignore it, but the installed home-screen PWA honours it, so
+iOS Safari tabs ignore it, but the installed home-screen PWA honors it, so
 native pinch zoom works in one and not the other. The modal therefore owns
 its zoom. Do not loosen the viewport meta to fix this: it is global and would
 change every page.
@@ -20,7 +20,7 @@ composable.
 ## Structure
 
 The zoom target is a surface that fills the modal body (`absolute inset-0`,
-`touch-none`) and centres the `<img>` (`object-contain`). The image is not the
+`touch-none`) and centers the `<img>` (`object-contain`). The image is not the
 target, so `contain: 'outside'` clamps against the body: at fit scale the
 surface equals the body, so there is nothing to pan, and zoomed in the
 surface can never leave the body. `touch-action: none` is set on the surface
@@ -28,7 +28,7 @@ and its parent (the body) only, never on the header buttons.
 
 ## Gestures
 
-| Input | Behaviour |
+| Input | Behavior |
 | --- | --- |
 | Pinch (touch) | zoom, min 1 (fit), max 5 |
 | Drag | pan, only while zoomed |
@@ -40,7 +40,7 @@ Double tap and double click share one detector
 `pointerType` within 300 ms and 25 px. It ignores secondary mouse buttons,
 drags longer than 25 px, and any gesture that involved a second pointer
 (pinch), so a pinch never ends in a zoom toggle. There is no `dblclick`
-listener, which would double-fire on touch browsers that synthesise it.
+listener, which would double-fire on touch browsers that synthesize it.
 
 Zooming in is instant (`zoomToPoint` cannot animate); resetting to fit
 animates unless `prefers-reduced-motion: reduce` is set.
