@@ -873,7 +873,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, in
   progress, 2026-11-22): the umbrella `feat/google-connectors` and what
   exists on it so far (the four `google.*` flags with `optIn: 'required'`,
-  `google.gmail` under `google.byo`; `shared/utils/google-scopes.ts` with
+  `google.gmail` and `google.calendar` under `google.byo`;
+  `shared/utils/google-scopes.ts` with
   `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`
   with the provider allow-list as data and `GOOGLE_EXTERNAL_SOURCES`), the
   two client modes (Besidka's client with `drive.file` and the Picker, the
@@ -931,6 +932,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   builder's refuse-never-repair rules and that nothing can send, the
   read-and-store-nothing path for a found Drive file, the request bounds,
   the legacy charsets, the differences from BES-295 and the owner's
+  real-account checklist), and section 15, the Calendar tools on the owner's
+  own client (`google__calendar_list_events`, `_free_busy`, `_create_event`:
+  the two narrow scopes `calendar.events.owned` and `.freebusy` checked
+  against Google's reference and never on Besidka's client or the Picker
+  token, the `google.calendar` flag under `google.byo`, event text as hostile
+  input and guests reduced to a count by the `fields` mask, the create-event
+  write that can carry no attendee, video call, repeat, reminder or
+  attachment and sends `sendUpdates=none`, the refuse-never-repair time rules
+  (explicit offset that must match the IANA zone at that instant, the spring
+  gap, the exclusive all-day end), the card that shows the validated request
+  body, references of an id, a link and a day only, and the owner's
   real-account checklist)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
