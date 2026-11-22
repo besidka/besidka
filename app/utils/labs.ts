@@ -5,6 +5,7 @@ import type {
   FeatureStage,
 } from '#shared/utils/features/registry'
 import type { UserKeyStatus } from '~/composables/user-keys'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import { providerMeta } from '#shared/utils/provider-meta'
 
 export interface LabsFeatureGroup {
@@ -21,7 +22,7 @@ const labsFeatureIcons: Record<string, string> = {
   'research.custom': 'lucide:telescope',
   'research.export': 'lucide:file-down',
   'connectors': 'lucide:cable',
-  'google.drive': 'lucide:hard-drive',
+  'google.drive': GOOGLE_DRIVE_ICON,
   'skills': 'lucide:wand-sparkles',
   'skills.scripts': 'lucide:file-terminal',
   'tool-approvals': 'lucide:shield-check',

@@ -82,6 +82,19 @@ single icon (about 0.3 KB) ships in the client bundle and needs no request at
 all. Any other icon from a non-pinned collection must be added the same way
 (or its collection added to `iconCollections`).
 
+`logos` is not in the list either. It backs exactly three icons, the
+multicolor Google marks `logos:google-drive`, `logos:google-gmail` and
+`logos:google-calendar` (`shared/utils/google-brand-icons.ts`), which every
+installed collection only offers as `currentColor` glyphs. `@iconify-json/logos`
+(gilbarbara/logos, CC0-1.0, pinned to an exact version) is a dev-only
+dependency and `icon.clientBundle.icons` lists the three (about 7 KB
+uncompressed), so they ship in the client bundle and the server renders them
+too: the page HTML carries the `.i-logos\:google-drive` rule with the icon as
+a `background-image` data URI. A multicolor body has no `currentColor`, so
+`@nuxt/icon` picks background mode, never mask mode, which keeps the colors;
+the box is `1.08em x 1em` (the mark's own 256x238 ratio), so a brand mark must
+not get a forced square size, a `text-*` color, opacity or a filter.
+
 ## The landing footer logos are in the client bundle too
 
 The landing page (footer and `content/index.md`) uses three
@@ -124,9 +137,9 @@ dependency and list the icon in `icon.clientBundle.icons`.
 
 It was `'client-only'` before; that value is what sent browsers to
 `api.iconify.design` whenever the same-origin route had no answer. All icons in
-source use the four pinned prefixes except `thesvg:zhipu`, which is in the
-client bundle (see above). The `logos:grok-icon` mention in
-`ProviderIcon.vue` is a comment, not a used icon.
+source use the four pinned prefixes except `thesvg:zhipu` and the three
+`logos:google-*` marks, which are in the client bundle (see above). The
+`logos:grok-icon` mention in `ProviderIcon.vue` is a comment, not a used icon.
 
 ## Revert criteria
 

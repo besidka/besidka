@@ -10,7 +10,8 @@
         v-if="icon"
         :name="icon"
         size="16"
-        class="shrink-0 opacity-75"
+        class="shrink-0"
+        :class="{ 'opacity-75': !isBrandIcon }"
       />
       <span class="flex flex-col grow min-w-0">
         <span class="inline-flex items-center gap-1 leading-tight">
@@ -93,6 +94,10 @@ const emit = defineEmits<{
 const hintId = useId()
 const noteId = useId()
 const isNoteOpen = shallowRef<boolean>(false)
+
+const isBrandIcon = computed<boolean>(() => {
+  return !!props.icon?.startsWith('logos:')
+})
 const noteElement = useTemplateRef<ComponentPublicInstance>('noteElement')
 
 function prefersReducedMotion(): boolean {

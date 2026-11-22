@@ -35,7 +35,7 @@ import type {
   ChatContextItemMeta,
 } from '#shared/types/chat-context.d'
 import { isArtifactKind } from '#shared/utils/artifacts'
-import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-drive'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   DOCUMENT_FORMAT_LABELS,
   isDocumentFormat,

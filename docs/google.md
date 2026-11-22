@@ -1582,14 +1582,20 @@ blocked or timed out, the Picker not opening, which is how a missing Google
 sign-in in this browser shows, a Drive refusal, idle for 15 minutes) are
 toasts with what to check.
 
-Branding: the text is always "Google Drive" in full. The mark is a generic
-`lucide:hard-drive` icon, not Google's logo: the earlier
-`simple-icons:googledrive` glyph was a one-color recoloring of the logo,
-and Google's branding rules ask for the logo unmodified (all four colors,
-no tint). The official multicolor logo can be added later as an unmodified
-local SVG asset; that is an owner decision (it also needs the brand
-guidelines checked), and `GOOGLE_DRIVE_ICON` in
-`shared/utils/google-drive.ts` is the one place to swap.
+Branding: the text is always "Google Drive" in full. The mark is Google's
+official multicolor Drive logo, unmodified (owner decision of 2026-11-22: the
+generic `lucide:hard-drive` icon was also Besidka's own Storage icon, and a
+colored mark gives the association). It is `logos:google-drive` from the
+Iconify `logos` collection (CC0-1.0, `@iconify-json/logos`, a dev-only
+dependency), matched against the `drive_2026` product logo that Google's Drive
+branding page links to. Google's rules: resize only, no other change, no
+tint, a tooltip on an icon button, and Besidka's own logo larger when the two
+appear together. The marks live in `shared/utils/google-brand-icons.ts`
+(`GOOGLE_DRIVE_ICON`, `GOOGLE_GMAIL_ICON`, `GOOGLE_CALENDAR_ICON`), are listed
+in `icon.clientBundle.icons`, never take a `text-*` color, opacity or filter,
+and render as a background image, not a mask (see
+`docs/nuxt-icon-collections.md`). The Storage page and its search row keep
+`lucide:hard-drive`; they are not Google Drive.
 
 NOT VERIFIED without a real Google account, to check on the preview (a test
 account with `drive.file` consent, the consent screen "In production"):
@@ -1895,8 +1901,8 @@ tested with the real read tool). A stash record written before the name
 stripping existed may still hold reference titles until its 24 hour expiry;
 the resume seam (13.1) strips them on the way to the model, so no title
 reaches it. The tool step shows "Google Drive" in
-the title ("Read a file from Google Drive") with a neutral `lucide:hard-drive`
-icon, never a Google logo, and after a reload one line per reference: the
+the title ("Read a file from Google Drive") with the Google Drive logo
+(`GOOGLE_DRIVE_ICON`), and after a reload one line per reference: the
 file name and "Open in Google Drive" (`Chat/Reasoning/GoogleStep.vue`), never an
 empty box. A public share drops every tool part (`filterPublicParts`), so a
 Drive tool step never reaches a shared chat.
@@ -1992,8 +1998,8 @@ entry (`id: 'google-drive'`, label "Google Drive", `data-testid`
 `useFeature('google.drive')` when `Select.client.vue` sets up and reads it in
 `isEnabled`, so the tab shows only while the flag is active for the user
 (enabled and opted in) and appears or goes away live. The tab label has no
-icon (the tabs are radio inputs); the neutral `GOOGLE_DRIVE_ICON` marks the
-states, the empty state and the pick button, never Google's logo, and rows use
+icon (the tabs are radio inputs); the Google Drive logo (`GOOGLE_DRIVE_ICON`)
+marks the states, the empty state and the pick button, and rows use
 the existing MIME icons, never Google's `iconLink`.
 
 **Requests.** A user without `google.drive` sees no tab and no request. For a

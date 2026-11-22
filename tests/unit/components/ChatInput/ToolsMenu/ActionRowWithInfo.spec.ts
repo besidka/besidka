@@ -160,6 +160,14 @@ describe('ChatInput/ToolsMenu/ActionRowWithInfo', () => {
     expect(busy.find('[data-testid="row-pending"]').exists()).toBe(true)
   })
 
+  it('fades a monochrome icon but never a multicolor brand mark', async () => {
+    const plain = await mountRow()
+    const brand = await mountRow({ icon: 'logos:google-drive' })
+
+    expect(plain.find('.opacity-75').exists()).toBe(true)
+    expect(brand.find('.opacity-75').exists()).toBe(false)
+  })
+
   it('is as high as the other action rows', async () => {
     const wrapper = await mountRow()
 

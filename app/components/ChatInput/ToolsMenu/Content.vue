@@ -246,10 +246,10 @@ import {
   GOOGLE_DRIVE_TOOLS_HINT,
   GOOGLE_DRIVE_TOOLS_INFO_LABEL,
 } from '#shared/utils/google-drive-tools'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   GOOGLE_DRIVE_BRAND_NAME,
   GOOGLE_DRIVE_COPY_LABEL,
-  GOOGLE_DRIVE_ICON,
 } from '#shared/utils/google-drive'
 import type {
   ChatInputToolsState,
