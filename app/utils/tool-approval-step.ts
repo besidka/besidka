@@ -64,6 +64,7 @@ export interface ApprovalStepContext {
 export interface ApprovalButton {
   remember: ToolApprovalRemember
   label: string
+  ariaLabel?: string
 }
 
 const AWAITING_STATES = new Set<string>([
@@ -441,7 +442,7 @@ export function getApprovalButtons(
   rememberOptions: readonly ToolApprovalRemember[],
   toolName?: string,
 ): ApprovalButton[] {
-  const chatLabel = toolName && Object.hasOwn(
+  const chatGrantDescription = toolName && Object.hasOwn(
     GOOGLE_TOOL_CHAT_GRANT_LABELS,
     toolName,
   )
@@ -453,9 +454,10 @@ export function getApprovalButtons(
     .map((remember) => {
       return {
         remember,
-        label: remember === 'chat' && chatLabel
-          ? chatLabel
-          : REMEMBER_LABELS[remember],
+        label: REMEMBER_LABELS[remember],
+        ...(remember === 'chat' && chatGrantDescription
+          ? { ariaLabel: chatGrantDescription }
+          : {}),
       }
     })
 }

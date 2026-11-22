@@ -146,6 +146,41 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       .toBe(true)
   })
 
+  it.each([
+    ['a Google tool', {
+      toolName: 'google__calendar_list_events',
+      connectorSlug: null,
+      tool: 'google__calendar_list_events',
+    }, 'Allow reading events on your Google Calendar in this chat'],
+    ['a connector tool', {}, undefined],
+    ['a Besidka tool', {
+      toolName: 'besidka__get_chat',
+      connectorSlug: null,
+      isBesidka: true,
+      tool: 'get_chat',
+    }, undefined],
+  ] as const)('labels the chat grant of %s the same short way and keeps '
+    + 'every allow button primary', async (_kind, overrides, ariaLabel) => {
+    const { wrapper } = await mountStep({
+      model: createModel({
+        ...overrides,
+        rememberOptions: ['once', 'chat', 'always'],
+      }),
+    })
+    const allowButtons = ['once', 'chat', 'always'].map((remember) => {
+      return wrapper.get(testId(`allow-${remember}`))
+    })
+    const chatButton = wrapper.get(testId('allow-chat'))
+
+    expect(chatButton.text()).toBe('Allow in this chat')
+    expect(chatButton.attributes('aria-label')).toBe(ariaLabel)
+    expect(allowButtons.every(button => button.classes().includes('btn-primary')))
+      .toBe(true)
+    expect(allowButtons.some(button => button.classes().includes('btn-soft')))
+      .toBe(false)
+    expect(wrapper.get(testId('deny')).classes()).toContain('btn-ghost')
+  })
+
   it('shows the Google egress prompt without Always allow', async () => {
     const { wrapper } = await mountStep({
       model: createModel({

@@ -431,27 +431,29 @@ describe('getApprovalButtons', () => {
 })
 
 describe('getApprovalButtons for a Google Drive tool', () => {
-  it('says what Allow in this chat covers for the read and the list, and '
-    + 'keeps Allow once first', () => {
+  it('keeps the short label and says what Allow in this chat covers for the '
+    + 'read and the list in the accessible name, with Allow once first', () => {
     expect(getApprovalButtons(['once', 'chat'], 'google__drive_read_file'))
       .toEqual([
         { remember: 'once', label: 'Allow once' },
         {
           remember: 'chat',
-          label: 'Allow reading any file you picked from Google Drive in '
+          label: 'Allow in this chat',
+          ariaLabel: 'Allow reading any file you picked from Google Drive in '
             + 'this chat',
         },
       ])
     expect(getApprovalButtons(['once', 'chat'], 'google__drive_list_picked')[1])
       .toMatchObject({
-        label: 'Allow listing the files you picked from Google Drive in this '
-          + 'chat',
+        label: 'Allow in this chat',
+        ariaLabel: 'Allow listing the files you picked from Google Drive in '
+          + 'this chat',
       })
   })
 
-  it('leaves every other tool, and the write, with the generic labels', () => {
+  it('leaves every other tool, and the write, without an accessible name', () => {
     expect(getApprovalButtons(['once', 'chat'], 'google__docs_lookup')[1])
-      .toMatchObject({ label: 'Allow in this chat' })
+      .toEqual({ remember: 'chat', label: 'Allow in this chat' })
     expect(getApprovalButtons(['once'], 'google__drive_save_file'))
       .toEqual([{ remember: 'once', label: 'Allow once' }])
     expect(getApprovalButtons(['once', 'chat'])[1])
