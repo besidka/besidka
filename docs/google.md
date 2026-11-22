@@ -2192,13 +2192,14 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
 
 ## 14. Gmail tools and Drive search (Gmail tools child, G-8)
 
-Built on `feat/google-gmail-tools`. Four `google__` tools for the owner's own
+Built on `feat/google-gmail-tools`. Five `google__` tools for the owner's own
 Google client ("BYO", section 10): `google__gmail_search`,
-`google__gmail_read_thread`, `google__gmail_create_draft` and
-`google__drive_search`. Mail is written by other people, so every byte of it is
-untrusted input and other people's personal data; the design below follows from
-that. Code: `shared/utils/{google-gmail-tools,google-gmail-draft-view,mail-address}.ts`,
-`server/utils/google/{byo-tools,gmail-api,gmail-text,gmail-message,drive-search,send-guard}.ts`,
+`google__gmail_read_thread`, `google__gmail_create_draft`,
+`google__drive_search` and `google__drive_read_found_file`. Mail and shared
+files are written by other people, so every byte of them is untrusted input
+and other people's personal data; the design below follows from that. Code:
+`shared/utils/{google-gmail-tools,google-gmail-draft-view,mail-address}.ts`,
+`server/utils/google/{byo-tools,gmail-api,gmail-text,html-entities,gmail-message,chat-references,drive-search,drive-found-read,send-guard}.ts`,
 `server/utils/tool-approval/google-send-candidates.ts` (the BYO branch),
 `app/components/Chat/Reasoning/{ApprovalStep,GoogleStep}.vue`,
 `app/components/Profile/Google/OwnClient.vue`, `app/utils/google-step.ts`.
@@ -2217,10 +2218,11 @@ thread ids, dates and file names it works with come from the framed text only.
 
 | Tool | Kind | Input | Output | Limits | Approval options |
 |---|---|---|---|---|---|
-| `google__gmail_search` | read | `query` (Gmail search syntax, 1 to 300 characters), optional `limit` (1 to 10, default 5) | `references`, `count`, `threads` (one framed line per thread: `thread_id`, `message_id`, date header, sender, subject, snippet), `note` | `users.messages.list` (spam and trash excluded) then `users.messages.get` with `format=metadata` for the newest hit of each thread, one at a time; 24 KiB of text; the 64 KiB cap | Allow once, "Allow searching all your Gmail in this chat" |
-| `google__gmail_read_thread` | read | `threadId` (the `thread_id` of a search; shape `[A-Za-z0-9_-]{1,64}` checked before any request) | `references`, `thread` (`threadId`, `messageCount`, `shownMessages`, `omittedMessages`), `content` (framed: for each message the from, to, cc, date and subject headers, an attachment line and the plain text), `isTruncated`, `truncationNote` | `users.threads.get` with `format=full`, read with a 3 MiB cap (a larger thread is a fixed sentence); the newest 20 messages; 8,000 characters per message; 36 KiB of text, newest messages first, older ones counted and named as left out; no paging | Allow once only |
-| `google__gmail_create_draft` | write | `to` (1 to 20), `cc`, `bcc` (20 recipients in total), each `{ email, name? }`; `subject` (200 characters); `body` (10,000 characters, plain text); optional `replyToThreadId` | `references` (the draft id, kind `gmail-draft`, the Drafts link), `created`, `draftId`, `link`, a message that says it was not sent | One `users.drafts.create`; for a reply one `users.threads.get` with `format=metadata` first | Allow once only |
-| `google__drive_search` | read | `query` (1 to 200), optional `kind` (`any`, `document`, `spreadsheet`, `presentation`, `pdf`), `modifiedAfter` (`YYYY-MM-DD`), `limit` (1 to 15, default 8) | `references` (file id, name, link, modified time), `count`, `files` (framed lines: `file_id`, name, type, modified), `note` | One `files.list` over My Drive and shared drives; 24 KiB of text; the 64 KiB cap | Allow once, "Allow searching any file in your Google Drive in this chat" |
+| `google__gmail_search` | read | `query` (Gmail search syntax, 1 to 300 characters), optional `limit` (1 to 10, default 5) | `references`, `count`, `threads` (one framed line per thread: `thread_id`, `message_id`, date header, sender, subject, snippet of the newest message by Gmail's `internalDate`), `note` (no hit, threads left out to fit, threads too long to list) | `users.threads.list` (exactly up to `limit` threads, spam and trash excluded) then one `users.threads.get` with `format=metadata` and a `fields` mask per thread, one at a time, read with a 512 KiB cap (a thread over it is skipped and counted in the note); 24 KiB of text; the 64 KiB cap | Allow once, "Allow searching all your Gmail in this chat" (at most 5 granted calls per message, then it asks again) |
+| `google__gmail_read_thread` | read | `threadId`: only a `thread_id` that a `google__gmail_search` result of this chat holds (shape `[A-Za-z0-9_-]{1,64}` and membership checked before any request; any other id is refused without asking, see below) | `references`, `thread` (`threadId`, `messageCount`, `shownMessages`, `omittedMessages`, `skippedMessages`), `content` (framed: for each message the from, to, cc, date and subject headers, an attachment line and the plain text, oldest to newest by `internalDate`), `isTruncated`, `truncationNote` | One `users.threads.get` with `format=full` and `fields=id,messages(id,internalDate,payload)`, read with a 3 MiB cap; over the cap, one `format=minimal` call for the ids and then `users.messages.get` newest first, one at a time, until 36 KiB of text or 20 messages (a message over 3 MiB is skipped and named); the newest 20 messages; 8,000 characters per message; older ones counted and named as left out; a newest message that alone overflows is cut and says so; no paging | Allow once only |
+| `google__gmail_create_draft` | write | `to` (1 to 20), `cc`, `bcc` (20 recipients in total, each address once in any letter case), each `{ email, name? }`; `subject` (200 UTF-16 units); `body` (10,000 UTF-16 units, plain text); optional `replyToThreadId` (only a `thread_id` a search of this chat returned) | `references` (the draft id, kind `gmail-draft`, the Drafts link), `created`, `draftId`, `link`, a message that says it was not sent | One `users.drafts.create` (`fields=id,message(id,threadId)`); for a reply one `users.threads.get` with `format=metadata` first, and a reply whose thread holds no valid `Message-ID` is refused instead of drafted unthreaded | Allow once only |
+| `google__drive_search` | read | `query` (1 to 200), optional `kind` (`any`, `document`, `spreadsheet`, `presentation`, `pdf`), `modifiedAfter` (`YYYY-MM-DD`), `limit` (1 to 15, default 8) | `references` (file id, name, link, modified time), `count`, `files` (framed lines: `file_id`, name, type, modified), `note` (pass a `file_id` to `google__drive_read_found_file`) | One `files.list` over My Drive and shared drives; 24 KiB of text; the 64 KiB cap | Allow once, "Allow searching any file in your Google Drive in this chat" (at most 5 granted calls per message, then it asks again) |
+| `google__drive_read_found_file` | read | `fileId`: only a `file_id` that a `google__drive_search` result of this chat holds (never a picked, read or saved file, which share the `drive-file` kind) | `references` (file id, cleaned name, link, modified time), `readable`, `file` (`fileId`, `type`, `totalCharacters`, `modified`), `content` (framed: the name and the text), `isTruncated`, `truncationNote`, `note` | `files.get` metadata, then `files.export` (Docs as Markdown with a plain-text fallback, Sheets as the first sheet in CSV, Slides as text) or `files.get?alt=media` for a text type only; 8 MB streaming cap; 40 KiB of text from the start; no paging; nothing stored but the reference (section 14.8) | Allow once only |
 
 A refusal or a Google failure is a thrown sentence the model can read, never a
 result, and never repeats Google's own message text (it can echo the request,
@@ -2231,17 +2233,48 @@ anything else); Drive search has its own wording of the same codes
 (`DRIVE_SEARCH_FAILURE_TEXT`, "the Google Drive API is not turned on"). A failed call keeps the send's transient taint but never sets
 the sticky chat flag (section 5.3). HTML mail is converted to text by a linear
 scanner (`htmlToPlainText`): `script`, `style`, `head`, `title`, `svg` and
-comments are dropped with their content, block elements become line breaks, a
+comments are dropped with their content, a `blockquote` (a quoted earlier
+message, with nesting matched in one pass) becomes one "[quoted text omitted]"
+note, block elements become line breaks and table cells are spaced apart, a
 link keeps its address after its text (only `http`, `https` and `mailto`),
-images and everything else vanish, entities are decoded, and nothing is ever
-fetched. Text from mail is also stripped of control characters, invisible
-format characters (zero width, bidi) and line separators, quoted lines (`>`)
-become one note per run, and encoded-word headers (RFC 2047) are decoded.
+images and everything else vanish, a `<` that cannot start a tag stays text,
+entities are decoded (decimal, hex and the 253 HTML 4 names with their letter
+case, `server/utils/google/html-entities.ts`, generated once from the
+`entities` package that is only a transitive dependency, so no dependency was
+added), and nothing is ever fetched. Text from mail (and from a found Drive
+file) is also stripped of control characters, every invisible format
+character (zero width, bidi, and the zero width joiners too, so
+a closing tag with a U+200D inside it becomes the real closing tag and
+`neutralizeFrameTags` defuses it), lone surrogates and line separators, quoted
+lines (`>`) become one note per run, and encoded-word headers (RFC 2047) are
+decoded. A blank `text/plain` part falls back to the HTML part, and plain text
+is cut to the HTML limit (400,000 characters) before it is cleaned.
 Attachments are listed by name, type and size only; there is no attachment
-download and no function for it. Gmail may return thread ids Besidka never saw:
-the model may pass any id of the right shape. That is acceptable because the
-mailbox is the user's own, every thread read asks the user (Allow once only,
-below), and the id cannot name anything outside that mailbox.
+download and no function for it.
+
+**Charsets.** Bodies and encoded words are decoded with `TextDecoder` by the
+declared charset (an RFC 2231 language tag such as `koi8-r*ru` is dropped). On
+workerd 1.20261119.1 (the repo's wrangler 4.166.0, `compatibility_date`
+2026-01-28 and the repo's flags), checked on 2026-11-22 with a scratch Worker,
+`windows-1251`, `koi8-u`, `koi8-r` and `iso-8859-5` all decode, and all 256
+bytes of each match Node's tables, so no own decoder was added. A charset the
+runtime does not know becomes the visible line `[unsupported text encoding:
+<label>]` (the label cut to `[A-Za-z0-9._:-]`), never a silent UTF-8 guess.
+
+**Which ids a read accepts.** `google__gmail_read_thread`, a reply draft's
+`replyToThreadId` and `google__drive_read_found_file` accept only an id that a
+search of this chat returned (`GoogleReferenceIndex`,
+`server/utils/google/chat-references.ts`): thread ids only from
+`google__gmail_search` results and file ids only from `google__drive_search`
+results, collected from the chat's stored parts (one query joined to the chat
+and its owner, filtered by tool name, so another user's chat yields nothing),
+from the parts of the reply being resumed (`priorParts`, a pause or a
+"Continue" round) and from every search of the current send, whose results are
+not in D1 yet. An unknown id is refused without asking the user: the entry's
+`failsWithoutRunning` clears it, and a latch makes `execute` refuse that call
+even if a granted search in the same step adds the id before it runs (tested).
+The answer is a fixed sentence that tells the model to search first. Before
+this, the model could pass any id of the right shape.
 
 **Why these grant options.** Gmail reads ask, as the pre-check requires (row 14,
 and the plan's "no always approvals"). A search returns only short headers and
@@ -2250,16 +2283,40 @@ covers. A thread read puts whole messages written by other people into the
 model's context, so a chat grant would let an instruction inside one email
 start the next read with no prompt: it asks every time with Allow once only
 (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`; rule 11 in `resolveGoogleApproval` ignores
-any chat grant for it, a tightening of the policy, tested). The draft is a
-write: Allow once only, whatever grant, permission mode or taint. Always allow is
-never offered for any of the four. The draft needs both `gmail.compose` and, to
-reply in a thread, `gmail.readonly`.
+any chat grant for it, a tightening of the policy, tested). The read of a found
+Drive file is on the same list, because a shared file is writable by whoever
+shared it. The draft is a write: Allow once only, whatever grant, permission
+mode or taint. Always allow is never offered for any of the five. The draft
+needs both `gmail.compose` and, to reply in a thread, `gmail.readonly`.
+
+**Granted searches are capped.** A search under "Allow in this chat" runs
+without asking at most 5 times per message
+(`GOOGLE_GMAIL_SEARCH_GRANTED_CALLS_PER_MESSAGE`,
+`GOOGLE_DRIVE_SEARCH_GRANTED_CALLS_PER_MESSAGE`, both in
+`shared/utils/google-gmail-tools.ts` next to the other limits, as
+`GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE`); each later call of that search in the
+message asks again with the usual options. The count lives in
+`createSendToolApproval` (`chatGrantRunsMax` on the entry) and starts from the
+`data-tool-grant` markers with the `chat` scope that the stored reply already
+holds (`countChatGrantRuns`), so a pause or a "Continue" round does not reset
+it and no state record changed shape.
 
 **Cost and pacing.** The Drive tools and these tools share one per-send chain
 and one count (`createGoogleSendGuard`): calls run one at a time and at most 30
 Google tool calls count for one message (`GOOGLE_DRIVE_CALLS_PER_MESSAGE`; the
-sentence now says "Google tool calls"). They also count in the shared
-built-in cap of 12 per turn.
+sentence says "Google tool calls"). The cap counts tool calls (one
+`consumeCall` per `execute`), not HTTP requests. They also count in the shared
+built-in cap of 12 per turn, which is kept in the approval state across rounds,
+so one send invocation runs at most 12 Google tool calls. The HTTP requests per
+call are bounded: a search at most 11 (one list and up to 10 thread
+listings), a thread read 1 or, over the response cap, at most 22 (the failed
+full read, the id listing and 20 messages), a draft 2, a Drive search 1, a
+found-file read at most 3 (metadata, export and the Docs fallback export),
+plus at most one token refresh. That is under 300 requests per invocation in
+the worst case, far below the 10,000 subrequests of Workers Paid
+(`docs/connectors.md`, the Workers ceilings), and every request runs one at a
+time through the chain, so the 6-connection limit is never approached. No
+separate request budget was added.
 
 ### 14.2 When the tools are offered
 
@@ -2268,19 +2325,26 @@ built-in cap of 12 per turn.
 send's one feature read; a user without them costs no query), and on a gateway
 only when the chat already holds Google data (the gateway safeguards go out
 exactly then, unchanged). `buildGoogleSendToolCandidates` then builds the BYO
-branch only when: `google.byo` is active; `checkGoogleByoAccess` allows the
-user right now (an admin with 2FA, the flag and its Labs opt-in; a flag grant to
-a non-admin never passes; section 10.3); the `byo` connection is `active`; and
-its granted scopes hold what each tool needs. `google.gmail` adds the three
-Gmail tools; `google__drive_search` needs only `google.byo` and
-`drive.readonly`. A missing scope removes only the tools that need it. After
+branch only when: `google.byo` is active; the `byo` connection is `active`
+(read first, so a user without one costs that one read);
+`checkGoogleByoAccess` allows the user (an admin with 2FA, the flag and its
+Labs opt-in; a flag grant to a non-admin never passes; section 10.3), judged on
+the send's own memoized feature context (`featureState`, from
+`useFeatureContext`), so the gate costs no further read; and its granted
+scopes hold what each tool needs. `google.gmail` adds the three Gmail tools;
+the two Drive tools need only `google.byo` and `drive.readonly`. A missing
+scope removes only the tools that need it. After
 that the unchanged rules apply: `getGoogleSendTools` offers nothing for a
 model without function tools (`toolCallingAllowed`), for a send that declares a
 provider-run tool that stays callable (`hasUnremovableProviderTool`) while the
 chat holds no Google data, and withholds all of them from a model that may not
 receive Google data. `getGoogleAccessToken({ clientMode: 'byo' })` runs the
-admin gate again before every call, so a tool built before the owner lost the
-role answers "not available for this account". `google.gmail` is
+admin gate again before every call on fresh state (one user-state read serves
+every flag checked), so a tool built before the owner lost the role answers
+"not available for this account"; a Gmail tool passes
+`requiredFeatureFlags: ['google.gmail']`, so turning Gmail off in Labs in the
+middle of a send stops the next Gmail call the same way while the Drive tools
+keep working (tested). `google.gmail` is
 `available: true` with `adminOnly: true` (Labs lists it only for an admin),
 stage `internal`, `optIn: 'required'`, `spend: 'none'`, still a child of
 `google.byo`.
@@ -2295,6 +2359,7 @@ tool input, which is composed by the user and the model (section 5.2):
 | `gmail_search`, `gmail_read_thread` | per thread: the Gmail thread id, kind `gmail-thread`, `https://mail.google.com/mail/#all/<id>`, and the date from Gmail's own `internalDate` (not the `Date` header, which is free text from the sender); `bodyRemoved: true` and the fixed note. Never a subject, sender, address, snippet, attachment name or body | The id and link are needed for "Open in Gmail" after a reload; the date lets the user tell threads apart. The subject and sender are third parties' data and the pre-check lists them only as allowed, not required, so they are not kept (stricter than the pre-check) |
 | `gmail_create_draft` | the draft id, kind `gmail-draft`, the fixed Drafts link; the input (recipients, subject, body) | The input is what the user approved on the card and is the user's own composition (the recorded decision of section 5.2); it may quote mail the model read earlier, which is why the chat is flagged whenever a read happened (below) |
 | `drive_search` | per file: the Drive id, kind `drive-file`, name (cleaned), the Drive link, modified time | The name is needed to tell results apart after a reload; this is the same set the Drive tools keep (section 13.3), and a Drive file name is far less sensitive than mail |
+| `drive_read_found_file` | the same single reference (id, kind, cleaned name, link, modified time); `bodyRemoved: true` and the fixed note. Never the text, no `files` row, no R2 object, no `external_source` value | The text lives only in the turn (and the 24 h KV stash of a paused turn, like every Google body) |
 
 A paused turn keeps the framed bodies 24 hours in KV and gives them back on the
 answer, exactly as for the Drive tools (section 5.2). The resume seam
@@ -2303,15 +2368,28 @@ reference title and link from every Google part on the way to the model, on an
 approval resume and a `{ continue }` round alike, so no mail-derived string
 reaches the model outside the frame on any path. Tests prove it through the
 route (`chats-tool-approval-continuation.spec.ts`: a paused reply, a missing
-stash and a round). The approval part persists a summary in D1, one of three
-(`Search your Gmail for "<query>"`, `Read the email thread <id> in your Gmail`,
-`Create a Gmail draft "<subject>" to <first recipient> and N more`); none holds
+stash and a round). The approval part persists a summary in D1
+(`Search your Gmail for "<query>"`, `Read the email thread from <day> in your
+Gmail`, `Create a Gmail draft "<subject>" to <first recipient> and N more`
+with `, a reply in the email thread from <day>` for a reply, `Read "<file
+name>", found by a Google Drive search, from your Google Drive`); none holds
 text from mail (the query and the draft are composed by the user and the
-model), and `describe` is not used for a thread read, so no Gmail call is made
-to word a card and no subject can reach a stored summary.
+model; the day is Gmail's own timestamp from the stored reference). The thread
+read and the reply word their card with `describe` from the reference index
+only, so no Gmail call is made to word a card and no subject can reach a
+stored summary. The part also carries one `link` (`describeLink`, kept only by
+`readApprovalLink`: HTTPS on `mail.google.com`, `drive.google.com` or
+`docs.google.com`, no credentials or port, checked on the server and again in
+the browser): the thread link names the connected account with
+`?authuser=<email>` (`buildGmailThreadAccountLink`, from the `byo`
+connection's stored address; the stored references keep the plain link), so
+the owner can look at the thread before approving. Approval parts are private
+(shares and branches drop them) and the address is never logged.
 
-Taint and the chat flag: `gmail_search`, `gmail_read_thread` and `drive_search`
-return Google content (taint, read source and sticky flag as in section 5.3);
+Taint and the chat flag: `gmail_search`, `gmail_read_thread`, `drive_search`
+and `drive_read_found_file` return Google content (a found-file read flags the
+chat through `markChatGoogleData`, and outputs generated after it get the
+derived mark, exactly as for the other reads) (taint, read source and sticky flag as in section 5.3);
 a search that returns nothing is not a Google result (`emptyListHoldsNoContent`),
 so an empty search flags nothing. `gmail_create_draft` is registered with
 `returnsGoogleContent: false`: its answer holds a draft id and a link, no mail
@@ -2321,7 +2399,10 @@ quotes mail has read it in this send (tainted) or in a chat that is already
 flagged (a flagged chat starts every send with Google taint, so the draft asks
 anyway and every Besidka write asks after it). The share dialog names an email
 thread as "Email thread from <day>" (`listChatGoogleItemNames`), since a stored
-thread has no subject to name. A public share drops every tool part.
+thread has no subject to name; one thread is one name however often it was
+found, and a second thread of the same day is "Email thread from <day> (2)",
+so two threads never collapse into one name and no mail text is needed. A
+public share drops every tool part.
 
 The reasoning step reads "Searched Gmail", "Read an email thread in Gmail",
 "Created a draft in Gmail" or "Searched Google Drive" with the neutral
@@ -2337,20 +2418,36 @@ A draft approval shows a dedicated block (`reasoning-approval-step-gmail-draft`)
 read from the tool part's input with `readGmailDraftApprovalView`: every
 recipient address with its display name (To, Cc and Bcc rows), the subject, the
 whole body (a scrolling box, never clipped, as text and never as markup) and
-the line "This only saves a draft in your Gmail. Besidka cannot send it." The
-user answers on exactly the input that runs, because the input comes from the
-KV pending record and is validated again by the same function before anything
-is sent. The input schema refuses an unsafe draft before any approval is asked
-(section 14.5), so the card never shows a draft that cannot run. The largest
-draft (20 maximum-length addresses, a 200-character subject, 10,000 characters
-of 4-byte text) stays under the 64 KiB approval payload.
+the line "This only saves a draft in your Gmail. Besidka cannot send it." Above
+the body the card says how many lines it has, and in the card view only a run
+of more than two blank (or whitespace-only) lines becomes one "[N blank
+lines]" line (`collapseBlankLinesForCard`), so text cannot hide below a screen
+of empty lines; the draft keeps the body exactly as given (tested). The
+scrolling body is a keyboard-reachable region (`tabindex="0"`, `role="region"`,
+`aria-label="Draft message"`). A reply's card names its thread like a thread
+read does (the day in the summary, "Open in Gmail" for the connected account).
+The user answers on exactly the input that runs, because the input comes from
+the KV pending record and is validated again by the same function before
+anything is sent, and the builder refuses instead of repairing (section 14.5),
+so the card, which reads the raw input, never shows a recipient, name or
+subject that differs from the message. The input schema refuses an unsafe
+draft before any approval is asked, so the card never shows a draft that cannot
+run. The largest draft (20 maximum-length addresses, a 200-unit subject,
+10,000 units of 3-byte text) stays under the 64 KiB approval payload.
 
-On the Google tab of API Keys, the owner's card now says what each access is
-for, shows where the tools work (`GOOGLE_BYO_TOOLS_HINT`), and, once connected,
-lists the tools that are off because their access was not granted (searching
-and reading Gmail need Gmail read access, drafts need Gmail drafts access, Drive
-search needs Google Drive read access). There is no new page, no "+" menu row
-and no per-send toggle (see 14.7).
+Enter on a focused approval card runs "Allow once" for reads, as before, but
+never for the two Google writes (the Gmail draft and the Drive save,
+`isGoogleWriteToolName`): their card needs the button. No other tool changed.
+
+On the Google tab of API Keys, the owner's card says what each access is for,
+shows where the tools work (`getGoogleByoToolsHint`: Gmail is named only while
+`google.gmail` is active for the owner, flag and Labs opt-in), says once Gmail
+drafts access is granted that Google's `gmail.compose` permission technically
+also allows sending and that Besidka only creates drafts and has no code that
+sends, and, once connected, lists the tools that are off because their access
+was not granted (the Gmail notes only while Gmail is on; Drive search and
+reading found files need Google Drive read access). There is no new page, no
+"+" menu row and no per-send toggle (see 14.7).
 
 ### 14.5 The draft builder
 
@@ -2365,16 +2462,24 @@ separate security review. Rules:
 - An address is a plain ASCII `local@domain` (`parseMailAddress`: dot-atom
   local part up to 64 characters, at least two domain labels, a top-level label
   with a letter, 254 characters in all). No display name inside it, no quoted
-  local part, no comment, no address literal, no internationalized form, and
-  no whitespace of any kind: a trailing newline is a refusal, not trimmed.
+  local part, no comment, no address literal, no internationalized form, no
+  `=?` or `?=` (an encoded-word look-alike in the local part), and no
+  whitespace of any kind: a trailing newline is a refusal, not trimmed.
 - A subject or display name that holds a control character (CR, LF, tab, NUL
-  included), a line or paragraph separator or an invisible format character
-  (zero width, bidi controls) other than the two emoji joiners is refused,
-  never stripped or repaired. A body is refused for the same set except tab
-  and line breaks. A display name may not hold `@`, `<` or `>` either, so a
+  included), a line or paragraph separator, a lone surrogate, a letter that
+  renders blank (U+3164, U+2800, U+115F, U+1160, U+FFA0) or an invisible format
+  character (zero width, bidi controls) other than the two emoji joiners is
+  refused, never stripped or repaired. A body is refused for the same set
+  except tab, line breaks and the blank letters, and a CR that is not followed
+  by LF is refused too (the card would show it as a space, the message as a
+  line break). A display name may not hold `@`, `<` or `>` either, so a
   name cannot pose as another address in the mail client
   (`CEO <ceo@corp.example>` with an attacker's address is refused); the owner
   still approves every recipient card.
+- Nothing is repaired, so the card (which reads the raw input) always shows
+  what is sent: the same address twice (any letter case, across to, cc and
+  bcc), a subject or name with a leading or trailing space and an empty or
+  blank name are refusals, not silent trims or drops.
 - Non-ASCII or long text in a header becomes RFC 2047 encoded words
   (`=?UTF-8?B?...?=`, at most 45 bytes of text each, split between characters
   and never inside one, folded with `CRLF SPACE`); a short plain display name
@@ -2383,26 +2488,34 @@ separate security review. Rules:
   `Content-Type: text/plain; charset="UTF-8"` and
   `Content-Transfer-Encoding: base64`, so no body line can start a header or
   overrun a line limit.
-- At least one `to` recipient; 20 recipients in total; duplicates (any letter
-  case) dropped; subject 1 to 200 characters; body 1 to 10,000 characters; the
-  whole message at most 100,000 bytes.
+- At least one `to` recipient; 20 recipients in total; subject 1 to 200 and
+  body 1 to 10,000 UTF-16 units (an emoji counts as two; the input schema
+  advertises and enforces the same maxima in the same unit); the whole message
+  at most 100,000 bytes.
 - `In-Reply-To` and `References` come from other people's mail, so each value
   must match a strict `<local@domain>` pattern (`parseMessageId`); a value that
-  does not is left out and the draft is created without threading, and the
-  builder refuses a bad id it is handed directly. At most 10 references.
+  does not is left out, and when no message of the thread has a valid
+  `Message-ID` the reply is refused ("no message id Besidka can reply to
+  safely") instead of being drafted unthreaded behind a card that said
+  "reply". The builder refuses a bad id it is handed directly. At most the last
+  10 references are kept; the card never shows references (they come from
+  Gmail, not the input), so that cut is no card-versus-message gap.
 - The `users.drafts.create` call is the only write in `gmail-api.ts`: there is
   no function for send, modify, trash, delete or an attachment, and
   `gmail-boundary.spec.ts` fails if one appears. `drafts.create` never sends a
   message.
 
-Tests (`gmail-message.spec.ts`, 47): CR, LF, CR LF and a line separator in the
+Tests (`gmail-message.spec.ts`): CR, LF, CR LF and a line separator in the
 subject; CR LF in a display name and in an address (also a smuggled `Bcc:`);
 address forms (display name, quoted, literal, Unicode, comma, spaces); a body
 that contains a header-looking line; Unicode, emoji and 4-byte characters in
 encoded words (no split character, words at most 75 characters); bidi,
 zero-width and format characters; an over-long subject and body line; an empty
-recipient list, cc or bcc only, 21 recipients, duplicates; reply ids with CR
-LF and spaces; the last ten references; the base64url `raw` round trip.
+recipient list, cc or bcc only, 21 recipients, duplicates refused; padded
+subjects and names refused; the blank letters and lone surrogates; a lone CR;
+multi-byte text exactly at the subject and body caps; encoded-word look-alike
+addresses; reply ids with CR LF and spaces; the last ten references; the
+base64url `raw` round trip.
 
 ### 14.6 Outbound
 
@@ -2412,17 +2525,21 @@ byte cap). Drive search uses the already allowed `www.googleapis.com`.
 `googleFetchJson` got one optional `maxResponseBytes` for the thread read.
 Endpoints (documentation read 2026-11-22):
 
-- `GET /gmail/v1/users/me/messages?q=&maxResults=&includeSpamTrash=false&fields=`
-  (https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list;
-  `gmail.readonly` allowed; `maxResults` default 100, maximum 500, Besidka asks
-  for at most 10).
-- `GET /gmail/v1/users/me/messages/{id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&fields=`
-  (users.messages.get).
-- `GET /gmail/v1/users/me/threads/{id}?format=full` and
-  `?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References&fields=`
+- `GET /gmail/v1/users/me/threads?q=&maxResults=&includeSpamTrash=false&fields=threads(id)`
+  (users.threads.list; `gmail.readonly` allowed; returns threads, so a search
+  that hits one long thread many times still returns up to `limit` threads,
+  which the earlier `messages.list` plus de-duplication did not).
+- `GET /gmail/v1/users/me/threads/{id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&fields=id,messages(id,internalDate,snippet,payload/headers)`
+  for each search hit (512 KiB cap).
+- `GET /gmail/v1/users/me/threads/{id}?format=full&fields=id,messages(id,internalDate,payload)`
+  (3 MiB cap), `?format=minimal&fields=id,messages(id,internalDate)` and
+  `GET /gmail/v1/users/me/messages/{id}?format=full&fields=id,internalDate,payload`
+  for a thread over the cap, and
+  `?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References&fields=messages(internalDate,payload/headers)`
+  for a reply
   (https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.threads/get;
   `format=full` not available with the `gmail.metadata` scope).
-- `POST /gmail/v1/users/me/drafts` with `{"message":{"raw":"<base64url>","threadId"?}}`
+- `POST /gmail/v1/users/me/drafts?fields=id,message(id,threadId)` with `{"message":{"raw":"<base64url>","threadId"?}}`
   (https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.drafts/create
   and https://developers.google.com/workspace/gmail/api/guides/drafts: create
   an RFC 2822 message, base64url encode it, send it in `message.raw`;
@@ -2436,6 +2553,15 @@ Endpoints (documentation read 2026-11-22):
   (https://developers.google.com/workspace/drive/api/guides/search-files).
   `fullText` covers the name, the description and the content, so there is one
   search, not a name search and a content search.
+- For a found file: `GET /drive/v3/files/{id}?supportsAllDrives=true&fields=`
+  (metadata), then `GET /drive/v3/files/{id}/export?mimeType=` for a Google
+  Doc, Sheet or Slides file, or `GET /drive/v3/files/{id}?alt=media&supportsAllDrives=true`
+  for a text file, through the same `googleFetchBytes` as the Picker import
+  (one redirect hop to `*.googleusercontent.com` without the token, a byte cap
+  while streaming).
+- A request that throws (a timeout, a refused redirect, an answer over its
+  cap) maps to a code with `classifyGoogleRequestException`, also for Drive
+  search, so an oversized answer says "too large" instead of "failed".
 
 ### 14.7 Where the ticket (BES-295) and the brief differ
 
@@ -2458,40 +2584,61 @@ The brief and the plan override the ticket:
   messages, drops quoted lines instead of keeping 2,000 characters of them and
   says how many older messages it left out.
 - `drive_search` has `kind` and `modifiedAfter`, at most 15 results, and returns
-  no owner. Its results are not added to a read allowlist, see 14.8.
+  no owner. Its results are read by a separate once-only tool that stores
+  nothing, not through `drive_read_file` and not as copies, see 14.8.
 - Drafts can reply in a thread only with `gmail.readonly` as well.
 - Telemetry is Axiom counts only (`attributes.googleByoTools`: thread, message
   and recipient counts, flags); there is no Analytics Engine event.
 - `drive_search` is offered with `google.byo` alone (as the ticket says), the
   Gmail tools with `google.byo` and `google.gmail` (as the brief says).
 
-### 14.8 Drive search: how a found file is read (STOP)
+### 14.8 Drive search: how a found file is read
 
-There is no read path for a found file in this child. The ticket says the ids
-a search returns are added to the send's read allowlist so `drive_read_file`
-can read them with the BYO token; but `google__drive_read_file` reads only
-the user's own copies of picked files (section 13.1). Reading a found file would
-mean making a copy with `external_source = 'google'` under the BYO token, and
-section 10.6 says why that cannot be built without a decision: copies belong to
-Besidka's mode (`GOOGLE_COPY_CLIENT_MODES`), so a BYO copy would be deleted by
-the hourly sweep within the hour as an orphan when Besidka's connection is not
-active, and would outlive the BYO grant when it is; it needs its own
-`external_source` value and a cleanup, storage, share and data-guard rule
-first (the docs of 10.6 say so). Until that is decided, a found file is only
-named: the answer says the tool cannot read it and that the user can add it
-from the "+" menu, Add, Google Drive, and `drive_read_file` refuses a found id
-as "not one of the files the user picked" without a call to Google (tested).
-Options for the owner: (a) the BYO copy with its own source value and rules,
-or (b) a read that stores nothing (fetch, frame, return), which keeps
-references-only persistence but needs the export and size rules of
-`importDriveFiles` without the copy.
+Decided: option (b), a read that stores nothing. A BYO copy (option (a)) would
+need its own `external_source` value and a cleanup, storage, share and
+data-guard rule (section 10.6: copies belong to Besidka's mode, so a BYO copy
+would be swept as an orphan or outlive the BYO grant), so it was not built.
+`google__drive_read_found_file` (`readFoundDriveFile` in
+`server/utils/google/drive-found-read.ts`) instead:
+
+- accepts only a file id that a `google__drive_search` result of this chat
+  holds (14.1, "Which ids a read accepts"); `drive_read_file` still refuses a
+  found id as "not one of the files the user picked" without a call to Google
+  (tested);
+- asks every time with Allow once only (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`): no
+  chat grant and never Always allow, because a shared file is writable by
+  whoever shared it;
+- applies the rules of `importDriveFiles` without its copy: metadata on all
+  drives first, a folder or trashed file refused, Docs exported to Markdown
+  (plain text when Markdown is refused), Sheets to the first sheet in CSV,
+  Slides to text, any other file only when its type is text
+  (`isGoogleDriveTextMediaType`; a PDF, image or Office file answers "not
+  readable here" without downloading), a refused download, a byte cap of 8 MB
+  enforced while streaming, `redirect: 'manual'` and the exact-host allow-list
+  (the shared `googleFetchBytes`); it never calls `importDriveFiles`, which
+  writes a `files` row and an R2 object;
+- cleans the text like mail (controls, invisible characters, joiners and lone
+  surrogates removed; tabs kept for TSV), frames it as untrusted and cuts the
+  whole output to `GOOGLE_TOOL_OUTPUT_MAX_BYTES` with 40 KiB of text from the
+  start and a truncation note; there is no paging in this version;
+- stores only the reference (id, kind, cleaned name, link, modified date),
+  which `withoutReferenceNames` and `toModelOutput` strip from what the model
+  sees on the first call, a resume and a "Continue" round, like every Google
+  reference; the result taints the send and flags the chat, generated outputs
+  get the derived mark, and a paused turn keeps the body 24 hours in KV;
+- needs `drive.readonly` on the BYO connection and runs the admin gate and the
+  scope check again on every call; logs hold counts and failure codes only.
+
+The existing picked-file read (`google__drive_read_file`) reads the stored copy
+as it is and does not run the mail cleaning, so a joiner inside a picked text
+file reaches the frame unchanged; noted here, not changed in this child.
 
 ### 14.9 Not built
 
 Sending mail, labels, deleting or modifying mail, attachment download, thread
-paging, a thread binding to search results (see 14.1), the "+" menu toggles,
-injection screening, Calendar (the next child), reading a found Drive file
-(14.8), and any MCP exposure: `config/mcp-surface.json` is unchanged, the MCP
+paging, paging through a found Drive file, the "+" menu toggles, injection
+screening, Calendar (the next child), and any MCP exposure:
+`config/mcp-surface.json` is unchanged, the MCP
 modules import none of this code, and a chat that used Gmail is withheld from
 `get_chat` through the sticky flag (tested through `chatHoldsGoogleData`, not
 through an MCP tool call).
@@ -2536,3 +2683,18 @@ client that is "In production" or the owner as a test user; "Testing" gives
 7. Remove the admin role or 2FA and send again: no Gmail tools are offered.
 8. Open a paused draft card on an iPhone (Safari and the installed PWA): the
    long body scrolls inside the card and the buttons stay reachable.
+9. On a thread read card and a reply card, press "Open in Gmail": it opens the
+   thread in the connected account (the `?authuser=<email>#all/<threadId>`
+   form is NOT VERIFIED), also when the browser is signed in to a second
+   Google account first.
+10. Ask to read a thread id the model invents, or one from another chat: it is
+    refused without a card and the model is told to search first.
+11. Search Drive, then ask to read a found Google Doc, a Sheet, a text file and
+    a PDF: the card asks every time with Allow once only; the Doc reads as
+    Markdown, the Sheet as CSV, the PDF says it is not readable; nothing new
+    appears in Files (NOT VERIFIED against real Drive exports).
+12. Read a mail from a Ukrainian sender in `windows-1251` or `koi8-u`: the text
+    is readable, not mojibake (decoding is verified on local workerd, the
+    real mail is NOT VERIFIED).
+13. Allow Gmail search in a chat and ask for more than five searches in one
+    message: the sixth asks again.
