@@ -27,6 +27,15 @@
       <ChatReasoningCalendarEvent :view="calendarEvent" />
     </section>
     <section
+      v-if="gmailDraft"
+      class="flex flex-col gap-1"
+    >
+      <h4 class="text-xs font-medium text-base-content/70">
+        Draft
+      </h4>
+      <ChatReasoningGmailDraft :view="gmailDraft" />
+    </section>
+    <section
       v-if="preview"
       class="flex flex-col gap-1"
     >
@@ -75,6 +84,9 @@
 <script setup lang="ts">
 import { readCreateEventApprovalView } from '#shared/utils/google-calendar-event'
 import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-event'
+import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
+import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 
 const props = defineProps<{
   title: string
@@ -88,6 +100,12 @@ const props = defineProps<{
 
 const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
   return readCreateEventApprovalView(props.toolName, props.input)
+})
+
+const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
+  return props.toolName.toLowerCase() === GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME
+    ? readGmailDraftApprovalView(props.input)
+    : null
 })
 
 const argumentsText = computed<string>(() => {

@@ -2980,8 +2980,13 @@ approved call as `approvalId` in the `execute` options, for that call only.
 It is not the provider's tool call id, which is unique only within one reply
 and could repeat for the same user (a repeat would make Google answer 409 and
 the tool report an event that was never created). A call with no approval id
-(never the case for a write that went through an approval) sends a random id,
-which can never give a false success. Google's reference for `events.insert`
+(never the case for a write that went through an approval) is refused before
+any token or Google request, with the fixed sentence "The event could not be
+created. Nothing was sent to Google Calendar." (`CALENDAR_CREATE_NO_APPROVAL_TEXT`):
+the earlier fallback to a random id could not be repeated and so could not
+protect against a double insert. The option is read as
+`options?.approvalId`, so a call with no options object is refused the same
+way. Google's reference for `events.insert`
 (read 2026-11-22) says of the id: "characters allowed in the ID are those
 used in base32hex encoding, i.e. lowercase letters a-v and digits 0-9", "the
 length of the ID must be between 5 and 1024 characters" and "the ID must be

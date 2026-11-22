@@ -2869,7 +2869,10 @@ describe('tool approval continuation', () => {
       const EVENT_TITLE = 'SECRET LAYOFF TITLE'
       const EVENT_NOTES = 'SECRET LAYOFF NOTES'
       const GUEST = 'eve@evil.example'
-      const EVENT_LINK = 'https://www.google.com/calendar/event?eid=YWJjZGVm'
+      const LISTED_EVENT_LINK_ID = 'eid=YWJjZGVm'
+      const CREATED_EVENT_LINK_ID = 'eid=bmV3'
+      const EVENT_LINK = `https://www.google.com/calendar/event?${LISTED_EVENT_LINK_ID}`
+      const CREATED_EVENT_LINK = `https://www.google.com/calendar/event?${CREATED_EVENT_LINK_ID}`
       const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
       const NEW_EVENT = {
         title: 'Planning',
@@ -2927,7 +2930,7 @@ describe('tool approval continuation', () => {
           if (init?.method === 'POST') {
             return Response.json({
               id: 'newevent123',
-              htmlLink: 'https://www.google.com/calendar/event?eid=bmV3',
+              htmlLink: CREATED_EVENT_LINK,
               start: { dateTime: NEW_EVENT.start },
             })
           }
@@ -3031,7 +3034,8 @@ describe('tool approval continuation', () => {
         expect(outsideFrames(prompt)).not.toContain(EVENT_TITLE)
         expect(outsideFrames(prompt)).not.toContain(EVENT_NOTES)
         expect(outsideFrames(prompt)).not.toContain(GUEST)
-        expect(prompt).not.toContain('eid=YWJjZGVm')
+        expect(prompt).not.toContain(LISTED_EVENT_LINK_ID)
+        expect(prompt).not.toContain(CREATED_EVENT_LINK_ID)
         expect(prompt).toContain('Nobody was invited')
         expect(JSON.stringify(update.parts)).not.toContain(EVENT_TITLE)
         expect(findPart(update.parts, 'tool-google__calendar_create_event'))
@@ -3218,7 +3222,8 @@ describe('tool approval continuation', () => {
 
         expect(prompt).toContain('ev1')
         expect(outsideFrames(prompt)).not.toContain(EVENT_TITLE)
-        expect(prompt).not.toContain('eid=YWJjZGVm')
+        expect(prompt).not.toContain(LISTED_EVENT_LINK_ID)
+        expect(prompt).not.toContain(CREATED_EVENT_LINK_ID)
       })
     })
   })

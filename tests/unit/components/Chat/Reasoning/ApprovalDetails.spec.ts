@@ -89,6 +89,47 @@ describe('Chat/Reasoning/ApprovalDetails', () => {
         .toContain('Nobody is invited and no email is sent')
     })
 
+  it('shows the same draft view as the approval card for a create-draft call',
+    async () => {
+      const { wrapper } = await mountDetails('google__gmail_create_draft', {
+        to: [{ email: 'alice@example.test', name: 'Alice' }],
+        cc: [{ email: 'carol@example.test' }],
+        subject: 'Lunch plans',
+        body: 'Shall we meet at noon?',
+        replyToThreadId: '18c0ffee',
+      })
+      const card = wrapper.get(testId('gmail-draft'))
+
+      expect(card.get(testId('gmail-draft-to')).text())
+        .toContain('alice@example.test')
+      expect(card.get(testId('gmail-draft-cc')).text())
+        .toContain('carol@example.test')
+      expect(card.get(testId('gmail-draft-subject')).text())
+        .toBe('Lunch plans')
+      expect(card.get(testId('gmail-draft-body')).text())
+        .toBe('Shall we meet at noon?')
+      expect(card.get(testId('gmail-draft-lines')).text())
+        .toContain('a reply in the thread above')
+      expect(card.get(testId('gmail-draft-note')).text())
+        .toContain('Besidka cannot send it')
+    })
+
+  it('shows no draft view for another tool or an input that cannot run',
+    async () => {
+      const other = await mountDetails('mcp__linear__create_issue', {
+        subject: 'x',
+        body: 'y',
+        to: [{ email: 'alice@example.test' }],
+      })
+      const broken = await mountDetails(
+        'google__gmail_create_draft',
+        { nothing: true },
+      )
+
+      expect(other.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
+      expect(broken.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
+    })
+
   it('shows no event view for another tool or an input that cannot run',
     async () => {
       const other = await mountDetails('mcp__linear__create_issue', EVENT_INPUT)
