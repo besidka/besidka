@@ -3,14 +3,17 @@ import { createError } from 'evlog'
 export const GOOGLE_FETCH_TIMEOUT_MS = 15_000
 export const GOOGLE_RESPONSE_MAX_BYTES = 64 * 1024
 
+export const GOOGLE_DOWNLOAD_TIMEOUT_MS = 60_000
+
 /**
  * Every host the server calls for Google. The authorization endpoint on
  * `accounts.google.com` is opened by the browser, never fetched here, so it
- * is not listed. Later children add `www.googleapis.com` when they call the
- * Drive API.
+ * is not listed. `www.googleapis.com` is the Drive API (metadata, export and
+ * media download).
  */
 export const GOOGLE_FETCH_HOSTS: ReadonlySet<string> = new Set([
   'oauth2.googleapis.com',
+  'www.googleapis.com',
 ])
 
 const FIRST_REDIRECT_STATUS = 300
@@ -48,7 +51,7 @@ function refusedHost() {
   })
 }
 
-function redirectRefused() {
+export function redirectRefused() {
   return createError({
     message: 'Google answered with a redirect',
     status: 502,
@@ -57,7 +60,7 @@ function redirectRefused() {
   })
 }
 
-function timedOut(timeoutMs: number) {
+export function timedOut(timeoutMs: number) {
   return createError({
     message: 'Google did not answer in time',
     status: 504,
@@ -66,7 +69,7 @@ function timedOut(timeoutMs: number) {
   })
 }
 
-function unreachable() {
+export function unreachable() {
   return createError({
     message: 'Google could not be reached',
     status: 502,
@@ -106,7 +109,7 @@ export function assertGoogleUrl(rawUrl: string): URL {
   return url
 }
 
-function isRedirect(response: Response): boolean {
+export function isRedirect(response: Response): boolean {
   return response.type === 'opaqueredirect'
     || (
       response.status >= FIRST_REDIRECT_STATUS
@@ -114,7 +117,7 @@ function isRedirect(response: Response): boolean {
     )
 }
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
+export function parseJsonObject(text: string): Record<string, unknown> | null {
   if (!text) {
     return null
   }
@@ -132,7 +135,7 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-async function cancelBody(response: Response): Promise<void> {
+export async function cancelBody(response: Response): Promise<void> {
   try {
     await response.body?.cancel()
   } catch {
@@ -144,7 +147,10 @@ async function cancelBody(response: Response): Promise<void> {
  * Reads the body with a running byte count and cancels the stream as soon
  * as it passes the cap, so an oversized answer is never buffered whole.
  */
-async function readCappedText(response: Response): Promise<string> {
+export async function readCappedText(
+  response: Response,
+  maxBytes: number = GOOGLE_RESPONSE_MAX_BYTES,
+): Promise<string> {
   if (!response.body) {
     return ''
   }
@@ -163,7 +169,7 @@ async function readCappedText(response: Response): Promise<string> {
 
     received += value.byteLength
 
-    if (received > GOOGLE_RESPONSE_MAX_BYTES) {
+    if (received > maxBytes) {
       await reader.cancel()
 
       throw responseTooLarge()
@@ -175,7 +181,7 @@ async function readCappedText(response: Response): Promise<string> {
   return text + decoder.decode()
 }
 
-function linkSignals(
+export function linkSignals(
   controller: AbortController,
   callerSignal: AbortSignal | undefined,
 ): () => void {

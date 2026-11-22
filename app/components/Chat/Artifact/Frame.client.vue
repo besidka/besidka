@@ -195,6 +195,10 @@ import type {
   UnexpectedNavigationDetails,
 } from '@besidka/artifacts-protocol'
 import { log } from 'evlog/client'
+import {
+  GOOGLE_PICKER_FRAME_SOURCES,
+  isGooglePickerPagePath,
+} from '#shared/utils/google-drive'
 import type { ArtifactShareCapabilities } from '#shared/utils/artifacts'
 import type {
   ArtifactPanelSource,
@@ -263,6 +267,9 @@ const bridgeFeature = useFeature('artifacts.llm-bridge')
 const { isFullWidth } = useSidePanel()
 const layout = useSidePanelLayout()
 const runtimeOrigin = String(useRuntimeConfig().public.artifactsOrigin ?? '')
+const googlePickerApiKey = String(
+  useRuntimeConfig().public.googlePickerApiKey ?? '',
+)
   .replace(/\/+$/, '')
 
 const host = useTemplateRef<HTMLDivElement>('host')
@@ -667,7 +674,13 @@ function mountFrame() {
   teardown()
   status.value = 'loading'
   mountedAt = Date.now()
-  ensureArtifactFramePolicy(runtimeOrigin)
+  ensureArtifactFramePolicy(
+    runtimeOrigin,
+    isGooglePickerPagePath(window.location.pathname)
+    && googlePickerApiKey
+      ? GOOGLE_PICKER_FRAME_SOURCES
+      : [],
+  )
 
   const storage = createStorageHandlers()
 

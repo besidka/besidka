@@ -11,6 +11,7 @@ import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
 import { isDataDocumentPart } from '#shared/utils/documents'
 import { isHiddenFilePart } from '#shared/utils/files'
+import { isDriveFileReference } from '#shared/utils/google-drive'
 import {
   MEMORY_FORGET_TOOL_NAME,
   MEMORY_LIST_TOOL_NAME,
@@ -346,19 +347,20 @@ const uploadedFilesSection: ChatContextSection = {
       return
     }
 
-    for (const part of message.parts) {
+    message.parts.forEach((part, index) => {
       if (
         !isRecord(part)
         || part.type !== 'file'
         || isHiddenFilePart(part as { type: string, mediaType?: string })
+        || isDriveFileReference(message.parts[index + 1])
       ) {
-        continue
+        return
       }
 
       const url = readString(part.url)
 
       if (!url) {
-        continue
+        return
       }
 
       accumulator.add('inputs', {
@@ -372,7 +374,44 @@ const uploadedFilesSection: ChatContextSection = {
           mediaType: readString(part.mediaType) ?? undefined,
         },
       })
+    })
+  },
+}
+
+const driveFilesSection: ChatContextSection = {
+  id: 'drive-files',
+  group: 'inputs',
+  visibility: 'public',
+  collect(message, accumulator) {
+    if (message.role !== 'user') {
+      return
     }
+
+    message.parts.forEach((part, index) => {
+      if (!isDriveFileReference(part)) {
+        return
+      }
+
+      const previous = message.parts[index - 1]
+      const copyUrl = isRecord(previous) && previous.type === 'file'
+        ? readString(previous.url)
+        : null
+      const link = readString(part.data.link)
+
+      accumulator.add('inputs', {
+        id: `drive-file:${readString(part.data.driveFileId) ?? index}`
+          + `:${message.id}`,
+        sectionId: 'drive-files',
+        kind: 'drive-file',
+        title: toTitle(readString(part.data.name) ?? 'Google Drive file'),
+        messageId: message.id,
+        ...(link ? { href: link } : {}),
+        meta: {
+          ...(copyUrl ? { url: copyUrl } : {}),
+          mediaType: readString(part.data.mimeType) ?? undefined,
+        },
+      })
+    })
   },
 }
 
@@ -720,6 +759,7 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   documentsSection,
   attachedArtifactsSection,
   uploadedFilesSection,
+  driveFilesSection,
   projectKnowledgeSection,
   memorySection,
   chatSearchSection,

@@ -1,6 +1,10 @@
 import type { H3Event } from 'h3'
 import type { RenderContext, RenderResponse } from 'nitropack/types'
 import { buildArtifactFrameSrc } from '#shared/utils/artifact-frame-policy'
+import {
+  GOOGLE_PICKER_FRAME_SOURCES,
+  isGooglePickerPagePath,
+} from '#shared/utils/google-drive'
 
 const CSP_HEADER = 'content-security-policy'
 const FRAME_SRC = 'frame-src'
@@ -14,9 +18,12 @@ const ARTIFACT_PAGE_PREFIXES = [
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('render:response', (response, context) => {
+    const publicConfig = useRuntimeConfig(context.event).public
+
     applyArtifactFrameSrc(response, context, {
-      artifactsOrigin: useRuntimeConfig(context.event).public.artifactsOrigin,
+      artifactsOrigin: publicConfig.artifactsOrigin,
       eventPolicy: readEventPolicy(context.event),
+      googlePickerApiKey: publicConfig.googlePickerApiKey,
     })
   })
 })
@@ -57,13 +64,22 @@ export function isArtifactPagePath(path: string): boolean {
 export function applyArtifactFrameSrc(
   response: Partial<RenderResponse>,
   context: Pick<RenderContext, 'event'>,
-  options: { artifactsOrigin: unknown, eventPolicy?: string },
+  options: {
+    artifactsOrigin: unknown
+    eventPolicy?: string
+    googlePickerApiKey?: unknown
+  },
 ): void {
   if (!isArtifactPagePath(context.event.path)) {
     return
   }
 
-  const directive = buildArtifactFrameSrc(options.artifactsOrigin)
+  const allowsGooglePicker = !!options.googlePickerApiKey
+    && isGooglePickerPagePath(context.event.path)
+  const directive = buildArtifactFrameSrc(
+    options.artifactsOrigin,
+    allowsGooglePicker ? GOOGLE_PICKER_FRAME_SOURCES : [],
+  )
 
   if (!directive) {
     return

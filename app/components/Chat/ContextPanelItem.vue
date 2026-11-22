@@ -35,6 +35,7 @@ import type {
   ChatContextItemMeta,
 } from '#shared/types/chat-context.d'
 import { isArtifactKind } from '#shared/utils/artifacts'
+import { GOOGLE_DRIVE_MARK_ICON } from '#shared/utils/google-drive'
 import {
   DOCUMENT_FORMAT_LABELS,
   isDocumentFormat,
@@ -48,6 +49,7 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'image': 'lucide:image',
   'research': 'lucide:telescope',
   'file': 'lucide:paperclip',
+  'drive-file': GOOGLE_DRIVE_MARK_ICON,
   'knowledge': 'lucide:book-open',
   'memory': 'lucide:book-user',
   'chat-search': 'lucide:messages-square',
@@ -64,6 +66,7 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'image': 'Generated image',
   'research': 'Deep research',
   'file': 'Attached file',
+  'drive-file': 'Google Drive',
   'knowledge': 'Project knowledge',
   'memory': 'Memory',
   'chat-search': 'Chat history',

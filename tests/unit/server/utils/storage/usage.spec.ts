@@ -132,6 +132,7 @@ describe('storage usage', () => {
     expect(breakdown.categories).toEqual([
       { id: 'aiImages', bytes: 0, count: 0 },
       { id: 'uploads', bytes: 0, count: 0 },
+      { id: 'googleDrive', bytes: 0, count: 0 },
       { id: 'generatedFiles', bytes: 0, count: 0 },
       { id: 'connectorImages', bytes: 0, count: 0 },
       { id: 'artifacts', bytes: 0, count: 0 },
@@ -139,6 +140,31 @@ describe('storage usage', () => {
       { id: 'skills', bytes: 0, count: 0 },
     ])
   })
+
+  it('counts Google Drive copies in their own category, not in uploads',
+    async () => {
+      insertFile(userId, 400, 'upload', 'application/pdf')
+      insertFile(userId, 1_000, 'upload', 'text/markdown')
+      insertFile(userId, 2_000, 'upload', 'text/csv')
+      insertFile(otherUserId, 9_000, 'upload', 'text/csv')
+      testDb.sqlite.prepare(`
+        update files set external_source = 'google'
+        where user_id = ? and size in (1000, 2000)
+      `).run(userId)
+
+      const breakdown = await getUserStorageBreakdown(userId)
+
+      expect(categoryOf(breakdown, 'googleDrive')).toMatchObject({
+        bytes: 3_000,
+        count: 2,
+      })
+      expect(categoryOf(breakdown, 'uploads')).toMatchObject({
+        bytes: 400,
+        count: 1,
+      })
+      expect(breakdown.totalBytes).toBe(3_400)
+      expect(await getUserStorageUsageBytes(userId)).toBe(3_400)
+    })
 
   it('splits files by source and media type', async () => {
     insertFile(userId, 100, 'assistant', 'image/webp')

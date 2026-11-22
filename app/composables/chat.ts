@@ -49,6 +49,7 @@ import {
   toArtifactAttachmentPart,
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import { withDriveFileParts } from '#shared/utils/google-drive'
 import {
   CONNECTORS_NOTICE_PART_TYPE,
   getConnectorToolCall,
@@ -1857,7 +1858,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     if (files.value.length > 0) {
       const fileParts = await convertFilesToUIParts(files.value)
 
-      parts.push(...fileParts)
+      parts.push(...withDriveFileParts(files.value, fileParts))
     }
 
     parts.push(...artifactParts)

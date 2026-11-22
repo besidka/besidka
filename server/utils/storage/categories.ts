@@ -1,6 +1,15 @@
 import type { SQL } from 'drizzle-orm'
 import type { StorageCategoryId } from '#shared/types/files.d'
-import { and, eq, gt, like, notLike, sql } from 'drizzle-orm'
+import {
+  and,
+  eq,
+  gt,
+  isNotNull,
+  isNull,
+  like,
+  notLike,
+  sql,
+} from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { userKnowledgeTextBytesSql } from '~~/server/utils/knowledge/quota'
 import {
@@ -93,7 +102,14 @@ const skillsCategory: StorageCategoryDefinition = {
  */
 export const STORAGE_CATEGORIES: readonly StorageCategoryDefinition[] = [
   filesCategory('aiImages', and(isGeneratedFile, isImage)),
-  filesCategory('uploads', eq(schema.files.source, 'upload')),
+  filesCategory('uploads', and(
+    eq(schema.files.source, 'upload'),
+    isNull(schema.files.externalSource),
+  )),
+  filesCategory('googleDrive', and(
+    eq(schema.files.source, 'upload'),
+    isNotNull(schema.files.externalSource),
+  )),
   filesCategory('generatedFiles', and(isGeneratedFile, notLike(
     schema.files.type,
     'image/%',

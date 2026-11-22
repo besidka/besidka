@@ -7,6 +7,7 @@ export type ChatContextItemKind
   = | 'image'
     | 'research'
     | 'file'
+    | 'drive-file'
     | 'knowledge'
     | 'memory'
     | 'chat-search'

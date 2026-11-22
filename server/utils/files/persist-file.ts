@@ -6,6 +6,7 @@ import {
   normalizeMediaType,
 } from '#shared/utils/files'
 import { createError, useLogger } from 'evlog'
+import type { GoogleExternalSource } from '#shared/utils/google-data-policy'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { createStorageFullError } from '~~/server/utils/storage/errors'
@@ -39,6 +40,9 @@ export interface PersistFileInput {
   originModel?: string | null
   generationCost?: number | null
   googleDerivedAt?: Date | null
+  externalSource?: GoogleExternalSource | null
+  externalId?: string | null
+  externalModifiedAt?: Date | null
   logger?: LoggerLike
   policy?: FilePolicy
   totalFilesSize?: number
@@ -195,6 +199,9 @@ export async function persistFile(
         originModel: input.originModel ?? null,
         generationCost: input.generationCost ?? null,
         googleDerivedAt: input.googleDerivedAt ?? null,
+        externalSource: input.externalSource ?? null,
+        externalId: input.externalId ?? null,
+        externalModifiedAt: input.externalModifiedAt ?? null,
       })
       .returning({
         id: schema.files.id,

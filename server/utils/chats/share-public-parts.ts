@@ -5,6 +5,7 @@ import {
   BUILTIN_COMMAND_PART_TYPE,
   isBuiltinCommandMessage,
 } from '#shared/utils/builtin-commands'
+import { DRIVE_FILE_PART_TYPE } from '#shared/utils/google-drive'
 import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
@@ -47,6 +48,32 @@ function isPublicPart(part: UIMessage['parts'][number]): boolean {
 }
 
 /**
+ * A Google Drive reference in a public share carries only the file name:
+ * no Drive id, no link and no media type, so a visitor learns nothing that
+ * opens or identifies the file at Google. The copy itself is never granted
+ * to a share (`docs/google.md`, section 5.3).
+ */
+function toPublicPart(
+  part: UIMessage['parts'][number],
+): UIMessage['parts'][number] {
+  if (part.type !== DRIVE_FILE_PART_TYPE) {
+    return part
+  }
+
+  const name = (part as { data?: { name?: unknown } }).data?.name
+
+  return {
+    type: DRIVE_FILE_PART_TYPE,
+    data: {
+      driveFileId: '',
+      name: typeof name === 'string' ? name : '',
+      mimeType: '',
+      link: '',
+    },
+  } as unknown as UIMessage['parts'][number]
+}
+
+/**
  * The message parts a public share exposes: everything except tool parts,
  * artifact attachments (an artifact the owner attached from the library
  * is no part of what the chat shows, so sharing the chat never reveals it)
@@ -75,7 +102,7 @@ export function filterPublicParts<
       return {
         message: {
           ...message,
-          parts: message.parts.filter(isPublicPart),
+          parts: message.parts.filter(isPublicPart).map(toPublicPart),
         },
         hadApprovalPart: message.parts.some(isToolApprovalPart),
       }

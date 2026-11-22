@@ -21,12 +21,16 @@ export type FileManagerFile = Pick<
   textTruncated?: boolean
   textOmittedMedia?: FileMetadata['textOmittedMedia']
   textOmittedCharts?: FileMetadata['textOmittedCharts']
+  externalSource?: FileMetadata['externalSource']
+  externalId?: FileMetadata['externalId']
 }
 
 export type AttachedFile = Pick<
   FileMetadata,
   'id' | 'storageKey' | 'name' | 'size' | 'type'
 > & {
+  externalSource?: FileMetadata['externalSource']
+  externalId?: FileMetadata['externalId']
   textStatus?: FileMetadata['textStatus']
   textBytes?: FileMetadata['textBytes']
   textTruncated?: boolean

@@ -196,6 +196,15 @@
         @click="emit('open-artifact-picker')"
       />
       <ChatInputToolsMenuActionRow
+        v-if="state.files.visible && state.googleDrive?.visible"
+        :label="GOOGLE_DRIVE_BRAND_NAME"
+        :hint="GOOGLE_DRIVE_COPY_LABEL"
+        :icon="GOOGLE_DRIVE_MARK_ICON"
+        :badge="state.googleDrive.importing || undefined"
+        data-testid="tools-action-google-drive"
+        @click="emit('open-google-drive')"
+      />
+      <ChatInputToolsMenuActionRow
         v-if="state.skills?.visible"
         label="Add skill"
         hint="Skills you made or imported"
@@ -229,6 +238,11 @@
 <script setup lang="ts">
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
+import {
+  GOOGLE_DRIVE_BRAND_NAME,
+  GOOGLE_DRIVE_COPY_LABEL,
+  GOOGLE_DRIVE_MARK_ICON,
+} from '#shared/utils/google-drive'
 import type {
   ChatInputToolsState,
   ToolsSection,
@@ -253,6 +267,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'open-files-generated': []
   'open-artifact-picker': []
+  'open-google-drive': []
   'open-skills-picker': []
   'open-connectors-picker': []
   'update:use-memory': [value: boolean]
@@ -274,6 +289,7 @@ const connectorsBadge = computed<number | undefined>(() => {
 
 const isAddSectionVisible = computed<boolean>(() => {
   return props.state.files.visible
+    || props.state.googleDrive?.visible === true
     || props.state.skills?.visible === true
     || props.state.connectors?.visible === true
     || props.state.project.visible

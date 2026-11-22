@@ -76,6 +76,7 @@ import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { AttachedArtifact } from '~/types/chat-input-tools'
 import { toArtifactAttachmentPart } from '#shared/utils/artifacts'
+import { withDriveFileParts } from '#shared/utils/google-drive'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
@@ -455,12 +456,15 @@ async function createResearchChat(
             text: draft,
           } as TextUIPart,
           ...(draftFiles.length
-            ? draftFiles.map((file): FileUIPart => ({
-              type: 'file',
-              mediaType: file.type,
-              filename: file.name,
-              url: getFileUrl(file.storageKey),
-            }))
+            ? withDriveFileParts(
+              draftFiles,
+              draftFiles.map((file): FileUIPart => ({
+                type: 'file',
+                mediaType: file.type,
+                filename: file.name,
+                url: getFileUrl(file.storageKey),
+              })),
+            )
             : []
           ),
         ] as (TextUIPart | FileUIPart)[],
@@ -633,12 +637,15 @@ async function onSubmit() {
             : []
           ),
           ...(draftFiles.length
-            ? draftFiles.map((file): FileUIPart => ({
-              type: 'file',
-              mediaType: file.type,
-              filename: file.name,
-              url: getFileUrl(file.storageKey),
-            }))
+            ? withDriveFileParts(
+              draftFiles,
+              draftFiles.map((file): FileUIPart => ({
+                type: 'file',
+                mediaType: file.type,
+                filename: file.name,
+                url: getFileUrl(file.storageKey),
+              })),
+            )
             : []
           ),
           ...draftArtifacts.map(toArtifactAttachmentPart),

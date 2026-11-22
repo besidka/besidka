@@ -37,6 +37,14 @@ export const STORAGE_CATEGORY_META: Record<
     hint: 'Files you attached or added to your library',
     action: 'files-upload',
   },
+  googleDrive: {
+    label: 'Google Drive copies',
+    icon: 'simple-icons:googledrive',
+    singular: 'copy',
+    plural: 'copies',
+    hint: 'Copies of the Google Drive files you picked',
+    action: 'files-upload',
+  },
   generatedFiles: {
     label: 'Generated files',
     icon: 'lucide:file-text',

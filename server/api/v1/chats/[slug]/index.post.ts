@@ -343,6 +343,7 @@ import { buildArtifactInstructions } from '~~/server/utils/ai/artifact-tools'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { collectArtifactAttachments } from '#shared/utils/artifacts'
 import { resolveArtifactAttachmentParts } from '~~/server/utils/artifacts/attachments'
+import { resolveDriveFileParts } from '~~/server/utils/google/drive-parts'
 import { buildArtifactContextBlock } from '~~/server/utils/artifacts/context'
 import {
   ARTIFACT_TOOL_NAMES,
@@ -825,6 +826,11 @@ export default defineEventHandler(async (event) => {
     parts: newMessage.parts,
     logger,
     onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
+  })
+  newMessage.parts = await resolveDriveFileParts({
+    db,
+    userId,
+    parts: newMessage.parts,
   })
   const hadSkillInvocation = newMessage.parts.some(isDataSkillInvocationPart)
 

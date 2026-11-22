@@ -169,6 +169,7 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDriveFiles :message="m" />
           <ChatDeepResearchMeta
             v-if="hasResearchMetaPart(m)"
             :message="m"

@@ -12,6 +12,7 @@ import {
 } from '~~/server/utils/chats/request-schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { resolveArtifactAttachmentParts } from '~~/server/utils/artifacts/attachments'
+import { resolveDriveFileParts } from '~~/server/utils/google/drive-parts'
 import { resolveSkillInvocationPart } from '~~/server/utils/skills/runtime/invocation'
 import { resolveBuiltinCommandPart } from '~~/server/utils/chats/builtin-commands'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
@@ -103,13 +104,18 @@ export default defineEventHandler(async (event) => {
       : body.data.parts,
     logger,
   })
+  const driveParts = await resolveDriveFileParts({
+    db,
+    userId,
+    parts: attachmentParts,
+  })
   const skillParts = await resolveSkillInvocationPart({
     event,
     db,
     userId,
     parts: body.data.research
-      ? attachmentParts.filter(part => !isDataSkillInvocationPart(part))
-      : attachmentParts,
+      ? driveParts.filter(part => !isDataSkillInvocationPart(part))
+      : driveParts,
     logger,
   })
   const parts = await resolveBuiltinCommandPart({

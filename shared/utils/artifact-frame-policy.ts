@@ -26,7 +26,10 @@ export function toArtifactsFrameOrigin(value: unknown): string | null {
  * policies allow the same sources. Null when the artifacts origin is not an
  * http(s) URL.
  */
-export function buildArtifactFrameSrc(artifactsOrigin: unknown): string | null {
+export function buildArtifactFrameSrc(
+  artifactsOrigin: unknown,
+  extraSources: readonly string[] = [],
+): string | null {
   const origin = toArtifactsFrameOrigin(artifactsOrigin)
 
   if (!origin) {
@@ -37,6 +40,7 @@ export function buildArtifactFrameSrc(artifactsOrigin: unknown): string | null {
     ARTIFACT_FRAME_SELF_SOURCE,
     origin,
     ARTIFACT_FRAME_TURNSTILE_SOURCE,
+    ...extraSources,
   ]
 
   return `frame-src ${sources.join(' ')}`

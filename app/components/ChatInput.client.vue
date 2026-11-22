@@ -77,8 +77,10 @@
             :uploading-files="uploadingFiles"
             :converted-from-xls-keys="convertedFromXlsKeys"
             :uploading-count="uploadingCount"
+            :drive-imports="driveImports"
             :tiles="tiles"
             :pasted-texts="pastedTexts"
+            @dismiss-drive-import="dismissDriveImport"
             @open-tile="openToolsMenu"
             @open-text="openTextFile"
             @open-pasted="openPastedText"
@@ -153,6 +155,7 @@
                 @open-files-upload="openFilesModal('upload')"
                 @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
+                @open-google-drive="attachFromDrive"
                 @open-skills-picker="openSkillPicker"
                 @open-connectors-picker="openConnectorPicker"
                 @update:use-memory="setMemoryUsage"
@@ -660,6 +663,14 @@ const {
   removeAllFiles,
 } = useChatFiles(files, canAttachMediaType, resolveDelivery)
 
+const googleDriveFeature = useFeature('google.drive')
+const {
+  driveImports,
+  importingCount: driveImportingCount,
+  attachFromDrive,
+  dismissDriveImport,
+} = useChatDriveFiles(files, onFilesAttached)
+
 watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {
     const rejection = getFileRejection(file, resolve)
@@ -1117,6 +1128,10 @@ const toolsState = computed<ChatInputToolsState>(() => {
     artifacts: {
       visible: isArtifactAttachEnabled.value,
       attached: isArtifactAttachEnabled.value ? attachedArtifacts.value : [],
+    },
+    googleDrive: {
+      visible: googleDriveFeature.value.active && !isDeepResearchModel.value,
+      importing: driveImportingCount.value,
     },
     skills: {
       visible: isSkillAttachEnabled.value,

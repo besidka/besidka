@@ -198,6 +198,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'open-files-generated': []
   'open-artifact-picker': []
+  'open-google-drive': []
   'open-skills-picker': []
   'open-connectors-picker': []
   'update:use-memory': [value: boolean]
@@ -332,6 +333,9 @@ const contentListeners = {
   }),
   'onOpenArtifactPicker': closeAfter(() => {
     emit('open-artifact-picker')
+  }),
+  'onOpenGoogleDrive': closeAfter(() => {
+    emit('open-google-drive')
   }),
   'onOpenSkillsPicker': closeAfter(() => {
     emit('open-skills-picker')
