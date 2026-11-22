@@ -533,13 +533,16 @@ the new `files` columns (`external_source`, `external_id`,
 `external_modified_at`, `drive_copy_id`), `chats.google_data_at` and
 `keys.paid_tier_confirmed_at` to the bookmark B. `google_connections` has no
 foreign key, so nothing cascades. KV keeps its current state; the
-`google-oauth:` state and refresh-lock keys expire within minutes.
+`google:oauth:` state keys expire within ten minutes and the `google:refresh:`
+lock keys within one.
 
 - **Revoked tokens come back.** A user who disconnected Google, or whose
   access ended (`invalid_grant`), in the window gets the row back with its
-  encrypted tokens and `status = 'active'`. Google may have revoked the token
-  already, in which case the next refresh answers `invalid_grant`, but that
-  is not guaranteed. Wipe every connection right after the restore and have
+  encrypted tokens and `status = 'active'`. Disconnect revokes the grant at
+  Google (`revokeStoredGoogleConnection` in `server/utils/google/tokens.ts`),
+  so the next refresh of such a row usually answers `invalid_grant` and ends
+  it again, but the revoke is best effort: when Google did not answer, the
+  restored refresh token still works. Wipe every connection right after the restore and have
   users reconnect (step 2d). Rows created in the window are lost with the
   restore and need no repair; the connection row and the user's tokens at
   Google are then out of step, and the user simply connects again. Say so in
@@ -836,13 +839,14 @@ See "Google" above for why every connection is reset. Users reconnect and
 confirm the paid tier of their Gemini key again. Then set `chats.google_data_at`
 again for the chats that carry Google data, as described there.
 
-Known gaps, owned by later children of the Google stack: the access-ended
-sweep that deletes the Google file copies of a `needs_reauth` connection (child
-2) does not exist yet, so until it ships the wipe above removes only the
-tokens and users' copies stay; once it ships, this step deletes every user's
-Drive copies within 24 hours, which the user notice (step 7) must say. The
-command that re-derives `chats.google_data_at` is written with the data guard
-(child 3), which defines what counts as a Google part.
+After the wipe no connection is `active`, so the hourly access-ended sweep
+(`server/plugins/google-access-sweep.ts`, `sweepGoogleAccessEnded`) deletes
+every user's Drive copies: 25 users per run, so with more than 600 users who
+hold Google files it takes longer than 24 hours unless the sweep is run more
+often until it reports `usersCleaned: 0`. The user notice (step 7) must say
+the copies are deleted. Known gap, owned by a later child of the Google
+stack: the command that re-derives `chats.google_data_at` is written with the
+data guard (child 3), which defines what counts as a Google part.
 
 ### 3. Push id sequences past the pre-restore high-water marks
 
