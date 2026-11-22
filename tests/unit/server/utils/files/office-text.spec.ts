@@ -960,6 +960,109 @@ describe('ensureOfficeTextState and loadOfficeText', () => {
         .resolves.toMatchObject({ text: '# Workbook map', textVersion: 2 })
       expect(kvPut).not.toHaveBeenCalled()
     })
+
+    it('keeps the stored text for a map answer with empty text', async () => {
+      mocks.extractOfficeText.mockResolvedValue({
+        ...readyResult(''),
+        workbookMap: MAP_SUMMARY,
+      })
+
+      const loaded = await loadOfficeText(versionOneFile, logger)
+
+      expect(loaded).toMatchObject({ text: '## Sheet: A\n1,2', textVersion: 1 })
+      expect(put).not.toHaveBeenCalled()
+      expect(updateSet).not.toHaveBeenCalled()
+      expect(kvPut).toHaveBeenCalledTimes(1)
+    })
+
+    describe('with a sidecar that remembers what it holds', () => {
+      let sidecars: Map<string, {
+        text: string
+        customMetadata?: Record<string, string>
+      }>
+
+      beforeEach(() => {
+        sidecars = new Map()
+        put.mockImplementation(async (
+          key: string,
+          body: Uint8Array,
+          options: { customMetadata?: Record<string, string> },
+        ) => {
+          sidecars.set(key, {
+            text: new TextDecoder().decode(body),
+            customMetadata: options.customMetadata,
+          })
+        })
+        get.mockImplementation(async (key: string) => {
+          const sidecar = key.endsWith('.text.md')
+            ? sidecars.get(key)
+            : { text: 'x' }
+
+          if (!sidecar) {
+            return null
+          }
+
+          return {
+            customMetadata: sidecar.customMetadata,
+            arrayBuffer: async () => {
+              return new TextEncoder().encode(sidecar.text).buffer
+            },
+          }
+        })
+      })
+
+      it('reads map text as map text when the row update failed', async () => {
+        sidecars.set('k.xlsx.text.md', { text: '## Sheet: A\n1,2' })
+        updateSet.mockImplementation(() => ({
+          where: vi.fn().mockRejectedValue(new Error('D1 down')),
+        }))
+        mocks.extractOfficeText.mockResolvedValue({
+          ...readyResult('# Workbook map'),
+          workbookMap: MAP_SUMMARY,
+        })
+
+        const loaded = await loadOfficeText(versionOneFile, logger)
+
+        expect(loaded).toEqual({
+          text: '# Workbook map',
+          textBytes: 14,
+          textVersion: 2,
+        })
+      })
+
+      it('reads again as version 1 when the map read fails', async () => {
+        mocks.extractOfficeText.mockImplementation(
+          async (request: { version?: number }) => {
+            return request.version
+              ? {
+                status: 'failed',
+                errorCode: 'extract_error',
+                text: '',
+                truncated: false,
+                stats: {
+                  inputBytes: 1,
+                  entries: 0,
+                  textBytes: 0,
+                  truncations: [],
+                },
+              }
+              : readyResult('## Sheet: A\n1,2')
+          },
+        )
+
+        const loaded = await loadOfficeText(versionOneFile, logger)
+
+        expect(loaded).toEqual({
+          text: '## Sheet: A\n1,2',
+          textBytes: 15,
+          textVersion: 1,
+        })
+        expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+          textStatus: 'ready',
+          textVersion: 1,
+        }))
+      })
+    })
   })
 
   it('loads the sidecar text with its byte size', async () => {

@@ -33,6 +33,7 @@ const UPGRADE_FAILED_PREFIX = 'office-text-upgrade-failed:'
 const UPGRADE_FAILED_TTL_SECONDS = 7 * 24 * 60 * 60
 const SIDECAR_CONTENT_TYPE = 'text/markdown; charset=utf-8'
 const SIDECAR_SLACK_BYTES = 4 * 1024
+const SIDECAR_VERSION_KEY = 'textVersion'
 export const OFFICE_OMITTED_COUNT_MAX = 99
 const OMITTED_MEDIA_ENTRY = /^(?:word|ppt|xl)\/(?:media|embeddings)\/.*[^/]$/
 const CHART_DATA_WORKBOOK_ENTRY
@@ -79,6 +80,12 @@ export interface StoreOfficeTextInput {
   bytes: Uint8Array
   logger: LoggerLike
   isUpgrade?: boolean
+  fallsBackToPlain?: boolean
+}
+
+interface StoredSidecar {
+  text: string
+  textVersion: number | null
 }
 
 export interface LoadedOfficeText {
@@ -246,6 +253,7 @@ function storedTextVersion(
 async function writeSidecar(
   storageKey: string,
   text: string,
+  textVersion: number,
 ): Promise<number | null> {
   const encoded = encoder.encode(text)
 
@@ -255,6 +263,7 @@ async function writeSidecar(
 
   await useFileStorage().put(getOfficeTextStorageKey(storageKey), encoded, {
     httpMetadata: { contentType: SIDECAR_CONTENT_TYPE },
+    customMetadata: { [SIDECAR_VERSION_KEY]: String(textVersion) },
   })
 
   return encoded.byteLength
@@ -296,9 +305,9 @@ export async function extractAndStoreOfficeText(
   }
 
   try {
-    const askedForMap = format === 'xlsx'
+    let askedForMap = format === 'xlsx'
       && await rendererOffersWorkbookMap(input.logger)
-    const result = await extractOfficeText(
+    let result = await extractOfficeText(
       askedForMap
         ? {
           format,
@@ -309,6 +318,19 @@ export async function extractAndStoreOfficeText(
         : { format, bytes: input.bytes },
       input.logger,
     )
+
+    const shouldFallBackToPlain = askedForMap
+      && input.fallsBackToPlain
+      && result.status !== 'ready'
+      && result.errorCode !== RENDERER_UNAVAILABLE_CODE
+
+    if (shouldFallBackToPlain) {
+      askedForMap = false
+      result = await extractOfficeText(
+        { format, bytes: input.bytes },
+        input.logger,
+      )
+    }
 
     if (result.errorCode === RENDERER_UNAVAILABLE_CODE) {
       logOfficeText(input.logger, {
@@ -326,9 +348,14 @@ export async function extractAndStoreOfficeText(
 
     let textStatus: OfficeTextStatus = result.status
     let textBytes: number | null = null
+    const textVersion = storedTextVersion(format, result, askedForMap)
 
     if (result.status === 'ready') {
-      textBytes = await writeSidecar(input.storageKey, result.text)
+      textBytes = await writeSidecar(
+        input.storageKey,
+        result.text,
+        textVersion,
+      )
       textStatus = textBytes === null ? 'too_large' : 'ready'
     }
 
@@ -336,7 +363,7 @@ export async function extractAndStoreOfficeText(
     const state: OfficeTextState = {
       textStatus,
       textBytes,
-      textVersion: storedTextVersion(format, result, askedForMap),
+      textVersion,
       textOmittedMedia: omitted?.media ?? 0,
       textOmittedCharts: omitted?.charts ?? 0,
     }
@@ -417,7 +444,9 @@ async function hasFailedUpgrade(
  * the file (failed, too large, empty, or a map too big to store) is
  * remembered in KV for 7 days so later sends skip the read; a renderer
  * that is down or answers without a map is not remembered. A row update
- * that fails keeps the new sidecar, because the old text is already gone.
+ * that fails keeps the new sidecar, because the old text is already gone;
+ * the sidecar carries its own text version, which `loadOfficeText` trusts
+ * over the row, so map text is never read as version 1 text.
  */
 async function storeUpgrade(
   input: StoreOfficeTextInput,
@@ -430,8 +459,15 @@ async function storeUpgrade(
   }
 
   const isFileFailure = result.status !== 'ready'
-  const textBytes = result.status === 'ready' && result.workbookMap
-    ? await writeSidecar(input.storageKey, result.text)
+  const hasMapText = result.status === 'ready'
+    && !!result.workbookMap
+    && result.text.length > 0
+  const textBytes = hasMapText
+    ? await writeSidecar(
+      input.storageKey,
+      result.text,
+      WORKBOOK_MAP_TEXT_VERSION,
+    )
     : null
 
   if (textBytes === null) {
@@ -484,20 +520,25 @@ async function discardSidecar(storageKey: string): Promise<void> {
   }
 }
 
-async function readSidecar(storageKey: string): Promise<string | null> {
+async function readSidecar(storageKey: string): Promise<StoredSidecar | null> {
   const object = await useFileStorage().get(getOfficeTextStorageKey(storageKey))
 
   if (!object) {
     return null
   }
 
-  return decoder.decode(await object.arrayBuffer())
+  const marker = Number(object.customMetadata?.[SIDECAR_VERSION_KEY])
+
+  return {
+    text: decoder.decode(await object.arrayBuffer()),
+    textVersion: Number.isInteger(marker) && marker > 0 ? marker : null,
+  }
 }
 
 async function extractFromStoredFile(
   file: OfficeTextFile,
   logger: LoggerLike,
-  isUpgrade = false,
+  options: { isUpgrade?: boolean, fallsBackToPlain?: boolean } = {},
 ): Promise<OfficeTextState | null> {
   const object = await useFileStorage().get(file.storageKey)
 
@@ -512,7 +553,8 @@ async function extractFromStoredFile(
     mediaType: file.type,
     bytes: new Uint8Array(await object.arrayBuffer()),
     logger,
-    isUpgrade,
+    isUpgrade: options.isUpgrade,
+    fallsBackToPlain: options.fallsBackToPlain,
   })
 }
 
@@ -521,7 +563,7 @@ async function upgradeOfficeText(
   logger: LoggerLike,
 ): Promise<OfficeTextState | null> {
   try {
-    return await extractFromStoredFile(file, logger, true)
+    return await extractFromStoredFile(file, logger, { isUpgrade: true })
   } catch (exception) {
     logOfficeText(logger, {
       status: 'error',
@@ -664,23 +706,31 @@ export async function loadOfficeText(
       return null
     }
 
-    let text = await readSidecar(file.storageKey)
+    let sidecar = await readSidecar(file.storageKey)
     let { textVersion } = state
 
-    if (text === null) {
-      const refreshed = await extractFromStoredFile(file, logger)
+    if (sidecar === null) {
+      const refreshed = await extractFromStoredFile(file, logger, {
+        fallsBackToPlain: true,
+      })
 
       if (refreshed?.textStatus !== 'ready') {
         return null
       }
 
       textVersion = refreshed.textVersion
-      text = await readSidecar(file.storageKey)
+      sidecar = await readSidecar(file.storageKey)
     }
 
-    return text === null
-      ? null
-      : { text, textBytes: encoder.encode(text).byteLength, textVersion }
+    if (sidecar === null) {
+      return null
+    }
+
+    return {
+      text: sidecar.text,
+      textBytes: encoder.encode(sidecar.text).byteLength,
+      textVersion: sidecar.textVersion ?? textVersion,
+    }
   } catch (exception) {
     logOfficeText(logger, {
       status: 'error',
