@@ -25,6 +25,7 @@ export interface FeatureDefinition {
   variants?: string[]
   exposeToClient: boolean
   parent?: string
+  adminOnly?: boolean
 }
 
 export const FEATURE_ROLES: readonly FeatureRole[] = ['admin', 'tester']
@@ -249,6 +250,7 @@ const featureList = [
     parent: 'google.drive',
     optIn: 'required',
     available: true,
+    adminOnly: true,
   }),
   internalFeature({
     key: 'google.gmail',

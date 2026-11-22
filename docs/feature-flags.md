@@ -171,8 +171,11 @@ and `google.gmail` stay `available: false` until their children ship.
 `google.byo` is never enough on its own: every bring-your-own route and
 every use of a bring-your-own token also requires the admin role on the
 server (`checkGoogleByoAccess` in `server/utils/google/byo-access.ts`), so
-a flag grant or the tester role does not reach it. Each one sends the user's Google data to Google or, through a
-chat, to a model provider, so the user opts in before any of it runs
+a flag grant or the tester role does not reach it. Its registry entry
+carries `adminOnly: true`, so Labs lists it only for an admin (a
+flag-granted tester would otherwise see a toggle with no card behind it).
+Each one sends the user's Google data to Google or, through a chat, to a
+model provider, so the user opts in before any of it runs
 (`docs/legal/prechecks/google.md`). `google.calendar` and `google.byo` are
 children of `google.drive`, and `google.gmail` is a child of `google.byo`, the
 first flag with a three-level parent chain; evaluation, `isFeatureActive`,

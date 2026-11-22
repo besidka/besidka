@@ -38,6 +38,10 @@ export default defineEventHandler(async (event) => {
   const features: LabsFeature[] = []
 
   for (const key of labsFeatureKeys) {
+    if (FEATURE_REGISTRY[key].adminOnly && !context.isAdmin) {
+      continue
+    }
+
     const resolution = await evaluateFeature(key, context)
 
     if (!resolution.value) {
