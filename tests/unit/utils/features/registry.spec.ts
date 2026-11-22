@@ -130,22 +130,24 @@ describe('feature registry', () => {
     }
   })
 
-  it('ships the Google Drive, own client and Gmail flags only', () => {
+  it('ships every Google flag', () => {
     expect(FEATURE_REGISTRY['google.drive'].available).toBe(true)
     expect(FEATURE_REGISTRY['google.byo'].available).toBe(true)
     expect(FEATURE_REGISTRY['google.gmail'].available).toBe(true)
-    expect(FEATURE_REGISTRY['google.calendar'].available).toBe(false)
+    expect(FEATURE_REGISTRY['google.calendar'].available).toBe(true)
   })
 
-  it('lists the own-client and Gmail flags in Labs for admins only', () => {
-    expect(FEATURE_REGISTRY['google.byo'].adminOnly).toBe(true)
-    expect(FEATURE_REGISTRY['google.gmail'].adminOnly).toBe(true)
-    expect(FEATURE_REGISTRY['google.drive'].adminOnly).toBeUndefined()
-  })
+  it('lists the own-client, Gmail and Calendar flags in Labs for admins only',
+    () => {
+      expect(FEATURE_REGISTRY['google.byo'].adminOnly).toBe(true)
+      expect(FEATURE_REGISTRY['google.gmail'].adminOnly).toBe(true)
+      expect(FEATURE_REGISTRY['google.calendar'].adminOnly).toBe(true)
+      expect(FEATURE_REGISTRY['google.drive'].adminOnly).toBeUndefined()
+    })
 
-  it('nests Gmail under the bring-your-own Google client', () => {
+  it('nests Gmail and Calendar under the bring-your-own Google client', () => {
     expect(FEATURE_REGISTRY['google.drive'].parent).toBeUndefined()
-    expect(FEATURE_REGISTRY['google.calendar'].parent).toBe('google.drive')
+    expect(FEATURE_REGISTRY['google.calendar'].parent).toBe('google.byo')
     expect(FEATURE_REGISTRY['google.byo'].parent).toBe('google.drive')
     expect(FEATURE_REGISTRY['google.gmail'].parent).toBe('google.byo')
   })

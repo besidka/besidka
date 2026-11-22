@@ -20,6 +20,9 @@ export const GOOGLE_EGRESS_GRANT_KEY_PREFIX = 'google-egress:'
  * send, its result flags the chat and its part counts as a Google result.
  * Only a tool whose result carries no Google content (a write that answers
  * with a link it just created) is listed with `returnsGoogleContent: false`.
+ * `calendar_free_busy` returns Google data but never has a per-item
+ * reference, so it has no `emptyListHoldsNoContent`: even an answer with no
+ * busy time says something about the user's calendar and flags the chat.
  * Never inferred from a tool's kind or from the shape of its output.
  * `emptyListHoldsNoContent` marks the one listing tool whose answer, with no
  * references, names no file at all, so that answer does not flag the chat.
@@ -54,17 +57,28 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
   [`${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`]: {
     returnsGoogleContent: false,
   },
+  [`${GOOGLE_TOOL_NAME_PREFIX}calendar_list_events`]: {
+    returnsGoogleContent: true,
+    emptyListHoldsNoContent: true,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}calendar_free_busy`]: {
+    returnsGoogleContent: true,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}calendar_create_event`]: {
+    returnsGoogleContent: false,
+  },
 }
 
 const GOOGLE_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   `${GOOGLE_TOOL_NAME_PREFIX}drive_save_file`,
   `${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`,
+  `${GOOGLE_TOOL_NAME_PREFIX}calendar_create_event`,
 ])
 
 /**
  * Whether a Google tool writes to the user's Google account (a Drive save,
- * a Gmail draft). Its approval card never approves on Enter from the card
- * itself: the user must press the button.
+ * a Gmail draft, a Calendar event). Its approval card never approves on
+ * Enter from the card itself: the user must press the button.
  */
 export function isGoogleWriteToolName(toolName: unknown): boolean {
   return typeof toolName === 'string'
@@ -85,6 +99,10 @@ export const GOOGLE_TOOL_CHAT_GRANT_LABELS: Readonly<Record<string, string>>
       + 'in your Google Drive in this chat',
     [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: 'Allow searching all your '
       + 'Gmail in this chat',
+    [`${GOOGLE_TOOL_NAME_PREFIX}calendar_list_events`]: 'Allow reading events '
+      + 'on your Google Calendar in this chat',
+    [`${GOOGLE_TOOL_NAME_PREFIX}calendar_free_busy`]: 'Allow checking when '
+      + 'you are busy in your Google Calendar in this chat',
   }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

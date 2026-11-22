@@ -239,9 +239,13 @@ const featureList = [
   internalFeature({
     key: 'google.calendar',
     title: 'Google Calendar',
-    description: 'Read your Google Calendar in a chat.',
-    parent: 'google.drive',
+    description: 'List events, check free and busy time and create an event '
+      + 'on your primary Google Calendar in a chat through your own Google '
+      + 'client.',
+    parent: 'google.byo',
     optIn: 'required',
+    available: true,
+    adminOnly: true,
   }),
   internalFeature({
     key: 'google.byo',
