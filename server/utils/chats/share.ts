@@ -58,7 +58,7 @@ const ACTIVE_SHARE_COLUMNS = {
   showMetadata: true,
   showAuthorAvatar: true,
   allowBranch: true,
-  updatedAt: true,
+  googleOptInAt: true,
 } as const
 
 export function durationToExpiresAt(
@@ -80,7 +80,7 @@ export async function resolveActiveShareBySlug(
 ) {
   const now = new Date()
 
-  const share = await useDb().query.chatShares.findFirst({
+  const row = await useDb().query.chatShares.findFirst({
     where: {
       slug,
       revoked: false,
@@ -90,9 +90,14 @@ export async function resolveActiveShareBySlug(
       ],
     },
     columns: ACTIVE_SHARE_COLUMNS,
+    with: {
+      chat: {
+        columns: { googleDataAt: true },
+      },
+    },
   })
 
-  if (!share) {
+  if (!row) {
     useRequestLogger(event).set({
       chatShareResolve: { slug, found: false },
     })
@@ -100,13 +105,11 @@ export async function resolveActiveShareBySlug(
     return null
   }
 
-  const chat = await useDb().query.chats.findFirst({
-    where: { id: share.chatId },
-    columns: { googleDataAt: true },
-  })
+  const { chat, ...share } = row
+  const holdsGoogleData = !!chat?.googleDataAt
   const isVisible = isShareVisibleForGoogleData({
     googleDataAt: chat?.googleDataAt,
-    shareUpdatedAt: share.updatedAt,
+    googleOptInAt: share.googleOptInAt,
   })
 
   useRequestLogger(event).set({
@@ -117,7 +120,13 @@ export async function resolveActiveShareBySlug(
     },
   })
 
-  return isVisible ? share : null
+  return isVisible
+    ? {
+      ...share,
+      holdsGoogleData,
+      indexable: share.indexable && !holdsGoogleData,
+    }
+    : null
 }
 
 export async function getActiveShareForChat(

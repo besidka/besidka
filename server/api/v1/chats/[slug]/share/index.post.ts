@@ -95,6 +95,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const holdsGoogleData = !!chat.googleDataAt
+  const indexable = body.data.indexable && !holdsGoogleData
+  const googleOptInAt = holdsGoogleData ? new Date() : null
   const expiresAt = durationToExpiresAt(body.data.duration)
   const freshSlug = ulid()
   const nowInSeconds = Math.floor(Date.now() / 1000)
@@ -109,11 +112,12 @@ export default defineEventHandler(async (event) => {
     .insert(schema.chatShares)
     .values({
       chatId: chat.id,
-      indexable: body.data.indexable,
+      indexable,
       showFiles: body.data.showFiles,
       showMetadata: body.data.showMetadata,
       showAuthorAvatar: body.data.showAuthorAvatar,
       allowBranch: body.data.allowBranch,
+      googleOptInAt,
       expiresAt,
     })
     .onConflictDoUpdate({
@@ -121,11 +125,12 @@ export default defineEventHandler(async (event) => {
       set: {
         slug: slugAfterReshare,
         revoked: false,
-        indexable: body.data.indexable,
+        indexable,
         showFiles: body.data.showFiles,
         showMetadata: body.data.showMetadata,
         showAuthorAvatar: body.data.showAuthorAvatar,
         allowBranch: body.data.allowBranch,
+        googleOptInAt,
         expiresAt,
         updatedAt: new Date(),
       },
@@ -165,7 +170,7 @@ export default defineEventHandler(async (event) => {
     slug,
     url: `${baseUrl}/shared/${slug}`,
     expiresAt,
-    indexable: body.data.indexable,
+    indexable,
     showFiles: body.data.showFiles,
     showMetadata: body.data.showMetadata,
     showAuthorAvatar: body.data.showAuthorAvatar,

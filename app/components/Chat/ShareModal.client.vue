@@ -60,6 +60,7 @@
                   type="checkbox"
                   data-testid="share-toggle-indexable"
                   class="toggle toggle-sm shrink-0"
+                  :disabled="targetHoldsGoogleData"
                 >
               </label>
             </div>
@@ -181,14 +182,27 @@
                 <span>
                   This chat holds content from Google Drive, Calendar or
                   Gmail. Replies that repeat it would be visible to anyone
-                  with the link. Google files themselves are never shared.
+                  with the link. Search engines never index it. Google files
+                  themselves are never shared.
                 </span>
+                <ul
+                  v-if="targetGoogleItems.length > 0"
+                  data-testid="share-google-data-items"
+                  class="list-disc ps-5 break-all"
+                >
+                  <li
+                    v-for="item in targetGoogleItems"
+                    :key="item"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
                 <span
                   v-if="share?.googleOptInNeeded"
                   data-testid="share-google-data-paused"
                 >
-                  The link is paused because it was made before this chat
-                  held Google content. Share again to turn it back on.
+                  The link is paused because new Google content was added
+                  after you shared it. Share again to turn it back on.
                 </span>
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input
@@ -363,6 +377,7 @@ const {
   targetHasFiles,
   targetUsedConnector,
   targetHoldsGoogleData,
+  targetGoogleItems,
   share,
   shareCheck,
   isLoading,
@@ -590,7 +605,7 @@ async function onGenerate() {
 
   const url = await createOrUpdateShare(targetChatSlug.value, {
     duration: duration.value,
-    indexable: indexable.value,
+    indexable: indexable.value && !targetHoldsGoogleData.value,
     showFiles: showFiles.value,
     showMetadata: showMetadata.value,
     showAuthorAvatar: showAuthorAvatar.value,

@@ -62,7 +62,7 @@ export async function hasShareTokenFileAccess(
           revoked: true,
           expiresAt: true,
           showFiles: true,
-          updatedAt: true,
+          googleOptInAt: true,
         },
         with: {
           chat: {
@@ -95,7 +95,7 @@ export async function hasShareTokenFileAccess(
 
   return isShareVisibleForGoogleData({
     googleDataAt: share.chat?.googleDataAt,
-    shareUpdatedAt: share.updatedAt,
+    googleOptInAt: share.googleOptInAt,
   })
 }
 

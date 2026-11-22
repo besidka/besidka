@@ -26,6 +26,7 @@ import * as schema from '~~/server/db/schema'
 import { collectReferencedArtifactIds } from '~~/server/utils/artifacts/message-parts'
 import { decodeArtifactId } from '~~/server/utils/artifacts/store'
 import { extractStorageKeyFromFileUrl } from '~~/server/utils/files/file-governance'
+import { isGoogleToolPart } from '~~/server/utils/tool-approval/google'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
@@ -277,7 +278,7 @@ export function buildGoogleContentPersistStatements(
       })
       .where(eq(schema.chats.id, chatPublicId)),
     db.update(schema.chatShares)
-      .set({ googleOptInAt: null })
+      .set({ googleOptInAt: null, indexable: false })
       .where(eq(schema.chatShares.chatId, chatPublicId)),
   ] as const
 }
@@ -305,8 +306,8 @@ export async function flagChatGoogleData(
  * A file that holds no Google content: not a copy of a Google file
  * (`external_source` null or not one of `GOOGLE_EXTERNAL_SOURCES`) and not
  * written in a send that held Google data (`google_derived_at` null).
- * Such files stay out of MCP, other chats' Besidka file tools, share grants
- * and project knowledge.
+ * Only such files reach MCP, the Besidka file tools of a send without Google
+ * data, and project knowledge.
  */
 export function fileHoldsNoGoogleContent() {
   return and(
@@ -512,23 +513,88 @@ function chunkValues<Value>(values: readonly Value[]): Value[][] {
 }
 
 /**
- * Whether a share may be shown for a chat that holds Google data: the share
- * was created or updated (with the explicit opt-in) after the chat was
- * flagged. `chat_shares.updated_at` changes only when the owner creates or
- * re-creates the share, so a share made before the flag stays hidden until
- * the owner shares again and opts in.
+ * Whether a share may be shown: always for a chat without Google data; for a
+ * flagged chat only while the share carries the owner's stored opt-in
+ * (`chat_shares.google_opt_in_at`). New Google content clears the opt-in in
+ * the same batch that stores it, so the share pauses until the owner opts
+ * in again.
  */
 export function isShareVisibleForGoogleData(input: {
   googleDataAt: Date | null | undefined
-  shareUpdatedAt: Date | null | undefined
+  googleOptInAt: Date | null | undefined
 }): boolean {
-  if (!input.googleDataAt) {
-    return true
+  return !input.googleDataAt || !!input.googleOptInAt
+}
+
+const GOOGLE_ITEM_NAMES_MAX = 20
+
+function googleReferenceTitlesOf(parts: unknown): string[] {
+  if (!Array.isArray(parts)) {
+    return []
   }
 
-  if (!input.shareUpdatedAt) {
-    return false
+  return parts.flatMap((part: unknown) => {
+    if (!isGoogleToolPart(part)) {
+      return []
+    }
+
+    const output = (part as { output?: unknown }).output
+    const references = typeof output === 'object' && output !== null
+      ? (output as { references?: unknown }).references
+      : undefined
+
+    return Array.isArray(references)
+      ? references.flatMap((reference: unknown) => {
+        const title = (reference as { title?: unknown } | null)?.title
+
+        return typeof title === 'string' && title.trim() ? [title.trim()] : []
+      })
+      : []
+  })
+}
+
+/**
+ * The names of the Google items in a chat, for the share opt-in that must
+ * name the Google content (pre-check row 2): titles of the stored Google
+ * references, and the names of attached Google copies and marked files. At
+ * most 20, without duplicates.
+ */
+export async function listChatGoogleItemNames(input: {
+  db: DbClient
+  userId: number
+  chatId: string
+}): Promise<string[]> {
+  const messages = await input.db.query.messages.findMany({
+    where: { chatId: input.chatId },
+    columns: { parts: true },
+  })
+  const names = new Set<string>()
+  const storageKeys: string[] = []
+
+  for (const message of messages) {
+    for (const title of googleReferenceTitlesOf(message.parts)) {
+      names.add(title)
+    }
+
+    storageKeys.push(...fileStorageKeysOf(message.parts))
   }
 
-  return input.shareUpdatedAt.getTime() > input.googleDataAt.getTime()
+  for (const chunk of chunkValues([...new Set(storageKeys)])) {
+    const rows = await input.db.select({ name: schema.files.name })
+      .from(schema.files)
+      .where(and(
+        eq(schema.files.userId, input.userId),
+        inArray(schema.files.storageKey, chunk),
+        or(
+          inArray(schema.files.externalSource, [...GOOGLE_EXTERNAL_SOURCES]),
+          isNotNull(schema.files.googleDerivedAt),
+        ),
+      ))
+
+    for (const row of rows) {
+      names.add(row.name)
+    }
+  }
+
+  return [...names].slice(0, GOOGLE_ITEM_NAMES_MAX)
 }
