@@ -45,6 +45,21 @@ export function utf8Length(text: string): number {
   return bytes
 }
 
+const DELETED_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x00AD, 0x00AD],
+  [0x034F, 0x034F],
+  [0x061C, 0x061C],
+  [0x180E, 0x180E],
+  [0x2060, 0x2064],
+  [0xFE00, 0xFE0F],
+  [0xFFF9, 0xFFFB],
+]
+const TAG_HIGH_SURROGATE = 0xDB40
+const TAG_LOW_START = 0xDC00
+const TAG_LOW_END = 0xDC7F
+const VARIATION_LOW_START = 0xDD00
+const VARIATION_LOW_END = 0xDDEF
+
 function isInvisibleOrControl(code: number): boolean {
   return code < SPACE
     || (code >= DELETE && code <= C1_END)
@@ -57,63 +72,104 @@ function isInvisibleOrControl(code: number): boolean {
 }
 
 /**
+ * How many UTF-16 units at this position are an invisible format character
+ * that is removed outright (soft hyphen, joiners, variation selectors, tag
+ * characters U+E0000 to U+E007F and the supplement selectors U+E0100 to
+ * U+E01EF); 0 when the character stays.
+ */
+function deletedWidth(code: number, next: number): number {
+  if (code === TAG_HIGH_SURROGATE) {
+    const isTag = next >= TAG_LOW_START && next <= TAG_LOW_END
+    const isSelector = next >= VARIATION_LOW_START && next <= VARIATION_LOW_END
+
+    return isTag || isSelector ? 2 : 0
+  }
+
+  for (const [start, end] of DELETED_RANGES) {
+    if (code >= start && code <= end) {
+      return 1
+    }
+  }
+
+  return 0
+}
+
+/**
  * Makes untrusted workbook text safe for one line of the map: control,
  * zero-width and bidirectional characters become a space (runs of them one
- * space), a backtick becomes a look-alike so no run of backticks can close
- * the Markdown fence the text is sent in, and the result is cut to
- * `maxCharacters` with an ellipsis. One linear pass.
+ * space), invisible format characters that sit inside words (soft hyphens,
+ * joiners, variation and tag characters) are removed, a backtick becomes a
+ * look-alike so no run of backticks can close the Markdown fence the text
+ * is sent in, and the result is cut to `maxCharacters` with an ellipsis.
+ * One linear pass that copies untouched runs as slices.
  */
 export function cleanLine(text: string, maxCharacters: number): string {
-  const pieces: string[] = []
+  let result = ''
+  let runStart = 0
   let kept = 0
   let index = 0
   let lastWasSpace = false
 
   while (index < text.length && kept < maxCharacters) {
     const code = text.charCodeAt(index)
+    const deleted = deletedWidth(code, text.charCodeAt(index + 1))
 
-    index += 1
+    if (deleted > 0) {
+      result += text.slice(runStart, index)
+      index += deleted
+      runStart = index
+      continue
+    }
 
     if (isInvisibleOrControl(code)) {
+      result += text.slice(runStart, index)
+
       if (!lastWasSpace) {
-        pieces.push(' ')
+        result += ' '
         kept += 1
       }
 
       lastWasSpace = true
+      index += 1
+      runStart = index
       continue
     }
 
     lastWasSpace = code === SPACE
 
     if (code === BACKTICK) {
-      pieces.push(NEUTRAL_BACKTICK)
-    } else if (code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END) {
-      if (kept + 2 > maxCharacters) {
-        index -= 1
-        break
-      }
-
-      pieces.push(text.slice(index - 1, index + 1))
+      result += `${text.slice(runStart, index)}${NEUTRAL_BACKTICK}`
       index += 1
+      runStart = index
       kept += 1
-    } else {
-      pieces.push(text.charAt(index - 1))
+      continue
     }
 
-    kept += 1
+    const width = code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END
+      ? 2
+      : 1
+
+    if (kept + width > maxCharacters) {
+      break
+    }
+
+    index += width
+    kept += width
   }
 
-  const result = pieces.join('')
+  result += text.slice(runStart, Math.min(index, text.length))
 
   return index < text.length ? `${result}${ELLIPSIS}` : result
 }
 
 /**
- * A value quoted for prose: the cleaned text in double quotes.
+ * A value quoted for prose: the cleaned text in double quotes, with inner
+ * double quotes and backslashes escaped so the quote cannot end early.
  */
 export function quote(text: string, maxCharacters: number): string {
-  return `"${cleanLine(text, maxCharacters)}"`
+  const cleaned = cleanLine(text, maxCharacters)
+
+  return `"${cleaned.replace(/[\\"]/g, '\\$&')}"`
 }
 
 export function escapeCsvField(text: string): string {

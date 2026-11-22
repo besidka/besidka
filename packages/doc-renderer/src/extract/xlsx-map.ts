@@ -46,6 +46,11 @@ const CUT_REASONS: Record<WorkbookMapCut, TruncationReason> = {
   names: 'map_limit',
 }
 
+/**
+ * Moves the cells of each row into the model and drops the row's raw cells
+ * right away, so the raw and the model copy of a large sheet are never both
+ * alive in full.
+ */
 function toWorkbookCells(
   data: SheetData,
   shared: SharedStrings,
@@ -53,7 +58,11 @@ function toWorkbookCells(
   const cells: WorkbookCell[] = []
 
   for (const row of data.rows) {
-    for (const raw of row.cells) {
+    const rawCells = row.cells
+
+    row.cells = []
+
+    for (const raw of rawCells) {
       const value = raw.sharedIndex >= 0
         ? shared.resolve(raw.sharedIndex)
         : raw.text
@@ -77,6 +86,10 @@ function toWorkbookCells(
 
       if (raw.sharedFrom) {
         cell.sharedFrom = raw.sharedFrom
+      }
+
+      if (raw.dataTable) {
+        cell.dataTable = raw.dataTable
       }
 
       if (raw.numberFormat) {

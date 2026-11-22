@@ -1,7 +1,24 @@
 export type SheetVisibility = 'visible' | 'hidden' | 'very-hidden'
 
-export type WorkbookFormulaKind = 'normal' | 'array' | 'shared-copy'
+export type WorkbookFormulaKind
+  = | 'normal'
+    | 'array'
+    | 'data-table'
+    | 'shared'
+    | 'shared-copy'
 
+export interface WorkbookDataTableInputs {
+  rowInput?: string
+  columnInput?: string
+}
+
+/**
+ * One cell. A `shared` cell copies the shared formula whose master is at
+ * `sharedFrom` (its own text is that formula shifted by the distance, and is
+ * not stored); a `shared-copy` cell copies one that cannot be shifted or
+ * whose master is unknown. An `array` or `data-table` cell is the first cell
+ * of `arrayRange`.
+ */
 export interface WorkbookCell {
   row: number
   column: number
@@ -10,6 +27,7 @@ export interface WorkbookCell {
   formulaKind?: WorkbookFormulaKind
   arrayRange?: string
   sharedFrom?: string
+  dataTable?: WorkbookDataTableInputs
   numberFormat?: string
 }
 
@@ -138,6 +156,7 @@ export interface WorkbookModel {
 export interface WorkbookMapOptions {
   maxBytes: number
   formulaPatternsMax: number
+  formulaCellsMax: number
   formulaPrintCharactersMax: number
   exceptionsMax: number
   validationRulesMax: number

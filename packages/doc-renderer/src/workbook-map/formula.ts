@@ -469,7 +469,7 @@ export function shiftTokens(
     return null
   }
 
-  const pieces: string[] = []
+  let text = ''
 
   for (const token of formula.tokens) {
     const shifted = shiftToken(token, rowDelta, columnDelta)
@@ -478,10 +478,10 @@ export function shiftTokens(
       return null
     }
 
-    pieces.push(shifted)
+    text += shifted
   }
 
-  return pieces.join('')
+  return text
 }
 
 export function shiftFormula(
@@ -499,6 +499,131 @@ export function shiftFormula(
  */
 export function canExpandShared(formula: TokenizedFormula): boolean {
   return !formula.isMalformed && !formula.hasExternal && !formula.hasStructured
+}
+
+export interface ShiftBounds {
+  rowMin: number
+  rowMax: number
+  columnMin: number
+  columnMax: number
+}
+
+function narrow(
+  bounds: ShiftBounds,
+  part: ReferencePart | undefined,
+  isColumn: boolean,
+): void {
+  if (!part || part.isAbsolute) {
+    return
+  }
+
+  const max = isColumn ? MAX_COLUMN : MAX_ROW
+
+  if (isColumn) {
+    bounds.columnMin = Math.max(bounds.columnMin, 1 - part.value)
+    bounds.columnMax = Math.min(bounds.columnMax, max - part.value)
+  } else {
+    bounds.rowMin = Math.max(bounds.rowMin, 1 - part.value)
+    bounds.rowMax = Math.min(bounds.rowMax, max - part.value)
+  }
+}
+
+/**
+ * The row and column deltas `shiftTokens` accepts for this formula, as two
+ * closed intervals: a shift by `(rowDelta, columnDelta)` gives a formula
+ * exactly when both deltas are inside them. Null when no shift is possible.
+ * Lets a caller prove a whole filled range valid from its two corners
+ * without building any text.
+ */
+export function shiftBounds(formula: TokenizedFormula): ShiftBounds | null {
+  if (formula.isMalformed || formula.hasExternal) {
+    return null
+  }
+
+  const bounds: ShiftBounds = {
+    rowMin: -MAX_ROW,
+    rowMax: MAX_ROW,
+    columnMin: formula.hasStructured ? 0 : -MAX_COLUMN,
+    columnMax: formula.hasStructured ? 0 : MAX_COLUMN,
+  }
+
+  for (const token of formula.tokens) {
+    narrow(bounds, token.column, true)
+    narrow(bounds, token.endColumn, true)
+    narrow(bounds, token.row, false)
+    narrow(bounds, token.endRow, false)
+  }
+
+  return bounds
+}
+
+export function isInsideBounds(
+  bounds: ShiftBounds,
+  rowDelta: number,
+  columnDelta: number,
+): boolean {
+  return rowDelta >= bounds.rowMin
+    && rowDelta <= bounds.rowMax
+    && columnDelta >= bounds.columnMin
+    && columnDelta <= bounds.columnMax
+}
+
+const HASH_OFFSET = 0x811C9DC5
+const HASH_PRIME = 0x01000193
+
+function mixCode(hash: number, code: number): number {
+  return Math.imul(hash ^ code, HASH_PRIME) >>> 0
+}
+
+function mixText(hash: number, text: string): number {
+  let mixed = hash
+
+  for (let index = 0; index < text.length; index += 1) {
+    mixed = mixCode(mixed, text.charCodeAt(index))
+  }
+
+  return mixed
+}
+
+function mixPart(hash: number, part: ReferencePart, host: number): number {
+  const marked = mixCode(hash, part.isAbsolute ? 0x24 : 0x7E)
+
+  const value = part.isAbsolute ? part.value : part.value - host
+
+  return mixText(marked, String(value))
+}
+
+/**
+ * A 32-bit hash of `relativeFormulaKey` computed without building the key.
+ * Equal for two fill copies; a merge still checks the shifted text, so a
+ * collision only costs one extra comparison.
+ */
+export function relativeFormulaHash(
+  formula: TokenizedFormula,
+  row: number,
+  column: number,
+): number {
+  let hash = HASH_OFFSET
+
+  for (const token of formula.tokens) {
+    if (token.kind === 'cell' && token.column && token.row) {
+      hash = mixCode(hash, 1)
+      hash = mixPart(hash, token.column, column)
+      hash = mixPart(mixCode(hash, 0x2C), token.row, row)
+    } else if (token.kind === 'columns' && token.column && token.endColumn) {
+      hash = mixCode(hash, 2)
+      hash = mixPart(hash, token.column, column)
+      hash = mixPart(mixCode(hash, 0x2C), token.endColumn, column)
+    } else if (token.kind === 'rows' && token.row && token.endRow) {
+      hash = mixCode(hash, 3)
+      hash = mixPart(hash, token.row, row)
+      hash = mixPart(mixCode(hash, 0x2C), token.endRow, row)
+    } else {
+      hash = mixText(mixCode(hash, 4), token.text)
+    }
+  }
+
+  return hash
 }
 
 function relativeKey(part: ReferencePart, host: number): string {

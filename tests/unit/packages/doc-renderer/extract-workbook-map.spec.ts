@@ -7,6 +7,7 @@ import {
 } from '../../../fixtures/documents/extract/builders'
 import {
   ESTIMATE_STYLES,
+  columnName,
   estimateLinesFormulas,
   estimateShapedWorkbook,
   estimateWorkbook,
@@ -280,6 +281,41 @@ describe('extractOfficeText with workbookMap', () => {
     expect(text).toContain('- B1 =Table1[@Hours]*Table1[Rate]')
     expect(text).toContain('- C1:C3, B2:B3: copies of the shared formula in '
       + 'B1 (not written out')
+  })
+
+  it('carries a huge shared group as one pattern without deriving it', () => {
+    const master = `${'A1+'.repeat(2729)}1`
+    const rows: string[] = []
+
+    for (let row = 1; row <= 200; row += 1) {
+      const cells: string[] = []
+
+      for (let column = 1; column <= 40; column += 1) {
+        const address = `${columnName(column)}${row}`
+        const isMaster = row === 1 && column === 1
+
+        cells.push(formulaCell(address, isMaster ? master : '', 1, {
+          shared: isMaster ? { si: 0, ref: 'A1:XFD1048576' } : { si: 0 },
+        }))
+      }
+
+      rows.push(rowXml(row, cells))
+    }
+
+    const bytes = workbookPackage({
+      sheets: [{ name: 'Data', xml: sheetXml({ rows: rows.join('') }) }],
+    })
+    let result = mapOf(bytes)
+    const cpu = cpuMilliseconds(() => {
+      result = mapOf(bytes)
+    })
+    const lines = formulaLines(result.text, 'Data')
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(/^- A1:AN200 ↘ =A1\+A1\+/)
+    expect(result.workbookMap?.formulas).toBe(8000)
+    expect(result.workbookMap?.cut).not.toContain('formulas')
+    expect(cpu).toBeLessThan(3000)
   })
 
   it('names built-in and custom number formats', () => {

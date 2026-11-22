@@ -356,7 +356,8 @@ describe('renderWorkbookMap', () => {
     )
 
     expect(formulaSection(text, 'Lines')).toHaveLength(10)
-    expect(text).toContain('(40 more formula lines not shown)')
+    expect(text).toContain('(40 more formula lines not shown; cells they '
+      + 'cover may look typed in)')
     expect(summary.cut).toContain('formula_patterns')
   })
 })
@@ -367,5 +368,125 @@ describe('cleanLine', () => {
     expect(cleanLine('ab😀c', 3)).toBe('ab…')
     expect(cleanLine('a\n\n\tb', 10)).toBe('a b')
     expect(parseCell('P8')).toEqual({ row: 8, column: 16 })
+  })
+
+  it('removes invisible format and tag characters inside words', () => {
+    const invisible = [
+      0xE0041, 0xE0001, 0xE007F, 0xE0000, 0x061C, 0x2060, 0x2062, 0x2064,
+      0x00AD, 0x180E, 0x034F, 0xFE0F, 0xFE00, 0xE0100, 0xE01EF, 0xFFF9,
+    ]
+
+    for (const codePoint of invisible) {
+      const cleaned = cleanLine(`a${String.fromCodePoint(codePoint)}b`, 100)
+
+      expect(cleaned, codePoint.toString(16)).toBe('ab')
+    }
+
+    expect(cleanLine('naïve 😀 Київ', 100)).toBe('naïve 😀 Київ')
+    expect(cleanLine('x\n## Sheet: Evil\n```', 100))
+      .toBe('x ## Sheet: Evil ˋˋˋ')
+  })
+
+  it('escapes double quotes inside a quoted note', () => {
+    const { text } = renderWorkbookMap(model([sheet({
+      notes: [{ address: 'A1', text: 'He said "stop" \\ now' }],
+    })]))
+
+    expect(text).toContain('- A1: "He said \\"stop\\" \\\\ now"')
+  })
+})
+
+describe('renderWorkbookMap shared formulas and sheet facts', () => {
+  it('prints a shared group as one pattern from its followers', () => {
+    const cells: WorkbookCell[] = [
+      { row: 2, column: 2, formula: 'A2*$C$1', value: '1' },
+    ]
+
+    for (let row = 2; row <= 6; row += 1) {
+      for (let column = 2; column <= 4; column += 1) {
+        if (row > 2 || column > 2) {
+          cells.push({
+            row,
+            column,
+            formulaKind: 'shared',
+            sharedFrom: 'B2',
+            value: String(row * column),
+          })
+        }
+      }
+    }
+
+    const { text, summary } = renderWorkbookMap(model([sheet({ cells })]))
+    const lines = formulaSection(text, 'Lines')
+
+    expect(lines).toEqual(['- B2:D6 ↘ =A2*$C$1'])
+    expect(summary.formulas).toBe(15)
+
+    const expanded = expandPrinted(lines.map(line => line.replace('↘', '→')))
+
+    expect(expanded.get('6:4')).toBe(shiftFormula('A2*$C$1', 4, 2))
+  })
+
+  it('lists followers of an unread or ambiguous master as copies', () => {
+    const cells: WorkbookCell[] = [
+      { row: 1, column: 1, formula: 'B1*2' },
+      { row: 1, column: 1, formula: 'C1*3' },
+      { row: 2, column: 1, formulaKind: 'shared', sharedFrom: 'A1' },
+      { row: 3, column: 5, formulaKind: 'shared', sharedFrom: 'E1' },
+    ]
+    const { text } = renderWorkbookMap(model([sheet({ cells })]))
+
+    expect(text).toContain('- A2: copies of the shared formula in A1 '
+      + '(not written out: its master cell was not read)')
+    expect(text).toContain('- E3: copies of the shared formula in E1')
+  })
+
+  it('says when the formula cell cap is reached', () => {
+    const cells = Array.from({ length: 30 }, (_value, index): WorkbookCell => {
+      return { row: index + 1, column: 1, formula: `B${index + 1}` }
+    })
+    const { text, summary } = renderWorkbookMap(
+      model([sheet({ cells })]),
+      { formulaCellsMax: 10 },
+    )
+
+    expect(text).toContain('- A1:A10 ↓ =B1')
+    expect(text).toContain('(20 formula cells not shown: at most 10 are '
+      + 'read per sheet, so these cells may look typed in)')
+    expect(summary.cut).toContain('formula_patterns')
+  })
+
+  it('labels data tables, counts formulas without values, prints Empty', () => {
+    const cells: WorkbookCell[] = [
+      {
+        row: 2,
+        column: 2,
+        formulaKind: 'data-table',
+        arrayRange: 'B2:C3',
+        dataTable: { rowInput: 'A1', columnInput: 'A2' },
+        value: '5',
+      },
+      { row: 5, column: 1, formula: 'A4*2' },
+      { row: 6, column: 1, formula: 'A5*2' },
+    ]
+    const { text } = renderWorkbookMap(model([
+      sheet({ cells }),
+      sheet({ name: 'Blank' }),
+    ]))
+
+    expect(text).toContain('- B2:C3 data table: row input A1, column input A2')
+    expect(text).not.toContain('{array} =TABLE')
+    expect(text).toContain('## Sheet: Lines\n2 formula cells have no saved '
+      + 'value.')
+    expect(text).toContain('## Sheet: Blank\nEmpty.')
+  })
+
+  it('explains the reading rules in the legend', () => {
+    expect(WORKBOOK_MAP_LEGEND).toContain('For example, `P8:P164 ↓')
+    expect(WORKBOOK_MAP_LEGEND).toContain('`↘` filled down and right')
+    expect(WORKBOOK_MAP_LEGEND).toContain('any other cell in Values was '
+      + 'typed in')
+    expect(WORKBOOK_MAP_LEGEND).toContain('trust the formula')
+    expect(WORKBOOK_MAP_LEGEND).toContain('`{array}`')
   })
 })

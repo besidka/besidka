@@ -1,7 +1,12 @@
-import { cellAddress, columnLetters } from './address.ts'
+import { MAX_COLUMN, cellAddress, columnLetters, parseCell } from './address.ts'
 import type { CellPosition } from './address.ts'
-import { collapseFormulas } from './collapse.ts'
-import type { FormulaPattern } from './collapse.ts'
+import { COLLAPSE_CELLS_MAX, collapseSheetFormulas } from './collapse.ts'
+import type {
+  FormulaInput,
+  FormulaPattern,
+  FormulaPatternKind,
+  SharedFormulaGroup,
+} from './collapse.ts'
 import { cellsToRanges, formatRanges, listWithRest } from './ranges.ts'
 import { renderConditionalRules, renderValidations } from './rules.ts'
 import {
@@ -27,6 +32,7 @@ import type {
 export const WORKBOOK_MAP_DEFAULTS: WorkbookMapOptions = {
   maxBytes: 1024 * 1024,
   formulaPatternsMax: 300,
+  formulaCellsMax: COLLAPSE_CELLS_MAX,
   formulaPrintCharactersMax: 1000,
   exceptionsMax: 20,
   validationRulesMax: 100,
@@ -48,15 +54,21 @@ export const WORKBOOK_MAP_DEFAULTS: WorkbookMapOptions = {
 export const WORKBOOK_MAP_TITLE = '# Workbook map'
 
 export const WORKBOOK_MAP_LEGEND = 'How to read this map: cells use A1 '
-  + 'notation. A line such as `P8:P164 ↓ =D8*$C$2` means P8 holds that '
+  + 'notation. For example, `P8:P164 ↓ =D8*$C$2` means P8 holds that '
   + 'formula and it is filled down to P164: in each lower cell, references '
   + 'without `$` move down by the same number of rows and `$` parts stay. '
-  + '`→` is the same, filled to the right (references without `$` move by '
-  + 'columns). "except" lists cells inside the range that have their own '
-  + 'line or no formula. Formulas in rules are written for the first cell '
-  + 'of their range. `_xlfn.` before a function name only marks a newer '
-  + 'Excel function. Values are the results last saved in the file, not '
-  + 'recalculated; the first column of each Values table is the row number.'
+  + '`→` is the same, filled to the right, and `↘` filled down and right. '
+  + '"except" lists cells inside the range that have their own line or no '
+  + 'formula. A cell covered by a Formulas line and not under "except" is '
+  + 'computed; any other cell in Values was typed in. `{array}` is one '
+  + 'array formula for the whole range. A "copies of" line lists cells '
+  + 'holding that cell\'s formula, moved the same way. Formulas in rules '
+  + 'are written for the first cell of their range. `_xlfn.` before a '
+  + 'function name only marks a newer Excel function. Values are the '
+  + 'results last saved in the file, not recalculated: a formula cell with '
+  + 'no saved value is blank, and if a saved value contradicts its formula, '
+  + 'trust the formula. The first column of each Values table is the row '
+  + 'number.'
 
 export const WORKBOOK_MAP_TRUNCATION_MARKER
   = '[Truncated: the map size limit was reached and the rest is not included.]'
@@ -64,6 +76,7 @@ export const WORKBOOK_MAP_TRUNCATION_MARKER
 const SEPARATOR = '\n\n'
 const DOWN_ARROW = '↓'
 const RIGHT_ARROW = '→'
+const BLOCK_ARROW = '↘'
 const VALUES_CUT_NOTE_RESERVE = 120
 const SUMMARY_SHEET_NAME_MAX = 64
 const NAMED_RANGE_NAME_MAX = 120
@@ -74,7 +87,8 @@ const SHEET_CUT_NOTES: Record<SheetCut, string> = {
     + 'not included.',
   columns: 'Columns after {column} are not included.',
   cells: 'The cell limit was reached; the rest of this sheet is not included.',
-  formulas: 'The formula limit was reached; later formulas are not included.',
+  formulas: 'The formula limit was reached; later formulas are not included, '
+    + 'so some computed cells may look typed in.',
   structure: 'Rules, merged cells and links stored after the cell data were '
     + 'not read because the sheet is too large.',
   limits: 'Some rules, ranges, merged cells or notes are left out because '
@@ -95,8 +109,18 @@ interface SheetText {
 
 interface FormulaLine {
   position: CellPosition
-  text: string
+  text?: string
+  pattern?: FormulaPattern
 }
+
+interface FormulaSummary {
+  lines: FormulaLine[]
+  count: number
+  missingValues: number
+  cellsNotGrouped: number
+}
+
+type FormulaCell = WorkbookCell & { formula: string }
 
 function emptyNotRead(): SheetNotRead {
   return {
@@ -123,6 +147,12 @@ function addressOf(position: CellPosition): string {
   return cellAddress(position.row, position.column)
 }
 
+const PATTERN_ARROWS: Record<Exclude<FormulaPatternKind, 'single'>, string> = {
+  down: DOWN_ARROW,
+  right: RIGHT_ARROW,
+  block: BLOCK_ARROW,
+}
+
 function describePattern(
   pattern: FormulaPattern,
   options: WorkbookMapOptions,
@@ -134,7 +164,6 @@ function describePattern(
     return `- ${start} ${formula}`
   }
 
-  const arrow = pattern.kind === 'down' ? DOWN_ARROW : RIGHT_ARROW
   const range = `${start}:${addressOf(pattern.end)}`
   const exceptions = pattern.exceptions.map(({ from, to }) => {
     const first = addressOf(from)
@@ -145,70 +174,217 @@ function describePattern(
   })
   const tail = exceptions.length > 0 ? ` · except ${exceptions.join(', ')}` : ''
 
-  return `- ${range} ${arrow} ${formula}${tail}`
+  return `- ${range} ${PATTERN_ARROWS[pattern.kind]} ${formula}${tail}`
+}
+
+function describeDataTable(cell: WorkbookCell): string {
+  const range = cleanLine(cell.arrayRange ?? addressOf(cell), 40)
+  const inputs = [
+    cell.dataTable?.rowInput
+      ? `row input ${cleanLine(cell.dataTable.rowInput, 16)}`
+      : null,
+    cell.dataTable?.columnInput
+      ? `column input ${cleanLine(cell.dataTable.columnInput, 16)}`
+      : null,
+  ].filter((input): input is string => input !== null)
+
+  return `- ${range} data table`
+    + (inputs.length > 0 ? `: ${inputs.join(', ')}` : '')
+}
+
+function copiesLine(
+  positions: readonly CellPosition[],
+  master: string,
+  reason: string,
+  options: WorkbookMapOptions,
+): FormulaLine {
+  const covered = cellsToRanges(positions)
+  const first = covered[0] as { top: number, left: number }
+
+  return {
+    position: { row: first.top, column: first.left },
+    text: `- ${listWithRest(formatRanges(covered), options.rangesPerItemMax)}`
+      + `: copies of the shared formula in ${master} (not written out: `
+      + `${reason})`,
+  }
+}
+
+function isFormulaCell(cell: WorkbookCell): boolean {
+  return cell.formula !== undefined || cell.formulaKind !== undefined
+}
+
+function positionKey(row: number, column: number): number {
+  return row * (MAX_COLUMN + 1) + column
+}
+
+interface SharedFollowers {
+  label: string
+  positions: CellPosition[]
+}
+
+/**
+ * The shared groups of a sheet: followers grouped by the address of their
+ * master, and the master cells found for them. A master address held by
+ * more than one formula cell is ambiguous, so its followers are listed as
+ * copies instead of being tied to either text.
+ */
+function sharedGroupsOf(cells: readonly WorkbookCell[]): {
+  followers: Map<number, SharedFollowers>
+  masters: Map<number, FormulaCell | null>
+} {
+  const followers = new Map<number, SharedFollowers>()
+  const masters = new Map<number, FormulaCell | null>()
+
+  for (const cell of cells) {
+    if (cell.formulaKind !== 'shared') {
+      continue
+    }
+
+    const master = parseCell(cell.sharedFrom ?? '')
+    const key = master ? positionKey(master.row, master.column) : -1
+    const group = followers.get(key)
+    const position = { row: cell.row, column: cell.column }
+
+    if (group) {
+      group.positions.push(position)
+    } else {
+      followers.set(key, {
+        label: cleanLine(cell.sharedFrom ?? '?', 16),
+        positions: [position],
+      })
+    }
+  }
+
+  for (const cell of cells) {
+    if (cell.formula === undefined || cell.formulaKind !== undefined) {
+      continue
+    }
+
+    const key = positionKey(cell.row, cell.column)
+
+    if (followers.has(key)) {
+      masters.set(key, masters.has(key) ? null : cell as FormulaCell)
+    }
+  }
+
+  return { followers, masters }
 }
 
 function formulaLines(
   cells: readonly WorkbookCell[],
   options: WorkbookMapOptions,
-): { lines: FormulaLine[], count: number } {
-  const normal: Array<{ row: number, column: number, formula: string }> = []
+): FormulaSummary {
   const lines: FormulaLine[] = []
-  const copies = new Map<string, CellPosition[]>()
+  const unshiftable = new Map<string, CellPosition[]>()
+  const { followers, masters } = sharedGroupsOf(cells)
+  const groups: SharedFormulaGroup[] = []
+  const groupMasters = new Set<FormulaCell>()
   let count = 0
+  let missingValues = 0
 
   for (const cell of cells) {
-    if (cell.formula === undefined && cell.formulaKind !== 'shared-copy') {
+    if (!isFormulaCell(cell)) {
       continue
     }
 
     count += 1
 
-    const position = { row: cell.row, column: cell.column }
+    if (cell.value === undefined) {
+      missingValues += 1
+    }
 
     if (cell.formulaKind === 'array') {
-      const range = cleanLine(cell.arrayRange ?? addressOf(position), 40)
+      const range = cleanLine(cell.arrayRange ?? addressOf(cell), 40)
 
       lines.push({
-        position,
+        position: { row: cell.row, column: cell.column },
         text: `- ${range} {array} ${printFormula(cell.formula ?? '', options)}`,
+      })
+    } else if (cell.formulaKind === 'data-table') {
+      lines.push({
+        position: { row: cell.row, column: cell.column },
+        text: describeDataTable(cell),
       })
     } else if (cell.formulaKind === 'shared-copy') {
       const master = cleanLine(cell.sharedFrom ?? '?', 16)
-      const group = copies.get(master)
+      const positions = unshiftable.get(master)
+      const position = { row: cell.row, column: cell.column }
 
-      if (group) {
-        group.push(position)
+      if (positions) {
+        positions.push(position)
       } else {
-        copies.set(master, [position])
+        unshiftable.set(master, [position])
       }
-    } else {
-      normal.push({
-        row: cell.row,
-        column: cell.column,
-        formula: stripEquals(cell.formula ?? ''),
-      })
     }
   }
 
-  for (const pattern of collapseFormulas(normal, options.exceptionsMax)) {
-    lines.push({
-      position: pattern.start,
-      text: describePattern(pattern, options),
+  for (const [key, group] of followers) {
+    const master = masters.get(key)
+
+    if (!master) {
+      lines.push(copiesLine(
+        group.positions,
+        group.label,
+        'its master cell was not read',
+        options,
+      ))
+      continue
+    }
+
+    groupMasters.add(master)
+    groups.push({
+      master: {
+        row: master.row,
+        column: master.column,
+        formula: stripEquals(master.formula),
+      },
+      followers: group.positions,
     })
   }
 
-  for (const [master, positions] of copies) {
-    const covered = cellsToRanges(positions)
-    const first = covered[0] as { top: number, left: number }
+  const normal: FormulaInput[] = []
 
-    lines.push({
-      position: { row: first.top, column: first.left },
-      text: `- ${listWithRest(formatRanges(covered), options.rangesPerItemMax)}`
-        + ': copies of '
-        + `the shared formula in ${master} (not written out: it uses `
-        + 'references this reader does not move)',
-    })
+  for (const cell of cells) {
+    const isPlain = cell.formula !== undefined
+      && cell.formulaKind === undefined
+      && !groupMasters.has(cell as FormulaCell)
+
+    if (!isPlain) {
+      continue
+    }
+
+    const formula = cell.formula as string
+
+    normal.push(formula.startsWith('=')
+      ? { row: cell.row, column: cell.column, formula: stripEquals(formula) }
+      : cell as FormulaCell)
+  }
+
+  const collapsed = collapseSheetFormulas(normal, groups, {
+    exceptionsMax: options.exceptionsMax,
+    cellsMax: options.formulaCellsMax,
+  })
+
+  for (const pattern of collapsed.patterns) {
+    lines.push({ position: pattern.start, pattern })
+  }
+
+  for (const copies of collapsed.copies) {
+    lines.push(copiesLine(
+      copies.cells,
+      addressOf(copies.master),
+      'too many to write out',
+      options,
+    ))
+  }
+
+  for (const [master, positions] of unshiftable) {
+    lines.push(copiesLine(
+      positions,
+      master,
+      'it uses references this reader does not move',
+      options,
+    ))
   }
 
   lines.sort((first, second) => {
@@ -216,7 +392,16 @@ function formulaLines(
       || first.position.column - second.position.column
   })
 
-  return { lines, count }
+  return {
+    lines,
+    count,
+    missingValues,
+    cellsNotGrouped: collapsed.cellsNotGrouped,
+  }
+}
+
+function lineText(line: FormulaLine, options: WorkbookMapOptions): string {
+  return line.pattern ? describePattern(line.pattern, options) : line.text ?? ''
 }
 
 function numberFormatLines(
@@ -308,6 +493,7 @@ function frozenText(sheet: WorkbookSheet): string | null {
 function headingLines(
   sheet: WorkbookSheet,
   options: WorkbookMapOptions,
+  missingValues: number,
 ): string[] {
   const facts: string[] = []
 
@@ -339,6 +525,12 @@ function headingLines(
 
   if (notRead) {
     lines.push(notRead)
+  }
+
+  if (missingValues > 0) {
+    lines.push(missingValues === 1
+      ? '1 formula cell has no saved value.'
+      : `${missingValues} formula cells have no saved value.`)
   }
 
   for (const cut of sheet.cuts) {
@@ -422,17 +614,45 @@ function valueLinesOf(
   return { header: header.join(','), lines }
 }
 
+function formulaNotes(
+  hiddenLines: number,
+  cellsNotGrouped: number,
+  options: WorkbookMapOptions,
+): string[] {
+  const notes: string[] = []
+
+  if (hiddenLines > 0) {
+    notes.push(
+      `(${plural(hiddenLines, 'more formula line', 'more formula lines')} `
+      + 'not shown; cells they cover may look typed in)',
+    )
+  }
+
+  if (cellsNotGrouped > 0) {
+    notes.push(
+      `(${plural(cellsNotGrouped, 'formula cell', 'formula cells')} not `
+      + `shown: at most ${options.formulaCellsMax} are read per sheet, so `
+      + 'these cells may look typed in)',
+    )
+  }
+
+  return notes
+}
+
 function renderSheet(
   sheet: WorkbookSheet,
   options: WorkbookMapOptions,
   cuts: Set<WorkbookMapCut>,
 ): SheetText {
-  const blocks: string[] = [headingLines(sheet, options).join('\n')]
   const formulas = formulaLines(sheet.cells, options)
+  const values = valueLinesOf(sheet, options)
+  const blocks: string[] = [
+    headingLines(sheet, options, formulas.missingValues).join('\n'),
+  ]
   const shownFormulas = formulas.lines.slice(0, options.formulaPatternsMax)
   const hiddenFormulas = formulas.lines.length - shownFormulas.length
 
-  if (hiddenFormulas > 0) {
+  if (hiddenFormulas > 0 || formulas.cellsNotGrouped > 0) {
     cuts.add('formula_patterns')
   }
 
@@ -471,8 +691,8 @@ function renderSheet(
 
   const sections = [
     section('Formulas', [
-      ...shownFormulas.map(line => line.text),
-      ...moreNote(hiddenFormulas, 'formula line', 'formula lines'),
+      ...shownFormulas.map(line => lineText(line, options)),
+      ...formulaNotes(hiddenFormulas, formulas.cellsNotGrouped, options),
     ]),
     section('Dropdowns and validation', [
       ...validations.lines,
@@ -501,7 +721,13 @@ function renderSheet(
     }
   }
 
-  const values = valueLinesOf(sheet, options)
+  const isEmpty = blocks.length === 1
+    && values.lines.length === 0
+    && sheet.cuts.length === 0
+
+  if (isEmpty) {
+    blocks[0] = `${blocks[0]}\nEmpty.`
+  }
 
   return {
     structure: blocks.join(SEPARATOR),

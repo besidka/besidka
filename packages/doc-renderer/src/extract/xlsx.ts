@@ -20,11 +20,13 @@ import { cellAddress, parseRange, rangeAddress } from '../workbook-map/address.t
 import {
   FORMULA_CHARACTERS_MAX,
   canExpandShared,
-  shiftTokens,
   tokenizeFormula,
 } from '../workbook-map/formula.ts'
-import type { TokenizedFormula } from '../workbook-map/formula.ts'
-import type { SheetVisibility } from '../workbook-map/types.ts'
+import type {
+  SheetVisibility,
+  WorkbookDataTableInputs,
+  WorkbookFormulaKind,
+} from '../workbook-map/types.ts'
 
 interface SheetReference {
   name: string
@@ -66,9 +68,10 @@ export interface RawCell {
   text: string
   sharedIndex: number
   formula?: string
-  formulaKind?: 'array' | 'shared-copy'
+  formulaKind?: Exclude<WorkbookFormulaKind, 'normal'>
   arrayRange?: string
   sharedFrom?: string
+  dataTable?: WorkbookDataTableInputs
   numberFormat?: string
 }
 
@@ -745,19 +748,41 @@ function readSheetView(
   }
 }
 
+function inputCell(reference: string | undefined): string | undefined {
+  const range = parseRange(reference ?? '')
+
+  return range ? rangeAddress(range) : undefined
+}
+
+function dataTableInputs(
+  attributes: Record<string, string>,
+): WorkbookDataTableInputs {
+  const first = inputCell(attributes.r1)
+
+  if (attributes.dt2D === '1' || attributes.dt2D === 'true') {
+    return { rowInput: first, columnInput: inputCell(attributes.r2) }
+  }
+
+  return attributes.dtr === '1' || attributes.dtr === 'true'
+    ? { rowInput: first }
+    : { columnInput: first }
+}
+
+interface SharedMaster {
+  address: string
+  isExpandable: boolean
+}
+
 /**
  * Turns the `<f>` element of a cell into the formula fields of the cell. A
- * shared formula's master keeps its text and its followers get the master
- * shifted by their distance, the way Excel fills it; a master the tokenizer
- * cannot shift safely leaves its followers marked as copies, never with a
- * made-up text. Created once per pass over the part.
+ * shared formula's master keeps its text; a follower is marked `shared` with
+ * the master's address and gets no text of its own, so a group of any size
+ * costs one formula. A master the tokenizer cannot shift safely leaves its
+ * followers marked as copies. A master is registered only once its text
+ * fits the formula budget. Created once per pass over the part.
  */
 class FormulaReader {
-  private readonly masters = new Map<string, {
-    row: number
-    column: number
-    tokens: TokenizedFormula
-  }>()
+  private readonly masters = new Map<string, SharedMaster>()
 
   private readonly collector: SheetCollector
 
@@ -771,7 +796,7 @@ class FormulaReader {
     attributes: Record<string, string>,
     text: string,
   ): RawCell | null {
-    const fields = this.fieldsOf(position, attributes, text)
+    const fields = this.fieldsOf(attributes, text)
 
     if (fields === null) {
       return cell
@@ -788,70 +813,71 @@ class FormulaReader {
 
     budget.used += cost
 
+    if (attributes.t === 'shared' && text.length > 0) {
+      this.register(attributes, position, text)
+    }
+
     const target = cell ?? { column: position.column, text: '', sharedIndex: -1 }
 
     return Object.assign(target, fields)
   }
 
-  private fieldsOf(
+  private register(
+    attributes: Record<string, string>,
     position: { row: number, column: number },
+    text: string,
+  ): void {
+    const id = attributes.si ?? ''
+
+    if (attributes.ref === undefined) {
+      return
+    }
+
+    if (!this.masters.has(id) && this.masters.size >= SHARED_MAX) {
+      return
+    }
+
+    this.masters.set(id, {
+      address: cellAddress(position.row, position.column + 1),
+      isExpandable: canExpandShared(tokenizeFormula(text)),
+    })
+  }
+
+  private fieldsOf(
     attributes: Record<string, string>,
     text: string,
   ): Partial<RawCell> | null {
     const kind = attributes.t ?? 'normal'
 
-    if (kind === 'array' || kind === 'dataTable') {
-      const range = parseRange(attributes.ref ?? '')
-      const formula = kind === 'array'
-        ? text
-        : `TABLE(${attributes.r1 ?? ''},${attributes.r2 ?? ''})`
-
+    if (kind === 'array') {
       return {
-        formula,
+        formula: text,
         formulaKind: 'array',
-        arrayRange: range ? rangeAddress(range) : undefined,
+        arrayRange: inputCell(attributes.ref),
       }
     }
 
-    if (kind !== 'shared') {
+    if (kind === 'dataTable') {
+      return {
+        formulaKind: 'data-table',
+        arrayRange: inputCell(attributes.ref),
+        dataTable: dataTableInputs(attributes),
+      }
+    }
+
+    if (kind !== 'shared' || text.length > 0) {
       return text.length > 0 ? { formula: text } : null
     }
 
-    const id = attributes.si ?? ''
-
-    if (text.length > 0) {
-      if (attributes.ref !== undefined && this.masters.size < SHARED_MAX) {
-        this.masters.set(id, {
-          row: position.row,
-          column: position.column,
-          tokens: tokenizeFormula(text),
-        })
-      }
-
-      return { formula: text }
-    }
-
-    const master = this.masters.get(id)
+    const master = this.masters.get(attributes.si ?? '')
 
     if (!master) {
       return { formulaKind: 'shared-copy', sharedFrom: 'an unknown cell' }
     }
 
-    const derived = canExpandShared(master.tokens)
-      ? shiftTokens(
-        master.tokens,
-        position.row - master.row,
-        position.column - master.column,
-      )
-      : null
-
-    if (derived !== null) {
-      return { formula: derived }
-    }
-
     return {
-      formulaKind: 'shared-copy',
-      sharedFrom: cellAddress(master.row, master.column + 1),
+      formulaKind: master.isExpandable ? 'shared' : 'shared-copy',
+      sharedFrom: master.address,
     }
   }
 }

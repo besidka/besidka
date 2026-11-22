@@ -10,16 +10,28 @@ export {
   rangeAddress,
 } from './address.ts'
 export type { CellPosition, CellRange } from './address.ts'
-export { collapseFormulas, expandPattern } from './collapse.ts'
+export {
+  COLLAPSE_CELLS_MAX,
+  collapseFormulas,
+  collapseSheetFormulas,
+  expandPattern,
+} from './collapse.ts'
 export type {
+  CollapseOptions,
+  CollapseResult,
   FormulaInput,
   FormulaPattern,
   FormulaPatternKind,
+  SharedFormulaCopies,
+  SharedFormulaGroup,
 } from './collapse.ts'
 export {
   FORMULA_CHARACTERS_MAX,
   canExpandShared,
+  isInsideBounds,
+  relativeFormulaHash,
   relativeFormulaKey,
+  shiftBounds,
   shiftFormula,
   shiftTokens,
   tokenizeFormula,
@@ -27,6 +39,7 @@ export {
 export type {
   FormulaToken,
   FormulaTokenKind,
+  ShiftBounds,
   TokenizedFormula,
 } from './formula.ts'
 export { cellsToRanges } from './ranges.ts'
