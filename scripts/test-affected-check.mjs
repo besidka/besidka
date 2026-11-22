@@ -137,6 +137,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/ToggleRow.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ActionRowWithInfo.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InlineButton.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/CodeExecutionSection.spec.ts',
     'tests/unit/utils/code-execution-ui.spec.ts',

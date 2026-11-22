@@ -195,22 +195,19 @@
         data-testid="tools-action-artifacts"
         @click="emit('open-artifact-picker')"
       />
-      <ChatInputToolsMenuActionRow
+      <ChatInputToolsMenuActionRowWithInfo
         v-if="state.files.visible && state.googleDrive?.visible"
         :label="GOOGLE_DRIVE_BRAND_NAME"
         :hint="GOOGLE_DRIVE_COPY_LABEL"
         :icon="GOOGLE_DRIVE_ICON"
         :badge="state.googleDrive.importing || undefined"
-        data-testid="tools-action-google-drive"
+        :is-pending="state.googleDrive.checking"
+        :info-label="GOOGLE_DRIVE_TOOLS_INFO_LABEL"
+        test-id="tools-action-google-drive"
         @click="emit('open-google-drive')"
-      />
-      <p
-        v-if="state.files.visible && state.googleDrive?.visible"
-        class="px-3 pb-1 text-xs text-base-content/60"
-        data-testid="tools-google-drive-tools-hint"
       >
         {{ GOOGLE_DRIVE_TOOLS_HINT }}
-      </p>
+      </ChatInputToolsMenuActionRowWithInfo>
       <ChatInputToolsMenuActionRow
         v-if="state.skills?.visible"
         label="Add skill"
@@ -245,7 +242,10 @@
 <script setup lang="ts">
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
-import { GOOGLE_DRIVE_TOOLS_HINT } from '#shared/utils/google-drive-tools'
+import {
+  GOOGLE_DRIVE_TOOLS_HINT,
+  GOOGLE_DRIVE_TOOLS_INFO_LABEL,
+} from '#shared/utils/google-drive-tools'
 import {
   GOOGLE_DRIVE_BRAND_NAME,
   GOOGLE_DRIVE_COPY_LABEL,

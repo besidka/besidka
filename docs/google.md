@@ -1257,12 +1257,29 @@ drive-import,drive-parts,picker-token}.ts`, `shared/utils/google-drive.ts`,
    active and the model takes files). Nothing from Google has loaded yet.
 2. `useChatDriveFiles().attachFromDrive()` asks for send consent, reads the
    file limit of the account and computes how many files still fit.
-3. `useGooglePicker().pick()` loads `https://apis.google.com/js/api.js` and
-   `gapi.load('picker')` first (only now, with `referrerPolicy =
-   'no-referrer'` on the script tag), and only when that worked calls the
-   token route, so a token is never minted for a page whose script is
-   blocked. It then opens the classic `google.picker.PickerBuilder` with the
-   server's access token, the public key and the project number.
+3. `useGooglePicker().pick()` first asks Besidka's own status route,
+   `GET /api/v1/google/connections` (a plain `$fetch` on the click, never a
+   cached answer, so a connection ended in another tab is seen at once). Only
+   when Besidka's connection is `active` and holds the `drive-picked`
+   capability does it load `https://apis.google.com/js/api.js` and
+   `gapi.load('picker')` (with `referrerPolicy = 'no-referrer'` on the script
+   tag), and only when that worked call the token route, so a token is never
+   minted for a page whose script is blocked. The order is therefore
+   status, script, token. No connection reads as `not-connected`, a
+   `needs_reauth` connection or one without the capability as `reauthorize`
+   (both show the connect dialog at once, with no request to Google and no
+   token request, so a user who is not connected never sends their IP
+   address to Google for a script they cannot use), and a failing status
+   request is an error toast with nothing loaded. The token route's 404 and
+   409 stay as a backstop. When the status request takes longer than 300 ms
+   `isCheckingConnection` turns true (the delayed-indicator rule) and the
+   "Google Drive" row shows a small spinner if the menu is open; the menu
+   closes on the click, so it is visible on reopen and the Drive tab button
+   already shows its own spinner. The picker then opens the classic
+   `google.picker.PickerBuilder` with the server's access token, the public
+   key and the project number. The file manager's "Pick from Google Drive"
+   button uses the same `pick()`, so it gets the same check even when its
+   cached status was stale.
 4. The picked files go to `POST /api/v1/google/drive/files`, which copies them
    one by one. Each result becomes a chip, or stays beside the chips with its
    reason. While a pick or a copy is in flight the composer's send button is
@@ -1808,11 +1825,16 @@ nothing when the chat holds no Google data and the send declares a provider-run 
 after a read (direct Anthropic with any provider tool, a Qwen send with
 `enable_search`; section 5.3, built option (b)), withholds all of them from a
 model that may not receive Google data, and `withGoogleSendTools` removes any
-other `google__` tool. The "+" menu says it in one sentence under the Google
-Drive row (`GOOGLE_DRIVE_TOOLS_HINT`): the model can list, read and save your
-picked Drive files when you allow it, but not while web search or Run code is
-on with an Anthropic model or Qwen search is on, and in a gateway chat only
-after a Drive file is attached. The chat route also counts them as
+other `google__` tool. The "+" menu says it in one sentence behind an info
+button on the Google Drive row (`GOOGLE_DRIVE_TOOLS_HINT`, a click-to-open
+note like Web search and Use memory, never an always-visible paragraph): the
+model can list and read the Drive files you picked, and save a Besidka file to
+Drive, each time you allow it; with Anthropic web search or Run code, with
+Qwen search, or in a gateway chat, attach a Drive file first. The wording
+follows the code: the save tool saves a Besidka file (it refuses a Drive
+copy), and the Anthropic and Qwen block applies only while the chat holds no
+Google data yet (`hasUnremovableProviderTool` with `holdsGoogleData`), after
+which the send withholds those provider tools instead. The chat route also counts them as
 approval-gated tools (`isApprovalGatedToolName`), so a paused Google tool
 never starts the answer guarantee continuation that web search uses. Calls
 count in the shared built-in cap (`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN`, 12
@@ -1979,7 +2001,8 @@ user with the flag, nothing is requested when the modal opens: the tab's
 component, `GET /api/v1/google/connections` (the cached status, the same as the
 API Keys page) and `GET /api/v1/files?source=google` start only when the tab is
 selected. Google is never called when the list opens, and the Picker script
-loads only when "Pick from Google Drive" is pressed.
+loads only when "Pick from Google Drive" is pressed and Besidka's own status
+route says the connection is active (section 12.1, step 3).
 
 **States.**
 
