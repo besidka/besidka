@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
@@ -857,6 +857,10 @@ function findPart(parts: Array<Record<string, any>>, type: string) {
 
 describe('tool approval continuation', () => {
   let linear: MockMcpServer
+
+  beforeAll(async () => {
+    await import('../../../server/api/v1/chats/[slug]/index.post')
+  }, 60_000)
 
   beforeEach(() => {
     vi.resetModules()

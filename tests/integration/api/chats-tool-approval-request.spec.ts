@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { openai } from '@ai-sdk/openai'
 import { simulateReadableStream, tool } from 'ai'
@@ -579,6 +579,10 @@ function findPart(parts: Array<Record<string, any>>, type: string) {
 describe('tool approval requests in the chat send', () => {
   let linear: MockMcpServer
   let notion: MockMcpServer
+
+  beforeAll(async () => {
+    await import('../../../server/api/v1/chats/[slug]/index.post')
+  }, 60_000)
 
   beforeEach(() => {
     vi.resetModules()

@@ -1,5 +1,13 @@
 import type { KnowledgeItem } from '#shared/types/project-knowledge.d'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
@@ -652,6 +660,10 @@ function findKnowledgeNotice(writtenParts: any[]) {
 }
 
 describe('project knowledge send-path wiring', () => {
+  beforeAll(async () => {
+    await import('../../../server/api/v1/chats/[slug]/index.post')
+  }, 60_000)
+
   afterEach(() => {
     vi.useRealTimers()
   })
