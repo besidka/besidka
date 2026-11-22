@@ -118,6 +118,33 @@ export interface DriveImportResponse {
   results: DriveImportItemResult[]
 }
 
+export const GOOGLE_DRIVE_REFRESH_MAX = GOOGLE_DRIVE_PICK_MAX
+
+export type DriveRefreshFailureCode
+  = | DriveImportFailureCode
+    | 'deleted'
+    | 'not_a_copy'
+    | 'unknown_version'
+
+export type DriveRefreshItemResult
+  = | {
+    id: string
+    status: 'updated' | 'newer_copy'
+    file: DriveImportedFile
+    note?: string
+  }
+  | { id: string, status: 'up_to_date' }
+  | {
+    id: string
+    status: 'failed'
+    code: DriveRefreshFailureCode
+    reason: string
+  }
+
+export interface DriveRefreshResponse {
+  results: DriveRefreshItemResult[]
+}
+
 export function isDriveFileId(value: unknown): value is string {
   return typeof value === 'string' && GOOGLE_DRIVE_FILE_ID_PATTERN.test(value)
 }
@@ -319,4 +346,25 @@ export const GOOGLE_DRIVE_FAILURE_REASONS: Readonly<
   reauthorize: 'Google no longer accepts the connection. Reconnect Google '
     + 'Drive on the API Keys page.',
   failed: 'This file could not be copied. Try again in a moment.',
+}
+
+export const GOOGLE_DRIVE_REFRESH_REASONS: Readonly<
+  Record<'deleted' | 'not_a_copy' | 'unknown_version', string>
+> = {
+  deleted: 'This file is in the trash in Google Drive. Your copy is '
+    + 'unchanged.',
+  not_a_copy: 'This file is not a copy of a Google Drive file.',
+  unknown_version: 'Google Drive did not say when this file last changed, '
+    + 'so Besidka cannot tell whether your copy is current. Your copy is '
+    + 'unchanged.',
+}
+
+export function getDriveRefreshFailureReason(
+  code: DriveRefreshFailureCode,
+): string {
+  if (code === 'deleted' || code === 'not_a_copy' || code === 'unknown_version') {
+    return GOOGLE_DRIVE_REFRESH_REASONS[code]
+  }
+
+  return GOOGLE_DRIVE_FAILURE_REASONS[code]
 }

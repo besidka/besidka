@@ -52,8 +52,10 @@ const FakeDriveSource = defineComponent({
     attachedIds: { type: Set, required: true },
     search: { type: String, required: true },
     viewMode: { type: String, required: true },
+    canAttachMediaType: { type: Function, default: undefined },
+    resolveDelivery: { type: Function, default: undefined },
   },
-  emits: ['attach'],
+  emits: ['attach', 'detach', 'changed', 'replace'],
   setup() {
     return () => h('div', { 'data-testid': 'fake-drive-source' })
   },
@@ -952,6 +954,100 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
     expect((uploadedTab.element as HTMLInputElement).checked).toBe(true)
     expect(source.value).toBe('upload')
+  })
+
+  it('hands the extra source the delivery rules and forwards its events', async () => {
+    mocks.getFileManagerExtraSourceTabs.mockReturnValue([createExtraTab()])
+
+    const canAttachMediaType = vi.fn(() => true)
+    const resolveDelivery = vi.fn()
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+        canAttachMediaType,
+        resolveDelivery,
+      },
+      shallow: true,
+    })
+
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+
+    const driveSource = wrapper.findComponent(FakeDriveSource)
+
+    expect(driveSource.props('canAttachMediaType')).toBe(canAttachMediaType)
+    expect(driveSource.props('resolveDelivery')).toBe(resolveDelivery)
+
+    driveSource.vm.$emit('detach', ['drive-1'])
+    driveSource.vm.$emit('changed')
+    driveSource.vm.$emit('replace', 'drive-1', { id: 'drive-2' })
+
+    expect(wrapper.emitted('detach')?.[0]).toEqual([['drive-1']])
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(wrapper.emitted('replace')?.[0]).toEqual([
+      'drive-1',
+      { id: 'drive-2' },
+    ])
+  })
+
+  it('loads nothing for an extra source that is disabled or not opened',
+    async () => {
+      const isDriveEnabled = shallowRef<boolean>(false)
+
+      mocks.getFileManagerExtraSourceTabs.mockReturnValue([
+        createExtraTab({ isEnabled: () => isDriveEnabled.value }),
+      ])
+      mocks.useFileManager.mockClear()
+      mocks.useLazyFetch.mockClear()
+
+      const wrapper = await mountSuspended(Select, {
+        props: { attachedIds: new Set<string>() },
+        shallow: true,
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="files-source-drive"]').exists())
+        .toBe(false)
+      expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+
+      isDriveEnabled.value = true
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="files-source-drive"]').exists())
+        .toBe(true)
+      expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+      expect(mocks.useFileManager).toHaveBeenCalledTimes(1)
+      expect(mocks.useLazyFetch.mock.calls.map(([url]) => url))
+        .toEqual(['/api/v1/files/policy'])
+    })
+
+  it('reloads the list on return only when the extra source changed files', async () => {
+    mocks.getFileManagerExtraSourceTabs.mockReturnValue([createExtraTab()])
+
+    const wrapper = await mountSuspended(Select, {
+      props: { attachedIds: new Set<string>() },
+      shallow: true,
+    })
+
+    await flushPromises()
+    mocks.fetchFiles.mockClear()
+
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+    await wrapper.get('[data-testid="files-source-upload"]').trigger('change')
+
+    expect(mocks.fetchFiles).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+    wrapper.findComponent(FakeDriveSource).vm.$emit('changed')
+    await wrapper.get('[data-testid="files-source-upload"]').trigger('change')
+
+    expect(mocks.fetchFiles).toHaveBeenCalledWith(true)
+
+    mocks.fetchFiles.mockClear()
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+    await wrapper.get('[data-testid="files-source-upload"]').trigger('change')
+
+    expect(mocks.fetchFiles).not.toHaveBeenCalled()
   })
 
   it('leaves the extra source when reset or handed a new initialSource', async () => {

@@ -51,6 +51,34 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     documentsActive.value = true
   })
 
+  it('shows no refresh action unless the grid is refreshable', async () => {
+    const wrapper = await mountDocumentGrid([file])
+
+    expect(wrapper.find('[data-testid="files-action-refresh"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="files-menu-refresh"]').exists())
+      .toBe(false)
+  })
+
+  it('refreshes a tile without selecting it when refreshable', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+        refreshable: true,
+      },
+    })
+
+    await wrapper.get('[data-testid="files-action-refresh"]')
+      .trigger('click')
+    await wrapper.get('[data-testid="files-menu-refresh"]').trigger('click')
+
+    expect(wrapper.emitted('refresh')).toEqual([[file], [file]])
+    expect(wrapper.emitted('file-click')).toBeUndefined()
+  })
+
   it('previews a document file without selecting the tile', async () => {
     const wrapper = await mountDocumentGrid([documentFile])
     const preview = wrapper.get('[data-testid="files-action-preview"]')

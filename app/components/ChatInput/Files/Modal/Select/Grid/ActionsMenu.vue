@@ -24,6 +24,17 @@
         role="menu"
         class="menu menu-sm w-full p-1"
       >
+        <li v-if="refreshable">
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="files-menu-refresh"
+            @click="onSelect('refresh')"
+          >
+            <Icon name="lucide:refresh-cw" size="14" />
+            Refresh
+          </button>
+        </li>
         <li>
           <button
             type="button"
@@ -57,13 +68,17 @@ const VIEWPORT_MARGIN_PX = 8
 const MENU_OFFSET_PX = 4
 const DEFAULT_MENU_WIDTH_PX = 144
 
-defineProps<{
+withDefaults(defineProps<{
   fileName: string
-}>()
+  refreshable?: boolean
+}>(), {
+  refreshable: false,
+})
 
 const emit = defineEmits<{
   rename: []
   delete: []
+  refresh: []
 }>()
 
 const menuId = useId()
@@ -122,8 +137,14 @@ function onToggle(event: Event) {
   menuRef.value.style.visibility = ''
 }
 
-function onSelect(action: 'rename' | 'delete') {
+function onSelect(action: 'rename' | 'delete' | 'refresh') {
   menuRef.value?.hidePopover?.()
+
+  if (action === 'refresh') {
+    emit('refresh')
+
+    return
+  }
 
   if (action === 'rename') {
     emit('rename')

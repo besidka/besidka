@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
 import type { KVNamespace } from '@cloudflare/workers-types'
 import type { RequestEvent } from 'nuxt/server'
 import {
@@ -7,6 +7,8 @@ import {
   GOOGLE_DRIVE_FAILURE_REASONS,
   GOOGLE_DRIVE_FILE_MAX_BYTES,
   buildDriveCopyName,
+  getDriveRefreshFailureReason,
+  isDriveFileId,
   isDriveFolder,
   isGoogleNativeMimeType,
   sanitizeDriveFileName,
@@ -17,10 +19,14 @@ import type {
   DriveImportItemResult,
   DriveImportRequestItem,
   DriveImportedFile,
+  DriveRefreshFailureCode,
+  DriveRefreshItemResult,
 } from '#shared/utils/google-drive'
+import { GOOGLE_EXTERNAL_SOURCES } from '#shared/utils/google-data-policy'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
 import type { OfficeFormat } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
+import { decodePublicId } from '~~/server/utils/custom-db-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   getEffectiveUserFilePolicy,
@@ -305,7 +311,7 @@ async function copyBytes(
 async function importOne(
   context: ItemContext,
 ): Promise<DriveImportItemResult> {
-  const { input, item } = context
+  const { item } = context
   const metadataResult = await fetchDriveFileMetadata(item.id, context.request)
 
   if (!metadataResult.ok) {
@@ -321,6 +327,14 @@ async function importOne(
     return failed(item.id, 'not_found')
   }
 
+  return await copyFromMetadata(context, metadata)
+}
+
+async function copyFromMetadata(
+  context: ItemContext,
+  metadata: DriveFileMetadata,
+): Promise<DriveImportItemResult> {
+  const { input, item } = context
   const plan = await planCopy(context, metadata)
   const reusable = await findReusableCopy(context, metadata)
 
@@ -413,29 +427,36 @@ async function importOne(
   }
 }
 
+function classifyItemException(
+  context: ItemContext,
+  exception: unknown,
+): DriveImportFailureCode {
+  if (exception instanceof DriveItemFailure) {
+    return exception.code
+  }
+
+  if (isStorageFullError(exception)) {
+    return 'storage_full'
+  }
+
+  context.input.logger.set({
+    attributes: {
+      googleDrive: {
+        itemError: exceptionMessage(exception),
+      },
+    },
+  })
+
+  return 'failed'
+}
+
 async function importGuarded(
   context: ItemContext,
 ): Promise<DriveImportItemResult> {
   try {
     return await importOne(context)
   } catch (exception) {
-    if (exception instanceof DriveItemFailure) {
-      return failed(context.item.id, exception.code)
-    }
-
-    if (isStorageFullError(exception)) {
-      return failed(context.item.id, 'storage_full')
-    }
-
-    context.input.logger.set({
-      attributes: {
-        googleDrive: {
-          itemError: exceptionMessage(exception),
-        },
-      },
-    })
-
-    return failed(context.item.id, 'failed')
+    return failed(context.item.id, classifyItemException(context, exception))
   }
 }
 
@@ -448,7 +469,9 @@ type ItemToken
  * lock (the token module throws, and changes nothing) fails only this item,
  * so copies already stored are still reported to the user.
  */
-async function readItemToken(input: DriveImportInput): Promise<ItemToken> {
+async function readItemToken(
+  input: Pick<DriveImportInput, 'db' | 'kv' | 'userId' | 'logger'>,
+): Promise<ItemToken> {
   try {
     const token = await getGoogleAccessToken({
       userId: input.userId,
@@ -520,6 +543,222 @@ export async function importDriveFiles(
         imported: results.filter(result => result.status === 'imported').length,
         reused: results.filter(result => result.status === 'reused').length,
         failures,
+      },
+    },
+  })
+
+  return results
+}
+
+export interface DriveRefreshInput {
+  event: Pick<RequestEvent, 'context'>
+  db: DbClient
+  kv: KVNamespace
+  userId: number
+  fileIds: readonly string[]
+  logger: LoggerLike
+}
+
+interface RefreshTarget {
+  fileId: string
+  driveId: string
+  copiedModifiedAt: Date | null
+}
+
+function refreshFailed(
+  id: string,
+  code: DriveRefreshFailureCode,
+): DriveRefreshItemResult {
+  return {
+    id,
+    status: 'failed',
+    code,
+    reason: getDriveRefreshFailureReason(code),
+  }
+}
+
+function isPublicFileId(value: string): boolean {
+  const decoded = decodePublicId(value)
+
+  return Number.isSafeInteger(decoded) && decoded > 0
+}
+
+function isSameModifiedSecond(
+  copiedModifiedAt: Date | null,
+  currentModifiedAt: Date | null,
+): boolean {
+  if (!copiedModifiedAt || !currentModifiedAt) {
+    return false
+  }
+
+  return Math.floor(copiedModifiedAt.getTime() / 1000)
+    === Math.floor(currentModifiedAt.getTime() / 1000)
+}
+
+async function findRefreshTargets(
+  input: DriveRefreshInput,
+): Promise<Map<string, RefreshTarget>> {
+  const targets = new Map<string, RefreshTarget>()
+  const candidateIds = input.fileIds.filter(isPublicFileId)
+
+  if (candidateIds.length === 0) {
+    return targets
+  }
+
+  const rows = await input.db
+    .select({
+      id: schema.files.id,
+      externalId: schema.files.externalId,
+      externalModifiedAt: schema.files.externalModifiedAt,
+    })
+    .from(schema.files)
+    .where(and(
+      eq(schema.files.userId, input.userId),
+      inArray(schema.files.externalSource, GOOGLE_EXTERNAL_SOURCES),
+      inArray(schema.files.id, candidateIds),
+    ))
+
+  for (const row of rows) {
+    if (!isDriveFileId(row.externalId)) {
+      continue
+    }
+
+    targets.set(row.id, {
+      fileId: row.id,
+      driveId: row.externalId,
+      copiedModifiedAt: row.externalModifiedAt,
+    })
+  }
+
+  return targets
+}
+
+function toRefreshResult(
+  fileId: string,
+  result: DriveImportItemResult,
+): DriveRefreshItemResult {
+  if (result.status === 'failed') {
+    return refreshFailed(fileId, result.code)
+  }
+
+  return {
+    id: fileId,
+    status: result.status === 'imported' ? 'updated' : 'newer_copy',
+    file: result.file,
+    note: result.note,
+  }
+}
+
+async function refreshOne(
+  context: ItemContext,
+  target: RefreshTarget,
+): Promise<DriveRefreshItemResult> {
+  try {
+    const metadataResult = await fetchDriveFileMetadata(
+      target.driveId,
+      context.request,
+    )
+
+    if (!metadataResult.ok) {
+      const code = classifyDriveFailure(
+        metadataResult.status,
+        metadataResult.reason,
+      )
+
+      return refreshFailed(
+        target.fileId,
+        code === 'not_found' ? 'no_access' : code,
+      )
+    }
+
+    const metadata = metadataResult.metadata
+
+    if (metadata.trashed) {
+      return refreshFailed(target.fileId, 'deleted')
+    }
+
+    if (!metadata.modifiedTime) {
+      return refreshFailed(target.fileId, 'unknown_version')
+    }
+
+    if (isSameModifiedSecond(target.copiedModifiedAt, metadata.modifiedTime)) {
+      return { id: target.fileId, status: 'up_to_date' }
+    }
+
+    return toRefreshResult(
+      target.fileId,
+      await copyFromMetadata(context, metadata),
+    )
+  } catch (exception) {
+    return refreshFailed(
+      target.fileId,
+      classifyItemException(context, exception),
+    )
+  }
+}
+
+/**
+ * Checks the Drive original of each Google copy and copies it again when it
+ * changed since the copy was made. One Google metadata call per copy, one
+ * copy at a time, a fresh token for each. A copy is never rewritten in
+ * place: a changed original becomes a new copy and the selected one stays
+ * with the messages that used it (`newer_copy` when a copy of the current
+ * version already exists). A file that is not the user's own Google copy
+ * fails before any Google call.
+ */
+export async function refreshDriveCopies(
+  input: DriveRefreshInput,
+): Promise<DriveRefreshItemResult[]> {
+  const targets = await findRefreshTargets(input)
+  const results: DriveRefreshItemResult[] = []
+
+  for (const fileId of input.fileIds) {
+    const target = targets.get(fileId)
+
+    if (!target) {
+      results.push(refreshFailed(fileId, 'not_a_copy'))
+
+      continue
+    }
+
+    const token = await readItemToken(input)
+
+    if (token.status !== 'ok') {
+      results.push(refreshFailed(
+        fileId,
+        token.status === 'unavailable' ? 'failed' : 'reauthorize',
+      ))
+
+      continue
+    }
+
+    results.push(await refreshOne({
+      input: { ...input, items: [] },
+      item: { id: target.driveId },
+      request: { accessToken: token.accessToken },
+    }, target))
+  }
+
+  const failures: Record<string, number> = {}
+
+  for (const result of results) {
+    if (result.status === 'failed') {
+      failures[result.code] = (failures[result.code] ?? 0) + 1
+    }
+  }
+
+  input.logger.set({
+    attributes: {
+      googleDrive: {
+        refreshItems: results.length,
+        updated: results.filter(result => result.status === 'updated').length,
+        newerCopy: results.filter((result) => {
+          return result.status === 'newer_copy'
+        }).length,
+        upToDate: results.filter((result) => {
+          return result.status === 'up_to_date'
+        }).length,
+        refreshFailures: failures,
       },
     },
   })
