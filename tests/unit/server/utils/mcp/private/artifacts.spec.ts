@@ -523,6 +523,81 @@ describe('MCP artifact logic', () => {
       expect(listed.items.map(item => item.title)).toEqual(['From Drive'])
     })
 
+    it('answers a marked artifact like a missing one on update: no edit '
+      + 'probe, no write', async () => {
+      const marked = await createMarked()
+      const edits = [{ old_string: '<p>', new_string: '<b>' }]
+
+      await expect(updateMcpArtifact(context(), {
+        id: marked.artifactId,
+        edits,
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(updateMcpArtifact(context(), {
+        id: marked.artifactId,
+        edits: [{ old_string: 'no such text', new_string: 'x' }],
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(updateMcpArtifact(context(), {
+        id: marked.artifactId,
+        content: '<p>overwritten</p>',
+      })).rejects.toMatchObject({ status: 404 })
+
+      const versions = testDb.sqlite.prepare(
+        'select current_version from artifacts where id = ?',
+      ).get(decodeArtifactId(marked.artifactId)) as {
+        current_version: number
+      }
+
+      expect(versions.current_version).toBe(1)
+    })
+
+    it('withholds a marked artifact from an update in a send without Google '
+      + 'data, and lets a flagged send update it', async () => {
+      const marked = await createMarked()
+
+      await expect(updateMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId, content: '<p>y</p>' },
+      )).rejects.toMatchObject({ status: 403 })
+      await expect(updateMcpArtifact(
+        { ...context(), googleContent: 'allowed' as const },
+        { id: marked.artifactId, content: '<p>y</p>' },
+      )).resolves.toMatchObject({ version: 2 })
+    })
+
+    it('answers a share of a marked artifact like a missing one, so the '
+      + 'Google reason does not confirm that it exists', async () => {
+      const marked = await createMarked()
+
+      await expect(shareMcpArtifact(context(), {
+        id: marked.artifactId,
+        expiresInDays: 7,
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(shareMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId, expiresInDays: 7 },
+      )).rejects.toMatchObject({ status: 403 })
+      expect(await testDb.db.select().from(schema.artifactShares))
+        .toHaveLength(0)
+    })
+
+    it('still updates an unmarked artifact over MCP', async () => {
+      const plain = await createOwned()
+
+      await expect(updateMcpArtifact(context(), {
+        id: plain.artifactId,
+        content: '<p>y</p>',
+      })).resolves.toMatchObject({ version: 2 })
+    })
+
+    it('keeps delete and revoke open for a marked artifact', async () => {
+      const marked = await createMarked()
+
+      await expect(deleteMcpArtifacts(context(), {
+        ids: [marked.artifactId],
+        confirm: true,
+      })).resolves.toMatchObject({ deleted: [marked.artifactId] })
+    })
+
     it('marks an artifact created or updated in a send with Google data',
       async () => {
         const created = await createMcpArtifact(

@@ -187,6 +187,41 @@ describe('mcp file tools', () => {
       expect(mocks.getObject).not.toHaveBeenCalled()
     })
 
+    it('answers a rename of a marked file like a missing one, and keeps its '
+      + 'name', async () => {
+      markDerived(1)
+
+      const { renameMcpFile } = await load()
+      const nameBefore = storedName(1)
+
+      await expect(renameMcpFile(testDb.db, OWNER, {
+        fileId: fileId(1),
+        name: 'probe.md',
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(renameMcpFile(testDb.db, OWNER, {
+        fileId: fileId(1),
+        name: 'probe.md',
+        googleContent: 'withheld',
+      })).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining('holds content from Google'),
+      })
+      expect(storedName(1)).toBe(nameBefore)
+    })
+
+    it('refuses a rename of a Google copy over MCP', async () => {
+      testDb.sqlite
+        .prepare('update files set external_source = ? where id = ?')
+        .run('google', 1)
+
+      const { renameMcpFile } = await load()
+
+      await expect(renameMcpFile(testDb.db, OWNER, {
+        fileId: fileId(1),
+        name: 'probe.md',
+      })).rejects.toMatchObject({ status: 404 })
+    })
+
     it('lists and reads a marked file in a send that holds Google data',
       async () => {
         markDerived(1)

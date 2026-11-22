@@ -200,6 +200,7 @@ function createDb(input: {
   paidTierConfirmedAt?: Date | null
   storedMessages?: unknown[]
   markedArtifactIds?: number[]
+  holdsMarkedOrigin?: boolean
 }) {
   const updateSets: unknown[] = []
   const batch = createBatch()
@@ -216,6 +217,24 @@ function createDb(input: {
     apiKey: 'encrypted-key',
     paidTierConfirmedAt: input.paidTierConfirmedAt ?? null,
   }))
+  const chatsFindFirst = vi.fn(async () => ({
+    id: 'chat-1',
+    projectId: null,
+    project: null,
+    branchedFromShareSlug: null,
+    googleDataAt: input.googleDataAt,
+    holdsMarkedOrigin: input.holdsMarkedOrigin ? 1 : 0,
+    messages: input.storedMessages ?? [],
+  }))
+  const select = vi.fn(() => ({
+    from: () => ({
+      where: async () => {
+        return (input.markedArtifactIds ?? []).map((id) => {
+          return { id }
+        })
+      },
+    }),
+  }))
 
   return {
     db: {
@@ -228,16 +247,7 @@ function createDb(input: {
             aboutMe: null,
           })),
         },
-        chats: {
-          findFirst: vi.fn(async () => ({
-            id: 'chat-1',
-            projectId: null,
-            project: null,
-            branchedFromShareSlug: null,
-            googleDataAt: input.googleDataAt,
-            messages: input.storedMessages ?? [],
-          })),
-        },
+        chats: { findFirst: chatsFindFirst },
         keys: { findFirst: keysFindFirst },
         messages: { findFirst: vi.fn(async () => undefined) },
       },
@@ -250,18 +260,11 @@ function createDb(input: {
         }),
       })),
       batch: batch.run,
-      select: vi.fn(() => ({
-        from: () => ({
-          where: async () => {
-            return (input.markedArtifactIds ?? []).map((id) => {
-              return { id }
-            })
-          },
-        }),
-      })),
+      select,
     },
     insertValues,
     keysFindFirst,
+    chatsFindFirst,
     updateSets,
     batches: batch.calls,
   }
@@ -364,6 +367,7 @@ async function runSend(input: {
   storedMessages?: unknown[]
   newMessageParts?: unknown[]
   markedArtifactIds?: number[]
+  holdsMarkedOrigin?: boolean
   streamError?: unknown
 }) {
   const directModel = input.directModel ?? OPENAI_MODEL
@@ -387,6 +391,7 @@ async function runSend(input: {
     paidTierConfirmedAt: input.paidTierConfirmedAt,
     storedMessages: input.storedMessages,
     markedArtifactIds: input.markedArtifactIds,
+    holdsMarkedOrigin: input.holdsMarkedOrigin,
   })
 
   vi.stubGlobal('useDb', () => created.db)
@@ -428,6 +433,7 @@ async function runSend(input: {
     doStream,
     useGatewayMock,
     keysFindFirst: created.keysFindFirst,
+    chatsFindFirst: created.chatsFindFirst,
     insertValues: created.insertValues,
     updateSets: created.updateSets,
     batches: created.batches,
@@ -735,6 +741,52 @@ describe('chat send data guard', () => {
       expect(result.batches).toHaveLength(1)
       expect(result.batches[0]).toHaveLength(1)
     })
+
+    it('refuses a model that may not see Google data when a killed send '
+      + 'left a marked artifact or document and no reply', async () => {
+      const result = await runSend({
+        googleDataAt: null,
+        holdsMarkedOrigin: true,
+        directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+      })
+
+      expect(result.error).toMatchObject({ status: 403 })
+      expect(result.doStream).not.toHaveBeenCalled()
+      expect(result.insertValues).not.toHaveBeenCalled()
+      expect(result.updateSets).toContainEqual({
+        googleDataAt: expect.anything(),
+      })
+      expect(result.batches).toHaveLength(1)
+      expect(result.batches[0]).toHaveLength(1)
+    })
+
+    it('flags the chat and answers on an allowed model after a killed send',
+      async () => {
+        const result = await runSend({
+          googleDataAt: null,
+          holdsMarkedOrigin: true,
+        })
+
+        expect(result.error).toBeNull()
+        expect(result.doStream).toHaveBeenCalled()
+        expect(result.updateSets).toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+      })
+
+    it('adds no query for the marked origin: it rides on the chat query',
+      async () => {
+        const ordinary = await runSend({ googleDataAt: null })
+        const flagged = await runSend({ googleDataAt: GOOGLE_DATA_AT })
+
+        for (const result of [ordinary, flagged]) {
+          expect(result.chatsFindFirst).toHaveBeenCalledTimes(1)
+          expect(result.chatsFindFirst).toHaveBeenCalledWith(
+            expect.objectContaining({ extras: expect.any(Object) }),
+          )
+          expect(result.batches).toHaveLength(0)
+        }
+      })
 
     function gatewayOptionsOf(result: Awaited<ReturnType<typeof runSend>>) {
       return (result.useGatewayMock.mock.calls[0] as unknown[] | undefined)

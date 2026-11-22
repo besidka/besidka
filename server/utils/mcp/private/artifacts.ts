@@ -325,15 +325,22 @@ async function assertArtifactReadable(
   context: McpArtifactContext,
   artifactId: string,
 ): Promise<void> {
-  const access = context.googleContent ?? 'hidden'
-
-  if (access === 'allowed') {
+  if ((context.googleContent ?? 'hidden') === 'allowed') {
     return
   }
 
   const artifact = await requireOwnedArtifact(context, artifactId)
 
-  if (!artifact.googleDerivedAt) {
+  assertOwnedArtifactReadable(context, artifact)
+}
+
+function assertOwnedArtifactReadable(
+  context: McpArtifactContext,
+  artifact: { googleDerivedAt: Date | null },
+): void {
+  const access = context.googleContent ?? 'hidden'
+
+  if (access === 'allowed' || !artifact.googleDerivedAt) {
     return
   }
 
@@ -381,6 +388,8 @@ export async function updateMcpArtifact(
   }
 
   const artifact = await requireOwnedArtifact(context, input.id)
+
+  assertOwnedArtifactReadable(context, artifact)
 
   if (artifact.kind === 'react') {
     await assertMcpArtifactsAvailable(context, {
@@ -523,6 +532,7 @@ export async function shareMcpArtifact(
     active: true,
     flags: ['artifacts.share'],
   })
+  await assertArtifactReadable(context, input.id)
 
   if (
     !Number.isInteger(input.expiresInDays)

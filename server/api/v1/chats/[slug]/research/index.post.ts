@@ -20,7 +20,10 @@ import {
   flagChatGoogleData,
   resolveSendGoogleContent,
 } from '~~/server/utils/google/data-guard'
-import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
+import {
+  chatHoldsGoogleData,
+  chatMarkedOriginExtras,
+} from '~~/server/utils/tool-approval/google'
 import { getModel } from '#shared/utils/model'
 
 export default defineEventHandler(async (event) => {
@@ -93,6 +96,7 @@ export default defineEventHandler(async (event) => {
       projectId: true,
       googleDataAt: true,
     },
+    extras: chatMarkedOriginExtras(),
     with: {
       messages: {
         columns: {
@@ -138,6 +142,7 @@ export default defineEventHandler(async (event) => {
   const chatHeldGoogleData = chatHoldsGoogleData({
     googleDataAt: chat.googleDataAt,
     messages: chat.messages,
+    holdsMarkedOrigin: chat.holdsMarkedOrigin,
   })
   const sendGoogleContent = await resolveSendGoogleContent({
     db,
@@ -151,6 +156,8 @@ export default defineEventHandler(async (event) => {
     && (!chat.googleDataAt || sendGoogleContent.newMessage)
   ) {
     await flagChatGoogleData(db, chat.id, sendGoogleContent.newMessage)
+  } else if (chat.holdsMarkedOrigin && !chat.googleDataAt) {
+    await flagChatGoogleData(db, chat.id, false)
   }
 
   await assertGoogleDataRecipient({

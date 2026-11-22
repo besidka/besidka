@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   chatUpdates: [] as Array<Record<string, unknown>>,
   batches: [] as unknown[][],
   failBatch: false,
+  failChatFlag: false,
   googleSend: null as null | {
     tools: Record<string, unknown>
     entries: Map<string, unknown>
@@ -322,10 +323,19 @@ function createDb() {
     publicId: 'db-generated-public-id',
   }))
   const updateWhere = vi.fn(async () => undefined)
+  const failingUpdateWhere = vi.fn(async () => {
+    throw new Error('D1 flag write failed')
+  })
   const updateSet = vi.fn((values: Record<string, unknown>) => {
     mocks.chatUpdates.push(values)
 
-    return { where: updateWhere }
+    const isFlagWrite = values.googleDataAt instanceof Date
+
+    return {
+      where: mocks.failChatFlag && isFlagWrite
+        ? failingUpdateWhere
+        : updateWhere,
+    }
   })
 
   insertValues.mockImplementation(() => ({
@@ -588,6 +598,7 @@ describe('tool approval requests in the chat send', () => {
     mocks.chatUpdates = []
     mocks.batches = []
     mocks.failBatch = false
+    mocks.failChatFlag = false
     mocks.googleSend = null
     Object.assign(mocks.store, {
       connectors: [],
@@ -1544,6 +1555,95 @@ describe('tool approval requests in the chat send', () => {
 
     expect(mocks.capabilityInputs[0]!.isGoogleDerived?.()).toBe(true)
   })
+
+  function registerGoogleSearch() {
+    return import('~~/server/utils/tool-approval/send').then((module) => {
+      const execute = vi.fn(async () => ({
+        references: [{ id: 'file-1', title: 'Budget' }],
+        text: 'SECRET GOOGLE BODY',
+      }))
+
+      mocks.googleSend = {
+        tools: {
+          google__drive_search: tool({
+            description: 'Search Drive.',
+            inputSchema: z.object({ query: z.string() }),
+            execute,
+          }),
+        },
+        entries: new Map([[
+          'google__drive_search',
+          module.buildGoogleApprovalEntry({
+            toolName: 'google__drive_search',
+            kind: 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'Search Google Drive',
+            toolApprovalsActive: true,
+            chatGrantHash: 'g'.repeat(64),
+          }),
+        ]]),
+      }
+
+      return execute
+    })
+  }
+
+  it('flags the chat as soon as the Google read returned, even when the '
+    + 'reply is never stored', async () => {
+    mocks.failBatch = true
+
+    await registerGoogleSearch()
+
+    await expect(runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+        textChunks('Found the budget file.'),
+      ],
+    })).rejects.toMatchObject({
+      message: 'The response could not be saved.',
+    })
+    expect(mocks.chatUpdates.filter((values) => {
+      return values.googleDataAt instanceof Date
+    })).toHaveLength(1)
+  })
+
+  it('fails the Google read when the chat flag cannot be written',
+    async () => {
+      mocks.failChatFlag = true
+
+      const execute = await registerGoogleSearch()
+
+      await expect(runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+          textChunks('Could not read it.'),
+        ],
+      })).rejects.toMatchObject({
+        message: 'The response could not be saved.',
+      })
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(mocks.batches).toHaveLength(0)
+    })
+
+  it('does not write the chat flag in a chat that is already flagged',
+    async () => {
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
+
+      await registerGoogleSearch()
+      await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-g', 'google__drive_search', { query: 'budget' }),
+          textChunks('Found the budget file.'),
+        ],
+      })
+
+      expect(mocks.chatUpdates.filter((values) => {
+        return values.googleDataAt instanceof Date
+      })).toHaveLength(0)
+    })
 
   it('fails the persist when the batch with the chat flag fails', async () => {
     const { buildGoogleApprovalEntry } = await import(

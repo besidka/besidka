@@ -454,6 +454,30 @@ describe('createMcpDocument', () => {
       expect(kv.entries.size).toBe(0)
     })
 
+    it('rejects a marked image and a Google copy like a missing id',
+      async () => {
+        const markedId = await seedImage(userId)
+        const copyId = await seedImage(userId)
+
+        await testDb.db.update(schema.files)
+          .set({ googleDerivedAt: new Date(1_000) })
+          .where(eq(schema.files.id, markedId))
+        await testDb.db.update(schema.files)
+          .set({ externalSource: 'google' })
+          .where(eq(schema.files.id, copyId))
+
+        for (const fileId of [markedId, copyId]) {
+          await expect(createMcpDocument(context(), input({
+            spec: specWithImage(fileId),
+          }))).rejects.toMatchObject({
+            status: 422,
+            message: expect.stringContaining(`Unknown image fileId: ${fileId}`),
+          })
+        }
+
+        expect(await documentRows()).toHaveLength(0)
+      })
+
     it('rejects a file that is not a PNG or JPEG image', async () => {
       const textId = await seedImage(userId, 'text/plain')
 

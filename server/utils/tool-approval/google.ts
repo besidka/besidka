@@ -1,6 +1,7 @@
 import type { UIMessage } from 'ai'
 import type { KVNamespace } from '@cloudflare/workers-types'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
+import { createError } from 'evlog'
 import {
   GOOGLE_TOOL_OUTPUT_MAX_BYTES,
   isGoogleToolName,
@@ -160,15 +161,20 @@ export function isGoogleToolResultContent(content: unknown): boolean {
 
 /**
  * Whether a chat holds content from Google: the sticky
- * `chats.google_data_at` flag, set once and never cleared, or a Google
- * result still in the given messages (a chat from before the flag). The one
- * function every send, branch and later data guard asks.
+ * `chats.google_data_at` flag, set once and never cleared, a Google result
+ * still in the given messages (a chat from before the flag), or a marked
+ * artifact or document that names the chat as its origin
+ * (`holdsMarkedOrigin`, from `chatMarkedOriginExtras`). It does not read file
+ * parts: `resolveSendGoogleContent` finds an attached Google copy or marked
+ * file at send start and flags the chat. The one function every send,
+ * branch and later data guard asks.
  */
 export function chatHoldsGoogleData(input: {
   googleDataAt?: Date | number | null
   messages?: ReadonlyArray<{ parts: unknown }>
+  holdsMarkedOrigin?: boolean | number | null
 }): boolean {
-  if (input.googleDataAt) {
+  if (input.googleDataAt || input.holdsMarkedOrigin) {
     return true
   }
 
@@ -199,15 +205,41 @@ export function withholdCodeExecutionForGoogleData<
 }
 
 /**
+ * The relational query extra that reads, inside the query that loads the
+ * chat, whether an artifact or a document with the derived mark names the
+ * chat as its origin. A send that was killed before its reply was stored
+ * leaves such a row in a chat with no flag and no `data-artifact` part; the
+ * extra costs no query of its own and a chat without such rows reads false.
+ */
+export function chatMarkedOriginExtras() {
+  return {
+    holdsMarkedOrigin: (chat: { id: unknown }) => {
+      return sql<number>`(exists (
+        select 1 from ${schema.artifacts}
+        where ${schema.artifacts.originChatId} = ${chat.id}
+          and ${schema.artifacts.googleDerivedAt} is not null
+      ) or exists (
+        select 1 from ${schema.documents}
+        where ${schema.documents.originChatId} = ${chat.id}
+          and ${schema.documents.googleDerivedAt} is not null
+      ))`
+    },
+  }
+}
+
+/**
  * Sets `chats.google_data_at` once for a chat that just recorded a Google
- * result; a chat that already has it keeps the first time. Best effort: a
- * failure is logged and the parts scan of `chatHoldsGoogleData` still finds
- * the stored result.
+ * result; a chat that already has it keeps the first time. Best effort by
+ * default: a failure is logged and the parts scan of `chatHoldsGoogleData`
+ * still finds the stored result. With `failClosed` a failure throws, for the
+ * callers that must not let Google data enter a send while the chat is
+ * unflagged.
  */
 export async function markChatGoogleData(
   db: DbClient,
   chatPublicId: string,
   logger: LoggerLike,
+  options: { failClosed?: boolean } = {},
 ): Promise<void> {
   try {
     await db.update(schema.chats)
@@ -225,6 +257,15 @@ export async function markChatGoogleData(
         },
       },
     })
+
+    if (options.failClosed) {
+      throw createError({
+        message: 'Besidka could not record that this chat holds Google data.',
+        status: 500,
+        why: 'The chat flag write failed.',
+        fix: 'Try again in a moment.',
+      })
+    }
   }
 }
 

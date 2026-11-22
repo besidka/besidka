@@ -480,6 +480,7 @@ import { createToolRoundApprovalState } from '~~/server/utils/tool-approval/roun
 import {
   buildGoogleResultStash,
   chatHoldsGoogleData,
+  chatMarkedOriginExtras,
   deleteGoogleToolResults,
   hasGoogleToolResult,
   isGoogleToolResultContent,
@@ -504,6 +505,10 @@ import {
   withGoogleTaintRerankStop,
   withoutWebSearchForGoogleData,
 } from '~~/server/utils/google/data-guard'
+import {
+  createGoogleDataFlagger,
+  withGoogleDataFlag,
+} from '~~/server/utils/google/send-flag'
 import {
   TOOL_ROUND_CONTINUE_PROMPT,
   TOOL_ROUND_STALE_CODE,
@@ -656,6 +661,7 @@ export default defineEventHandler(async (event) => {
       branchedFromShareSlug: true,
       googleDataAt: true,
     },
+    extras: chatMarkedOriginExtras(),
     with: {
       project: {
         columns: {
@@ -700,6 +706,7 @@ export default defineEventHandler(async (event) => {
   let holdsGoogleData = chatHoldsGoogleData({
     googleDataAt: chat.googleDataAt,
     messages: chat.messages,
+    holdsMarkedOrigin: chat.holdsMarkedOrigin,
   })
 
   if (holdsGoogleData && !chat.googleDataAt) {
@@ -2017,6 +2024,13 @@ export default defineEventHandler(async (event) => {
   })
 
   sendHoldsGoogleTaint = () => toolApprovalSend.state.taint.has('google')
+
+  const ensureGoogleDataFlag = createGoogleDataFlagger({
+    db,
+    chatPublicId: chat.id,
+    isAlreadyFlagged: () => holdsGoogleData,
+    logger: aiLogger,
+  })
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
@@ -2681,7 +2695,12 @@ export default defineEventHandler(async (event) => {
       )
       parsedTools = {
         ...parsedTools,
-        tools: toolApprovalSend.guardNativeWrites(parsedTools.tools),
+        tools: toolApprovalSend.guardNativeWrites(
+          withGoogleDataFlag(parsedTools.tools, {
+            isGoogleDerived: isGoogleDerivedSend,
+            ensureFlagged: ensureGoogleDataFlag,
+          }),
+        ),
       }
     }
 
@@ -3831,6 +3850,7 @@ export default defineEventHandler(async (event) => {
             : undefined,
           getConnectorSecrets: connectorsRun?.secrets,
           isGoogleDerived: isGoogleDerivedSend,
+          ensureGoogleDataFlag,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -6225,6 +6245,7 @@ async function persistAssistantMessageFromStream(input: {
   skillActivationParts?: UIMessage['parts']
   getConnectorSecrets?: () => string[]
   isGoogleDerived?: () => boolean
+  ensureGoogleDataFlag?: () => Promise<void>
   resume?: {
     storedMessage: UIMessage
     storedPartCount: number
@@ -6289,6 +6310,10 @@ async function persistAssistantMessageFromStream(input: {
       })
 
       return { persisted: false, emptyAnswerFailure: false, answered: false }
+    }
+
+    if (input.isGoogleDerived?.()) {
+      await input.ensureGoogleDataFlag?.()
     }
 
     const responseParts = finalizeCodeExecutionParts(
