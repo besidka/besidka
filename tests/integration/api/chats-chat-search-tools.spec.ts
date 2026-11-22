@@ -3,6 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
+import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import {
   CHAT_SEARCH_INSTRUCTION,
 } from '../../../server/utils/ai/chat-search-tools'
@@ -634,31 +635,41 @@ describe('chat search tools send-path wiring', () => {
 
     expect(systemPrompt.startsWith(CHAT_SEARCH_INSTRUCTION)).toBe(true)
     expect(systemPrompt.indexOf(CHAT_SEARCH_INSTRUCTION))
-      .toBeLessThan(systemPrompt.indexOf('Today\'s date'))
-    expect(systemPrompt).toContain('Today\'s date')
+      .toBeLessThan(systemPrompt.indexOf('do not search for the current date'))
+    expect(systemPrompt).toContain('do not search for the current date')
+    expect(systemPrompt).toContain('Today is ')
   })
 
-  it('keeps the instruction line constant across turns', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-10-05T23:30:00.000Z'))
+  it('keeps everything before the date line constant across turns',
+    async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
 
-    const first = await runSend({
-      steps: [createTextChunks('First.')],
+      const firstInstant = new Date('2026-10-05T23:30:00.000Z')
+      const secondInstant = new Date('2026-10-06T10:00:00.000Z')
+
+      vi.setSystemTime(firstInstant)
+
+      const first = await runSend({
+        steps: [createTextChunks('First.')],
+      })
+
+      vi.setSystemTime(secondInstant)
+      mocks.mergedStreams = []
+      vi.resetModules()
+
+      const second = await runSend({
+        steps: [createTextChunks('Second.')],
+      })
+
+      expect(readSystemPrompt(first.doStream.mock.calls[0]?.[0])).toBe(
+        `${CHAT_SEARCH_INSTRUCTION}\n\n`
+        + buildCurrentDateInstruction(firstInstant),
+      )
+      expect(readSystemPrompt(second.doStream.mock.calls[0]?.[0])).toBe(
+        `${CHAT_SEARCH_INSTRUCTION}\n\n`
+        + buildCurrentDateInstruction(secondInstant),
+      )
     })
-
-    vi.setSystemTime(new Date('2026-10-06T10:00:00.000Z'))
-    mocks.mergedStreams = []
-    vi.resetModules()
-
-    const second = await runSend({
-      steps: [createTextChunks('Second.')],
-    })
-
-    expect(readSystemPrompt(first.doStream.mock.calls[0]?.[0]))
-      .toBe(CHAT_SEARCH_INSTRUCTION)
-    expect(readSystemPrompt(second.doStream.mock.calls[0]?.[0]))
-      .toBe(CHAT_SEARCH_INSTRUCTION)
-  })
 
   it.each([
     ['false', false],
