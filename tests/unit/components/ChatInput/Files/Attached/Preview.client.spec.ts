@@ -494,4 +494,99 @@ describe('ChatInput/Files/Attached/Preview', () => {
         .toBe(false)
     })
   })
+
+  describe('Google Drive copies', () => {
+    const driveCopy = {
+      storageKey: 'drive-key.md',
+      name: 'Plan.md',
+      type: 'text/markdown',
+      size: 12,
+      externalSource: 'google' as const,
+    }
+
+    it('marks a Drive copy with the Drive mark, like an upload otherwise',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [
+              driveCopy,
+              { storageKey: 'plain', name: 'b.txt', type: 'text/plain', size: 1 },
+            ],
+          },
+        })
+        const marks = wrapper.findAll('[data-testid="files-preview-drive-mark"]')
+
+        expect(marks).toHaveLength(1)
+        expect(marks[0]!.attributes('title')).toBe('Google Drive')
+        expect(marks[0]!.attributes('aria-label')).toBe(
+          'Plan.md is a copy of a Google Drive file',
+        )
+        expect(wrapper.findAll('[data-testid="carousel-item"]')).toHaveLength(2)
+      })
+
+    it('can still be detached like any attached file', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: { files: [driveCopy] },
+      })
+
+      expect(wrapper.find('[data-testid="files-preview-detach"]').exists())
+        .toBe(true)
+    })
+
+    it('shows a file being copied with progress and no dismiss button',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [],
+            driveImports: [{ id: 'd1', name: 'Plan', status: 'importing' }],
+          },
+        })
+        const item = wrapper.get('[data-testid="drive-import-item"]')
+
+        expect(item.attributes('role')).toBe('group')
+        expect(item.attributes('aria-label'))
+          .toBe('Plan, copying from Google Drive')
+        expect(item.get('[data-testid="drive-import-status"]').text())
+          .toContain('Copying')
+        expect(item.find('progress').exists()).toBe(true)
+        expect(item.find('[data-testid="drive-import-dismiss"]').exists())
+          .toBe(false)
+      })
+
+    it('shows the reason a file failed and lets the user dismiss it',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [],
+            driveImports: [{
+              id: 'd1',
+              name: 'Plan',
+              status: 'failed',
+              error: 'This file is too large to attach.',
+            }],
+          },
+        })
+
+        expect(wrapper.get('[data-testid="drive-import-error"]').text())
+          .toContain('This file is too large to attach.')
+        expect(wrapper.find('progress').exists()).toBe(false)
+
+        await wrapper.get('[data-testid="drive-import-dismiss"]')
+          .trigger('click')
+
+        expect(wrapper.emitted('dismiss-drive-import')).toEqual([['d1']])
+      })
+
+    it('does not count a file being copied in Detach all', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files,
+          driveImports: [{ id: 'd1', name: 'Plan', status: 'importing' }],
+        },
+      })
+
+      expect(wrapper.get('[data-testid="files-preview-detach-all"]').text())
+        .toContain('2')
+    })
+  })
 })

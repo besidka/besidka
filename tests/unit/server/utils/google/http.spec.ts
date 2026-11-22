@@ -33,7 +33,9 @@ describe('googleFetchJson', () => {
     'https://user:pass@oauth2.googleapis.com/token',
     'https://oauth2.googleapis.com:8443/token',
     'https://accounts.google.com/o/oauth2/v2/auth',
-    'https://www.googleapis.com/drive/v3/files',
+    'https://www.googleapis.com.evil.example/drive/v3/files',
+    'https://content.googleapis.com/drive/v3/files',
+    'https://doc-0g.googleusercontent.com/export/abc',
     'not a url',
   ])('refuses %s before any request', async (url) => {
     const fetchImpl = vi.fn()
@@ -45,8 +47,10 @@ describe('googleFetchJson', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('accepts only the exact allowed host over https', () => {
+  it('accepts only the exact allowed hosts over https', () => {
     expect(assertGoogleUrl(TOKEN_URL).hostname).toBe('oauth2.googleapis.com')
+    expect(assertGoogleUrl('https://www.googleapis.com/drive/v3/files').hostname)
+      .toBe('www.googleapis.com')
   })
 
   it('posts a form body with manual redirects and parses JSON', async () => {

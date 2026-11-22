@@ -31,6 +31,7 @@ describe('get_settings storage block', () => {
       categories: [
         { id: 'aiImages', bytes: 0, count: 0 },
         { id: 'uploads', bytes: 0, count: 0 },
+        { id: 'googleDrive', bytes: 0, count: 0 },
         { id: 'generatedFiles', bytes: 0, count: 0 },
         { id: 'connectorImages', bytes: 0, count: 0 },
         { id: 'artifacts', bytes: 0, count: 0 },

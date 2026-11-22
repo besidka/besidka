@@ -133,12 +133,101 @@
             </span>
           </div>
         </div>
+        <span
+          v-if="file.externalSource === 'google'"
+          class="absolute bottom-1 left-1 grid size-4 place-items-center rounded-full bg-base-100 text-base-content"
+          :title="GOOGLE_DRIVE_BRAND_NAME"
+          role="img"
+          :aria-label="driveCopyLabel(file.name)"
+          data-testid="files-preview-drive-mark"
+        >
+          <Icon
+            :name="GOOGLE_DRIVE_ICON"
+            size="10"
+          />
+        </span>
         <button
           class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
           :aria-label="`Remove ${file.name}`"
           :title="`Remove ${file.name}`"
           data-testid="files-preview-detach"
           @click="removeAttachedFile(file.storageKey)"
+        >
+          <Icon
+            name="lucide:x"
+            size="10"
+          />
+        </button>
+      </div>
+
+      <div
+        v-for="driveImport in driveImports"
+        :key="`drive-${driveImport.id}`"
+        :data-drive-import-id="driveImport.id"
+        role="group"
+        :aria-label="driveCopyingLabel(driveImport.name, driveImport.status)"
+        class="carousel-item flex items-center gap-1 relative"
+        data-testid="drive-import-item"
+      >
+        <div
+          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1 relative"
+        >
+          <div
+            class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
+            :class="{ 'opacity-50': driveImport.status === 'importing' }"
+          >
+            <Icon
+              :name="GOOGLE_DRIVE_ICON"
+              size="20"
+              class="text-base-content/60"
+            />
+          </div>
+          <div class="flex flex-col gap-1 min-w-0 max-w-40">
+            <p
+              class="pr-2 text-xs font-medium truncate"
+              :title="driveImport.name"
+            >
+              {{ truncateFilename(driveImport.name) }}
+            </p>
+            <span
+              v-if="driveImport.status === 'importing'"
+              class="text-[10px] flex items-center gap-0.5 text-base-content/60"
+              data-testid="drive-import-status"
+            >
+              <Icon
+                name="lucide:loader-circle"
+                size="10"
+                class="text-info animate-spin"
+              />
+              Copying
+            </span>
+            <span
+              v-else
+              class="text-[10px] flex items-center gap-0.5 text-error line-clamp-2"
+              :title="driveImport.error"
+              data-testid="drive-import-error"
+            >
+              <Icon
+                name="lucide:circle-alert"
+                size="10"
+                class="shrink-0"
+              />
+              {{ driveImport.error || 'Failed' }}
+            </span>
+          </div>
+          <progress
+            v-if="driveImport.status === 'importing'"
+            class="progress progress-info w-full h-1 absolute bottom-0 left-0 rounded-none rounded-b-box"
+            :aria-label="driveCopyingLabel(driveImport.name)"
+          />
+        </div>
+        <button
+          v-if="driveImport.status === 'failed'"
+          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+          :aria-label="`Dismiss ${driveImport.name}`"
+          title="Dismiss"
+          data-testid="drive-import-dismiss"
+          @click="emit('dismiss-drive-import', driveImport.id)"
         >
           <Icon
             name="lucide:x"
@@ -342,6 +431,11 @@
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
+import {
+  GOOGLE_DRIVE_BRAND_NAME,
+  GOOGLE_DRIVE_ICON,
+} from '#shared/utils/google-drive'
+import type { DriveImportProgress } from '~/composables/chat-drive-files'
 import type { AttachedFile } from '~/types/file-manager'
 import type {
   FileDeliveryHint,
@@ -365,6 +459,7 @@ const props = withDefaults(defineProps<{
       | 'textTruncated'
       | 'textOmittedMedia'
       | 'textOmittedCharts'
+      | 'externalSource'
     >>
   )[]
   resolveDelivery?: FileDeliveryResolver
@@ -372,6 +467,7 @@ const props = withDefaults(defineProps<{
   uploadingFiles?: Map<string, UploadingFile>
   convertedFromXlsKeys?: ReadonlySet<string>
   uploadingCount?: number
+  driveImports?: DriveImportProgress[]
   tiles?: ChatInputTile[]
   pastedTexts?: PastedText[]
 }>(), {
@@ -380,11 +476,13 @@ const props = withDefaults(defineProps<{
   uploadingFiles: undefined,
   convertedFromXlsKeys: () => new Set<string>(),
   uploadingCount: undefined,
+  driveImports: () => [],
   tiles: () => [],
   pastedTexts: () => [],
 })
 
 const emit = defineEmits<{
+  'dismiss-drive-import': [id: string]
   'remove': [fileId: string]
   'removeAll': []
   'cancel': [fileId: string]
@@ -395,6 +493,19 @@ const emit = defineEmits<{
   'open-tile': [section: ToolsSection | null, origin: HTMLElement]
   'remove-tile': [id: ChatInputTileId]
 }>()
+
+function driveCopyLabel(name: string): string {
+  return `${name} is a copy of a ${GOOGLE_DRIVE_BRAND_NAME} file`
+}
+
+function driveCopyingLabel(
+  name: string,
+  status: DriveImportProgress['status'] = 'importing',
+): string {
+  return status === 'importing'
+    ? `${name}, copying from ${GOOGLE_DRIVE_BRAND_NAME}`
+    : `${name} could not be attached`
+}
 
 const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
   const hints = new Map<string, FileDeliveryHint>()
@@ -435,6 +546,7 @@ const uploadingFilesArray = computed<UploadingFile[]>(() => {
 const hasAnyFiles = computed<boolean>(() => {
   return props.files.length > 0
     || uploadingFilesArray.value.length > 0
+    || props.driveImports.length > 0
     || props.pastedTexts.length > 0
 })
 

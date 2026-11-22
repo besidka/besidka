@@ -28,9 +28,13 @@ function createState(
     connectorItems?: boolean
     project?: boolean
     projectName?: string
+    drive?: boolean
+    driveImporting?: number
   } = {},
 ): ChatInputToolsState {
   const {
+    drive = false,
+    driveImporting = 0,
     files = true,
     search = true,
     reasoning = true,
@@ -75,6 +79,7 @@ function createState(
     image: { supported: lower, enabled: false, required: false },
     files: { visible: files, count: 0, isImageInputSupported: true },
     artifacts: { visible: false, attached: [] },
+    googleDrive: { visible: drive, importing: driveImporting },
     skills: {
       visible: skills,
       selected: skillAttached
@@ -241,6 +246,66 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
       .toBe(false)
     expect(wrapper.find('[data-testid="tools-action-connectors"]').exists())
       .toBe(true)
+  })
+
+  describe('Google Drive row', () => {
+    it('is not offered while google.drive is off', async () => {
+      const wrapper = await mountContent(createState({ drive: false }))
+
+      expect(wrapper.find('[data-testid="tools-action-google-drive"]')
+        .exists()).toBe(false)
+    })
+
+    it('is one row named in full, with the copy label, that opens the '
+      + 'Picker', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const row = wrapper.get('[data-testid="tools-action-google-drive"]')
+
+      expect(row.text()).toContain('Google Drive')
+      expect(row.text()).toContain(
+        'Saves a copy in your Besidka files',
+      )
+      expect(row.text()).not.toMatch(/\d/)
+      expect(row.html()).not.toContain('googledrive')
+      expect(wrapper.findAll('[data-testid="tools-action-google-drive"]'))
+        .toHaveLength(1)
+      expect(row.attributes('aria-label') ?? '').not.toContain('Drive file')
+
+      await row.trigger('click')
+
+      expect(wrapper.emitted('open-google-drive')).toHaveLength(1)
+    })
+
+    it('sits in the Add section beside the other file sources', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const add = wrapper.get('[data-section="add"]')
+
+      expect(add.find('[data-testid="tools-action-google-drive"]').exists())
+        .toBe(true)
+      expect(add.find('[data-testid="tools-action-attach"]').exists())
+        .toBe(true)
+    })
+
+    it('shows how many files are being copied as a badge', async () => {
+      const wrapper = await mountContent(createState({
+        drive: true,
+        driveImporting: 2,
+      }))
+
+      expect(wrapper.get('[data-testid="tools-action-google-drive"] .badge')
+        .text()).toBe('2')
+    })
+
+    it('is hidden with the other file rows when files are not allowed',
+      async () => {
+        const wrapper = await mountContent(createState({
+          files: false,
+          drive: true,
+        }))
+
+        expect(wrapper.find('[data-testid="tools-action-google-drive"]')
+          .exists()).toBe(false)
+      })
   })
 
   it('shows how many connectors are on as a badge and opens the picker', async () => {

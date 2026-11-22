@@ -77,8 +77,10 @@
             :uploading-files="uploadingFiles"
             :converted-from-xls-keys="convertedFromXlsKeys"
             :uploading-count="uploadingCount"
+            :drive-imports="driveImports"
             :tiles="tiles"
             :pasted-texts="pastedTexts"
+            @dismiss-drive-import="dismissDriveImport"
             @open-tile="openToolsMenu"
             @open-text="openTextFile"
             @open-pasted="openPastedText"
@@ -153,6 +155,7 @@
                 @open-files-upload="openFilesModal('upload')"
                 @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
+                @open-google-drive="attachFromDrive"
                 @open-skills-picker="openSkillPicker"
                 @open-connectors-picker="openConnectorPicker"
                 @update:use-memory="setMemoryUsage"
@@ -188,7 +191,8 @@
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage || isClarifying || researchJobActive"
+                :disabled="!hasMessage || isClarifying || researchJobActive
+                  || isDriveBusy"
                 :title="sendButtonTitle"
                 icon-name="lucide:arrow-up"
                 icon-only
@@ -483,6 +487,10 @@ const sendButtonTitle = computed<string>(() => {
     return missingKeyWarning.value
   }
 
+  if (isDriveBusy.value) {
+    return GOOGLE_DRIVE_BUSY_REASON
+  }
+
   if (props.researchJobActive) {
     return 'Research in progress — please wait'
   }
@@ -659,6 +667,15 @@ const {
   removeAttachedFile,
   removeAllFiles,
 } = useChatFiles(files, canAttachMediaType, resolveDelivery)
+
+const googleDriveFeature = useFeature('google.drive')
+const {
+  driveImports,
+  importingCount: driveImportingCount,
+  isDriveBusy,
+  attachFromDrive,
+  dismissDriveImport,
+} = useChatDriveFiles(files, onFilesAttached)
 
 watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {
@@ -1118,6 +1135,10 @@ const toolsState = computed<ChatInputToolsState>(() => {
       visible: isArtifactAttachEnabled.value,
       attached: isArtifactAttachEnabled.value ? attachedArtifacts.value : [],
     },
+    googleDrive: {
+      visible: googleDriveFeature.value.active && !isDeepResearchModel.value,
+      importing: driveImportingCount.value,
+    },
     skills: {
       visible: isSkillAttachEnabled.value,
       items: composerSkills.items.value,
@@ -1509,7 +1530,7 @@ watch(input, (newValue) => {
   }
 })
 
-function onFilesAttached(attachedFiles: AttachedFile[]) {
+function onFilesAttached(attachedFiles: AttachedFile[]): number {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
   const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
@@ -1533,10 +1554,12 @@ function onFilesAttached(attachedFiles: AttachedFile[]) {
   }
 
   if (newFiles.length === 0) {
-    return
+    return 0
   }
 
   files.value = [...files.value, ...newFiles as FileMetadata[]]
+
+  return newFiles.length
 }
 
 function onFilesDetached(fileIds: string[]) {
@@ -1722,6 +1745,10 @@ async function sendMessage() {
 
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
+  }
+
+  if (isDriveBusy.value) {
+    return useWarningMessage(GOOGLE_DRIVE_BUSY_REASON)
   }
 
   const blockedFileMessages = getBlockedFileMessages(

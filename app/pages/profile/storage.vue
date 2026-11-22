@@ -314,7 +314,11 @@ const categories = computed(() => {
   const rows = stats.value?.breakdown.categories ?? []
 
   return rows.filter((row) => {
-    return isKnownStorageCategory(row.id)
+    const isEmptyDriveRow = row.id === 'googleDrive'
+      && row.count === 0
+      && row.bytes === 0
+
+    return isKnownStorageCategory(row.id) && !isEmptyDriveRow
   }).map((row) => {
     const meta = STORAGE_CATEGORY_META[row.id]
     const hasData = row.count > 0 || row.bytes > 0

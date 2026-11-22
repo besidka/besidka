@@ -506,6 +506,8 @@ export default defineNuxtConfig({
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
       vapidPublicKey: '',
       turnstileSiteKey: '',
+      googlePickerApiKey: '',
+      googleCloudProjectNumber: '',
       cloudflareWebAnalyticsToken: '',
       webmcpOriginTrialToken: '',
       e2eTestHooksEnabled: false,

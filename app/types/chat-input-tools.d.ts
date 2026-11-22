@@ -117,6 +117,10 @@ export interface ChatInputToolsState {
     visible: boolean
     attached: AttachedArtifact[]
   }
+  googleDrive?: {
+    visible: boolean
+    importing: number
+  }
   skills?: {
     visible: boolean
     items: ComposerSkillItem[]

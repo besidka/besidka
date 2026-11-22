@@ -7,22 +7,25 @@ and the Storage page (`/profile/storage`) shows what fills it. BES-393.
 
 ## What counts
 
-Seven categories, defined once in `server/utils/storage/categories.ts`
+Eight categories, defined once in `server/utils/storage/categories.ts`
 (`STORAGE_CATEGORIES`). Each gives a bytes expression and a count expression
 for a user; the total is their sum.
 
 | Id | What | How it is told apart |
 | --- | --- | --- |
 | `aiImages` | Images the models generated | `files.source = 'assistant'` and `files.type like 'image/%'` |
-| `uploads` | Files the user uploaded or created through MCP | `files.source = 'upload'` |
+| `uploads` | Files the user uploaded or created through MCP | `files.source = 'upload'` and `files.external_source is null` |
+| `googleDrive` | Copies of the Google Drive files the user picked (`docs/google.md`, section 12) | `files.source = 'upload'` and `files.external_source is not null` |
 | `generatedFiles` | Rendered documents, code-execution output and other generated files | `files.source = 'assistant'` and `files.type not like 'image/%'` |
 | `connectorImages` | Images connectors returned in chats and Besidka kept with those chats (C-15, BES-406) | `files.source = 'connector'` |
 | `artifacts` | Every stored version of every artifact | `sum(artifacts.total_bytes)`, counting rows with `current_version > 0` (a pending header from an interrupted write has `0` bytes and no version) |
 | `knowledge` | Text extracted from project files and notes | `sum(project_knowledge_items.text_bytes)` |
 | `skills` | Every stored version of every skill | The bytes of unique blobs: `skill_files` rows deduplicated by `(skill_id, blob_sha256)`, so a blob counts once per skill however many versions hold it (the way R2 stores it). The count is the number of `skills` rows (`userSkillsBytesSql` and `userSkillsCountSql` in `skills/usage.ts`) |
 
-The four file categories partition `files` by `source` and `type`, so their
-sum equals `sum(files.size)`. No column was added for this: `connector` is a
+The file categories (`aiImages`, `uploads`, `googleDrive`, `generatedFiles`,
+`connectorImages`) partition `files` by `source`, `type` and
+`external_source`, so their sum equals `sum(files.size)`; `uploads` excludes
+the Drive copies so none is counted twice. No column was added for this: `connector` is a
 new value of the app-level `source` enum on the existing text column, which
 needed no migration (`db:generate` reports no schema change).
 
@@ -65,6 +68,7 @@ check for writers that have no quota of their own.
 | Write path | Where it is checked |
 | --- | --- |
 | File upload, file create | `upload.put.ts`, `create.post.ts` (Content-Length, streamed body and the final size), then `persistFile` |
+| Google Drive copies | `POST /api/v1/google/drive/files`: the metadata size and the space left are checked before the download, the same cap bounds the stream, then `persistFile`; a refusal is a per-file `storage_full` result, not a thrown 413 |
 | Every stored file: generated images, documents, code-execution files, MCP `create_file` | `persistFile` (before the R2 put and again after the row insert) |
 | Image generation | `assertGeneratedImageStorageAvailable` needs 10 MB free before the provider is called; the save goes through `persistFile` |
 | Document creation | The chat `create_document` tool checks first and returns a plain tool error; the rendered file goes through `persistFile` (`finalizeRenderedDocument`, 413 with code `quota_exceeded`); MCP `create_document` answers 413 in the message |

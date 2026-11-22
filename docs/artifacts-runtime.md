@@ -78,6 +78,15 @@ protocol v2 live next to v1.
      into that directive: browsers ignore a second `frame-src`, so an
      appended duplicate would leave the old one in force and block the
      runtime (`server/plugins/artifacts-frame-src.ts` does this merge).
+     On `/chats/` pages the same directive also carries two path-scoped
+     sources for Google's Drive Picker, `https://docs.google.com/picker` and
+     `https://docs.google.com/picker/`, only while the public Picker key is
+     set and the user's `google.drive` flag is active (`docs/google.md`,
+     section 12.8). They name a path and no other `docs.google.com` page or
+     host, so a self-navigating artifact still cannot frame Google Forms or
+     any other Google page. The artifact frame's client meta tag adds the
+     same sources under the same conditions and, like every meta policy,
+     cannot be loosened once inserted.
    - **Tripwire.** `createHostConnection` treats every `load` after the first
      as the frame having left the runtime: it closes the port, removes the
      iframe and calls `onUnexpectedNavigation`.

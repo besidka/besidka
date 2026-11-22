@@ -67,6 +67,7 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDriveFiles :message="m" />
           <ChatSkillInvocation
             v-if="m.role === 'user'"
             :message="m"

@@ -10,14 +10,37 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 export const GOOGLE_FEATURE_FLAG = 'google.drive'
 export const GOOGLE_WRITES_PER_MINUTE = 10
 export const GOOGLE_READS_PER_MINUTE = 60
+export const GOOGLE_PICKER_TOKENS_PER_MINUTE = 30
+export const GOOGLE_DRIVE_IMPORTS_PER_MINUTE = 10
 export const GOOGLE_CALLBACK_FAILURE_KEY_PREFIX = 'google:callback-failures:'
 
-const WRITE_RATE_LIMIT_PREFIX = 'google-rate-limit'
-const READ_RATE_LIMIT_PREFIX = 'google-read-rate-limit'
 const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 
-export type GoogleRateLimitBucket = 'write' | 'read' | 'none'
+export type GoogleRateLimitBucket
+  = 'write' | 'read' | 'picker' | 'import' | 'none'
+
+const RATE_LIMIT_BUCKETS: Readonly<Record<
+  Exclude<GoogleRateLimitBucket, 'none'>,
+  { prefix: string, max: number }
+>> = {
+  write: {
+    prefix: 'google-rate-limit',
+    max: GOOGLE_WRITES_PER_MINUTE,
+  },
+  read: {
+    prefix: 'google-read-rate-limit',
+    max: GOOGLE_READS_PER_MINUTE,
+  },
+  picker: {
+    prefix: 'google-picker-rate-limit',
+    max: GOOGLE_PICKER_TOKENS_PER_MINUTE,
+  },
+  import: {
+    prefix: 'google-drive-import-rate-limit',
+    max: GOOGLE_DRIVE_IMPORTS_PER_MINUTE,
+  },
+}
 
 function tooManyRequests(
   event: RequestEvent,
@@ -44,12 +67,7 @@ async function enforceGoogleRateLimit(
   userId: number,
   bucket: Exclude<GoogleRateLimitBucket, 'none'>,
 ): Promise<void> {
-  const max = bucket === 'write'
-    ? GOOGLE_WRITES_PER_MINUTE
-    : GOOGLE_READS_PER_MINUTE
-  const prefix = bucket === 'write'
-    ? WRITE_RATE_LIMIT_PREFIX
-    : READ_RATE_LIMIT_PREFIX
+  const { max, prefix } = RATE_LIMIT_BUCKETS[bucket]
   let result: { allowed: boolean, retryAfter: number | null }
 
   try {

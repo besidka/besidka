@@ -21,6 +21,7 @@ default shows as a tile at the start of the attachments row.
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
 | "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
 | "Add skill" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/SkillPicker.client.vue` (below, `docs/skills.md` section 10.5) |
+| "Google Drive" row | `ToolsMenu/Content.vue`, `app/composables/chat-drive-files.ts`, `app/composables/google-picker.ts` (below, `docs/google.md` section 11) |
 | Types | `app/types/chat-input-tools.d.ts` |
 | Reasoning and steps icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `STEPS_SECTION_ICON`, `STEPS_EXPANDED_ICON`, `STEPS_AUTO_HIDE_ICON`) |
 
@@ -607,6 +608,27 @@ no Cookie Policy row. Model output and tool results never trigger it, and
 neither does prefilled text: while the message holds a `chat-input:prefill`
 text (an artifact error, an earlier prompt), the chip stays hidden, even
 after edits, until the message is cleared or sent.
+
+## Google Drive row (Picker child, G-4)
+
+The Add section has one more row, "Google Drive" (`tools-action-google-drive`,
+the generic `lucide:hard-drive` icon, not Google's logo, after "Add
+artifact"), shown while
+the `google.drive` flag is active for the user and the model takes files
+(`state.googleDrive.visible`, which needs `state.files.visible`). The hint is
+the attach-time label "Saves a copy in your Besidka files", and a
+badge shows how many files are being copied. The row is one line that opens
+Google's Picker through `attachFromDrive` in `ChatInput.client.vue`; picked
+files are never listed inline. It emits `open-google-drive` and closes the menu
+first, like every other row.
+
+Not connected, or needing re-authorization (the token route's 404 and 409):
+one confirm dialog with one sentence and a button to the Google tab of API
+Keys. The Google script loads only when the row is pressed. Picked copies
+appear as chips with the Drive icon, with progress while copying and a reason
+when a file fails (`ChatInput/Files/Attached/Preview.client.vue`). While a
+pick or a copy runs the send button is disabled with the reason "Google Drive
+files are still being copied". Details in `docs/google.md`, section 12.
 
 ## Add key links in Web search
 

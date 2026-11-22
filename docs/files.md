@@ -499,6 +499,12 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
     column; `connector` is an image a connector returned in a chat, kept with
     that chat and hidden from every file list, see `docs/connectors.md`
     section 6.5).
+  - `externalSource`, `externalId`, `externalModifiedAt`: set only on a copy
+    of a Google Drive file (`'google'`, the Drive file id, Drive's
+    `modifiedTime` in whole seconds). Written in the same insert as the row by
+    `persistFile`, so a copy is never a plain upload. The copy has
+    `source = 'upload'`, counts in the `googleDrive` storage category and is
+    deleted when Google access ends. See `docs/google.md`, section 12.
   - `originMessageId`: nullable FK to `messages` for provenance.
   - `originProvider`: nullable provider id for provenance.
   - `textStatus`, `textBytes`, `textVersion`: nullable. The state of the text
@@ -560,6 +566,10 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
   images (Storage page "Delete all"), batch by batch, with `hasMore`.
 - `GET /api/v1/files/projects` the Projects tab groups (see below).
 - `PUT /api/v1/files/upload` upload one file.
+- `POST /api/v1/google/drive/files` copy up to 5 picked Google Drive files into
+  storage through `persistFile` (per-file results; `docs/google.md`,
+  section 12). A sent copy adds a `data-drive-file` reference part after its
+  `file` part, rebuilt on the server from the stored row.
 - `PATCH /api/v1/files/[id]/name` rename one file.
 - `DELETE /api/v1/files/[id]` delete one file.
 - `POST /api/v1/files/delete/bulk` bulk delete files.
