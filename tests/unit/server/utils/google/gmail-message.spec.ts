@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GMAIL_DRAFT_BODY_MAX_CHARACTERS,
   GMAIL_DRAFT_MAX_RECIPIENTS,
+  GMAIL_DRAFT_SUBJECT_MAX_CHARACTERS,
   GmailDraftError,
   buildGmailDraftMessage,
   buildGmailDraftRaw,
@@ -113,10 +114,22 @@ describe('buildGmailDraftMessage', () => {
   it('normalizes line breaks in the body to CRLF', () => {
     const parsed = parseMessage(buildGmailDraftMessage({
       ...BASE,
-      body: 'one\ntwo\rthree\r\nfour',
+      body: 'one\ntwo\r\nthree',
     }))
 
-    expect(parsed.body).toBe('one\r\ntwo\r\nthree\r\nfour')
+    expect(parsed.body).toBe('one\r\ntwo\r\nthree')
+  })
+
+  it('refuses a lone CR in the body, which the card would show as a space',
+    () => {
+      expectRefused({ ...BASE, body: 'one\rtwo' }, 'invalid_body')
+    })
+
+  it('keeps blank lines in the body exactly as given', () => {
+    const body = `Hi${'\n'.repeat(15)}hidden line`
+    const parsed = parseMessage(buildGmailDraftMessage({ ...BASE, body }))
+
+    expect(parsed.body).toBe(body.replaceAll('\n', '\r\n'))
   })
 
   it.each([
@@ -276,7 +289,7 @@ describe('buildGmailDraftMessage', () => {
     )
   })
 
-  it('caps the recipients in total and drops duplicates', () => {
+  it('caps the recipients in total and refuses duplicates', () => {
     const many = Array.from(
       { length: GMAIL_DRAFT_MAX_RECIPIENTS },
       (_, index) => ({ address: `user${index}@example.com` }),
@@ -287,15 +300,85 @@ describe('buildGmailDraftMessage', () => {
       { ...BASE, to: many, cc: [{ address: 'extra@example.com' }] },
       'too_many_recipients',
     )
-
-    const deduped = validateGmailDraft({
+    expectRefused({
       ...BASE,
       to: [{ address: 'Alice@Example.com' }],
       cc: [{ address: 'alice@example.com' }, { address: 'bob@example.com' }],
-    })
+    }, 'duplicate_recipient')
+    expectRefused({
+      ...BASE,
+      to: [{ address: 'a@example.com' }, { address: 'a@example.com' }],
+    }, 'duplicate_recipient')
+  })
 
-    expect(deduped.to).toHaveLength(1)
-    expect(deduped.cc).toEqual([{ address: 'bob@example.com' }])
+  it('returns the recipients, names and subject exactly as given', () => {
+    const input = {
+      ...BASE,
+      to: [{ address: 'Alice@Example.com', name: 'Alice Ünal' }],
+      subject: 'Re: lunch',
+    }
+
+    expect(validateGmailDraft(input)).toMatchObject({
+      to: [{ address: 'Alice@Example.com', name: 'Alice Ünal' }],
+      subject: 'Re: lunch',
+    })
+  })
+
+  it.each([
+    ['a padded subject', { subject: ' Hello' }, 'invalid_subject'],
+    ['a subject with a trailing space', { subject: 'Hello ' }, 'invalid_subject'],
+    ['a padded name', {
+      to: [{ address: 'a@example.com', name: 'Alice ' }],
+    }, 'invalid_name'],
+    ['an empty name', {
+      to: [{ address: 'a@example.com', name: '' }],
+    }, 'invalid_name'],
+    ['a blank name', {
+      to: [{ address: 'a@example.com', name: '   ' }],
+    }, 'invalid_name'],
+  ])('refuses %s instead of trimming it', (_label, change, code) => {
+    expectRefused({ ...BASE, ...change }, code)
+  })
+
+  it.each([
+    ['U+3164', 0x3164],
+    ['U+2800', 0x2800],
+    ['U+115F', 0x115F],
+    ['U+1160', 0x1160],
+    ['U+FFA0', 0xFFA0],
+  ])('refuses the blank letter %s in a subject and a name', (_label, code) => {
+    const blank = String.fromCodePoint(code)
+
+    expectRefused({ ...BASE, subject: `Hi${blank}there` }, 'invalid_subject')
+    expectRefused({
+      ...BASE,
+      to: [{ address: 'a@example.com', name: `A${blank}B` }],
+    }, 'invalid_name')
+    expect(() => validateGmailDraft({ ...BASE, body: `a${blank}b` }))
+      .not.toThrow()
+  })
+
+  it('refuses a lone surrogate in a subject, a name and the body', () => {
+    const lone = String.fromCharCode(0xD800)
+
+    expectRefused({ ...BASE, subject: `Hi${lone}` }, 'invalid_subject')
+    expectRefused({
+      ...BASE,
+      to: [{ address: 'a@example.com', name: `A${lone}` }],
+    }, 'invalid_name')
+    expectRefused({ ...BASE, body: `a${lone}b` }, 'invalid_body')
+  })
+
+  it('takes a subject and body of multi-byte text exactly at the caps', () => {
+    const atCap = {
+      ...BASE,
+      subject: '🍕'.repeat(GMAIL_DRAFT_SUBJECT_MAX_CHARACTERS / 2),
+      body: 'Ї'.repeat(GMAIL_DRAFT_BODY_MAX_CHARACTERS),
+    }
+
+    expect(() => buildGmailDraftMessage(atCap)).not.toThrow()
+    expectRefused({ ...atCap, subject: `${atCap.subject}a` }, 'invalid_subject')
+    expectRefused({ ...atCap, body: `${atCap.body}a` }, 'body_too_long')
   })
 
   it('escapes quotes and backslashes in a plain display name', () => {
@@ -375,6 +458,18 @@ describe('parseMailAddress', () => {
     expect(parseMailAddress('a@1.2.3.4')).toBeNull()
     expect(parseMailAddress('a..b@example.com')).toBeNull()
     expect(parseMailAddress('a@-example.com')).toBeNull()
+  })
+
+  it.each([
+    '=?utf-8?b?QQ==?=@example.com',
+    'a=?b@example.com',
+    'a?=b@example.com',
+  ])('refuses the encoded-word look-alike %s', (address) => {
+    expect(parseMailAddress(address)).toBeNull()
+  })
+
+  it('still accepts = and ? apart from each other', () => {
+    expect(parseMailAddress('a=b?c@example.com')).toBe('a=b?c@example.com')
   })
 })
 

@@ -27,6 +27,7 @@ export type GmailDraftErrorCode
   = | 'no_recipient'
     | 'too_many_recipients'
     | 'invalid_address'
+    | 'duplicate_recipient'
     | 'invalid_name'
     | 'invalid_subject'
     | 'empty_subject'
@@ -187,10 +188,14 @@ function encodeBody(body: string): string {
   return lines.join(LINE_BREAK)
 }
 
+function hasSurroundingSpace(text: string): boolean {
+  return text !== text.trim()
+}
+
 function validateRecipient(
   recipient: GmailDraftRecipient,
   seen: Set<string>,
-): GmailDraftRecipient | null {
+): GmailDraftRecipient {
   const address = parseMailAddress(recipient.address)
 
   if (!address) {
@@ -203,7 +208,11 @@ function validateRecipient(
   const key = address.toLowerCase()
 
   if (seen.has(key)) {
-    return null
+    throw new GmailDraftError(
+      'duplicate_recipient',
+      'The same address appears more than once (in any letter case, across '
+      + 'to, cc and bcc). List each address once.',
+    )
   }
 
   seen.add(key)
@@ -219,16 +228,22 @@ function validateRecipient(
   ) {
     throw new GmailDraftError(
       'invalid_name',
-      'A recipient name has a line break, a control or invisible character, '
-      + 'an at sign or an angle bracket (a name must not look like an '
-      + `address), or is longer than ${MAIL_DISPLAY_NAME_MAX_LENGTH} `
+      'A recipient name has a line break, a control, invisible or blank '
+      + 'character, an at sign or an angle bracket (a name must not look '
+      + `like an address), or is longer than ${MAIL_DISPLAY_NAME_MAX_LENGTH} `
       + 'characters.',
     )
   }
 
-  const name = recipient.name.trim()
+  if (!recipient.name || hasSurroundingSpace(recipient.name)) {
+    throw new GmailDraftError(
+      'invalid_name',
+      'A recipient name is empty or starts or ends with a space. Leave the '
+      + 'name out or remove the spaces.',
+    )
+  }
 
-  return name ? { address, name } : { address }
+  return { address, name: recipient.name }
 }
 
 function validateRecipients(
@@ -255,10 +270,8 @@ function validateRecipients(
 
   const seen = new Set<string>()
   const validate = (recipients: readonly GmailDraftRecipient[] | undefined) => {
-    return (recipients ?? []).flatMap((recipient) => {
-      const valid = validateRecipient(recipient, seen)
-
-      return valid ? [valid] : []
+    return (recipients ?? []).map((recipient) => {
+      return validateRecipient(recipient, seen)
     })
   }
 
@@ -273,25 +286,31 @@ function validateSubject(subject: string): string {
   if (hasUnsafeHeaderCharacter(subject)) {
     throw new GmailDraftError(
       'invalid_subject',
-      'The subject has a line break, a control or invisible character.',
+      'The subject has a line break, a control, invisible or blank '
+      + 'character.',
     )
   }
 
-  const trimmed = subject.trim()
-
-  if (!trimmed) {
+  if (!subject.trim()) {
     throw new GmailDraftError('empty_subject', 'The subject is empty.')
   }
 
-  if (trimmed.length > GMAIL_DRAFT_SUBJECT_MAX_CHARACTERS) {
+  if (hasSurroundingSpace(subject)) {
     throw new GmailDraftError(
       'invalid_subject',
-      `The subject is longer than ${GMAIL_DRAFT_SUBJECT_MAX_CHARACTERS} `
-      + 'characters.',
+      'The subject starts or ends with a space. Remove the spaces.',
     )
   }
 
-  return trimmed
+  if (subject.length > GMAIL_DRAFT_SUBJECT_MAX_CHARACTERS) {
+    throw new GmailDraftError(
+      'invalid_subject',
+      `The subject is longer than ${GMAIL_DRAFT_SUBJECT_MAX_CHARACTERS} `
+      + 'characters (UTF-16 units: an emoji counts as two).',
+    )
+  }
+
+  return subject
 }
 
 function validateBody(body: string): string {
@@ -309,7 +328,8 @@ function validateBody(body: string): string {
   if (body.length > GMAIL_DRAFT_BODY_MAX_CHARACTERS) {
     throw new GmailDraftError(
       'body_too_long',
-      `The body is longer than ${GMAIL_DRAFT_BODY_MAX_CHARACTERS} characters.`,
+      `The body is longer than ${GMAIL_DRAFT_BODY_MAX_CHARACTERS} characters `
+      + '(UTF-16 units: an emoji counts as two).',
     )
   }
 
@@ -351,10 +371,13 @@ function validateMessageIds(
 }
 
 /**
- * Checks everything a draft is made of and returns it in the cleaned form
- * the approval card shows and the builder writes: one list of unique plain
- * addresses, a trimmed subject and the body as given. Never repairs a bad
- * value; a bad one throws a `GmailDraftError` with a sentence for the model.
+ * Checks everything a draft is made of and returns it exactly as given, so
+ * the approval card (which reads the raw input) shows what the builder
+ * writes: unique plain addresses, names and a subject without surrounding
+ * spaces, and the body. Never repairs a bad value: a duplicate address, a
+ * padded subject or name and a lone CR are refusals, not silent fixes. A bad
+ * value throws a `GmailDraftError` with a sentence for the model. Lengths
+ * are UTF-16 units, the same unit as the input schema.
  */
 export function validateGmailDraft(
   input: Pick<GmailDraftInput, 'to' | 'cc' | 'bcc' | 'subject' | 'body'>,
