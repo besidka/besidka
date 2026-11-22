@@ -115,17 +115,20 @@
             <button
               v-if="deliveryHints.get(file.storageKey)"
               type="button"
-              class="badge badge-soft badge-xs leading-none cursor-pointer"
+              class="badge badge-soft badge-xs leading-none cursor-pointer max-w-36 min-w-0"
               :class="{
                 'badge-warning': deliveryHints.get(file.storageKey)?.isBlocking
               }"
-              :title="deliveryHints.get(file.storageKey)?.description"
+              :title="hintTitle(file.storageKey)"
+              :aria-label="deliveryHints.get(file.storageKey)?.label"
               :aria-expanded="openHintKey === file.storageKey"
               :aria-controls="hintNoteId"
               data-testid="files-delivery-hint"
               @click="toggleHint(file.storageKey)"
             >
-              {{ deliveryHints.get(file.storageKey)?.label }}
+              <span class="truncate">
+                {{ deliveryHints.get(file.storageKey)?.label }}
+              </span>
             </button>
             <span
               v-if="convertedFromXlsKeys.has(file.storageKey)"
@@ -565,6 +568,16 @@ const openHint = computed<{ name: string, description: string } | null>(() => {
 
 function toggleHint(storageKey: string) {
   openHintKey.value = openHintKey.value === storageKey ? null : storageKey
+}
+
+function hintTitle(storageKey: string): string | undefined {
+  const hint = deliveryHints.value.get(storageKey)
+
+  if (!hint) {
+    return undefined
+  }
+
+  return hint.description ? `${hint.label}: ${hint.description}` : hint.label
 }
 
 const carouselRef = useTemplateRef<HTMLDivElement>('carouselRef')

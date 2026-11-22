@@ -310,6 +310,10 @@ describe('ChatInput/Files/Attached/Preview', () => {
       const hint = wrapper.get('[data-testid="files-delivery-hint"]')
 
       expect(hint.text()).toBe('3 sheets · formulas')
+      expect(hint.attributes('aria-label')).toBe('3 sheets · formulas')
+      expect(hint.attributes('title')).toMatch(/^3 sheets · formulas: /)
+      expect(hint.classes()).toContain('max-w-36')
+      expect(hint.get('span').classes()).toContain('truncate')
       expect(hint.element.tagName).toBe('BUTTON')
       expect(hint.attributes('aria-expanded')).toBe('false')
       expect(wrapper.find('[data-testid="files-delivery-hint-note"]').exists())
@@ -395,7 +399,7 @@ describe('ChatInput/Files/Attached/Preview', () => {
 
       expect(hint.text()).toBe('1 image not sent')
       expect(hint.attributes('title')).toBe(
-        'The model gets this file\'s text only. Images, charts and formatting aren\'t sent.',
+        '1 image not sent: The model gets this file\'s text only. Images, charts and formatting aren\'t sent.',
       )
       expect(hint.classes()).toEqual(expect.arrayContaining([
         'badge',
