@@ -4,8 +4,9 @@ Status: **design, not built yet** (2026-11-22). Only the contracts exist on
 the umbrella branch `feat/google-connectors`: the four `google.*` flags in
 `shared/utils/features/registry.ts` (all `available: false`, stage
 `internal`, `optIn: 'required'`), `shared/utils/google-scopes.ts` and
-`shared/utils/google-data-policy.ts`. No route, no UI, no D1 table and no
-legal text exists. This file grows with every child of the umbrella; each
+`shared/utils/google-data-policy.ts`, and the approval, taint and
+references-only rules Google tools register into (section 5.2). No route,
+no UI, no D1 table and no legal text exists. This file grows with every child of the umbrella; each
 child replaces a "design" marker below with what was built.
 
 Binding inputs: `docs/legal/prechecks/google.md` (G-11, BES-313) and
@@ -183,6 +184,83 @@ stored tokens, and deletes every file with `external_source` in
 A D1 Time Travel restore brings connections back; the post-restore runbook
 gets a "wipe Google tokens" step in `docs/d1-restore-reconciliation.md`
 (design, written by the schema child).
+
+### 5.2 Google tools: approvals, taint and references-only results
+
+Built (child 4, 2026-11-22): the runtime rules every built-in Google tool
+registers into. No Google tool exists yet; the rules are proven with fake
+tool descriptors in `tests/unit/server/utils/tool-approval/google.spec.ts`.
+
+**Registering a tool.** A Google tool joins a send only through
+`buildGoogleApprovalEntry` (`server/utils/tool-approval/send.ts`): the
+exposed name must start with `google__` (`GOOGLE_TOOL_NAME_PREFIX`,
+`shared/utils/google-tool-approvals.ts`) or registration throws, and the
+kind is `read` or `write`; any other kind is a write. A `google__` tool the
+send did not describe gets a fallback entry that is a Google write asking
+with Allow once only, so a Google tool can never fall back to the native
+write entry, which runs without asking. The tool's `execute` only runs a
+call the policy cleared (`guardNativeWrites` covers Google reads too). Each
+tool caps its output at `GOOGLE_TOOL_OUTPUT_MAX_BYTES` (64 KiB of
+serialized JSON) and returns `{ references: [{ id, kind?, title?, link?,
+date? }], ...body }` (`GoogleToolOutput`). Pass the tool's chat grant hash
+from `readGoogleChatGrantHashes` (`server/utils/tool-approval/google.ts`).
+
+**Rules** (`resolveToolApproval`, `server/utils/tool-approval/policy.ts`):
+
+| Call | Decision | Options | What lifts it |
+|---|---|---|---|
+| Google read | Ask (`default`, rule 11) | Allow once, Allow in this chat | A Google chat grant with the same name and definition hash |
+| Google write | Ask (`always-ask`, rule 11) | Allow once | Nothing: Always allow, the permission mode and taint are ignored |
+| Connector call while the send holds `google` taint | Ask (`google-egress`, rule 12) | Allow once, Allow in this chat | The tool's Google egress grant in this chat; the call then goes through the ordinary connector rules |
+| Native write after `google` taint | Ask (`untrusted-output`, rule 2) | Allow once | Nothing (artifact and document writes now count `google` taint too) |
+| Besidka tool after `google` taint | Its existing rules (`google` is foreign taint) | As before | As before |
+
+No Google prompt ever offers Always allow. Blocked still denies. The
+egress prompt says "Content from Google in this chat may be sent to this
+connector". Its Allow in this chat stores only the egress grant, never the
+ordinary chat grant: an ungranted write can ask a second time, which keeps
+a send or delete tool from running unprompted after one egress answer.
+
+**Taint.** A Google call that runs records `google` taint and the `google`
+read source as a tool read, so web search is withheld for the rest of the
+turn and memory writes lock. A send starts with `google` taint when the
+chat already holds a Google tool result (`chatHoldsGoogleData`, a scan of
+the stored parts today; the chat-level flag of child 3 replaces that one
+function). A `{ continue }` round restores `google` taint and the tool read
+from the reply's own parts. A turn record written by another deploy with a
+taint kind this version does not know reads it as `google`, the strictest
+kind; a pending record with an unknown family loads with family null and
+replay denies that call (`invalid-input`); an unknown reason reads as
+`default`.
+
+**Grants** (no D1 change):
+
+| Grant | Where | Key | Value |
+|---|---|---|---|
+| Google read, Allow in this chat | `besidka_chat_settings.alwaysAllowTools` | The exposed `google__` name | Definition hash |
+| Google egress, Allow in this chat | The connector's `connector_chat_settings.alwaysAllowTools` | `google-egress:<exposed connector tool name>` | Definition hash |
+
+Both are cleared by Reset in the chat panel and deleted with the chat.
+
+**Caps.** Google calls count against the built-in calls per turn
+(`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN`, shared with Besidka tools) in the
+send and on replay.
+
+**References only.** `redactGoogleToolPartsForPersistence` runs in the
+persistence chain of the chat route at every persist, pause and end: a
+Google result keeps only its sanitized references and `bodyRemoved: true`,
+an error keeps one fixed sentence. The part count, type, state and tool
+call id stay, so a resumed reply never shrinks and the taint scan still
+finds the call. For a turn paused for approval, the bodies live only in KV
+and the continuation gives them back to the model (`stashedResults` in
+`buildResumedAssistantMessages`); the stored parts stay references.
+
+| KV key | Holds | TTL | Deleted by |
+|---|---|---|---|
+| `tool-approval:result:<id>`, `<id>` = base64url SHA-256 of message public id and tool call id | One Google result body or error text of a paused turn, with user, chat and message ids checked on read | 24 hours | A finished continuation (`deleteResumedTurn`), a new user message, chat deletion and account purge (all through the per-chat index `tool-approval:chat:<chatPublicId>`, where the id is listed with the approval ids) |
+
+A body over 64 KiB is stored as a marker. A missing, foreign or unreadable
+record degrades to the references; it never fails the continuation.
 
 ## 6. Owner runbook outline: bring your own client
 
