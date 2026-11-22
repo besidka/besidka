@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-drive'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 
 const props = withDefaults(defineProps<{
   storageKey: string

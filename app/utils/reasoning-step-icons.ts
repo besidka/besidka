@@ -6,7 +6,7 @@ import {
 import type { DocumentFormat } from '#shared/utils/documents'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { BESIDKA_TOOL_NAME_PREFIX } from '#shared/utils/besidka-tool-permissions'
-import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-drive'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
 import { isToolIndexLoadToolName } from '#shared/utils/tool-index'

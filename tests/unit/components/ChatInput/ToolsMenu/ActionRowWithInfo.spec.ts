@@ -1,5 +1,5 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ActionRowWithInfo from '../../../../../app/components/ChatInput/ToolsMenu/ActionRowWithInfo.vue'
 
 function mountRow(props: Record<string, unknown> = {}) {
@@ -25,6 +25,82 @@ describe('ChatInput/ToolsMenu/ActionRowWithInfo', () => {
     expect(wrapper.text()).toContain('Saves a copy in your Besidka files')
     expect(note.text()).toBe('Explains the row.')
     expect((note.element as HTMLElement).style.display).toBe('none')
+  })
+
+  describe('scrolling the note into view', () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+
+    beforeEach(() => {
+      scrollIntoView.mockReset()
+      Element.prototype.scrollIntoView = scrollIntoView
+      vi.stubGlobal('matchMedia', vi.fn().mockImplementation(
+        (query: string) => {
+          return {
+            matches: false,
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }
+        },
+      ))
+    })
+
+    afterEach(() => {
+      Element.prototype.scrollIntoView = originalScrollIntoView
+      vi.unstubAllGlobals()
+    })
+
+    it('scrolls the opened note to the nearest edge, smoothly', async () => {
+      const wrapper = await mountRow()
+      const note = wrapper.get('[data-testid="row-note"]').element
+
+      await wrapper.get('[data-testid="row-info"]').trigger('click')
+      await nextTick()
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(scrollIntoView.mock.instances[0]).toBe(note)
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: 'nearest',
+        behavior: 'smooth',
+      })
+    })
+
+    it('does not scroll when the note closes', async () => {
+      const wrapper = await mountRow()
+      const info = wrapper.get('[data-testid="row-info"]')
+
+      await info.trigger('click')
+      await nextTick()
+      scrollIntoView.mockClear()
+      await info.trigger('click')
+      await nextTick()
+
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    })
+
+    it('scrolls instantly with reduced motion', async () => {
+      vi.stubGlobal('matchMedia', vi.fn().mockImplementation(
+        (query: string) => {
+          return {
+            matches: query.includes('prefers-reduced-motion'),
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          }
+        },
+      ))
+
+      const wrapper = await mountRow()
+
+      await wrapper.get('[data-testid="row-info"]').trigger('click')
+      await nextTick()
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: 'nearest',
+        behavior: 'auto',
+      })
+    })
   })
 
   it('emits click from the row button only', async () => {
@@ -82,6 +158,14 @@ describe('ChatInput/ToolsMenu/ActionRowWithInfo', () => {
 
     expect(busy.get('.badge').text()).toBe('2')
     expect(busy.find('[data-testid="row-pending"]').exists()).toBe(true)
+  })
+
+  it('fades a monochrome icon but never a multicolor brand mark', async () => {
+    const plain = await mountRow()
+    const brand = await mountRow({ icon: 'logos:google-drive' })
+
+    expect(plain.find('.opacity-75').exists()).toBe(true)
+    expect(brand.find('.opacity-75').exists()).toBe(false)
   })
 
   it('is as high as the other action rows', async () => {

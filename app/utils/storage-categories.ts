@@ -1,4 +1,5 @@
 import type { StorageCategoryId } from '#shared/types/files.d'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 
 export type StorageCategoryAction
   = | 'files-assistant'
@@ -39,7 +40,7 @@ export const STORAGE_CATEGORY_META: Record<
   },
   googleDrive: {
     label: 'Google Drive copies',
-    icon: 'lucide:hard-drive',
+    icon: GOOGLE_DRIVE_ICON,
     singular: 'copy',
     plural: 'copies',
     hint: 'Copies of the Google Drive files you picked',

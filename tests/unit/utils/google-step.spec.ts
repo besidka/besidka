@@ -122,7 +122,7 @@ describe('Google Drive approval step', () => {
     expect(resolveReasoningStepSource({
       toolName: 'google__drive_save_file',
       title: 'Save a file',
-    }).icon).toEqual({ kind: 'iconify', name: 'lucide:hard-drive' })
+    }).icon).toEqual({ kind: 'iconify', name: 'logos:google-drive' })
   })
 })
 
@@ -142,7 +142,7 @@ describe('Google Drive reasoning step', () => {
       title: 'Read a file from Google Drive',
     })
 
-    expect(source.icon).toEqual({ kind: 'iconify', name: 'lucide:hard-drive' })
+    expect(source.icon).toEqual({ kind: 'iconify', name: 'logos:google-drive' })
     expect(source.icon).not.toEqual({
       kind: 'iconify',
       name: REASONING_STEP_GENERIC_ICON,

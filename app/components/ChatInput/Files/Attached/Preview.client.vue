@@ -135,7 +135,7 @@
         </div>
         <span
           v-if="file.externalSource === 'google'"
-          class="absolute bottom-1 left-1 grid size-4 place-items-center rounded-full bg-base-100 text-base-content"
+          class="absolute bottom-1 left-1 grid size-4 place-items-center rounded-full bg-base-100"
           :title="GOOGLE_DRIVE_BRAND_NAME"
           role="img"
           :aria-label="driveCopyLabel(file.name)"
@@ -174,12 +174,10 @@
         >
           <div
             class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
-            :class="{ 'opacity-50': driveImport.status === 'importing' }"
           >
             <Icon
               :name="GOOGLE_DRIVE_ICON"
               size="20"
-              class="text-base-content/60"
             />
           </div>
           <div class="flex flex-col gap-1 min-w-0 max-w-40">
@@ -431,10 +429,8 @@
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
-import {
-  GOOGLE_DRIVE_BRAND_NAME,
-  GOOGLE_DRIVE_ICON,
-} from '#shared/utils/google-drive'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
+import { GOOGLE_DRIVE_BRAND_NAME } from '#shared/utils/google-drive'
 import type { DriveImportProgress } from '~/composables/chat-drive-files'
 import type { AttachedFile } from '~/types/file-manager'
 import type {
