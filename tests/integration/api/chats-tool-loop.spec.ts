@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { getModelCostMap } from '../../../server/utils/ai/cost-map'
@@ -474,6 +474,10 @@ async function readClientChunks() {
 }
 
 describe('multi-step tool loop', () => {
+  beforeAll(async () => {
+    await import('../../../server/api/v1/chats/[slug]/index.post')
+  }, 60_000)
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
