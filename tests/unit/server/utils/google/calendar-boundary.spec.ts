@@ -117,7 +117,9 @@ describe('the Calendar boundary', () => {
         source.indexOf('const FREE_BUSY_FIELDS'),
       )
 
-      expect(fields).toContain('attendees(responseStatus)')
+      expect(fields).toContain('attendees(self,responseStatus)')
+      expect(fields).toContain('organizer(self,displayName)')
+      expect(fields).not.toMatch(/organizer\([^)]*email/)
       expect(fields).not.toMatch(/attendees\([^)]*(email|displayName|id)/)
       expect(fields).not.toMatch(/uri|fileUrl|hangoutLink\(/)
       expect(fields).not.toMatch(/creator|reminders|extendedProperties/)
@@ -163,14 +165,16 @@ describe('the Calendar boundary', () => {
         attendees: [{ email: 'mallory@evil.example' }],
       },
     }
-    const payload = buildCalendarInsertPayload(hostile)
+    const payload = buildCalendarInsertPayload(hostile, 'abcde12345')
 
     expect(Object.keys(payload).sort()).toEqual([
       'description',
       'end',
+      'id',
       'start',
       'summary',
     ])
+    expect(payload.id).toBe('abcde12345')
     expect(Object.keys(payload.start as object).sort()).toEqual([
       'dateTime',
       'timeZone',
@@ -262,6 +266,9 @@ describe('the Calendar boundary', () => {
     })).toBe(false)
     expect(chatHoldsGoogleData({
       messages: [part('google__calendar_list_events', [])],
-    })).toBe(false)
+    })).toBe(true)
+    expect(chatHoldsGoogleData({
+      messages: [part('google__calendar_free_busy', [])],
+    })).toBe(true)
   })
 })

@@ -10,8 +10,11 @@ import {
   GOOGLE_CALENDAR_TITLE_MAX_CHARACTERS,
   buildCalendarDayLink,
   buildCalendarEventLink,
+  describeCalendarWindow,
+  getCalendarDayBefore,
   isKnownTimeZone,
   readCalendarDay,
+  readCalendarInstantMilliseconds,
   readCalendarResponseTime,
   validateCalendarEvent,
   validateCalendarWindow,
@@ -40,7 +43,9 @@ import { frameUntrustedResult } from '~~/server/utils/connectors/tool-definition
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
+  CALENDAR_CREATE_UNCONFIRMED_TEXT,
   CALENDAR_FAILURE_TEXT,
+  buildCalendarEventId,
   createCalendarEvent,
   getCalendarFreeBusy,
   listCalendarEvents,
@@ -74,8 +79,16 @@ type DbClient = ReturnType<typeof useDb>
 const FRAME_SLUG = 'google'
 const TEXT_ENCODER = new TextEncoder()
 const TITLE_SUMMARY_MAX = 80
-const ORGANIZER_NAME_SOURCES = ['displayName', 'email'] as const
 const SHOWN_EVENT_STATUSES: ReadonlySet<string> = new Set(['tentative'])
+const OWN_RESPONSES: ReadonlySet<string> = new Set([
+  'accepted',
+  'declined',
+  'tentative',
+  'needsAction',
+])
+const FREE_TRANSPARENCY = 'transparent'
+const CANCELED_STATUS = 'cancelled'
+const UTC_DESIGNATOR = 'Z'
 const EVENT_TYPE_PATTERN = /^[A-Za-z]{1,30}$/
 const DEFAULT_EVENT_TYPE = 'default'
 const TIME_FIELD_MAX = 40
@@ -88,6 +101,9 @@ const FAILURE_STATUS: Readonly<Record<CalendarFailureCode, number>> = {
   rate_limited: 429,
   too_large: 413,
   bad_request: 400,
+  already_exists: 409,
+  calendar_not_found: 404,
+  calendar_error: 502,
   failed: 502,
 }
 
@@ -111,18 +127,32 @@ const LIST_EVENTS_DESCRIPTION = 'List the events on the user\'s PRIMARY '
   + 'Google Calendar between two times (from and to, RFC 3339 with an '
   + 'explicit offset such as 2026-12-01T00:00:00+01:00, at most 31 days '
   + `apart). Returns at most ${GOOGLE_CALENDAR_LIST_EVENTS_MAX} events in `
-  + 'order of start, repeating events expanded: for each its start, end, '
-  + 'title, location, a short description, who organized it, HOW MANY guests '
-  + 'it has (never their addresses or names) and how many video call links '
-  + 'and attachments it has (never the links). The user is asked before '
-  + `this runs unless they allowed it in this chat. ${GOOGLE_CALENDAR_TRUST_NOTE}`
+  + 'order of start, repeating events expanded, as one JSON object per line '
+  + 'with these keys: allDay; start; end (a timed event only); endExclusive '
+  + 'and lastDay (an all-day event only: endExclusive is Google\'s end date '
+  + 'and is NOT part of the event, lastDay is the last day it covers, so a '
+  + 'one-day event has lastDay equal to its start); title, location and a '
+  + 'short description (null when empty); organizerIsYou (true when the user '
+  + 'organized it) and organizerName (the organizer\'s display name, or null; '
+  + 'never an address); myResponse (accepted, declined, tentative, '
+  + 'needsAction or null: a declined event is still listed, so read it); '
+  + 'showsAsBusy (false when the event is marked as free); guests (a number: '
+  + 'never their addresses or names), videoCallLinks and attachments (numbers: '
+  + 'never the links). The answer also has calendarTimeZone, the time zone of '
+  + 'the calendar. The user is asked before this runs unless they allowed it '
+  + `in this chat. ${GOOGLE_CALENDAR_TRUST_NOTE}`
 
 const FREE_BUSY_DESCRIPTION = 'Check when the user is busy on their PRIMARY '
   + 'Google Calendar between two times (from and to, RFC 3339 with an '
   + 'explicit offset, at most 31 days apart). Returns only the busy '
-  + `intervals, at most ${GOOGLE_CALENDAR_BUSY_INTERVALS_MAX}, in UTC: times `
-  + 'and nothing else, no titles or guests. The user is asked before this '
-  + 'runs unless they allowed it in this chat.'
+  + `intervals, at most ${GOOGLE_CALENDAR_BUSY_INTERVALS_MAX}, sorted, merged `
+  + 'where they overlap and cut to the window: times and nothing else, no '
+  + 'titles or guests. The times are UTC (they end in Z). The time zone of '
+  + `the calendar is the calendarTimeZone that ${
+    GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME} returns; to say a time in `
+    + 'the user\'s own time zone use that, or ask the user, and never guess '
+    + 'it. The user is asked before this runs unless '
+    + 'they allowed it in this chat.'
 
 const CREATE_EVENT_DESCRIPTION = 'Create ONE event on the user\'s PRIMARY '
   + 'Google Calendar. Give a title, a start and an end and an IANA time zone '
@@ -266,27 +296,38 @@ function cleanDescription(value: unknown, maxCharacters: number): string {
   )
 }
 
-function organizerOf(value: unknown): string {
+function organizerOf(value: unknown): {
+  organizerIsYou: boolean
+  organizerName: string | null
+} {
   if (!isRecord(value)) {
-    return 'unknown'
+    return { organizerIsYou: false, organizerName: null }
   }
 
-  if (value.self === true) {
-    return 'you'
+  const name = cleanMailField(
+    value.displayName,
+    GOOGLE_CALENDAR_SHOWN_ORGANIZER_MAX_CHARACTERS,
+  )
+
+  return {
+    organizerIsYou: value.self === true,
+    organizerName: name || null,
+  }
+}
+
+function myResponseOf(attendees: unknown): string | null {
+  if (!Array.isArray(attendees)) {
+    return null
   }
 
-  for (const key of ORGANIZER_NAME_SOURCES) {
-    const text = cleanMailField(
-      value[key],
-      GOOGLE_CALENDAR_SHOWN_ORGANIZER_MAX_CHARACTERS,
-    )
+  const own = attendees.find((attendee) => {
+    return isRecord(attendee) && attendee.self === true
+  })
+  const response = isRecord(own) ? own.responseStatus : undefined
 
-    if (text) {
-      return text
-    }
-  }
-
-  return 'unknown'
+  return typeof response === 'string' && OWN_RESPONSES.has(response)
+    ? response
+    : null
 }
 
 function countOf(value: unknown): number {
@@ -319,13 +360,17 @@ interface DescribedEvent {
   line: string
 }
 
+function isCanceled(event: Record<string, unknown>): boolean {
+  return event.status === CANCELED_STATUS
+}
+
 function describeEvent(event: Record<string, unknown>): DescribedEvent | null {
   const start = boundaryTimeOf(event.start)
   const end = boundaryTimeOf(event.end)
   const day = readCalendarDay(start)
 
   if (
-    event.status === 'cancelled'
+    isCanceled(event)
     || typeof event.id !== 'string'
     || !GOOGLE_CALENDAR_EVENT_ID_SHAPE.test(event.id)
     || !start
@@ -362,20 +407,24 @@ function describeEvent(event: Record<string, unknown>): DescribedEvent | null {
     id: event.id,
     day,
     link: buildCalendarEventLink(event.htmlLink, day),
-    line: [
-      `start: ${start}`,
-      `end: ${end}`,
-      `all_day: ${isAllDay ? 'yes' : 'no'}`,
-      `title: ${title || '(no title)'}`,
-      ...(location ? [`location: ${location}`] : []),
-      ...(description ? [`description: ${description}`] : []),
-      `organizer: ${organizerOf(event.organizer)}`,
-      `guests: ${countOf(event.attendees)}`,
-      `video_call_links: ${videoCallLinksOf(event)}`,
-      `attachments: ${countOf(event.attachments)}`,
-      ...(eventType ? [`type: ${eventType}`] : []),
-      ...(status ? [`status: ${status}`] : []),
-    ].join(' | '),
+    line: JSON.stringify({
+      allDay: isAllDay,
+      start,
+      end: isAllDay ? null : end,
+      endExclusive: isAllDay ? end : null,
+      lastDay: isAllDay ? getCalendarDayBefore(end) : null,
+      title: title || null,
+      location: location || null,
+      description: description || null,
+      ...organizerOf(event.organizer),
+      myResponse: myResponseOf(event.attendees),
+      showsAsBusy: event.transparency !== FREE_TRANSPARENCY,
+      guests: countOf(event.attendees),
+      videoCallLinks: videoCallLinksOf(event),
+      attachments: countOf(event.attachments),
+      type: eventType,
+      status,
+    }),
   }
 }
 
@@ -391,6 +440,7 @@ function eventReference(event: DescribedEvent): GoogleToolReference {
 function buildListOutput(input: {
   events: readonly DescribedEvent[]
   skipped: number
+  canceled: number
   hasMore: boolean
   calendarTimeZone: string | null
 }, budgetBytes: number): GoogleToolOutput {
@@ -411,6 +461,10 @@ function buildListOutput(input: {
       ? [`The window holds more than ${GOOGLE_CALENDAR_LIST_EVENTS_MAX} `
         + 'events and only the first ones are listed. Ask for a shorter '
         + 'window to see the rest.']
+      : []),
+    ...(input.canceled > 0
+      ? [`${input.canceled} canceled ${
+        input.canceled === 1 ? 'event' : 'events'} not shown.`]
       : []),
     ...(input.skipped > 0
       ? [`${input.skipped} events could not be shown and were left out.`]
@@ -439,25 +493,80 @@ interface BusyInterval {
   end: string
 }
 
-function readBusyIntervals(busy: readonly unknown[]): {
+interface BusyWindow {
+  fromMilliseconds: number
+  toMilliseconds: number
+}
+
+function readUtcInstant(value: unknown): number | null {
+  const time = readCalendarResponseTime(value)
+
+  return time?.endsWith(UTC_DESIGNATOR)
+    ? readCalendarInstantMilliseconds(time)
+    : null
+}
+
+function formatUtcInstant(milliseconds: number): string {
+  return new Date(milliseconds).toISOString().replace('.000Z', 'Z')
+}
+
+/**
+ * The busy intervals of an answer as the model gets them: each value must be
+ * a UTC RFC 3339 time (Google answers in UTC, and a value in another form is
+ * not trusted), cut to the window that was asked for, sorted, and merged
+ * where two intervals overlap or touch. An interval that is not valid is
+ * counted as skipped; one wholly outside the window is dropped.
+ */
+function readBusyIntervals(
+  busy: readonly unknown[],
+  range: BusyWindow,
+): {
   intervals: BusyInterval[]
   skipped: number
 } {
-  const intervals: BusyInterval[] = []
+  const clipped: Array<{ start: number, end: number }> = []
   let skipped = 0
 
   for (const item of busy) {
-    const start = isRecord(item) ? readCalendarResponseTime(item.start) : null
-    const end = isRecord(item) ? readCalendarResponseTime(item.end) : null
+    const start = isRecord(item) ? readUtcInstant(item.start) : null
+    const end = isRecord(item) ? readUtcInstant(item.end) : null
 
-    if (start && end) {
-      intervals.push({ start, end })
-    } else {
+    if (start === null || end === null || end <= start) {
       skipped += 1
+      continue
+    }
+
+    const clippedStart = Math.max(start, range.fromMilliseconds)
+    const clippedEnd = Math.min(end, range.toMilliseconds)
+
+    if (clippedEnd > clippedStart) {
+      clipped.push({ start: clippedStart, end: clippedEnd })
     }
   }
 
-  return { intervals, skipped }
+  const merged: Array<{ start: number, end: number }> = []
+
+  const ordered = clipped.sort((first, second) => first.start - second.start)
+
+  for (const interval of ordered) {
+    const last = merged.at(-1)
+
+    if (last && interval.start <= last.end) {
+      last.end = Math.max(last.end, interval.end)
+    } else {
+      merged.push({ ...interval })
+    }
+  }
+
+  return {
+    intervals: merged.map((interval) => {
+      return {
+        start: formatUtcInstant(interval.start),
+        end: formatUtcInstant(interval.end),
+      }
+    }),
+    skipped,
+  }
 }
 
 function buildFreeBusyOutput(input: {
@@ -503,10 +612,12 @@ function asText(value: unknown, key: string): string | null {
 }
 
 function summarizeWindow(callInput: unknown, prefix: string): string {
-  const from = readCalendarDay(asText(callInput, 'from'))
-  const to = readCalendarDay(asText(callInput, 'to'))
+  const windowText = describeCalendarWindow(
+    asText(callInput, 'from'),
+    asText(callInput, 'to'),
+  )
 
-  return from && to ? `${prefix} from ${from} to ${to}` : prefix
+  return windowText ? `${prefix} ${windowText}` : prefix
 }
 
 function summarizeCreate(callInput: unknown): string {
@@ -635,10 +746,8 @@ export async function buildGoogleCalendarTools(
       const events = described.filter((event): event is DescribedEvent => {
         return event !== null
       })
-      const cancelled = listed.value.events.filter((event) => {
-        return event.status === 'cancelled'
-      }).length
-      const skipped = described.length - events.length - cancelled
+      const canceled = listed.value.events.filter(isCanceled).length
+      const skipped = described.length - events.length - canceled
       const calendarTimeZone = isKnownTimeZone(listed.value.timeZone)
         ? listed.value.timeZone
         : null
@@ -649,6 +758,7 @@ export async function buildGoogleCalendarTools(
             calendarListEvents: {
               events: events.length,
               skipped,
+              canceled,
               hasMore: listed.value.hasMore,
             },
           },
@@ -659,6 +769,7 @@ export async function buildGoogleCalendarTools(
         budget => buildListOutput({
           events,
           skipped,
+          canceled,
           hasMore: listed.value.hasMore,
           calendarTimeZone,
         }, budget),
@@ -684,7 +795,10 @@ export async function buildGoogleCalendarTools(
         throw failureOf(result.code)
       }
 
-      const { intervals, skipped } = readBusyIntervals(result.value.busy)
+      const { intervals, skipped } = readBusyIntervals(result.value.busy, {
+        fromMilliseconds: readCalendarInstantMilliseconds(range.timeMin) ?? 0,
+        toMilliseconds: readCalendarInstantMilliseconds(range.timeMax) ?? 0,
+      })
 
       logger.set({
         attributes: {
@@ -707,7 +821,7 @@ export async function buildGoogleCalendarTools(
     description: CREATE_EVENT_DESCRIPTION,
     inputSchema: createEventInputSchema,
     toModelOutput: googleToolModelOutput,
-    execute: callInput => serialized(async () => {
+    execute: (callInput, options) => serialized(async () => {
       consumeCall()
 
       const event = validateCalendarEvent(callInput)
@@ -719,10 +833,15 @@ export async function buildGoogleCalendarTools(
       const context = await readContext(
         GOOGLE_CALENDAR_TOOL_SCOPES[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!,
       )
-      const created = await createCalendarEvent(event.body, context)
+      const eventId = await buildCalendarEventId(
+        `${userId}:${options.toolCallId}`,
+      )
+      const created = await createCalendarEvent(event.body, eventId, context)
 
       if (!created.ok) {
-        throw failureOf(created.code)
+        throw created.code === 'failed'
+          ? toolFailure(CALENDAR_CREATE_UNCONFIRMED_TEXT, 502)
+          : failureOf(created.code)
       }
 
       const day = readCalendarDay(created.value.start)
@@ -736,6 +855,7 @@ export async function buildGoogleCalendarTools(
               isAllDay: event.body.start.date !== undefined,
               hasDescription: event.body.description !== undefined,
               hasLocation: event.body.location !== undefined,
+              alreadyExisted: created.value.alreadyExisted,
             },
           },
         },
@@ -751,9 +871,9 @@ export async function buildGoogleCalendarTools(
           }]
           : [],
         created: true,
-        link,
         message: 'The event was created on the user\'s primary Google '
-          + 'Calendar. Nobody was invited and no email was sent.',
+          + `Calendar${day ? ` for ${day}` : ''}. Nobody was invited and no `
+          + 'email was sent.',
       } satisfies GoogleToolOutput
     }),
   })) as ToolSet[string]

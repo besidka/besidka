@@ -20,6 +20,24 @@ const MAXIMUM_OFFSET_MINUTES = 59
 const TIME_ZONE_MAX_LENGTH = 64
 const ALIAS_SHOUTED_SEGMENT_MIN_LENGTH = 3
 const EVENT_LINK_MAX_LENGTH = 600
+const WINDOW_CLOCK_CHANGE_ALLOWANCE_MILLISECONDS = 60 * MINUTE_MILLISECONDS
+const HOUR_MINUTES = 60
+const DAY_MINUTES = 1440
+const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
 
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const DATE_TIME_PATTERN
@@ -67,6 +85,10 @@ export interface CalendarEventApprovalView {
   start: string
   end: string
   lastDay: string | null
+  startLabel: string
+  endLabel: string
+  lastDayLabel: string | null
+  durationLabel: string
   timeZone: string
   description: string
   cardDescription: string
@@ -260,6 +282,104 @@ function formatDayNumber(days: number): string {
 
   return `${pad(moment.getUTCFullYear(), 4)}-${
     pad(moment.getUTCMonth() + 1, 2)}-${pad(moment.getUTCDate(), 2)}`
+}
+
+interface WallClock {
+  date: ParsedDate
+  hour: number
+  minute: number
+  offsetMinutes: number
+  isUtcDesignator: boolean
+}
+
+function readWallClock(value: string): WallClock | null {
+  const parsed = parseDateTime(value)
+  const match = DATE_TIME_PATTERN.exec(value)
+
+  if (!parsed || !match) {
+    return null
+  }
+
+  return {
+    date: {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+    },
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    offsetMinutes: parsed.offsetMinutes,
+    isUtcDesignator: match[8] === 'Z',
+  }
+}
+
+function formatDayLabel(date: ParsedDate, withWeekday: boolean): string {
+  const weekday = WEEKDAY_NAMES[
+    new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay()
+  ]
+  const text = `${MONTH_NAMES[date.month - 1]} ${date.day}, ${date.year}`
+
+  return withWeekday ? `${weekday}, ${text}` : text
+}
+
+function formatClock(clock: WallClock): string {
+  return `${pad(clock.hour, 2)}:${pad(clock.minute, 2)}`
+}
+
+function formatZone(clock: WallClock): string {
+  if (clock.isUtcDesignator) {
+    return 'UTC'
+  }
+
+  return `UTC${formatOffset(clock.offsetMinutes)}`
+}
+
+function pluralize(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? '' : 's'}`
+}
+
+function formatDuration(totalMinutes: number): string {
+  const days = Math.floor(totalMinutes / DAY_MINUTES)
+  const hours = Math.floor((totalMinutes % DAY_MINUTES) / HOUR_MINUTES)
+  const minutes = totalMinutes % HOUR_MINUTES
+  const parts = [
+    ...(days > 0 ? [pluralize(days, 'day')] : []),
+    ...(hours > 0 ? [pluralize(hours, 'hour')] : []),
+    ...(minutes > 0 ? [pluralize(minutes, 'minute')] : []),
+  ]
+
+  return parts.length > 0 ? parts.join(' ') : 'Under a minute'
+}
+
+function formatTimedLabel(clock: WallClock | null, fallback: string): string {
+  if (!clock) {
+    return fallback
+  }
+
+  return `${formatDayLabel(clock.date, true)}, ${formatClock(clock)} (${
+    formatZone(clock)})`
+}
+
+function formatEventDuration(
+  start: string,
+  end: string,
+  startDate: ParsedDate | null,
+  endDate: ParsedDate | null,
+): string {
+  if (startDate && endDate) {
+    return pluralize(dayNumber(endDate) - dayNumber(startDate), 'day')
+  }
+
+  const startMilliseconds = parseDateTime(start)?.instantMilliseconds
+  const endMilliseconds = parseDateTime(end)?.instantMilliseconds
+
+  if (startMilliseconds === undefined || endMilliseconds === undefined) {
+    return ''
+  }
+
+  return formatDuration(
+    Math.round((endMilliseconds - startMilliseconds) / MINUTE_MILLISECONDS),
+  )
 }
 
 function refuse(message: string): CalendarEventValidation {
@@ -478,7 +598,12 @@ export function readCalendarEventApprovalView(
   const isAllDay = body.start.date !== undefined
   const start = body.start.date ?? body.start.dateTime ?? ''
   const end = body.end.date ?? body.end.dateTime ?? ''
+  const startDate = isAllDay ? parseDate(start) : null
   const endDate = isAllDay ? parseDate(end) : null
+  const lastDay = endDate ? formatDayNumber(dayNumber(endDate) - 1) : null
+  const startClock = isAllDay ? null : readWallClock(start)
+  const endClock = isAllDay ? null : readWallClock(end)
+  const lastDayDate = lastDay ? parseDate(lastDay) : null
   const description = body.description ?? ''
 
   return {
@@ -486,7 +611,15 @@ export function readCalendarEventApprovalView(
     isAllDay,
     start,
     end,
-    lastDay: endDate ? formatDayNumber(dayNumber(endDate) - 1) : null,
+    lastDay,
+    startLabel: startDate
+      ? formatDayLabel(startDate, true)
+      : formatTimedLabel(startClock, start),
+    endLabel: endDate
+      ? formatDayLabel(endDate, true)
+      : formatTimedLabel(endClock, end),
+    lastDayLabel: lastDayDate ? formatDayLabel(lastDayDate, true) : null,
+    durationLabel: formatEventDuration(start, end, startDate, endDate),
     timeZone: body.start.timeZone,
     description,
     cardDescription: collapseBlankLinesForCard(description),
@@ -501,7 +634,9 @@ export type CalendarWindowValidation
 
 /**
  * A reading window: two RFC 3339 date-times with an explicit offset, the
- * end after the start and at most 31 days apart.
+ * end after the start and at most 31 calendar days apart. The span is
+ * compared in real time, so one hour is allowed on top of 31 days: a whole
+ * month that contains the clocks going back is 31 days and one hour long.
  */
 export function validateCalendarWindow(
   from: unknown,
@@ -530,7 +665,10 @@ export function validateCalendarWindow(
 
   const span = end.instantMilliseconds - start.instantMilliseconds
 
-  if (span > GOOGLE_CALENDAR_WINDOW_MAX_DAYS * DAY_MILLISECONDS) {
+  if (
+    span > GOOGLE_CALENDAR_WINDOW_MAX_DAYS * DAY_MILLISECONDS
+    + WINDOW_CLOCK_CHANGE_ALLOWANCE_MILLISECONDS
+  ) {
     return {
       ok: false,
       message: `The window must be at most ${
@@ -554,6 +692,62 @@ export function readCalendarResponseTime(value: unknown): string | null {
   return parseDate(value) !== null || parseDateTime(value) !== null
     ? value
     : null
+}
+
+/**
+ * The instant of an RFC 3339 date-time, in milliseconds since the epoch, or
+ * null for anything else (a bare date, free text, a non-string).
+ */
+export function readCalendarInstantMilliseconds(
+  value: unknown,
+): number | null {
+  return typeof value === 'string'
+    ? parseDateTime(value)?.instantMilliseconds ?? null
+    : null
+}
+
+/**
+ * The day before a real `YYYY-MM-DD` date, which is the last day of an
+ * all-day event whose end date is exclusive. Null for anything else.
+ */
+export function getCalendarDayBefore(value: string): string | null {
+  const date = parseDate(value)
+
+  return date ? formatDayNumber(dayNumber(date) - 1) : null
+}
+
+function isMidnight(clock: WallClock): boolean {
+  return clock.hour === 0 && clock.minute === 0
+}
+
+/**
+ * A reading window the way the owner would say it: "from Dec 1, 2026 to
+ * Dec 7, 2026" for a window of whole days (the exclusive end is shown as
+ * the last day that is read) and the times as well when one is not
+ * midnight. Null for a value that is not a pair of date-times.
+ */
+export function describeCalendarWindow(
+  from: unknown,
+  to: unknown,
+): string | null {
+  const start = typeof from === 'string' ? readWallClock(from) : null
+  const end = typeof to === 'string' ? readWallClock(to) : null
+
+  if (!start || !end) {
+    return null
+  }
+
+  if (isMidnight(start) && isMidnight(end)) {
+    const lastDay = parseDate(
+      formatDayNumber(dayNumber(end.date) - 1),
+    )
+
+    return `from ${formatDayLabel(start.date, false)} to ${
+      formatDayLabel(lastDay ?? end.date, false)}`
+  }
+
+  return `from ${formatDayLabel(start.date, false)}, ${formatClock(start)} to ${
+    formatDayLabel(end.date, false)}, ${formatClock(end)}`
 }
 
 /**

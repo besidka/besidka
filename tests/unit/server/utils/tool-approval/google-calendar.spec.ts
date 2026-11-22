@@ -216,12 +216,15 @@ describe('the Calendar tool registrations', () => {
     )).toBe(true)
   })
 
-  it('does not count an empty event list as Google content, but always '
-    + 'counts free and busy time', () => {
+  it('counts every Calendar read as Google content, even an empty one', () => {
+    expect(
+      GOOGLE_TOOL_PROPERTIES[GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME]
+        ?.emptyListHoldsNoContent,
+    ).toBeUndefined()
     expect(googleToolResultHoldsContent(
       GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME,
-      { references: [] },
-    )).toBe(false)
+      { references: [], count: 0, calendarTimeZone: 'Europe/Berlin' },
+    )).toBe(true)
     expect(googleToolResultHoldsContent(
       GOOGLE_CALENDAR_FREE_BUSY_TOOL_NAME,
       { references: [{ id: 'free-busy-2026-12-01' }], busy: [] },
@@ -361,8 +364,8 @@ describe('what reaches D1 for the Calendar tools', () => {
     ])
   })
 
-  it('flags a chat for a listing with a hit and for free and busy time, '
-    + 'and not for an event write or an empty listing', () => {
+  it('flags a chat for every Calendar read, even an empty one, and not for '
+    + 'an event write', () => {
     const part = (toolName: string, references: unknown[]) => ({
       type: `tool-${toolName}`,
       state: 'output-available',
@@ -380,6 +383,9 @@ describe('what reaches D1 for the Calendar tools', () => {
     ])).toBe(false)
     expect(hasGoogleToolResult([
       part(GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME, []),
-    ])).toBe(false)
+    ])).toBe(true)
+    expect(hasGoogleToolResult([
+      part(GOOGLE_CALENDAR_FREE_BUSY_TOOL_NAME, []),
+    ])).toBe(true)
   })
 })

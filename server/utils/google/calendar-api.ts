@@ -22,12 +22,17 @@ const PRIMARY_EVENTS_URL
 const FREE_BUSY_URL = 'https://www.googleapis.com/calendar/v3/freeBusy'
 const PRIMARY_CALENDAR_ID = 'primary'
 const LIST_FIELDS = 'timeZone,nextPageToken,items(id,status,eventType,summary,'
-  + 'description,location,start,end,htmlLink,organizer(self,displayName,email),'
-  + 'attendees(responseStatus),hangoutLink,conferenceData(entryPoints('
-  + 'entryPointType)),attachments(fileId))'
+  + 'description,location,start,end,htmlLink,transparency,'
+  + 'organizer(self,displayName),attendees(self,responseStatus),hangoutLink,'
+  + 'conferenceData(entryPoints(entryPointType)),attachments(fileId))'
 const FREE_BUSY_FIELDS = 'calendars/*/busy,calendars/*/errors'
 const INSERT_FIELDS = 'id,htmlLink,start,end'
 const NO_GUEST_NOTIFICATIONS = 'none'
+const BASE32_HEX_ALPHABET = '0123456789abcdefghijklmnopqrstuv'
+const BITS_PER_BASE32_CHARACTER = 5
+const EVENT_ID_SEED_PREFIX = 'besidka:calendar-event:'
+const RANDOM_EVENT_ID_BYTES = 16
+const SERVICE_DISABLED_REASON = 'SERVICE_DISABLED'
 
 export interface CalendarRequestContext {
   accessToken: string
@@ -42,6 +47,9 @@ export type CalendarFailureCode
     | 'rate_limited'
     | 'too_large'
     | 'bad_request'
+    | 'already_exists'
+    | 'calendar_not_found'
+    | 'calendar_error'
     | 'failed'
 
 export const CALENDAR_FAILURE_TEXT: Readonly<
@@ -62,9 +70,19 @@ export const CALENDAR_FAILURE_TEXT: Readonly<
     + 'shorter window.',
   bad_request: 'Google Calendar did not accept the request. Check the times '
     + 'and try again.',
+  already_exists: 'Google Calendar reported that an item with the same '
+    + 'identifier already exists.',
+  calendar_not_found: 'Google Calendar could not find the primary calendar '
+    + 'of this account.',
+  calendar_error: 'Google Calendar could not answer for the primary '
+    + 'calendar. Try again in a moment.',
   failed: 'Google Calendar could not be reached or answered with an error. '
     + 'Try again in a moment.',
 }
+
+export const CALENDAR_CREATE_UNCONFIRMED_TEXT = 'Google Calendar did not '
+  + 'confirm the event, so it may or may not have been created. Ask the user '
+  + 'to check their calendar before trying again.'
 
 export type CalendarResult<Value>
   = | { ok: true, value: Value }
@@ -76,6 +94,27 @@ const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set([
   'quotaExceeded',
   'calendarUsageLimitsExceeded',
 ])
+
+/**
+ * The reason of a Calendar error answer. A disabled API is reported twice by
+ * Google: as `accessNotConfigured` in `error.errors` and, for Cloud-style
+ * errors, as `SERVICE_DISABLED` in `error.details`, which `readReason` never
+ * reads, so it is looked for here first.
+ */
+export function readCalendarReason(
+  body: Record<string, unknown> | null,
+): string | null {
+  const error = body?.error
+  const details = isRecord(error) ? error.details : undefined
+
+  if (Array.isArray(details) && details.some((detail) => {
+    return isRecord(detail) && detail.reason === SERVICE_DISABLED_REASON
+  })) {
+    return SERVICE_DISABLED_REASON
+  }
+
+  return readReason(body)
+}
 
 /**
  * Maps a Calendar answer that is not a success to one code with a fixed
@@ -90,12 +129,16 @@ export function classifyCalendarFailure(
     return 'reauthorize'
   }
 
-  if (reason === 'accessNotConfigured' || reason === 'SERVICE_DISABLED') {
+  if (reason === 'accessNotConfigured' || reason === SERVICE_DISABLED_REASON) {
     return 'api_disabled'
   }
 
   if (status === 404) {
     return 'not_found'
+  }
+
+  if (status === 409) {
+    return 'already_exists'
   }
 
   if (status === 429 || (reason && RATE_LIMIT_REASONS.has(reason))) {
@@ -147,7 +190,7 @@ async function requestJson(
           ? 'failed'
           : classifyCalendarFailure(
             response.status,
-            readReason(response.body),
+            readCalendarReason(response.body),
           ),
       }
     }
@@ -214,6 +257,14 @@ export async function listCalendarEvents(
   }
 }
 
+function classifyFreeBusyError(errors: unknown[]): CalendarFailureCode {
+  const isNotFound = errors.some((error) => {
+    return isRecord(error) && error.reason === 'notFound'
+  })
+
+  return isNotFound ? 'calendar_not_found' : 'calendar_error'
+}
+
 /**
  * `freeBusy.query` for the primary calendar only. The answer holds the busy
  * intervals and nothing else: the calendar's key in the answer is never
@@ -259,7 +310,7 @@ export async function getCalendarFreeBusy(
   }
 
   if (Array.isArray(entry.errors) && entry.errors.length > 0) {
-    return { ok: false, code: 'failed' }
+    return { ok: false, code: classifyFreeBusyError(entry.errors) }
   }
 
   return {
@@ -272,6 +323,56 @@ export interface CreatedCalendarEvent {
   id: string
   htmlLink: unknown
   start: unknown
+  alreadyExisted: boolean
+}
+
+function encodeBase32Hex(bytes: Uint8Array): string {
+  let buffer = 0
+  let bufferedBits = 0
+  let encoded = ''
+
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | byte
+    bufferedBits += 8
+
+    while (bufferedBits >= BITS_PER_BASE32_CHARACTER) {
+      bufferedBits -= BITS_PER_BASE32_CHARACTER
+      encoded += BASE32_HEX_ALPHABET[(buffer >> bufferedBits) & 31]
+    }
+
+    buffer &= (1 << bufferedBits) - 1
+  }
+
+  if (bufferedBits > 0) {
+    encoded += BASE32_HEX_ALPHABET[
+      (buffer << (BITS_PER_BASE32_CHARACTER - bufferedBits)) & 31
+    ]
+  }
+
+  return encoded
+}
+
+/**
+ * The event id Besidka sends with an insert: base32hex characters (`a` to
+ * `v` and `0` to `9`), 52 of them, which is inside Google's rule of 5 to
+ * 1024. It is derived from the seed (the user and the tool call that was
+ * approved), so a second run of the same approved call sends the same id and
+ * Google answers 409 instead of creating a second event. Without a seed the
+ * id is random, which is valid but not repeatable.
+ */
+export async function buildCalendarEventId(seed?: string): Promise<string> {
+  if (seed === undefined) {
+    return encodeBase32Hex(
+      crypto.getRandomValues(new Uint8Array(RANDOM_EVENT_ID_BYTES)),
+    )
+  }
+
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${EVENT_ID_SEED_PREFIX}${seed}`),
+  )
+
+  return encodeBase32Hex(new Uint8Array(digest))
 }
 
 function boundaryOf(boundary: CalendarEventDateTime): CalendarEventDateTime {
@@ -282,15 +383,17 @@ function boundaryOf(boundary: CalendarEventDateTime): CalendarEventDateTime {
 
 /**
  * The request body of an event, copied field by field from the validated
- * body: only a title, a description, a location, a start and an end can
- * ever be in it. There is no `attendees`, `conferenceData`, `recurrence`,
- * `reminders` or `attachments` here, so an event made by Besidka invites
- * nobody.
+ * body: only the client-supplied `id`, a title, a description, a location, a
+ * start and an end can ever be in it. There is no `attendees`,
+ * `conferenceData`, `recurrence`, `reminders` or `attachments` here, so an
+ * event made by Besidka invites nobody.
  */
 export function buildCalendarInsertPayload(
   body: CalendarInsertBody,
+  eventId: string,
 ): Record<string, unknown> {
   return {
+    id: eventId,
     summary: body.summary,
     ...(body.description !== undefined
       ? { description: body.description }
@@ -305,14 +408,18 @@ export function buildCalendarInsertPayload(
  * `events.insert` on the owner's primary calendar, the one write of the
  * Calendar tools. `sendUpdates=none` is always sent, no query parameter that
  * would turn on video calls or attachments is, and the body comes from
- * `buildCalendarInsertPayload`. This module has no function for any other
- * write: no update, no delete, no move, no other calendar.
+ * `buildCalendarInsertPayload`. The body carries the id the caller derived
+ * from the approved call, and a 409 (the id already exists) means an earlier
+ * run of the same call created the event, so it is a success. This module
+ * has no function for any other write: no update, no delete, no move, no
+ * other calendar.
  */
 export async function createCalendarEvent(
   body: CalendarInsertBody,
+  eventId: string,
   context: CalendarRequestContext,
 ): Promise<CalendarResult<CreatedCalendarEvent>> {
-  const encoded = JSON.stringify(buildCalendarInsertPayload(body))
+  const encoded = JSON.stringify(buildCalendarInsertPayload(body, eventId))
   const result = await requestJson(
     `${PRIMARY_EVENTS_URL}?${queryOf([
       ['sendUpdates', NO_GUEST_NOTIFICATIONS],
@@ -328,6 +435,18 @@ export async function createCalendarEvent(
     },
     toFetchOptions(context, {}),
   )
+
+  if (!result.ok && result.code === 'already_exists') {
+    return {
+      ok: true,
+      value: {
+        id: eventId,
+        htmlLink: undefined,
+        start: body.start.dateTime ?? body.start.date,
+        alreadyExisted: true,
+      },
+    }
+  }
 
   if (!result.ok) {
     return result
@@ -345,6 +464,7 @@ export async function createCalendarEvent(
       start: isRecord(result.value.start)
         ? result.value.start.dateTime ?? result.value.start.date
         : undefined,
+      alreadyExisted: false,
     },
   }
 }

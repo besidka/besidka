@@ -20,9 +20,10 @@ export const GOOGLE_EGRESS_GRANT_KEY_PREFIX = 'google-egress:'
  * send, its result flags the chat and its part counts as a Google result.
  * Only a tool whose result carries no Google content (a write that answers
  * with a link it just created) is listed with `returnsGoogleContent: false`.
- * `calendar_free_busy` returns Google data but never has a per-item
- * reference, so it has no `emptyListHoldsNoContent`: even an answer with no
- * busy time says something about the user's calendar and flags the chat.
+ * Neither Calendar read has `emptyListHoldsNoContent`: even an answer with
+ * no events or no busy time says something about the user's calendar (the
+ * list also returns the calendar's time zone), so every Calendar read flags
+ * the chat.
  * Never inferred from a tool's kind or from the shape of its output.
  * `emptyListHoldsNoContent` marks the one listing tool whose answer, with no
  * references, names no file at all, so that answer does not flag the chat.
@@ -59,7 +60,6 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
   },
   [`${GOOGLE_TOOL_NAME_PREFIX}calendar_list_events`]: {
     returnsGoogleContent: true,
-    emptyListHoldsNoContent: true,
   },
   [`${GOOGLE_TOOL_NAME_PREFIX}calendar_free_busy`]: {
     returnsGoogleContent: true,

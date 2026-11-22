@@ -41,6 +41,7 @@ export const GOOGLE_CALENDAR_TOOL_SCOPES: Readonly<
 export const GOOGLE_CALENDAR_EVENT_REFERENCE_KIND = 'calendar-event'
 export const GOOGLE_CALENDAR_FREE_BUSY_REFERENCE_KIND = 'calendar-free-busy'
 export const GOOGLE_CALENDAR_EVENT_ID_SHAPE = /^[A-Za-z0-9_-]{1,256}$/
+export const GOOGLE_CALENDAR_CLIENT_EVENT_ID_SHAPE = /^[a-v0-9]{5,1024}$/
 
 export const GOOGLE_CALENDAR_LIST_EVENTS_MAX = 50
 export const GOOGLE_CALENDAR_LIST_RESPONSE_MAX_BYTES = 1024 * 1024
