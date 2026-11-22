@@ -42,6 +42,7 @@ export type {
   ShiftBounds,
   TokenizedFormula,
 } from './formula.ts'
+export { fitWorkbookMap } from './fit.ts'
 export { cellsToRanges } from './ranges.ts'
 export {
   WORKBOOK_MAP_DEFAULTS,
