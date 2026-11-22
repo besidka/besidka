@@ -2,6 +2,7 @@ import {
   collapseBlankLinesForCard,
   countBodyLines,
 } from '#shared/utils/google-gmail-draft-view'
+import { GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME } from '#shared/utils/google-calendar-tools'
 import {
   hasUnsafeBodyCharacter,
   hasUnsafeHeaderCharacter,
@@ -626,6 +627,21 @@ export function readCalendarEventApprovalView(
     descriptionLineCount: description ? countBodyLines(description) : 0,
     location: body.location ?? '',
   }
+}
+
+/**
+ * The event view of an approval for a tool call: the view of a create-event
+ * call and null for any other tool. The approval card and the approval
+ * details panel both read it here, so they show the same event.
+ */
+export function readCreateEventApprovalView(
+  toolName: unknown,
+  input: unknown,
+): CalendarEventApprovalView | null {
+  return typeof toolName === 'string'
+    && toolName.toLowerCase() === GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME
+    ? readCalendarEventApprovalView(input)
+    : null
 }
 
 export type CalendarWindowValidation

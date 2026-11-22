@@ -145,6 +145,17 @@ describe('feature registry', () => {
       expect(FEATURE_REGISTRY['google.drive'].adminOnly).toBeUndefined()
     })
 
+  it('declares the Google flags after their parents', () => {
+    const keys = Object.keys(FEATURE_REGISTRY)
+
+    expect(keys.indexOf('google.drive'))
+      .toBeLessThan(keys.indexOf('google.byo'))
+    expect(keys.indexOf('google.byo'))
+      .toBeLessThan(keys.indexOf('google.gmail'))
+    expect(keys.indexOf('google.byo'))
+      .toBeLessThan(keys.indexOf('google.calendar'))
+  })
+
   it('nests Gmail and Calendar under the bring-your-own Google client', () => {
     expect(FEATURE_REGISTRY['google.drive'].parent).toBeUndefined()
     expect(FEATURE_REGISTRY['google.calendar'].parent).toBe('google.byo')

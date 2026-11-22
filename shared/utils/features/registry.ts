@@ -237,21 +237,21 @@ const featureList = [
     available: true,
   }),
   internalFeature({
+    key: 'google.byo',
+    title: 'Your own Google client',
+    description: 'Connect Google with your own OAuth client.',
+    parent: 'google.drive',
+    optIn: 'required',
+    available: true,
+    adminOnly: true,
+  }),
+  internalFeature({
     key: 'google.calendar',
     title: 'Google Calendar',
     description: 'List events, check free and busy time and create an event '
       + 'on your primary Google Calendar in a chat through your own Google '
       + 'client.',
     parent: 'google.byo',
-    optIn: 'required',
-    available: true,
-    adminOnly: true,
-  }),
-  internalFeature({
-    key: 'google.byo',
-    title: 'Your own Google client',
-    description: 'Connect Google with your own OAuth client.',
-    parent: 'google.drive',
     optIn: 'required',
     available: true,
     adminOnly: true,

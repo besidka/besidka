@@ -18,6 +18,15 @@
       </p>
     </section>
     <section
+      v-if="calendarEvent"
+      class="flex flex-col gap-1"
+    >
+      <h4 class="text-xs font-medium text-base-content/70">
+        Event
+      </h4>
+      <ChatReasoningCalendarEvent :view="calendarEvent" />
+    </section>
+    <section
       v-if="preview"
       class="flex flex-col gap-1"
     >
@@ -64,6 +73,9 @@
 </template>
 
 <script setup lang="ts">
+import { readCreateEventApprovalView } from '#shared/utils/google-calendar-event'
+import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-event'
+
 const props = defineProps<{
   title: string
   toolName: string
@@ -73,6 +85,10 @@ const props = defineProps<{
   isShortened: boolean
   preview?: string
 }>()
+
+const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
+  return readCreateEventApprovalView(props.toolName, props.input)
+})
 
 const argumentsText = computed<string>(() => {
   const { input } = props

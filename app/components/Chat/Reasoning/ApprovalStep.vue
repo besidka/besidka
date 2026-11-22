@@ -124,96 +124,11 @@
           This only saves a draft in your Gmail. Besidka cannot send it.
         </p>
       </div>
-      <div
+      <ChatReasoningCalendarEvent
         v-if="calendarEvent"
-        class="mt-1.5 min-w-0 rounded-box bg-base-200 p-2 text-xs"
-        data-testid="reasoning-approval-step-calendar-event"
-      >
-        <dl class="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]">
-          <dt class="text-base-content/60">
-            Title
-          </dt>
-          <dd
-            class="min-w-0 break-words font-medium"
-            data-testid="reasoning-approval-step-calendar-event-title"
-          >
-            {{ calendarEvent.title }}
-          </dd>
-          <dt class="text-base-content/60">
-            Kind
-          </dt>
-          <dd data-testid="reasoning-approval-step-calendar-event-kind">
-            {{ calendarEvent.isAllDay ? 'All-day event' : 'Timed event' }}
-          </dd>
-          <dt class="text-base-content/60">
-            {{ calendarEvent.isAllDay ? 'First day' : 'Start' }}
-          </dt>
-          <dd
-            class="min-w-0 break-all"
-            data-testid="reasoning-approval-step-calendar-event-start"
-          >
-            {{ calendarEvent.start }}
-          </dd>
-          <dt class="text-base-content/60">
-            {{ calendarEvent.isAllDay ? 'End (not included)' : 'End' }}
-          </dt>
-          <dd
-            class="min-w-0 break-all"
-            data-testid="reasoning-approval-step-calendar-event-end"
-          >
-            {{ calendarEvent.end }}
-          </dd>
-          <template v-if="calendarEvent.lastDay">
-            <dt class="text-base-content/60">
-              Last day
-            </dt>
-            <dd data-testid="reasoning-approval-step-calendar-event-last-day">
-              {{ calendarEvent.lastDay }}
-            </dd>
-          </template>
-          <dt class="text-base-content/60">
-            Time zone
-          </dt>
-          <dd
-            class="min-w-0 break-all"
-            data-testid="reasoning-approval-step-calendar-event-time-zone"
-          >
-            {{ calendarEvent.timeZone }}
-          </dd>
-          <template v-if="calendarEvent.location">
-            <dt class="text-base-content/60">
-              Location
-            </dt>
-            <dd
-              class="min-w-0 break-words"
-              data-testid="reasoning-approval-step-calendar-event-location"
-            >
-              {{ calendarEvent.location }}
-            </dd>
-          </template>
-        </dl>
-        <template v-if="calendarEvent.description">
-          <p
-            class="mt-2 text-base-content/60"
-            data-testid="reasoning-approval-step-calendar-event-lines"
-          >
-            Description · {{ calendarEventLineCountText }}
-          </p>
-          <p
-            class="mt-0.5 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-box outline-offset-2 focus:outline-2 focus:outline-accent"
-            tabindex="0"
-            role="region"
-            aria-label="Event description"
-            data-testid="reasoning-approval-step-calendar-event-description"
-          >{{ calendarEvent.cardDescription }}</p>
-        </template>
-        <p
-          class="mt-2 text-base-content/60"
-          data-testid="reasoning-approval-step-calendar-event-note"
-        >
-          {{ GOOGLE_CALENDAR_NO_INVITE_NOTE }}
-        </p>
-      </div>
+        :view="calendarEvent"
+        class="mt-1.5"
+      />
       <details
         v-if="clippedPreview.text"
         class="mt-1 text-xs"
@@ -360,12 +275,8 @@
 import { LazyChatReasoningApprovalDetails } from '#components'
 import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
-import { readCalendarEventApprovalView } from '#shared/utils/google-calendar-event'
+import { readCreateEventApprovalView } from '#shared/utils/google-calendar-event'
 import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-event'
-import {
-  GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
-  GOOGLE_CALENDAR_NO_INVITE_NOTE,
-} from '#shared/utils/google-calendar-tools'
 import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
@@ -489,17 +400,7 @@ const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
 })
 
 const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
-  const toolName = props.model.toolName.toLowerCase()
-
-  return toolName === GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME
-    ? readCalendarEventApprovalView(props.model.input)
-    : null
-})
-
-const calendarEventLineCountText = computed<string>(() => {
-  const count = calendarEvent.value?.descriptionLineCount ?? 0
-
-  return count === 1 ? '1 line' : `${count} lines`
+  return readCreateEventApprovalView(props.model.toolName, props.model.input)
 })
 
 const gmailDraftReplyNote = computed<string>(() => {

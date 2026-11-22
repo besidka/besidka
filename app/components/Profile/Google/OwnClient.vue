@@ -204,6 +204,9 @@
           Google Calendar access lets it list events, check when you are
           busy and create one event you approve.
         </template>
+        <template v-else>
+          Google Calendar tools need Google Calendar turned on in Labs.
+        </template>
         You can add more later; to remove access, disconnect and connect
         again.
       </p>
@@ -360,6 +363,7 @@ import type {
   GoogleByoConnectionStatus,
   GoogleConnectResult,
   GoogleConnectionSummary,
+  GooglePartialCalendarAccess,
 } from '#shared/utils/google-connections'
 import type { GoogleCapability } from '#shared/utils/google-scopes'
 
@@ -420,6 +424,15 @@ const MISSING_TOOL_NOTES: ReadonlyArray<{
       + 'and busy time needs Google Calendar access.',
   },
 ]
+
+const PARTIAL_CALENDAR_NOTES: Readonly<
+  Record<GooglePartialCalendarAccess, string>
+> = {
+  'events': 'Listing and creating Google Calendar events work. Checking '
+    + 'when you are busy needs the second Google Calendar permission.',
+  'free-busy': 'Checking when you are busy works. Listing and creating '
+    + 'Google Calendar events needs the other Google Calendar permission.',
+}
 
 const GRANTED_LABELS: ReadonlyMap<GoogleCapability, string> = new Map(
   CAPABILITY_OPTIONS.map((option) => {
@@ -522,6 +535,8 @@ const missingToolNotes = computed<string[]>(() => {
     return []
   }
 
+  const partialCalendar = connection.value?.partialCalendar
+
   return MISSING_TOOL_NOTES
     .filter((item) => {
       return isGmailActive.value || !GMAIL_CAPABILITIES.has(item.id)
@@ -530,7 +545,11 @@ const missingToolNotes = computed<string[]>(() => {
       return isCalendarActive.value || item.id !== 'calendar'
     })
     .filter(item => !grantedCapabilities.value.includes(item.id))
-    .map(item => item.note)
+    .map((item) => {
+      return item.id === 'calendar' && partialCalendar
+        ? PARTIAL_CALENDAR_NOTES[partialCalendar]
+        : item.note
+    })
 })
 
 const toolsHint = computed<string>(() => {

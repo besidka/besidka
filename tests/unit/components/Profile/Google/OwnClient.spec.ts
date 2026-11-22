@@ -3,6 +3,7 @@ import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, reactive, ref } from 'vue'
 import OwnClient from '../../../../../app/components/Profile/Google/OwnClient.vue'
+import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
 import type {
   GoogleByoConnectionStatus,
   GoogleConnectionStatusResponse,
@@ -295,9 +296,9 @@ describe('Profile/Google/OwnClient', () => {
     expect(text).toContain('search your files and read the ones it finds')
     expect(text).toContain('Google Calendar access lets it list events, '
       + 'check when you are busy and create one event you approve')
-    expect(text).toContain('with no guests and no email')
-    expect(text).toContain('create events on calendars you own')
-    expect(text).toContain('read your free and busy time')
+    expect(text).toContain('It adds no guests and sends no email')
+    expect(text).toContain('creates events on calendars you own')
+    expect(text).toContain('reads your free and busy time')
     expect(text).toContain('gmail.compose permission technically also '
       + 'allows sending mail')
     expect(text).toContain('it has no code that sends mail')
@@ -339,7 +340,7 @@ describe('Profile/Google/OwnClient', () => {
     expect(wrapper.find('[data-testid="google-byo-capability-calendar"]')
       .exists()).toBe(false)
     expect(wrapper.get('[data-testid="google-byo-capabilities-form"]').text())
-      .not.toContain('Calendar')
+      .not.toContain('Your Google Calendar events')
 
     setByo({ hasClient: true, connection: connection() })
 
@@ -363,8 +364,64 @@ describe('Profile/Google/OwnClient', () => {
       .exists()).toBe(true)
     expect(option.text()).toContain('Your Google Calendar events')
     expect(option.text()).toContain('two narrow permissions')
-    expect(option.text()).toContain('with no guests and no email')
+    expect(option.text()).toContain('It adds no guests and sends no email')
+    expect(option.text()).not.toContain('Google Calendar turned on in Labs')
   })
+
+  it('points an owner without the Calendar opt-in to Labs, as it does for '
+    + 'Gmail', async () => {
+    calendarFeature.value = { active: false }
+    setByo({ hasClient: true })
+
+    const wrapper = await mountOwnClient()
+    const form = wrapper.get('[data-testid="google-byo-capabilities-form"]')
+
+    expect(form.text()).toContain(
+      'Google Calendar tools need Google Calendar turned on in Labs',
+    )
+    expect(form.text()).toContain('Gmail tools need Gmail turned on in Labs')
+    expect(wrapper.find('[data-testid="google-byo-capability-calendar"]')
+      .exists()).toBe(false)
+  })
+
+  it('keeps every sentence of the Calendar access note short', () => {
+    for (const sentence of GOOGLE_CALENDAR_ACCESS_NOTE.split(/(?<=\.)\s+/)) {
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(20)
+    }
+  })
+
+  it('says listing and creating work when only the events permission was '
+    + 'granted', async () => {
+    calendarFeature.value = { active: true }
+    setByo({
+      hasClient: true,
+      connection: connection({ partialCalendar: 'events' }),
+    })
+
+    const wrapper = await mountOwnClient()
+    const note = wrapper.get('[data-testid="google-byo-missing-tools"]').text()
+
+    expect(note).toContain('Listing and creating Google Calendar events work')
+    expect(note).toContain('Checking when you are busy needs the second')
+    expect(note).not.toContain('needs Google Calendar access')
+  })
+
+  it('says free and busy works when only that permission was granted',
+    async () => {
+      calendarFeature.value = { active: true }
+      setByo({
+        hasClient: true,
+        connection: connection({ partialCalendar: 'free-busy' }),
+      })
+
+      const wrapper = await mountOwnClient()
+      const note = wrapper
+        .get('[data-testid="google-byo-missing-tools"]')
+        .text()
+
+      expect(note).toContain('Checking when you are busy works')
+      expect(note).toContain('needs the other Google Calendar permission')
+    })
 
   it('shows the official Calendar mark on the Calendar row only, with no '
     + 'color class or opacity', async () => {

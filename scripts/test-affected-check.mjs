@@ -2089,10 +2089,13 @@ export function getAffectedTests(changedFiles) {
   const googleCalendarToolsTests = [
     'tests/unit/utils/google-calendar-event.spec.ts',
     'tests/unit/utils/google-calendar-step.spec.ts',
+    'tests/unit/utils/google-connections.spec.ts',
     'tests/unit/utils/google-scopes.spec.ts',
     'tests/unit/utils/google-byo.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/server/utils/google/calendar-api.spec.ts',
     'tests/unit/server/utils/google/calendar-boundary.spec.ts',
+    'tests/unit/server/utils/google/store-summary.spec.ts',
     'tests/unit/server/utils/google/gmail-boundary.spec.ts',
     'tests/unit/server/utils/google/data-guard.spec.ts',
     'tests/unit/server/utils/google/http.spec.ts',
@@ -2111,7 +2114,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-tool-approval-continuation.spec.ts',
     'tests/integration/api/chats-tool-approval-request.spec.ts',
     'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalDetails.spec.ts',
     'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/StepIcon.spec.ts',
     'tests/unit/components/Profile/Google/OwnClient.spec.ts',
     'tests/unit/composables/chat-scroll-spacer.spec.ts',
     'tests/e2e/chat/scroll-spacer.spec.ts',
@@ -4141,7 +4146,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-calendar-event|google-calendar-tools|google-gmail-draft-view|google-scopes|google-byo|google-gmail-tools|google-tool-approvals|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(calendar-api|calendar-tools|gmail-text|byo-access|tokens|send-guard|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+        /^(shared\/utils\/(google-calendar-event|google-calendar-tools|google-connections|google-gmail-draft-view|google-scopes|google-byo|google-gmail-tools|google-tool-approvals|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(calendar-api|calendar-tools|store|gmail-text|byo-access|tokens|send-guard|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|ApprovalDetails|CalendarEvent|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
       tests: googleCalendarToolsTests,
     },
     {

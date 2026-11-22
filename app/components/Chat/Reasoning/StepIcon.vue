@@ -38,7 +38,7 @@
     <Icon
       v-else
       :name="icon.name"
-      class="size-full"
+      class="size-full bg-contain! bg-center! mask-contain! mask-center!"
     />
   </span>
 </template>

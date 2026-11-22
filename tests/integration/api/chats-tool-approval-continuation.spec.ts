@@ -2878,6 +2878,7 @@ describe('tool approval continuation', () => {
         timeZone: 'Europe/Berlin',
       }
       let calendarFetch: ReturnType<typeof vi.fn>
+      let insertStatus = 200
 
       function outsideFrames(prompt: string): string {
         return prompt.replace(FRAME, '')
@@ -2908,11 +2909,19 @@ describe('tool approval continuation', () => {
           '~~/server/utils/google/calendar-tools'
         )
 
+        insertStatus = 200
         calendarFetch = vi.fn(async (input: string, init?: RequestInit) => {
           const url = new URL(input)
 
           if (url.pathname !== '/calendar/v3/calendars/primary/events') {
             return new Response('{}', { status: 404 })
+          }
+
+          if (init?.method === 'POST' && insertStatus !== 200) {
+            return Response.json(
+              { error: { errors: [{ reason: 'backendError' }] } },
+              { status: insertStatus },
+            )
           }
 
           if (init?.method === 'POST') {
@@ -3009,6 +3018,7 @@ describe('tool approval continuation', () => {
         expect(JSON.parse(Buffer.from(
           eventPosts()[0]![1].body as Uint8Array,
         ).toString())).toEqual({
+          id: expect.stringMatching(/^[a-v0-9]{52}$/),
           summary: 'Planning',
           start: { dateTime: NEW_EVENT.start, timeZone: 'Europe/Berlin' },
           end: { dateTime: NEW_EVENT.end, timeZone: 'Europe/Berlin' },
@@ -3057,6 +3067,32 @@ describe('tool approval continuation', () => {
           expect(prompt).not.toContain(GUEST)
           expect(prompt).toContain('could not be kept')
         })
+
+      it('tells the model an approved create that Google then fails may have '
+        + 'made the event, and records the failure', async () => {
+        const paused = await pauseAfterListing()
+
+        insertStatus = 500
+
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('It failed.')])
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+        const part = findPart(
+          mocks.updates.at(-1)!.parts,
+          'tool-google__calendar_create_event',
+        )
+
+        expect(eventPosts()).toHaveLength(1)
+        expect(prompt).toContain('may or may not have been created')
+        expect(prompt).toContain('check their calendar before trying again')
+        expect(prompt).not.toContain('Try again in a moment')
+        expect(part).toMatchObject({ state: 'output-error' })
+        expect(JSON.stringify(mocks.updates.at(-1)!.parts))
+          .not.toContain(EVENT_TITLE)
+      })
 
       it('does not create the event when the user denies it', async () => {
         const paused = await pauseAfterListing()

@@ -1,5 +1,6 @@
 import {
   GOOGLE_CAPABILITIES,
+  GOOGLE_SCOPES,
   GOOGLE_SCOPE_CAPABILITIES,
   hasScopes,
 } from '#shared/utils/google-scopes'
@@ -32,11 +33,19 @@ export type GoogleConnectResult = typeof GOOGLE_CONNECT_RESULTS[number]
 
 export const GOOGLE_CONNECT_DEFAULT_RETURN_PATH = '/profile/keys?tab=google'
 
+export type GooglePartialCalendarAccess = 'events' | 'free-busy'
+
+/**
+ * `partialCalendar` is present only when exactly one of the two Calendar
+ * permissions was granted (the `calendar` capability needs both): `events`
+ * for listing and creating events, `free-busy` for the free and busy time.
+ */
 export interface GoogleConnectionSummary {
   clientMode: GoogleClientMode
   status: GoogleConnectionStatus
   email: string | null
   capabilities: GoogleCapability[]
+  partialCalendar?: GooglePartialCalendarAccess
   connectedAt: string
 }
 
@@ -63,6 +72,25 @@ export function getGrantedCapabilities(
       GOOGLE_SCOPE_CAPABILITIES[capability].scopes,
     )
   })
+}
+
+export function getPartialCalendarAccess(
+  grantedScopes: readonly string[],
+): GooglePartialCalendarAccess | null {
+  const hasEvents = hasScopes(
+    grantedScopes,
+    [GOOGLE_SCOPES.calendarEventsOwned],
+  )
+  const hasFreeBusy = hasScopes(
+    grantedScopes,
+    [GOOGLE_SCOPES.calendarEventsFreebusy],
+  )
+
+  if (hasEvents === hasFreeBusy) {
+    return null
+  }
+
+  return hasEvents ? 'events' : 'free-busy'
 }
 
 export function isGoogleConnectResult(
