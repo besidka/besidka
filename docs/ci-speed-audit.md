@@ -22,6 +22,20 @@ open. The "Now" column
 and the measurements below describe the pipeline as it was before these
 changes.
 
+**2026-11-22: 3 to 6 shards.** The suite grew, and "Run all E2E tests" took
+544 s, 366 s and 276 s on shards 1, 2 and 3 of the last PRs, against its
+10-minute (600 s) step limit. Shard 1's job ran 8:34, 9:28 and 10:14 on three
+consecutive PRs, so a timeout without a real failure was close. The E2E
+matrix in `preview-build.yml` and `production.yml` is now `[1, 2, 3, 4, 5, 6]`.
+Nothing else changed: the job name, `--shard=i/N`, the report artifact names
+and `resolve-production-test-source.mjs` all read the count from
+`strategy.job-total` or from the job names, and the step limit (10 min) and
+job limit (15 min) stay. Each shard has its own `wrangler dev`, local D1 and
+`auth.setup` user, so no test changes were needed. More than six shards buys
+almost nothing for now: the unit-test job (7 to 9 min) is the next bound on
+the critical path. The analysis below is the original 3-shard analysis, kept
+as written.
+
 **Observed on PR #499 (GitHub-hosted, 2026-10-25):**
 
 | Run | Wall time | Longest legs |

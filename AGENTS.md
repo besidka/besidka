@@ -622,7 +622,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (serial E2E with `workers: 1`, one serial job, a dead Playwright cache on
   `main` from an unexpanded `~`, `main` re-testing what the PR already
   tested), the target job graph with 3 E2E shards on free GitHub-hosted
-  runners, and the staged plan (stages 0-1 implemented, 2-3 open)
+  runners (raised to 6 on 2026-11-22: the suite outgrew the 10-minute step
+  limit, and unit tests are the next bound), and the staged plan (stages 0-1
+  implemented, 2-3 open)
 - `docs/cloudflare-previews.md` - PR and `main` previews on Cloudflare
   Workers Previews (one Worker, `env.production.previews`) instead of the
   separate `besidka-preview` Worker: `wrangler preview --env production`

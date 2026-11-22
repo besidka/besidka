@@ -330,7 +330,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     env:
       CI: true
       NUXT_PUBLIC_BASE_URL: http://localhost:3000
@@ -504,7 +504,7 @@ jobs:
             |----------|-------|
             | **Author** | [@${{ github.event.pull_request.user.login }}](https://github.com/${{ github.event.pull_request.user.login }}) |
             | **Checks** | Lint & typecheck: ${{ steps.durations.outputs.static }} |
-            | **Tests** | Unit: ${{ steps.durations.outputs.unit }} \| Integration: ${{ steps.durations.outputs.integration }} \| E2E: ${{ format('{0} (slowest of 3 shards)', steps.durations.outputs.e2e) }} |
+            | **Tests** | Unit: ${{ steps.durations.outputs.unit }} \| Integration: ${{ steps.durations.outputs.integration }} \| E2E: ${{ format('{0} (slowest shard)', steps.durations.outputs.e2e) }} |
             | **Build** | Nuxt: ${{ needs.build.outputs.build-duration }} \| Bundle: ${{ needs.build.outputs.bundle-size }} |
             | **Total time** | ${{ steps.durations.outputs.total }} |
             | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ steps.pr.outputs.sha }}) |
