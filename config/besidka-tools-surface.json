@@ -252,6 +252,18 @@
       "hasSummary": false
     },
     {
+      "name": "disconnect_google",
+      "mcpScope": "connectors:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "chat": {
+        "excluded": "Disconnecting Google stays in the Besidka app and on the MCP server: in a chat that holds Google data it would delete the copies the chat is using."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "get_artifact",
       "mcpScope": "artifacts:read",
       "access": "read",
@@ -450,6 +462,19 @@
         "tier": "read"
       },
       "chatDescription": "List the files in your library, newest first, with your storage usage: id, name, media type, size, source and expiry. Pass nextOffset back as offset to continue. Files with Google content are listed only in a chat that already holds Google data.",
+      "hasSummary": false
+    },
+    {
+      "name": "list_google_connections",
+      "mcpScope": "connectors:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "expose": true,
+        "tier": "read"
+      },
+      "chatDescription": "See whether Google is connected to your Besidka account, whether it must be connected again, and which capabilities are granted. Never returns the Google account, tokens or Google content. Connecting or disconnecting is only possible in the app.",
       "hasSummary": false
     },
     {
