@@ -211,10 +211,6 @@ async function openFilesModal(
   page: Page,
   tab: 'Upload new files' | 'Select existing files',
 ): Promise<void> {
-  const actionTestId = tab === 'Upload new files'
-    ? 'tools-action-attach'
-    : 'tools-action-library'
-
   await expect(page.getByTestId('files-modal')).toBeAttached({
     timeout: 10_000,
   })
@@ -222,7 +218,7 @@ async function openFilesModal(
 
   const action = page
     .getByTestId('chat-input-tools-panel')
-    .getByTestId(actionTestId)
+    .getByTestId('tools-action-attach')
 
   await expect(action).toBeVisible()
   await action.click()

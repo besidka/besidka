@@ -102,10 +102,44 @@ describe('useGooglePicker', () => {
 
         return this
       }
+
+      setOwnedByMe(value: boolean) {
+        this.config.ownedByMe = value
+
+        return this
+      }
+
+      setMode(value: string) {
+        this.config.mode = value
+
+        return this
+      }
+
+      setFileIds(value: string) {
+        this.config.fileIds = value
+
+        return this
+      }
+
+      setLabel(value: string) {
+        this.config.label = value
+
+        return this
+      }
+    }
+
+    class DocsUploadView {
+      config: Record<string, unknown> = { upload: true }
+
+      setLabel(value: string) {
+        this.config.label = value
+
+        return this
+      }
     }
 
     class PickerBuilder {
-      addView(view: DocsView) {
+      addView(view: { config: Record<string, unknown> }) {
         builderCall.views.push(view.config)
 
         return this
@@ -162,6 +196,8 @@ describe('useGooglePicker', () => {
       picker: {
         PickerBuilder,
         DocsView,
+        DocsUploadView,
+        DocsViewMode: { LIST: 'list', GRID: 'grid' },
         ViewId: { DOCS: 'docs' },
         Feature: {
           MULTISELECT_ENABLED: 'multiselect',
@@ -282,12 +318,6 @@ describe('useGooglePicker', () => {
         origin: window.location.origin,
         maxItems: 3,
         features: ['multiselect', 'drives'],
-        views: [{
-          viewId: 'docs',
-          includeFolders: true,
-          selectFolderEnabled: false,
-          enableDrives: true,
-        }],
       })
       expect(picker.setVisible).toHaveBeenCalledWith(true)
       expect(appended.every((script) => {
@@ -297,6 +327,138 @@ describe('useGooglePicker', () => {
       pickerCallback({ action: 'cancel' })
       await pending
     })
+
+  it('opens on Recent and offers Shared with me, Shared drives and Upload, '
+    + 'all in list mode', async () => {
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await finishScriptLoad()
+
+    expect(builderCall.views).toEqual([
+      {
+        viewId: 'docs',
+        includeFolders: true,
+        selectFolderEnabled: false,
+        mode: 'list',
+        label: 'Recent',
+      },
+      {
+        viewId: 'docs',
+        includeFolders: false,
+        ownedByMe: false,
+        mode: 'list',
+        label: 'Shared with me',
+      },
+      {
+        viewId: 'docs',
+        includeFolders: true,
+        selectFolderEnabled: false,
+        enableDrives: true,
+        mode: 'list',
+        label: 'Shared drives',
+      },
+      { upload: true, label: 'Upload' },
+    ])
+    expect(builderCall.features).toContain('multiselect')
+
+    pickerCallback({ action: 'cancel' })
+    await pending
+  })
+
+  it('opens one view with only the file ids, without shared drives or a parent',
+    async () => {
+      const { pick } = await loadComposable()
+      const pending = pick({ fileIds: ['1FileFileFileFileFile01'] })
+
+      await finishScriptLoad()
+
+      expect(builderCall.views).toEqual([{
+        viewId: 'docs',
+        fileIds: '1FileFileFileFileFile01',
+        mode: 'list',
+      }])
+
+      pickerCallback({ action: 'cancel' })
+      await pending
+    })
+
+  it('drops the ids that are not Drive ids and joins the rest with commas',
+    async () => {
+      const { pick } = await loadComposable()
+      const pending = pick({
+        fileIds: ['1FileFileFileFileFile01', 'not an id', '1FileFileFileFileFile02'],
+      })
+
+      await finishScriptLoad()
+
+      expect(builderCall.views[0]).toMatchObject({
+        fileIds: '1FileFileFileFileFile01,1FileFileFileFileFile02',
+      })
+
+      pickerCallback({ action: 'cancel' })
+      await pending
+    })
+
+  it('keeps the other tabs when one view cannot be built', async () => {
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await settle()
+    delete (window as any).google
+
+    const script = appended.at(-1)!
+
+    ;(window as any).gapi = {
+      load: vi.fn((_library: string, options: { callback: () => void }) => {
+        installPickerNamespace()
+        delete (window as any).google.picker.DocsUploadView
+        options.callback()
+      }),
+    }
+    script.onload?.(new Event('load'))
+    await settle()
+
+    expect(builderCall.views.map(view => view.label)).toEqual([
+      'Recent',
+      'Shared with me',
+      'Shared drives',
+    ])
+
+    pickerCallback({ action: 'cancel' })
+    await pending
+  })
+
+  it('still opens when setLabel does not exist any more', async () => {
+    const { pick } = await loadComposable()
+    const pending = pick()
+
+    await settle()
+
+    const script = appended.at(-1)!
+
+    ;(window as any).gapi = {
+      load: vi.fn((_library: string, options: { callback: () => void }) => {
+        installPickerNamespace()
+
+        const namespace = (window as any).google.picker
+
+        delete namespace.DocsView.prototype.setLabel
+        delete namespace.DocsUploadView.prototype.setLabel
+        options.callback()
+      }),
+    }
+    script.onload?.(new Event('load'))
+    await settle()
+
+    expect(builderCall.views).toHaveLength(4)
+    expect(builderCall.views.every(view => view.label === undefined))
+      .toBe(true)
+    expect(picker.setVisible).toHaveBeenCalledWith(true)
+
+    pickerCallback({ action: 'cancel' })
+    await pending
+  })
 
   it('never asks for more files than the cap', async () => {
     const { pick } = await loadComposable()

@@ -6,6 +6,7 @@ import type { GoogleCapability, GoogleScope } from '#shared/utils/google-scopes'
 
 export const GOOGLE_BYO_FEATURE_FLAG = 'google.byo'
 export const GOOGLE_GMAIL_FEATURE_FLAG = 'google.gmail'
+export const GOOGLE_CALENDAR_FEATURE_FLAG = 'google.calendar'
 
 export const GOOGLE_BYO_KEY_PROVIDER = 'google-oauth-client'
 

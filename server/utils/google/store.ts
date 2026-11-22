@@ -1,5 +1,8 @@
 import { and, eq } from 'drizzle-orm'
-import { getGrantedCapabilities } from '#shared/utils/google-connections'
+import {
+  getGrantedCapabilities,
+  getPartialCalendarAccess,
+} from '#shared/utils/google-connections'
 import type {
   GoogleConnectionStatus,
   GoogleConnectionSummary,
@@ -57,6 +60,10 @@ export async function readGoogleConnection(
 export function toGoogleConnectionSummary(
   record: GoogleConnectionRecord,
 ): GoogleConnectionSummary {
+  const partialCalendar = record.status === 'active'
+    ? getPartialCalendarAccess(record.grantedScopes)
+    : null
+
   return {
     clientMode: record.clientMode,
     status: record.status,
@@ -64,6 +71,7 @@ export function toGoogleConnectionSummary(
     capabilities: record.status === 'active'
       ? getGrantedCapabilities(record.grantedScopes)
       : [],
+    ...(partialCalendar ? { partialCalendar } : {}),
     connectedAt: record.createdAt.toISOString(),
   }
 }

@@ -3,7 +3,8 @@
 Status: **partly built** (2026-11-22), on the umbrella branch
 `feat/google-connectors`. Built so far: the four `google.*` flags in
 `shared/utils/features/registry.ts` (stage `internal`, `optIn: 'required'`;
-`google.drive` and `google.byo` are `available: true`),
+`google.drive`, `google.byo`, `google.gmail` and `google.calendar` are
+`available: true`),
 `shared/utils/google-scopes.ts`,
 `shared/utils/google-data-policy.ts`, the schema child's single migration
 (section 8), the chat runtime every Google tool registers into (section 5.2:
@@ -17,8 +18,10 @@ and the Drive Picker (section 12: the token route,
 the import into Besidka storage, the composer row, the `data-drive-file`
 part), the Drive tools (section 13: list, read and save for chat models,
 and the "Save to Google Drive" action) and the Gmail tools on the owner's own
-client (section 14: search, read a thread, create a draft, and Drive search).
-Not built yet: the Calendar tools and the legal text. This file grows with every
+client (section 14: search, read a thread, create a draft, and Drive search),
+and the Calendar tools on the owner's own client (section 15: list events,
+free and busy time, create one event that invites nobody).
+Not built yet: the legal text. This file grows with every
 child of the umbrella; each child replaces a "design" marker below with
 what was built.
 
@@ -34,11 +37,12 @@ only, work with mail and calendar:
 | Capability | Flag | Client | Scopes | State |
 |---|---|---|---|---|
 | Pick Drive files, read them, save one file back | `google.drive` | Besidka's client | `drive.file` and identity | Connection (section 9), Picker (section 12) and the list, read and save tools (section 13) built |
-| Calendar text: list events, find free time, create an event | `google.calendar` | Either client | `calendar.events` (provisional) | Design |
-| Connect Google with the owner's own OAuth client | `google.byo` plus the admin role | Owner's own client | Identity plus what the owner ticks: `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events` | Built (section 10), owner-only; the tools of section 14 use it |
+| Calendar: list events, check free and busy time, create one event | `google.calendar` (a child of `google.byo`) | Owner's own client only | `calendar.events.owned` and `calendar.events.freebusy` | Built (section 15), owner-only |
+| Connect Google with the owner's own OAuth client | `google.byo` plus the admin role | Owner's own client | Identity plus what the owner ticks: `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events.owned` with `calendar.events.freebusy` | Built (section 10), owner-only; the tools of sections 14 and 15 use it |
 | Gmail: search, read a thread, create a draft; Drive search | `google.gmail` (Drive search needs only `google.byo`) | Owner's own client | `gmail.readonly`, `gmail.compose`, `drive.readonly` | Built (section 14), owner-only |
 
-`google.gmail` is a child of `google.byo`, which is a child of `google.drive`:
+`google.gmail` and `google.calendar` are children of `google.byo`, which is a
+child of `google.drive`:
 a child is on only while every flag above it is on. Every flag needs the
 user's opt-in because each one sends Google data to Google or, through a chat,
 to a model provider.
@@ -54,7 +58,7 @@ in the agentic program starts until Phase 4b is finished.
 |---|---|---|
 | Who | Every user the flag reaches | Admins only (role checked on the server, never the flag alone), behind `internal` |
 | OAuth client | The Google Cloud project `chernenko-chat` | A project the owner creates and publishes "In production" |
-| Scopes | `drive.file`, identity, later `calendar.events` | `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events`, identity |
+| Scopes | `drive.file` and identity, never a Calendar scope | `drive.readonly`, `gmail.readonly`, `gmail.compose`, `calendar.events.owned`, `calendar.events.freebusy`, identity |
 | Picker | Yes: the Picker needs the API key and project number of the project that owns the client | No |
 | Restricted scopes | Never | Yes, on the owner's own project |
 | Callback | `/api/v1/google/oauth/callback` | `/api/v1/google/byo/callback`, a separate path so a block of one does not take down the other |
@@ -71,8 +75,10 @@ which client may request each capability, normalizes the short identity names
 (`email`, `profile`) to the expanded `userinfo.*` form Google returns, and
 exposes `hasScopes(granted, required)` for the comparison after every
 callback. A spec asserts that Besidka's client can request no BYO-only scope.
-Calendar is marked provisional until a narrower Calendar scope has been
-checked in the Cloud console.
+The `calendar` capability is the two narrow scopes of section 15 and is
+allowed for the `byo` client only: Besidka's client never asks for a Calendar
+scope, so the Drive Picker token can never carry one (and a Picker token
+route refuses a grant that holds any).
 
 ## 3. G-1 questions: Picker and token
 
@@ -95,7 +101,7 @@ NOT VERIFIED one behind a clear failure path.
 | 7 | Does the Picker set cookies the Cookie Policy must list? | Nothing documented. Do not claim zero storage on Besidka's origin; check Web Inspector Storage on a real run (for G-10). | NOT VERIFIED |
 | 8 | Can text be extracted from Google-native files through export, and what are the size limits? | Docs export to txt, md, html, docx and pdf; Sheets to csv and tsv (**first sheet only**), xlsx and pdf; Slides to txt, pdf and pptx; Drawings to pdf, png, jpeg and svg. `files.export` is capped at 10 MB. `alt=media` needs `capabilities.canDownload`; native files must use export. Quota: export and download count 200 units, a metadata read 5, 325,000 units a minute per user. That Docs accept `text/markdown` is documented in the export table; Besidka falls back to `text/plain` when Drive answers 400. | Documented |
 | 9 | Does the token endpoint return the expanded `userinfo.*` identity scopes? | `scope` is space-delimited with full URLs for API scopes, and granular consent lets the user untick `drive.file` (so the scope string is checked). Whether `email` or `userinfo.email` appears and whether `openid` is listed is not documented; `hasScopes` accepts both forms. | Documented; the identity forms NOT VERIFIED |
-| 10 | Is `calendar.events` sensitive or restricted, and is there a narrower scope? | `gmail.readonly`, `gmail.compose` and `drive.readonly` are restricted; `drive.file` is non-sensitive. Calendar tiers show only in the console. By the per-method scope lists the narrowest Calendar set is `calendar.events.owned` (list and create on the primary calendar) plus `calendar.events.freebusy`; the Calendar child replaces `calendar.events` in `shared/utils/google-scopes.ts`. | Documented; Calendar tier NOT VERIFIED |
+| 10 | Is `calendar.events` sensitive or restricted, and is there a narrower scope? | `gmail.readonly`, `gmail.compose` and `drive.readonly` are restricted; `drive.file` is non-sensitive. Calendar tiers show only in the console. By the per-method scope lists the narrowest Calendar set is `calendar.events.owned` (list and create on the primary calendar) plus `calendar.events.freebusy`; the Calendar child replaced `calendar.events` with them in `shared/utils/google-scopes.ts` (section 15.2 has the method-by-method check, read from Google's reference on 2026-11-22). | Documented; Calendar tier NOT VERIFIED |
 | 11 | Does Google's official Workspace MCP work with `drive.file` alone? | Google's Drive MCP is a Developer Preview that needs a special OAuth client type. Not a dependency. | Documented |
 
 ## 4. Google Cloud console configuration
@@ -152,8 +158,8 @@ adds no Google frame source.
 |---|---|---|
 | Add `drive.file`, `openid` and `userinfo.email` under Data access and confirm `drive.file` is non-sensitive (`userinfo.profile` is not requested) | Connections child | Owner, open |
 | Brand verification with Search Console proof of the authorized domain | Leaving test users with `drive.file` | After the legal child is live |
-| `calendar.events` verification: Limited Use statement live, demo video in English with a test account, consent screen app name and client id visible | Calendar for the public | After the legal child is live |
-| Check the Calendar scope table for a narrower scope | Calendar child | Open (question 10) |
+| Calendar scope verification (now `calendar.events.owned` and `calendar.events.freebusy`; the tier of each is shown only in the console): Limited Use statement live, demo video in English with a test account, consent screen app name and client id visible | Calendar for the public (Calendar runs on the owner's own client only for now, so it needs no verification for the owner's own use) | After the legal child is live |
+| Check the Calendar scope table for a narrower scope | Calendar child | Done in section 15.2 (the two narrow scopes replace `calendar.events`); the console tier is still to be read |
 
 ### 4.4 Branding
 
@@ -402,7 +408,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 |---|---|
 | `gemini-paid-tier-confirmed` | `keys.paid_tier_confirmed_at` of the user's Gemini key, set by the user with the pre-check's sentence "This key is on a Google Cloud project with billing enabled". Read from D1 only for a direct Gemini model in a flagged chat. Never carried onto a gateway route: a gateway model has no Gemini key to confirm, so Gemini through a gateway is refused |
 | `alibaba-served-model` | A direct Qwen model whose id starts with `qwen`, `qwq` or `qvq`: the whole curated Qwen catalog. Never carried onto a gateway route, so Qwen through a gateway is refused |
-| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and on no other gateway call (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts` decides the candidates and the safeguards together: on a gateway, Google tools are candidates only when the chat already holds Google data, so a candidate never exists on a gateway call without the safeguards, and an ordinary gateway chat of a connected user sends the request options it always did; on a direct provider candidates need no safeguards; the candidates come from `buildGoogleSendToolCandidates`: the Drive tools for a user with an active Besidka-client connection that holds `drive.file`, the Gmail and Drive search tools of section 14 for the admin owner with an active `byo` connection, and the Calendar child adds its own there): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
+| `zero-data-retention` | Sent by Besidka on every gateway call of a flagged chat, and on no other gateway call (`planGoogleSendTools` in `server/utils/tool-approval/google-send-tools.ts` decides the candidates and the safeguards together: on a gateway, Google tools are candidates only when the chat already holds Google data, so a candidate never exists on a gateway call without the safeguards, and an ordinary gateway chat of a connected user sends the request options it always did; on a direct provider candidates need no safeguards; the candidates come from `buildGoogleSendToolCandidates`: the Drive tools for a user with an active Besidka-client connection that holds `drive.file`, the Gmail and Drive search tools of section 14 and the Calendar tools of section 15 for the admin owner with an active `byo` connection): Vercel `providerOptions.gateway.zeroDataRetention: true`, OpenRouter chat setting `provider: { zdr: true }` (the field confirmed in the installed `@openrouter/ai-sdk-provider` types, which the pre-check left to confirm). The condition counts as met only on that path (`gatewaySafeguardsSent`) |
 | `payload-logging-disabled` | Sent on the same calls: the header `cf-aig-collect-log-payload: false` on the Cloudflare client |
 
 **Enforcement points.**
@@ -572,9 +578,14 @@ bring-your-own route answers 404.
 3. **Scopes** (Data access). Add `openid`, `.../auth/userinfo.email` and
    only the scopes of what you will tick in Besidka:
    `.../auth/drive.readonly`, `.../auth/gmail.readonly`,
-   `.../auth/gmail.compose`, `.../auth/calendar.events`. The Gmail and full
-   Drive scopes are restricted; that is why this client stays yours and
-   never serves other users.
+   `.../auth/gmail.compose`, and for Google Calendar the two scopes
+   `.../auth/calendar.events.owned` and `.../auth/calendar.events.freebusy`
+   (add both: the tools need each). The Gmail and full Drive scopes are
+   restricted; that is why this client stays yours and never serves other
+   users. If an earlier connection holds the old broad
+   `.../auth/calendar.events` scope, Besidka no longer asks for it and does
+   not use it; the grant stays at Google until you Disconnect, which revokes
+   the whole grant.
 4. **Client** (Clients, Create client). Type "Web application". Authorized
    redirect URIs: copy the exact URI the Besidka card shows (it is built
    from the address you opened the page on, path
@@ -902,6 +913,13 @@ again after a connect or disconnect. States:
 - Needs re-authorization: a warning and, while the flag is active,
   Reconnect.
 
+Disconnect (and "Delete client" and Disconnect on the own-client card) is the
+same control as Delete on an API key card: `UiButton` with `mode="error"` and
+`outline`, default size and radius, an icon (`lucide:unplug`, `lucide:trash`).
+It is the existing `btn-error btn-outline` pair, so its contrast follows the
+semantic pairs in `docs/ui/semantic-colors.md`; Reconnect next to it uses the
+same default size. How both themes render it was not checked in a browser.
+
 After Disconnect a toast says the copies were deleted (or that the deletion
 finishes shortly), a second toast with the link to
 myaccount.google.com/connections appears when Google did not confirm the
@@ -1059,13 +1077,11 @@ the card), never `drive.file` or `userinfo.profile`.
 | `drive-read` | `drive.readonly` (restricted) | `google__drive_search` (section 14) |
 | `gmail-read` | `gmail.readonly` (restricted) | `google__gmail_search`, `google__gmail_read_thread` (section 14) |
 | `gmail-compose` | `gmail.compose` (restricted; Google's scope for managing drafts and sending mail) | `google__gmail_create_draft` (section 14); Besidka has no send tool and creates drafts only, a limit of the product, not of the permission |
-| `calendar` | `calendar.events` (provisional) | None yet (Calendar child) |
+| `calendar` | `calendar.events.owned` and `calendar.events.freebusy` (both, or the capability is not granted; each tool needs only its own, section 15.2) | `google__calendar_list_events`, `google__calendar_free_busy`, `google__calendar_create_event` (section 15); offered on the card and accepted by the start route only while `google.calendar` is active for the owner |
 
-Scope minimization (pre-check row 10, "smallest set of scopes"): no
-bring-your-own tool exists yet, so offering only capabilities whose tools
-exist would offer nothing and leave the owner nothing to test. The card
-offers all four unticked and says that what is ticked is requested now for
-tools that arrive later.
+Scope minimization (pre-check row 10, "smallest set of scopes"): the card
+offers every capability that has a tool, unticked (Calendar only while
+`google.calendar` is active for the owner), and says what each one allows.
 
 Adding and narrowing (choice for the stored set): the request keeps
 `include_granted_scopes=true`, so adding a capability later works without
@@ -1144,8 +1160,9 @@ card, below a divider, only when the status carries `byo`:
   never prefilled, `autocomplete="new-password"`, both with the page's
   Paste button), Save client and, once saved, "A client is saved" and
   Delete client behind a confirmation. With a client saved and no active
-  connection: the four capability checkboxes, unticked, the "tools arrive
-  later" note and Connect (Reconnect after access ended).
+  connection: the capability checkboxes (three always, Calendar only while
+  `google.calendar` is active), unticked, a sentence about what each allows
+  and Connect (Reconnect after access ended).
 - Connected: the Google account's email, what Google granted, Disconnect
   behind a confirmation, and "Add access" with only the capabilities not
   granted yet.
@@ -1304,6 +1321,7 @@ deletes it from Files.
 |---|---|---|
 | `POST /api/v1/google/drive/picker-token` | Answers `{ accessToken, expiresInSeconds, apiKey, appId }` with `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer` | Same-origin write guard, session, `google.drive` active, 30 per minute (`google-picker-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files` | Body `{ items: [{ id, resourceKey? }] }`, 1 to 5 items, unique ids; answers `{ results }`, one per file | Same gate, 10 per minute (`google-drive-import-rate-limit:<userId>`), body at most 8 KiB, legal consent; 404 or 409 before any read when Google is not connected or needs re-authorization |
+| `POST /api/v1/google/drive/files/link` | Body `{ link }`, one Google file link parsed again on the server (section 12.15); answers `{ item, kind, results }`, no retry | The same gate, with its own bucket, 20 a minute (`google-drive-link-rate-limit:<userId>`) |
 | `POST /api/v1/google/drive/files/refresh` | Body `{ ids }`, 1 to 5 unique Besidka file ids; answers `{ results }`, one per copy (section 12.12) | The same gate and the same `import` rate bucket |
 
 Ids match `^[A-Za-z0-9_-]{10,128}$` and resource keys `^[A-Za-z0-9_-]{1,128}$`
@@ -2196,6 +2214,262 @@ NOT VERIFIED without a real Google account or a browser, for the owner:
 8. Disconnect Google on the API Keys page and reopen the tab: the copies are
    gone and the "not connected" state shows.
 
+### 12.13 The Picker tabs (BES-451)
+
+The Picker used to open on one view built with `setEnableDrives(true)`, which
+Google fills with shared drives and their files: a user without shared drives
+saw "No documents." and had to search. `buildPickerViews` in
+`app/composables/google-picker.ts` now adds four views in this order, each
+labeled and each built on its own (an exception in one drops that tab and
+nothing else; with none left the plain `ViewId.DOCS` view opens):
+
+| Tab | Built with |
+|---|---|
+| Recent | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(true)`, `setSelectFolderEnabled(false)`, `setMode(DocsViewMode.LIST)` |
+| Shared with me | `new DocsView(ViewId.DOCS)`, `setIncludeFolders(false)`, `setOwnedByMe(false)`, `setMode(DocsViewMode.LIST)` |
+| Shared drives | the earlier view, `setEnableDrives(true)` with folders, plus `setMode(DocsViewMode.LIST)` |
+| Upload | `new DocsUploadView()` |
+
+What Google's reference says about each (read 2026-11-22 on
+`developers.google.com/workspace/drive/picker/reference/`): `DocsView` "Use
+`DocsView` to select files from Google Drive." `setMode(mode)` "Selects which
+mode the view will use to display the documents"; `DocsViewMode.LIST` is
+"Display documents in a detailed list" and `GRID` "Display documents in a
+thumbnail grid". `setOwnedByMe(me)` "Filters the documents based on whether
+they are owned by the user, or shared with the user"; the page warns that
+with `setEnableDrives(true)` and `setOwnedByMe(true)` there are no results,
+and the method is ignored when `setIncludeFolders(true)`, which is why Shared
+with me has no folders and never `setEnableDrives`. `setEnableDrives(enabled)`
+"Shows shared drives and the files they contain." `DocsUploadView` "Use
+`DocsUploadView` to upload files to Google Drive." The web guide recommends
+list mode when the token's scope is narrower than full Drive, because
+thumbnails are not accessible "as the user hasn't granted access to
+thumbnails", which matches the blank checkerboards seen with `drive.file`.
+Every view is list mode for that reason.
+
+An upload through the Upload tab is a pick: Google uploads the local file into
+the user's Drive and returns it, and the normal import then runs (copy,
+chip). That it works with the `drive.file` scope is NOT VERIFIED: the guide
+says users "can select and upload files with the Google Picker" and names
+`drive.file` as the scope for these views, without a sentence that ties the
+two together. The upload runs inside the Picker's own frame, so no source was
+added to the content security policy (section 12.8); whether the upload view
+loads another frame host is NOT VERIFIED, and the `securitypolicyviolation`
+listener turns a block into the "Reload the page" message.
+
+Three things are NOT VERIFIED and need a real account. The tab labels:
+`View.setLabel` is marked deprecated in the reference with no replacement,
+so it is called only when it exists (`view.setLabel?.(label)`) and the Picker
+may show its own names. "Recent": no method sets a sort order and the
+reference marks `ViewId.RECENTLY_PICKED` deprecated, so "most recent first"
+rests on how the plain Drive view orders its list, which is not documented.
+And whether multi-select works across tabs, including Upload.
+
+Besidka cannot draw its own list of recent Drive files. The `drive.file`
+permission only reaches files the user created with Besidka or picked in the
+Picker; it does not allow listing, so a list of recent files would need a
+broader scope (`drive.readonly` or `drive.metadata.readonly`, which are
+restricted) and Besidka asks for neither. Only Google's Picker can show those
+files.
+
+Opening the Picker for one file: `pick({ fileIds })` builds a single view
+with `setFileIds` and list mode and nothing else. The reference: `setFileIds`
+"Sets the file IDs included in the view", takes a comma-separated string,
+leaves out IDs the user cannot access, and must not be used with
+`setEnableDrives` or `setParent` (each call overrides the earlier ones). The
+ids are checked against the Drive id pattern first.
+
+### 12.14 A failed import: the diagnosis, the retry and the chip (BES-452)
+
+The owner picked two Google Sheets in one Picker session on the preview; one
+imported and the other showed "Google Drive did not return this file...", the
+`not_found` sentence. The preview has no log drain, so **the root cause is NOT
+VERIFIED**. What the code and Google's documentation settle:
+
+- `not_found` is any 404 from the three Google requests an import can make:
+  the metadata read (`files.get`), the export of a Google-native file
+  (`files.export`, the path both Sheets took) and the media download.
+  `classifyDriveFailure(404, ...)` gave all three the same sentence, so the
+  owner could not tell a missing grant from a failed export. The result now
+  carries `google: { stage, status, reason }`, where `stage` is `metadata`,
+  `export` or `download`, `status` is Google's HTTP status and `reason` is
+  Google's `error.errors[0].reason` only when it matches
+  `^[A-Za-z][A-Za-z0-9_]{0,63}$` (a file name or any text is dropped to
+  `null`). The wide event holds `attributes.googleDrive.failureDetails`
+  (for example `export:404:notFound`, at most five) and `metadataRetries`;
+  nothing else of Google's answer is logged.
+- Nothing in the callback drops or mangles a second pick: `collectPickedItems`
+  copies each `id` and `resourceKey` as the Picker returned them, the client
+  sends one request with all items (not one request per file, so nothing
+  races), the server imports them one at a time, each with a fresh token, and
+  every id is checked against the Drive id pattern before any call. No code
+  path that loses the second item was found.
+- Google's documentation of `drive.file` (read 2026-11-22): per-file access
+  that users grant "while using the Google Picker API or the app's file
+  picker". It says nothing about a delay between a pick and the access, about
+  shared drives, or about the app id; sections 3 (questions 1, 3 and 4) keep
+  what is and is not documented. A short propagation delay right after a pick
+  is therefore a hypothesis, not a finding.
+- Candidates a real run can tell apart now: a metadata 404 (grant not visible
+  yet, or the file in a shared drive picked through search), an export 404
+  (the Sheet could not be exported as CSV) and a download 404.
+
+**The retry.** Only the metadata read of a fresh pick is repeated, and only
+for a 404: up to three retries after the first request (so up to four
+requests), after 0.5, 1 and 2 seconds, one at a time, in
+`fetchPickedMetadata` in `server/utils/google/drive-import.ts`. The route
+`POST /api/v1/google/drive/files` passes `retryFreshPick: true`; the refresh
+route, the Drive tools (`drive-picked.ts`) and the link route never do. Any
+other answer, and a 404 of the export or the download, is final at once.
+"Up to three attempts with the waits 0.5, 1 and 2 seconds" was read as three
+retries after the first try. The waits of all files of one request come out
+of one budget of 6 seconds (`FRESH_PICK_RETRY_BUDGET_MS`), so a batch of ten
+files that all answer 404 waits 6 seconds in total, not 35.
+
+**The sentences.** `describeDriveFailure(code, google)` keeps one sentence
+per code and replaces it when Google's reason says what the user should do:
+`notFound` (pick it again; if it is still missing it was deleted or moved),
+`appNotAuthorizedToFile` (Besidka has not been given access yet, pick it
+again) and `insufficientFilePermissions` (the account may not read it, ask
+the owner). Any other 403 keeps the generic "no access" sentence.
+
+**The chip.** `ChatInput/Files/Attached/DriveImport.vue` is one chip for
+copying and failed files: the same box as an attached file (`size-14` icon,
+the name), and for a failure one short line, "Could not import", in the error
+color. That line is a button (`aria-expanded`, `aria-controls`); it opens
+`DriveImportNote.vue` under the row of chips, outside the carousel that
+clips its children: the full sentence, then the technical code in small text
+("(Google: notFound, export)"), "Pick again" and "Remove". A note is not an
+overlay, so it reads the same on a 375 px screen and for a screen reader (a
+labeled region after the chips). "Pick again" shows when the code can be
+fixed that way (`canPickDriveFileAgain`: not found, no access, rate limit,
+other) and opens the Picker on that file (section 12.13). Failed upload
+chips are a different component with their own one-word status and retry and
+were not changed. The per-file warning toast that repeated the sentence was
+removed; the chip and its note carry it.
+
+### 12.15 A pasted Google link attaches the file (BES-453)
+
+While `google.drive` is active, a link to a Google Doc, Sheet, Slides file or
+Drive file in the composer text becomes an attachment without the menu.
+
+**Parsing, twice.** `shared/utils/google-drive-links.ts`
+(`parseGoogleDriveLink`, `extractGoogleDriveLinks`) is strict: HTTPS, no
+credentials or port, host exactly `docs.google.com`
+(`/document/d/<id>`, `/spreadsheets/d/<id>`, `/presentation/d/<id>`) or
+`drive.google.com` (`/file/d/<id>`, `/open?id=<id>`), the Drive id pattern
+(`^[A-Za-z0-9_-]{10,128}$`), an optional `resourcekey` that matches the
+resource key pattern, at most 2048 characters. Folder links, forms, other
+paths and other hosts are ignored. The composer extracts links from the text
+(at most five a message, one per file id, trailing punctuation and Markdown
+parentheses stripped) and sends the link as written to the server, which runs
+the same parser again; only the file id and the resource key ever reach
+Google. An uppercase scheme or host is read (URL parsing lowercases it), the
+default port written out (`:443`) counts as no port, any other port is not
+Google's, and an `open?id=` link with more than one `id` parameter is
+refused, so Besidka and Google can never read different ids. Links inside
+fenced code blocks (an unclosed one runs to the end) and inline code are not
+links. A link that ends the text right after an id shorter than 28
+characters is skipped, because a half-typed id already matches the id
+pattern. Google documents no length for a Drive id (`files.generateIds` and
+the file resource say nothing); 28 is the shortest form seen in practice
+(newer ids are 33 or 44), a choice and not a documented minimum, and it only
+delays a link that ends the text right after a shorter id until more text
+follows.
+
+**The route.** `POST /api/v1/google/drive/files/link`, body `{ link }`, answers
+`{ item, kind, results }` with one result in the shape of the import route. It
+is the import route for one file: same gate (same-origin write guard,
+session, `google.drive`, its own `link` bucket of 20 a minute so that probes
+ending in 404 never use up the Picker's `import` budget of 10, legal consent,
+a connection that is active with `drive.file`, 404 or 409 before any read), the
+same copy and reuse rules (an unchanged copy is `reused`), and a 400 for a
+link that is not a file. It never retries: a file that was not just picked
+has no grant on its way. `logger` gets `attributes.googleDrive.fromLink`.
+
+**What the composer does** (`useChatDriveFiles().detectLinks`, called from
+`ChatInput.client.vue` 800 ms after the text stops changing):
+
+| Answer | Result |
+|---|---|
+| Copied or reused | The file is attached like a pick (same chip, same rules, the chat marked as holding Google data) |
+| 404 not found or 403 no access | A suggestion, "Attach this Google file" (the kind of file and a number when there are several), that opens the Picker on that one file |
+| Too large, empty, storage full, unsupported, locked | The failed chip of section 12.14 |
+| 401, 404, 409, 429 on the request, consent missing, `reauthorize`, rate limit, other failure | Nothing: no toast, no dialog, no chip |
+
+The first 404, 409, 401 or 429 on the request stops every later request until
+the next message.
+
+**A link never leaves the browser unless Google Drive is connected.**
+Detection needs, in this order: the `google.drive` feature active, the menu
+row's own gates (the model takes files, so not a deep-research model:
+`options.isAvailable` from `ChatInput.client.vue`), and a connection that is
+`active` with the `drive-picked` capability. The connection is read from the
+status the API Keys page keeps under the fetch key `google-drive-connection`
+(`useNuxtData`); when nothing is cached it is requested once from Besidka's
+own `GET /api/v1/google/connections` and stored under that key, and a failed
+answer counts as not connected until the next message. A disconnect on the
+API Keys page refreshes that same entry, so detection stops at once; a
+connect is a full page return. No status request is made for text without a
+link. Not connected, or the feature not active: no request to the link route
+and no hint.
+
+**What is remembered for the page session.** A link that was answered "not
+found" or "no access" is kept in `useState('google-drive-unreadable-links')`
+until the user picks the file; the same link in a later message shows its
+suggestion again with no request, so unreadable links cannot use up the
+bucket. A link already attached (a copy with that Drive id) or being copied
+is ignored, a link is asked about once a message (five at most), and sending
+forgets the suggestions and the handled links but not that memory. Removing
+the link text removes nothing already attached; dismissing a suggestion keeps
+it dismissed for the message.
+
+**Time limits.** Each request has a 15 second timeout (the `timeout` option of
+`$fetch`) and one run of the queue has 15 seconds in all: links still queued
+after that are dropped. The send button waits for a probe only while it runs;
+a message sent while a probe is out lets go of the composer at once
+(`invalidatePendingWork` clears the flag), and a request that times out ends
+silently.
+
+**Typed and sent at once (BES-453, 5a).** `sendMessage` awaits
+`detectLinks(message)` before its busy check, so Enter pressed within the
+800 ms debounce still runs the detection once and waits for it (an
+in-flight probe is awaited, not repeated, and the wait is bounded by the
+time limits above). A link that Besidka can read is therefore attached to the
+message that carries it. A link that needs the Picker only shows its
+suggestion, and the message is sent as text.
+
+**A copy that arrives after the send (BES-453, 5b).** When the answer of a
+probe comes back after the message was sent or the composer was torn down
+and the result is `imported` (a new copy), the copy is deleted again through
+`DELETE /api/v1/files/<id>` (a failure of that delete is ignored); a `reused`
+copy was there before and is left alone. Not attaching it to the next
+message was chosen because that message may be unrelated. A request that the
+timeout aborts can still leave a copy on the server that nothing deletes: it
+counts against storage until it expires or the user deletes it from Files.
+
+**If the Picker shows nothing.** `setFileIds` leaves out ids the account
+cannot open, so for a file shared with another Google account the Picker is
+empty. The suggestion row says, below its buttons: "If the Picker shows
+nothing, open the file in Google Drive with the connected account first."
+
+**Keyboard and screen readers.** The suggestion row has one persistent live
+region that receives the announcement (not an `aria-live` on a root that
+appears with its content); dismissing a suggestion moves focus to the next
+one or to the textarea (`js-chat-input-textarea`). The failed-chip note of
+section 12.14 takes focus when it opens, is announced through the attachments
+row's status region, closes on Escape back to its chip button, and after
+"Pick again" or "Remove" focus goes to the chip, the next failed chip or the
+textarea.
+
+**Why a first-time link needs one confirmation.** The `drive.file` permission
+only reaches files the user created with Besidka or picked in the Picker, so
+Google answers 404 or 403 for a file Besidka has never been given, however
+valid the link. Google's documented way to grant access is the Picker, which
+`DocsView.setFileIds` pre-navigates to that file (section 12.13): the user
+confirms it once and the normal import runs. Reading the file from the link
+alone would need a broader scope that Besidka does not ask for.
+
 ## 14. Gmail tools and Drive search (Gmail tools child, G-8)
 
 Built on `feat/google-gmail-tools`. Five `google__` tools for the owner's own
@@ -2651,7 +2925,7 @@ file reaches the frame unchanged; noted here, not changed in this child.
 
 Sending mail, labels, deleting or modifying mail, attachment download, thread
 paging, paging through a found Drive file, the "+" menu toggles, injection
-screening, Calendar (the next child), and any MCP exposure:
+screening, Calendar (section 15), and any MCP exposure:
 `config/mcp-surface.json` is unchanged, the MCP
 modules import none of this code, and a chat that used Gmail is withheld from
 `get_chat` through the sticky flag (tested through `chatHoldsGoogleData`, not
@@ -2712,3 +2986,500 @@ client that is "In production" or the owner as a test user; "Testing" gives
     real mail is NOT VERIFIED).
 13. Allow Gmail search in a chat and ask for more than five searches in one
     message: the sixth asks again.
+
+## 15. Calendar tools (Calendar tools child, G-9)
+
+Built on `feat/google-calendar-tools`. Three `google__` tools for the owner's
+own Google client ("BYO", section 10) and its primary calendar:
+`google__calendar_list_events`, `google__calendar_free_busy` and
+`google__calendar_create_event`. Calendar runs only on the owner's own client
+in this child: Besidka's client never asks for a Calendar scope, so the Drive
+Picker token never carries one. Event titles, descriptions, locations and
+organizer names are written by other people (an invitation from a stranger
+lands on a calendar), so every byte of them is untrusted input and other
+people's personal data, as mail is (section 14). Code:
+`shared/utils/{google-calendar-event,google-calendar-tools}.ts`,
+`server/utils/google/{calendar-api,calendar-tools}.ts`,
+`server/utils/tool-approval/google-send-candidates.ts` (the BYO branch),
+`app/components/Chat/Reasoning/{ApprovalStep,GoogleStep}.vue`,
+`app/components/Profile/Google/OwnClient.vue`, `app/utils/google-step.ts`.
+
+### 15.1 The tools
+
+Every tool is built by `buildGoogleCalendarTools` with
+`buildGoogleApprovalEntry` (section 5.2), wrapped with `withFollowUpTurn`,
+serialized through the per-send guard that Gmail and Drive share
+(`createGoogleSendGuard`: one at a time, 30 Google tool calls per message) and
+cut to `GOOGLE_TOOL_OUTPUT_MAX_BYTES` (`fitGoogleToolOutput`). Each input
+schema is strict, so an unknown key is refused before anything runs. The model
+receives each result through `toModelOutput` (`googleToolModelOutput`) without
+its `references`.
+
+| Tool | Kind | Input | Output | Limits | Approval options |
+|---|---|---|---|---|---|
+| `google__calendar_list_events` | read | `from` and `to`: RFC 3339 date-times with an explicit offset, `to` after `from`, at most 31 calendar days apart (see "The window" below) | `references`, `count`, `calendarTimeZone` (only when it is a known time zone), `events` (one framed JSON object per line, the same keys in the same order for every event: `allDay`, `start`, `end` (timed events, else null), `endExclusive` and `lastDay` (all-day events, else null), `title`, `location`, a short `description` (each null when empty), `organizerIsYou`, `organizerName` (the display name only, or null), `myResponse`, `showsAsBusy`, `guests` (a number), `videoCallLinks` (a number), `attachments` (a number), `type` and `status` (null unless not the plain ones)), `note` | `events.list` on the primary calendar only, `singleEvents=true`, `orderBy=startTime`, `maxResults=50`, a `fields` mask; one request; the answer is read with a 1 MiB cap (over it: "use a shorter window"); 24 KiB of text; the 64 KiB cap | Allow once, "Allow reading events on your Google Calendar in this chat" (at most 5 granted calls per message, then it asks again) |
+| `google__calendar_free_busy` | read | the same window | `references` (one), `window`, `count`, `busy` (UTC start and end times, sorted, merged and cut to the window, at most 100 intervals), `note` | `freeBusy.query` for `primary` only, one request, a `fields` mask, a 256 KiB cap; times only, no event text | Allow once, "Allow checking when you are busy in your Google Calendar in this chat" (at most 5 granted calls per message) |
+| `google__calendar_create_event` | write | `title` (1 to 200 characters), `start` and `end` (RFC 3339 with an explicit offset, or two dates for an all-day event), `timeZone` (an IANA name), optional `description` (4,000 characters) and `location` (300) | `references` (the event id, its start day and its Google link, for the card only), `created`, a fixed message with the day that nobody was invited and no email was sent; no Google link | One `events.insert` on the primary calendar with `sendUpdates=none` and a client-supplied `id` | Allow once only |
+
+There are no attendees, no video call, no repeat, no reminders and no
+attachments in a created event, and no tool edits, moves or deletes one, reads
+another calendar or reads one event by id. A refusal or a Google failure is a
+thrown sentence the model can read and never repeats Google's own message
+text (`classifyCalendarFailure`: 401 reconnect, `accessNotConfigured` or
+`SERVICE_DISABLED` "the Google Calendar API is not turned on in your Google
+Cloud project", 403, 404, 429 and the 403 reasons `rateLimitExceeded`,
+`userRateLimitExceeded` and `quotaExceeded` "slow down", too large, 400,
+anything else). A free and busy answer that carries an error for the
+calendar gets its own sentence: `notFound` "could not find the primary
+calendar of this account", any other reason "could not answer for the primary
+calendar". `SERVICE_DISABLED` is read from `error.details` by
+`readCalendarReason` in `calendar-api.ts`, because the shared `readReason`
+only reads `error.errors`.
+
+**The window.** `validateCalendarWindow` allows a window of up to 31 calendar
+days. The span is compared in real time, so one hour is allowed on top of 31
+days: a whole October in a European zone, whose clocks go back, is 31 days
+and one hour long and is accepted (tested for Europe/Warsaw in March and
+October and America/New_York in November), and 31 days and 61 minutes is
+refused.
+
+**What a listed event says.**
+
+- An all-day event carries `endExclusive`, which is Google's end date and is
+  not part of the event, and `lastDay`, the last day it covers (a one-day
+  event has `lastDay` equal to `start`). The tool description says so.
+- `organizerIsYou` is Google's own `organizer.self`. `organizerName` is the
+  cleaned display name and nothing else. An organizer's address is never
+  asked for (the `fields` mask is `organizer(self,displayName)`), never
+  returned and never used as a name: with no display name `organizerName` is
+  null.
+- `myResponse` is the response of the user's own entry in the guest list
+  (`accepted`, `declined`, `tentative`, `needsAction` or null; any other value
+  is null), asked as `attendees(self,responseStatus)`. A declined event is
+  listed, with `myResponse: "declined"`. `showsAsBusy` is false only when
+  Google's `transparency` is `transparent`. No guest name or address is asked
+  for.
+- A canceled event is not listed and is counted in the note as "N canceled
+  events not shown" (an event that cannot be shown for another reason is
+  counted as "could not be shown").
+- One event is one JSON object on its own line with `JSON.stringify` after
+  the cleaning below, so a title with a pipe or a quote, or an organizer
+  whose display name is "you", cannot forge another field: `organizerIsYou`
+  is a separate boolean that no text can set.
+
+**Why these approvals.** The two reads put text written by other people into
+the model's context, but only short fields (the pre-check's row 14 asks for an
+approval per read, not for once-only reads), so they take the same "Allow in
+this chat" grant as `google__gmail_search`, with the same cap of 5 granted
+calls per message (`GOOGLE_CALENDAR_GRANTED_CALLS_PER_MESSAGE`, in the same
+`GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE` map, counted from the stored
+`data-tool-grant` markers so a pause or a "Continue" round does not reset it).
+The write asks every time with Allow once only, whatever grant, permission
+mode or taint (rule 11, `isGoogleWriteToolName`), and Enter on its card never
+approves it. Always allow is never offered for any of the three.
+
+**Untrusted text.** Titles, locations, descriptions and organizer names go
+through `cleanMailField`, the same cleaning as mail: control characters,
+every invisible and bidi format character (the joiners too, so a closing tag
+with a U+200D inside it becomes the real closing tag and
+`neutralizeFrameTags` defuses it), lone surrogates and line separators are
+removed, and every field is collapsed onto one line, so one event is one
+framed line and no text can forge another event. An HTML description
+(Google Calendar often stores one, and a description with an entity is
+treated as HTML) goes through the same linear `htmlToPlainText` as mail
+(`script`, `style` and comments dropped with their content, entities
+decoded, nothing fetched), then the cleaning. Lengths are capped (title and
+location 200, description 500, organizer 100 characters). Everything is
+framed by `frameUntrustedResult` as
+`<untrusted_tool_result connector="google" tool="calendar_list_events">`. A
+time is passed on only when it has exactly the shape of a date or an RFC 3339
+date-time (`readCalendarResponseTime`), so no free text rides on a time; an
+event whose start or end is not one, whose id is not `[A-Za-z0-9_-]{1,256}`
+or that is canceled is left out; a canceled event is counted in the note as
+"N canceled events not shown" and any other is counted as "could not be
+shown".
+
+**Guests.** The attendees of a listed event are other people's addresses. The
+`fields` mask asks Google for `attendees(self,responseStatus)` only, so no
+address or name enters the Worker; the model gets the number of guests, the
+response of the user's own entry (`myResponse`), whether the owner is the
+organizer (`organizerIsYou`) and the number of video call links and
+attachments (the `fields` mask leaves out their addresses too). The tool
+description says so. The organizer of an event someone else created is shown
+by display name inside the frame, and never by address: with no display name
+`organizerName` is null (decided 2026-11-22, replacing the earlier fallback to
+the address).
+
+### 15.2 Scopes
+
+`shared/utils/google-scopes.ts`: `calendar.events` is gone. The `calendar`
+capability is `https://www.googleapis.com/auth/calendar.events.owned` and
+`https://www.googleapis.com/auth/calendar.events.freebusy`, for the `byo`
+client only, and the capability counts as granted only when both are. Each
+tool needs only its own (`GOOGLE_CALENDAR_TOOL_SCOPES`): listing and creating
+need `.owned`, free and busy needs `.freebusy`, so a grant of one gives the
+tools of that one and the card says Calendar access is missing. Checked
+against Google's Calendar API reference on 2026-11-22, the "Authorization"
+section of each method:
+
+| Method | Documented scopes (the ones relevant here) |
+|---|---|
+| `events.list` (https://developers.google.com/workspace/calendar/api/v3/reference/events/list) | `calendar.readonly`, `calendar`, `calendar.events.readonly`, `calendar.events`, `calendar.app.created`, `calendar.events.freebusy`, **`calendar.events.owned`**, `calendar.events.owned.readonly`, `calendar.events.public.readonly` |
+| `events.insert` (https://developers.google.com/workspace/calendar/api/v3/reference/events/insert) | `calendar`, `calendar.events`, `calendar.app.created`, **`calendar.events.owned`** |
+| `freebusy.query` (https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query) | `calendar.readonly`, `calendar`, **`calendar.events.freebusy`**, `calendar.freebusy` |
+
+`events.list` also lists `calendar.events.freebusy`; what that scope returns
+from `events.list` (free and busy detail only, by its name) is not used here
+and not verified: Besidka asks for `.owned` for listing. `sendUpdates` values
+are `all`, `externalOnly` and `none` (the same page); Besidka always sends
+`none`. An old connection that holds the broad `calendar.events` scope keeps
+it at Google until the owner disconnects (the grant is revoked as a whole);
+Besidka neither asks for it nor uses it, and the connection lists no Calendar
+capability until the two new scopes are granted.
+
+The owner's connect flow requests the two scopes only while `google.calendar`
+is active for the owner (the flag and its Labs opt-in): the card does not
+offer the Calendar box otherwise, drops `calendar` from the capabilities of a
+reconnect, and `POST /api/v1/google/byo/start` answers 403 "Google Calendar
+is not turned on" for a body that names `calendar` while the flag is off
+(`checkGoogleByoAccess` with `requiredFlags: ['google.calendar']`; the
+existing admin gate runs first). The route also leaves the two Calendar
+scopes out of the request while the flag is off even when the stored grant
+holds them (the start route normally adds the scopes of an active connection,
+section 10.4; `excludedScopes` of `startGoogleConnection` removes them), so
+"Add access" never re-requests Calendar without the flag (tested by reading
+the authorization URL). The connection does not drop the scopes: the request
+keeps `include_granted_scopes=true`, so Google keeps every scope the owner
+granted earlier until the owner disconnects, and the next token can still
+carry them. What the flag off changes is Besidka's side: it stops requesting
+the Calendar scopes and stops using them, through the exact-scope checks
+(`hasScopes` on the stored scopes per tool) and the per-call flag check in
+`getGoogleAccessToken`. The OAuth behavior is unchanged. A connection
+without the scopes simply gets no Calendar tools, as with a missing Gmail
+scope.
+
+### 15.3 When the tools are offered
+
+`google.calendar` is `available: true`, `adminOnly: true`, stage `internal`,
+`optIn: 'required'`, `spend: 'none'`, and a child of `google.byo` (the same
+level as `google.gmail`). The send reads it with the other Google flags
+(`'google.calendar'` in the feature list of the chat route,
+`googleCalendarActive` through `planGoogleSendTools`), and
+`buildGoogleSendToolCandidates` builds the Calendar tools in the BYO branch
+under the unchanged conditions of section 14.2 (an active `byo` connection,
+the admin gate, tool calling, no unremovable provider tool in a chat without
+Google data, a model that may receive Google data, gateways only in a chat
+that already holds Google data) when `google.calendar` is active and the
+stored scopes hold what the tool needs. Every call runs the gate again
+(`getGoogleAccessToken` with `clientMode: 'byo'` and
+`requiredFeatureFlags: ['google.calendar']` in one fresh feature read), so
+turning Calendar off in Labs in the middle of a send stops the next Calendar
+call while Gmail and Drive keep working (tested), and a lost admin role,
+ended connection or missing scope answers with a fixed sentence and no
+request to Google.
+
+### 15.4 Creating an event: nothing outward, and the card is the body
+
+`validateCalendarEvent` (`shared/utils/google-calendar-event.ts`, pure, also
+used by the input schema, `execute` and the card) refuses instead of
+repairing:
+
+- Times: both RFC 3339 date-times with an explicit offset, no fraction of a
+  second, real calendar and clock values (a round trip catches `02-30`), or
+  both real dates for an all-day event; mixed forms are refused; the end must
+  be after the start as an instant (an all-day end date is exclusive, Google's
+  meaning: one day on 2026-12-01 is start 2026-12-01 and end 2026-12-02, which
+  the tool description and the card both say).
+- Time zone: an IANA name the runtime knows in the letter case people write it
+  (`Europe/Kyiv`, `America/New_York`, `UTC`); a name the runtime resolves to
+  the same name only in another letter case, an unknown name and an offset
+  are refused (an alias the runtime resolves to an older name, such as
+  `Europe/Kyiv` against `Europe/Kiev`, is accepted when every part starts with
+  a capital letter and none is shouted).
+- The offset in a date-time must equal the offset the time zone really has at
+  that instant (`getTimeZoneOffsetMinutes`, from `Intl.DateTimeFormat`), so a
+  stale offset after a daylight saving change is refused, and so is a local
+  time that falls in the hour skipped when the clocks go forward; both
+  occurrences of a repeated time after the clocks go back are accepted, since
+  the offset tells them apart (tested for Europe/Berlin and America/New_York
+  around the 2026 changes on Node, and the zone and offset checks were also
+  run on local workerd 1.20261119.1 through a scratch Worker with the same
+  results).
+- Text: the title is 1 to 200 UTF-16 units on one line with no leading or
+  trailing space and no control, invisible or bidi character; the location is
+  at most 300 on one line with the same rules; the description is at most
+  4,000 of plain text with line breaks and tabs allowed (the body rules of the
+  Gmail draft: no lone CR, no invisible or bidi character, no lone
+  surrogate). An empty description or location is left out of the body.
+
+Only after all of that does it return the request body. `CalendarInsertBody`
+has the keys `summary`, `description`, `location`, `start` and `end` and no
+other; `buildCalendarInsertPayload` in `calendar-api.ts` copies those fields
+one by one (so an object that carried an `attendees` property at runtime
+would still lose it) and adds one key of its own, the client-supplied `id`
+(below), which is kept out of the validated body so the card is still built
+from the body alone. The call always sends `sendUpdates=none`, and no
+parameter that turns on video calls or attachments is ever sent.
+`calendar-boundary.spec.ts` proves it: the module has no PUT, PATCH or
+DELETE, no other calendar, no `/acl`, `/move`, `quickAdd`, `/import` or
+`/watch`; two POSTs only (the free and busy query and the insert); the body
+type has no attendee key; the payload of a hostile object has only the
+whitelisted keys plus `id`; and no byte of any request body in the tool specs
+holds an attendee, conference, recurrence, reminder or attachment.
+
+**An insert that is safe to repeat.** The approved call can run twice (a
+Worker that died after Google answered, or a lease that expired), so the
+insert carries an `id` that is derived, not random: `buildCalendarEventId`
+hashes the user id and the approval id (SHA-256) and writes the digest in
+base32hex, 52 lowercase characters. The approval id is the one the owner
+answered; `wrapApprovedExecutions` (`continuation.ts`) now passes it to the
+approved call as `approvalId` in the `execute` options, for that call only.
+It is not the provider's tool call id, which is unique only within one reply
+and could repeat for the same user (a repeat would make Google answer 409 and
+the tool report an event that was never created). A call with no approval id
+(never the case for a write that went through an approval) is refused before
+any token or Google request, with the fixed sentence "The event could not be
+created. Nothing was sent to Google Calendar." (`CALENDAR_CREATE_NO_APPROVAL_TEXT`):
+the earlier fallback to a random id could not be repeated and so could not
+protect against a double insert. The option is read as
+`options?.approvalId`, so a call with no options object is refused the same
+way. Google's reference for `events.insert`
+(read 2026-11-22) says of the id: "characters allowed in the ID are those
+used in base32hex encoding, i.e. lowercase letters a-v and digits 0-9", "the
+length of the ID must be between 5 and 1024 characters" and "the ID must be
+unique per calendar", and adds that "we cannot guarantee that ID collisions
+will be detected at event creation time". Google's Calendar error guide
+documents the answer for an id that already exists: HTTP 409, reason
+`duplicate`, "The requested identifier already exists". A 409 with the reason
+`duplicate` (and no other 409) is therefore counted as success (the reference is built from the id that was sent and the
+validated start, with the day view link, since a 409 carries no event). What
+is not verified: the 409 against the real API, and that a collision is always
+detected (Google says it is not guaranteed), so a rare double insert is still
+possible and the sentence below stays honest about it.
+
+**A failed insert.** An answer with no confirmation (no answer, a timeout, a
+5xx, an answer without an id) may still have created the event, so the
+sentence is not "try again": it says Google did not confirm the event, that
+it may or may not have been created, and that the user should check their
+calendar before trying again. A refusal that proves nothing was created
+(401, 403, 404, 429, 400) keeps its own sentence.
+
+The approval card (`reasoning-approval-step-calendar-event`) reads the
+tool part's input with `readCalendarEventApprovalView`, which is built from
+the same `validateCalendarEvent` body that the tool sends, so it cannot show
+a title, time or time zone that differs from the request (a spec compares the
+view with the parsed request body for timed, all-day and daylight saving
+cases). The view skips the two checks that need the runtime's time zone data
+(the name is known, the offset is the zone's at that instant; the server ran
+them before the approval was asked), so a browser whose time zone data
+differs from the Worker's never turns a valid card into raw arguments; every
+other check still runs. It shows the title, "Timed event" or "All-day event",
+the start and the end the way a person reads them (weekday, date, 24-hour
+time and the offset, for example "Tue, Dec 1, 2026, 10:00 (UTC+01:00)",
+worked out from the digits and the offset of the string itself, never from
+the browser's time zone), the length ("1 hour 30 minutes", counted in real time
+across a clock change), and under each time, as a secondary line, the exact
+string that is sent (also the `datetime` of a `<time>` element). For an
+all-day event the labels are dates, "First day", "End (not included)", the
+last day and its length in days. Then the time zone, the location, the
+description in the same keyboard-reachable scrolling region as the Gmail
+draft with the line count and `collapseBlankLinesForCard` (a run of more than
+two blank lines becomes one "[N blank lines]" line on the card only), and the
+sentence "Nobody is invited and no email is sent. The event is created only
+on your own primary calendar." The text is rendered as text, never as markup.
+An input that cannot run never reaches an approval: the schema refuses it
+first, and the card shows nothing for it.
+
+The card is the component `Chat/Reasoning/CalendarEvent.vue`, and the
+"View details" panel of an approval (`ApprovalDetails.vue`, in the side panel)
+shows the same component for a create-event call, built by the same
+`readCreateEventApprovalView`, so the two never differ. The details panel has
+no way to allow anything: it has no button and no key handler, and Enter in
+the side panel does nothing (the panel's only key handling is the Tab focus
+trap). The one place that answers an approval is `ApprovalStep.vue`, whose
+`onEnter` refuses every Google write through `isGoogleWriteToolName` (Drive
+save, Gmail draft, Calendar event); `ApprovalDetails.spec.ts` proves the
+details view has no path for each of the three. The Gmail draft view is not
+shown in the details panel (it shows the raw arguments), which is a gap
+outside this child.
+
+The approval summary of a read names its window the way the owner would say
+it: "from Dec 1, 2026 to Dec 7, 2026" for whole days (the exclusive `to` is
+shown as the last day that is read) and "from Dec 1, 2026, 10:00 to Dec 1,
+2026, 18:30" when a time is not midnight (`describeCalendarWindow`).
+
+### 15.5 What is stored, and what the user sees after a reload
+
+D1 holds references only (`redactGoogleToolPartsForPersistence`), plus the
+tool input, which is composed by the user and the model (section 5.2):
+
+| Tool | Stored in `messages.parts` | Why |
+|---|---|---|
+| `calendar_list_events` | per event: the Google event id, kind `calendar-event`, Google's own link in its exact `eid` shape (else the day view link of the event's start day) and the start day (`YYYY-MM-DD`); `bodyRemoved: true` and the fixed note. Never a title, description, location, organizer, guest count or time | The id and link are for "Open in Google Calendar" after a reload and the day tells events apart; the title is a third party's data and the pre-check lists it as allowed, not required, so it is not kept (stricter than the pre-check, as for Gmail subjects) |
+| `calendar_free_busy` | one reference: `free-busy-<first day of the window>`, kind `calendar-free-busy`, the day view link and that day; never an interval | So a reload can say that free and busy time was read, without keeping when the owner was busy |
+| `calendar_create_event` | the new event id, kind `calendar-event`, its link and start day; the input (title, times, time zone, description, location) | The input is what the user approved on the card and is the user's own composition (the recorded decision of section 5.2); it may quote events or mail the model read earlier, which is why the chat is flagged whenever a read happened |
+
+`withoutReferenceNames` and `toModelOutput` strip every title and link from
+what the model sees, on the first call, on an approval resume and on a
+"Continue" round (a stored event link never appears in a prompt). The result
+of a create gives the model no Google link at all: the link of the new event
+(`eid` encodes the calendar id, which for the primary calendar is the owner's
+email address) stays only in the stored reference for the card, and the model
+gets a fixed message with the day. A paused turn keeps the framed
+bodies 24 hours in KV like every Google result (section 5.2), and the route
+specs show the model gets no event text outside the frame, and none at all
+when the stash is gone.
+
+Taint and the chat flag: `calendar_list_events` and `calendar_free_busy`
+return Google content (the send is tainted and the chat is flagged;
+`GOOGLE_TOOL_PROPERTIES`). Neither has `emptyListHoldsNoContent`: an empty
+listing still returns the calendar's time zone, and free and busy time with no
+busy interval still says something about the calendar, so every Calendar read
+flags the chat, empty or not. `calendar_create_event` is
+registered with `returnsGoogleContent: false`: its answer holds an id and a
+link, no calendar content, so it neither taints the send nor flags the chat.
+Like the Gmail draft, this is sound only because the event's own text comes
+from the user and the model: a model that quotes a calendar read it in this
+send (tainted) or in a chat that is already flagged (every send of a flagged
+chat starts with Google taint, so the write asks anyway and every Besidka
+write asks after it).
+
+The share dialog names a stored event as "Calendar event on <day>" and a free
+and busy answer as "Free and busy times from <day>"; two items of the same day
+get distinct names ("Calendar event on <day> (2)"), and one item is one name
+however often it was found. A public share drops every tool part. A reloaded
+step reads "Read Google Calendar", "Checked free and busy time in Google
+Calendar" or "Created an event in Google Calendar" with Google's official
+Calendar mark (`GOOGLE_CALENDAR_ICON` from
+`shared/utils/google-brand-icons.ts`, unmodified, no color class), and each
+reference is one line with "Open in Google Calendar". The Calendar mark is
+256 by 275, Gmail's 256 by 204 and Drive's 256 by 238, and the step icon puts
+it in a square box with `size-full`. Iconify's CSS for such an icon says
+`background-size: 100% 100%`, which suggests the marks were stretched (Gmail
+by about 25 percent, Drive and Calendar by about 7 to 8 percent). That was
+read from the CSS and never rendered, so it is NOT VERIFIED (an SVG
+background normally keeps its own aspect ratio); `StepIcon.vue` now adds
+`bg-contain!` and `bg-center!` (and the mask forms) to an icon, which is
+harmless either way and keeps the aspect ratio. The owner card's mark is
+sized by `size="16"` (a font size), and Iconify gives a non-square icon its
+own width. The owner card (`OwnClient.vue`) lists Calendar access like Gmail, under the label
+"Your Google Calendar events", only while `google.calendar` is active, with
+the same mark beside the box (no color class, no opacity) and a short note
+about what the two permissions allow, in short sentences. While
+`google.calendar` is not active the card says "Google Calendar tools need
+Google Calendar turned on in Labs", as it does for Gmail. The connected card
+lists Calendar in the tools hint and, when the access was not granted, in the
+"some tools are off" note; when only one of the two permissions was granted
+(`partialCalendar` in the connection summary, `events` or `free-busy`), the
+note says which tools work and which permission the others need, since the
+`calendar` capability itself counts only when both are granted.
+
+### 15.6 Outbound
+
+`www.googleapis.com` is already in `GOOGLE_FETCH_HOSTS`; the Calendar paths
+go through the same `googleFetchJson` (exact host, HTTPS, no port, no
+credentials, `redirect: 'manual'`, 15 s timeout, streaming response cap), one
+request at a time, with a `fields` mask on every request. Endpoints
+(Google's reference, read 2026-11-22):
+
+- `GET /calendar/v3/calendars/primary/events?timeMin=&timeMax=&singleEvents=true&orderBy=startTime&maxResults=50&fields=timeZone,nextPageToken,items(id,status,eventType,summary,description,location,start,end,htmlLink,transparency,organizer(self,displayName),attendees(self,responseStatus),hangoutLink,conferenceData(entryPoints(entryPointType)),attachments(fileId))`
+- `POST /calendar/v3/freeBusy?fields=calendars/*/busy,calendars/*/errors` with
+  `{ timeMin, timeMax, items: [{ id: "primary" }] }`; the single entry of the
+  answer's `calendars` object is read whatever its key is, and the key is never
+  echoed (it can be the account's address). Each busy value must be a UTC
+  RFC 3339 time (ending in `Z`) or the interval is counted as skipped; the
+  valid ones are sorted, merged where they overlap or touch, cut to the
+  window and capped at 100 after merging. The tool description tells the model
+  that the times are UTC and that the calendar's time zone is the
+  `calendarTimeZone` of `google__calendar_list_events`, or to ask the user;
+  no request is added for it, because reading a calendar's time zone through
+  `calendars.get` or `settings.get` would need another scope.
+- `POST /calendar/v3/calendars/primary/events?sendUpdates=none&fields=id,htmlLink,start,end`
+  with `{ id, summary, description?, location?, start, end }`, where a boundary
+  is `{ dateTime, timeZone }` or `{ date, timeZone }` and `id` is the derived
+  client id of section 15.4.
+
+Logs hold counts and codes only (`attributes.googleByoTools.calendarListEvents`
+with the event, skipped, canceled and more-pages counts, `calendarFreeBusy`
+with the interval counts, `calendarCreateEvent` with four booleans, the last
+one saying that the id already existed), never titles, times, addresses or
+links.
+
+### 15.7 Where the ticket (BES-297) and the pre-check differ
+
+- Scope: the narrow pair of section 15.2 instead of `calendar.events`, and the
+  owner's own client only: Besidka's client and the Picker are not widened, so
+  the pre-check's "Besidka client ... later `calendar.events`" is not done.
+- Branding: the pre-check says Calendar appears as text with no logo until its
+  brand page is checked (row 9). The brief for this child asked for Google's
+  official Calendar mark on the steps, as Gmail's mark is used for Gmail; the
+  Calendar brand guidelines page has not been fetched or read, so the
+  placement and the word "Google Calendar" next to the mark are NOT VERIFIED
+  against it.
+- Persistence: no event title is stored (the pre-check allows one).
+- No attendees, conferencing, recurrence, reminders override or attachments in
+  a created event; no edit or delete.
+- Approvals as in section 14: reads ask (or take the capped chat grant), the
+  write asks once, never Always allow.
+- MCP is unchanged: no Calendar tool, `config/mcp-surface.json` unchanged, the
+  MCP modules import none of this code, and a chat that read Calendar is
+  withheld from `get_chat` through the sticky flag.
+
+### 15.8 Not built, and known limits
+
+Attendees and invitations, editing, moving or deleting events, other
+calendars than the primary, reading one event by id, paging past 50 events,
+recurrence rules, working locations beyond what `events.list` returns,
+conference links, Besidka's own client and the Picker for Calendar, a
+Calendar tab or toggles in the "+" menu, MCP exposure and any D1 change.
+Known limits: a created event gets the calendar's default reminders (the
+body sets none); assistant text that summarizes events is not redacted
+(section 5.2); an event's input, which may quote events or mail, stays in D1
+like every Google write input; no Snyk scan was run on the new code.
+
+### 15.9 Owner checklist, with a real Google project
+
+Nothing here was run against Google; Google is mocked in every test. NOT
+VERIFIED, to check once with the owner's own project:
+
+1. In the owner's Google Cloud project enable the Google Calendar API and add
+   the two scopes `calendar.events.owned` and `calendar.events.freebusy` under
+   Data access (section 6, steps 1 and 3). Turn on Google Calendar in Labs,
+   tick "Your Google Calendar events" and connect. If the connection came
+   from before this child and holds the old `calendar.events` scope,
+   disconnect and connect again so the old grant is revoked.
+2. Ask "what is on my calendar next week". Allow once. Check the events, that
+   a repeating event is listed once per day, that an all-day event has
+   `allDay: true` with its `lastDay` equal to its last real day, the guest
+   counts and `myResponse` (and that no address appears, not even an
+   organizer's), that a declined event shows `declined`, and that the
+   "Calendar event on <day>" lines after a reload open the event
+   (Google's `htmlLink` shape `https://www.google.com/calendar/event?eid=`
+   is NOT VERIFIED; otherwise the link is the day view).
+3. Ask "when am I free on Thursday". Check the busy intervals in UTC and the
+   one stored reference. Whether the key of the `calendars` object is `primary`
+   or the address, and the `calendars/*/busy` field mask, are NOT VERIFIED.
+4. Ask for an event with a time zone and a time on a daylight saving change
+   day: the stale offset or the skipped hour is refused with a sentence, and a
+   valid time creates the event at the time on the card. Check the event in
+   Google Calendar: the title, the time in its zone, the description and
+   location, no guests, no video call, no email sent to anyone, the default
+   reminders. Whether Google accepts `date` together with `timeZone` for an
+   all-day event, `sendUpdates=none` on an event without guests, a
+   client-supplied event `id` of 52 base32hex characters and the 409
+   `duplicate` answer for the same id (the event id stays the same when an
+   approved call runs again), are NOT VERIFIED.
+5. Press Deny on a create-event card: nothing is created. Press Enter on the
+   card: nothing happens; the button creates it. Open "View details" on the
+   card: it shows the same event and has no button.
+6. Allow reading events in this chat and ask for more than five reads in one
+   message: the sixth asks again.
+7. Turn the Google Calendar API off in the project and read events: the
+   answer says the API is not turned on (the `accessNotConfigured` reason is
+   NOT VERIFIED).
+8. Turn Calendar off in Labs and send again: no Calendar tool is offered, and
+   the card no longer offers the Calendar box. The consent screen text and
+   the tier (sensitive or restricted) of the two scopes in the console are
+   NOT VERIFIED.
+9. Open a create-event card on an iPhone (Safari and the installed PWA): the
+   long description scrolls inside the card and the buttons stay reachable.

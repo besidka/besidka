@@ -17,7 +17,8 @@ describe('hasScopes', () => {
     const granted = `openid ${GOOGLE_SCOPES.email} ${GOOGLE_SCOPES.driveFile}`
 
     expect(hasScopes(granted, [GOOGLE_SCOPES.driveFile])).toBe(true)
-    expect(hasScopes(granted, [GOOGLE_SCOPES.calendarEvents])).toBe(false)
+    expect(hasScopes(granted, [GOOGLE_SCOPES.calendarEventsOwned]))
+      .toBe(false)
   })
 
   it('reads an array of scopes', () => {
@@ -42,7 +43,7 @@ describe('hasScopes', () => {
   it('needs every required scope', () => {
     expect(hasScopes(
       GOOGLE_SCOPES.driveFile,
-      [GOOGLE_SCOPES.driveFile, GOOGLE_SCOPES.calendarEvents],
+      [GOOGLE_SCOPES.driveFile, GOOGLE_SCOPES.calendarEventsOwned],
     )).toBe(false)
   })
 
@@ -137,8 +138,16 @@ describe('Google scope capabilities', () => {
       GOOGLE_SCOPES.email,
       GOOGLE_SCOPES.profile,
       GOOGLE_SCOPES.driveFile,
-      GOOGLE_SCOPES.calendarEvents,
     ])
+  })
+
+  it('never lets Besidka\'s client request a Calendar scope', () => {
+    const besidkaScopes = getScopesForClient('besidka')
+
+    expect(isCapabilityAllowedForClient('calendar', 'besidka')).toBe(false)
+    expect(besidkaScopes).not.toContain(GOOGLE_SCOPES.calendarEventsOwned)
+    expect(besidkaScopes).not.toContain(GOOGLE_SCOPES.calendarEventsFreebusy)
+    expect(besidkaScopes.some(scope => scope.includes('calendar'))).toBe(false)
   })
 
   it('never lets Besidka\'s client request a bring-your-own-only scope', () => {
@@ -153,6 +162,8 @@ describe('Google scope capabilities', () => {
       GOOGLE_SCOPES.driveReadonly,
       GOOGLE_SCOPES.gmailReadonly,
       GOOGLE_SCOPES.gmailCompose,
+      GOOGLE_SCOPES.calendarEventsOwned,
+      GOOGLE_SCOPES.calendarEventsFreebusy,
     ])
 
     for (const scope of byoOnlyScopes) {
@@ -178,13 +189,30 @@ describe('Google scope capabilities', () => {
     expect(byoScopes).toContain(GOOGLE_SCOPES.driveReadonly)
     expect(byoScopes).toContain(GOOGLE_SCOPES.gmailReadonly)
     expect(byoScopes).toContain(GOOGLE_SCOPES.gmailCompose)
-    expect(byoScopes).toContain(GOOGLE_SCOPES.calendarEvents)
+    expect(byoScopes).toContain(GOOGLE_SCOPES.calendarEventsOwned)
+    expect(byoScopes).toContain(GOOGLE_SCOPES.calendarEventsFreebusy)
   })
 
-  it('marks Calendar as provisional until the narrower scope is checked', () => {
-    expect(GOOGLE_SCOPE_CAPABILITIES.calendar.provisional).toBe(true)
+  it('asks for the two narrow Calendar scopes and never the broad ones', () => {
+    expect(GOOGLE_SCOPES.calendarEventsOwned)
+      .toBe('https://www.googleapis.com/auth/calendar.events.owned')
+    expect(GOOGLE_SCOPES.calendarEventsFreebusy)
+      .toBe('https://www.googleapis.com/auth/calendar.events.freebusy')
+    expect(GOOGLE_SCOPE_CAPABILITIES.calendar.scopes).toEqual([
+      GOOGLE_SCOPES.calendarEventsOwned,
+      GOOGLE_SCOPES.calendarEventsFreebusy,
+    ])
+    expect(GOOGLE_SCOPE_CAPABILITIES.calendar.clients).toEqual(['byo'])
     expect(GOOGLE_SCOPE_CAPABILITIES.calendar.classification)
       .toBe('unconfirmed')
+
+    const everyScope: string[] = Object.values(GOOGLE_SCOPES)
+
+    for (const broad of ['calendar', 'calendar.events', 'calendar.readonly']) {
+      expect(everyScope).not.toContain(
+        `https://www.googleapis.com/auth/${broad}`,
+      )
+    }
   })
 
   it('knows both client modes', () => {

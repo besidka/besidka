@@ -31,8 +31,9 @@ export interface GoogleClientContext {
 /**
  * What each client mode always asks for when it connects. Besidka's client
  * asks for `drive.file`, `openid` and the email scope (the email is shown
- * on the connection card); `userinfo.profile` is not needed. Calendar joins
- * later through incremental authorization. The bring-your-own client asks
+ * on the connection card); `userinfo.profile` is not needed, and it never
+ * asks for a Calendar scope (Calendar runs on the bring-your-own client
+ * only). The bring-your-own client asks
  * for `openid` and the email scope plus the capabilities the owner ticks at
  * connect time (`getConnectionScopes`).
  */

@@ -124,4 +124,39 @@ describe('Chat/Reasoning/GoogleStep', () => {
       .toBe('Open the email thread from 2026-11-21 in Gmail')
     expect(wrapper.text()).not.toContain('Google Drive')
   })
+
+  it('shows a Calendar event by its day with an Open in Google Calendar '
+    + 'link and no event text', async () => {
+    const eventLink = 'https://www.google.com/calendar/event?eid=YWJjZGVmZ2hp'
+    const wrapper = await mountSuspended(GoogleStep, {
+      props: {
+        data: {
+          toolName: 'google__calendar_list_events',
+          state: 'done',
+          references: [{
+            id: 'abc123def456',
+            kind: 'calendar-event',
+            title: '',
+            link: eventLink,
+            date: '2026-12-01',
+          }],
+        } as never,
+        title: 'Read Google Calendar',
+        pending: false,
+        icon: { kind: 'iconify', name: 'logos:google-calendar' },
+      },
+    })
+    const link = wrapper.get('[data-testid="reasoning-google-step-link"]')
+
+    expect(wrapper.get('[data-testid="reasoning-google-step-title"]').text())
+      .toBe('Read Google Calendar')
+    expect(wrapper.get('[data-testid="reasoning-google-step-reference"]')
+      .text()).toContain('Calendar event on 2026-12-01')
+    expect(link.text()).toBe('Open in Google Calendar')
+    expect(link.attributes('href')).toBe(eventLink)
+    expect(link.attributes('aria-label'))
+      .toBe('Open the event on 2026-12-01 in Google Calendar')
+    expect(wrapper.text()).not.toContain('Google Drive')
+    expect(wrapper.text()).not.toContain('Gmail')
+  })
 })

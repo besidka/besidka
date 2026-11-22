@@ -5,6 +5,7 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 import { checkGoogleByoAccess } from '~~/server/utils/google/byo-access'
 import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
 import { buildGoogleByoTools } from '~~/server/utils/google/byo-tools'
+import { buildGoogleCalendarTools } from '~~/server/utils/google/calendar-tools'
 import { buildGoogleDriveTools } from '~~/server/utils/google/drive-tools'
 import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
 import { readGoogleConnection } from '~~/server/utils/google/store'
@@ -47,6 +48,7 @@ async function buildByoCandidates(input: {
   userId: number
   chatPublicId: string
   gmailActive: boolean
+  calendarActive: boolean
   featureState?: GoogleByoFeatureState
   priorParts: readonly unknown[]
   readChatGrantHashes: () => Promise<Readonly<Record<string, string>>>
@@ -73,6 +75,7 @@ async function buildByoCandidates(input: {
     return { tools: noGoogleSendTools(), reason: verdict }
   }
 
+  const chatGrantHashes = await input.readChatGrantHashes()
   const byo = await buildGoogleByoTools({
     db: input.db,
     kv: useKV(),
@@ -81,26 +84,40 @@ async function buildByoCandidates(input: {
     accountEmail: connection.googleEmail,
     priorParts: input.priorParts,
     grantedScopes: connection.grantedScopes,
-    chatGrantHashes: await input.readChatGrantHashes(),
+    chatGrantHashes,
     guard: input.guard,
     logger: input.logger,
   })
+  const calendar = input.calendarActive
+    ? await buildGoogleCalendarTools({
+      db: input.db,
+      kv: useKV(),
+      userId: input.userId,
+      grantedScopes: connection.grantedScopes,
+      chatGrantHashes,
+      guard: input.guard,
+      logger: input.logger,
+    })
+    : noGoogleSendTools()
   const allowed = [...byo.entries.keys()].filter((toolName) => {
     return input.gmailActive || !GOOGLE_GMAIL_TOOL_NAMES.includes(toolName)
   })
+  const allowedTools = {
+    ...Object.fromEntries(
+      Object.entries(byo.tools).filter(([toolName]) => {
+        return allowed.includes(toolName)
+      }),
+    ),
+    ...calendar.tools,
+  }
+  const allowedEntries = new Map([
+    ...[...byo.entries].filter(([toolName]) => allowed.includes(toolName)),
+    ...calendar.entries,
+  ])
 
   return {
-    tools: {
-      tools: Object.fromEntries(
-        Object.entries(byo.tools).filter(([toolName]) => {
-          return allowed.includes(toolName)
-        }),
-      ),
-      entries: new Map(
-        [...byo.entries].filter(([toolName]) => allowed.includes(toolName)),
-      ),
-    },
-    ...(allowed.length === 0 ? { reason: 'no-scope' } : {}),
+    tools: { tools: allowedTools, entries: allowedEntries },
+    ...(allowedEntries.size === 0 ? { reason: 'no-scope' } : {}),
   }
 }
 
@@ -129,6 +146,7 @@ export async function buildGoogleSendToolCandidates(input: {
   driveActive?: boolean
   byoActive?: boolean
   gmailActive?: boolean
+  calendarActive?: boolean
   featureState?: GoogleByoFeatureState
   priorParts?: readonly unknown[]
   logger: LoggerLike
@@ -181,6 +199,7 @@ export async function buildGoogleSendToolCandidates(input: {
       userId: input.userId,
       chatPublicId: input.chatPublicId,
       gmailActive: input.gmailActive === true,
+      calendarActive: input.calendarActive === true,
       ...(input.featureState ? { featureState: input.featureState } : {}),
       priorParts: input.priorParts ?? [],
       readChatGrantHashes,

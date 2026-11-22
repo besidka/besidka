@@ -1998,6 +1998,10 @@ export function getAffectedTests(changedFiles) {
 
   const googleDrivePickerTests = [
     'tests/unit/utils/google-drive.spec.ts',
+    'tests/unit/utils/google-drive-links.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/DriveImport.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/DriveImportNote.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/GoogleLinkSuggestions.spec.ts',
     'tests/unit/utils/google-brand-icons.spec.ts',
     'tests/unit/server/utils/google/http.spec.ts',
     'tests/unit/server/utils/google/download.spec.ts',
@@ -2088,11 +2092,50 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-tool-approval-continuation.spec.ts',
     'tests/integration/api/chats-tool-approval-request.spec.ts',
     'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GmailDraft.spec.ts',
     'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
     'tests/unit/components/Profile/Google/OwnClient.spec.ts',
     'tests/unit/server/utils/tool-approval/send.spec.ts',
     'tests/unit/utils/tool-approval-parts.spec.ts',
     'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/composables/chat-scroll-spacer.spec.ts',
+    'tests/e2e/chat/scroll-spacer.spec.ts',
+    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  ]
+
+  const googleCalendarToolsTests = [
+    'tests/unit/utils/google-calendar-event.spec.ts',
+    'tests/unit/utils/google-calendar-step.spec.ts',
+    'tests/unit/utils/google-connections.spec.ts',
+    'tests/unit/utils/google-scopes.spec.ts',
+    'tests/unit/utils/google-byo.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/server/utils/google/calendar-api.spec.ts',
+    'tests/unit/server/utils/google/calendar-boundary.spec.ts',
+    'tests/unit/server/utils/google/store-summary.spec.ts',
+    'tests/unit/server/utils/google/gmail-boundary.spec.ts',
+    'tests/unit/server/utils/google/data-guard.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-calendar.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-gmail.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/integration/server/google-calendar-tools.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-drive-picker-token.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalDetails.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GmailDraft.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/StepIcon.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
     'tests/unit/composables/chat-scroll-spacer.spec.ts',
     'tests/e2e/chat/scroll-spacer.spec.ts',
     'tests/e2e/chat/composer-overlays-spacer.spec.ts',
@@ -4106,7 +4149,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-drive|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/Preview\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
+        /^(shared\/utils\/(google-drive|google-drive-links|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|Files\/Attached\/(Preview\.client|DriveImport|DriveImportNote|GoogleLinkSuggestions))\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
       tests: googleDrivePickerTests,
     },
     {
@@ -4116,8 +4159,13 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(mail-address|google-gmail-tools|google-gmail-draft-view|google-drive-tools|google-tool-approvals|google-byo|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(gmail-message|gmail-text|gmail-api|html-entities|chat-references|drive-found-read|drive-search|byo-tools|byo-access|tokens|send-guard|drive-tools|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+        /^(shared\/utils\/(mail-address|google-gmail-tools|google-gmail-draft-view|google-drive-tools|google-tool-approvals|google-byo|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(gmail-message|gmail-text|gmail-api|html-entities|chat-references|drive-found-read|drive-search|byo-tools|byo-access|tokens|send-guard|drive-tools|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GmailDraft|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
       tests: googleGmailToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-calendar-event|google-calendar-tools|google-connections|google-gmail-draft-view|google-scopes|google-byo|google-gmail-tools|google-tool-approvals|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(calendar-api|calendar-tools|store|gmail-text|byo-access|tokens|send-guard|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|ApprovalDetails|CalendarEvent|GmailDraft|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleCalendarToolsTests,
     },
     {
       pattern:

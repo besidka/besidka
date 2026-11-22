@@ -149,8 +149,8 @@ Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 `code-execution`
 (and `.files`, `.skills`), `research.custom` (and `research.custom.max`,
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
-`.native`), `google.drive` (and `google.calendar`, `google.byo`,
-`google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`),
+`.native`), `google.drive` (and `google.byo`, `google.gmail`,
+`google.calendar`), `skills` (and `.import-url`, `.commands`, `.scripts`),
 `tool-approvals`, `besidka-tools`, and `ui.side-panel-demo`. Of the `connectors` flags only
 `connectors` and `connectors.oauth` are `available: true` (C-4, still
 `internal`, so admin- and grant-only); `.registry` and `.native` stay
@@ -169,8 +169,12 @@ connection flow, the Google tab on API Keys and the routes under
 owner's own OAuth client, `docs/google.md` section 10), and `google.gmail`
 since the Gmail tools child (`docs/google.md` section 14; also
 `adminOnly: true`, so Labs lists it only for an admin, and the Gmail tools
-still need the admin gate on the server); `google.calendar` stays
-`available: false` until its child ships.
+still need the admin gate on the server), and `google.calendar` since the
+Calendar tools child (`docs/google.md` section 15; also `adminOnly: true` and
+a child of `google.byo`, not of `google.drive`: Calendar runs only on the
+owner's own client, so its tools, its Calendar box on the owner card and the
+`calendar` capability of `POST /api/v1/google/byo/start` all need it, and
+Labs lists its toggle only for an admin).
 `google.byo` is never enough on its own: every bring-your-own route and
 every use of a bring-your-own token also requires the admin role on the
 server (`checkGoogleByoAccess` in `server/utils/google/byo-access.ts`), so
@@ -179,10 +183,11 @@ carries `adminOnly: true`, so Labs lists it only for an admin (a
 flag-granted tester would otherwise see a toggle with no card behind it).
 Each one sends the user's Google data to Google or, through a chat, to a
 model provider, so the user opts in before any of it runs
-(`docs/legal/prechecks/google.md`). `google.calendar` and `google.byo` are
-children of `google.drive`, and `google.gmail` is a child of `google.byo`, the
-first flag with a three-level parent chain; evaluation, `isFeatureActive`,
-the global check and the Labs grouping all walk the chain to its root.
+(`docs/legal/prechecks/google.md`). `google.byo` is a child of
+`google.drive`, and `google.gmail` and `google.calendar` are children of
+`google.byo`, the first flags with a three-level parent chain; evaluation,
+`isFeatureActive`, the global check and the Labs grouping all walk the chain
+to its root.
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
 `FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is

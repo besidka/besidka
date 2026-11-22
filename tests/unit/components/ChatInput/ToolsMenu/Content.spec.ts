@@ -78,7 +78,7 @@ function createState(
       defaultLevel: 'medium',
     },
     image: { supported: lower, enabled: false, required: false },
-    files: { visible: files, count: 0, isImageInputSupported: true },
+    files: { visible: files, count: 0 },
     artifacts: { visible: false, attached: [] },
     googleDrive: { visible: drive, importing: driveImporting },
     skills: {
@@ -282,7 +282,7 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
       + 'paragraph', async () => {
       const wrapper = await mountContent(createState({ drive: true }))
       const driveRow = wrapper.get('[data-testid="tools-action-google-drive"]')
-      const neighbor = wrapper.get('[data-testid="tools-action-library"]')
+      const neighbor = wrapper.get('[data-testid="tools-action-attach"]')
       const driveLine = driveRow.get('.min-h-9')
 
       expect(driveLine.classes()).toEqual(expect.arrayContaining([
@@ -380,6 +380,34 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
         .toBe(true)
       expect(add.find('[data-testid="tools-action-attach"]').exists())
         .toBe(true)
+    })
+
+    it('sits right after Attach files and before Add artifact', async () => {
+      const wrapper = await mountContent({
+        ...createState({ drive: true }),
+        artifacts: { visible: true, attached: [] },
+      })
+      const rows = wrapper.findAll(
+        '[data-section="add"] [data-testid^="tools-action-"]',
+      ).map(row => row.attributes('data-testid'))
+      const attachIndex = rows.indexOf('tools-action-attach')
+      const driveIndex = rows.indexOf('tools-action-google-drive')
+      const artifactIndex = rows.indexOf('tools-action-artifacts')
+
+      expect(attachIndex).toBeGreaterThanOrEqual(0)
+      expect(driveIndex).toBe(attachIndex + 1)
+      expect(artifactIndex).toBeGreaterThan(driveIndex)
+    })
+
+    it('has no library or generated images rows any more', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+
+      expect(wrapper.find('[data-testid="tools-action-library"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="tools-action-generated"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="tools-action-attach"]').text())
+        .toContain('Upload or pick from your files')
     })
 
     it('shows how many files are being copied as a badge', async () => {
@@ -752,7 +780,7 @@ describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
       expect(explicit.text()).not.toContain('Add artifact')
     })
 
-  it('shows Add artifact after Generated images with access', async () => {
+  it('shows Add artifact after Attach files with access', async () => {
     const wrapper = await mountContent(withArtifacts({
       visible: true,
       attached: [],
@@ -763,8 +791,6 @@ describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
 
     expect(rows).toEqual([
       'tools-action-attach',
-      'tools-action-library',
-      'tools-action-generated',
       'tools-action-artifacts',
     ])
     expect(wrapper.find(ARTIFACT_ROW).text()).toContain('Add artifact')

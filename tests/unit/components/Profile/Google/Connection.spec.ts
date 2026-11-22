@@ -199,6 +199,19 @@ describe('Profile/Google/Connection', () => {
       .toBe(false)
   })
 
+  it('styles Disconnect like the Delete button of an API key', async () => {
+    setStatus({ connection: summary() })
+
+    const wrapper = await mountConnection()
+    const button = wrapper.get('[data-testid="google-drive-disconnect"]')
+
+    expect(button.classes()).toEqual(
+      expect.arrayContaining(['btn', 'btn-error', 'btn-outline']),
+    )
+    expect(button.classes()).not.toContain('btn-ghost')
+    expect(button.text()).toBe('Disconnect')
+  })
+
   it('keeps Disconnect for a connected user while connecting is off',
     async () => {
       setStatus({ connection: summary(), canConnect: false })

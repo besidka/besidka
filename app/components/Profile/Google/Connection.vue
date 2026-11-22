@@ -144,22 +144,22 @@
         <button
           v-if="viewState === 'needs_reauth' && canConnect"
           type="button"
-          class="btn btn-primary btn-sm"
+          class="btn btn-primary"
           :disabled="isBusy"
           data-testid="google-drive-reconnect"
           @click="connect"
         >
           Reconnect
         </button>
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
+        <UiButton
+          mode="error"
+          text="Disconnect"
+          icon-name="lucide:unplug"
           :disabled="isBusy"
+          outline
           data-testid="google-drive-disconnect"
           @click="disconnect"
-        >
-          Disconnect
-        </button>
+        />
       </div>
     </template>
   </section>

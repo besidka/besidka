@@ -111,7 +111,6 @@ export interface ChatInputToolsState {
   files: {
     visible: boolean
     count: number
-    isImageInputSupported: boolean
   }
   artifacts: {
     visible: boolean
