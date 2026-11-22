@@ -453,6 +453,29 @@ describe('POST /api/v1/google/drive/files', () => {
     return result.results[0]
   }
 
+  async function importLink(
+    link: string,
+    partial: Partial<SkillsRouteEvent> = {},
+  ) {
+    const module = await import(
+      '~~/server/api/v1/google/drive/files/link.post'
+    )
+    const event = createSkillsRouteEvent({
+      body: { link },
+      ...partial,
+      headers: {
+        'origin': ORIGIN,
+        'sec-fetch-site': 'same-origin',
+        'content-type': 'application/json',
+        ...partial.headers,
+      },
+    })
+
+    return await withFastTimers(() => {
+      return (module.default as Handler)(event)
+    })
+  }
+
   async function fileRows() {
     return await testDb.db.select().from(schema.files)
       .where(eq(schema.files.userId, userId))
@@ -1108,6 +1131,107 @@ describe('POST /api/v1/google/drive/files', () => {
 
       expect(JSON.stringify(mocks.logged))
         .toContain('"failureDetails":["export:404:notFound"]')
+    })
+  })
+
+  describe('POST /api/v1/google/drive/files/link', () => {
+    const DOC_LINK = `https://docs.google.com/document/d/${DOC_ID}/edit?usp=sharing`
+
+    it('copies the file a link names when Besidka can already read it',
+      async () => {
+        const answer = await importLink(DOC_LINK)
+
+        expect(answer.item).toEqual({ id: DOC_ID })
+        expect(answer.kind).toBe('document')
+        expect(answer.results[0]).toMatchObject({
+          id: DOC_ID,
+          status: 'imported',
+        })
+        expect(await fileRows()).toHaveLength(1)
+      })
+
+    it('sends only the id and the resource key to Google, never the link',
+      async () => {
+        await importLink(
+          `${DOC_LINK}&resourcekey=0-abc_DEF`,
+        )
+
+        const requests = drive.requests.map(request => request.url)
+
+        expect(requests.length).toBeGreaterThan(0)
+        expect(requests.every(url => !url.includes('usp=sharing'))).toBe(true)
+        expect(drive.ofKind('metadata')[0]!.headers['x-goog-drive-resource-keys'])
+          .toBe(`${DOC_ID}/0-abc_DEF`)
+      })
+
+    it('reuses a copy of an unchanged file', async () => {
+      await importLink(DOC_LINK)
+
+      const second = await importLink(DOC_LINK)
+
+      expect(second.results[0]).toMatchObject({ status: 'reused' })
+      expect(await fileRows()).toHaveLength(1)
+    })
+
+    it('answers a failed result and stores nothing when Besidka has no '
+      + 'access, and asks Google once', async () => {
+      const answer = await importLink(
+        `https://docs.google.com/document/d/${MISSING_ID}/edit`,
+      )
+
+      expect(answer.results[0]).toMatchObject({
+        status: 'failed',
+        code: 'not_found',
+      })
+      expect(drive.fetch).toHaveBeenCalledTimes(1)
+      expect(await fileRows()).toHaveLength(0)
+    })
+
+    it('refuses a link that is not a file, with no request to Google',
+      async () => {
+        for (const link of [
+          `https://drive.google.com/drive/folders/${DOC_ID}`,
+          `https://example.com/document/d/${DOC_ID}`,
+          'not a link',
+        ]) {
+          expect(await failureOf(importLink(link))).toMatchObject({
+            status: 400,
+          })
+        }
+
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+
+    it('answers 404 before any read when Google is not connected',
+      async () => {
+        await testDb.db.delete(schema.googleConnections)
+
+        expect(await failureOf(importLink(DOC_LINK))).toMatchObject({
+          status: 404,
+        })
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+
+    it('refuses a signed-out request and a cross-origin one', async () => {
+      sessionUserId = 0
+
+      expect(await failureOf(importLink(DOC_LINK))).toMatchObject({
+        status: 401,
+      })
+
+      sessionUserId = userId
+
+      expect(await failureOf(importLink(DOC_LINK, {
+        headers: { 'sec-fetch-site': 'cross-site' },
+      }))).toMatchObject({ status: 403 })
+    })
+
+    it('answers 404 while google.drive is not active', async () => {
+      mocks.flags.delete('google.drive')
+
+      expect(await failureOf(importLink(DOC_LINK))).toMatchObject({
+        status: 404,
+      })
     })
   })
 
