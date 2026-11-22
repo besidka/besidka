@@ -18,6 +18,11 @@ import {
   BESIDKA_TOOL_NAME_PREFIX,
   isBesidkaChatToolName,
 } from '#shared/utils/besidka-tool-permissions'
+import {
+  GOOGLE_EGRESS_REASON_TEXT,
+  GOOGLE_TOOL_NAME_PREFIX,
+  isGoogleToolName,
+} from '#shared/utils/google-tool-approvals'
 import { formatConnectorArguments } from '~/utils/connector-step'
 
 export type ApprovalStepState
@@ -273,6 +278,12 @@ export function getApprovalStepTitle(
     }`
   }
 
+  if (isGoogleToolName(model.toolName)) {
+    return model.summary.trim() || `Besidka wants to ${
+      humanizeBesidkaToolName(model.tool.slice(GOOGLE_TOOL_NAME_PREFIX.length))
+    } on Google`
+  }
+
   return NATIVE_APPROVAL_TITLES[model.tool] ?? `Run ${model.tool}`
 }
 
@@ -318,7 +329,11 @@ export function getAlwaysAllowHint(isBesidka: boolean): string {
  * its server-written summary already is the title.
  */
 export function getApprovalStepSummaryLine(model: ApprovalStepModel): string {
-  return model.isBesidka ? '' : getApprovalSummaryLine(model.summary)
+  if (model.isBesidka || isGoogleToolName(model.toolName)) {
+    return ''
+  }
+
+  return getApprovalSummaryLine(model.summary)
 }
 
 /**
@@ -400,6 +415,10 @@ export function getApprovalReasonText(
 
   if (reason === 'consent') {
     return 'Uploads the skill to your Anthropic workspace'
+  }
+
+  if (reason === 'google-egress') {
+    return GOOGLE_EGRESS_REASON_TEXT
   }
 
   if (isBesidkaChatToolName(toolName)) {

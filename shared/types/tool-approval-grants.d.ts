@@ -5,7 +5,7 @@ export interface ToolApprovalGrantItem {
   connectorId: string
   connectorTitle: string
   toolName: string
-  source?: 'besidka'
+  source?: 'besidka' | 'google' | 'google-egress'
 }
 
 export interface ChatToolApprovalGrants {

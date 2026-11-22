@@ -56,8 +56,13 @@ import type {
 } from '~~/server/utils/tool-approval/kv'
 import {
   clampRemember,
+  isGoogleRead,
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
+import {
+  googleChatGrantKey,
+  googleEgressGrantKey,
+} from '#shared/utils/google-tool-approvals'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import { SKILL_SCRIPTS_GRANT_KEY } from '#shared/utils/skills/scripts'
@@ -558,7 +563,10 @@ export function decideContinuation(input: {
       incrementCounter(replayState, 'connectorCalls')
     }
 
-    if (entry?.descriptor.family === 'besidka') {
+    if (
+      entry?.descriptor.family === 'besidka'
+      || entry?.descriptor.family === 'google'
+    ) {
       incrementCounter(replayState, 'builtInCalls')
     }
 
@@ -635,6 +643,51 @@ function withReplayedConnectorImages(
 }
 
 /**
+ * A tool result body kept outside D1 for a paused turn (the Google tool
+ * results, `server/utils/tool-approval/google.ts`), keyed by tool call id.
+ */
+export interface StashedResult {
+  isError: boolean
+  output: unknown
+}
+
+/**
+ * A finished tool call with its stashed body put back, for the model only:
+ * the output of a result, the error text of an error. A part without a
+ * stashed body, or whose state does not match the stash, stays as stored.
+ */
+function withStashedResult(
+  part: unknown,
+  stashedResults: ReadonlyMap<string, StashedResult> | undefined,
+): unknown {
+  if (!stashedResults || !isToolPart(part)) {
+    return part
+  }
+
+  const stashed = typeof part.toolCallId === 'string'
+    ? stashedResults.get(part.toolCallId)
+    : undefined
+
+  if (!stashed) {
+    return part
+  }
+
+  if (!stashed.isError && part.state === 'output-available') {
+    return { ...part, output: stashed.output }
+  }
+
+  if (
+    stashed.isError
+    && part.state === 'output-error'
+    && typeof stashed.output === 'string'
+  ) {
+    return { ...part, errorText: stashed.output }
+  }
+
+  return part
+}
+
+/**
  * The paused assistant message twice, with every answered call in
  * `approval-responded`:
  *
@@ -649,7 +702,9 @@ function withReplayedConnectorImages(
  *   unfinished calls) are dropped. A connector image line that said "shown
  *   to the model" now says the image is no longer available, or, for a
  *   kept image in `shownAgain` (per tool call id, the indexes among the
- *   call's kept lines), that it is shown to the model again.
+ *   call's kept lines), that it is shown to the model again. A finished
+ *   call with a body in `stashedResults` (a Google tool result, which D1
+ *   keeps as references only) gets that body back.
  * - `storedMessage` keeps the stored parts as they are, with the answered
  *   calls moved to `approval-responded` and no input or signature added, so
  *   it can seed `readUIMessageStream` and be written back to D1.
@@ -659,6 +714,7 @@ export function buildResumedAssistantMessages(input: {
   parts: readonly unknown[]
   decisions: readonly ContinuationDecision[]
   shownAgain?: ReadonlyMap<string, ReadonlySet<number>>
+  stashedResults?: ReadonlyMap<string, StashedResult>
 }): { modelMessage: UIMessage, storedMessage: UIMessage } {
   const decisionsByApprovalId = new Map(input.decisions.map((decision) => {
     return [decision.approvalId, decision]
@@ -674,7 +730,10 @@ export function buildResumedAssistantMessages(input: {
       storedParts.push(part)
 
       if (isModelContextPart(part)) {
-        modelParts.push(withReplayedConnectorImages(part, input.shownAgain))
+        modelParts.push(withReplayedConnectorImages(
+          withStashedResult(part, input.stashedResults),
+          input.shownAgain,
+        ))
       }
 
       continue
@@ -897,6 +956,35 @@ export async function applyRememberGrants(input: {
       continue
     }
 
+    if (entry.descriptor.family === 'google') {
+      if (
+        decision.remember !== 'chat'
+        || !isGoogleRead(entry.descriptor)
+        || decision.record.access !== 'read'
+        || decision.record.definitionHash !== hash
+      ) {
+        continue
+      }
+
+      try {
+        await addBesidkaChatGrant(input.db, input.userId, input.chatPublicId, {
+          toolName: googleChatGrantKey(decision.toolName),
+          definitionHash: hash,
+        })
+      } catch (exception) {
+        input.logger.set({
+          attributes: {
+            toolApproval: {
+              grant: 'failed',
+              error: exceptionMessage(exception),
+            },
+          },
+        })
+      }
+
+      continue
+    }
+
     if (entry.descriptor.family === 'besidka') {
       try {
         await applyBesidkaRememberGrant({
@@ -924,6 +1012,12 @@ export async function applyRememberGrants(input: {
       continue
     }
 
+    const isGoogleEgress = decision.record?.reason === 'google-egress'
+
+    if (isGoogleEgress && decision.remember !== 'chat') {
+      continue
+    }
+
     try {
       if (decision.remember === 'chat') {
         const settings = await listConnectorChatSettings(
@@ -934,6 +1028,9 @@ export async function applyRememberGrants(input: {
         const current = settings.find((setting) => {
           return setting.connectorId === connector.id
         })
+        const grantKey = isGoogleEgress
+          ? googleEgressGrantKey(decision.toolName)
+          : decision.toolName
 
         await upsertConnectorChatSettings(input.db, {
           userId: input.userId,
@@ -942,7 +1039,7 @@ export async function applyRememberGrants(input: {
           enabled: current?.enabled ?? true,
           alwaysAllowTools: {
             ...current?.alwaysAllowTools,
-            [decision.toolName]: hash,
+            [grantKey]: hash,
           },
         })
 

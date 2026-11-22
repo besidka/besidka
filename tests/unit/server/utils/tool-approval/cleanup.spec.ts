@@ -288,6 +288,33 @@ describe('tool approval deletion hooks', () => {
       )).rejects.toThrow('d1 delete down')
     })
 
+    it('deletes the stashed Google result bodies of the user\'s chats',
+      async () => {
+        const chat = await seedChat(testDb.db, userId)
+        const { buildGoogleResultStash } = await import(
+          '~~/server/utils/tool-approval/google'
+        )
+        const { putToolApprovalResults } = await import(
+          '~~/server/utils/tool-approval/kv'
+        )
+        const stash = await buildGoogleResultStash({
+          userId,
+          chatPublicId: chat.id,
+          messagePublicId: MESSAGE_ID,
+        }, [{
+          type: 'tool-google__drive_search',
+          toolCallId: 'functions.drive_search:0',
+          state: 'output-available',
+          output: { references: [{ id: 'f1' }], text: 'Google body' },
+        }])
+
+        await putToolApprovalResults(kv as never, stash.entries)
+        await purgeUserToolApprovals(testDb.db, userId, logger, kv as never)
+
+        expect([...kv.values.values()].join(' ')).not.toContain('Google body')
+        expect(kv.values.size).toBe(0)
+      })
+
     it('deletes the approval keys of every chat the user owns', async () => {
       const first = await seedChat(testDb.db, userId)
       const second = await seedChat(testDb.db, userId)
