@@ -30,7 +30,7 @@
             :aria-expanded="isNoteOpen"
             :aria-controls="noteId"
             :data-testid="`${testId}-info`"
-            @click="isNoteOpen = !isNoteOpen"
+            @click="toggleNote"
           >
             <Icon
               name="lucide:info"
@@ -66,6 +66,7 @@
     <ChatInputToolsMenuInfoNote
       v-show="isNoteOpen"
       :id="noteId"
+      ref="noteElement"
       class="mx-2 mt-1 mb-2 ml-8.5"
       :data-testid="`${testId}-note`"
     >
@@ -92,6 +93,29 @@ const emit = defineEmits<{
 const hintId = useId()
 const noteId = useId()
 const isNoteOpen = shallowRef<boolean>(false)
+const noteElement = useTemplateRef<ComponentPublicInstance>('noteElement')
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    ?.matches === true
+}
+
+async function toggleNote() {
+  isNoteOpen.value = !isNoteOpen.value
+
+  if (!isNoteOpen.value) {
+    return
+  }
+
+  await nextTick()
+
+  const note = noteElement.value?.$el as HTMLElement | undefined
+
+  note?.scrollIntoView({
+    block: 'nearest',
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+  })
+}
 
 const mainDescribedBy = computed<string | undefined>(() => {
   const ids = [
