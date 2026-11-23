@@ -384,7 +384,50 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         .toBe(false)
       expect(wrapper.find('[data-testid="google-detail-disconnect"]').exists())
         .toBe(true)
+      expect(wrapper.find('[data-testid="google-detail-tools"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).not.toContain('Tools')
     })
+
+  describe('tools intro', () => {
+    async function introOf(
+      entryId: string,
+      byo: Partial<GoogleByoConnectionStatus> | null,
+    ) {
+      setStatus({}, byo)
+
+      const wrapper = await mountPanel(entryId)
+
+      return wrapper.get('[data-testid="google-detail-tools-intro"]').text()
+    }
+
+    it('names only writes for Drive without the own client', async () => {
+      expect(await introOf('google-drive', null)).toBe(
+        'Besidka asks before a Google tool runs. Writes ask every time.',
+      )
+    })
+
+    it('adds found files for the owner of the own client on Drive',
+      async () => {
+        expect(await introOf('google-drive', {})).toBe(
+          'Besidka asks before a Google tool runs. Writes and reads of '
+          + 'found files ask every time.',
+        )
+      })
+
+    it('adds mail on Gmail', async () => {
+      expect(await introOf('google-gmail', {})).toBe(
+        'Besidka asks before a Google tool runs. Writes and reads of mail '
+        + 'ask every time.',
+      )
+    })
+
+    it('names only writes on Google Calendar', async () => {
+      expect(await introOf('google-calendar', {})).toBe(
+        'Besidka asks before a Google tool runs. Writes ask every time.',
+      )
+    })
+  })
 
   it('announces a change in a polite live region', async () => {
     setStatus({ connection: summary() })

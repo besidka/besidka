@@ -153,6 +153,7 @@
       </div>
 
       <section
+        v-if="toolGroups.length"
         class="grid gap-3"
         aria-labelledby="google-detail-tools-heading"
         data-testid="google-detail-tools"
@@ -163,9 +164,11 @@
         >
           Tools
         </h3>
-        <p class="text-xs text-base-content/70">
-          Besidka asks before a Google tool runs. Writes and reads of mail or
-          found files ask every time.
+        <p
+          class="text-xs text-base-content/70"
+          data-testid="google-detail-tools-intro"
+        >
+          {{ toolsIntro }}
         </p>
         <section
           v-for="group in toolGroups"
@@ -246,6 +249,7 @@ import {
 } from '#shared/utils/google-connectors'
 import type { GoogleEntryId } from '#shared/utils/google-connectors'
 import {
+  GOOGLE_TOOL_APPROVAL_LABELS,
   getGoogleServiceTools,
   getGoogleToolApprovalLabel,
 } from '#shared/utils/google-tool-catalog'
@@ -320,6 +324,35 @@ const toolGroups = computed<ToolGroup[]>(() => {
       tools: tools.filter(tool => tool.kind === 'write'),
     },
   ].filter(group => group.tools.length > 0)
+})
+
+const toolsIntro = computed<string>(() => {
+  const listedTools = toolGroups.value.flatMap(group => group.tools)
+  const asksEveryTime = listedTools.filter((tool) => {
+    return getGoogleToolApprovalLabel(tool)
+      === GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime
+  })
+  const readSubjects = [
+    asksEveryTime.some(tool => tool.kind === 'read' && tool.service === 'gmail')
+      ? 'mail'
+      : null,
+    asksEveryTime.some(tool => tool.kind === 'read' && tool.service === 'drive')
+      ? 'found files'
+      : null,
+  ].filter(subject => subject !== null)
+  const subjects = [
+    asksEveryTime.some(tool => tool.kind === 'write') ? 'Writes' : null,
+    readSubjects.length ? `reads of ${readSubjects.join(' or ')}` : null,
+  ].filter(subject => subject !== null)
+  const intro = 'Besidka asks before a Google tool runs.'
+
+  if (!subjects.length) {
+    return intro
+  }
+
+  const sentence = `${subjects.join(' and ')} ask every time.`
+
+  return `${intro} ${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`
 })
 
 const ownClientNote = computed<OwnClientNote | null>(() => {
