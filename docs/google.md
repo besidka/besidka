@@ -2878,7 +2878,12 @@ result, and never repeats Google's own message text (it can echo the request,
 which holds a search the user wrote): `classifyGmailFailure` maps the status and
 reason to a fixed sentence (401 reconnect, `accessNotConfigured` "the Gmail API
 is not turned on in your Google Cloud project", 403, 404, 429, too large, 400,
-anything else); Drive search has its own wording of the same codes
+anything else); in `google__gmail_search` a thread whose metadata answers 400,
+a 5xx, a timeout or a body that is not JSON is skipped and counted in the note
+(never the whole search), the search stops asking Gmail after three such
+threads, and it fails with the generic sentence only when no thread could be
+read, while 401, `accessNotConfigured`, 403 and quota answers still fail the
+whole search; Drive search has its own wording of the same codes
 (`DRIVE_SEARCH_FAILURE_TEXT`, "the Google Drive API is not turned on"). A failed call keeps the send's transient taint but never sets
 the sticky chat flag (section 5.3). HTML mail is converted to text by a linear
 scanner (`htmlToPlainText`): `script`, `style`, `head`, `title`, `svg` and
