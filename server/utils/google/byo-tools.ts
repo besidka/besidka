@@ -131,6 +131,30 @@ const TEXT_ENCODER = new TextEncoder()
 const KIBIBYTE = 1024
 const THREAD_SEPARATOR = '\n\n---\n\n'
 
+const SKIPPABLE_THREAD_FAILURES: ReadonlySet<GmailFailureCode> = new Set([
+  'failed',
+  'bad_request',
+])
+const SEARCH_UNREADABLE_THREADS_MAX = 3
+const UNREADABLE_CODE_KEYS_MAX = 6
+
+function countUnreadableCode(
+  counts: Record<string, number>,
+  failure: { status?: number, observed?: string },
+): void {
+  const key = failure.status !== undefined
+    ? String(failure.status)
+    : failure.observed ?? 'unknown'
+
+  const isNewKey = !(key in counts)
+
+  if (isNewKey && Object.keys(counts).length >= UNREADABLE_CODE_KEYS_MAX) {
+    return
+  }
+
+  counts[key] = (counts[key] ?? 0) + 1
+}
+
 const FAILURE_STATUS: Readonly<Record<GmailFailureCode, number>> = {
   reauthorize: 409,
   api_disabled: 409,
@@ -494,6 +518,7 @@ function describeSearchEntry(
 function buildSearchOutput(
   entries: readonly SearchEntry[],
   skippedThreads: number,
+  unreadableThreads: number,
   budgetBytes: number,
 ): GoogleToolOutput {
   const shown = entries.slice(
@@ -502,7 +527,9 @@ function buildSearchOutput(
   )
   const omitted = entries.length - shown.length
   const notes = [
-    ...(entries.length === 0 && skippedThreads === 0
+    ...(entries.length === 0
+      && skippedThreads === 0
+      && unreadableThreads === 0
       ? ['No messages matched this search.']
       : []),
     ...(omitted > 0
@@ -512,6 +539,10 @@ function buildSearchOutput(
     ...(skippedThreads > 0
       ? [`${skippedThreads} matching threads were too long to list here and `
         + 'were left out. Narrow the search to see them.']
+      : []),
+    ...(unreadableThreads > 0
+      ? [`${unreadableThreads} matching threads could not be read from Gmail `
+        + 'right now and were left out. Search again to retry them.']
       : []),
   ]
 
@@ -1115,8 +1146,16 @@ export async function buildGoogleByoTools(
 
       const entries: SearchEntry[] = []
       let skippedThreads = 0
+      let unreadableThreads = 0
+      const unreadableCodes: Record<string, number> = {}
 
       for (const threadId of listed.value) {
+        if (unreadableThreads >= SEARCH_UNREADABLE_THREADS_MAX) {
+          unreadableThreads += 1
+
+          continue
+        }
+
         const metadata = await getGmailThreadMetadata(threadId, context)
 
         if (!metadata.ok) {
@@ -1127,6 +1166,13 @@ export async function buildGoogleByoTools(
           }
 
           if (metadata.code === 'not_found') {
+            continue
+          }
+
+          if (SKIPPABLE_THREAD_FAILURES.has(metadata.code)) {
+            unreadableThreads += 1
+            countUnreadableCode(unreadableCodes, metadata)
+
             continue
           }
 
@@ -1144,13 +1190,27 @@ export async function buildGoogleByoTools(
       logger.set({
         attributes: {
           googleByoTools: {
-            gmailSearch: { threads: entries.length, skipped: skippedThreads },
+            gmailSearch: {
+              threads: entries.length,
+              skipped: skippedThreads,
+              unreadable: unreadableThreads,
+              unreadableCodes,
+            },
           },
         },
       })
 
+      if (entries.length === 0 && unreadableThreads > 0) {
+        throw failureOf('failed')
+      }
+
       const output = fitGoogleToolOutput(
-        budget => buildSearchOutput(entries, skippedThreads, budget),
+        budget => buildSearchOutput(
+          entries,
+          skippedThreads,
+          unreadableThreads,
+          budget,
+        ),
         GOOGLE_GMAIL_SEARCH_TEXT_BUDGET_BYTES,
       )
 
