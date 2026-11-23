@@ -957,4 +957,89 @@ describe('ChatInput/Files/Attached/Preview', () => {
         .toContain('2')
     })
   })
+
+  describe('link check skeleton', () => {
+    const documentFile = {
+      storageKey: 'doc',
+      name: 'Quarterly plan.pdf',
+      type: 'application/pdf',
+      size: 10,
+    }
+
+    async function mountWithSkeletonAndChip() {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [documentFile],
+          tiles: [createTile({})],
+          checkingLinkCount: 1,
+        },
+      })
+
+      return {
+        skeleton: wrapper.get('[data-testid="google-link-skeleton"]'),
+        chip: wrapper.get('[data-testid="carousel-item"]'),
+      }
+    }
+
+    it('keeps the status role and the accessible name', async () => {
+      const { skeleton } = await mountWithSkeletonAndChip()
+
+      expect(skeleton.attributes('role')).toBe('status')
+      expect(skeleton.attributes('aria-label')).toBe('Checking Google link')
+    })
+
+    it('renders through the same shell classes as a real chip', async () => {
+      const { skeleton, chip } = await mountWithSkeletonAndChip()
+      const skeletonCard = skeleton.element.firstElementChild
+      const chipCard = chip.element.firstElementChild
+
+      expect(skeleton.classes().sort()).toEqual(chip.classes().sort())
+      expect(skeletonCard?.className).toBe(chipCard?.className)
+    })
+
+    it('uses the same preview box size as a real chip', async () => {
+      const { skeleton, chip } = await mountWithSkeletonAndChip()
+      const skeletonPreview = skeleton.get(
+        '[data-testid="google-link-skeleton-preview"]',
+      )
+      const chipPreview = chip.element.querySelector('.size-14')
+
+      expect(skeletonPreview.element.className).toBe(chipPreview?.className)
+    })
+
+    it('keeps the placeholders inside the preview box and text block',
+      async () => {
+        const { skeleton } = await mountWithSkeletonAndChip()
+        const placeholders = skeleton.findAll('.skeleton')
+
+        expect(placeholders).toHaveLength(3)
+        expect(placeholders[0]?.classes()).toContain('size-full')
+        expect(placeholders[1]?.classes()).toContain('h-3')
+        expect(placeholders[2]?.classes()).toContain('h-2.5')
+      })
+
+    it('uses the same shell classes as an uploading chip', async () => {
+      const uploadingFiles = new Map([
+        ['up', {
+          id: 'up',
+          file: new File(['x'], 'upload.pdf', { type: 'application/pdf' }),
+          status: 'uploading',
+          progress: 40,
+        }],
+      ])
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [],
+          checkingLinkCount: 1,
+          uploadingFiles: uploadingFiles as never,
+        },
+      })
+      const skeleton = wrapper.get('[data-testid="google-link-skeleton"]')
+      const uploading = wrapper.get('[data-uploading-id="up"]')
+
+      expect(skeleton.classes().sort()).toEqual(uploading.classes().sort())
+      expect(skeleton.element.firstElementChild?.className)
+        .toBe(uploading.element.firstElementChild?.className)
+    })
+  })
 })

@@ -2767,7 +2767,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/utils\/ai\/image-provenance\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/utils\/ai\/image-provenance\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox))\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {
@@ -4207,7 +4207,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-drive|google-drive-links|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy|chat-input-tiles)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|SettingTile|Files\/Attached\/(Preview\.client|DriveImport|DriveImportNote|GoogleLinkAnnouncement))\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
+        /^(shared\/utils\/(google-drive|google-drive-links|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy|chat-input-tiles)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|SettingTile|Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox|DriveImport|DriveImportNote|GoogleLinkAnnouncement))\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
       tests: googleDrivePickerTests,
     },
     {
@@ -4217,7 +4217,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/google-sheets\.ts|server\/utils\/google\/(sheets-[a-z-]+|file-type|drive-import|drive-picked|drive-tools|http)\.ts|server\/api\/v1\/google\/drive\/files\/(index|link|refresh)\.post\.ts|server\/utils\/files\/(persist-file|convert-files-for-ai|assistant-files)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/file-delivery-hints\.ts|app\/composables\/(chat-drive-files|google-drive-library)\.ts|app\/components\/ChatInput\/Files\/Attached\/Preview\.client\.vue|app\/types\/file-manager\.d\.ts|packages\/doc-renderer\/src\/workbook-map\/.*\.ts|packages\/doc-renderer\/src\/extract\/xlsx-map\.ts|tests\/fixtures\/google\/.*\.ts)$/,
+        /^(shared\/utils\/google-sheets\.ts|server\/utils\/google\/(sheets-[a-z-]+|file-type|drive-import|drive-picked|drive-tools|http)\.ts|server\/api\/v1\/google\/drive\/files\/(index|link|refresh)\.post\.ts|server\/utils\/files\/(persist-file|convert-files-for-ai|assistant-files)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/file-delivery-hints\.ts|app\/composables\/(chat-drive-files|google-drive-library)\.ts|app\/components\/ChatInput\/Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox)\.vue|app\/types\/file-manager\.d\.ts|packages\/doc-renderer\/src\/workbook-map\/.*\.ts|packages\/doc-renderer\/src\/extract\/xlsx-map\.ts|tests\/fixtures\/google\/.*\.ts)$/,
       tests: googleSheetsMapTests,
     },
     {
@@ -4920,7 +4920,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard|tools-menu-focus-rescue)\.ts|app\/assets\/icons\/exa\.svg)$/,
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox))\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard|tools-menu-focus-rescue)\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
         ...chatInputToolsTests,
         'tests/unit/components/ProviderIcon.spec.ts',
@@ -5053,7 +5053,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
+        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client|ChipShell|ChipPreviewBox)|Chat\/TextFileModal\.client)\.vue)$/,
       tests: markdownTextareaTests,
     },
     {
