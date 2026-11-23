@@ -4339,8 +4339,16 @@ or in the trash is not listed.
 
 | Map | Filled from | Used for |
 |---|---|---|
-| `folders` | `list_folder` and `create_folder` results (kinds `drive-folder` and `drive-root`), plus My Drive under the alias `root`, always | the parent of `create_folder`, and the folders `list_folder` opens |
-| `writableItems` | `drive_search` hits, `list_folder` items, `create_folder` results, and the result of a rename or a move (never a `drive-root`) | the item of `rename` and `move`; its title is also what the execute-time name check compares with |
+| `folders` | `list_folder`, `create_folder`, `rename` and `move` results (kinds `drive-folder` and `drive-root`; only `list_folder` can name the root), plus My Drive under the alias `root`, always | the parent of `create_folder`, the source and target of `move`, and the folders `list_folder` opens |
+| `writableItems` | `drive_search` hits, `list_folder` items, `create_folder`, `rename` and `move` results (never a `drive-root`) | the item of `rename` and `move`; its title is also what the execute-time name check compares with |
+
+The stored parts are read in the order they were stored (`ORDER BY` the message
+id) and every part is applied to every source in turn, so a later result
+replaces an earlier one whichever tool it came from: after Besidka renames an
+item, the next message of the chat knows the new name (a stale search title
+would otherwise make the next rename or move say "renamed since it was found"),
+and a later search wins over an earlier rename. `loadChatSearchParts` also loads
+messages that mention `drive_rename` and `drive_move`.
 
 A file a folder listing returns is never a `foundFile`: only a
 `google__drive_search` result makes a file readable by
@@ -4479,7 +4487,10 @@ back as expected with the `drive` scope (any missing field refuses); that
 `PATCH /drive/v3/files/<id>` with `addParents` and `removeParents` moves an
 item and answers the new `parents` (and that a folder moved into its own
 subtree answers 400); that `files.get('root')` answers an id that equals the
-`parents` entry of a My Drive item; that `shared` is true for a folder
+`parents` entry of a My Drive item; that an orphaned folder really answers an
+empty `parents`; that the PATCH answer echoes the sent name unchanged (the
+rename check compares it exactly) and the reasons Drive gives for a refused
+PATCH (every 403 maps to the permission sentence); that `shared` is true for a folder
 that only inherits sharing from its parent; the alias `root` in a `files.get`
 path and in `'root' in parents`; that `corpora=user` lists a folder as
 expected; and the real root id that `files.get('root')` answers with.
@@ -4553,8 +4564,8 @@ asking (`failsWithoutRunning` plus the refusal latch). The name goes through
    Drive itself (the live root check of section 19.11);
 4. succeeds without a request when the live name already equals the new name:
    `alreadyDone: true`. That is how a retry of the same approval ends;
-5. otherwise refuses when the cleaned live name is not the title the chat found
-   ("renamed since it was found in this chat; search again") and when
+5. otherwise refuses when the cleaned live name is not the cleaned title the
+   chat found ("renamed since it was found in this chat; search again") and when
    `capabilities.canRename` is not true;
 6. `PATCH /drive/v3/files/<id>?supportsAllDrives=true&fields=id,name,mimeType,parents`
    with the body exactly `{ "name": <newName> }` (`buildDriveRenameRequest`
@@ -4563,10 +4574,15 @@ asking (`failsWithoutRunning` plus the refusal latch). The name goes through
 
 The PATCH is on the metadata endpoint only; `/upload/drive/v3/files/<id>` would
 edit content and the boundary spec fails if it appears. Failures use fixed
-sentences per operation (`DRIVE_CHANGE_FAILURE_TEXT`): 403 (no permission to
-rename it, or the Change files access is missing), 404, 400, 429, and for a
-timeout or a 5xx "did not confirm the rename, so it may or may not have
-happened; check the name in your Google Drive". Nothing here can trash, copy or
+sentences per operation (`DRIVE_CHANGE_FAILURE_TEXT`) for the PATCH only: 403
+(no permission to rename it, or the Change files access is missing), 404, 400,
+429, and for a timeout or a 5xx "did not confirm the rename, so it may or may
+not have happened; check the name in your Google Drive". A failed live check
+before the PATCH (the item, the root or a folder read) uses the general
+sentence of section 19.4, which says nothing was changed, because nothing was
+sent. An item the user owns but has shared stays renamable and movable: the
+v1 rule checks `ownedByMe` and the absence of `driveId` for the item, and
+`shared` only for the folders of a move. Nothing here can trash, copy or
 share. The model gets a fixed message and `renamed` and `alreadyDone` flags and
 no name; the stored reference holds the id, kind, new title, link and parent
 id.

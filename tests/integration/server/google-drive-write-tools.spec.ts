@@ -18,6 +18,9 @@ import {
 } from '~~/server/utils/google/drive-write-api'
 import {
   createMemoryExtractionTestDb,
+  minutesBefore,
+  seedChat,
+  seedMessage,
   seedUser,
 } from '../../setup/helpers/memory-extraction-db'
 import type {
@@ -280,6 +283,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
   async function candidates(input: {
     owner?: number
     priorParts?: unknown[]
+    chatPublicId?: string
   } = {}) {
     const { buildGoogleSendToolCandidates } = await import(
       '~~/server/utils/tool-approval/google-send-candidates'
@@ -287,7 +291,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
     return await buildGoogleSendToolCandidates({
       userId: input.owner ?? userId,
-      chatPublicId: 'chat-1',
+      chatPublicId: input.chatPublicId ?? 'chat-1',
       priorCalls: 0,
       driveActive: false,
       byoActive: true,
@@ -1218,8 +1222,14 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
       ]
     }
 
-    async function known(parts: unknown[] = knownParts()) {
-      const built = await candidates({ priorParts: parts })
+    async function known(
+      parts: unknown[] | undefined = knownParts(),
+      chatPublicId?: string,
+    ) {
+      const built = await candidates({
+        priorParts: parts,
+        ...(chatPublicId ? { chatPublicId } : {}),
+      })
 
       return {
         built,
@@ -1925,6 +1935,289 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
         expect(JSON.stringify(mocks.logged)).toContain('"refusal":"shared"')
         expect(JSON.stringify(mocks.logged)).not.toContain(ARCHIVE_ID)
+      })
+    })
+
+    describe('the index read back from the stored chat', () => {
+      const storedSearch = (title: string) => ({
+        type: 'tool-google__drive_search',
+        state: 'output-available',
+        output: {
+          references: [{
+            id: FILE_ID,
+            kind: 'drive-file',
+            title,
+            parentId: CHILD_ID,
+          }],
+          bodyRemoved: true,
+        },
+      })
+      const storedRename = (toolName: string, title: string) => ({
+        type: `tool-${toolName}`,
+        state: 'output-available',
+        output: {
+          references: [{
+            id: FILE_ID,
+            kind: 'drive-file',
+            title,
+            parentId: CHILD_ID,
+          }],
+          bodyRemoved: true,
+        },
+      })
+
+      it('knows the name Besidka gave an item although an earlier search '
+        + 'found the old one', async () => {
+        const chat = await seedChat(testDb.db, userId)
+
+        await seedMessage(testDb.db, chat.id, 'assistant', [
+          storedSearch('notes.txt'),
+          knownParts()[1],
+        ], minutesBefore(30))
+        await seedMessage(testDb.db, chat.id, 'assistant', [
+          storedRename(GOOGLE_DRIVE_RENAME_TOOL_NAME, 'plan.txt'),
+        ], minutesBefore(20))
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, {
+          name: 'plan.txt',
+          parents: [CHILD_ID],
+        })
+
+        const { toolMap } = await known([], chat.id)
+        const output = await move(toolMap, {
+          itemId: FILE_ID,
+          fromFolderId: CHILD_ID,
+          toFolderId: ARCHIVE_ID,
+        })
+
+        expect(output).toMatchObject({ moved: true, alreadyDone: false })
+        expect(drive.items[FILE_ID]!.parents).toEqual([ARCHIVE_ID])
+      })
+
+      it('takes the latest result when a later search names the item again',
+        async () => {
+          const chat = await seedChat(testDb.db, userId)
+
+          await seedMessage(testDb.db, chat.id, 'assistant', [
+            storedRename(GOOGLE_DRIVE_RENAME_TOOL_NAME, 'plan.txt'),
+          ], minutesBefore(30))
+          await seedMessage(testDb.db, chat.id, 'assistant', [
+            storedSearch('final.txt'),
+          ], minutesBefore(20))
+
+          drive.items[FILE_ID] = fileMeta(FILE_ID, {
+            name: 'final.txt',
+            parents: [CHILD_ID],
+          })
+
+          const { toolMap } = await known([], chat.id)
+          const output = await rename(toolMap, {
+            itemId: FILE_ID,
+            newName: 'last.txt',
+          })
+
+          expect(output).toMatchObject({ renamed: true })
+        })
+
+      it('knows a folder a move or a rename result named', async () => {
+        const chat = await seedChat(testDb.db, userId)
+
+        await seedMessage(testDb.db, chat.id, 'assistant', [{
+          type: `tool-${GOOGLE_DRIVE_MOVE_TOOL_NAME}`,
+          state: 'output-available',
+          output: {
+            references: [{
+              id: ARCHIVE_ID,
+              kind: 'drive-folder',
+              title: 'Archive',
+              parentId: ROOT_ID,
+            }],
+            bodyRemoved: true,
+          },
+        }], minutesBefore(30))
+
+        const { built } = await known([], chat.id)
+
+        expect(built.entries.get(GOOGLE_DRIVE_MOVE_TOOL_NAME)
+          ?.failsWithoutRunning?.({
+            itemId: ARCHIVE_ID,
+            fromFolderId: 'root',
+            toFolderId: ARCHIVE_ID,
+          })).toBe(false)
+      })
+
+      it('knows nothing from another user\'s chat', async () => {
+        const chat = await seedChat(testDb.db, otherUserId)
+
+        await seedMessage(testDb.db, chat.id, 'assistant', [
+          storedSearch('notes.txt'),
+        ], minutesBefore(30))
+
+        const { toolMap } = await known([], chat.id)
+
+        expect(await rejectionOf(rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'plan.txt',
+        }))).toContain('was not returned by')
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('what the checks say', () => {
+      it('says nothing changed when only a check failed with a 500, not '
+        + 'that it may have happened', async () => {
+        const { toolMap } = await known()
+
+        drive.fetch.mockImplementationOnce(async () => {
+          return new Response('{}', { status: 500 })
+        })
+
+        const renameMessage = await rejectionOf(rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'plan.txt',
+        }))
+
+        expect(renameMessage).not.toContain('may or may not')
+        expect(renameMessage).toContain('Try again')
+        expect(patches()).toHaveLength(0)
+
+        drive.fetch.mockImplementationOnce(async () => {
+          return new Response('{}', { status: 500 })
+        })
+
+        const moveMessage = await rejectionOf(move(toolMap, {
+          itemId: FILE_ID,
+          fromFolderId: CHILD_ID,
+          toFolderId: ARCHIVE_ID,
+        }))
+
+        expect(moveMessage).not.toContain('may or may not')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('treats an item the user owns as changeable even when it is '
+        + 'shared, because the rule checks ownership and the drive only',
+      async () => {
+        const { toolMap } = await known()
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, {
+          parents: [CHILD_ID],
+          shared: true,
+        })
+
+        expect((await rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'plan.txt',
+        })).renamed).toBe(true)
+      })
+
+      it.each([
+        ['rename', { itemId: FILE_ID, newName: 'plan.txt' }],
+        [
+          'move',
+          { itemId: FILE_ID, fromFolderId: CHILD_ID, toFolderId: ARCHIVE_ID },
+        ],
+      ])('refuses an item shared with the user for a %s', async (
+        operation,
+        callInput,
+      ) => {
+        const { toolMap } = await known()
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, {
+          parents: [CHILD_ID],
+          ownedByMe: false,
+          shared: true,
+        })
+
+        const message = await rejectionOf(operation === 'rename'
+          ? rename(toolMap, callInput)
+          : move(toolMap, callInput))
+
+        expect(message).toContain('someone else')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('refuses a file as the target folder without asking', async () => {
+        const SECOND_FILE_ID = 'second-file-id-0123456'
+        const { toolMap, entryOf } = await known([
+          ...knownParts(),
+          {
+            type: 'tool-google__drive_search',
+            state: 'output-available',
+            output: {
+              references: [{
+                id: SECOND_FILE_ID,
+                kind: 'drive-file',
+                title: 'other.txt',
+              }],
+            },
+          },
+        ])
+        const fileTarget = {
+          itemId: FILE_ID,
+          fromFolderId: CHILD_ID,
+          toFolderId: SECOND_FILE_ID,
+        }
+
+        expect(entryOf(GOOGLE_DRIVE_MOVE_TOOL_NAME)
+          .failsWithoutRunning?.(fileTarget)).toBe(true)
+        expect(await rejectionOf(move(toolMap, fileTarget)))
+          .toContain('A folder id was not returned by')
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+
+      it('says a folder id is unknown, not an item id, when the item is '
+        + 'known and a sibling listing added the folder before the call ran',
+      async () => {
+        const { toolMap, entryOf } = await known([knownParts()[0]])
+        const moveInput = {
+          itemId: FILE_ID,
+          fromFolderId: CHILD_ID,
+          toFolderId: ARCHIVE_ID,
+        }
+
+        expect(entryOf(GOOGLE_DRIVE_MOVE_TOOL_NAME)
+          .failsWithoutRunning?.(moveInput)).toBe(true)
+
+        drive.listing = [
+          { id: CHILD_ID, name: 'Projects', mimeType: FOLDER_MIME },
+          { id: ARCHIVE_ID, name: 'Archive', mimeType: FOLDER_MIME },
+        ]
+        await list(toolMap, { folderId: 'root' })
+        drive.requests.length = 0
+
+        const message = await rejectionOf(move(toolMap, moveInput))
+
+        expect(message).toContain('A folder id was not returned by')
+        expect(message).not.toContain('That item id')
+        expect(drive.requests).toHaveLength(0)
+      })
+
+      it('compares the found name after cleaning both sides', async () => {
+        const { toolMap } = await known([
+          {
+            type: 'tool-google__drive_search',
+            state: 'output-available',
+            output: {
+              references: [{
+                id: FILE_ID,
+                kind: 'drive-file',
+                title: 'My  notes.txt',
+                parentId: CHILD_ID,
+              }],
+            },
+          },
+        ])
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, {
+          name: 'My  notes.txt',
+          parents: [CHILD_ID],
+        })
+
+        expect((await rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'plan.txt',
+        })).renamed).toBe(true)
       })
     })
 

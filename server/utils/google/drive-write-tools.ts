@@ -409,6 +409,11 @@ function asRawText(value: unknown, key: string): string | null {
   return typeof text === 'string' && text ? text : null
 }
 
+function isFoundName(liveName: string, foundTitle: string | null): boolean {
+  return foundTitle !== null
+    && sanitizeDriveFileName(liveName) === sanitizeDriveFileName(foundTitle)
+}
+
 function shownName(value: string | null | undefined): string {
   return sanitizeDriveFileName(value ?? '').slice(
     0,
@@ -789,7 +794,7 @@ export async function buildGoogleDriveWriteTools(
     const answer = await readDriveItemMeta(itemId, context)
 
     if (!answer.ok) {
-      throw failureOf(answer.code, operation)
+      throw failureOf(answer.code)
     }
 
     const meta = answer.value
@@ -825,7 +830,7 @@ export async function buildGoogleDriveWriteTools(
     const answer = await readDriveItemMeta(folderId, context)
 
     if (!answer.ok) {
-      throw failureOf(answer.code, 'move')
+      throw failureOf(answer.code)
     }
 
     if (await root.isRoot(answer.value)) {
@@ -1281,7 +1286,7 @@ export async function buildGoogleDriveWriteTools(
       const alreadyDone = item.name === newName
 
       if (!alreadyDone) {
-        if (sanitizeDriveFileName(item.name) !== known.title) {
+        if (!isFoundName(item.name, known.title)) {
           refuseItem('rename', 'renamedSince', 409)
         }
 
@@ -1343,16 +1348,24 @@ export async function buildGoogleDriveWriteTools(
       }
 
       const { itemId, fromFolderId, toFolderId } = request.value
-      const latched = [...new Set([itemId, fromFolderId, toFolderId])]
-        .map(id => refusals.take(latchKey(GOOGLE_DRIVE_MOVE_TOOL_NAME, id)))
+      const takeLatch = (id: string): boolean => {
+        return refusals.take(latchKey(GOOGLE_DRIVE_MOVE_TOOL_NAME, id))
+      }
+      const latchedItem = takeLatch(itemId)
+      const latchedFolders = [...new Set([fromFolderId, toFolderId])]
+        .map(takeLatch)
         .some(Boolean)
       const known = index.writableItems.get(itemId)
 
-      if (latched || !known) {
+      if (latchedItem || !known) {
         throw toolFailure(UNKNOWN_ITEM_TEXT, 400)
       }
 
-      if (!isKnownMoveFolder(fromFolderId) || !isKnownMoveFolder(toFolderId)) {
+      if (
+        latchedFolders
+        || !isKnownMoveFolder(fromFolderId)
+        || !isKnownMoveFolder(toFolderId)
+      ) {
         throw toolFailure(UNKNOWN_MOVE_FOLDER_TEXT, 400)
       }
 
@@ -1369,7 +1382,7 @@ export async function buildGoogleDriveWriteTools(
           ? (await root.resolve()).id
           : fromFolderId
 
-        if (sanitizeDriveFileName(item.name) !== known.title) {
+        if (!isFoundName(item.name, known.title)) {
           refuseItem('move', 'renamedSince', 409)
         }
 
