@@ -469,62 +469,10 @@ override through `-c`. It needs the security review above first.
 
 ## Worker startup CPU (error 10021)
 
-Cloudflare refuses a deploy with error 10021 ("startup exceeded CPU time
-limit") when the top level of the Worker takes too long to run. It happened
-twice on Previews while the Google phase grew the bundle. Everything that is
-evaluated when the isolate starts counts: the Nitro entry, every plugin in
-`server/plugins/` and every module they import statically.
-
-Rules:
-
-- A plugin, a middleware or a hot shared utility (`server/utils/auth.ts`,
-  `server/utils/files/convert-files-for-ai.ts`) must not import a heavy module
-  with a static `import`. Load it with `await import()` inside the code path
-  that needs it: the `cloudflare:scheduled` hook, the Better Auth
-  `beforeDelete` hook, the function that fits a workbook map. Heavy means the
-  Google cleanup modules (`server/utils/google/access-ended.ts`), the Sheets
-  reader (`sheets-*.ts`) and `@besidka/doc-renderer/workbook-map` (about
-  110 KB).
-- `tests/unit/server/plugins/startup-imports.spec.ts` scans the explicit static
-  import graph from every file in `server/plugins/` and `server/middleware/`
-  and fails when it reaches one of those modules. It does not see imports that
-  Nitro injects for auto-imported `server/utils` names, so it is a guard
-  against the common regression, not proof of a small startup.
-
-How to measure (works offline, needs a production build):
-
-```bash
-env -u NUXT_PUBLIC_BASE_URL NODE_OPTIONS=--max-old-space-size=6144 \
-  pnpm run build
-env -u NUXT_PUBLIC_BASE_URL pnpm exec wrangler check startup \
-  --outfile /tmp/worker-startup.cpuprofile
-```
-
-The command bundles `.output/server/index.mjs`, runs the startup phase in a
-local workerd and prints the bundle size and the active CPU time. Open the
-`.cpuprofile` in the Chrome DevTools profiler to see which module bodies cost
-the most. The local number is not the Cloudflare number, and it varies by about
-20 ms between runs, so compare three runs.
-
-Measured on 2026-11-23 (this machine, Google umbrella at 38edb633), before and
-after moving the Google sweep, the account purge and the workbook map fit
-behind `import()`:
-
-| Build | Bundle | Active at startup (3 runs) |
-| --- | --- | --- |
-| before | 17668 KiB (gzip 3946 KiB) | 260 ms |
-| after | 17672 KiB (gzip 3949 KiB) | 248 to 285 ms |
-
-No measurable gain. The reason is the chunk layout: the build puts every
-shared `server/utils` module (about 665) into `chunks/nitro/nitro.mjs`, the
-chunk the entry imports, and each route chunk only imports from it. A dynamic
-`import()` of a module that lives in the same chunk compiles to
-`Promise.resolve().then(() => namespace)` and the module body still runs at
-startup. The `import()` calls are therefore correct and harmless but defer
-nothing today. Cutting the startup cost needs a chunking change (a separate
-chunk for the Google, MCP and Sheets modules, so that a dynamic import has
-somewhere to point to), not more `import()` calls. That change touches the
-whole server build and is not part of the Google audit fixes.
+Error 10021 ("Script startup exceeded CPU time limit") refused a Preview
+deploy twice on the Google umbrella.
+The rules, the measured numbers and the measuring recipe are in
+`docs/worker-startup.md`.
 
 ## Gotchas
 
