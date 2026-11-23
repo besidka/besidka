@@ -17,6 +17,7 @@ const OUT_OF_FLOW_COMPONENT_PREFIXES: string[] = [
   'app/components/Chat/ContextPanel',
   'app/components/Chat/Document/',
   'app/components/Chat/DocumentPreview.vue',
+  'app/components/Chat/GoogleFileDownload.vue',
   'app/components/Chat/GoogleFileHeaderAction.vue',
   'app/components/Chat/GoogleFilePreview.vue',
   'app/components/Chat/ImagePreview.client.vue',

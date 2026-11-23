@@ -16,6 +16,7 @@ const TARGET_ID = 'target-id-0123456789'
 const ROOT = process.cwd()
 const API_PATH = 'server/utils/google/drive-write-api.ts'
 const TOOLS_PATH = 'server/utils/google/drive-write-tools.ts'
+const DOWNLOAD_PATH = 'server/utils/google/created-file-download.ts'
 
 function sourceFilesUnder(directory: string): string[] {
   return readdirSync(join(ROOT, directory)).flatMap((name) => {
@@ -685,10 +686,27 @@ describe('the Drive write boundary', () => {
         .sort()
     }
 
-    expect(importersOf(/google\/drive-write-api'/)).toEqual([TOOLS_PATH])
+    expect(importersOf(/google\/drive-write-api'/)).toEqual([
+      DOWNLOAD_PATH,
+      TOOLS_PATH,
+    ])
     expect(importersOf(/google\/drive-write-tools'/)).toEqual([
       'server/utils/tool-approval/google-send-candidates.ts',
     ])
+  })
+
+  it('lets the created file download use the metadata read of the Drive '
+    + 'write module and nothing else of it', () => {
+    const source = read(DOWNLOAD_PATH)
+
+    expect(source).toContain(
+      'import { readDriveItemMeta } from '
+      + '\'~~/server/utils/google/drive-write-api\'',
+    )
+    expect(source.match(/drive-write-api'/g)).toHaveLength(1)
+    expect(source).not.toMatch(
+      /createDriveItem|createDriveFileWithContent|patchDriveItem|method: '(POST|PATCH)'/,
+    )
   })
 
   it('keeps the Drive write tools out of the MCP server', () => {
