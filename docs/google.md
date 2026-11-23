@@ -2444,6 +2444,14 @@ not change (a long paste becomes a chip and changes nothing). The watcher is
 a plain `watch` with the timer cleared in `onCleanup`; typed text after a
 paste waits again. Pasted text with no Google link takes the 800 ms path.
 
+**The highlight (BES-455).** While `google.drive` is active (and the model is
+not a deep research model), every link the parser recognizes in the textarea
+text gets the badge look of a typed `/command` in the composer
+(`findGoogleDriveLinkRanges`, the same scan and rules as the extraction but
+every occurrence, with no per-file or per-message limit). It follows the text
+at once, with no 800 ms wait and no connection check, and the link text is not
+shortened; see `docs/chats/chat-input-markdown.md`, "Google link highlight".
+
 **The placeholder.** From the moment a link passed the client parser, the
 connection check and the queue, until its answer, the attachments row shows
 one placeholder per link (at most five). It takes the form of what the check

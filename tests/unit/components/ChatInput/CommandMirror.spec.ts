@@ -2,6 +2,10 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import CommandMirror from '../../../../app/components/ChatInput/CommandMirror.vue'
+import type {
+  ComposerMirrorKind,
+  ComposerMirrorRange,
+} from '~/utils/composer-mirror-ranges'
 
 enableAutoUnmount(afterEach)
 
@@ -9,6 +13,7 @@ interface MountOptions {
   text?: string
   start?: number
   end?: number
+  ranges?: ComposerMirrorRange[]
   textarea?: HTMLTextAreaElement | null
 }
 
@@ -241,5 +246,247 @@ describe('ChatInput/CommandMirror', () => {
     await flushPromises()
 
     expect((wrapper.element as HTMLElement).scrollTop).toBe(40)
+  })
+
+  it('reveals the textarea under a badge the caret is strictly inside, not '
+    + 'at its edges', async () => {
+    const textarea = createTextarea()
+
+    textarea.value = 'Please /c this'
+    textarea.focus()
+
+    const wrapper = await mountMirror({ textarea, start: 7, end: 9 })
+    const token = () => {
+      return wrapper.get('[data-testid="command-mirror-token"]')
+    }
+
+    textarea.setSelectionRange(8, 8)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-reveal')).toBe('true')
+
+    textarea.setSelectionRange(9, 9)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-reveal')).toBeUndefined()
+    expect(token().attributes('data-caret')).toBe('end')
+  })
+
+  it('reveals the textarea under a badge a selection overlaps', async () => {
+    const textarea = createTextarea()
+
+    textarea.value = 'Please /c this'
+    textarea.focus()
+
+    const wrapper = await mountMirror({ textarea, start: 7, end: 9 })
+    const token = () => {
+      return wrapper.get('[data-testid="command-mirror-token"]')
+    }
+
+    textarea.setSelectionRange(0, 8)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-reveal')).toBe('true')
+
+    textarea.setSelectionRange(0, 7)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-reveal')).toBeUndefined()
+
+    textarea.blur()
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-reveal')).toBeUndefined()
+  })
+
+  describe('with a list of ranges', () => {
+    const FIRST_LINK = 'https://docs.google.com/document/d/1ExampleExampleExampleExample0123456789/edit'
+    const SECOND_LINK = 'https://drive.google.com/file/d/1SecondSecondSecondSecond0123456789/view'
+
+    function rangeOf(text: string, part: string, kind: ComposerMirrorKind) {
+      const start = text.indexOf(part)
+
+      return { start, end: start + part.length, kind }
+    }
+
+    it('paints one mark per range with the right slices', async () => {
+      const text = `a ${FIRST_LINK} b ${SECOND_LINK} c`
+      const wrapper = await mountMirror({
+        text,
+        ranges: [
+          rangeOf(text, FIRST_LINK, 'google-link'),
+          rangeOf(text, SECOND_LINK, 'google-link'),
+        ],
+      })
+      const marks = wrapper.findAll('mark')
+
+      expect(marks).toHaveLength(2)
+      expect(marks.map((mark) => {
+        return mark.text()
+      })).toEqual([FIRST_LINK, SECOND_LINK])
+      expect(marks.every((mark) => {
+        return mark.classes().includes('composer-command-token')
+          && mark.attributes('data-kind') === 'google-link'
+          && mark.attributes('data-testid') === 'command-mirror-link'
+      })).toBe(true)
+      expect(readPlainText(wrapper.element)).toBe('a  b  c ')
+    })
+
+    it('draws a command and a link together', async () => {
+      const text = `/meeting see ${FIRST_LINK}`
+      const wrapper = await mountMirror({
+        text,
+        ranges: [
+          rangeOf(text, FIRST_LINK, 'google-link'),
+          rangeOf(text, '/meeting', 'command'),
+        ],
+      })
+
+      expect(wrapper.findAll('mark').map((mark) => {
+        return [mark.attributes('data-kind'), mark.text()]
+      })).toEqual([
+        ['command', '/meeting'],
+        ['google-link', FIRST_LINK],
+      ])
+      expect(wrapper.find('[data-testid="command-mirror-token"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="command-mirror-link"]').exists())
+        .toBe(true)
+    })
+
+    it('clips overlapping ranges and ignores ranges outside the text',
+      async () => {
+        const wrapper = await mountMirror({
+          text: 'abcdefghij',
+          ranges: [
+            { start: 4, end: 8, kind: 'google-link' },
+            { start: 2, end: 6, kind: 'command' },
+            { start: 7, end: 40, kind: 'google-link' },
+            { start: 30, end: 40, kind: 'google-link' },
+            { start: -5, end: 1, kind: 'google-link' },
+            { start: 6, end: 3, kind: 'google-link' },
+            { start: Number.NaN, end: 5, kind: 'google-link' },
+          ],
+        })
+
+        expect(wrapper.findAll('mark').map((mark) => {
+          return mark.text()
+        })).toEqual(['a', 'cdef', 'gh', 'ij'])
+        expect(wrapper.element.textContent).toBe('abcdefghij ')
+      })
+
+    it('paints nothing for an empty list', async () => {
+      const wrapper = await mountMirror({ ranges: [] })
+
+      expect(wrapper.findAll('mark')).toHaveLength(0)
+      expect(wrapper.element.textContent).toBe('Please /c this ')
+    })
+
+    it('mirrors the text exactly, tabs, blank lines and double spaces '
+      + 'included, so widths match the textarea', async () => {
+      const text = `a\t${FIRST_LINK}\n\n  b  ${SECOND_LINK}\n`
+      const wrapper = await mountMirror({
+        text,
+        ranges: [
+          rangeOf(text, FIRST_LINK, 'google-link'),
+          rangeOf(text, SECOND_LINK, 'google-link'),
+        ],
+      })
+
+      expect(wrapper.element.textContent).toBe(`${text} `)
+      expect(wrapper.classes()).toContain('whitespace-pre-wrap')
+    })
+
+    it('renders markup around a link as plain text', async () => {
+      const text = `<b>x</b> ${FIRST_LINK} <img src=x onerror=1>`
+      const wrapper = await mountMirror({
+        text,
+        ranges: [rangeOf(text, FIRST_LINK, 'google-link')],
+      })
+
+      expect(wrapper.element.textContent).toBe(`${text} `)
+      expect(wrapper.element.querySelector('b, img')).toBeNull()
+      expect(wrapper.element.children).toHaveLength(1)
+    })
+
+    it('follows the text while it changes', async () => {
+      const text = `see ${FIRST_LINK}`
+      const wrapper = await mountMirror({
+        text,
+        ranges: [rangeOf(text, FIRST_LINK, 'google-link')],
+      })
+      const longerText = `hello there ${FIRST_LINK} and ${SECOND_LINK}`
+
+      await wrapper.setProps({
+        text: longerText,
+        ranges: [
+          rangeOf(longerText, FIRST_LINK, 'google-link'),
+          rangeOf(longerText, SECOND_LINK, 'google-link'),
+        ],
+      })
+
+      expect(wrapper.findAll('mark')).toHaveLength(2)
+      expect(wrapper.element.textContent).toBe(`${longerText} `)
+
+      await wrapper.setProps({ text: 'plain', ranges: [] })
+
+      expect(wrapper.findAll('mark')).toHaveLength(0)
+      expect(wrapper.element.textContent).toBe('plain ')
+    })
+
+    it('sets the caret edge and reveal per link', async () => {
+      const textarea = createTextarea()
+      const text = `${FIRST_LINK} ${SECOND_LINK}`
+
+      textarea.value = text
+      textarea.focus()
+
+      const wrapper = await mountMirror({
+        textarea,
+        text,
+        ranges: [
+          rangeOf(text, FIRST_LINK, 'google-link'),
+          rangeOf(text, SECOND_LINK, 'google-link'),
+        ],
+      })
+      const [first, second] = wrapper.findAll('mark')
+
+      textarea.setSelectionRange(FIRST_LINK.length, FIRST_LINK.length)
+      document.dispatchEvent(new Event('selectionchange'))
+      await flushPromises()
+
+      expect(first!.attributes('data-caret')).toBe('end')
+      expect(second!.attributes('data-caret')).toBeUndefined()
+
+      textarea.setSelectionRange(text.length - 5, text.length - 5)
+      document.dispatchEvent(new Event('selectionchange'))
+      await flushPromises()
+
+      expect(first!.attributes('data-reveal')).toBeUndefined()
+      expect(second!.attributes('data-reveal')).toBe('true')
+    })
+
+    it('is an out-of-flow overlay that adds no height to the composer',
+      async () => {
+        const text = `see ${FIRST_LINK}`
+        const wrapper = await mountMirror({
+          text,
+          ranges: [rangeOf(text, FIRST_LINK, 'google-link')],
+        })
+
+        expect(wrapper.classes()).toEqual(expect.arrayContaining([
+          'absolute',
+          'inset-0',
+          'overflow-hidden',
+          'pointer-events-none',
+        ]))
+        expect(wrapper.attributes('aria-hidden')).toBe('true')
+        expect(wrapper.get('mark').attributes('style')).toBeUndefined()
+      })
   })
 })

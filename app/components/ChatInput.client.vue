@@ -99,11 +99,10 @@
           />
           <div class="relative">
             <LazyChatInputCommandMirror
-              v-if="commands.activeToken.value"
+              v-if="mirrorRanges.length > 0"
               :textarea="textarea"
               :text="input"
-              :start="commands.activeToken.value.start"
-              :end="commands.activeToken.value.end"
+              :ranges="mirrorRanges"
             />
             <textarea
               ref="textarea"
@@ -304,6 +303,7 @@ import type {
 } from '~/utils/file-delivery-hints'
 import type { TextSnapshot } from '~/composables/markdown-textarea'
 import type { PastedText } from '~/utils/pasted-text'
+import type { ComposerMirrorRange } from '~/utils/composer-mirror-ranges'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
@@ -1164,6 +1164,25 @@ const commands = useComposerCommands({
   isAvailable: () => isSkillAttachEnabled.value,
   builtins: () => availableBuiltinCommands.value,
   insertText: insertTextAtSelection,
+})
+
+const googleLinkRanges = computed<ComposerMirrorRange[]>(() => {
+  if (!googleDriveFeature.value.active || isDeepResearchModel.value) {
+    return []
+  }
+
+  return findGoogleDriveLinkRanges(input.value).map((range) => {
+    return { ...range, kind: 'google-link' as const }
+  })
+})
+
+const mirrorRanges = computed<ComposerMirrorRange[]>(() => {
+  const commandToken = commands.activeToken.value
+  const commandRanges: ComposerMirrorRange[] = commandToken
+    ? [{ start: commandToken.start, end: commandToken.end, kind: 'command' }]
+    : []
+
+  return [...commandRanges, ...googleLinkRanges.value]
 })
 
 const toolsState = computed<ChatInputToolsState>(() => {

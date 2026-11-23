@@ -5,15 +5,27 @@
     :style="metrics"
     aria-hidden="true"
     data-testid="command-mirror"
-  >{{ before }}<mark
+  ><template v-for="segment in segments" :key="segment.start"><mark
+    v-if="segment.kind"
     class="composer-command-token"
-    :data-caret="caretEdge ?? undefined"
-    data-testid="command-mirror-token"
-  >{{ tokenText }}</mark>{{ after }}</div>
+    :data-kind="segment.kind"
+    :data-caret="readCaretEdge(segment)"
+    :data-reveal="isRevealed(segment) ? 'true' : undefined"
+    :data-testid="segment.kind === 'command'
+      ? 'command-mirror-token'
+      : 'command-mirror-link'"
+  >{{ segment.text }}</mark
+  ><template v-else>{{ segment.text }}</template
+  ></template
+  ></div>
 </template>
 
 <script setup lang="ts">
 import type { StyleValue } from 'vue'
+import type {
+  ComposerMirrorRange,
+  ComposerMirrorSegment,
+} from '~/utils/composer-mirror-ranges'
 
 const MIRRORED_PROPERTIES = [
   'fontFamily',
@@ -35,19 +47,31 @@ const MIRRORED_PROPERTIES = [
 const props = defineProps<{
   textarea: HTMLTextAreaElement | null | undefined
   text: string
-  start: number
-  end: number
+  ranges?: ComposerMirrorRange[]
+  start?: number
+  end?: number
 }>()
 
 const mirrorRef = useTemplateRef<HTMLDivElement>('mirrorRef')
 const metrics = shallowRef<StyleValue>({})
-const caretEdge = shallowRef<'start' | 'end' | null>(null)
+const selectionStart = shallowRef<number | null>(null)
+const selectionEnd = shallowRef<number | null>(null)
 
-const before = computed<string>(() => props.text.slice(0, props.start))
-const tokenText = computed<string>(() => {
-  return props.text.slice(props.start, props.end)
+const requestedRanges = computed<ComposerMirrorRange[]>(() => {
+  if (props.ranges) {
+    return props.ranges
+  }
+
+  if (props.start === undefined || props.end === undefined) {
+    return []
+  }
+
+  return [{ start: props.start, end: props.end, kind: 'command' }]
 })
-const after = computed<string>(() => `${props.text.slice(props.end)} `)
+
+const segments = computed<ComposerMirrorSegment[]>(() => {
+  return buildMirrorSegments(props.text, requestedRanges.value)
+})
 
 function copyMetrics() {
   const element = props.textarea
@@ -67,29 +91,59 @@ function copyMetrics() {
 
 /**
  * The badge pads its sides with a box-shadow, which paints over the textarea's
- * own caret. While the caret rests exactly at the token's start or end, that
+ * own caret. While the caret rests exactly at a badge's start or end, that
  * side's padding is dropped (`data-caret`), so the caret stays visible.
  */
-function readCaret() {
+function readCaretEdge(
+  segment: ComposerMirrorSegment,
+): 'start' | 'end' | undefined {
+  if (selectionStart.value === null) {
+    return undefined
+  }
+
+  if (selectionStart.value !== selectionEnd.value) {
+    return undefined
+  }
+
+  if (selectionStart.value === segment.end) {
+    return 'end'
+  }
+
+  return selectionStart.value === segment.start ? 'start' : undefined
+}
+
+/**
+ * The badge is opaque, so a caret strictly inside it or a selection over it
+ * would be hidden. While either touches the badge's text (`data-reveal`) the
+ * badge is dropped and the textarea's own caret, selection and text show.
+ */
+function isRevealed(segment: ComposerMirrorSegment): boolean {
+  const start = selectionStart.value
+  const end = selectionEnd.value
+
+  if (start === null || end === null) {
+    return false
+  }
+
+  if (start === end) {
+    return start > segment.start && start < segment.end
+  }
+
+  return start < segment.end && end > segment.start
+}
+
+function readSelection() {
   const element = props.textarea
 
-  if (
-    !element
-    || document.activeElement !== element
-    || element.selectionStart !== element.selectionEnd
-  ) {
-    caretEdge.value = null
+  if (!element || document.activeElement !== element) {
+    selectionStart.value = null
+    selectionEnd.value = null
 
     return
   }
 
-  if (element.selectionStart === props.end) {
-    caretEdge.value = 'end'
-  } else if (element.selectionStart === props.start) {
-    caretEdge.value = 'start'
-  } else {
-    caretEdge.value = null
-  }
+  selectionStart.value = element.selectionStart
+  selectionEnd.value = element.selectionEnd
 }
 
 function syncScroll() {
@@ -100,15 +154,14 @@ function syncScroll() {
 
 useResizeObserver(() => props.textarea, copyMetrics)
 useEventListener(() => props.textarea, 'scroll', syncScroll)
-useEventListener(document, 'selectionchange', readCaret)
+useEventListener(document, 'selectionchange', readSelection)
 useEventListener(
   () => props.textarea,
   ['input', 'keyup', 'click', 'focus', 'blur'],
-  readCaret,
+  readSelection,
 )
 
 watch(() => props.textarea, copyMetrics, { immediate: true })
-watch([() => props.start, () => props.end], readCaret, { flush: 'post' })
 watch(() => props.text, async () => {
   await nextTick()
   syncScroll()
@@ -117,6 +170,6 @@ watch(() => props.text, async () => {
 onMounted(() => {
   copyMetrics()
   syncScroll()
-  readCaret()
+  readSelection()
 })
 </script>

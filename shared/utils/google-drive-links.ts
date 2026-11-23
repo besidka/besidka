@@ -46,6 +46,7 @@ const DRIVE_OPEN_PATH = '/open'
 const LINK_CANDIDATE_PATTERN
   = /https:\/\/(?:docs|drive)\.google\.com\/[^\s<>()[\]"'`]+/gi
 const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?]+$/
+const GOOGLE_HOST_HINT_PATTERN = /google\.com\//i
 
 const DOCS_KINDS: Readonly<Record<string, GoogleDriveLinkKind>> = {
   document: 'document',
@@ -164,6 +165,46 @@ function maskCode(text: string): string {
     .replace(INLINE_CODE_PATTERN, blankOut)
 }
 
+export interface GoogleDriveLinkRange {
+  start: number
+  end: number
+}
+
+interface GoogleDriveLinkOccurrence {
+  match: GoogleDriveLinkMatch
+  range: GoogleDriveLinkRange
+}
+
+function scanGoogleDriveLinkOccurrences(
+  text: string,
+): GoogleDriveLinkOccurrence[] {
+  if (!GOOGLE_HOST_HINT_PATTERN.test(text)) {
+    return []
+  }
+
+  const occurrences: GoogleDriveLinkOccurrence[] = []
+
+  for (const match of maskCode(text).matchAll(LINK_CANDIDATE_PATTERN)) {
+    const url = match[0].replace(TRAILING_PUNCTUATION_PATTERN, '')
+    const link = parseGoogleDriveLink(url)
+    const start = match.index ?? 0
+
+    if (
+      !link
+      || !isCompleteCandidate(link, url, start + match[0].length, text.length)
+    ) {
+      continue
+    }
+
+    occurrences.push({
+      match: { ...link, url },
+      range: { start, end: start + url.length },
+    })
+  }
+
+  return occurrences
+}
+
 /**
  * The Google file links in a piece of text, first appearance first, one per
  * file id, at most `max`. Links inside code blocks and code spans are
@@ -180,22 +221,13 @@ export function extractGoogleDriveLinks(
   const links: GoogleDriveLinkMatch[] = []
   const seenIds = new Set<string>()
 
-  for (const match of maskCode(text).matchAll(LINK_CANDIDATE_PATTERN)) {
-    const candidate = match[0].replace(TRAILING_PUNCTUATION_PATTERN, '')
-    const link = parseGoogleDriveLink(candidate)
-
-    if (!link || seenIds.has(link.id)) {
+  for (const { match } of scanGoogleDriveLinkOccurrences(text)) {
+    if (seenIds.has(match.id)) {
       continue
     }
 
-    const endIndex = (match.index ?? 0) + match[0].length
-
-    if (!isCompleteCandidate(link, candidate, endIndex, text.length)) {
-      continue
-    }
-
-    seenIds.add(link.id)
-    links.push({ ...link, url: candidate })
+    seenIds.add(match.id)
+    links.push(match)
 
     if (links.length >= max) {
       break
@@ -203,4 +235,21 @@ export function extractGoogleDriveLinks(
   }
 
   return links
+}
+
+/**
+ * Where every recognized Google file link sits in a piece of text, as
+ * character offsets (`end` is exclusive and leaves out trailing punctuation),
+ * in reading order. It applies the rules of `extractGoogleDriveLinks`
+ * (strict parser, no links in code, a half-typed trailing id is skipped) but
+ * neither removes a second link to the same file nor stops at the
+ * per-message cap: the composer highlights every link it recognizes, while
+ * only the first five files are ever requested.
+ */
+export function findGoogleDriveLinkRanges(
+  text: string,
+): GoogleDriveLinkRange[] {
+  return scanGoogleDriveLinkOccurrences(text).map((occurrence) => {
+    return occurrence.range
+  })
 }

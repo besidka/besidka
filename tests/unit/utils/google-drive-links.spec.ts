@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX,
   extractGoogleDriveLinks,
+  findGoogleDriveLinkRanges,
   parseGoogleDriveLink,
 } from '#shared/utils/google-drive-links'
 
@@ -205,5 +206,95 @@ describe('extractGoogleDriveLinks', () => {
       `https://example.com/document/d/${FILE_ID} `
       + `https://drive.google.com/drive/folders/${FILE_ID} done`,
     )).toEqual([])
+  })
+
+  it('returns the match fields only, never the position', () => {
+    expect(extractGoogleDriveLinks(
+      `see https://docs.google.com/document/d/${FILE_ID}/edit`,
+    )).toEqual([{
+      id: FILE_ID,
+      kind: 'document',
+      url: `https://docs.google.com/document/d/${FILE_ID}/edit`,
+    }])
+  })
+})
+
+describe('findGoogleDriveLinkRanges', () => {
+  const docUrl = `https://docs.google.com/document/d/${FILE_ID}/edit`
+  const fileUrl = `https://drive.google.com/open?id=${OTHER_ID}`
+
+  function slices(text: string): string[] {
+    return findGoogleDriveLinkRanges(text).map((range) => {
+      return text.slice(range.start, range.end)
+    })
+  }
+
+  it('gives the offsets of every link, in reading order', () => {
+    const text = `read ${docUrl} and ${fileUrl} please`
+
+    expect(findGoogleDriveLinkRanges(text)).toEqual([
+      { start: 5, end: 5 + docUrl.length },
+      {
+        start: text.indexOf(fileUrl),
+        end: text.indexOf(fileUrl) + fileUrl.length,
+      },
+    ])
+    expect(slices(text)).toEqual([docUrl, fileUrl])
+  })
+
+  it('leaves trailing punctuation outside the range', () => {
+    expect(slices(`see ${docUrl}, then ${fileUrl}.`))
+      .toEqual([docUrl, fileUrl])
+  })
+
+  it('keeps a second link to the same file', () => {
+    expect(slices(`${docUrl} and again ${docUrl} ok`))
+      .toEqual([docUrl, docUrl])
+  })
+
+  it('does not stop at the per-message cap', () => {
+    const count = GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX + 3
+    const text = Array.from({ length: count }, (_value, index) => {
+      return `https://docs.google.com/document/d/${FILE_ID}${index}/edit`
+    }).join(' ')
+
+    expect(findGoogleDriveLinkRanges(text)).toHaveLength(count)
+    expect(extractGoogleDriveLinks(text))
+      .toHaveLength(GOOGLE_DRIVE_LINKS_PER_MESSAGE_MAX)
+  })
+
+  it('skips links inside code and keeps positions around them', () => {
+    const text = `\`${docUrl}\` then ${fileUrl}\n\`\`\`\n${docUrl}\n\`\`\`\n`
+
+    expect(slices(text)).toEqual([fileUrl])
+    expect(findGoogleDriveLinkRanges(text)[0]!.start)
+      .toBe(text.indexOf(fileUrl))
+  })
+
+  it('skips other hosts, folders and a half-typed trailing id', () => {
+    const shortId = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
+
+    expect(findGoogleDriveLinkRanges(
+      `https://example.com/document/d/${FILE_ID} `
+      + `https://drive.google.com/drive/folders/${FILE_ID} done`,
+    )).toEqual([])
+    expect(findGoogleDriveLinkRanges(
+      `https://docs.google.com/document/d/${shortId}`,
+    )).toEqual([])
+    expect(slices(`https://docs.google.com/document/d/${shortId}0`))
+      .toHaveLength(1)
+  })
+
+  it('is empty for text without a Google link', () => {
+    expect(findGoogleDriveLinkRanges('')).toEqual([])
+    expect(findGoogleDriveLinkRanges('hello world')).toEqual([])
+  })
+
+  it('agrees with extractGoogleDriveLinks on which links exist', () => {
+    const text = `a ${docUrl} b ${fileUrl} c \`${docUrl}\``
+
+    expect(slices(text)).toEqual(extractGoogleDriveLinks(text).map((link) => {
+      return link.url
+    }))
   })
 })
