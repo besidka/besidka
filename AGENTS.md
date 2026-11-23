@@ -951,7 +951,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (explicit offset that must match the IANA zone at that instant, the spring
   gap, the exclusive all-day end), the card that shows the validated request
   body, references of an id, a link and a day only, and the owner's
-  real-account checklist)
+  real-account checklist), and section 17, per-tool permissions with Always
+  allow for own-client tools only (17.7), and section 19, Drive writes on the
+  own client (scope `drive`, create folder and file, rename, move, the write
+  boundary with no delete, trash, copy or share), section 19.14, created-file
+  cards, the preview, Outputs and Download as a real file, and section 21,
+  quotas and cost (the Worker startup rule is in `docs/worker-startup.md`)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
