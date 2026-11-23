@@ -28,47 +28,44 @@
         @open="(section, origin, id) => emit('open-tile', section, origin, id)"
         @remove="emit('remove-tile', $event)"
       />
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="pastedText in pastedTexts"
         :key="pastedText.id"
         role="group"
         :aria-label="PASTED_TEXT_NAME"
-        class="carousel-item flex items-center gap-1 relative"
         data-testid="pasted-text-item"
       >
-        <div
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
-        >
-          <ChatInputFilesAttachedTextCard
-            :file="{
-              name: PASTED_TEXT_NAME,
-              type: PASTED_TEXT_MEDIA_TYPE,
-              size: getPastedTextSize(pastedText.content),
-            }"
-            :content="pastedText.content"
-            @open="emit('open-pasted', pastedText.id)"
-          />
-        </div>
-        <button
-          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
-          :aria-label="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
-          :title="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
-          data-testid="pasted-text-remove"
-          @click="emit('remove-pasted', pastedText.id)"
-        >
-          <Icon
-            name="lucide:x"
-            size="10"
-          />
-        </button>
-      </div>
+        <ChatInputFilesAttachedTextCard
+          :file="{
+            name: PASTED_TEXT_NAME,
+            type: PASTED_TEXT_MEDIA_TYPE,
+            size: getPastedTextSize(pastedText.content),
+          }"
+          :content="pastedText.content"
+          @open="emit('open-pasted', pastedText.id)"
+        />
+        <template #outside>
+          <button
+            class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+            :aria-label="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
+            :title="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
+            data-testid="pasted-text-remove"
+            @click="emit('remove-pasted', pastedText.id)"
+          >
+            <Icon
+              name="lucide:x"
+              size="10"
+            />
+          </button>
+        </template>
+      </ChatInputFilesAttachedChipShell>
       <!-- Completed/attached files -->
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="file in files"
         :key="file.storageKey"
+        :is-bare="isImageFile(file.type)"
         :data-file-name="file.name"
         :aria-label="`File ${file.name}`"
-        class="carousel-item flex items-center gap-1 relative"
         data-testid="carousel-item"
       >
         <div
@@ -83,28 +80,19 @@
             loading="lazy"
           >
         </div>
-        <div
+        <ChatInputFilesAttachedTextCard
           v-else-if="isTextFileType(file.type) && !hasChipNote(file)"
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
-        >
-          <ChatInputFilesAttachedTextCard
-            :file="file"
-            @open="emit('open-text', file.storageKey)"
-          />
-        </div>
-        <div
-          v-else
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
-        >
-          <div
-            class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
-          >
+          :file="file"
+          @open="emit('open-text', file.storageKey)"
+        />
+        <template v-else>
+          <ChatInputFilesAttachedChipPreviewBox>
             <Icon
               :name="getChipIcon(file)"
               size="20"
               class="text-base-content/40"
             />
-          </div>
+          </ChatInputFilesAttachedChipPreviewBox>
           <div class="flex flex-col items-start gap-1 min-w-0">
             <p
               class="pr-2 text-xs font-medium truncate"
@@ -139,33 +127,35 @@
               {{ XLS_CONVERTED_NOTE }}
             </span>
           </div>
-        </div>
-        <span
-          v-if="file.externalSource === 'google'"
-          class="absolute bottom-1 left-1 grid size-4 place-items-center rounded-full bg-base-100"
-          :title="GOOGLE_DRIVE_BRAND_NAME"
-          role="img"
-          :aria-label="driveCopyLabel(file.name)"
-          data-testid="files-preview-drive-mark"
-        >
-          <Icon
-            :name="GOOGLE_DRIVE_ICON"
-            size="10"
-          />
-        </span>
-        <button
-          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
-          :aria-label="`Remove ${file.name}`"
-          :title="`Remove ${file.name}`"
-          data-testid="files-preview-detach"
-          @click="removeAttachedFile(file.storageKey)"
-        >
-          <Icon
-            name="lucide:x"
-            size="10"
-          />
-        </button>
-      </div>
+        </template>
+        <template #outside>
+          <span
+            v-if="file.externalSource === 'google'"
+            class="absolute bottom-1 left-1 grid size-4 place-items-center rounded-full bg-base-100"
+            :title="GOOGLE_DRIVE_BRAND_NAME"
+            role="img"
+            :aria-label="driveCopyLabel(file.name)"
+            data-testid="files-preview-drive-mark"
+          >
+            <Icon
+              :name="GOOGLE_DRIVE_ICON"
+              size="10"
+            />
+          </span>
+          <button
+            class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+            :aria-label="`Remove ${file.name}`"
+            :title="`Remove ${file.name}`"
+            data-testid="files-preview-detach"
+            @click="removeAttachedFile(file.storageKey)"
+          >
+            <Icon
+              name="lucide:x"
+              size="10"
+            />
+          </button>
+        </template>
+      </ChatInputFilesAttachedChipShell>
 
       <ChatInputFilesAttachedDriveImport
         v-for="driveImport in driveImports"
@@ -177,34 +167,33 @@
         @dismiss="dismissDriveImport(driveImport.id)"
       />
 
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="placeholderIndex in checkingLinkCount"
         :key="`checking-link-${placeholderIndex}`"
         role="status"
         aria-label="Checking Google link"
-        class="carousel-item flex items-center gap-1"
         data-testid="google-link-skeleton"
       >
-        <div
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
+        <ChatInputFilesAttachedChipPreviewBox
+          data-testid="google-link-skeleton-preview"
         >
-          <div class="skeleton skeleton--default size-14 rounded-sm" />
-          <div class="flex flex-col items-start gap-1.5 min-w-0 w-24 pr-2">
-            <div class="skeleton skeleton--default h-3 w-20 rounded-sm" />
-            <div class="skeleton skeleton--default h-2.5 w-14 rounded-sm" />
-          </div>
+          <div class="skeleton skeleton--default size-full" />
+        </ChatInputFilesAttachedChipPreviewBox>
+        <div class="flex flex-col items-start gap-1 min-w-0 pr-2">
+          <div class="skeleton skeleton--default h-3 w-28 rounded-sm" />
+          <div class="skeleton skeleton--default h-2.5 w-16 rounded-sm" />
         </div>
-      </div>
+      </ChatInputFilesAttachedChipShell>
       <!-- Uploading files -->
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="uploadingFile in uploadingFilesArray"
         :key="uploadingFile.id"
+        :is-bare="isImageFile(uploadingFile.file.type)"
         :data-uploading-id="uploadingFile.id"
         :data-file-name="uploadingFile.file.name"
         :aria-label="
           `File ${uploadingFile.file.name}, ${uploadingFile.progress}% uploaded`
         "
-        class="carousel-item flex items-center gap-1 relative"
       >
         <!-- Image preview with progress overlay -->
         <div
@@ -273,12 +262,8 @@
         </div>
 
         <!-- Non-image file preview -->
-        <div
-          v-else
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1 relative"
-        >
-          <div
-            class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
+        <template v-else>
+          <ChatInputFilesAttachedChipPreviewBox
             :class="{
               'opacity-50': uploadingFile.status !== 'completed',
             }"
@@ -288,7 +273,7 @@
               size="20"
               class="text-base-content/40"
             />
-          </div>
+          </ChatInputFilesAttachedChipPreviewBox>
           <div class="flex flex-col gap-1">
             <p
               class="pr-2 text-xs font-medium truncate"
@@ -334,30 +319,31 @@
             class="progress progress-info w-full h-1 absolute bottom-0 left-0 rounded-none rounded-b-box"
             :aria-label="`Upload progress for ${uploadingFile.file.name}`"
           />
-        </div>
+        </template>
 
-        <!-- Action buttons for uploading files -->
-        <div class="absolute top-1 right-1 flex gap-0.5">
-          <button
-            v-if="uploadingFile.status === 'failed'"
-            class="btn btn-circle btn-xs btn-warning btn-soft size-4"
-            :aria-label="`Retry upload for ${uploadingFile.file.name}`"
-            :title="`Retry upload`"
-            @click="emit('retry', uploadingFile.id)"
-          >
-            <Icon name="lucide:rotate-cw" size="10" />
-          </button>
-          <button
-            v-if="uploadingFile.status !== 'completed'"
-            class="btn btn-circle btn-xs btn-error btn-soft size-4"
-            :aria-label="`Cancel upload for ${uploadingFile.file.name}`"
-            title="Cancel upload"
-            @click="emit('cancel', uploadingFile.id)"
-          >
-            <Icon name="lucide:x" size="10" />
-          </button>
-        </div>
-      </div>
+        <template #outside>
+          <div class="absolute top-1 right-1 flex gap-0.5">
+            <button
+              v-if="uploadingFile.status === 'failed'"
+              class="btn btn-circle btn-xs btn-warning btn-soft size-4"
+              :aria-label="`Retry upload for ${uploadingFile.file.name}`"
+              :title="`Retry upload`"
+              @click="emit('retry', uploadingFile.id)"
+            >
+              <Icon name="lucide:rotate-cw" size="10" />
+            </button>
+            <button
+              v-if="uploadingFile.status !== 'completed'"
+              class="btn btn-circle btn-xs btn-error btn-soft size-4"
+              :aria-label="`Cancel upload for ${uploadingFile.file.name}`"
+              title="Cancel upload"
+              @click="emit('cancel', uploadingFile.id)"
+            >
+              <Icon name="lucide:x" size="10" />
+            </button>
+          </div>
+        </template>
+      </ChatInputFilesAttachedChipShell>
 
       <!-- Remove all button -->
       <div
