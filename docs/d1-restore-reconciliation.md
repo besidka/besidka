@@ -486,6 +486,13 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
 - **Blocked rows come back too, but only as they were at B.** A Blocked
   setting made in the window is lost with the restore. The reset in step 2b
   does not touch `blocked`, so a tool Blocked before B stays Blocked.
+- **Google tool permissions follow the same table.** A `google__` row
+  (`docs/google.md`, section 17) holds only `blocked`, and "Needs approval" is
+  the absence of a row. A Block made in the window is lost and a switch
+  reverted in the window returns, so the tool falls back to "asks": the user
+  is asked again, which fails safe. Google tools have no Always allow; a
+  stored `allow` on a `google__` row (never written by the app) is read as
+  `blocked`, and the step 2b reset turns it to `ask`.
 - **`tool-approval:` keys older than the restore point.** The pending
   records (`tool-approval:<approvalId>`), the turn records
   (`tool-approval:turn:<messagePublicId>`) and the result records

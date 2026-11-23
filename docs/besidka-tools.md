@@ -53,6 +53,15 @@ no foreign key. `purgeUserToolApprovals` deletes it with the account, and a
 whole-database restore resets every `allow` to `ask`
 (`docs/d1-restore-reconciliation.md`).
 
+The Google tools (`google__drive_*`, `google__gmail_*`, `google__calendar_*`)
+share the table: a row keyed by the exposed `google__` name, with only
+`blocked` or `ask` and never Always allow, read and written by
+`/api/v1/google/tool-permissions`, not by the routes below (see
+`docs/google.md`, section 17). Besidka rows use bare registry names, so the
+two never collide: this loader reads every row but looks a tool up by its
+registry name, so a `google__` row never applies to a Besidka tool, and the
+`PUT` below still answers 400 to a `google__` name.
+
 ## Routes
 
 Both are owner-only (the session user; there is no user id in the request),

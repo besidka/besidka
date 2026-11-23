@@ -1865,6 +1865,30 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/google-connections.spec.ts',
   ]
 
+  const googleToolPermissionsTests = [
+    'tests/unit/server/utils/google/tool-permissions.spec.ts',
+    'tests/integration/api/google-tool-permissions.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/integration/api/google-drive-picker-token.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/server/google-calendar-tools.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-candidates.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/api/chats-google-tools-withheld.spec.ts',
+    'tests/unit/composables/google-tool-permissions.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    'tests/unit/components/ui/ToolPermissions.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/utils/google-tool-catalog.spec.ts',
+    'tests/unit/utils/google-connectors.spec.ts',
+  ]
+
   const toolPermissionsUiTests = [
     'tests/unit/components/ui/ToolPermissions.spec.ts',
     'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
@@ -4310,6 +4334,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(google-tool-catalog|google-connectors|google-brand-icons|google-connections|google-drive|google-drive-tools|auth-redirect)\.ts|app\/utils\/(google-entries|google-keys-tab|google-connect-results|google-drive-tab)\.ts|app\/composables\/(google-entries|chat-drive-files|google-connection)\.ts|app\/components\/Profile\/Connectors\/(GoogleRow|GoogleCards|GoogleDetailPanel|Directory\.client)\.vue|app\/components\/Profile\/Google\/.*\.vue|app\/components\/ChatInput\/Files\/Modal\/Select\/Drive\.client\.vue|app\/pages\/(chats\/connectors\/index|profile\/keys)\.vue|nuxt\.config\.ts)$/,
       tests: googleEntriesTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tool-catalog|google-connectors)\.ts|server\/utils\/google\/(tool-permissions|tool-permissions-route|route|picker-token|tokens|drive-picked|drive-found-read|drive-search|gmail-api|byo-tools|calendar-tools|calendar-api)\.ts|server\/api\/v1\/google\/tool-permissions\/.*\.ts|server\/api\/v1\/google\/drive\/picker-token\.post\.ts|server\/utils\/tool-approval\/(google-send-candidates|google-send-tools|send|continuation)\.ts|app\/composables\/google-tool-permissions\.ts|app\/components\/Profile\/Connectors\/GoogleDetailPanel\.vue)$/,
+      tests: googleToolPermissionsTests,
     },
     {
       pattern:

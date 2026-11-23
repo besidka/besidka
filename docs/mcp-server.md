@@ -1607,9 +1607,12 @@ and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
    looking", and an agent that could set them could widen its own reach
    (the same reason as items 1 and 6, and as the connector "Always allow" in
    `docs/connectors.md`, section 11). They are set in Labs, in the Tool
-   permissions panel (`docs/besidka-tools.md`). **Revisit when:** a tool can
-   only lower access (set Blocked or Needs approval, never Always allow) and
-   a user names a workflow that needs it.
+   permissions panel (`docs/besidka-tools.md`). The same holds for the
+   Google tool permissions (BES-454: `google__` rows in the same table, only
+   Blocked or Needs approval, set from the Google panel on Connectors): no
+   tool reads or writes them, and `config/mcp-surface.json` is unchanged.
+   **Revisit when:** a tool can only lower access (set Blocked or Needs
+   approval, never Always allow) and a user names a workflow that needs it.
 
 9. **Enabling a connector, starting its sign-in, entering secrets and
    "Always allow" on tools** (C-9, 4.0.0). The connector tools can list,
