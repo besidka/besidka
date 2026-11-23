@@ -5308,6 +5308,17 @@ content that is not a string. Nothing is read from Google Drive to render the
 card: it shows the input the user approved and the id Drive returned. Do not
 add a `data-*` part for this: it would be public unless denied.
 
+**What the model is told.** Because the user already sees the card, the
+descriptions of the four Drive write tools end with one sentence each:
+`google__drive_create_file` says to refer to the file by its name and kind and
+never to print its id or a link; the create-folder, rename and move tools say
+to name the item in words and never print an id. Only the description text
+changed (so the tool definition hash changed and chat "Allow" grants for these
+tools ask again once); the output, the stored part and the caps did not. The
+output the model reads still carries `file_id` (only `references` are removed
+from it), so this is an instruction, not a guarantee. `tests/unit/utils/google-tool-catalog.spec.ts`
+pins the sentences; whether models obey is NOT VERIFIED and needs a live chat.
+
 **The deep link is derived, never copied.** `buildGoogleFileOpenLink(kind, id)`
 builds `https://docs.google.com/document/d/<id>/edit`,
 `https://docs.google.com/spreadsheets/d/<id>/edit` or, for a text file, the
