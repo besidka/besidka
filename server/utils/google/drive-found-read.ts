@@ -47,7 +47,7 @@ export const FOUND_DRIVE_READ_FAILURE_TEXT: Readonly<
   storage_full: 'The file could not be read from Google Drive. Try again '
     + 'later.',
   reauthorize: 'Google no longer accepts the connection to your own Google '
-    + 'client. Reconnect it on the API Keys page, Google tab.',
+    + 'client. Reconnect it in your Besidka settings.',
   no_access: 'Google Drive refused access to this file. Tell the user.',
   rate_limited: 'Google Drive asked Besidka to slow down. Try again later.',
   empty: 'This file is empty.',

@@ -44,11 +44,11 @@ export type GmailFailureCode
 
 export const GMAIL_FAILURE_TEXT: Readonly<Record<GmailFailureCode, string>> = {
   reauthorize: 'Google no longer accepts the connection to your own Google '
-    + 'client. Reconnect it on the API Keys page, Google tab.',
+    + 'client. Reconnect it in your Besidka settings.',
   api_disabled: 'The Gmail API is not turned on in the Google Cloud project '
     + 'of your own Google client. Turn it on there and try again.',
-  no_access: 'Gmail refused the request. Reconnect your own Google client on '
-    + 'the API Keys page and allow the Gmail access this tool needs.',
+  no_access: 'Gmail refused the request. Reconnect your own Google client in '
+    + 'your Besidka settings and allow the Gmail access this tool needs.',
   not_found: 'Gmail has no message or thread with that id.',
   rate_limited: 'Gmail asked Besidka to slow down. Try again in a moment.',
   too_large: 'This thread is too large to read here. Tell the user to open '

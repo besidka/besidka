@@ -145,12 +145,12 @@ const FAILURE_STATUS: Readonly<Record<GmailFailureCode, number>> = {
 }
 
 const TOKEN_FAILURE_TEXT = {
-  not_connected: 'Your own Google client is not connected. Connect it on the '
-    + 'API Keys page, Google tab.',
+  not_connected: 'Your own Google client is not connected. Connect it in '
+    + 'your Besidka settings.',
   needs_reauth: 'Google no longer accepts the connection to your own Google '
-    + 'client. Reconnect it on the API Keys page, Google tab.',
+    + 'client. Reconnect it in your Besidka settings.',
   missing_scope: 'Your own Google client was connected without the access '
-    + 'this tool needs. Add it on the API Keys page, Google tab.',
+    + 'this tool needs. Add it in your Besidka settings.',
 } as const
 
 const UNAVAILABLE_TEXT = 'Your own Google client is not available for this '

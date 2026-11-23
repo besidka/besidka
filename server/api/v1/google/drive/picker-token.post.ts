@@ -1,5 +1,8 @@
 import { defineEventHandler } from 'nuxt/server'
-import { requireGoogleAccess } from '~~/server/utils/google/route'
+import {
+  isConnectorsFeatureActive,
+  requireGoogleAccess,
+} from '~~/server/utils/google/route'
 import { createGooglePickerToken } from '~~/server/utils/google/picker-token'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -27,6 +30,7 @@ export default defineEventHandler(async (event) => {
     clientMode: 'besidka',
     apiKey: String(config.googlePickerApiKey || ''),
     projectNumber: String(config.googleCloudProjectNumber || ''),
+    isConnectorsActive: await isConnectorsFeatureActive(event),
     logger: useRequestLogger(event),
   })
 })

@@ -185,6 +185,16 @@ export async function isGoogleFeatureActive(
   }
 }
 
+export async function isConnectorsFeatureActive(
+  event: RequestEvent,
+): Promise<boolean> {
+  try {
+    return (await evaluateFeatureForEvent(event, 'connectors')).active
+  } catch {
+    return false
+  }
+}
+
 /**
  * The failed-callback budget key of a client: a SHA-256 of its IP, so KV
  * never holds the address. Separate from the connectors budget.

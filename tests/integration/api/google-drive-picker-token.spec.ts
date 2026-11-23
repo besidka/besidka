@@ -321,6 +321,23 @@ describe('POST /api/v1/google/drive/picker-token', () => {
         })
       })
 
+    it('points a user with Connectors to the Drive panel', async () => {
+      mocks.flags = new Set(['google.drive', 'connectors'])
+
+      const failure = await failureOf(call()) as { data?: { link?: string } }
+
+      expect(JSON.stringify(failure)).toContain(
+        '/chats/connectors?panel=google-drive',
+      )
+    })
+
+    it('points a user without Connectors to the keys tab', async () => {
+      const failure = await failureOf(call())
+
+      expect(JSON.stringify(failure)).toContain('/profile/keys?tab=google')
+      expect(JSON.stringify(failure)).not.toContain('API Keys page')
+    })
+
     it('answers 404 for a revoked connection', async () => {
       await seedConnection({ status: 'revoked' })
 

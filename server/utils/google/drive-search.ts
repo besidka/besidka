@@ -32,11 +32,11 @@ export const DRIVE_SEARCH_FAILURE_TEXT: Readonly<
   Record<GmailFailureCode, string>
 > = {
   reauthorize: 'Google no longer accepts the connection to your own Google '
-    + 'client. Reconnect it on the API Keys page, Google tab.',
+    + 'client. Reconnect it in your Besidka settings.',
   api_disabled: 'The Google Drive API is not turned on in the Google Cloud '
     + 'project of your own Google client. Turn it on there and try again.',
   no_access: 'Google Drive refused the search. Reconnect your own Google '
-    + 'client on the API Keys page and allow Google Drive read access.',
+    + 'client in your Besidka settings and allow Google Drive read access.',
   not_found: 'Google Drive has nothing for that search.',
   rate_limited: 'Google Drive asked Besidka to slow down. Try again in a '
     + 'moment.',

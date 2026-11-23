@@ -573,7 +573,7 @@ export async function requireGoogleAccessToken(
       message: 'Google is not connected',
       status: 404,
       why: 'There is no Google connection for this account',
-      fix: 'Connect Google Drive on the API Keys page',
+      fix: 'Connect Google Drive in your Besidka settings',
     })
   }
 
@@ -583,7 +583,7 @@ export async function requireGoogleAccessToken(
     why: result.status === 'missing_scope'
       ? 'The Google connection does not grant the access this needs'
       : 'Google no longer accepts the stored authorization',
-    fix: 'Reconnect Google Drive on the API Keys page',
+    fix: 'Reconnect Google Drive in your Besidka settings',
   })
 }
 

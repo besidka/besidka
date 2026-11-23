@@ -1837,7 +1837,7 @@ describe('Google Calendar tools on the owner\'s own client', () => {
           GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME,
           WINDOW,
           built,
-        ))).toContain('Reconnect it on the API Keys page')
+        ))).toContain('Reconnect it in your Besidka settings')
         expect(apis.fetch).not.toHaveBeenCalled()
       })
 

@@ -5,6 +5,7 @@ import {
   parseGoogleScopes,
 } from '#shared/utils/google-scopes'
 import type { GoogleClientMode } from '#shared/utils/google-scopes'
+import { getGoogleDriveSettingsPath } from '#shared/utils/google-connectors'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   getGoogleAccessToken,
@@ -38,6 +39,7 @@ export interface GooglePickerTokenInput {
   clientMode: GoogleClientMode
   apiKey: string
   projectNumber: string
+  isConnectorsActive?: boolean
   logger?: LoggerLike
   now?: () => number
 }
@@ -49,25 +51,25 @@ export interface GooglePickerTokenResult {
   appId: string
 }
 
-function notConnected() {
+function notConnected(isConnectorsActive: boolean) {
   return createError({
     message: 'Google Drive is not connected',
     status: 404,
     code: GOOGLE_PICKER_NOT_CONNECTED_CODE,
     why: 'There is no Google Drive connection for this account',
-    fix: 'Connect Google Drive on the API Keys page',
-    link: '/profile/keys?tab=google',
+    fix: 'Connect Google Drive in your Besidka settings',
+    link: getGoogleDriveSettingsPath(isConnectorsActive),
   })
 }
 
-function reauthorize(why: string) {
+function reauthorize(why: string, isConnectorsActive: boolean) {
   return createError({
     message: 'Reconnect Google Drive',
     status: 409,
     code: GOOGLE_PICKER_REAUTHORIZE_CODE,
     why,
-    fix: 'Reconnect Google Drive on the API Keys page',
-    link: '/profile/keys?tab=google',
+    fix: 'Reconnect Google Drive in your Besidka settings',
+    link: getGoogleDriveSettingsPath(isConnectorsActive),
   })
 }
 
@@ -80,6 +82,7 @@ function isGrantTooWide(grantedScopes: readonly string[]): boolean {
 function scopeTooWide(
   logger: LoggerLike | undefined,
   stage: 'before-mint' | 'after-mint',
+  isConnectorsActive: boolean,
 ) {
   logger?.set({
     attributes: { googlePicker: { refused: 'scope-too-wide', stage } },
@@ -92,7 +95,7 @@ function scopeTooWide(
     why: 'The grant holds more than Google Drive file access, and the '
       + 'token would reach the browser',
     fix: 'Disconnect Google Drive and connect it again',
-    link: '/profile/keys?tab=google',
+    link: getGoogleDriveSettingsPath(isConnectorsActive),
   })
 }
 
@@ -134,6 +137,7 @@ export async function createGooglePickerToken(
     })
   }
 
+  const isConnectorsActive = input.isConnectorsActive ?? false
   const connection = await readGoogleConnectionTokenState(
     input.db,
     input.userId,
@@ -141,11 +145,11 @@ export async function createGooglePickerToken(
   )
 
   if (!connection || connection.status === 'revoked') {
-    throw notConnected()
+    throw notConnected(isConnectorsActive)
   }
 
   if (isGrantTooWide(connection.grantedScopes)) {
-    throw scopeTooWide(input.logger, 'before-mint')
+    throw scopeTooWide(input.logger, 'before-mint', isConnectorsActive)
   }
 
   const token = await getGoogleAccessToken({
@@ -160,15 +164,21 @@ export async function createGooglePickerToken(
   })
 
   if (token.status === 'not_connected') {
-    throw notConnected()
+    throw notConnected(isConnectorsActive)
   }
 
   if (token.status === 'needs_reauth') {
-    throw reauthorize('Google no longer accepts the stored authorization')
+    throw reauthorize(
+      'Google no longer accepts the stored authorization',
+      isConnectorsActive,
+    )
   }
 
   if (token.status === 'missing_scope') {
-    throw reauthorize('The connection does not grant Google Drive file access')
+    throw reauthorize(
+      'The connection does not grant Google Drive file access',
+      isConnectorsActive,
+    )
   }
 
   const connectionAfterMint = await readGoogleConnectionTokenState(
@@ -181,7 +191,7 @@ export async function createGooglePickerToken(
     !connectionAfterMint
     || isGrantTooWide(connectionAfterMint.grantedScopes)
   ) {
-    throw scopeTooWide(input.logger, 'after-mint')
+    throw scopeTooWide(input.logger, 'after-mint', isConnectorsActive)
   }
 
   const now = (input.now ?? Date.now)()
