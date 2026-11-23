@@ -5,6 +5,7 @@ import {
   getArtifactPartModel,
   getRenderedPartKeys,
   isArtifactMessagePart,
+  isGoogleCreatedFilePart,
   isOutputCardPart,
   orderOutputCardPartsLast,
   readArtifactFailureText,
@@ -211,6 +212,51 @@ describe('isOutputCardPart', () => {
     expect(isOutputCardPart({ type: 'tool-create_artifact' })).toBe(true)
     expect(isOutputCardPart({ type: 'text', text: 'x' })).toBe(false)
     expect(isOutputCardPart(null)).toBe(false)
+  })
+
+  it('covers a finished created Google file only', () => {
+    const part = {
+      type: 'tool-google__drive_create_file',
+      toolCallId: 'call_1',
+      state: 'output-available',
+      input: { name: 'Plan', kind: 'document', content: '# Plan' },
+      output: {
+        references: [{
+          id: 'abcdefghij1234567890',
+          kind: 'file',
+          title: 'Plan',
+        }],
+      },
+    }
+
+    expect(isGoogleCreatedFilePart(part)).toBe(true)
+    expect(isOutputCardPart(part)).toBe(true)
+    expect(isOutputCardPart({ ...part, state: 'approval-requested' }))
+      .toBe(false)
+    expect(isOutputCardPart({ ...part, output: { references: [] } }))
+      .toBe(false)
+    expect(isGoogleCreatedFilePart({ type: 'tool-google__drive_create_folder' }))
+      .toBe(false)
+  })
+
+  it('orders a created Google file card after the text', () => {
+    const file = {
+      type: 'tool-google__drive_create_file',
+      toolCallId: 'call_1',
+      state: 'output-available',
+      input: { name: 'Plan', kind: 'text', content: 'x' },
+      output: {
+        references: [{
+          id: 'abcdefghij1234567890',
+          kind: 'file',
+          title: 'Plan',
+        }],
+      },
+    }
+    const answer = { type: 'text', text: 'Done.' }
+
+    expect(orderOutputCardPartsLast([file, answer])).toEqual([answer, file])
+    expect(getRenderedPartKeys([file, answer])).toEqual(['part-0', 'card-0'])
   })
 })
 

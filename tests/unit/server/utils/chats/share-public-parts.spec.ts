@@ -476,6 +476,29 @@ describe('connector image parts in shares and branches', () => {
       ])
     })
 
+  it('drops the tool part of a created Google file, body included', () => {
+    const createdFile = {
+      type: 'tool-google__drive_create_file',
+      toolCallId: 'call_1',
+      state: 'output-available',
+      input: { name: 'Plan', kind: 'document', content: '# Secret body' },
+      output: {
+        references: [{
+          id: 'abcdefghij1234567890',
+          kind: 'file',
+          title: 'Plan',
+        }],
+      },
+    }
+    const [message] = filterPublicParts([{
+      parts: [{ type: 'text', text: 'Made it.' }, createdFile],
+    }] as unknown as Array<{ parts: UIMessage['parts'] }>)
+
+    expect(message?.parts).toEqual([{ type: 'text', text: 'Made it.' }])
+    expect(JSON.stringify(message)).not.toContain('Secret body')
+    expect(JSON.stringify(message)).not.toContain('abcdefghij1234567890')
+  })
+
   it('drops the stopped marker from a share and keeps it in a branch',
     () => {
       const stoppedReply = {

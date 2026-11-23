@@ -36,6 +36,11 @@ import type {
 import { isArtifactKind } from '#shared/utils/artifacts'
 import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
+  GOOGLE_FILE_KIND_ICONS,
+  GOOGLE_FILE_KIND_LABELS,
+  isGoogleCreatedFileKind,
+} from '#shared/utils/google-created-file'
+import {
   DOCUMENT_FORMAT_LABELS,
   isDocumentFormat,
 } from '#shared/utils/documents'
@@ -57,6 +62,7 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'artifact': 'lucide:app-window',
   'code-execution': 'lucide:square-terminal',
   'document': 'lucide:file-text',
+  'google-file': GOOGLE_DRIVE_ICON,
   'skill': 'lucide:sparkles',
   'connector': 'lucide:cable',
 }
@@ -74,6 +80,7 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'artifact': 'Artifact',
   'code-execution': 'Code execution',
   'document': 'Document',
+  'google-file': 'Google Drive',
   'skill': 'Skill',
   'connector': 'Connector',
 }
@@ -129,8 +136,20 @@ function getConnectorDetail(meta: ChatContextItemMeta | undefined): string {
   return parts.length > 0 ? parts.join(' · ') : DETAILS.connector
 }
 
+function getGoogleFileDetail(meta: ChatContextItemMeta | undefined): string {
+  return isGoogleCreatedFileKind(meta?.fileKind)
+    ? GOOGLE_FILE_KIND_LABELS[meta.fileKind]
+    : DETAILS['google-file']
+}
+
 const iconName = computed<string>(() => {
-  return ICONS[props.item.kind]
+  const { kind, meta } = props.item
+
+  if (kind === 'google-file' && isGoogleCreatedFileKind(meta?.fileKind)) {
+    return GOOGLE_FILE_KIND_ICONS[meta.fileKind]
+  }
+
+  return ICONS[kind]
 })
 
 const detail = computed<string>(() => {
@@ -158,6 +177,10 @@ const detail = computed<string>(() => {
 
   if (kind === 'document') {
     return getDocumentDetail(meta)
+  }
+
+  if (kind === 'google-file') {
+    return getGoogleFileDetail(meta)
   }
 
   if (

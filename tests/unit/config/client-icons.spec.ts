@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { GOOGLE_SLIDES_ICON } from '../../../shared/utils/google-brand-icons'
+import { GOOGLE_FILE_KIND_ICONS } from '../../../shared/utils/google-created-file'
 
 vi.stubGlobal('defineNuxtConfig', <Configuration>(configuration: Configuration) => {
   return configuration
@@ -51,6 +53,15 @@ describe('icons of client-only Google components', () => {
         .map(([name, files]) => `${name} (${files.join(', ')})`)
 
       expect(missing).toEqual([])
+    })
+
+  it('include every logo of a created Google file card, none by a literal',
+    () => {
+      for (const icon of Object.values(GOOGLE_FILE_KIND_ICONS)) {
+        expect(clientIcons).toContain(icon)
+      }
+
+      expect(clientIcons).toContain(GOOGLE_SLIDES_ICON)
     })
 
   it('include the Disconnect icon of the Drive card and the own client',

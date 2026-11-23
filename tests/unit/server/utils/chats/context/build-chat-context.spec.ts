@@ -1399,6 +1399,105 @@ describe('documents section', () => {
   })
 })
 
+describe('google files section', () => {
+  const FILE_ID = 'abcdefghij1234567890'
+
+  function googleFilePart(
+    toolCallId: string,
+    kind = 'document',
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      type: 'tool-google__drive_create_file',
+      toolCallId,
+      state: 'output-available',
+      input: { name: 'Plan', kind, content: '# Secret body text' },
+      output: {
+        references: [{
+          id: FILE_ID,
+          kind: 'file',
+          title: ' Quarterly\n plan ',
+        }],
+        bodyRemoved: true,
+      },
+      ...overrides,
+    }
+  }
+
+  it('lists each created file with its editor link and kind', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [googleFilePart('call-1')]),
+      message('m2', 'assistant', [googleFilePart('call-2', 'spreadsheet')]),
+      message('m3', 'assistant', [googleFilePart('call-3', 'text')]),
+    ])
+
+    expect(context.outputs).toEqual([
+      {
+        id: 'google-file:call-1',
+        sectionId: 'google-files',
+        kind: 'google-file',
+        title: 'Quarterly plan',
+        messageId: 'm1',
+        href: `https://docs.google.com/document/d/${FILE_ID}/edit`,
+        meta: { fileKind: 'document' },
+      },
+      {
+        id: 'google-file:call-2',
+        sectionId: 'google-files',
+        kind: 'google-file',
+        title: 'Quarterly plan',
+        messageId: 'm2',
+        href: `https://docs.google.com/spreadsheets/d/${FILE_ID}/edit`,
+        meta: { fileKind: 'spreadsheet' },
+      },
+      {
+        id: 'google-file:call-3',
+        sectionId: 'google-files',
+        kind: 'google-file',
+        title: 'Quarterly plan',
+        messageId: 'm3',
+        href: `https://drive.google.com/open?id=${FILE_ID}`,
+        meta: { fileKind: 'text' },
+      },
+    ])
+    expect(context.counts.outputs).toBe(3)
+    expect(context.kindCounts).toEqual({ 'google-file': 3 })
+  })
+
+  it('carries no file content in an item', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [googleFilePart('call-1')]),
+    ])
+
+    expect(JSON.stringify(context.outputs)).not.toContain('Secret body text')
+  })
+
+  it('lists nothing while the call waits, failed or is unconfirmed', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        googleFilePart('call-1', 'document', { state: 'approval-requested' }),
+        googleFilePart('call-2', 'document', { state: 'output-error' }),
+        googleFilePart('call-3', 'document', { output: { references: [] } }),
+        googleFilePart('call-4', 'document', {
+          output: { references: [{ id: '../x', kind: 'file', title: 'Plan' }] },
+        }),
+        googleFilePart('call-5', 'presentation'),
+      ]),
+    ])
+
+    expect(context.outputs).toEqual([])
+  })
+
+  it('never lists created files for a public share', () => {
+    const context = publicContext([
+      message('m1', 'assistant', [googleFilePart('call-1')]),
+    ])
+
+    expect(context.outputs).toEqual([])
+    expect(context.counts.outputs).toBe(0)
+  })
+})
+
 describe('attached artifacts section', () => {
   const artifacts = new Map([
     ['art-1', {
