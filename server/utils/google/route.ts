@@ -28,37 +28,42 @@ export type GoogleRateLimitBucket
     | 'link'
     | 'save'
     | 'permission'
+    | 'chat-service'
     | 'none'
 
 const RATE_LIMIT_BUCKETS: Readonly<Record<
   Exclude<GoogleRateLimitBucket, 'none'>,
   { prefix: string, max: number }
 >> = {
-  write: {
+  'write': {
     prefix: 'google-rate-limit',
     max: GOOGLE_WRITES_PER_MINUTE,
   },
-  read: {
+  'read': {
     prefix: 'google-read-rate-limit',
     max: GOOGLE_READS_PER_MINUTE,
   },
-  picker: {
+  'picker': {
     prefix: 'google-picker-rate-limit',
     max: GOOGLE_PICKER_TOKENS_PER_MINUTE,
   },
-  import: {
+  'import': {
     prefix: 'google-drive-import-rate-limit',
     max: GOOGLE_DRIVE_IMPORTS_PER_MINUTE,
   },
-  link: {
+  'link': {
     prefix: 'google-drive-link-rate-limit',
     max: GOOGLE_DRIVE_LINKS_PER_MINUTE,
   },
-  permission: {
+  'permission': {
     prefix: 'google-tool-permission-rate-limit',
     max: GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE,
   },
-  save: {
+  'chat-service': {
+    prefix: 'google-chat-service-rate-limit',
+    max: GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE,
+  },
+  'save': {
     prefix: 'google-drive-save-rate-limit',
     max: GOOGLE_DRIVE_SAVES_PER_MINUTE,
   },
