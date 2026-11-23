@@ -8,6 +8,7 @@ import {
   REASONING_STEP_GENERIC_ICON,
   resolveReasoningStepSource,
 } from '../../../app/utils/reasoning-step-icons'
+import { GOOGLE_DRIVE_ICON } from '../../../shared/utils/google-brand-icons'
 import { getToolStepTitle } from '../../../app/utils/reasoning'
 import {
   getApprovalStepSummaryLine,
@@ -187,7 +188,7 @@ describe('Google Drive approval step', () => {
     expect(resolveReasoningStepSource({
       toolName: 'google__drive_save_file',
       title: 'Save a file',
-    }).icon).toEqual({ kind: 'iconify', name: 'logos:google-drive' })
+    }).icon).toEqual({ kind: 'iconify', name: GOOGLE_DRIVE_ICON })
   })
 })
 
@@ -201,13 +202,13 @@ describe('Google Drive reasoning step', () => {
       .toBe('Listing Google Drive files failed')
   })
 
-  it('uses a neutral pinned-collection icon, never a Google logo', () => {
+  it('uses the Drive brand icon, never the generic step icon', () => {
     const source = resolveReasoningStepSource({
       toolName: 'google__drive_read_file',
       title: 'Read a file from Google Drive',
     })
 
-    expect(source.icon).toEqual({ kind: 'iconify', name: 'logos:google-drive' })
+    expect(source.icon).toEqual({ kind: 'iconify', name: GOOGLE_DRIVE_ICON })
     expect(source.icon).not.toEqual({
       kind: 'iconify',
       name: REASONING_STEP_GENERIC_ICON,

@@ -83,35 +83,130 @@ all. Any other icon from a non-pinned collection must be added the same way
 (or its collection added to `iconCollections`).
 
 `logos` is not in the list either. It backs exactly three icons, the
-multicolor Google marks `logos:google-drive`, `logos:google-gmail` and
-`logos:google-calendar` (`shared/utils/google-brand-icons.ts`), which every
+multicolor Google marks `logos:google-gmail`, `logos:google-calendar` and
+`logos:google-icon` (`shared/utils/google-brand-icons.ts`), which every
 installed collection only offers as `currentColor` glyphs. `@iconify-json/logos`
 (gilbarbara/logos, CC0-1.0, pinned to an exact version) is a dev-only
-dependency and `icon.clientBundle.icons` lists the three (about 7 KB
-uncompressed), so they ship in the client bundle and the server renders them
-too: the page HTML carries the `.i-logos\:google-drive` rule with the icon as
-a `background-image` data URI. A multicolor body has no `currentColor`, so
-`@nuxt/icon` picks background mode, never mask mode, which keeps the colors;
-the box is `1.08em x 1em` (the mark's own 256x238 ratio). A brand mark must
-not get a `text-*` color, opacity or a filter, and should keep that box: a
-forced square size stretches the image (measured: the Drive triangle fills a
-96px square edge to edge, about 8 percent taller). The reasoning step icon
-box (`Chat/Reasoning/StepIcon.vue`, `size-full` at 14px, shared with every
-iconify step) still forces a square, an accepted distortion that is not
-visible at that size.
+dependency and `icon.clientBundle.icons` lists the three, so they ship in the
+client bundle and the server renders them too: the page HTML carries the
+`.i-logos\:google-gmail` rule with the icon as a `background-image` data URI.
+A multicolor body has no `currentColor`, so `@nuxt/icon` picks background
+mode, never mask mode, which keeps the colors. A brand mark must not get a
+`text-*` color, opacity or a filter. The reasoning step icon box
+(`Chat/Reasoning/StepIcon.vue`, `size-full` at 14px, shared with every
+iconify step) forces a square, an accepted distortion that is not visible at
+that size.
 
-`thesvg-color` follows the same rule (BES-468). It backs exactly three icons,
-the Google Docs, Google Sheets and Google Slides marks
-(`shared/utils/google-brand-icons.ts`: `GOOGLE_DOCS_ICON`,
-`GOOGLE_SHEETS_ICON`, `GOOGLE_SLIDES_ICON`), because `logos` has no Docs or
-Sheets mark that is colored and the plain `thesvg` set is mono. The prefix is
-not pinned in `icon.collections`; `@iconify-json/thesvg-color` (MIT, exact
-version `1.2.28`, released 2026-11-17, older than the 1440 minute
-`minimumReleaseAge`) is a dev-only dependency and `icon.clientBundle.icons`
-lists the three icons (about 5 KB), so they ship in the client bundle and
-render on the server from it. They are third-party redraws, not Google's
-artwork; the branding status and the owner step to replace the three constants
-are in `docs/google.md` 19.14 and `docs/legal/prechecks/google.md`, row 9.
+## `google-brand`: Google's official 2026 product icons (BES-468)
+
+`google-brand` is a local custom collection, not an Iconify package. It holds
+Google's own artwork for Drive, Docs, Sheets and Slides, in
+`app/assets/google-brand/{drive,docs,sheets,slides}.svg`, and replaces both
+`logos:google-drive` and the three `thesvg-color` redraws (the 2020-era
+Docs, Sheets and Slides shapes, a third-party package that is no longer a
+dependency). The names are constants in `shared/utils/google-brand-icons.ts`
+(`GOOGLE_DRIVE_ICON`, `GOOGLE_DOCS_ICON`, `GOOGLE_SHEETS_ICON`,
+`GOOGLE_SLIDES_ICON`); a component never writes `google-brand:` itself, and a
+spec fails when one does.
+
+How it is wired:
+
+```ts
+icon: {
+  customCollections: [
+    { prefix: 'google-brand', dir: './app/assets/google-brand' },
+  ],
+  clientBundle: {
+    includeCustomCollections: true,
+    icons: [...],
+  },
+}
+```
+
+- The folder is outside `app/assets/icons`, which `nuxt-svgo` scans
+  (`svgo.autoImportPath`) and optimizes with `multipass` and
+  `preset-default`; an optimized copy of a logo must never ship. The loader
+  of `@nuxt/icon` reads `*.svg` non-recursively and does not touch the files.
+- The collection is read from disk at build time and bundled whole in the
+  client bundle (`includeCustomCollections: true`, set explicitly because the
+  default depends on the provider) and in the server bundle. No browser
+  request goes to `api.iconify.design` or to `/api/_nuxt_icon`, the same as
+  for the other client-bundle icons (`fallbackToApi` is `false`).
+- The prefix is not in `iconCollections`: a custom collection is added by the
+  module itself, and the client `appConfig.icon.collections` array that is
+  sorted per `<Icon>` stays at four entries (checked in `.nuxt/app.config.mjs`
+  after `nuxt prepare`).
+- The marks have no `currentColor`, so `@nuxt/icon` renders them as a
+  `background-image`, never a mask. The box is square (192x192), where the
+  old `logos:google-drive` was `1.08em x 1em`. Never add a `text-*` color,
+  opacity or a filter; `isMulticolorBrandIcon()` in the same file is what the
+  tools menu row uses to skip its faded style.
+- Each file uses the ids `a`, `b` and `c`. In background mode every icon is
+  its own image document, so they never meet; with `mode="svg"`, which no
+  component uses, two of them on one page would reference each other's
+  gradients and masks. Do not switch these icons to `mode="svg"`.
+- `@iconify/utils` can only parse a file that has a `viewBox`. Google's Docs
+  and Drive files have only `width="192" height="192"`, so the loader rejected
+  them. The one change to those two files is the attribute
+  `viewBox="0 0 192 192"`; the same viewBox is already in the Sheets and
+  Slides files. `tests/unit/utils/google-brand-icons.spec.ts` removes that
+  attribute again and compares the SHA-256 with Google's original, so any
+  other change fails the test.
+
+Source, fetched on 2026-11-23, all from Google (the artwork is not altered; the
+files are the `192px.svg` of the 2026 product logos):
+
+| File | URL | SHA-256 of Google's file |
+|---|---|---|
+| `docs.svg` | `https://www.gstatic.com/images/branding/productlogos/docs_2026/v1/192px.svg` | `2bb529bae5125af70bbb14e1f005756d90af9e7607298a16436683ef728442d0` |
+| `sheets.svg` | `https://www.gstatic.com/images/branding/productlogos/sheets_2026/v1/192px.svg` | `359fd2a4237e2d3526fe7a95e44d0505e6321b2356698512bbb8873b786598f5` |
+| `slides.svg` | `https://www.gstatic.com/images/branding/productlogos/slides_2026/v1/192px.svg` | `3ad971447ab6fc537eb8bb5eae651a0473b137ee70acbbb073a231b84235c0e6` |
+| `drive.svg` | `https://www.gstatic.com/images/branding/productlogos/drive_2026/v1/192px.svg` | `60a6496d705d8bf010ce126469be89889db331622b14d8ae1645a38c2aaa23f5` |
+
+SHA-256 of the committed `docs.svg` is
+`1e236006179b0509fdb13341a0b58ece7bc37b3be5bcd26ad02b76fbe946ac07` and of
+`drive.svg` `dcdebf05bef2cece561975e552f5d30d5cb4046a7a884b817799eb61d93c43ac`
+(each is Google's file plus the viewBox attribute).
+
+Why the gstatic files and not the download Google offers: the Workspace page
+"Brand your internal communications with Google Workspace" (updated
+2026-11-10) links a ZIP
+(`https://drive.google.com/file/d/18IjIi_3-1yqMRcBruNHgpSf0qAI0dN7M/view`,
+SHA-256 of the ZIP
+`3dcd24266a298b2a17f49d96a5a94ccec81974e6ab1852afe13d01a76019955c`), but it
+holds PNG files only (1x and 2x at 32, 48, 64 and 96dp, named
+`logo_<product>_2026q2_color_...`), no SVG. A raster cannot be bundled as an
+Iconify icon without wrapping it. The gstatic SVGs are the same artwork:
+rendered at 192 px they differ from the ZIP's 96dp@2x PNGs by about 0.5 percent
+RMSE for Docs, Slides and Drive (Google's `drive_2026/v2` PNG, which the Drive
+API branding page links, is pixel-identical to the ZIP's Drive PNG; there is
+no `drive_2026/v2` SVG, the SVG is `v1`). Docs, Slides and Drive match the ZIP.
+The ZIP's Sheets PNG is rotated 180 degrees against the gstatic Sheets SVG,
+the gstatic Sheets PNGs and the Sheets icon in Google's May 2026 announcement
+(the Sheets folder in the ZIP is dated August, the others May). The announcement
+and the SVG agree, so the SVG ships; the mismatch is an open item for the owner
+in `docs/legal/prechecks/google.md`, row 9. The `gstatic.com` URLs are not
+documented for third parties.
+
+Terms. The ZIP page says: "By downloading the elements, you agree to the
+guidelines for using the Google brand", and its guidelines say not to remove,
+distort or alter an element, not to display a Google brand feature as the most
+prominent element of a page, not to imply a relationship with or endorsement by
+Google, and to use only Google-approved artwork. That page offers the elements
+for "your organization's internal communications", which is not the same as a
+public app. The Drive API branding page does allow the Drive logo in an app
+to show that a file is in Drive or on a button that acts on Drive, resized
+only, with the full name "Google Drive" and a tooltip on an icon button. Docs,
+Sheets and Slides have no such developer page. See `docs/legal/prechecks/google.md`,
+row 9, for the status and the owner step.
+
+Adding another file: drop the unmodified SVG in the folder, give it a viewBox
+only if the loader rejects it (and record both hashes here and in the spec),
+add a constant to `shared/utils/google-brand-icons.ts`, and extend the spec.
+There is no `THIRD_PARTY_NOTICES` file for application assets (the one under
+`workers/artifacts-runtime` covers vendored libraries only), so this section is
+the record.
+
 `GOOGLE_SLIDES_ICON` has no component yet because no Slides create kind
 exists.
 
@@ -181,8 +276,9 @@ label is centered on the deployed preview is NOT VERIFIED by a unit test.
 
 It was `'client-only'` before; that value is what sent browsers to
 `api.iconify.design` whenever the same-origin route had no answer. All icons in
-source use the four pinned prefixes except `thesvg:zhipu` and the three
-`logos:google-*` marks, which are in the client bundle (see above). The
+source use the four pinned prefixes except `thesvg:zhipu`, the three
+`logos:google-*` marks and the `google-brand` collection, which are in the
+client bundle (see above). The
 `logos:grok-icon` mention in `ProviderIcon.vue` is a comment, not a used icon.
 
 ## Revert criteria

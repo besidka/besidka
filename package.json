@@ -167,7 +167,6 @@
 		"@iconify-json/logos": "1.2.20",
 		"@iconify-json/streamline-logos": "^1.2.0",
 		"@iconify-json/thesvg": "^1.2.16",
-		"@iconify-json/thesvg-color": "1.2.28",
 		"@nuxt/kit": "^4.6.4",
 		"@nuxt/test-utils": "^4.4.0",
 		"@playwright/test": "^1.65.1",

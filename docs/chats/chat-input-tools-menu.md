@@ -639,7 +639,8 @@ after edits, until the message is cleared or sent.
 ## Google Drive row (Picker child, G-4)
 
 The Add section has one more row, "Google Drive" (`tools-action-google-drive`,
-the Google Drive logo, `GOOGLE_DRIVE_ICON`, unfaded because a brand mark
+the Google Drive logo, `GOOGLE_DRIVE_ICON` (a `google-brand:` icon, unfaded
+through `isMulticolorBrandIcon`), unfaded because a brand mark
 takes no opacity, right after "Attach files" and before "Add artifact"),
 shown while
 the `google.drive` flag is active for the user (enabled and opted in, so

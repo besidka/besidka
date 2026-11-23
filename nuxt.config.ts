@@ -792,11 +792,18 @@ export default defineNuxtConfig({
   icon: {
     collections: iconCollections,
     fallbackToApi: false,
+    customCollections: [
+      {
+        prefix: 'google-brand',
+        dir: './app/assets/google-brand',
+      },
+    ],
     serverBundle: {
       remote: 'jsdelivr',
       collections: iconCollections,
     },
     clientBundle: {
+      includeCustomCollections: true,
       icons: [
         'lucide:chevron-down',
         'lucide:circle-alert',
@@ -814,13 +821,9 @@ export default defineNuxtConfig({
         'lucide:triangle-alert',
         'lucide:unplug',
         'thesvg:zhipu',
-        'logos:google-drive',
         'logos:google-gmail',
         'logos:google-calendar',
         'logos:google-icon',
-        'thesvg-color:google-docs',
-        'thesvg-color:google-sheets',
-        'thesvg-color:google-slides',
         'streamline-logos:github-logo-2-solid',
         'streamline-logos:linkedin-logo-block',
         'streamline-logos:twitter-logo-1-solid',

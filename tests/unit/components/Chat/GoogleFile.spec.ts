@@ -236,7 +236,7 @@ describe('Chat/GoogleFile', () => {
       )
 
       for (const file of [source, previewSource]) {
-        expect(file).not.toMatch(/(?:logos|thesvg-color):/)
+        expect(file).not.toMatch(/(?:logos|thesvg-color|google-brand):/)
         expect(file).toContain('GOOGLE_FILE_KIND_ICONS')
       }
     })

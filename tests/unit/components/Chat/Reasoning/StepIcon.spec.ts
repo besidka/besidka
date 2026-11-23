@@ -1,5 +1,10 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
+import {
+  GOOGLE_CALENDAR_ICON,
+  GOOGLE_DRIVE_ICON,
+  GOOGLE_GMAIL_ICON,
+} from '../../../../../shared/utils/google-brand-icons'
 import StepIcon from '../../../../../app/components/Chat/Reasoning/StepIcon.vue'
 import type { ReasoningStepIcon } from '../../../../../app/utils/reasoning-step-icons'
 
@@ -68,9 +73,9 @@ describe('Chat/Reasoning/StepIcon', () => {
   })
 
   it.each([
-    'logos:google-drive',
-    'logos:google-gmail',
-    'logos:google-calendar',
+    GOOGLE_DRIVE_ICON,
+    GOOGLE_GMAIL_ICON,
+    GOOGLE_CALENDAR_ICON,
   ])('keeps the aspect ratio of the %s mark in its square box', async (name) => {
     const wrapper = await mountIcon({ kind: 'iconify', name })
     const classes = wrapper.get('[data-testid="reasoning-step-icon"]')
