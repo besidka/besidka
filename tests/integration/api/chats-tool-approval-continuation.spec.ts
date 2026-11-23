@@ -2789,6 +2789,11 @@ describe('tool approval continuation', () => {
     })
 
     describe.each([
+      ['google__drive_create_file', 'Create a file', {
+        name: 'Plan',
+        kind: 'text',
+        content: 'Just text.',
+      }],
       ['google__drive_rename', 'Rename an item', {
         itemId: 'item-id-0123456789',
         newName: 'Plan',

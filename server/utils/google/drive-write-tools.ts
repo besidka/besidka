@@ -186,7 +186,7 @@ const REFUSAL_TEXT = {
   notOwned: 'That folder belongs to someone else. Besidka only adds to '
     + 'folders the user owns. Nothing was changed.',
   shared: 'That folder is shared with other people, and adding to it would '
-    + 'change who can see the new folder, so Besidka does not do it. Nothing '
+    + 'change who can see the new item, so Besidka does not do it. Nothing '
     + 'was changed.',
   cannotAdd: 'The user cannot add items to that folder. Nothing was changed.',
 } as const
@@ -1585,6 +1585,7 @@ export async function buildGoogleDriveWriteTools(
         }],
         created: true,
         file_id: fileId,
+        name,
         message: alreadyExisted
           ? 'The file was already created by an earlier run of this same '
           + 'approval, so no second file was made.'

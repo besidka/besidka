@@ -517,24 +517,34 @@ describe('Google Drive file creation on the owner\'s own client', () => {
         )
       })
 
-    it('gives the model a fixed message and the id, never a Drive name',
-      async () => {
-        const built = await tools()
-        const output = await createFile(built, {
-          name: HOSTILE_NAME.slice(0, 40),
-          kind: 'text',
-          content: HOSTILE_NAME,
-        })
-        const modelOutput = built[GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME]!
-          .toModelOutput({ output }).value
+    it('gives the model a fixed message, the id and the approved name, '
+      + 'never a name that Drive answered with', async () => {
+      const built = await tools()
 
-        expect(modelOutput).toContain(GENERATED_ID)
-        expect(modelOutput).toContain('The file was created')
-        expect(modelOutput).not.toContain('references')
-        expect(modelOutput).not.toContain('drive.google.com')
-        expect(modelOutput).not.toContain(HOSTILE_NAME.slice(0, 40))
-        expect(modelOutput).not.toContain(HOSTILE_NAME)
+      drive.uploadBody = {
+        id: GENERATED_ID,
+        name: `Drive says ${HOSTILE_NAME}`,
+        mimeType: 'text/plain',
+        parents: [ROOT_ID],
+      }
+
+      const output = await createFile(built, {
+        name: 'Approved name',
+        kind: 'text',
+        content: 'Just text.',
       })
+      const modelOutput = built[GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME]!
+        .toModelOutput({ output }).value
+
+      expect(output.name).toBe('Approved name')
+      expect(modelOutput).toContain(GENERATED_ID)
+      expect(modelOutput).toContain('"name":"Approved name"')
+      expect(modelOutput).toContain('The file was created')
+      expect(modelOutput).not.toContain('references')
+      expect(modelOutput).not.toContain('drive.google.com')
+      expect(modelOutput).not.toContain(HOSTILE_NAME)
+      expect(output.references[0].title).toBe('Approved name')
+    })
 
     it('logs kind, size and counts only, never a name, content or id',
       async () => {

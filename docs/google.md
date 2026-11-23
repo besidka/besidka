@@ -4542,7 +4542,7 @@ shows "Change files access granted". The Drive entry itself never turns
 |---|---|---|---|
 | `google__drive_list_folder` | read | exactly one of `folderId` (`root` or a folder id this chat knows, section 19.3) and `query` (words a folder name contains, at most 100 characters) | `references` (the listed folder as `drive-folder`, or the root as `drive-root` with the fixed title "My Drive" from our code; each child as `drive-folder` or `drive-file` with `parentId`), `count`, `folder_id`, `items` (framed JSON lines: `item_id`, name, `kind`, `ownedByYou`, `shared`, `inSharedDrive`), `note` |
 | `google__drive_create_folder` | write | `name` (1 to 200 UTF-16 units, one line, no leading or trailing space, no `/` or `\`, not `.` or `..`, no control, invisible or bidi character), optional `parentFolderId` (`root` or a known folder id; missing and `root` both mean the top level of My Drive and send no `parents`) | `references` (the new folder with its name, link and `parentId`), `created`, `folder_id`, a fixed `message`; no Drive name is echoed to the model |
-| `google__drive_create_file` | write | `name` (the same name rule), `kind` (`document`, `spreadsheet` or `text`), `content` (at most 12,000 UTF-16 units: Markdown, CSV or plain text), optional `folderId` (`root` or a known folder id, like `parentFolderId`); the model never sends a media type | `references` (the new file with its name, link and `parentId`), `created`, `file_id`, a fixed `message`, a `note` only when Drive stored another type than approved; no Drive name is echoed to the model (section 19.12) |
+| `google__drive_create_file` | write | `name` (the same name rule), `kind` (`document`, `spreadsheet` or `text`), `content` (at most 12,000 UTF-16 units: Markdown, CSV or plain text), optional `folderId` (`root` or a known folder id, like `parentFolderId`); the model never sends a media type | `references` (the new file with its name, link and `parentId`), `created`, `file_id`, `name` (the approved name from the validated input, never one that Drive answered with), a fixed `message`, a `note` only when Drive stored another type than approved; no Drive text is echoed to the model (section 19.12) |
 | `google__drive_rename` | write | `itemId` (an item of `writableItems`), `newName` (the same name rule) | `references` (the item with its new name), `renamed`, `alreadyDone`, a fixed `message` (section 19.9) |
 | `google__drive_move` | write | `itemId` (an item of `writableItems`), `fromFolderId` and `toFolderId` (`root` or a folder of `folders`) | `references` (the item with its new `parentId`), `moved`, `alreadyDone`, a fixed `message` (section 19.10) |
 
@@ -5073,8 +5073,9 @@ created. Ask the user to check their Google Drive before trying again." A
 refusal before the upload says nothing was created. Under Always allow the run
 gate claims the execution id and the tool behaves the same.
 
-**What the model gets and what is stored.** A fixed message and `file_id`,
-never a Drive name. The reference stored in D1 holds the id, kind
+**What the model gets and what is stored.** A fixed message, `file_id` and the
+approved `name` (taken from the validated input, never from Drive's answer),
+and never a Drive name. The reference stored in D1 holds the id, kind
 (`drive-file`), name, link and parent id; the approved input stays in the
 message as an approved tool input (the decision of section 5.2), and the
 created file joins `writableItems` (not `folders`), so a rename or move can

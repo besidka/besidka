@@ -2085,6 +2085,7 @@ describe('tool approval requests in the chat send', () => {
     const FOLDER_TOOLS = [
       'google__drive_list_folder',
       'google__drive_create_folder',
+      'google__drive_create_file',
       'google__drive_rename',
       'google__drive_move',
     ]
@@ -2162,6 +2163,7 @@ describe('tool approval requests in the chat send', () => {
     })
 
     it.each([
+      'google__drive_create_file',
       'google__drive_rename',
       'google__drive_move',
     ])('does not offer a Blocked %s and keeps the others', async (blocked) => {
