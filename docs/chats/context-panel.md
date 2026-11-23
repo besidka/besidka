@@ -216,6 +216,23 @@ Rules for a new section:
 Planned: documents (Outputs, D-4), research reports from the new research
 flow (R-6), connectors and skills (Used, C-5, S-3).
 
+### Created Google files (Outputs, BES-468)
+
+The `google-files` section (Outputs, `private`) lists each finished
+`tool-google__drive_create_file` part as kind `google-file`, with
+`id: google-file:<toolCallId>`, `meta.fileKind` (`document`, `spreadsheet` or
+`text`), the file name as the title and the Docs, Sheets or Drive link as
+`href` (derived from the validated id and kind by `buildGoogleFileOpenLink`,
+never from the stored link). A waiting, failed or unconfirmed call lists
+nothing, and the item carries no file content. The row shows the Docs, Sheets
+or Drive logo with the product name in full as the detail line. The row is a
+button, not a link, even though the item has an `href`: a click pushes the
+preview through `useGoogleFilePreview().pushRegistered(...)`, so Back returns
+to Context. The panel does not hold the message parts; the chat card registers
+its file on mount, and a file whose card is not mounted falls back to scrolling
+to the message. Shared chats drop tool parts, so the section never runs for
+them. See `docs/google.md`, section 19.14.
+
 ### Google Drive files (Inputs, G-4)
 
 The `drive-files` section (Inputs, `public`) lists each `data-drive-file`
