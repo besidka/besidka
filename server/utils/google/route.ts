@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
+import { GOOGLE_FILE_DOWNLOADS_PER_HOUR } from '#shared/utils/google-file-download'
 import { GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE } from '#shared/utils/google-tool-catalog'
 import { getRequestHeader } from 'nuxt/server'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
@@ -18,6 +19,7 @@ export const GOOGLE_DRIVE_LINKS_PER_MINUTE = 20
 export const GOOGLE_CALLBACK_FAILURE_KEY_PREFIX = 'google:callback-failures:'
 
 const RATE_LIMIT_WINDOW_SECONDS = 60
+const HOUR_RATE_LIMIT_WINDOW_SECONDS = 60 * 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 
 export type GoogleRateLimitBucket
@@ -27,13 +29,14 @@ export type GoogleRateLimitBucket
     | 'import'
     | 'link'
     | 'save'
+    | 'download'
     | 'permission'
     | 'chat-service'
     | 'none'
 
 const RATE_LIMIT_BUCKETS: Readonly<Record<
   Exclude<GoogleRateLimitBucket, 'none'>,
-  { prefix: string, max: number }
+  { prefix: string, max: number, windowSeconds?: number }
 >> = {
   'write': {
     prefix: 'google-rate-limit',
@@ -67,20 +70,32 @@ const RATE_LIMIT_BUCKETS: Readonly<Record<
     prefix: 'google-drive-save-rate-limit',
     max: GOOGLE_DRIVE_SAVES_PER_MINUTE,
   },
+  'download': {
+    prefix: 'google-file-download-rate-limit',
+    max: GOOGLE_FILE_DOWNLOADS_PER_HOUR,
+    windowSeconds: HOUR_RATE_LIMIT_WINDOW_SECONDS,
+  },
 }
 
 function tooManyRequests(
   event: RequestEvent,
   retryAfterSeconds: number,
   max: number,
+  windowSeconds: number = RATE_LIMIT_WINDOW_SECONDS,
 ) {
   event.res.headers.set('Retry-After', String(retryAfterSeconds))
+
+  const isHourly = windowSeconds === HOUR_RATE_LIMIT_WINDOW_SECONDS
 
   return createError({
     message: 'Too many Google requests',
     status: 429,
-    why: `At most ${max} Google connection requests are allowed per minute`,
-    fix: 'Wait a moment before retrying',
+    why: isHourly
+      ? `At most ${max} Google downloads are allowed per hour`
+      : `At most ${max} Google connection requests are allowed per minute`,
+    fix: isHourly
+      ? 'Try again later'
+      : 'Wait a moment before retrying',
   })
 }
 
@@ -99,20 +114,26 @@ export async function enforceGoogleRateLimit(
   bucket: Exclude<GoogleRateLimitBucket, 'none'>,
   target?: string,
 ): Promise<void> {
-  const { max, prefix } = RATE_LIMIT_BUCKETS[bucket]
+  const { max, prefix, windowSeconds = RATE_LIMIT_WINDOW_SECONDS }
+    = RATE_LIMIT_BUCKETS[bucket]
   let result: { allowed: boolean, retryAfter: number | null }
 
   try {
     result = await createAuthRateLimitStorage(useKV(), prefix).consume(
       target ? `${userId}:${target}` : String(userId),
-      { window: RATE_LIMIT_WINDOW_SECONDS, max },
+      { window: windowSeconds, max },
     )
   } catch {
     useRequestLogger(event).set({
       attributes: { google: { rateLimit: 'unavailable' } },
     })
 
-    throw tooManyRequests(event, RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS, max)
+    throw tooManyRequests(
+      event,
+      RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS,
+      max,
+      windowSeconds,
+    )
   }
 
   if (!result.allowed) {
@@ -120,6 +141,7 @@ export async function enforceGoogleRateLimit(
       event,
       result.retryAfter ?? RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS,
       max,
+      windowSeconds,
     )
   }
 }

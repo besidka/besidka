@@ -230,8 +230,10 @@ button, not a link, even though the item has an `href`: a click pushes the
 preview through `useGoogleFilePreview().pushRegistered(...)`, so Back returns
 to Context. The panel does not hold the message parts; the chat card registers
 its file on mount, and a file whose card is not mounted falls back to scrolling
-to the message. Shared chats drop tool parts, so the section never runs for
-them. See `docs/google.md`, section 19.14.
+to the message. The preview header has two actions, "Open in" the Google
+product and a Download menu (Word or text for a Doc, Excel or the first sheet
+as CSV for a Sheet, text for a text file). Shared chats drop tool parts, so the
+section never runs for them. See `docs/google.md`, section 19.14.
 
 ### Google Drive files (Inputs, G-4)
 

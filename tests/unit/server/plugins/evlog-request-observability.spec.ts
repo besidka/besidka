@@ -123,6 +123,14 @@ describe('admin path query stripping', () => {
       .toBe('/api/v1/google/byo/callback')
   })
 
+  it('drops the chat, file and format from the created file download', () => {
+    const query = 'chatSlug=01JABCDEFGHJKMNPQRSTVWXYZ0&fileId=abc&format=docx'
+
+    expect(toLoggedPath(
+      `/api/v1/google/drive/created-files/download?${query}`,
+    )).toBe('/api/v1/google/drive/created-files/download')
+  })
+
   it('keeps the search text out of the wide event path and message', () => {
     const context = {
       request: {

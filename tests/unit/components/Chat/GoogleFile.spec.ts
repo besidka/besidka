@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { ref } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ChatGoogleFile from '../../../../app/components/Chat/GoogleFile.vue'
@@ -16,6 +17,11 @@ import { filterPublicParts } from '../../../../server/utils/chats/share-public-p
 enableAutoUnmount(afterEach)
 
 const FILE_ID = 'abcdefghij1234567890'
+const routeSlug = ref<string>('')
+
+mockNuxtImport('useChatRoute', () => {
+  return () => ({ routeSlug })
+})
 
 function createPart(
   kind: string,
@@ -45,6 +51,7 @@ async function mountCard(part: unknown) {
 
 describe('Chat/GoogleFile', () => {
   beforeEach(() => {
+    routeSlug.value = ''
     useSidePanel().close()
   })
 
@@ -136,6 +143,8 @@ describe('Chat/GoogleFile', () => {
       expect(sidePanel.mode.value).toBe('detail')
       expect(sidePanel.currentView.value?.props).toEqual({
         toolCallId: 'call_1',
+        fileId: FILE_ID,
+        chatSlug: '',
         title: 'Plan',
         kind: 'spreadsheet',
         content: 'a,b\n1,2\n',
@@ -144,6 +153,23 @@ describe('Chat/GoogleFile', () => {
       expect(sidePanel.currentView.value?.headerActions).toBeDefined()
       expect(trigger.attributes('aria-expanded')).toBe('true')
     })
+
+  it('hands the chat of the page and the Drive id to the preview', async () => {
+    const chatSlug = '01JABCDEFGHJKMNPQRSTVWXYZ0'
+
+    routeSlug.value = chatSlug
+
+    const wrapper = await mountCard(createPart('document'))
+    const sidePanel = useSidePanel()
+
+    await wrapper.get('[data-testid="google-file-card-preview"]')
+      .trigger('click')
+
+    expect(sidePanel.currentView.value?.props).toMatchObject({
+      fileId: FILE_ID,
+      chatSlug,
+    })
+  })
 
   it('registers its file for the context panel and unregisters it',
     async () => {

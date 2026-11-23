@@ -79,9 +79,16 @@ const props = defineProps<{
 }>()
 
 const { register, unregister, isShowing, open } = useGoogleFilePreview()
+const { routeSlug } = useChatRoute()
 
 const file = computed(() => {
   return readGoogleCreatedFile(props.part)
+})
+
+const previewTarget = computed(() => {
+  return file.value
+    ? { ...file.value, chatSlug: routeSlug.value }
+    : null
 })
 
 const typeLabel = computed<string>(() => {
@@ -108,7 +115,7 @@ const isPanelOpen = computed<boolean>(() => {
   return file.value ? isShowing(file.value.toolCallId) : false
 })
 
-watch(file, (current, previous) => {
+watch(previewTarget, (current, previous) => {
   if (!import.meta.client) {
     return
   }
@@ -129,10 +136,10 @@ onBeforeUnmount(() => {
 })
 
 function onPreview() {
-  if (!file.value) {
+  if (!previewTarget.value) {
     return
   }
 
-  open(file.value)
+  open(previewTarget.value)
 }
 </script>
