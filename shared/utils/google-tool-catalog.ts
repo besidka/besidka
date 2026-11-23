@@ -159,3 +159,50 @@ export function getGoogleToolApprovalLabel(
     ? GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime
     : GOOGLE_TOOL_APPROVAL_LABELS.needsApproval
 }
+
+export const GOOGLE_TOOL_PERMISSION_MODES = ['blocked', 'ask'] as const
+
+export type GoogleToolPermissionMode
+  = typeof GOOGLE_TOOL_PERMISSION_MODES[number]
+
+export const GOOGLE_TOOL_DEFAULT_MODE: GoogleToolPermissionMode = 'ask'
+
+export const GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE = 60
+
+export const GOOGLE_TOOL_MODE_LABELS: Readonly<
+  Record<GoogleToolPermissionMode, string>
+> = {
+  blocked: 'Blocked',
+  ask: 'Needs approval',
+}
+
+export function isGoogleToolPermissionMode(
+  value: unknown,
+): value is GoogleToolPermissionMode {
+  return GOOGLE_TOOL_PERMISSION_MODES.some((mode) => {
+    return mode === value
+  })
+}
+
+export function findGoogleCatalogTool(
+  toolName: string,
+): GoogleToolCatalogEntry | null {
+  return GOOGLE_TOOL_CATALOG.find((tool) => {
+    return tool.name === toolName
+  }) ?? null
+}
+
+/**
+ * The mode a stored value means for a Google tool. Only "ask" and "blocked"
+ * exist for Google tools: a stored "allow" or any unknown value reads as
+ * "blocked", so an unreadable setting never lets a tool run.
+ */
+export function readGoogleToolPermissionMode(
+  stored: string | undefined,
+): GoogleToolPermissionMode {
+  if (stored === undefined) {
+    return GOOGLE_TOOL_DEFAULT_MODE
+  }
+
+  return stored === 'ask' ? 'ask' : 'blocked'
+}

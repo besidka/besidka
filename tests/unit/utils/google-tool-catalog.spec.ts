@@ -10,8 +10,12 @@ import {
   GOOGLE_SERVICES,
   GOOGLE_TOOL_APPROVAL_LABELS,
   GOOGLE_TOOL_CATALOG,
+  GOOGLE_TOOL_PERMISSION_MODES,
+  findGoogleCatalogTool,
   getGoogleServiceTools,
   getGoogleToolApprovalLabel,
+  isGoogleToolPermissionMode,
+  readGoogleToolPermissionMode,
 } from '#shared/utils/google-tool-catalog'
 import { FEATURE_REGISTRY } from '#shared/utils/features/registry'
 import { buildGoogleByoTools } from '~~/server/utils/google/byo-tools'
@@ -152,4 +156,28 @@ describe('google tool catalog', () => {
           GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
       })
     })
+
+  describe('permission modes', () => {
+    it('offers only Blocked and Needs approval, never Always allow', () => {
+      expect([...GOOGLE_TOOL_PERMISSION_MODES]).toEqual(['blocked', 'ask'])
+      expect(isGoogleToolPermissionMode('allow')).toBe(false)
+      expect(isGoogleToolPermissionMode('ask')).toBe(true)
+      expect(isGoogleToolPermissionMode('blocked')).toBe(true)
+      expect(isGoogleToolPermissionMode(undefined)).toBe(false)
+    })
+
+    it('reads no stored value as ask, and allow or unknown as blocked', () => {
+      expect(readGoogleToolPermissionMode(undefined)).toBe('ask')
+      expect(readGoogleToolPermissionMode('ask')).toBe('ask')
+      expect(readGoogleToolPermissionMode('blocked')).toBe('blocked')
+      expect(readGoogleToolPermissionMode('allow')).toBe('blocked')
+      expect(readGoogleToolPermissionMode('x')).toBe('blocked')
+    })
+
+    it('finds a catalog tool by its exposed name only', () => {
+      expect(findGoogleCatalogTool('google__gmail_search')?.service)
+        .toBe('gmail')
+      expect(findGoogleCatalogTool('gmail_search')).toBeNull()
+    })
+  })
 })
