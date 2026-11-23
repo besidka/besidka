@@ -113,6 +113,42 @@ export const GOOGLE_BYO_SERVICE_CAPABILITIES: Readonly<
   drive: ['drive-read'],
 }
 
+export const GOOGLE_BYO_DRIVE_WRITE_CAPABILITIES: GoogleByoCapability[]
+  = ['drive-write']
+
+export type GoogleDriveWriteAccess
+  = 'hidden' | 'needs-read' | 'available' | 'granted'
+
+/**
+ * Where the owner stands on "Change files in Google Drive" in the Drive
+ * panel: nothing for anyone who cannot manage an own client or has none,
+ * a disabled hint until Drive read access is granted on an active
+ * connection, then the checkbox, then a read-only line once granted. It
+ * never changes the Drive entry's own state, so a read-only owner is not
+ * shown as partial.
+ */
+export function resolveGoogleDriveWriteAccess(
+  byo: GoogleConnectionStatusResponse['byo'] | null | undefined,
+): GoogleDriveWriteAccess {
+  if (!byo?.canManage || !byo.hasClient) {
+    return 'hidden'
+  }
+
+  const connection = byo.connection
+
+  if (connection?.status !== 'active') {
+    return 'needs-read'
+  }
+
+  if (connection.capabilities.includes('drive-write')) {
+    return 'granted'
+  }
+
+  return connection.capabilities.includes('drive-read')
+    ? 'available'
+    : 'needs-read'
+}
+
 const STATE_LINES: Readonly<Record<GoogleEntryState, string>> = {
   'off-in-labs': 'Off in Labs',
   'needs-client': 'Needs your own Google client',

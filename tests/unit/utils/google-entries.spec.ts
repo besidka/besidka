@@ -7,6 +7,7 @@ import type {
 import {
   GOOGLE_BYO_DISCONNECT_SERVICES,
   getGoogleByoRequestedCapabilities,
+  resolveGoogleDriveWriteAccess,
   resolveGoogleEntries,
 } from '../../../app/utils/google-entries'
 import type { GoogleEntriesInput } from '../../../app/utils/google-entries'
@@ -385,6 +386,65 @@ describe('getGoogleByoRequestedCapabilities', () => {
   it('does not repeat a capability', () => {
     expect(getGoogleByoRequestedCapabilities(['gmail-read'], held, true))
       .toEqual(['gmail-read', 'calendar'])
+  })
+})
+
+describe('resolveGoogleDriveWriteAccess', () => {
+  function held(
+    capabilities: GoogleConnectionSummary['capabilities'],
+    status: GoogleConnectionSummary['status'] = 'active',
+  ) {
+    return byo({
+      connection: connection({ clientMode: 'byo', status, capabilities }),
+    })
+  }
+
+  it('is hidden without the own client gate or a saved client', () => {
+    expect(resolveGoogleDriveWriteAccess(null)).toBe('hidden')
+    expect(resolveGoogleDriveWriteAccess(byo({ canManage: false })))
+      .toBe('hidden')
+    expect(resolveGoogleDriveWriteAccess(byo({ hasClient: false })))
+      .toBe('hidden')
+  })
+
+  it('needs Drive read access first without a connection or the access',
+    () => {
+      expect(resolveGoogleDriveWriteAccess(byo())).toBe('needs-read')
+      expect(resolveGoogleDriveWriteAccess(held(['identity', 'gmail-read'])))
+        .toBe('needs-read')
+    })
+
+  it('needs a reconnect before anything is offered on a stale connection',
+    () => {
+      expect(resolveGoogleDriveWriteAccess(
+        held(['identity', 'drive-read'], 'needs_reauth'),
+      )).toBe('needs-read')
+    })
+
+  it('offers the access once Drive read access is granted', () => {
+    expect(resolveGoogleDriveWriteAccess(held(['identity', 'drive-read'])))
+      .toBe('available')
+  })
+
+  it('reads the access as granted', () => {
+    expect(resolveGoogleDriveWriteAccess(
+      held(['identity', 'drive-read', 'drive-write']),
+    )).toBe('granted')
+  })
+
+  it('does not make any entry partial for a read-only owner', () => {
+    const data = input({}, {
+      byo: held([
+        'identity',
+        'drive-read',
+        'gmail-read',
+        'gmail-compose',
+        'calendar',
+      ]),
+    })
+
+    expect(resolveGoogleEntries(data).map(entry => entry.state))
+      .toEqual(['not-connected', 'connected', 'connected'])
   })
 })
 
