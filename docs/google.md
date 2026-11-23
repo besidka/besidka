@@ -3612,6 +3612,17 @@ repairing:
   4,000 of plain text with line breaks and tabs allowed (the body rules of the
   Gmail draft: no lone CR, no invisible or bidi character, no lone
   surrogate). An empty description or location is left out of the body.
+- Markup (BES-467, the final audit): Google Calendar renders HTML in a
+  description (an `<a href>` becomes a live link on an event other people can
+  see), so a description that holds a `<` followed by a letter, `/`, `!` or
+  `?` is refused, never stripped or escaped. The sentence is fixed: "The
+  description must be plain text: Google Calendar shows HTML in a
+  description, so it cannot contain a "<" followed by a letter, a slash, "!"
+  or "?". Nothing was created." A lone `<` (`a < b`, `<3`, `<10`), `&lt;` and
+  `>` stay allowed. The same function runs in the input schema, in `execute`
+  and in the card, so a description with markup never reaches an approval
+  card or Google. The title and the location are not checked for markup (how
+  Google renders them is not verified against a real account).
 
 Only after all of that does it return the request body. `CalendarInsertBody`
 has the keys `summary`, `description`, `location`, `start` and `end` and no
