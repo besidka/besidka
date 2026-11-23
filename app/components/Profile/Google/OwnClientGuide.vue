@@ -1,6 +1,7 @@
 <template>
   <details
-    class="group/guide rounded-box border border-base-300 bg-base-200/40"
+    class="group/guide min-w-0 max-w-full rounded-box border border-base-300
+      bg-base-200/40"
     data-testid="google-byo-guide"
   >
     <summary
@@ -21,8 +22,11 @@
           group-open/guide:rotate-180"
       />
     </summary>
-    <div class="grid gap-4 px-4 pb-4">
-      <div class="prose prose-sm max-w-none">
+    <div class="grid min-w-0 gap-4 px-4 pb-4">
+      <div
+        class="prose prose-sm min-w-0 max-w-full [overflow-wrap:anywhere]"
+        data-testid="google-byo-guide-content"
+      >
         <ol data-testid="google-byo-guide-steps">
           <li>
             <strong>Create or choose a Google Cloud project.</strong>
@@ -131,13 +135,15 @@
               <li
                 v-for="scope in GOOGLE_BYO_GUIDE_SIGN_IN_SCOPES"
                 :key="scope"
+                class="[overflow-wrap:anywhere]"
               >
-                <code>{{ scope }}</code>
+                <code class="[overflow-wrap:anywhere]">{{ scope }}</code>
               </li>
               <li
                 v-for="group in scopeGroups"
                 :key="group.capability"
                 :data-testid="`google-byo-guide-scope-${group.capability}`"
+                class="[overflow-wrap:anywhere]"
               >
                 {{ group.label }}:
                 <template
@@ -147,7 +153,7 @@
                   <template v-if="scopeIndex > 0">
                     and
                   </template>
-                  <code>{{ scope }}</code>
+                  <code class="[overflow-wrap:anywhere]">{{ scope }}</code>
                 </template>
               </li>
             </ul>
@@ -168,7 +174,9 @@
             and create a client of type "Web application". Under
             authorized redirect URIs, add the address shown below this
             guide, exactly as it is shown. Its path is
-            <code>{{ GOOGLE_BYO_CALLBACK_PATH }}</code>. If you open
+            <code class="[overflow-wrap:anywhere]">{{
+              GOOGLE_BYO_CALLBACK_PATH
+            }}</code>. If you open
             Besidka on more than one address, add one for each. You do not
             need JavaScript origins.
           </li>
@@ -219,7 +227,7 @@
             your client, as described in the next entries.
           </li>
           <li data-testid="google-byo-guide-redirect-mismatch">
-            <strong><code>redirect_uri_mismatch</code> on Google's own
+            <strong><code class="[overflow-wrap:anywhere]">redirect_uri_mismatch</code> on Google's own
               page.</strong>
             A wrong redirect address fails on Google's page, so Besidka
             never shows its own message for it. The redirect address sent
@@ -251,7 +259,9 @@
           </li>
           <li>
             <strong>A wrong client ID or secret.</strong>
-            Google may answer <code>invalid_client</code>, for example
+            Google may answer
+            <code class="[overflow-wrap:anywhere]">invalid_client</code>, for
+            example
             after you replace a secret. Enter the client ID and the new
             secret in the fields and save again. If you lost the secret,
             add a new one to the client in the console.
