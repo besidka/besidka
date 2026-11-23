@@ -767,7 +767,7 @@ function cycleWidthPreset() {
 function onSwipeStart(event: PointerEvent) {
   const target = event.target as HTMLElement | null
 
-  if (event.button !== 0 || target?.closest('button, a, select, input')) {
+  if (event.button !== 0 || target?.closest('button, a, select, input, summary')) {
     return
   }
 
