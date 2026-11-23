@@ -174,8 +174,7 @@
           class="text-xs text-base-content/70"
           data-testid="google-detail-tools-blocked-note"
         >
-          A blocked tool is never offered to the model. Google tools have no
-          Always allow.
+          A blocked tool is never offered to the model.
         </p>
         <UiSidePanelSkeleton
           v-if="permissions.status.value === 'pending' && !hasPermissionData"
@@ -317,11 +316,11 @@ import {
 import type { GoogleEntryId } from '#shared/utils/google-connectors'
 import { GOOGLE_TOOL_KINDS } from '#shared/utils/google-tool-approvals'
 import {
-  GOOGLE_TOOL_APPROVAL_LABELS,
-  GOOGLE_TOOL_PERMISSION_MODES,
   getGoogleServiceTools,
   getGoogleToolAlwaysAllowHint,
-  getGoogleToolApprovalLabel,
+  getGoogleToolAlwaysAllowWarning,
+  getGoogleToolModes,
+  isGoogleToolAlwaysAllowable,
   isGoogleToolPermissionMode,
 } from '#shared/utils/google-tool-catalog'
 import type { GoogleToolCatalogEntry } from '#shared/utils/google-tool-catalog'
@@ -355,7 +354,9 @@ const INFO_TEXTS: Readonly<Record<GoogleEntryId, string>> = {
     + 'after you approve it. The copies are deleted when Google access '
     + 'ends.',
   'google-gmail': 'Besidka reads mail only when the model searches it or '
-    + 'opens a thread and you approve. It can write drafts you approve. '
+    + 'opens a thread, and you approve each read unless you set that tool to '
+    + 'Always allow. It can write drafts you approve, or without asking if '
+    + 'you set that tool to Always allow. '
     + 'Google\'s permission for drafts technically also allows sending mail, '
     + 'but Besidka has no code that sends mail.',
   'google-calendar': GOOGLE_CALENDAR_ACCESS_NOTE,
@@ -429,12 +430,12 @@ const isDriveWriteGranted = computed<boolean>(() => {
     && connection.capabilities.includes('drive-write')
 })
 
-function getUnavailableHint(tool: GoogleToolCatalogEntry): string {
-  const hint = getGoogleToolAlwaysAllowHint(tool)
+function getGroupWarning(tools: readonly GoogleToolCatalogEntry[]): string {
+  const warnings = tools
+    .map(tool => getGoogleToolAlwaysAllowWarning(tool))
+    .filter(warning => warning !== null)
 
-  return tool.neededCapability === 'drive-write' && !isDriveWriteGranted.value
-    ? `${hint} Needs Change files access.`
-    : hint
+  return [...new Set(warnings)].join(' ')
 }
 
 const hasPermissionData = computed<boolean>(() => {
@@ -447,20 +448,24 @@ const permissionGroups = computed<ToolPermissionGroup[]>(() => {
   }))
 
   return toolGroups.value.map((group) => {
+    const shownTools = group.tools.filter(tool => modesByName.has(tool.name))
+    const warning = getGroupWarning(shownTools)
+
     return {
       id: group.kind,
       label: group.label,
-      tools: group.tools
-        .filter(tool => modesByName.has(tool.name))
-        .map((tool) => {
-          return {
-            name: tool.name,
-            title: tool.title,
-            mode: modesByName.get(tool.name) ?? 'ask',
-            modes: GOOGLE_TOOL_PERMISSION_MODES,
-            unavailableHint: getUnavailableHint(tool),
-          }
-        }),
+      ...(warning ? { warning } : {}),
+      tools: shownTools.map((tool) => {
+        return {
+          name: tool.name,
+          title: tool.title,
+          mode: modesByName.get(tool.name) ?? 'ask',
+          modes: getGoogleToolModes(tool),
+          ...(isGoogleToolAlwaysAllowable(tool)
+            ? {}
+            : { unavailableHint: getGoogleToolAlwaysAllowHint() }),
+        }
+      }),
     }
   })
 })
@@ -505,31 +510,22 @@ async function onSetGroup(
 
 const toolsIntro = computed<string>(() => {
   const listedTools = toolGroups.value.flatMap(group => group.tools)
-  const asksEveryTime = listedTools.filter((tool) => {
-    return getGoogleToolApprovalLabel(tool)
-      === GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime
+  const canAlwaysAllow = listedTools.some((tool) => {
+    return isGoogleToolAlwaysAllowable(tool)
   })
-  const readSubjects = [
-    asksEveryTime.some(tool => tool.kind === 'read' && tool.service === 'gmail')
-      ? 'mail'
-      : null,
-    asksEveryTime.some(tool => tool.kind === 'read' && tool.service === 'drive')
-      ? 'found files'
-      : null,
-  ].filter(subject => subject !== null)
-  const subjects = [
-    asksEveryTime.some(tool => tool.kind === 'write') ? 'Writes' : null,
-    readSubjects.length ? `reads of ${readSubjects.join(' or ')}` : null,
-  ].filter(subject => subject !== null)
-  const intro = 'Besidka asks before a Google tool runs.'
+  const hasAppReviewTool = listedTools.some((tool) => {
+    return !isGoogleToolAlwaysAllowable(tool)
+  })
+  const intro = canAlwaysAllow
+    ? 'Besidka asks before a Google tool runs, unless you set it to Always '
+    + 'allow.'
+    : 'Besidka asks before a Google tool runs.'
 
-  if (!subjects.length) {
-    return intro
-  }
-
-  const sentence = `${subjects.join(' and ')} ask every time.`
-
-  return `${intro} ${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`
+  return hasAppReviewTool
+    ? `${intro} Tools that use Besidka's own Google app always ask: a read can `
+    + 'be allowed for one chat from its approval, and saving a file asks '
+    + 'every time.'
+    : intro
 })
 
 const ownClientNote = computed<OwnClientNote | null>(() => {

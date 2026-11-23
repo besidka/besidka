@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
+import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
   seedChat,
@@ -256,6 +257,52 @@ describe('chat tool approval grant routes', () => {
 
     expect(sources).not.toContain('google')
     expect(sources).not.toContain('google-egress')
+  })
+
+  it('lists a Google tool set to Always allow in the chat, keeps it after '
+    + 'Reset, and hides a tool of a service that is off in this chat',
+  async () => {
+    const { setGoogleServicesOff } = await import(
+      '~~/server/utils/besidka-tools/chat-settings'
+    )
+
+    await testDb.db.insert(schema.besidkaToolPermissions).values([
+      { userId, toolName: 'google__gmail_search', mode: 'allow' },
+      { userId, toolName: 'google__calendar_create_event', mode: 'allow' },
+      { userId, toolName: 'google__drive_read_file', mode: 'allow' },
+      { userId, toolName: 'google__drive_search', mode: 'blocked' },
+    ])
+
+    const always = (result: { grants: Array<Record<string, unknown>> }) => {
+      return result.grants
+        .filter(grant => grant.source === 'google' && grant.scope === 'always')
+        .map(grant => grant.toolName)
+        .sort()
+    }
+
+    expect(always(await call(listPath))).toEqual([
+      'google__calendar_create_event',
+      'google__gmail_search',
+    ])
+    expect((await call(listPath)).grants).toContainEqual({
+      scope: 'always',
+      connectorId: '',
+      connectorTitle: 'Google',
+      toolName: 'google__gmail_search',
+      source: 'google',
+    })
+
+    await call(resetPath)
+
+    expect(always(await call(listPath))).toEqual([
+      'google__calendar_create_event',
+      'google__gmail_search',
+    ])
+
+    await setGoogleServicesOff(testDb.db, userId, chat.id, ['gmail'])
+
+    expect(always(await call(listPath)))
+      .toEqual(['google__calendar_create_event'])
   })
 
   it('resets only the chat grants and keeps the connector on', async () => {

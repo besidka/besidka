@@ -148,6 +148,55 @@ describe('Chat/ContextPanelApprovals', () => {
         .toBe('/chats/connectors?panel=besidka-tool-permissions')
     })
 
+  it.each([
+    ['google__gmail_search', '/chats/connectors?panel=google-gmail'],
+    ['google__calendar_create_event', '/chats/connectors?panel=google-calendar'],
+    ['google__drive_rename', '/chats/connectors?panel=google-drive'],
+  ])('links a Google Always allow tool %s to its Google panel with no Remove',
+    async (toolName, path) => {
+      mocks.grants = [{
+        scope: 'always',
+        connectorId: '',
+        connectorTitle: 'Google',
+        toolName,
+        source: 'google',
+      }]
+
+      const wrapper = await mountSuspended(ContextPanelApprovals)
+      const row = wrapper.get('[data-testid="chat-context-approval-always"]')
+
+      expect(row.text()).toContain('Google · Always allowed, in every chat')
+      expect(row.get('[data-testid="chat-context-approval-manage-google"]')
+        .attributes('to')).toBe(path)
+      expect(row.find('[data-testid="chat-context-approval-remove"]')
+        .exists()).toBe(false)
+      expect(row.find('[data-testid="chat-context-approval-manage-besidka"]')
+        .exists()).toBe(false)
+    })
+
+  it('keeps a Google chat grant of the same tool as its own row without a '
+    + 'link', async () => {
+    mocks.grants = [{
+      scope: 'chat',
+      connectorId: '',
+      connectorTitle: 'Google',
+      toolName: 'google__gmail_search',
+      source: 'google',
+    }, {
+      scope: 'always',
+      connectorId: '',
+      connectorTitle: 'Google',
+      toolName: 'google__gmail_search',
+      source: 'google',
+    }]
+
+    const wrapper = await mountSuspended(ContextPanelApprovals)
+
+    expect(wrapper.findAll('li')).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="chat-context-approval-manage-google"]'))
+      .toHaveLength(1)
+  })
+
   it('hides Reset when only always grants apply', async () => {
     mocks.grants = [ALWAYS_GRANT]
 

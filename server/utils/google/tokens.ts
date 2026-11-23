@@ -23,6 +23,7 @@ import {
   releaseGoogleRefreshLock,
 } from '~~/server/utils/google/refresh-lock'
 import { googleConnectionRecordColumns } from '~~/server/utils/google/store'
+import { clearGoogleAlwaysAllow } from '~~/server/utils/google/tool-permissions'
 import type { GoogleConnectionRecord } from '~~/server/utils/google/store'
 
 type DbClient = ReturnType<typeof useDb>
@@ -204,6 +205,10 @@ async function endAccessAfterInvalidGrant(
   }
 
   logToken(logger, { connectionId: row.id, refresh: 'invalid-grant' })
+
+  if (row.clientMode === 'byo') {
+    await clearGoogleAlwaysAllow(row.userId, logger, dependencies.db)
+  }
 
   const now = (dependencies.now ?? Date.now)()
   const accessTokenAlive = !!row.accessToken

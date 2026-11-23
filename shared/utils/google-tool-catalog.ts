@@ -201,25 +201,11 @@ export function getGoogleToolApprovalLabel(
 }
 
 export const GOOGLE_TOOL_ALWAYS_ALLOW_HINTS = {
-  chatGrant: 'Google reads ask. Allow one for a chat from its approval.',
-  asksEveryTime: 'Asks every time.',
+  appReview: 'Needs approval: this connection goes through Google\'s app '
+    + 'review.',
 } as const
 
-/**
- * Why Always allow is off for a Google tool: a read can be allowed for one
- * chat from its approval card, while a write and a once-only read ask every
- * time.
- */
-export function getGoogleToolAlwaysAllowHint(
-  tool: Pick<GoogleToolCatalogEntry, 'name' | 'kind'>,
-): string {
-  return getGoogleToolApprovalLabel(tool)
-    === GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime
-    ? GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime
-    : GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant
-}
-
-export const GOOGLE_TOOL_PERMISSION_MODES = ['blocked', 'ask'] as const
+export const GOOGLE_TOOL_PERMISSION_MODES = ['blocked', 'ask', 'allow'] as const
 
 export type GoogleToolPermissionMode
   = typeof GOOGLE_TOOL_PERMISSION_MODES[number]
@@ -228,11 +214,18 @@ export const GOOGLE_TOOL_DEFAULT_MODE: GoogleToolPermissionMode = 'ask'
 
 export const GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE = 60
 
+export const GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE = 5
+
+export const GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE = 10
+
+export const GOOGLE_ALWAYS_ALLOW_WRITES_PER_HOUR = 30
+
 export const GOOGLE_TOOL_MODE_LABELS: Readonly<
   Record<GoogleToolPermissionMode, string>
 > = {
   blocked: 'Blocked',
   ask: 'Needs approval',
+  allow: 'Always allow',
 }
 
 export function isGoogleToolPermissionMode(
@@ -252,16 +245,110 @@ export function findGoogleCatalogTool(
 }
 
 /**
- * The mode a stored value means for a Google tool. Only "ask" and "blocked"
- * exist for Google tools: a stored "allow" or any unknown value reads as
- * "blocked", so an unreadable setting never lets a tool run.
+ * Whether a Google tool may be set to Always allow: only a tool that exists
+ * on the owner-only own (bring-your-own) client. A tool that is also
+ * reachable through Besidka's own Google client (the Picker and `drive.file`
+ * family) keeps asking, because that connection goes through Google's app
+ * review. Takes a catalog entry or a tool name; an unknown name is never
+ * allowable.
+ */
+export function isGoogleToolAlwaysAllowable(
+  tool: string | Pick<GoogleToolCatalogEntry, 'client'>,
+): boolean {
+  const entry = typeof tool === 'string' ? findGoogleCatalogTool(tool) : tool
+
+  return entry !== null && entry.client === 'byo'
+}
+
+/**
+ * The modes the user may pick for a Google tool: Always allow only for a
+ * tool `isGoogleToolAlwaysAllowable` accepts.
+ */
+export function getGoogleToolModes(
+  tool: Pick<GoogleToolCatalogEntry, 'client'>,
+): readonly GoogleToolPermissionMode[] {
+  return isGoogleToolAlwaysAllowable(tool)
+    ? GOOGLE_TOOL_PERMISSION_MODES
+    : GOOGLE_TOOL_PERMISSION_MODES.filter(mode => mode !== 'allow')
+}
+
+/**
+ * Why Always allow is off for a Google tool the user cannot always allow.
+ */
+export function getGoogleToolAlwaysAllowHint(): string {
+  return GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.appReview
+}
+
+const GOOGLE_ALWAYS_ALLOW_READ_WARNING = 'Always allow lets the model read '
+  + 'this without asking, including text written by other people.'
+
+const GOOGLE_ALWAYS_ALLOW_ONCE_ONLY_READ_WARNINGS: Readonly<
+  Record<string, string>
+> = {
+  [GOOGLE_GMAIL_READ_THREAD_TOOL_NAME]: 'Always allow lets the model open '
+    + 'whole email threads without asking, including everything other people '
+    + 'wrote in them.',
+  [GOOGLE_DRIVE_READ_FOUND_TOOL_NAME]: 'Always allow lets the model open '
+    + 'the files a search found without asking, including everything other '
+    + 'people wrote in them.',
+}
+
+const GOOGLE_ALWAYS_ALLOW_WRITE_WARNINGS: Readonly<
+  Record<GoogleService, string>
+> = {
+  gmail: 'Always allow lets the model create drafts without asking. A draft '
+    + 'can be addressed to anyone, and drafts are never sent. '
+    + 'Google\'s permission for drafts also allows sending mail; Besidka has '
+    + 'no code that sends mail.',
+  calendar: 'Always allow lets the model create events without asking. '
+    + 'Events may carry text from other content (such as an email) into your '
+    + 'calendar, where people who can see your calendar can read it.',
+  drive: 'Always allow lets the model create, rename and move Drive items '
+    + 'without asking. A rename of a file that is shared with others shows '
+    + 'the new name to them. Google\'s permission for Drive also allows '
+    + 'deleting and sharing; Besidka has no code that deletes or shares.',
+}
+
+/**
+ * The warning shown under a Google tool that can be set to Always allow, or
+ * null for a tool that cannot. A once-only read (a whole email thread, a
+ * found Drive file) names what it hands the model; a plain read says the
+ * result can hold text written by other people; a write names what it
+ * creates or changes.
+ */
+export function getGoogleToolAlwaysAllowWarning(
+  tool: Pick<GoogleToolCatalogEntry, 'name' | 'kind' | 'service' | 'client'>,
+): string | null {
+  if (!isGoogleToolAlwaysAllowable(tool)) {
+    return null
+  }
+
+  if (tool.kind === 'write') {
+    return GOOGLE_ALWAYS_ALLOW_WRITE_WARNINGS[tool.service]
+  }
+
+  return GOOGLE_ALWAYS_ALLOW_ONCE_ONLY_READ_WARNINGS[tool.name]
+    ?? GOOGLE_ALWAYS_ALLOW_READ_WARNING
+}
+
+/**
+ * The mode a stored value means for a Google tool. No row means "ask". A
+ * stored "allow" counts only for a tool that can be always allowed; for any
+ * other tool (a restored or hand-written row) it reads as "ask", never as
+ * "allow" and never as "blocked". Any other value reads as "blocked", so an
+ * unreadable setting never lets a tool run.
  */
 export function readGoogleToolPermissionMode(
+  toolName: string,
   stored: string | undefined,
 ): GoogleToolPermissionMode {
-  if (stored === undefined) {
+  if (stored === undefined || stored === 'ask') {
     return GOOGLE_TOOL_DEFAULT_MODE
   }
 
-  return stored === 'ask' ? 'ask' : 'blocked'
+  if (stored === 'allow') {
+    return isGoogleToolAlwaysAllowable(toolName) ? 'allow' : 'ask'
+  }
+
+  return 'blocked'
 }

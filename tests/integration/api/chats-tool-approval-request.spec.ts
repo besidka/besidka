@@ -52,6 +52,10 @@ const mocks = vi.hoisted(() => ({
     entries: Map<string, unknown>
   },
   googleBlockedNames: [] as string[],
+  googleAllowedNames: [] as string[],
+  googleClaims: new Set<string>(),
+  googleRunOwners: [] as Array<Record<string, unknown>>,
+  googleRunRefusal: null as string | null,
   googleServicesOff: [] as string[],
   candidateServicesOff: [] as Array<readonly string[] | undefined>,
   requestedServicesOff: [] as Array<readonly string[] | undefined>,
@@ -85,19 +89,62 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
 
       mocks.candidateServicesOff.push(input.servicesOff)
 
-      return mocks.googleBlockedNames.length || servicesOff.length
+      return mocks.googleBlockedNames.length
+        || mocks.googleAllowedNames.length
+        || servicesOff.length
         ? actual.dropBlockedGoogleTools(
           built,
           actual.withGoogleServicesOffBlocked(
-            new Map(mocks.googleBlockedNames.map((toolName) => {
-              return [toolName, 'blocked' as const]
-            })),
+            new Map([
+              ...mocks.googleAllowedNames.map((toolName) => {
+                return [toolName, 'allow' as const]
+              }),
+              ...mocks.googleBlockedNames.map((toolName) => {
+                return [toolName, 'blocked' as const]
+              }),
+            ]),
             servicesOff as never,
             (built as { entries: Map<string, unknown> }).entries.keys(),
           ),
         )
         : built
     },
+  }
+})
+
+vi.mock('~~/server/utils/tool-approval/google-run-gate', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/tool-approval/google-run-gate')
+  >()
+
+  return {
+    ...actual,
+    createGoogleRunGate: (input: {
+      owner: { userId: number, chatPublicId: string, messagePublicId: string }
+    }) => ({
+      begin: async (toolCallId: string) => {
+        const executionId = await actual.buildGoogleExecutionId(
+          input.owner,
+          toolCallId,
+        )
+
+        mocks.googleRunOwners.push(input.owner)
+
+        if (mocks.googleRunRefusal) {
+          throw new Error(mocks.googleRunRefusal)
+        }
+
+        if (mocks.googleClaims.has(executionId)) {
+          throw new Error(actual.GOOGLE_RUN_ALREADY_CLAIMED_TEXT)
+        }
+
+        mocks.googleClaims.add(executionId)
+
+        return { executionId, settle: async () => undefined }
+      },
+    }),
   }
 })
 
@@ -654,6 +701,10 @@ describe('tool approval requests in the chat send', () => {
     mocks.failChatFlag = false
     mocks.googleSend = null
     mocks.googleBlockedNames = []
+    mocks.googleAllowedNames = []
+    mocks.googleClaims = new Set()
+    mocks.googleRunOwners = []
+    mocks.googleRunRefusal = null
     mocks.googleServicesOff = []
     mocks.candidateServicesOff = []
     mocks.requestedServicesOff = []
@@ -1597,6 +1648,315 @@ describe('tool approval requests in the chat send', () => {
 
       expect((await offeredNames())
         .filter((name: string) => name.startsWith('google__'))).toEqual([])
+    })
+  })
+
+  describe('a Google tool the user set to Always allow', () => {
+    const READ = 'google__gmail_search'
+    const THREAD = 'google__gmail_read_thread'
+    const WRITE = 'google__drive_create_folder'
+    const executes = {} as Record<string, ReturnType<typeof vi.fn>>
+
+    async function offerTools(names: string[] = [READ, THREAD, WRITE]) {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+
+      for (const name of names) {
+        executes[name] = vi.fn(async () => ({
+          references: [{ id: `${name}-ref`, title: 'Item' }],
+        }))
+      }
+
+      mocks.googleSend = {
+        tools: Object.fromEntries(names.map((name) => {
+          return [name, tool({
+            description: 'A Google tool.',
+            inputSchema: z.object({ query: z.string().optional() }),
+            execute: executes[name]!,
+          })]
+        })),
+        entries: new Map(names.map((name) => {
+          return [name, buildGoogleApprovalEntry({
+            toolName: name,
+            kind: name === WRITE ? 'write' : 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'A Google tool',
+            toolApprovalsActive: true,
+          })]
+        })),
+      }
+    }
+
+    it('runs a read without asking and marks it as always allowed',
+      async () => {
+        await offerTools()
+
+        mocks.googleAllowedNames = [READ]
+
+        const { assistantInsert } = await runSend({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-r', READ, { query: 'invoices' }),
+            textChunks('Found them.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+
+        expect(executes[READ]).toHaveBeenCalledTimes(1)
+        expect(executes[READ]!.mock.calls[0]![1]).not.toHaveProperty(
+          'executionId',
+        )
+        expect(findPart(parts, `tool-${READ}`)).toMatchObject({
+          state: 'output-available',
+        })
+        expect(findPart(parts, 'data-tool-grant')).toMatchObject({
+          data: { toolCallId: 'call-r', toolName: READ, scope: 'always' },
+        })
+        expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+        expect(mocks.googleRunOwners).toHaveLength(0)
+        expect(mocks.chatUpdates).toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+      })
+
+    it('runs a write without asking, passes it a server-derived execution '
+      + 'id and marks it as always allowed', async () => {
+      await offerTools()
+
+      mocks.googleAllowedNames = [WRITE]
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-w', WRITE, { query: 'Reports' }),
+          textChunks('Created.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+      const options = executes[WRITE]!.mock.calls[0]![1] as {
+        toolCallId: string
+        executionId: string
+        approvalId?: string
+      }
+
+      expect(executes[WRITE]).toHaveBeenCalledTimes(1)
+      expect(options.toolCallId).toBe('call-w')
+      expect(options.executionId).toMatch(/^exec_[A-Za-z0-9_-]{43}$/)
+      expect(options.approvalId).toBeUndefined()
+      expect(mocks.googleRunOwners).toEqual([expect.objectContaining({
+        chatPublicId: CHAT_PUBLIC_ID,
+        messagePublicId: assistantInsert?.publicId
+          ?? expect.stringMatching(/^[0-9A-Z]{26}$/),
+      })])
+      expect(findPart(parts, 'data-tool-grant')).toMatchObject({
+        data: { toolCallId: 'call-w', toolName: WRITE, scope: 'always' },
+      })
+      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+    })
+
+    it('never gives the model a way to set the execution id', async () => {
+      await offerTools()
+
+      mocks.googleAllowedNames = [WRITE]
+
+      await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-w', WRITE, { executionId: 'exec_from_model' }),
+          textChunks('Done.'),
+        ],
+      })
+
+      const options = executes[WRITE]!.mock.calls[0]?.[1] as
+        | { executionId?: string }
+        | undefined
+
+      expect(options?.executionId).not.toBe('exec_from_model')
+    })
+
+    it('creates once when the model repeats one tool call id', async () => {
+      await offerTools()
+
+      mocks.googleAllowedNames = [WRITE]
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-w', WRITE, { query: 'Reports' }),
+          toolCallChunks('call-w', WRITE, { query: 'Reports' }),
+          textChunks('Done.'),
+        ],
+      })
+
+      expect(executes[WRITE]).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(assistantInsert?.parts ?? [])).not.toContain(
+        'tool-input-error',
+      )
+    })
+
+    it('refuses the write and shows no marker when the run gate refuses',
+      async () => {
+        await offerTools()
+
+        mocks.googleAllowedNames = [WRITE]
+        mocks.googleRunRefusal = 'Always allow has reached its limit.'
+
+        const { assistantInsert, doStream } = await runSend({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-w', WRITE, { query: 'Reports' }),
+            textChunks('Stopped.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+        const secondPrompt = JSON.stringify(
+          (doStream.mock.calls[1]?.[0] as { prompt?: unknown })?.prompt,
+        )
+
+        expect(executes[WRITE]).not.toHaveBeenCalled()
+        expect(findPart(parts, `tool-${WRITE}`)).toMatchObject({
+          state: 'output-error',
+        })
+        expect(secondPrompt).toContain('reached its limit')
+        expect(findPart(parts, 'data-tool-grant')).toBeUndefined()
+      })
+
+    it('shows the model the hourly cap sentence and never asks the user',
+      async () => {
+        const { GOOGLE_RUN_HOURLY_CAP_TEXT } = await import(
+          '~~/server/utils/tool-approval/google-run-gate'
+        )
+
+        await offerTools()
+
+        mocks.googleAllowedNames = [WRITE]
+        mocks.googleRunRefusal = GOOGLE_RUN_HOURLY_CAP_TEXT
+
+        const { assistantInsert, doStream } = await runSend({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-w', WRITE, { query: 'Reports' }),
+            textChunks('Stopped.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+        const secondPrompt = JSON.stringify(
+          (doStream.mock.calls[1]?.[0] as { prompt?: unknown })?.prompt,
+        )
+
+        expect(executes[WRITE]).not.toHaveBeenCalled()
+        expect(secondPrompt).toContain('limit of 30 Google write calls an hour')
+        expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+      })
+
+    it('still asks for a once-only read set to Needs approval and runs it '
+      + 'when set to Always allow', async () => {
+      await offerTools()
+
+      const asked = await runSend({
+        servers: [linear],
+        steps: [toolCallChunks('call-t1', THREAD, {}), textChunks('Never.')],
+      })
+
+      expect(executes[THREAD]).not.toHaveBeenCalled()
+      expect(findPart(asked.assistantInsert?.parts ?? [],
+        TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+        data: { toolCallId: 'call-t1', rememberOptions: ['once'] },
+      })
+
+      mocks.googleAllowedNames = [THREAD]
+
+      const allowed = await runSend({
+        servers: [linear],
+        messageId: 'user-public-2',
+        steps: [toolCallChunks('call-t2', THREAD, {}), textChunks('Read.')],
+      })
+
+      expect(executes[THREAD]).toHaveBeenCalledTimes(1)
+      expect(findPart(allowed.assistantInsert?.parts ?? [],
+        'data-tool-grant')).toMatchObject({
+        data: { toolCallId: 'call-t2', scope: 'always' },
+      })
+    })
+
+    it('asks again past the cap of reads in one message', async () => {
+      await offerTools()
+
+      mocks.googleAllowedNames = [READ]
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        steps: [
+          ...Array.from({ length: 6 }, (_value, index) => {
+            return toolCallChunks(`call-${index}`, READ, { query: `q${index}` })
+          }),
+          textChunks('Done.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(executes[READ]).toHaveBeenCalledTimes(5)
+      expect(parts.filter(part => part.type === 'data-tool-grant'))
+        .toHaveLength(5)
+      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+        data: { toolCallId: 'call-5', rememberOptions: ['once', 'chat'] },
+      })
+    })
+
+    it('does not let a stored Always allow cover a tool of Besidka\'s '
+      + 'client', async () => {
+      await offerTools(['google__drive_read_file'])
+
+      mocks.googleAllowedNames = ['google__drive_read_file']
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-f', 'google__drive_read_file', {}),
+          textChunks('Never.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(executes.google__drive_read_file).not.toHaveBeenCalled()
+      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE))
+        .toMatchObject({ data: { toolCallId: 'call-f' } })
+      expect(findPart(parts, 'data-tool-grant')).toBeUndefined()
+    })
+
+    it('lets a switch that is off in the chat win over Always allow',
+      async () => {
+        await offerTools()
+
+        mocks.googleAllowedNames = [READ]
+        mocks.googleServicesOff = ['gmail']
+
+        const { doStream } = await runSend({
+          servers: [linear],
+          steps: [textChunks('Plain answer.')],
+        })
+        const offered = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+          .map((offeredTool: { name: string }) => offeredTool.name)
+
+        expect(offered).not.toContain(READ)
+        expect(offered).toContain(WRITE)
+      })
+
+    it('lets Blocked win over Always allow', async () => {
+      await offerTools()
+
+      mocks.googleAllowedNames = [READ]
+      mocks.googleBlockedNames = [READ]
+
+      const { doStream } = await runSend({
+        servers: [linear],
+        steps: [textChunks('Plain answer.')],
+      })
+      const offered = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((offeredTool: { name: string }) => offeredTool.name)
+
+      expect(offered).not.toContain(READ)
     })
   })
 

@@ -17,6 +17,10 @@ import {
 } from '#shared/utils/google-tool-approvals'
 import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
 import {
+  GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE,
+  GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE,
+} from '#shared/utils/google-tool-catalog'
+import {
   TOOL_APPROVAL_DATA_PART_TYPE,
   TOOL_GRANT_DATA_PART_TYPE,
   hasAwaitingApprovalToolPart,
@@ -59,6 +63,13 @@ import { isDocumentToolName } from '~~/server/utils/documents/message-parts'
 import { canonicalJson } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  GOOGLE_RUN_NO_GATE_TEXT,
+} from '~~/server/utils/tool-approval/google-run-gate'
+import type {
+  GoogleRun,
+  GoogleRunGate,
+} from '~~/server/utils/tool-approval/google-run-gate'
 import {
   indexToolApprovalChatRecords,
   isWellFormedToolApprovalId,
@@ -231,7 +242,10 @@ export interface SendToolApproval {
     tools: ToolSet | undefined,
     extraEntries?: ReadonlyMap<string, SendToolEntry>,
   ) => void
-  guardNativeWrites: (tools: ToolSet | undefined) => ToolSet | undefined
+  guardNativeWrites: (
+    tools: ToolSet | undefined,
+    runGate?: GoogleRunGate,
+  ) => ToolSet | undefined
   canAsk: () => boolean
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   markApprovedByUser: (call: ApprovedCall) => void
@@ -387,6 +401,20 @@ async function describeCallNames(
 export function countChatGrantRuns(
   parts: readonly unknown[],
 ): Map<string, number> {
+  return countGrantRuns(parts, 'chat')
+}
+
+/**
+ * How many calls of each tool the stored reply already ran under one grant
+ * scope (its `data-tool-grant` markers), so a pause or a "Continue" round
+ * keeps counting toward the per-message caps of Always allow on a Google
+ * tool (`GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE` and
+ * `GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE`).
+ */
+export function countGrantRuns(
+  parts: readonly unknown[],
+  scope: ToolGrantScope,
+): Map<string, number> {
   const counts = new Map<string, number>()
 
   for (const part of parts) {
@@ -396,7 +424,7 @@ export function countChatGrantRuns(
 
     const data = part.data as Partial<ToolGrantPartData>
 
-    if (data.scope === 'chat' && typeof data.toolName === 'string') {
+    if (data.scope === scope && typeof data.toolName === 'string') {
       counts.set(data.toolName, (counts.get(data.toolName) ?? 0) + 1)
     }
   }
@@ -737,6 +765,10 @@ export function buildConnectorApprovalEntry(input: {
 function userGrantScopeOf(
   decision: ToolApprovalDecision,
 ): ToolGrantScope | null {
+  if (decision.rule === 11 && decision.grant === 'always') {
+    return 'always'
+  }
+
   if (decision.rule === 7 || decision.rule === 11) {
     return 'chat'
   }
@@ -817,10 +849,51 @@ function toInputJson(input: unknown): string {
 export function createSendToolApproval(input: {
   state: ApprovalState
   priorChatGrantRuns?: ReadonlyMap<string, number>
+  priorAlwaysGrantRuns?: ReadonlyMap<string, number>
 }): SendToolApproval {
   const { state } = input
   const chatGrantRuns = new Map(input.priorChatGrantRuns ?? [])
+  const alwaysGrantRuns = new Map(input.priorAlwaysGrantRuns ?? [])
   const entries = new Map<string, SendToolEntry>()
+
+  function isGoogleWriteEntry(entry: SendToolEntry | undefined): boolean {
+    return entry?.descriptor.family === 'google'
+      && (entry.descriptor.access !== 'read' || entry.descriptor.destructiveHint)
+  }
+
+  function alwaysAllowHasRoom(
+    toolName: string,
+    entry: SendToolEntry,
+  ): boolean {
+    if (!isGoogleWriteEntry(entry)) {
+      return (alwaysGrantRuns.get(toolName) ?? 0)
+        < GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE
+    }
+
+    const writeRuns = [...alwaysGrantRuns].reduce((total, [name, runs]) => {
+      return isGoogleWriteEntry(entries.get(name)) ? total + runs : total
+    }, 0)
+
+    return writeRuns < GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE
+  }
+
+  function isAlwaysAllowCapped(
+    toolName: string,
+    entry: SendToolEntry,
+  ): boolean {
+    return entry.permissionMode === 'allow'
+      && entry.descriptor.family === 'google'
+      && !alwaysAllowHasRoom(toolName, entry)
+  }
+
+  function permissionModeOf(
+    toolName: string,
+    entry: SendToolEntry,
+  ): ToolPermissionMode {
+    return isAlwaysAllowCapped(toolName, entry)
+      ? 'ask'
+      : entry.permissionMode ?? 'ask'
+  }
 
   function chatGrantOf(
     toolName: string,
@@ -968,9 +1041,11 @@ export function createSendToolApproval(input: {
     const decision = resolveToolApproval({
       descriptor: entry.descriptor,
       state: decisionState,
-      permissionMode: entry.permissionMode ?? 'ask',
+      permissionMode: permissionModeOf(toolCall.toolName, entry),
       alwaysGrant: entry.userGrants?.always ?? null,
-      chatGrant: chatGrantOf(toolCall.toolName, entry),
+      chatGrant: isAlwaysAllowCapped(toolCall.toolName, entry)
+        ? null
+        : chatGrantOf(toolCall.toolName, entry),
       isAlwaysGrantDefault: entry.userGrants?.isAlwaysDefault === true,
       googleEgressGrant: entry.userGrants?.googleEgress ?? null,
     })
@@ -997,6 +1072,16 @@ export function createSendToolApproval(input: {
         chatGrantRuns.set(
           toolCall.toolName,
           (chatGrantRuns.get(toolCall.toolName) ?? 0) + 1,
+        )
+      }
+
+      if (
+        grantScope === 'always'
+        && entry.descriptor.family === 'google'
+      ) {
+        alwaysGrantRuns.set(
+          toolCall.toolName,
+          (alwaysGrantRuns.get(toolCall.toolName) ?? 0) + 1,
         )
       }
 
@@ -1088,6 +1173,34 @@ export function createSendToolApproval(input: {
   }
 
   /**
+   * Takes the claim and the hourly write slot of a Google write that runs
+   * under Always allow. Any refusal (no gate, a lost claim, a spent budget)
+   * also drops the call's "Ran without asking" marker, because the write
+   * did not run.
+   */
+  async function beginAlwaysAllowedRun(
+    toolCallId: string,
+    runGate: GoogleRunGate | undefined,
+  ): Promise<GoogleRun> {
+    try {
+      if (!runGate) {
+        throw createError({
+          message: GOOGLE_RUN_NO_GATE_TEXT,
+          status: 500,
+          why: 'An always-allowed Google write ran without a run gate.',
+          fix: 'Tell the user the action did not happen.',
+        })
+      }
+
+      return await runGate.begin(toolCallId)
+    } catch (exception) {
+      grantedCalls.delete(toolCallId)
+
+      throw exception
+    }
+  }
+
+  /**
    * Wraps the `execute` of every native write except the memory tools
    * (which keep their own lock), and of every Google tool, reads included,
    * so it only runs a call the policy cleared, with the same name and
@@ -1096,6 +1209,7 @@ export function createSendToolApproval(input: {
    */
   function guardNativeWrites(
     tools: ToolSet | undefined,
+    runGate?: GoogleRunGate,
   ): ToolSet | undefined {
     if (!tools) {
       return tools
@@ -1142,7 +1256,33 @@ export function createSendToolApproval(input: {
             recordToolRead(state, TOOL_APPROVAL_GOOGLE_READ_SOURCE)
           }
 
-          return await execute(input, options)
+          const toolCallId = options?.toolCallId
+
+          if (
+            !isGoogleWriteEntry(entry)
+            || !toolCallId
+            || grantedCalls.get(toolCallId) !== 'always'
+          ) {
+            return await execute(input, options)
+          }
+
+          const run = await beginAlwaysAllowedRun(toolCallId, runGate)
+
+          try {
+            const runOptions: { toolCallId?: string, executionId: string } = {
+              ...options,
+              executionId: run.executionId,
+            }
+            const output = await execute(input, runOptions)
+
+            await run.settle(false)
+
+            return output
+          } catch (exception) {
+            await run.settle(true)
+
+            throw exception
+          }
         },
       } as ToolSet[string]]
     }))

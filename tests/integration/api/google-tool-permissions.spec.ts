@@ -165,7 +165,31 @@ describe('Google tool permission routes', () => {
           name: GOOGLE_DRIVE_LIST_TOOL_NAME,
           service: 'drive',
           mode: 'ask',
+          alwaysAllowable: false,
         })
+      })
+
+    it('says for each own-client tool that it can be always allowed',
+      async () => {
+        mocks.isAdmin = true
+        mocks.flags = new Set([
+          'google.drive',
+          'google.byo',
+          'google.gmail',
+          'google.calendar',
+        ])
+
+        const result = await call(getPath)
+        const flags = Object.fromEntries(result.tools.map((tool: {
+          name: string
+          alwaysAllowable: boolean
+        }) => [tool.name, tool.alwaysAllowable]))
+
+        expect(flags[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe(true)
+        expect(flags.google__calendar_create_event).toBe(true)
+        expect(flags.google__drive_rename).toBe(true)
+        expect(flags[GOOGLE_DRIVE_LIST_TOOL_NAME]).toBe(false)
+        expect(flags.google__drive_save_file).toBe(false)
       })
 
     it('adds the own-client tools for an admin with their flags',
@@ -200,11 +224,37 @@ describe('Google tool permission routes', () => {
       expect(names).not.toContain(GOOGLE_DRIVE_LIST_TOOL_NAME)
     })
 
-    it('reads a stored "allow" as "blocked"', async () => {
+    it('reads a stored "allow" on a tool of Besidka\'s client as "ask"',
+      async () => {
+        await testDb.db.insert(schema.besidkaToolPermissions).values({
+          userId,
+          toolName: GOOGLE_DRIVE_LIST_TOOL_NAME,
+          mode: 'allow',
+        })
+
+        expect(modeOf(await call(getPath))[GOOGLE_DRIVE_LIST_TOOL_NAME])
+          .toBe('ask')
+      })
+
+    it('reads a stored "allow" on an own-client tool as "allow"',
+      async () => {
+        mocks.isAdmin = true
+        mocks.flags = new Set(['google.drive', 'google.byo', 'google.gmail'])
+        await testDb.db.insert(schema.besidkaToolPermissions).values({
+          userId,
+          toolName: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+          mode: 'allow',
+        })
+
+        expect(modeOf(await call(getPath))[GOOGLE_GMAIL_SEARCH_TOOL_NAME])
+          .toBe('allow')
+      })
+
+    it('reads an unknown stored mode as "blocked"', async () => {
       await testDb.db.insert(schema.besidkaToolPermissions).values({
         userId,
         toolName: GOOGLE_DRIVE_LIST_TOOL_NAME,
-        mode: 'allow',
+        mode: 'whatever' as 'blocked',
       })
 
       expect(modeOf(await call(getPath))[GOOGLE_DRIVE_LIST_TOOL_NAME])
@@ -310,6 +360,7 @@ describe('Google tool permission routes', () => {
                 target: 'drive:read',
                 mode: 'blocked',
                 changed: 2,
+                unchanged: 0,
               },
             },
           },
@@ -326,7 +377,6 @@ describe('Google tool permission routes', () => {
 
       for (const body of [
         { service: 'drive', kind: 'admin', mode: 'blocked' },
-        { service: 'drive', kind: 'read', mode: 'allow' },
         {
           tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
           service: 'drive',
@@ -351,21 +401,217 @@ describe('Google tool permission routes', () => {
         expect(await rows()).toHaveLength(9)
       })
 
-    it('answers 400 for "allow", an unknown mode and a missing mode',
-      async () => {
-        for (const body of [
-          { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'allow' },
-          { service: 'drive', mode: 'allow' },
-          { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'maybe' },
-          { tool: GOOGLE_DRIVE_LIST_TOOL_NAME },
-          { mode: 'ask' },
-          null,
+    it('answers 400 for an unknown mode and a missing mode', async () => {
+      for (const body of [
+        { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'maybe' },
+        { tool: GOOGLE_DRIVE_LIST_TOOL_NAME },
+        { mode: 'ask' },
+        null,
+      ]) {
+        expect((await failureOf(put(body))).status).toBe(400)
+      }
+
+      expect(await rows()).toHaveLength(0)
+    })
+
+    describe('Always allow', () => {
+      const ownClientFlags = [
+        'google.drive',
+        'google.byo',
+        'google.gmail',
+        'google.calendar',
+      ]
+
+      beforeEach(() => {
+        mocks.isAdmin = true
+        mocks.flags = new Set(ownClientFlags)
+      })
+
+      it('stores "allow" for one own-client tool and reads it back',
+        async () => {
+          const result = await put({
+            tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+            mode: 'allow',
+          })
+
+          expect(modeOf(result)[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe('allow')
+          expect(result.unchanged).toEqual([])
+          expect((await rows()).map(row => [row.toolName, row.mode])).toEqual([
+            [GOOGLE_GMAIL_SEARCH_TOOL_NAME, 'allow'],
+          ])
+          expect(modeOf(await call(getPath))[GOOGLE_GMAIL_SEARCH_TOOL_NAME])
+            .toBe('allow')
+        })
+
+      it('answers 400 for "allow" on a tool of Besidka\'s client and stores '
+        + 'nothing', async () => {
+        for (const tool of [
+          GOOGLE_DRIVE_LIST_TOOL_NAME,
+          'google__drive_read_file',
+          'google__drive_save_file',
         ]) {
-          expect((await failureOf(put(body))).status).toBe(400)
+          expect((await failureOf(put({ tool, mode: 'allow' }))).status)
+            .toBe(400)
         }
 
         expect(await rows()).toHaveLength(0)
       })
+
+      it('does not count the 400 for a non-allowable tool against the rate '
+        + 'limit', async () => {
+        await failureOf(put({
+          tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+          mode: 'allow',
+        }))
+
+        expect(kv.put).not.toHaveBeenCalled()
+      })
+
+      it('applies "allow" to the own-client members of a service group and '
+        + 'leaves the rest unchanged, and says which', async () => {
+        await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' })
+
+        const result = await put({ service: 'drive', mode: 'allow' })
+
+        expect(modeOf(result)).toMatchObject({
+          [GOOGLE_DRIVE_LIST_TOOL_NAME]: 'blocked',
+          google__drive_read_file: 'ask',
+          google__drive_save_file: 'ask',
+          google__drive_search: 'allow',
+          google__drive_read_found_file: 'allow',
+          google__drive_list_folder: 'allow',
+          google__drive_create_folder: 'allow',
+          google__drive_rename: 'allow',
+          google__drive_move: 'allow',
+        })
+        expect(result.unchanged.sort()).toEqual([
+          GOOGLE_DRIVE_LIST_TOOL_NAME,
+          'google__drive_read_file',
+          'google__drive_save_file',
+        ])
+        expect((await rows()).map(row => row.mode).sort()).toEqual([
+          'allow',
+          'allow',
+          'allow',
+          'allow',
+          'allow',
+          'allow',
+          'blocked',
+        ])
+      })
+
+      it('applies "allow" to the read or write tools of a service only',
+        async () => {
+          const result = await put({
+            service: 'gmail',
+            kind: 'write',
+            mode: 'allow',
+          })
+
+          expect(modeOf(result)).toMatchObject({
+            google__gmail_search: 'ask',
+            google__gmail_read_thread: 'ask',
+            google__gmail_create_draft: 'allow',
+          })
+          expect(result.unchanged).toEqual([])
+        })
+
+      it('answers 400 for a group with no tool that can be always allowed',
+        async () => {
+          mocks.flags = new Set(['google.drive'])
+          mocks.isAdmin = false
+
+          for (const body of [
+            { service: 'drive', mode: 'allow' },
+            { service: 'drive', kind: 'read', mode: 'allow' },
+            { service: 'drive', kind: 'write', mode: 'allow' },
+          ]) {
+            expect((await failureOf(put(body))).status).toBe(400)
+          }
+
+          expect(await rows()).toHaveLength(0)
+        })
+
+      it('lets "ask" and "blocked" apply to every tool of a group, and '
+        + 'reports none unchanged', async () => {
+        await put({ service: 'drive', mode: 'allow' })
+
+        const asked = await put({ service: 'drive', mode: 'ask' })
+
+        expect(asked.unchanged).toEqual([])
+        expect(await rows()).toHaveLength(0)
+
+        const blocked = await put({ service: 'drive', mode: 'blocked' })
+
+        expect(blocked.unchanged).toEqual([])
+        expect(await rows()).toHaveLength(9)
+      })
+
+      it('turns "allow" back to "ask" by deleting the row', async () => {
+        await put({ tool: 'google__calendar_create_event', mode: 'allow' })
+        await put({ tool: 'google__calendar_create_event', mode: 'ask' })
+
+        expect(await rows()).toHaveLength(0)
+      })
+
+      it('answers 404 to a non-admin even with the flags on', async () => {
+        mocks.isAdmin = false
+
+        expect((await failureOf(put({
+          tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+          mode: 'allow',
+        }))).status).toBe(404)
+        expect(await rows()).toHaveLength(0)
+      })
+
+      it('answers 404 for a service whose flag is off', async () => {
+        mocks.flags = new Set(['google.drive', 'google.byo'])
+
+        expect((await failureOf(put({
+          tool: 'google__calendar_create_event',
+          mode: 'allow',
+        }))).status).toBe(404)
+      })
+
+      it('keeps the strict body: an extra field is a 400', async () => {
+        expect((await failureOf(put({
+          tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+          mode: 'allow',
+          confirm: true,
+        }))).status).toBe(400)
+        expect(await rows()).toHaveLength(0)
+      })
+
+      it('limits "allow" writes to 60 a minute for one target', async () => {
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          await put({ tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME, mode: 'allow' })
+        }
+
+        expect((await failureOf(put({
+          tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+          mode: 'allow',
+        }))).status).toBe(429)
+      })
+
+      it('logs the mode, the counts and no tool content', async () => {
+        await put({ service: 'drive', mode: 'allow' })
+
+        expect(mocks.logged).toContainEqual({
+          attributes: {
+            google: {
+              toolPermission: {
+                action: 'set',
+                scope: 'service',
+                target: 'drive',
+                mode: 'allow',
+                changed: 6,
+                unchanged: 3,
+              },
+            },
+          },
+        })
+      })
+    })
 
     it('answers 400 for an unknown tool or service, a Besidka tool name and '
       + 'a body with both fields', async () => {

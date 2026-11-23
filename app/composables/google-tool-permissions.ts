@@ -2,6 +2,7 @@ import { parseError } from 'evlog'
 import {
   GOOGLE_TOOL_MODE_LABELS,
   findGoogleCatalogTool,
+  isGoogleToolAlwaysAllowable,
 } from '#shared/utils/google-tool-catalog'
 import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
 import type {
@@ -79,9 +80,16 @@ export function useGoogleToolPermissions() {
     return failure?.statusCode === NOT_FOUND_STATUS
   })
 
-  function findTargetNames(target: GoogleToolPermissionTarget): string[] {
+  function findTargetNames(
+    target: GoogleToolPermissionTarget,
+    mode: GoogleToolPermissionMode,
+  ): string[] {
     return (data.value?.tools ?? [])
       .filter((tool) => {
+        if (mode === 'allow' && !isGoogleToolAlwaysAllowable(tool.name)) {
+          return false
+        }
+
         if ('tool' in target) {
           return tool.name === target.tool
         }
@@ -119,6 +127,7 @@ export function useGoogleToolPermissions() {
   function describeChange(
     target: GoogleToolPermissionTarget,
     mode: GoogleToolPermissionMode,
+    unchanged: readonly string[],
   ): string {
     const modeLabel = GOOGLE_TOOL_MODE_LABELS[mode]
 
@@ -132,8 +141,11 @@ export function useGoogleToolPermissions() {
     const subject = 'kind' in target
       ? `${service} ${target.kind} tools`
       : `${service} tools`
+    const leftAsIs = unchanged.length > 0
+      ? ` ${unchanged.length} stayed as they were.`
+      : ''
 
-    return `${subject}: ${modeLabel}.`
+    return `${subject}: ${modeLabel}.${leftAsIs}`
   }
 
   function mergeSupersededTools(
@@ -158,7 +170,7 @@ export function useGoogleToolPermissions() {
     target: GoogleToolPermissionTarget,
     mode: GoogleToolPermissionMode,
   ) {
-    const names = findTargetNames(target)
+    const names = findTargetNames(target, mode)
 
     saveSequence += 1
 
@@ -186,10 +198,17 @@ export function useGoogleToolPermissions() {
         },
       )
 
-      data.value = mergeSupersededTools(response, seq)
+      data.value = mergeSupersededTools(
+        { tools: response.tools },
+        seq,
+      )
 
       if (ownedNames().length > 0) {
-        announcement.value = describeChange(target, mode)
+        announcement.value = describeChange(
+          target,
+          mode,
+          response.unchanged ?? [],
+        )
       }
     } catch (exception) {
       const parsedException = parseError(exception)

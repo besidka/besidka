@@ -476,9 +476,11 @@ import {
   deleteToolApprovalTurn,
 } from '~~/server/utils/tool-approval/kv'
 import { useToolApprovalSecret } from '~~/server/utils/tool-approval/secret'
+import { createGoogleRunGate } from '~~/server/utils/tool-approval/google-run-gate'
 import {
   chatHasAwaitingApproval,
   countChatGrantRuns,
+  countGrantRuns,
   createSendToolApproval,
   createToolApprovalStreamCollector,
   hasGuardedProviderTool,
@@ -2095,6 +2097,10 @@ export default defineEventHandler(async (event) => {
   const toolApprovalSend = createSendToolApproval({
     state: resume?.loaded.state ?? createApprovalState(),
     priorChatGrantRuns: countChatGrantRuns(resume?.assistant.parts ?? []),
+    priorAlwaysGrantRuns: countGrantRuns(
+      resume?.assistant.parts ?? [],
+      'always',
+    ),
   })
 
   sendHoldsGoogleTaint = () => toolApprovalSend.state.taint.has('google')
@@ -2784,6 +2790,16 @@ export default defineEventHandler(async (event) => {
           withGoogleDataFlag(parsedTools.tools, {
             isGoogleDerived: isGoogleDerivedSend,
             ensureFlagged: ensureGoogleDataFlag,
+          }),
+          createGoogleRunGate({
+            db,
+            kv: useKV(),
+            owner: {
+              userId,
+              chatPublicId: chat.id,
+              messagePublicId: assistantMessagePublicId,
+            },
+            logger: aiLogger,
           }),
         ),
       }

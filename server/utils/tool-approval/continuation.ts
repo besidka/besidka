@@ -477,7 +477,7 @@ export async function loadContinuation(input: {
  * of the call), so a tool the user set to Blocked after approving does not
  * run on resume; a Besidka call with no resolved mode fails closed as
  * Blocked. A Google tool reads the stored Google modes the send resolved
- * (`googleModes`, only Blocked or Needs approval exist for it): a tool the
+ * (`googleModes`: Blocked, Needs approval or Always allow): a tool the
  * user set to Blocked after approving is denied as blocked, and a tool with
  * no stored mode means `ask`. Connector tools keep `ask`: their Blocked
  * state is the C-5 tool settings, which hide the tool from the live tool

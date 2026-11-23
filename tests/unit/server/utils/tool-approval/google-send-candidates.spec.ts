@@ -228,11 +228,61 @@ describe('Google send candidates and Blocked tools', () => {
       .toBe('blocked')
   })
 
-  it('reads a stored "allow" as Blocked', async () => {
+  it('keeps a tool set to Always allow and stamps its entry with allow',
+    async () => {
+      await testDb.db.insert(schema.besidkaToolPermissions).values({
+        userId,
+        toolName: 'google__gmail_search',
+        mode: 'allow',
+      })
+
+      const google = await candidates()
+
+      expect(Object.keys(google.tools)).toContain('google__gmail_search')
+      expect(google.entries.get('google__gmail_search')?.permissionMode)
+        .toBe('allow')
+      expect(google.permissionModes?.get('google__gmail_search'))
+        .toBe('allow')
+      expect(google.entries.get('google__gmail_read_thread')?.permissionMode)
+        .toBeUndefined()
+    })
+
+  it('reads a stored "allow" on a tool of Besidka\'s client as ask: kept, '
+    + 'not stamped', async () => {
+    await testDb.db.insert(schema.besidkaToolPermissions).values({
+      userId,
+      toolName: 'google__drive_read_file',
+      mode: 'allow',
+    })
+
+    const google = await candidates()
+
+    expect(Object.keys(google.tools)).toContain('google__drive_read_file')
+    expect(google.entries.get('google__drive_read_file')?.permissionMode)
+      .toBeUndefined()
+    expect(google.permissionModes?.get('google__drive_read_file')).toBe('ask')
+  })
+
+  it('lets a switch that is off in this chat win over Always allow',
+    async () => {
+      await testDb.db.insert(schema.besidkaToolPermissions).values({
+        userId,
+        toolName: 'google__gmail_search',
+        mode: 'allow',
+      })
+
+      const google = await candidates({ servicesOff: ['gmail'] })
+
+      expect(Object.keys(google.tools)).not.toContain('google__gmail_search')
+      expect(google.entries.get('google__gmail_search')?.permissionMode)
+        .toBe('blocked')
+    })
+
+  it('reads a stored unknown mode as Blocked', async () => {
     await testDb.db.insert(schema.besidkaToolPermissions).values({
       userId,
       toolName: 'google__gmail_search',
-      mode: 'allow',
+      mode: 'whatever' as 'blocked',
     })
 
     const google = await candidates()

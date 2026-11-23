@@ -79,7 +79,8 @@ export const GOOGLE_ENTRY_DEFINITIONS: Readonly<
       + 'Besidka\'s built-in Google connection it only reads the files you '
       + 'pick (Sheets through the Sheets API) and saves a file only after '
       + 'you approve it. With your own Google client and Change files '
-      + 'access it can also create folders when you approve.',
+      + 'access it can also create folders when you approve, or without '
+      + 'asking if you set that tool to Always allow.',
     connectLabel: 'Connect Google Drive',
   },
   'google-gmail': {
@@ -97,7 +98,8 @@ export const GOOGLE_ENTRY_DEFINITIONS: Readonly<
     title: 'Google Calendar',
     icon: GOOGLE_CALENDAR_ICON,
     description: 'List your events, check when you are busy and create one '
-      + 'event you approve.',
+      + 'event you approve, or without asking if you set that tool to '
+      + 'Always allow.',
     connectLabel: 'Connect Google Calendar',
   },
 }

@@ -35,7 +35,9 @@ import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
  * `tools`; its entry is an entry-only `buildBlockedGoogleEntry` record, so
  * an approval given before the Block is denied as blocked on resume.
  * `permissionModes` are the stored Google modes the send resolved (a tool
- * with no entry means "ask"), which the continuation reads.
+ * with no entry means "ask"), which the continuation reads. A tool the user
+ * set to Always allow keeps its entry with `permissionMode: 'allow'`, which
+ * the policy honors only for a tool that can be always allowed.
  */
 export interface GoogleSendTools {
   tools: ToolSet
@@ -81,7 +83,15 @@ export function dropBlockedGoogleTools(
   const entries = new Map<string, SendToolEntry>()
 
   for (const [toolName, entry] of google.entries) {
-    if (pickGoogleToolPermissionMode(toolName, modes) !== 'blocked') {
+    const mode = pickGoogleToolPermissionMode(toolName, modes)
+
+    if (mode === 'allow') {
+      entries.set(toolName, { ...entry, permissionMode: 'allow' })
+
+      continue
+    }
+
+    if (mode !== 'blocked') {
       entries.set(toolName, entry)
 
       continue
