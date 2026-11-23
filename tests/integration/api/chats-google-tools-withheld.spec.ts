@@ -157,6 +157,10 @@ const UNCONFIRMED_GEMINI: DirectModel = {
   providerId: 'google',
   modelId: 'gemini-3-pro',
 }
+const ANTHROPIC_MODEL: DirectModel = {
+  providerId: 'anthropic',
+  modelId: 'claude-sonnet-4-5',
+}
 const OPENAI_MODEL: DirectModel = {
   providerId: 'openai',
   modelId: 'gpt-5-mini',
@@ -195,7 +199,10 @@ function createTextModel() {
   return { model: new MockLanguageModelV4({ doStream }), doStream }
 }
 
-function createDb(input: { paidTierConfirmedAt?: Date | null }) {
+function createDb(input: {
+  paidTierConfirmedAt?: Date | null
+  storedMessages?: unknown[]
+}) {
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
     publicId: 'db-generated-public-id',
@@ -225,7 +232,7 @@ function createDb(input: { paidTierConfirmedAt?: Date | null }) {
             branchedFromShareSlug: null,
             googleDataAt: null,
             holdsMarkedOrigin: 0,
-            messages: [],
+            messages: input.storedMessages ?? [],
           })),
         },
         keys: {
@@ -300,16 +307,36 @@ function stubSendGlobals(directModel: DirectModel) {
   vi.stubGlobal('buildVapidSubject', vi.fn(() => 'mailto:test@example.com'))
 }
 
-function stubProviderBuilders(model: MockLanguageModelV4) {
+function stubProviderBuilders(
+  model: MockLanguageModelV4,
+  declaresProviderTool: boolean,
+) {
   const builder = vi.fn(async () => ({
     instance: model,
     tools: {},
     providerOptions: {},
   }))
+  const anthropicBuilder = vi.fn(async () => ({
+    instance: model,
+    tools: declaresProviderTool
+      ? {
+        tools: {
+          web_search_preview: {
+            type: 'provider',
+            id: 'anthropic.web_search_20250305',
+            args: {},
+          },
+        },
+      }
+      : {},
+    providerOptions: {},
+  }))
 
-  for (const name of ['useOpenAI', 'useGoogle', 'useAnthropic']) {
+  for (const name of ['useOpenAI', 'useGoogle']) {
     vi.stubGlobal(name, builder)
   }
+
+  vi.stubGlobal('useAnthropic', anthropicBuilder)
 }
 
 async function getHandler() {
@@ -323,16 +350,21 @@ async function getHandler() {
 async function runSend(input: {
   directModel?: DirectModel
   paidTierConfirmedAt?: Date | null
+  storedMessages?: unknown[]
+  declaresProviderTool?: boolean
 }) {
   const directModel = input.directModel ?? UNCONFIRMED_GEMINI
   const { model, doStream } = createTextModel()
   const writerIndex = mocks.writers.length
 
   stubSendGlobals(directModel)
-  stubProviderBuilders(model)
+  stubProviderBuilders(model, input.declaresProviderTool === true)
   vi.stubGlobal('useGateway', vi.fn())
 
-  const created = createDb({ paidTierConfirmedAt: input.paidTierConfirmedAt })
+  const created = createDb({
+    paidTierConfirmedAt: input.paidTierConfirmedAt,
+    storedMessages: input.storedMessages,
+  })
 
   vi.stubGlobal('useDb', () => created.db)
 
@@ -452,7 +484,50 @@ describe('chat send: Google tools withheld note', { timeout: 20_000 }, () => {
       }
     })
 
-  it('stores a part of its own on the assistant message of a second send',
+  it('keeps a note stored on an earlier assistant message out of the '
+    + 'history the model receives', async () => {
+    const result = await runSend({
+      storedMessages: [
+        {
+          id: 'stored-user-1',
+          publicId: 'stored-user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'What is on my calendar?' }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(1_000),
+        },
+        {
+          id: 'stored-assistant-1',
+          publicId: 'stored-assistant-public-1',
+          role: 'assistant',
+          parts: [
+            {
+              type: WITHHELD_PART_TYPE,
+              data: { reason: 'model_may_not_receive_google_data' },
+            },
+            { type: 'text', text: 'I have no calendar tool here.' },
+          ],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(2_000),
+        },
+      ],
+    })
+    const sentToModel = JSON.stringify(result.modelCalls)
+
+    expect(result.modelCalls).toHaveLength(1)
+    expect(sentToModel).toContain('I have no calendar tool here.')
+    expect(sentToModel).not.toContain(WITHHELD_PART_TYPE)
+
+    for (const text of NOTE_TEXTS) {
+      expect(sentToModel).not.toContain(text)
+    }
+  })
+
+  it('writes and stores one part for each of two independent sends',
     async () => {
       const first = await runSend({})
       const second = await runSend({})
@@ -464,6 +539,28 @@ describe('chat send: Google tools withheld note', { timeout: 20_000 }, () => {
       expect(second.writtenChunks.filter((chunk) => {
         return chunk.type === WITHHELD_PART_TYPE
       })).toHaveLength(1)
+    })
+
+  it('writes the provider tool reason when a provider tool stays callable',
+    async () => {
+      const result = await runSend({
+        directModel: ANTHROPIC_MODEL,
+        declaresProviderTool: true,
+      })
+
+      expect(result.offeredToolNames).not.toContain('google__drive_search')
+      expect(result.writtenChunks.filter((chunk) => {
+        return chunk.type === WITHHELD_PART_TYPE
+      })).toEqual([{
+        type: WITHHELD_PART_TYPE,
+        data: { reason: 'provider_tool_not_removable' },
+      }])
+      expect(result.storedAssistantParts).toHaveLength(1)
+      expect(result.storedAssistantParts[0]![0]).toEqual({
+        type: WITHHELD_PART_TYPE,
+        data: { reason: 'provider_tool_not_removable' },
+      })
+      expect(withheldParts(result.storedAssistantParts[0]!)).toHaveLength(1)
     })
 
   it('writes no part when the model may receive Google data', async () => {
