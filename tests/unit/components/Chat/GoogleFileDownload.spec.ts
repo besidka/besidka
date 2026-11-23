@@ -209,22 +209,22 @@ describe('Chat/GoogleFileDownload', () => {
     expect(details.open).toBe(true)
   })
 
-  it('anchors the menu to the viewport below sm and gives items a 44px '
+  it('anchors the menu to the viewport below md and gives items a 44px '
     + 'touch target', async () => {
     const wrapper = await mountMenu()
     const menu = wrapper.get('[data-testid="google-file-download-menu"]')
     const items = wrapper.findAll('a[download]')
 
     expect(menu.classes()).toEqual(expect.arrayContaining([
-      'max-sm:fixed',
-      'max-sm:inset-x-3',
-      'max-sm:w-auto',
+      'max-md:fixed',
+      'max-md:inset-x-3',
+      'max-md:w-auto',
       'w-64',
     ]))
     expect(items.length).toBeGreaterThan(0)
 
     for (const item of items) {
-      expect(item.classes()).toContain('max-sm:min-h-11')
+      expect(item.classes()).toContain('max-md:min-h-11')
     }
   })
 

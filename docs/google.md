@@ -5369,10 +5369,12 @@ either). The item is disabled for 1.5 seconds after a click, because a
 second request within a second would meet KV's one write a second on the
 rate-limit key and fail closed.
 
-On a phone (below `sm`) the panel is a full-screen bottom sheet and the
-trigger is a 38 px icon button next to "Open in", so the menu is anchored to
-the viewport (`max-sm:fixed max-sm:inset-x-3 max-sm:w-auto`, directly under the
-trigger) instead of to the trigger, and each item is at least 44 px tall. The
+Below `md` (768 px) the panel is a full-screen bottom sheet and the trigger sits
+in the sheet header next to "Open in" (a 38 px icon button below `sm`, labeled
+from `sm`, and the header still fits both at 640 px), so the menu is anchored
+to the viewport (`max-md:fixed max-md:inset-x-3 max-md:w-auto`, directly under
+the trigger) instead of to the trigger, and each item is at least 44 px tall
+(`max-md:min-h-11`). The
 sheet's header is also its swipe-to-close area, so `UiSidePanel.onSwipeStart`
 must skip a `summary` like it skips a `button` or `a`: otherwise the pointer
 capture it takes on pointer down retargets the click and the menu never opens
