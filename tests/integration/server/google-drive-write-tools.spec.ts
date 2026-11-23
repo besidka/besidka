@@ -6,6 +6,7 @@ import {
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_WRITE_TOOL_NAMES,
 } from '#shared/utils/google-drive-tools'
+import { readDriveWriteApprovalView } from '#shared/utils/google-drive-write'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
 import {
   DRIVE_CREATE_NO_APPROVAL_TEXT,
@@ -57,6 +58,10 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 
   return await skillPublicIdMockFactory()
 })
+
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
+}))
 
 vi.mock('~~/server/api/v1/storage/index.get', () => ({
   invalidateStorageCache: vi.fn(async () => undefined),
@@ -396,7 +401,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
       expect(output.items).toContain('<untrusted_tool_result')
       expect(output.items.split(CLOSING_TAG)).toHaveLength(2)
       expect(itemsOf(output).map(item => item.item_id))
-        .toEqual([ROOT_ID, CHILD_ID, FILE_ID])
+        .toEqual(['root', CHILD_ID, FILE_ID])
       expect(itemsOf(output)[0]).toMatchObject({
         role: 'folder',
         name: 'My Drive',
@@ -677,12 +682,70 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         })).toBe(true)
       })
 
-    it('treats the real root id of a listing like My Drive', async () => {
-      const { toolMap } = await builtWithKnownFolder()
+    it('gives the model the alias, never the real root id, so the card and '
+      + 'the request agree for a top-level create', async () => {
+      drive.listing = []
 
-      await create(toolMap, { name: 'Reports', parentFolderId: ROOT_ID })
+      const built = await candidates()
+      const toolMap = built.tools as unknown as ToolMap
+      const listed = await list(toolMap, { folderId: 'root' })
+      const input = { name: 'Reports', parentFolderId: listed.folder_id }
+      const entry = built.entries.get(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME)!
+      const modelOutput = toolMap[GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME]!
+        .toModelOutput({ output: listed }).value
+
+      expect(listed.folder_id).toBe('root')
+      expect(itemsOf(listed)[0]).toMatchObject({ item_id: 'root' })
+      expect(modelOutput).not.toContain(ROOT_ID)
+      expect(listed.references[0].id).toBe(ROOT_ID)
+      expect(entry.failsWithoutRunning?.(input)).toBe(false)
+
+      const view = readDriveWriteApprovalView(
+        GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
+        input,
+        await entry.describeNames?.(input),
+      )
+
+      expect(view?.parent).toEqual({ isRoot: true, name: null, id: null })
+
+      await create(toolMap, input)
 
       expect(JSON.parse(posts()[0]!.body)).not.toHaveProperty('parents')
+    })
+
+    it('refuses the real root id as a parent without asking and without a '
+      + 'request, and says to use the alias', async () => {
+      drive.listing = []
+
+      const built = await candidates()
+      const toolMap = built.tools as unknown as ToolMap
+      const entry = built.entries.get(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME)!
+      const input = { name: 'Reports', parentFolderId: ROOT_ID }
+
+      await list(toolMap, { folderId: 'root' })
+      drive.requests.length = 0
+
+      expect(entry.failsWithoutRunning?.(input)).toBe(true)
+
+      const message = await rejectionOf(create(toolMap, input))
+
+      expect(message).toContain(`use "root"`)
+      expect(drive.requests).toHaveLength(0)
+    })
+
+    it('logs the code of a refused destination and nothing else', async () => {
+      const { toolMap } = await builtWithKnownFolder()
+
+      drive.items[CHILD_ID] = folderMeta(CHILD_ID, { shared: true })
+      mocks.logged = []
+
+      await rejectionOf(
+        create(toolMap, { name: 'Reports', parentFolderId: CHILD_ID }),
+      )
+
+      expect(JSON.stringify(mocks.logged)).toContain('"refusal":"shared"')
+      expect(JSON.stringify(mocks.logged)).not.toContain(CHILD_ID)
+      expect(JSON.stringify(mocks.logged)).not.toContain('Reports')
     })
 
     it.each([

@@ -123,6 +123,10 @@ const UNKNOWN_FOLDER_TEXT = 'That folder id was not returned by '
   + 'and pass a folder id from its answer, or leave the folder out for the '
   + 'top level of My Drive. Nothing was changed.'
 
+const ROOT_ALIAS_TEXT = 'To create a folder at the top level of My Drive, '
+  + `leave parentFolderId out or use "${GOOGLE_DRIVE_ROOT_ALIAS}". Nothing was `
+  + 'created.'
+
 const UNKNOWN_LIST_FOLDER_TEXT = 'That folderId was not returned by a Google '
   + 'Drive tool in this chat. Use the folderId "root" for the top level of '
   + `My Drive, or find a folder with ${GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME} `
@@ -340,7 +344,9 @@ function buildListOutput(input: {
   const headerLine = input.header
     ? JSON.stringify({
       role: 'folder',
-      item_id: input.header.id,
+      item_id: input.header.isRoot
+        ? GOOGLE_DRIVE_ROOT_ALIAS
+        : input.header.id,
       name: input.header.isRoot ? GOOGLE_DRIVE_ROOT_TITLE : input.header.name,
       isRoot: input.header.isRoot,
     })
@@ -377,7 +383,13 @@ function buildListOutput(input: {
       ...shown.map(itemReference),
     ],
     count: shown.length,
-    ...(input.header ? { folder_id: input.header.id } : {}),
+    ...(input.header
+      ? {
+        folder_id: input.header.isRoot
+          ? GOOGLE_DRIVE_ROOT_ALIAS
+          : input.header.id,
+      }
+      : {}),
     items: text
       ? frameUntrustedResult({
         slug: FRAME_SLUG,
@@ -475,7 +487,10 @@ export async function buildGoogleDriveWriteTools(
     toolName: string,
     parentFolderId: string | null,
   ): boolean {
-    if (parentFolderId === null || index.folders.has(parentFolderId)) {
+    if (
+      parentFolderId === null
+      || (index.folders.has(parentFolderId) && !isRealRootId(parentFolderId))
+    ) {
       return true
     }
 
@@ -502,34 +517,47 @@ export async function buildGoogleDriveWriteTools(
     return false
   }
 
-  function parentIsRoot(parentFolderId: string | null): boolean {
-    return parentFolderId === null
-      || isDriveRootItem(index.folders.get(parentFolderId))
+  function isRealRootId(parentFolderId: string | null): boolean {
+    return parentFolderId !== null
+      && isDriveRootItem(index.folders.get(parentFolderId))
+  }
+
+  function refuseFolder(
+    code: keyof typeof REFUSAL_TEXT,
+    status: number,
+  ): never {
+    logger.set({
+      attributes: {
+        googleByoTools: { driveCreateFolder: { refusal: code } },
+      },
+    })
+
+    throw toolFailure(REFUSAL_TEXT[code], status)
   }
 
   function assertWritableFolder(meta: DriveItemMeta): void {
     if (meta.mimeType !== GOOGLE_DRIVE_FOLDER_MIME_TYPE) {
-      throw toolFailure(REFUSAL_TEXT.notFolder, 400)
+      refuseFolder('notFolder', 400)
     }
 
     if (meta.driveId !== null) {
-      throw toolFailure(REFUSAL_TEXT.sharedDrive, 403)
+      refuseFolder('sharedDrive', 403)
     }
 
     if (meta.trashed !== false) {
-      throw toolFailure(REFUSAL_TEXT.trashed, 400)
+      refuseFolder('trashed', 400)
     }
 
     if (meta.ownedByMe !== true) {
-      throw toolFailure(REFUSAL_TEXT.notOwned, 403)
+      refuseFolder('notOwned', 403)
     }
 
     if (meta.shared !== false) {
-      throw toolFailure(REFUSAL_TEXT.shared, 403)
+      refuseFolder('shared', 403)
     }
 
     if (meta.canAddChildren !== true) {
-      throw toolFailure(REFUSAL_TEXT.cannotAdd, 403)
+      refuseFolder('cannotAdd', 403)
     }
   }
 
@@ -774,6 +802,10 @@ export async function buildGoogleDriveWriteTools(
         throw toolFailure(DRIVE_CREATE_NO_APPROVAL_TEXT, 400)
       }
 
+      if (isRealRootId(parentFolderId)) {
+        throw toolFailure(ROOT_ALIAS_TEXT, 400)
+      }
+
       if (
         parentFolderId !== null
         && (
@@ -786,8 +818,7 @@ export async function buildGoogleDriveWriteTools(
         throw toolFailure(UNKNOWN_FOLDER_TEXT, 400)
       }
 
-      const isRootParent = parentIsRoot(parentFolderId)
-      const parentId = isRootParent ? null : parentFolderId
+      const parentId = parentFolderId
       const context = await readContext()
       const digest = await buildDriveCreateDigest(userId, approvalId)
       const folderId = await readCreateId(digest, context)
@@ -921,7 +952,7 @@ export async function buildGoogleDriveWriteTools(
           : summarizeFolderName(index.folders.get(parentFolderId))
         const quotedName = quoteText(name, NAME_SUMMARY_MAX)
 
-        if (parentFolderId === null || parentIsRoot(parentFolderId)) {
+        if (parentFolderId === null) {
           return `Create the folder ${quotedName} in My Drive`
         }
 

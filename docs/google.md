@@ -4331,8 +4331,13 @@ A file a folder listing returns is never a `foundFile`: only a
 `google__drive_read_found_file`. A `drive-root` reference takes its title
 from our code whatever the stored value says; the root alias `root` is never
 sent as an id in a stored reference (it does not have the shape), so a
-listing stores the real root id Drive answers with, and that id counts as My
-Drive from then on (a create under it sends no `parents`). `list_folder`
+listing of `root` stores the real root id Drive answers with in its
+references (never seen by the model), and the model itself gets the alias
+(`folder_id` and the header `item_id` are `root`). The real root id can still
+reach the model through a search hit's `parent_folder_id`; as a
+`parentFolderId` of a create it is refused without asking, with a fixed
+sentence that says to leave the parent out or use `root`, so the card ("My
+Drive (top level)") and the request (no `parents`) always agree. `list_folder`
 also accepts the `parentId` of any known item (so a search hit's folder can be
 opened), but a raw `parentId` is never a valid destination. An unknown id is
 refused without asking the user (`failsWithoutRunning` plus a refusal latch,
@@ -4399,7 +4404,9 @@ API is not turned on in your Google Cloud project", 403 "no permission",
 never forwarded. Requests per call: at most four for a create (the parent
 check, `generateIds`, the create, the read-back) plus one token refresh, two
 for a list of a folder, one for a name search. Logs hold the mode, counts,
-`alreadyExisted` and `unconfirmed`; no name, id or link.
+`alreadyExisted`, `unconfirmed` and the code of a refused destination
+(`notFolder`, `sharedDrive`, `trashed`, `notOwned`, `shared`, `cannotAdd`); no
+name, id or link.
 
 ### 19.5 The approval card
 
