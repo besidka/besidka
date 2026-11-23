@@ -105,11 +105,127 @@ describe('Chat/GoogleFileDownload', () => {
   it('closes on Escape and returns focus to the trigger', async () => {
     const wrapper = await mountMenu()
     const details = wrapper.get('details').element as HTMLDetailsElement
+    const link = wrapper.get('[data-testid="google-file-download-docx"]')
+    const trigger = wrapper.get('[data-testid="google-file-download-trigger"]')
+
+    const linkElement = link.element as HTMLElement
 
     details.open = true
-    await wrapper.get('details').trigger('keydown', { key: 'Escape' })
+    linkElement.focus()
+    await link.trigger('keydown', { key: 'Escape' })
 
     expect(details.open).toBe(false)
+    expect(document.activeElement).toBe(trigger.element)
+  })
+
+  it('stays open when focus moves from the trigger to an item', async () => {
+    const wrapper = await mountMenu()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+    const trigger = wrapper.get('[data-testid="google-file-download-trigger"]')
+    const link = wrapper.get('[data-testid="google-file-download-docx"]')
+
+    details.open = true
+    trigger.element.dispatchEvent(new FocusEvent('focusout', {
+      bubbles: true,
+      relatedTarget: link.element,
+    }))
+
+    expect(details.open).toBe(true)
+  })
+
+  it('stays open when focus moves between items', async () => {
+    const wrapper = await mountMenu()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+    const first = wrapper.get('[data-testid="google-file-download-docx"]')
+    const second = wrapper.get('[data-testid="google-file-download-txt"]')
+
+    details.open = true
+    first.element.dispatchEvent(new FocusEvent('focusout', {
+      bubbles: true,
+      relatedTarget: second.element,
+    }))
+
+    expect(details.open).toBe(true)
+  })
+
+  it('closes when focus leaves the component', async () => {
+    const wrapper = await mountMenu()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+    const trigger = wrapper.get('[data-testid="google-file-download-trigger"]')
+    const outside = document.createElement('button')
+
+    document.body.appendChild(outside)
+    details.open = true
+    trigger.element.dispatchEvent(new FocusEvent('focusout', {
+      bubbles: true,
+      relatedTarget: outside,
+    }))
+
+    expect(details.open).toBe(false)
+
+    outside.remove()
+  })
+
+  it('closes when focus leaves to nothing', async () => {
+    const wrapper = await mountMenu()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+    const link = wrapper.get('[data-testid="google-file-download-docx"]')
+
+    details.open = true
+    link.element.dispatchEvent(new FocusEvent('focusout', {
+      bubbles: true,
+      relatedTarget: null,
+    }))
+
+    expect(details.open).toBe(false)
+  })
+
+  it('closes on a tap outside that does not move focus', async () => {
+    const wrapper = await mountMenu()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+
+    details.open = true
+    document.body.dispatchEvent(new MouseEvent('pointerdown', {
+      bubbles: true,
+    }))
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(details.open).toBe(false)
+  })
+
+  it('does not close on a tap inside the menu', async () => {
+    const wrapper = await mountMenu()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+    const menu = wrapper.get('[data-testid="google-file-download-menu"]')
+
+    details.open = true
+    menu.element.dispatchEvent(new MouseEvent('pointerdown', {
+      bubbles: true,
+    }))
+    menu.element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(details.open).toBe(true)
+  })
+
+  it('anchors the menu to the viewport below md and gives items a 44px '
+    + 'touch target', async () => {
+    const wrapper = await mountMenu()
+    const menu = wrapper.get('[data-testid="google-file-download-menu"]')
+    const items = wrapper.findAll('a[download]')
+
+    expect(menu.classes()).toEqual(expect.arrayContaining([
+      'max-md:fixed',
+      'max-md:inset-x-3',
+      'max-md:w-auto',
+      'w-64',
+    ]))
+    expect(items.length).toBeGreaterThan(0)
+
+    for (const item of items) {
+      expect(item.classes()).toContain('max-md:min-h-11')
+    }
   })
 
   it('closes after an item is chosen and ignores a second click within a '

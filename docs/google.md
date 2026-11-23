@@ -5369,6 +5369,19 @@ either). The item is disabled for 1.5 seconds after a click, because a
 second request within a second would meet KV's one write a second on the
 rate-limit key and fail closed.
 
+Below `md` (768 px) the panel is a full-screen bottom sheet and the trigger sits
+in the sheet header next to "Open in" (a 38 px icon button below `sm`, labeled
+from `sm`, and the header still fits both at 640 px), so the menu is anchored
+to the viewport (`max-md:fixed max-md:inset-x-3 max-md:w-auto`, directly under
+the trigger) instead of to the trigger, and each item is at least 44 px tall
+(`max-md:min-h-11`). The
+sheet's header is also its swipe-to-close area, so `UiSidePanel.onSwipeStart`
+must skip a `summary` like it skips a `button` or `a`: otherwise the pointer
+capture it takes on pointer down retargets the click and the menu never opens
+(it worked docked at 1280 px, where there is no swipe area). A tap outside
+closes the menu through `onClickOutside`, because iOS Safari does not move
+focus on a tap and so never fires `focusout`.
+
 Order on the server: `requireGoogleByoAccess` (same-origin read guard,
 session, admin plus `google.byo`, whose parent flag `google.drive` is
 implied; a 404 for anyone else), the hourly rate limit (30 downloads an

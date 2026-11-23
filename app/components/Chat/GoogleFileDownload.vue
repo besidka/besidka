@@ -20,7 +20,7 @@
       <span class="max-sm:sr-only">Download</span>
     </summary>
     <div
-      class="dropdown-content z-50 w-64 pt-2"
+      class="dropdown-content z-50 w-64 pt-2 max-md:fixed max-md:inset-x-3 max-md:w-auto"
       data-testid="google-file-download-menu"
       @mousedown.prevent
     >
@@ -32,6 +32,7 @@
           <a
             :href="getDownloadUrl(option.format)"
             download
+            class="max-md:min-h-11 max-md:items-center"
             :class="{ 'pointer-events-none opacity-60': isCoolingDown }"
             :aria-disabled="isCoolingDown ? 'true' : undefined"
             :data-testid="`google-file-download-${option.format}`"
@@ -106,12 +107,14 @@ function onEscape(event: KeyboardEvent) {
 function onFocusOut(event: FocusEvent) {
   const nextTarget = event.relatedTarget
 
-  if (!(nextTarget instanceof Node) || menu.value?.contains(nextTarget)) {
+  if (nextTarget instanceof Node && menu.value?.contains(nextTarget)) {
     return
   }
 
   closeMenu()
 }
+
+onClickOutside(menu, closeMenu)
 
 function startCooldown() {
   isCoolingDown.value = true
