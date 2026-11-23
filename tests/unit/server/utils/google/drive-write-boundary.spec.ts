@@ -5,6 +5,7 @@ import {
   buildDriveCreateMetadata,
   buildDriveMoveRequest,
   buildDriveRenameRequest,
+  createDriveFileWithContent,
   patchDriveItem,
 } from '~~/server/utils/google/drive-write-api'
 
@@ -30,12 +31,13 @@ function read(path: string): string {
 }
 
 describe('the Drive write boundary', () => {
-  it('has a Drive write module that reads, creates with one POST and '
-    + 'changes with one PATCH, and never deletes or replaces', () => {
+  it('has a Drive write module that reads, creates with two POSTs (a '
+    + 'folder, and a file with content) and changes with one PATCH, and '
+    + 'never deletes or replaces', () => {
     const source = read(API_PATH)
 
     expect(source).not.toMatch(/method: 'DELETE'|method: 'PUT'/)
-    expect(source.match(/method: 'POST'/g)).toHaveLength(1)
+    expect(source.match(/method: 'POST'/g)).toHaveLength(2)
     expect(source.match(/method: 'PATCH'/g)).toHaveLength(1)
     expect(source.match(/method: 'GET'/g)?.length).toBeGreaterThan(0)
   })
@@ -410,7 +412,82 @@ describe('the Drive write boundary', () => {
       expect(call).not.toContain('uploadType')
     }
 
-    expect(read(API_PATH)).not.toMatch(/\/upload\/drive/)
+    const apiSource = read(API_PATH)
+    const patchSource = apiSource.slice(
+      apiSource.indexOf('async function patchDriveItem'),
+      apiSource.indexOf('export interface ListedDriveItem'),
+    )
+
+    expect(patchSource).toContain('driveItemUrl(snapshot.itemId')
+    expect(patchSource).not.toMatch(/DRIVE_UPLOAD_URL|\/upload\/|uploadType/)
+  })
+
+  it('names the upload endpoint once and reaches it only from the '
+    + 'multipart create, a POST of uploadType=multipart', async () => {
+    const source = read(API_PATH)
+
+    expect(source.match(/googleapis\.com\/upload\//g)).toHaveLength(1)
+    expect(source.match(/DRIVE_UPLOAD_URL/g)).toHaveLength(2)
+    expect(source.match(/uploadType: 'multipart'/g)).toHaveLength(1)
+    expect(source).not.toMatch(
+      /uploadType: 'resumable'|uploadType: 'media'|uploadType=media|uploadType=resumable/,
+    )
+
+    const calls: Array<{ url: string, method: string | undefined }> = []
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method })
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+
+    await createDriveFileWithContent(
+      {
+        id: ITEM_ID,
+        name: 'Plan',
+        kind: 'text',
+        content: 'plain',
+        parentId: null,
+        approvalDigest: 'D'.repeat(43),
+      },
+      { accessToken: 'token', fetchImpl },
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.method).toBe('POST')
+
+    const url = new URL(calls[0]!.url)
+
+    expect(url.pathname).toBe('/upload/drive/v3/files')
+    expect(url.searchParams.get('uploadType')).toBe('multipart')
+    expect(url.searchParams.get('supportsAllDrives')).toBe('true')
+    expect(url.searchParams.has('addParents')).toBe(false)
+    expect(url.searchParams.has('removeParents')).toBe(false)
+  })
+
+  it('has no other file in the server, app or shared code that posts to '
+    + 'the Drive upload endpoint except the older Besidka save and this '
+    + 'module', () => {
+    const files = [
+      ...sourceFilesUnder('server'),
+      ...sourceFilesUnder('app'),
+      ...sourceFilesUnder('shared'),
+    ]
+    const uploaders = files
+      .filter(path => /\/upload\/drive/.test(read(path)))
+      .sort()
+
+    expect(uploaders).toEqual([
+      'server/utils/google/drive-upload.ts',
+      'server/utils/google/drive-write-api.ts',
+    ])
+  })
+
+  it('calls the multipart create once, from the create-file tool only, and '
+    + 'passes no media type', () => {
+    const source = read(TOOLS_PATH)
+
+    expect(source.match(/createDriveFileWithContent\(/g)).toHaveLength(1)
+    expect(source).not.toMatch(/uploadMimeType|targetMimeType: |mimeType: '/)
   })
 
   it('sends a rename body of exactly the name and a move with only the '
@@ -481,14 +558,17 @@ describe('the Drive write boundary', () => {
     expect(source).not.toMatch(
       /\/permissions|\/copy|\/trash|emptyTrash|\/watch|\/revisions|\/comments|transferOwnership|\/export|alt=media/,
     )
-    expect(source).not.toMatch(/\/upload\/drive/)
-    expect(source).toContain('https://www.googleapis.com/drive/v3/files')
+    expect(source.match(/googleapis\.com\/upload\/drive/g)).toHaveLength(1)
+    expect(source).toContain('\'https://www.googleapis.com/drive/v3/files\'')
+    expect(source).toContain(
+      '\'https://www.googleapis.com/upload/drive/v3/files\'',
+    )
   })
 
   it('sends supportsAllDrives on every file request it builds', () => {
     const source = read(API_PATH)
 
-    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(5)
+    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(6)
   })
 
   it('copies only the five allowed keys, even from an object that carries '
@@ -571,7 +651,7 @@ describe('the Drive write boundary', () => {
     const surface = read('config/mcp-surface.json')
 
     expect(surface).not.toMatch(
-      /drive_create_folder|drive_list_folder|drive_rename|drive_move/,
+      /drive_create_file|drive_create_folder|drive_list_folder|drive_rename|drive_move/,
     )
   })
 

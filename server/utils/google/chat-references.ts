@@ -1,6 +1,7 @@
 import { and, asc, eq, like, or } from 'drizzle-orm'
 import { GOOGLE_DRIVE_FILE_ID_PATTERN } from '#shared/utils/google-drive'
 import {
+  GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_FILE_REFERENCE_KIND,
   GOOGLE_DRIVE_FOLDER_REFERENCE_KIND,
@@ -122,6 +123,11 @@ const WRITABLE_SOURCES: readonly ReferenceSource[] = [
     kinds: [GOOGLE_DRIVE_FOLDER_REFERENCE_KIND],
     idShape: GOOGLE_DRIVE_FILE_ID_PATTERN,
   },
+  {
+    toolName: GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+    kinds: [GOOGLE_DRIVE_FILE_REFERENCE_KIND],
+    idShape: GOOGLE_DRIVE_FILE_ID_PATTERN,
+  },
   ...CHANGED_ITEM_SOURCES,
 ]
 
@@ -227,7 +233,8 @@ function itemsOfParts(
  * `google__drive_list_folder`, `google__drive_create_folder`,
  * `google__drive_rename` or `google__drive_move` result named, plus My Drive
  * itself under the alias `root`; `writableItems` holds the files and folders
- * a search, a folder listing, a create, a rename or a move result named
+ * a search, a folder listing, a create (a file or a folder), a rename or a
+ * move result named
  * (never a file Besidka's own Drive client picked or saved). The index
  * starts from the chat's stored parts, read in the order they were stored so
  * a later result (a rename's new title, a move's new parent) replaces an
@@ -400,6 +407,10 @@ export async function loadChatSearchParts(input: {
           like(
             schema.messages.parts,
             `%${GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME}%`,
+          ),
+          like(
+            schema.messages.parts,
+            `%${GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME}%`,
           ),
           like(schema.messages.parts, `%${GOOGLE_DRIVE_RENAME_TOOL_NAME}%`),
           like(schema.messages.parts, `%${GOOGLE_DRIVE_MOVE_TOOL_NAME}%`),

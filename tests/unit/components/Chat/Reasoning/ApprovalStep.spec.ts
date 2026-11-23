@@ -305,6 +305,7 @@ describe('Chat/Reasoning/ApprovalStep', () => {
     'google__gmail_create_draft',
     'google__drive_save_file',
     'google__drive_create_folder',
+    'google__drive_create_file',
     'google__drive_rename',
     'google__drive_move',
     'google__calendar_create_event',
@@ -666,6 +667,147 @@ describe('Chat/Reasoning/ApprovalStep', () => {
 
       expect(useSidePanel().currentView.value?.props).toMatchObject({
         toolName: 'google__drive_create_folder',
+        driveNames: { folder: { name: 'Projects', id: FOLDER_ID } },
+      })
+    })
+  })
+
+  describe('a Google Drive file', () => {
+    const FOLDER_ID = 'folder-id-0123456789'
+
+    function fileModel(
+      overrides: Partial<ApprovalStepModel> = {},
+    ): ApprovalStepModel {
+      return createModel({
+        toolName: 'google__drive_create_file',
+        connectorSlug: null,
+        tool: 'google__drive_create_file',
+        input: {
+          name: 'Plan',
+          kind: 'document',
+          content: '# Plan\n\nFirst line.\nSecond line.',
+          folderId: FOLDER_ID,
+        },
+        driveNames: { folder: { name: 'Projects', id: FOLDER_ID } },
+        summary: 'Create the Google Doc "Plan" (1 KB) in "Projects"',
+        ...overrides,
+      })
+    }
+
+    it('shows the name, the type, the folder, the size and the whole '
+      + 'content in a region the keyboard can reach', async () => {
+      const { wrapper } = await mountStep({ model: fileModel() })
+      const card = wrapper.get(testId('drive-change'))
+      const content = card.get(testId('drive-change-content'))
+
+      expect(card.get(testId('drive-change-name')).text()).toBe('Plan')
+      expect(card.get(testId('drive-change-type')).text())
+        .toBe('Google Doc, converted from Markdown')
+      expect(card.get(testId('drive-change-parent')).text())
+        .toContain('“Projects”')
+      expect(card.get(testId('drive-change-parent-id')).text())
+        .toBe(FOLDER_ID)
+      expect(card.get(testId('drive-change-size')).text())
+        .toBe('32 bytes, 4 lines')
+      expect(content.text()).toContain('First line.')
+      expect(content.text()).toContain('Second line.')
+      expect(content.attributes('tabindex')).toBe('0')
+      expect(content.attributes('role')).toBe('region')
+      expect(content.attributes('aria-label')).toBe('File content')
+      expect(card.get(testId('drive-change-note')).text())
+        .toContain('cannot delete files')
+    })
+
+    it('shows the top level of My Drive for a call with no folder',
+      async () => {
+        const { wrapper } = await mountStep({
+          model: fileModel({
+            input: { name: 'Plan', kind: 'text', content: 'plain' },
+            driveNames: undefined,
+          }),
+        })
+
+        expect(wrapper.get(testId('drive-change-parent')).text())
+          .toBe('My Drive (top level)')
+        expect(wrapper.get(testId('drive-change-type')).text())
+          .toBe('Plain text file')
+      })
+
+    it('shows a spreadsheet as a table of text cells', async () => {
+      const { wrapper } = await mountStep({
+        model: fileModel({
+          input: {
+            name: 'Totals',
+            kind: 'spreadsheet',
+            content: 'item,count\npens,3\n',
+          },
+          driveNames: undefined,
+        }),
+      })
+      const cells = wrapper.get(testId('drive-change-content')).findAll('td')
+
+      expect(cells.map(cell => cell.text())).toEqual([
+        'item',
+        'count',
+        'pens',
+        '3',
+      ])
+      expect(wrapper.get(testId('drive-change-size')).text())
+        .toBe('2 rows, 2 columns')
+    })
+
+    it('shows hostile text as text, never as markup', async () => {
+      const { wrapper } = await mountStep({
+        model: fileModel({
+          input: {
+            name: 'Plan',
+            kind: 'text',
+            content: '<img src=x onerror=alert(1)> [x](https://evil.example)',
+          },
+        }),
+      })
+
+      expect(wrapper.find('img').exists()).toBe(false)
+      expect(wrapper.find('a').exists()).toBe(false)
+      expect(wrapper.get(testId('drive-change-content')).text())
+        .toContain('<img src=x onerror=alert(1)>')
+    })
+
+    it.each([
+      ['a formula in a spreadsheet', {
+        name: 'Totals',
+        kind: 'spreadsheet',
+        content: 'a\n=IMPORTXML("x","y")',
+      }],
+      ['an image in a document', {
+        name: 'Plan',
+        kind: 'document',
+        content: '![x](https://e.test/a.png)',
+      }],
+      ['HTML in a document', {
+        name: 'Plan',
+        kind: 'document',
+        content: '<script>x</script>',
+      }],
+      ['a media type from the model', {
+        name: 'Plan',
+        kind: 'text',
+        content: 'x',
+        mimeType: 'text/html',
+      }],
+    ])('shows no card for %s', async (_label, input) => {
+      const { wrapper } = await mountStep({ model: fileModel({ input }) })
+
+      expect(wrapper.find(testId('drive-change')).exists()).toBe(false)
+    })
+
+    it('hands the names to the details panel', async () => {
+      const { wrapper } = await mountStep({ model: fileModel() })
+
+      await wrapper.get(testId('details')).trigger('click')
+
+      expect(useSidePanel().currentView.value?.props).toMatchObject({
+        toolName: 'google__drive_create_file',
         driveNames: { folder: { name: 'Projects', id: FOLDER_ID } },
       })
     })

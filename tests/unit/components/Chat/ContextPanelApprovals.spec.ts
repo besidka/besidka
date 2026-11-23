@@ -152,6 +152,7 @@ describe('Chat/ContextPanelApprovals', () => {
     ['google__gmail_search', '/chats/connectors?panel=google-gmail'],
     ['google__calendar_create_event', '/chats/connectors?panel=google-calendar'],
     ['google__drive_rename', '/chats/connectors?panel=google-drive'],
+    ['google__drive_create_file', '/chats/connectors?panel=google-drive'],
   ])('links a Google Always allow tool %s to its Google panel with no Remove',
     async (toolName, path) => {
       mocks.grants = [{

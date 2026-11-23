@@ -373,7 +373,7 @@ Assistant text that summarizes a Google result is not redacted either.
 
 | KV key | Holds | TTL | Deleted by |
 |---|---|---|---|
-| `google-drive-create:<digest>`, `<digest>` = base64url SHA-256 of `drive-create`, the user id and the approval id | The Drive file id that `files.generateIds` returned for one approved create (section 19.4), so a second run of the same approval sends the same id | 24 hours | Expiry only |
+| `google-drive-create:<digest>`, `<digest>` = base64url SHA-256 of `drive-create`, the user id and the approval id (or the execution id of an Always allow run) | The Drive file id that `files.generateIds` returned for one approved create of a folder or a file (sections 19.4 and 19.12), so a second run of the same approval sends the same id | 24 hours | Expiry only |
 | `tool-approval:result:<id>`, `<id>` = base64url SHA-256 of message public id and tool call id | One Google result body or error text of a paused turn, with user, chat and message ids checked on read | 24 hours | A finished continuation (`deleteResumedTurn`), a new user message, chat deletion and account purge, through the `resultIds` list of the per-chat index `tool-approval:chat:<chatPublicId>` |
 
 The stash is written by `recordToolApprovalPause` with the pause records,
@@ -1092,7 +1092,7 @@ the card), never `drive.file` or `userinfo.profile`.
 | Capability | Scope | Tool today |
 |---|---|---|
 | `drive-read` | `drive.readonly` (restricted) | `google__drive_search` (section 14) |
-| `drive-write` | `drive` (restricted; Google's scope for everything in Drive, which includes deleting and sharing, a limit of the permission, not of Besidka: it has no code that deletes or shares). Needs `drive-read` in the union of the requested and the already granted capabilities, or the start route answers 400 | `google__drive_list_folder`, `google__drive_create_folder`, `google__drive_rename`, `google__drive_move` (section 19); not part of the Drive entry's capabilities on Connectors, so a read-only owner never shows as "partial" |
+| `drive-write` | `drive` (restricted; Google's scope for everything in Drive, which includes deleting and sharing, a limit of the permission, not of Besidka: it has no code that deletes or shares). Needs `drive-read` in the union of the requested and the already granted capabilities, or the start route answers 400 | `google__drive_list_folder`, `google__drive_create_folder`, `google__drive_create_file`, `google__drive_rename`, `google__drive_move` (section 19); not part of the Drive entry's capabilities on Connectors, so a read-only owner never shows as "partial" |
 | `gmail-read` | `gmail.readonly` (restricted) | `google__gmail_search`, `google__gmail_read_thread` (section 14) |
 | `gmail-compose` | `gmail.compose` (restricted; Google's scope for managing drafts and sending mail) | `google__gmail_create_draft` (section 14); Besidka has no send tool and creates drafts only, a limit of the product, not of the permission |
 | `calendar` | `calendar.events.owned` and `calendar.events.freebusy` (both, or the capability is not granted; each tool needs only its own, section 15.2) | `google__calendar_list_events`, `google__calendar_free_busy`, `google__calendar_create_event` (section 15); offered on the card and accepted by the start route only while `google.calendar` is active for the owner |
@@ -4020,7 +4020,7 @@ for a `PUT` the write limit.
 | --- | --- |
 | Drive tools of Besidka's client | `google.drive` active |
 | Drive search and the read of a found file | the admin gate with `google.byo` (`checkGoogleByoAccess`) |
-| Drive tools of section 19 (`google__drive_list_folder`, `google__drive_create_folder`, `google__drive_rename`, `google__drive_move`) | the same: the admin gate with `google.byo`; the catalog entries name `neededCapability: 'drive-write'` and flag `google.byo`, so the routes, the panel rows, the per-chat Drive switch and the Blocked rows cover them through the existing mechanisms with no code of their own |
+| Drive tools of section 19 (`google__drive_list_folder`, `google__drive_create_folder`, `google__drive_create_file`, `google__drive_rename`, `google__drive_move`) | the same: the admin gate with `google.byo`; the catalog entries name `neededCapability: 'drive-write'` and flag `google.byo`, so the routes, the panel rows, the per-chat Drive switch and the Blocked rows cover them through the existing mechanisms with no code of their own |
 | Gmail tools | the admin gate plus `google.gmail` |
 | Calendar tools | the admin gate plus `google.calendar` |
 
@@ -4207,8 +4207,8 @@ replays it, and the claim is marked done or failed after the write. A claim
 that is lost, a spent budget, an unreadable counter or a missing gate refuses
 the write and drops its marker. `readExecutionId`
 (`server/utils/google/execution-id.ts`) reads `approvalId` or `executionId`,
-and `create_folder` (the retry digest), `create_event` (the client event id),
-rename and move accept either. Gmail has no client-side id for a draft: the
+and `create_folder` and `create_file` (the retry digest), `create_event` (the
+client event id), rename and move accept either. Gmail has no client-side id for a draft: the
 claim is its only guard against a second draft from one call. A fresh call
 the model makes after an interrupted run has a new tool call id and is not
 covered; the card path has the same limit.
@@ -4480,16 +4480,18 @@ or writable there). No account-wide switch, no per-tool switch per chat (a
 tool is Blocked per user, section 17). A restore:
 `docs/d1-restore-reconciliation.md`, "Tool approvals".
 
-## 19. Drive writes on the own client: folders, rename and move (BES-460, PR1 and PR2)
+## 19. Drive writes on the own client: files, folders, rename and move (BES-460, PR1 to PR3)
 
-Status: PR1 and PR2 of three (PR2 on `feat/google-drive-write-2`). The
+Status: PR1 to PR3 of three (PR3 on `feat/google-drive-write-3`). The
 approved design is the plan of 2026-11-23 (owner questions Q1 and Q2 decided
 "refuse in v1"; Q3, the legal rows, is the owner's). PR1 added the scope, the
 checkbox, one read tool (`google__drive_list_folder`) and one write tool
-(`google__drive_create_folder`). PR2 adds `google__drive_rename` and
+(`google__drive_create_folder`). PR2 added `google__drive_rename` and
 `google__drive_move` (sections 19.9 to 19.11): `PATCH` is in `http.ts`, used
-only by `drive-write-api.ts`. Create file (PR3) is not built, and nothing here
-can delete, trash, copy or share.
+only by `drive-write-api.ts`. PR3 adds `google__drive_create_file` (section
+19.12): a Google Doc from Markdown, a Google Sheet from CSV or a plain text
+file, through one multipart upload. Nothing here can delete, trash, copy or
+share.
 
 ### 19.1 Scope, capability and the checkbox
 
@@ -4508,10 +4510,10 @@ The card shows "Change files in Google Drive" nested under "All your Google
 Drive files, read only": disabled with a hint until the read box is ticked or
 read access is already granted, and cleared again when the read box is
 unticked, so the client never sends the pair the route refuses. Its note says
-"Lets Besidka create folders, and rename and move files and folders you own,
-each time you approve. Creating files will be added later." and "Google's
-permission for this also allows deleting and sharing; Besidka has no code that
-deletes or shares." (the same shape as the
+"Lets Besidka create files and folders, and rename and move files and folders
+you own, each time you approve, unless you set that tool to Always allow." and
+"Google's permission for this also allows deleting and sharing; Besidka has no
+code that deletes or shares." (the same shape as the
 `gmail.compose` note; once granted the second sentence stays on the card).
 The missing-tools note lists "Changing files needs Change files access." like
 the other capabilities, but only for an owner who has Drive read access granted
@@ -4540,15 +4542,19 @@ shows "Change files access granted". The Drive entry itself never turns
 |---|---|---|---|
 | `google__drive_list_folder` | read | exactly one of `folderId` (`root` or a folder id this chat knows, section 19.3) and `query` (words a folder name contains, at most 100 characters) | `references` (the listed folder as `drive-folder`, or the root as `drive-root` with the fixed title "My Drive" from our code; each child as `drive-folder` or `drive-file` with `parentId`), `count`, `folder_id`, `items` (framed JSON lines: `item_id`, name, `kind`, `ownedByYou`, `shared`, `inSharedDrive`), `note` |
 | `google__drive_create_folder` | write | `name` (1 to 200 UTF-16 units, one line, no leading or trailing space, no `/` or `\`, not `.` or `..`, no control, invisible or bidi character), optional `parentFolderId` (`root` or a known folder id; missing and `root` both mean the top level of My Drive and send no `parents`) | `references` (the new folder with its name, link and `parentId`), `created`, `folder_id`, a fixed `message`; no Drive name is echoed to the model |
+| `google__drive_create_file` | write | `name` (the same name rule), `kind` (`document`, `spreadsheet` or `text`), `content` (at most 12,000 UTF-16 units: Markdown, CSV or plain text), optional `folderId` (`root` or a known folder id, like `parentFolderId`); the model never sends a media type | `references` (the new file with its name, link and `parentId`), `created`, `file_id`, `name` (the approved name from the validated input, never one that Drive answered with), a fixed `message`, a `note` only when Drive stored another type than approved; no Drive text is echoed to the model (section 19.12) |
 | `google__drive_rename` | write | `itemId` (an item of `writableItems`), `newName` (the same name rule) | `references` (the item with its new name), `renamed`, `alreadyDone`, a fixed `message` (section 19.9) |
 | `google__drive_move` | write | `itemId` (an item of `writableItems`), `fromFolderId` and `toFolderId` (`root` or a folder of `folders`) | `references` (the item with its new `parentId`), `moved`, `alreadyDone`, a fixed `message` (section 19.10) |
 
 `list_folder` is a read with the Calendar-read grants: Allow once or "Allow
 listing folders in your Google Drive in this chat" (at most 5 granted calls per
 message). It taints and flags the chat like every Drive read (no empty-list
-exemption). `create_folder` is a write: rule 11 asks every time with Allow once
-only, Enter on its card never approves, and it returns no Google content
-(`returnsGoogleContent: false`). Both are in `GOOGLE_TOOL_CATALOG` (service
+exemption). `create_folder` and `create_file` are writes: rule 11 asks every
+time with Allow once only, Enter on its card never approves (both are in
+`GOOGLE_WRITE_TOOL_NAMES`), and they return no Google content
+(`returnsGoogleContent: false`). Like every tool of the own client they can be
+set to Always allow (section 17.7; the rule is derived from the catalog entry,
+`client: 'byo'`, so no tool name is listed). Both are in `GOOGLE_TOOL_CATALOG` (service
 `drive`, client `byo`, `neededCapability: 'drive-write'`, flag `google.byo`),
 so the permissions panel shows them under Read and Write with Blocked and
 Needs approval, a "Needs Change files access." hint while the capability is
@@ -4564,7 +4570,7 @@ or in the trash is not listed.
 | Map | Filled from | Used for |
 |---|---|---|
 | `folders` | `list_folder`, `create_folder`, `rename` and `move` results (kinds `drive-folder` and `drive-root`; only `list_folder` can name the root), plus My Drive under the alias `root`, always | the parent of `create_folder`, the source and target of `move`, and the folders `list_folder` opens |
-| `writableItems` | `drive_search` hits, `list_folder` items, `create_folder`, `rename` and `move` results (never a `drive-root`) | the item of `rename` and `move`; its title is also what the execute-time name check compares with |
+| `writableItems` | `drive_search` hits, `list_folder` items, `create_folder`, `create_file`, `rename` and `move` results (never a `drive-root`) | the item of `rename` and `move`; its title is also what the execute-time name check compares with. A file created by `create_file` joins `writableItems` only (never `folders`, never `foundFiles`), so a rename or move can follow in the same chat |
 
 The stored parts are read in the order they were stored (`ORDER BY` the message
 id) and every part is applied to every source in turn, so a later result
@@ -4608,14 +4614,16 @@ needs them is in scope for the stored grant.
 
 `server/utils/google/drive-write-api.ts` holds the requests; only
 `drive-write-tools.ts` imports it (the boundary spec checks this). It has GET
-reads, one POST (the create) and, since PR2, one PATCH (section 19.9). In
-order, `execute` of a create:
+reads, two POSTs (the folder create, and, since PR3, the multipart file create
+of section 19.12) and, since PR2, one PATCH (section 19.9). In
+order, `execute` of a folder create:
 
 1. validates the input (`validateCreateFolderInput`, the same function the zod
    `superRefine` and the card use);
-2. reads `options.approvalId` (set by `wrapApprovedExecutions`) and refuses
-   without a token or a request when it is missing: "Nothing was created in
-   Google Drive.";
+2. reads the run identity with `readExecutionId`: `options.approvalId` (set by
+   `wrapApprovedExecutions`), or the `executionId` the server passes for a tool
+   the user set to Always allow (section 17.7), and refuses without a token or
+   a request when neither is present: "Nothing was created in Google Drive.";
 3. checks that a non-root parent is in `folders`;
 4. takes a fresh token (`getGoogleAccessToken`, which runs the admin gate and
    the scope check again);
@@ -4690,48 +4698,54 @@ or change who can see them." Persisted summaries: `Create the folder "<n>" in
 My Drive`, `Create the folder "<n>" inside "<folder>" in your Google Drive`
 (names cut to 120). Reloaded steps: "Created a folder in Google Drive" and
 "Listed folders in Google Drive", with "Open in Google Drive" on a reference
-that has a link. Since PR2 the view has three variants (rename and move in
-sections 19.9 and 19.10), `DriveName` has an optional `kind` (`file` or
-`folder`, any other value makes the whole field null) so a card can say "Type"
-and "Everything inside moves with it", and the heading of the details panel
-follows the view kind (`getDriveChangeHeading`: Folder, Rename, Move).
+that has a link. Since PR2 the view has more variants (rename and move in
+sections 19.9 and 19.10, the file in 19.12), `DriveName` has an optional `kind`
+(`file` or `folder`, any other value makes the whole field null) so a card can
+say "Type" and "Everything inside moves with it", and the heading of the
+details panel follows the view kind (`getDriveChangeHeading`: Folder, File,
+Rename, Move).
 
 Scroll spacer: `DriveChange` mounts inside the existing approval bubble (a
 sibling after the last message) and in `ApprovalStep`, exactly where
 `GmailDraft` and `CalendarEvent` mount, at pause time and with its final height
 (the names come from the part; nothing loads later). It leaves when the tool
-settles, covered by `revealApprovalBubble()` and `keepContinuationPinned()`. It
-has no scrolling region or `details`. `docs/chat-scroll-spacer.md` has the row;
-`getAffectedTests` maps every changed file to the four spacer suites.
+settles, covered by `revealApprovalBubble()` and `keepContinuationPinned()`. The
+folder, rename and move variants have no scrolling region or `details`; the
+file variant has one content region of fixed maximum height (`max-h-60`,
+`overflow-auto`), filled at pause time, never opened by the user (section
+19.12). `docs/chat-scroll-spacer.md` has the row; `getAffectedTests` maps every
+changed file to the four spacer suites.
 
 ### 19.6 Not verified, and not built
 
-Not verified against a real Google account (owner checklist, section 19.7):
-that `files.generateIds` ids are accepted by a create (a hashed client id is
-likely refused with 400, so none is used); the shape of the 409 for a duplicate
-id (the code never reads its reason); `appProperties` being visible to the
-creating client; that `ownedByMe`, `shared`, `driveId` and
-`capabilities.canAddChildren`, `canRename` and `canMoveItemWithinDrive` come
-back as expected with the `drive` scope (any missing field refuses); that
-`PATCH /drive/v3/files/<id>` with `addParents` and `removeParents` moves an
-item and answers the new `parents` (and that a folder moved into its own
-subtree answers 400); that `files.get('root')` answers an id that equals the
-`parents` entry of a My Drive item; that an orphaned folder really answers an
-empty `parents`; that the PATCH answer echoes the sent name unchanged (the
-rename check compares it exactly) and the reasons Drive gives for a refused
-PATCH (every 403 maps to the permission sentence); that `shared` is true for a folder
-that only inherits sharing from its parent; the alias `root` in a `files.get`
-path and in `'root' in parents`; that `corpora=user` lists a folder as
-expected; and the real root id that `files.get('root')` answers with.
+Settled by the owner-run live checks of 2026-11-24 on a real Drive (create
+folder, rename and move all worked): `capabilities.canRename` and
+`canMoveItemWithinDrive` come back with the `drive` scope; `PATCH` with
+`addParents` and `removeParents` moves an item and answers the new `parents`;
+a generated id from `files.generateIds` is accepted by a create; the alias
+`root` works in a `files.get` path, in a list and in a create; the creating
+client can read an item back. Everything else of the older list is not
+settled, and a missing field still refuses.
 
-Not built: create file (PR3: the multipart upload, the kind map, the content
-rules and caps, the Doc and Sheet preview). No migration, no change to
-`config/mcp-surface.json` (the MCP server imports neither module). A Workspace
-domain with default link sharing may make a new folder visible in the
-organization: that is the organization's policy, not a Besidka path, and
-the card does not claim otherwise. The legal rows (pre-check, DPIA, Art. 30)
-for creating and organizing files in the user's own Drive are drafted in
-section 19.8 (plan question Q3).
+Not verified against a real Google account (owner checklist, section 19.7):
+that a folder moved into its own descendant answers 400 or 403 (both map to
+the cycle sentence); that `shared` is true for a folder that only inherits
+sharing from its parent (the ancestry walk refuses either way); the shape of
+the 409 for a duplicate id (the code never reads its reason); that
+`appProperties` can be read back by the creating client after a retry; that an
+orphaned folder really answers an empty `parents`; that the echoed name keeps
+its Unicode form (NFC is compared on both sides); the reasons Drive gives for a
+refused PATCH (every 403 maps to the permission sentence); that `corpora=user`
+lists a folder as expected; the real root id that `files.get('root')` answers
+with; and, for PR3, that a Markdown upload converts to a Google Doc (section
+19.12).
+
+No migration, no change to `config/mcp-surface.json` (the MCP server imports
+neither module). A Workspace domain with default link sharing may make a new
+file or folder visible in the organization: that is the organization's
+policy, not a Besidka path, and the card does not claim otherwise. The legal
+rows (pre-check, DPIA, Art. 30) for creating and organizing files in the
+user's own Drive are drafted in section 19.8 (plan question Q3).
 
 ### 19.7 Owner checklist, with a real Google project
 
@@ -4752,11 +4766,33 @@ section 19.8 (plan question Q3).
    mapped to the cycle sentence); whether the echoed name keeps its Unicode
    form (NFC compared on both sides); the shape of the 409 for a duplicate id;
    whether `appProperties` can be read back by the creating client after a
-   409 retry.
+   409 retry; what an orphaned folder answers for `parents`.
+6. Markdown import (PR3, NOT VERIFIED): ask the model for a document with a
+   heading, a list, a table, a link and a code block. Approve the card and
+   open the result in Drive: it must be a Google Doc (not a `.md` file or
+   plain text) with the heading, the list, the table and the link converted.
+   If it is not, the one-line switch is `GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE`
+   in `shared/utils/google-drive-write.ts` (`text/plain`), changed before PR3
+   merges; there is no runtime fallback. The tool tells the model when Drive
+   stores another type than approved (`note`, logged as `typeMismatch`).
+7. Sheet import (PR3): ask for a spreadsheet of a few rows, one of them with
+   a plain negative number and a cell with an `=` inside its text. Open the
+   Sheet: columns split, numbers are numbers, and no cell evaluates. Then ask
+   for a cell that starts with `=IMPORTXML(...)`, `@` or `+SUM(...)`: the call
+   must be refused before an approval card appears. This confirms the formula
+   refusal is not stricter than needed and not looser than Sheets' import.
+8. Text file (PR3): create one with non-Latin text and an emoji and confirm
+   it opens unchanged. Rename the file in the same chat (the created file joins
+   `writableItems`).
 
-The live check of 2026-11-24 settled only these: a generated id is accepted on
-create, the alias `root` works for a list and a create, the creating client can
-read the item back, and a folder name search works. Nothing else was settled.
+The live checks of 2026-11-24 (an owner-run test on a real Drive: create
+folder, rename and move) settled: `canRename` and `canMoveItemWithinDrive`
+under the `drive` scope, the `addParents` and `removeParents` semantics of a
+move, that a generated id is accepted on create, that the alias `root` works,
+and that the creating client reads the item back. They did not settle: a
+folder moved into its own descendant (400 or 403), `shared` for a folder that
+only inherits sharing, the 409 shape, `appProperties` read-back, orphan
+folders, the Unicode echo and Markdown import.
 
 ### 19.8 Legal and privacy
 
@@ -4779,12 +4815,22 @@ revision hash moved. Whether a notice is needed is the owner's decision.
 The legal rows record what is built (PR1: the permission, `list_folder`,
 `create_folder`, the boundary spec, the live check of the create-folder
 parent, the approval card; PR2: rename and move of items the user owns,
-cross-drive moves and items of other owners refused) apart from what is
-planned (PR3: create file). The go verdict of pre-check row 18 depends on the
-real account checklist in section 19.7, which is still open. The copy was
-updated in PR2 (`GOOGLE_DRIVE_WRITE_ACCESS_NOTE`, `GOOGLE_DRIVE_WRITE_INFO_TEXT`
-in the Drive info text and `GOOGLE_DRIVE_WRITE_TOOLS_HINT` now name rename and
-move); PR3 must reword them again when it adds creating files.
+cross-drive moves and items of other owners refused; PR3: create file, with
+model-composed file content). The go verdict of pre-check row 18 depends on the
+real account checklist in section 19.7, which is still partly open. The copy
+was reworded in PR3 (`GOOGLE_DRIVE_WRITE_ACCESS_NOTE`,
+`GOOGLE_DRIVE_WRITE_INFO_TEXT` in the Drive info text,
+`GOOGLE_DRIVE_WRITE_TOOLS_HINT`, the Drive entry description and the Always
+allow warning of the Drive write group now name creating files; the sentence
+that said creating files was still to come is gone).
+
+The one change in what the legal rows say about data: with create file the
+model composes file content, not only names. That content stays in the chat as
+the approved input (the approval part and the KV pending record, like the
+names), reaches Drive when the user approves, and may contain text from other
+sources (an email, a document or a web page the model read earlier in the
+chat). It is user-approved content, composed by the model, and the user sees
+all of it on the card before it runs, unless the tool is set to Always allow.
 
 ### 19.9 Renaming an item (PR2)
 
@@ -4936,6 +4982,131 @@ folder the user cannot see, an orphan is not used as a create parent or as a
 move source or target: the ancestry walk ends only at the live root and
 otherwise answers "not confirmed" (section 19.10, step 5a).
 
+### 19.12 Creating a file (PR3)
+
+`google__drive_create_file` takes `{ name, kind, content, folderId? }` (strict:
+any other key, a media type included, fails the schema and the validator).
+The model never sends a media type; the kind picks both, from one map
+(`GOOGLE_DRIVE_FILE_KIND_SPECS` in `shared/utils/google-drive-write.ts`):
+
+| `kind` | content | uploaded as | stored as |
+|---|---|---|---|
+| `document` | Markdown | `text/markdown` (`GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE`) | a Google Doc, `application/vnd.google-apps.document` |
+| `spreadsheet` | CSV | `text/csv` | a Google Sheet, `application/vnd.google-apps.spreadsheet` |
+| `text` | plain text | `text/plain` | a plain text file, no conversion |
+
+The Markdown upload type is one constant. Markdown import is NOT VERIFIED
+against a real Drive (checklist item 6 in section 19.7): if it does not
+convert, the one-line switch is that constant (`text/plain`), and a test pins
+its value. There is no runtime fallback. If Drive answers a create with a
+different type than the approved one, the tool still reports the file as
+created (it exists), adds a fixed `note` for the model and logs
+`typeMismatch`.
+
+**One validator, three users.** `validateCreateFileInput` is the zod
+`superRefine`, `execute` and `readDriveWriteApprovalView` (the card). It
+refuses and never repairs, with a fixed sentence that does not echo the
+content:
+
+- the name: `validateDriveItemName` (1 to 200 UTF-16 units, one line, no
+  leading or trailing space, no `/` or `\`, not `.` or `..`, no control,
+  invisible or bidi character);
+- the content, every kind: not empty, at most 12,000 UTF-16 units, and the body
+  rules of a Gmail draft (`hasUnsafeBodyCharacter`: no control character except
+  tab, LF and CRLF, no lone CR, no bidi or invisible format character except
+  emoji joiners, no lone surrogate);
+- `document`: no `![` anywhere (images fetch URLs), no `<` followed by a
+  letter, `/`, `!` or `?` (HTML, comments, autolinks), and every link target
+  (`](target)` and a reference definition `[x]: target`; footnote definitions
+  are not links) must start with `http:`, `https:` or `mailto:` (so a
+  relative, `//host`, `#anchor`, `javascript:`, `data:` or entity-encoded
+  target is refused);
+- `spreadsheet`: strict RFC 4180 (`parseStrictCsv`: LF or CRLF records, a
+  quote only around a whole cell and doubled inside it, an equal number of
+  cells in every row, no empty line, one final line break allowed), at most
+  500 rows, 26 columns and 2,000 UTF-16 units a cell, and no cell that Google
+  Sheets would run as a formula on import: the first non-space character of a
+  cell (judged at the start of the cell only, so a later line of a quoted cell
+  is text) may not be `=` or `@`, may be `+` or `-` only when the whole cell is
+  a plain number (`-12.5`, `+3`, `1e5`), and a leading tab or carriage return
+  is refused. `IMPORTXML`, `IMAGE` and `IMPORTDATA` make Sheets fetch URLs, so
+  this is the same fetch-from-the-document concern as the Markdown image rule;
+- `text`: nothing beyond the content rules above;
+- the whole input as JSON is at most 48 KiB (`GOOGLE_DRIVE_FILE_INPUT_MAX_BYTES`).
+  The pending approval record holds the input under
+  `TOOL_APPROVAL_PAYLOAD_MAX_BYTES` (64 KiB, a 413 above it, the input is never
+  cut). The worst valid input (200 three-byte name characters, 12,000
+  three-byte content characters, a 128-character folder id) is about 37 KB of
+  JSON, and a spec writes that input through `putToolApproval` to prove it
+  fits.
+
+**The request.** `createDriveFileWithContent` in `drive-write-api.ts` is the
+second POST of that module and the only call to the upload endpoint,
+`POST /upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,parents`
+(the boundary spec pins the URL to that one occurrence and fails on a
+`resumable` or `media` upload type, on a PATCH to it and on any other file that
+mentions it except the older Besidka save, `drive-upload.ts`). Every field is
+read once into a local and checked: the id and the parent have the shape of a
+Drive id, the digest is a base64url SHA-256, and the name, kind and content
+pass `validateCreateFileInput` again, so a hand-built object cannot send
+anything else; the metadata JSON is `buildDriveCreateMetadata` (`id`, `name`,
+the target media type, at most one `parents` entry, `appProperties`), the
+second part is the content with the upload type and `charset=UTF-8`. The
+boundary is random per request and drawn again (three tries, then refused)
+if the content or the metadata contains it.
+
+**Order in `execute`.** The same as a folder create (section 19.4): validate;
+`readExecutionId` (an approval id or the Always allow execution id, refused
+with no token and no request when neither exists); a folder other than My Drive
+must be in `folders` (the real root id is refused, use `root` or leave the
+folder out); a fresh token; the digest and the KV id (`generateIds`, the same
+`google-drive-create:` record, 24 hours; a failed put refuses before the
+create); for a folder other than My Drive the live checks (a folder, not in a
+shared drive, not trashed, owned, not shared, `canAddChildren`) and the
+ancestry walk of section 19.10 step 5a with "Nothing was created."; the
+upload; the confirmation. A 409 is a success only after `files.get(id)` shows
+this digest, the approved name, the target media type of the kind and exactly
+one parent (the approved folder, or the live root id for My Drive); a missing
+answer, a timeout, a 5xx, an oversized answer and a 409 that is not ours say
+"Google Drive did not confirm the file, so it may or may not have been
+created. Ask the user to check their Google Drive before trying again." A
+refusal before the upload says nothing was created. Under Always allow the run
+gate claims the execution id and the tool behaves the same.
+
+**What the model gets and what is stored.** A fixed message, `file_id` and the
+approved `name` (taken from the validated input, never from Drive's answer),
+and never a Drive name. The reference stored in D1 holds the id, kind
+(`drive-file`), name, link and parent id; the approved input stays in the
+message as an approved tool input (the decision of section 5.2), and the
+created file joins `writableItems` (not `folders`), so a rename or move can
+follow in the same chat. Logs: `attributes.googleByoTools.driveCreateFile`
+holds the kind, the byte count, the row and column counts of a spreadsheet,
+`parent` (`root` or `folder`), `alreadyExisted`, `typeMismatch`,
+`unconfirmed` and the code of a refusal; never a name, content, id or link.
+
+**The card.** `DriveChange.vue` shows "Name", "Type" ("Google Doc, converted
+from Markdown", "Google Sheet, converted from CSV", "Plain text file"),
+"Folder" ("My Drive (top level)", or the quoted folder name with the exact id,
+as in 19.5), "Size" ("8.2 KB, 140 lines", or "120 rows, 6 columns"), and the
+whole content under "Content · N lines" (or rows): a `tabindex="0"`
+`role="region"` with `aria-label="File content"`, `max-h-60` and
+`overflow-auto`. A document and a text file show as preformatted text, with
+every run of more than two blank lines collapsed to "[N blank lines]"
+(`collapseBlankLinesForCard`); a spreadsheet shows as a scrolling table of
+text cells (the same collapse in each cell). Text only, never markup. The
+footer is the same as for the other variants. Summary: `Create the Google Doc
+"<n>" (8 KB) in "<folder>" in your Google Drive` (or "Google Sheet", "text
+file"; "in My Drive" for the top level). The reloaded step reads "Created a
+file in Google Drive".
+
+Scroll spacer proof: the content region has a maximum height, is filled with
+the part at pause time (nothing loads later) and is never a user-opened
+`details`. `tests/unit/composables/chat-scroll-spacer.spec.ts` has a case with
+an approval bubble taller than the viewport (the reveal scrolls to the bubble
+top, no further), `DriveChange.spec.ts` checks the bounded region, and
+`getAffectedTests` maps `DriveChange.vue` and the Drive write modules to the
+four spacer suites. A preview check at 390x844 and 1280x800 is still the
+owner's.
 
 ## 20. The setup guide on the own-client card (BES-458)
 

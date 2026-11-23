@@ -35,6 +35,86 @@
         </template>
       </dd>
     </dl>
+    <template v-else-if="view.kind === 'create-file'">
+      <dl class="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]">
+        <dt class="text-base-content/60">
+          Name
+        </dt>
+        <dd
+          class="min-w-0 break-words font-medium"
+          data-testid="reasoning-approval-step-drive-change-name"
+        >
+          {{ view.name }}
+        </dd>
+        <dt class="text-base-content/60">
+          Type
+        </dt>
+        <dd data-testid="reasoning-approval-step-drive-change-type">
+          {{ view.typeLabel }}
+        </dd>
+        <dt class="text-base-content/60">
+          Folder
+        </dt>
+        <dd
+          class="min-w-0 break-words"
+          data-testid="reasoning-approval-step-drive-change-parent"
+        >
+          <template v-if="view.folder.isRoot">
+            {{ GOOGLE_DRIVE_ROOT_CARD_LABEL }}
+          </template>
+          <template v-else>
+            {{ quotedName(view.folder.name, 'A folder from this chat') }}
+            <span
+              class="block break-all text-base-content/60"
+              data-testid="reasoning-approval-step-drive-change-parent-id"
+            >{{ view.folder.id }}</span>
+          </template>
+        </dd>
+        <dt class="text-base-content/60">
+          Size
+        </dt>
+        <dd data-testid="reasoning-approval-step-drive-change-size">
+          {{ view.sizeLabel }}
+        </dd>
+      </dl>
+      <p
+        class="mt-2 text-base-content/60"
+        data-testid="reasoning-approval-step-drive-change-lines"
+      >
+        Content · {{ view.contentCountLabel }}
+      </p>
+      <div
+        v-if="view.rows"
+        class="mt-0.5 max-h-60 overflow-auto rounded-box outline-offset-2 focus:outline-2 focus:outline-accent"
+        tabindex="0"
+        role="region"
+        aria-label="File content"
+        data-testid="reasoning-approval-step-drive-change-content"
+      >
+        <table class="w-max min-w-full border-collapse">
+          <tbody>
+            <tr
+              v-for="(row, rowIndex) in view.rows"
+              :key="rowIndex"
+            >
+              <td
+                v-for="(cell, columnIndex) in row"
+                :key="columnIndex"
+                class="max-w-64 whitespace-pre-wrap break-words border border-base-300 px-2 py-1 align-top"
+              >{{ cell }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p
+        v-else
+        class="mt-0.5 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-box outline-offset-2 focus:outline-2 focus:outline-accent"
+        tabindex="0"
+        role="region"
+        aria-label="File content"
+        data-testid="reasoning-approval-step-drive-change-content"
+      >{{ view.content }}</p>
+    </template>
     <dl
       v-else-if="view.kind === 'rename'"
       class="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]"
@@ -152,7 +232,7 @@ const props = defineProps<{
 const itemFallback = 'A file or folder from this chat'
 
 const itemTypeLabel = computed<string>(() => {
-  if (props.view.kind === 'create-folder') {
+  if (props.view.kind === 'create-folder' || props.view.kind === 'create-file') {
     return ''
   }
 

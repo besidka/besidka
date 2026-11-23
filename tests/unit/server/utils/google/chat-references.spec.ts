@@ -96,6 +96,41 @@ describe('the Drive folder reference index', () => {
       expect(index.writableItems.has(ROOT_ID)).toBe(false)
     })
 
+  it('knows a created file as a writable item with its parent, never as a '
+    + 'folder or a found file', () => {
+    const index = createGoogleReferenceIndex([[
+      part('google__drive_create_file', [
+        {
+          id: 'made-file-id-0123456789',
+          kind: 'drive-file',
+          title: 'Plan',
+          parentId: FOLDER_ID,
+        },
+        { id: 'made-folder-id-0123456789', kind: 'drive-folder', title: 'x' },
+      ]),
+    ]])
+
+    expect(index.writableItems.get('made-file-id-0123456789'))
+      .toMatchObject({ title: 'Plan', parentId: FOLDER_ID })
+    expect(index.writableItems.has('made-folder-id-0123456789')).toBe(false)
+    expect(index.folders.has('made-file-id-0123456789')).toBe(false)
+    expect(index.foundFiles.has('made-file-id-0123456789')).toBe(false)
+  })
+
+  it('grows with a file created in this send, so a rename can follow', () => {
+    const index = createGoogleReferenceIndex([])
+
+    index.addWritableItems({
+      references: [{
+        id: 'made-file-id-0123456789',
+        kind: 'drive-file',
+        title: 'Plan',
+      }],
+    })
+
+    expect(index.writableItems.has('made-file-id-0123456789')).toBe(true)
+  })
+
   it('never lets a listed file become a readable found file', () => {
     const index = createGoogleReferenceIndex([parts])
 

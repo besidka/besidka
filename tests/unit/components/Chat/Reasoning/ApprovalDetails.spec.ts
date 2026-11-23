@@ -10,6 +10,7 @@ const GOOGLE_WRITE_TOOL_NAMES = [
   'google__gmail_create_draft',
   'google__drive_save_file',
   'google__drive_create_folder',
+  'google__drive_create_file',
 ]
 
 const EVENT_INPUT = {
@@ -142,6 +143,13 @@ describe('Chat/Reasoning/ApprovalDetails', () => {
       'Folder',
       'drive-change-parent',
     ],
+    [
+      'google__drive_create_file',
+      { name: 'Plan', kind: 'document', content: '# Plan\n\nText.' },
+      undefined,
+      'File',
+      'drive-change-content',
+    ],
   ] as const)('headlines the %s details by the kind of change and shows the '
     + 'same card with no way to allow it', async (
     toolName,
@@ -168,11 +176,39 @@ describe('Chat/Reasoning/ApprovalDetails', () => {
     expect(wrapper.find('button').exists()).toBe(false)
   })
 
+  it('shows the whole content of a file, the type and the size, with no way '
+    + 'to allow it', async () => {
+    const wrapper = await mountSuspended(ApprovalDetails, {
+      props: {
+        title: 'Approval',
+        toolName: 'google__drive_create_file',
+        summaryLine: '',
+        reasonText: 'Changes data',
+        input: { name: 'Totals', kind: 'spreadsheet', content: 'a,b\n1,2\n' },
+        isShortened: false,
+      },
+    })
+    const card = wrapper.get(testId('drive-change'))
+
+    expect(card.get(testId('drive-change-type')).text())
+      .toBe('Google Sheet, converted from CSV')
+    expect(card.get(testId('drive-change-size')).text())
+      .toBe('2 rows, 2 columns')
+    expect(card.get(testId('drive-change-content')).text())
+      .toContain('a')
+    expect(card.findAll('td')).toHaveLength(4)
+    expect(wrapper.find('button').exists()).toBe(false)
+  })
+
   it('shows no change card for a rename or move the server would refuse',
     async () => {
       for (const [toolName, input] of [
         ['google__drive_rename', { itemId: 'item-id-0123456789', newName: '' }],
         ['google__drive_move', { itemId: 'short', fromFolderId: 'root' }],
+        [
+          'google__drive_create_file',
+          { name: 'Totals', kind: 'spreadsheet', content: '=1+1' },
+        ],
       ] as const) {
         const wrapper = await mountSuspended(ApprovalDetails, {
           props: {

@@ -211,7 +211,10 @@ function defineBox(
  * A paused reply: the last user message, the reply under it with the
  * approval bubble at its end, and an 800px scroll container.
  */
-function createContinuationHarness(initialEndOffsetTop: number = 1100) {
+function createContinuationHarness(
+  initialEndOffsetTop: number = 1100,
+  bubbleBottom: number = 1000,
+) {
   const scrollTos: ScrollToOptions[] = []
   const scrollBys: ScrollToOptions[] = []
   const tick = shallowRef<number>(0)
@@ -290,7 +293,7 @@ function createContinuationHarness(initialEndOffsetTop: number = 1100) {
       function setBubble(element: Element | null) {
         if (element instanceof HTMLElement) {
           element.getBoundingClientRect = () => {
-            return { top: 700, bottom: 1000 } as DOMRect
+            return { top: 700, bottom: bubbleBottom } as DOMRect
           }
         }
       }
@@ -752,6 +755,30 @@ describe('useChatScrollSpacer continuations and approval pauses', () => {
       { top: 212, behavior: 'smooth' },
     ])
     expect(scrollBys).toEqual([])
+  })
+
+  it('reveals an approval bubble taller than the viewport, such as a Drive '
+    + 'file card with its content region, down to the bubble top and no '
+    + 'further', async () => {
+    const { Harness, chatSdk, scrollTos, tick } = createContinuationHarness(
+      1100,
+      1500,
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+
+    chatSdk.status = 'ready'
+    tick.value += 1
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    await nextTick()
+
+    expect(scrollTos.at(-1)).toEqual({ top: 688, behavior: 'smooth' })
   })
 
   it('does not place a finished reply again without a continuation',

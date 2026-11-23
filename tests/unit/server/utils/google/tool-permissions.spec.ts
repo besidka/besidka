@@ -212,8 +212,9 @@ describe('Google tool permissions', () => {
       const rows = await testDb.db.select()
         .from(schema.besidkaToolPermissions)
 
-      expect(changed).toBe(6)
+      expect(changed).toBe(7)
       expect(rows.map(row => row.toolName).sort()).toEqual([
+        'google__drive_create_file',
         'google__drive_create_folder',
         'google__drive_list_folder',
         'google__drive_move',
@@ -242,7 +243,7 @@ describe('Google tool permissions', () => {
       const allowed = partitionGoogleToolsForMode(tools, 'allow')
       const blocked = partitionGoogleToolsForMode(tools, 'blocked')
 
-      expect(allowed.applied).toHaveLength(6)
+      expect(allowed.applied).toHaveLength(7)
       expect(allowed.unchanged.map(tool => tool.name).sort()).toEqual([
         'google__drive_list_picked',
         'google__drive_read_file',

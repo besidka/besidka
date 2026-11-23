@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_MOVE_TOOL_NAME,
@@ -229,6 +230,93 @@ describe('the Drive folder tools in the approval policy', () => {
 
     expect(Object.keys(stored!.output).sort())
       .toEqual(['bodyRemoved', 'note', 'references'])
+  })
+
+  it('asks for a file with Allow once only, whatever grant or taint, and '
+    + 'counts it as a write that returns no Google content', () => {
+    const decision = resolveToolApproval({
+      descriptor: descriptor(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME, WRITE),
+      state: recordTaint(createApprovalState(), 'google'),
+      permissionMode: 'ask',
+      alwaysGrant: grant(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME),
+      chatGrant: grant(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME),
+    })
+
+    expect(decision.reason).toBe('always-ask')
+    expect(decision.status.type).toBe('user-approval')
+    expect(decision.rememberOptions).toEqual(['once'])
+    expect(isGoogleWriteToolName(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME))
+      .toBe(true)
+    expect(GOOGLE_TOOL_PROPERTIES[GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME])
+      .toEqual({ returnsGoogleContent: false })
+    expect(GOOGLE_TOOL_CHAT_GRANT_LABELS[GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME])
+      .toBeUndefined()
+    expect(googleToolResultHoldsContent(
+      GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+      { references: [{ id: 'x' }] },
+    )).toBe(false)
+    expect(isGoogleDriveToolName(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME))
+      .toBe(true)
+    expect(GOOGLE_DRIVE_WRITE_TOOL_NAMES)
+      .toContain(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME)
+  })
+
+  it('does not flag a chat that only created a file', () => {
+    expect(hasGoogleToolResult([{
+      type: `tool-${GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME}`,
+      state: 'output-available',
+      output: { references: [{ id: 'file-id-0123456789' }] },
+    }])).toBe(false)
+  })
+
+  it('stores a created file as a reference with no body and no content',
+    () => {
+      const [stored] = redactGoogleToolPartsForPersistence([{
+        type: `tool-${GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME}`,
+        toolCallId: 'call-1',
+        state: 'output-available',
+        input: { name: 'Plan', kind: 'document', content: '# Plan' },
+        output: {
+          references: [{
+            id: 'file-id-0123456789',
+            kind: 'drive-file',
+            title: 'Plan',
+            link: 'https://drive.google.com/open?id=file-id-0123456789',
+            parentId: 'parent-id-0123456789',
+          }],
+          created: true,
+          file_id: 'file-id-0123456789',
+          message: 'The file was created.',
+        },
+      }] as never) as unknown as Array<{ output: Record<string, unknown> }>
+
+      expect(Object.keys(stored!.output).sort())
+        .toEqual(['bodyRemoved', 'note', 'references'])
+      expect(stored!.output.references).toEqual([{
+        id: 'file-id-0123456789',
+        kind: 'drive-file',
+        title: 'Plan',
+        link: 'https://drive.google.com/open?id=file-id-0123456789',
+        parentId: 'parent-id-0123456789',
+      }])
+    })
+
+  it('names the file tool in the Drive step titles', () => {
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+      false,
+      false,
+    )).toBe('Created a file in Google Drive')
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+      true,
+      false,
+    )).toBe('Creating a file in Google Drive')
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+      false,
+      true,
+    )).toBe('Creating a file in Google Drive failed')
   })
 
   it('names every Drive write tool in the Drive step titles', () => {

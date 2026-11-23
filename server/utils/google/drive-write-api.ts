@@ -3,11 +3,14 @@ import {
   GOOGLE_DRIVE_FOLDER_MIME_TYPE,
 } from '#shared/utils/google-drive'
 import {
+  GOOGLE_DRIVE_FILE_KIND_SPECS,
   GOOGLE_DRIVE_LIST_FOLDER_MAX,
   isDriveRootAlias,
   isDriveWriteId,
+  validateCreateFileInput,
   validateDriveItemName,
 } from '#shared/utils/google-drive-write'
+import type { DriveFileKind } from '#shared/utils/google-drive-write'
 import { readReason } from '~~/server/utils/google/drive'
 import { escapeDriveQueryText } from '~~/server/utils/google/drive-search'
 import {
@@ -20,7 +23,10 @@ import type {
 } from '~~/server/utils/google/http'
 
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files'
+const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files'
 const GENERATE_IDS_URL = `${DRIVE_FILES_URL}/generateIds`
+const APPROVAL_DIGEST_PATTERN = /^[A-Za-z0-9_-]{43}$/
+const BOUNDARY_ATTEMPTS = 3
 const CREATED_FIELDS = 'id,name,mimeType,parents'
 const ITEM_META_FIELDS = 'id,name,mimeType,parents,ownedByMe,shared,driveId,'
   + 'trashed,appProperties,'
@@ -77,6 +83,10 @@ export const DRIVE_WRITE_FAILURE_TEXT: Readonly<
 export const DRIVE_CREATE_UNCONFIRMED_TEXT = 'Google Drive did not confirm '
   + 'the folder, so it may or may not have been created. Ask the user to '
   + 'check their Google Drive before trying again.'
+
+export const DRIVE_CREATE_FILE_UNCONFIRMED_TEXT = 'Google Drive did not '
+  + 'confirm the file, so it may or may not have been created. Ask the user '
+  + 'to check their Google Drive before trying again.'
 
 export const DRIVE_CREATE_NO_APPROVAL_TEXT = 'Nothing was created in Google '
   + 'Drive.'
@@ -478,6 +488,161 @@ export async function createDriveItem(
           JSON.stringify(metadata),
         ) as Uint8Array<ArrayBuffer>,
       },
+    },
+    toFetchOptions(context, {}),
+  )
+
+  if (!result.ok) {
+    return result
+  }
+
+  const meta = readItemMeta(result.value)
+
+  return meta
+    ? {
+      ok: true,
+      value: {
+        id: meta.id,
+        name: meta.name,
+        mimeType: meta.mimeType,
+        parents: meta.parents,
+      },
+    }
+    : { ok: false, code: 'failed' }
+}
+
+export interface DriveMultipartBody {
+  contentType: string
+  data: Uint8Array<ArrayBuffer>
+}
+
+function newMultipartBoundary(): string {
+  return `besidka-${crypto.randomUUID().replaceAll('-', '')}`
+}
+
+/**
+ * The `multipart/related` body of one file create: the JSON metadata part,
+ * then the content part with the given media type. A random boundary is
+ * drawn again when the content or the metadata holds it, and after three
+ * tries the body is refused (null), so the content can never end its own
+ * part and add another.
+ */
+export function buildDriveCreateMultipart(input: {
+  metadata: Record<string, unknown>
+  uploadMimeType: string
+  content: string
+}): DriveMultipartBody | null {
+  const metadataJson = JSON.stringify(input.metadata)
+  const encoder = new TextEncoder()
+
+  for (let attempt = 0; attempt < BOUNDARY_ATTEMPTS; attempt += 1) {
+    const boundary = newMultipartBoundary()
+
+    if (metadataJson.includes(boundary) || input.content.includes(boundary)) {
+      continue
+    }
+
+    const head = encoder.encode(
+      `--${boundary}\r\n`
+      + 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+      + `${metadataJson}\r\n`
+      + `--${boundary}\r\n`
+      + `Content-Type: ${input.uploadMimeType}; charset=UTF-8\r\n\r\n`,
+    )
+    const body = encoder.encode(input.content)
+    const tail = encoder.encode(`\r\n--${boundary}--`)
+    const data = new Uint8Array(
+      head.byteLength + body.byteLength + tail.byteLength,
+    )
+
+    data.set(head, 0)
+    data.set(body, head.byteLength)
+    data.set(tail, head.byteLength + body.byteLength)
+
+    return { contentType: `multipart/related; boundary=${boundary}`, data }
+  }
+
+  return null
+}
+
+export interface DriveCreateFileInput {
+  id: string
+  name: string
+  kind: DriveFileKind
+  content: string
+  parentId: string | null
+  approvalDigest: string
+}
+
+/**
+ * `files.create` with a multipart upload (a file with content). The one
+ * request to the upload endpoint, a POST to
+ * `/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, never
+ * a PATCH (which would replace content). Every field is read once into a
+ * local and checked: the id and the parent have the shape of a Drive id, the
+ * digest is a base64url SHA-256, and the name, kind and content pass
+ * `validateCreateFileInput` again, so the body is built from checked values
+ * only. The media types come from the kind map, never from the caller.
+ */
+export async function createDriveFileWithContent(
+  input: DriveCreateFileInput,
+  context: DriveWriteContext,
+): Promise<DriveWriteResult<CreatedDriveItem>> {
+  const id: unknown = input.id
+  const name: unknown = input.name
+  const kind: unknown = input.kind
+  const content: unknown = input.content
+  const parentId: unknown = input.parentId
+  const approvalDigest: unknown = input.approvalDigest
+  const hasParent = parentId !== null
+
+  if (
+    !isDriveWriteId(id)
+    || (hasParent && !isDriveWriteId(parentId))
+    || typeof approvalDigest !== 'string'
+    || !APPROVAL_DIGEST_PATTERN.test(approvalDigest)
+  ) {
+    return { ok: false, code: 'bad_request' }
+  }
+
+  const request = validateCreateFileInput({
+    name,
+    kind,
+    content,
+    ...(hasParent ? { folderId: parentId } : {}),
+  })
+
+  if (!request.ok) {
+    return { ok: false, code: 'bad_request' }
+  }
+
+  const spec = GOOGLE_DRIVE_FILE_KIND_SPECS[request.value.kind]
+  const multipart = buildDriveCreateMultipart({
+    metadata: buildDriveCreateMetadata({
+      id,
+      name: request.value.name,
+      mimeType: spec.targetMimeType,
+      parentId: request.value.folderId,
+      approvalDigest,
+    }),
+    uploadMimeType: spec.uploadMimeType,
+    content: request.value.content,
+  })
+
+  if (!multipart) {
+    return { ok: false, code: 'bad_request' }
+  }
+
+  const result = await requestJson(
+    `${DRIVE_UPLOAD_URL}?${new URLSearchParams({
+      uploadType: 'multipart',
+      supportsAllDrives: 'true',
+      fields: CREATED_FIELDS,
+    }).toString()}`,
+    {
+      method: 'POST',
+      headers: headersOf(context),
+      rawBody: multipart,
     },
     toFetchOptions(context, {}),
   )

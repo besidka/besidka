@@ -443,11 +443,13 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       expect(wrapper.get(
         '[data-testid="tool-permissions-group-warning-write"]',
       ).text()).toBe(
-        'Always allow lets the model create, rename and move Drive items '
-        + 'without asking. A rename of a file that is shared with others '
-        + 'shows the new name to them. Google\'s permission for Drive also '
-        + 'allows deleting and sharing; Besidka has no code that deletes or '
-        + 'shares.',
+        'Always allow lets the model create files and folders, and rename '
+        + 'and move Drive items, without asking. The model writes the '
+        + 'content of a new file, and it may carry text from other content '
+        + '(such as an email) into your Drive. A rename of a file that is '
+        + 'shared with others shows the new name to them. Google\'s '
+        + 'permission for Drive also allows deleting and sharing; Besidka '
+        + 'has no code that deletes or shares.',
       )
     })
 
@@ -658,6 +660,7 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
           'google__drive_list_folder',
           'google__drive_save_file',
           'google__drive_create_folder',
+          'google__drive_create_file',
           'google__drive_rename',
           'google__drive_move',
         ])
@@ -719,10 +722,11 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       expect(text).toContain('Without Change files access it never changes '
         + 'a Google file.')
       expect(text).toContain('One exception')
-      expect(text).toContain('create a folder, and rename or move files and '
-        + 'folders you own, in your own My Drive after you approve each one, '
-        + 'unless you set the tool to Always allow. '
-        + 'It cannot delete anything or change who can see a file.')
+      expect(text).toContain('create a file or a folder, and rename or move '
+        + 'files and folders you own, in your own My Drive after you approve '
+        + 'each one, unless you set the tool to Always allow. It cannot '
+        + 'delete anything or change who can see a file.')
+      expect(text).not.toContain('will be added later')
     })
 
     describe('Change files access', () => {

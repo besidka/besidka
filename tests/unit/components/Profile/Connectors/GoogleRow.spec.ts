@@ -75,7 +75,7 @@ describe('Profile/Connectors/GoogleRow', () => {
     expect(description).toContain('saves a file only after you approve it')
     expect(description).toContain('your own Google client')
     expect(description).toContain('Change files access')
-    expect(description).toContain('create folders when you approve')
+    expect(description).toContain('create files and folders when you approve')
     expect(description).not.toContain('never edits Google files')
   })
 

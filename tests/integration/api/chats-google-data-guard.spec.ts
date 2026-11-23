@@ -791,6 +791,7 @@ describe('chat send data guard', () => {
 
       it.each([
         ['created a folder', 'google__drive_create_folder'],
+        ['created a file', 'google__drive_create_file'],
         ['renamed an item', 'google__drive_rename'],
         ['moved an item', 'google__drive_move'],
       ])('does not flag a chat that only %s', async (_label, toolName) => {

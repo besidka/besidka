@@ -630,10 +630,10 @@ describe('Profile/Google/OwnClient', () => {
           .text()
 
         expect(text).toContain('Change files in Google Drive')
-        expect(text).toContain('Lets Besidka create folders, and rename and '
-          + 'move files and folders you own, each time you approve, unless '
-          + 'you set that tool to Always allow. Creating '
-          + 'files will be added later.')
+        expect(text).toContain('Lets Besidka create files and folders, and '
+          + 'rename and move files and folders you own, each time you '
+          + 'approve, unless you set that tool to Always allow.')
+        expect(text).not.toContain('will be added later')
         expect(text).toContain('Google\'s permission for this also allows '
           + 'deleting and sharing; Besidka has no code that deletes or '
           + 'shares.')
@@ -732,10 +732,12 @@ describe('Profile/Google/OwnClient', () => {
         .get('[data-testid="google-byo-tools-hint"]')
         .text()
 
-      expect(hint).toContain('list your folders, create a folder in your '
-        + 'own My Drive, and rename or move files and folders you own, '
-        + 'after you approve each one, unless you set the tool to Always '
-        + 'allow. Creating files will be added later.')
+      expect(hint).toContain('list your folders, create a file (a Google Doc '
+        + 'from Markdown, a Google Sheet from CSV or a plain text file) or a '
+        + 'folder in your own My Drive, and rename or move files and folders '
+        + 'you own, after you approve each one, unless you set the tool to '
+        + 'Always allow.')
+      expect(hint).not.toContain('will be added later')
       expect(hint).toContain('It never deletes anything and never changes '
         + 'who can see a file.')
     })
