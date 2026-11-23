@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
+import CommandMirror from '../../../app/components/ChatInput/CommandMirror.vue'
 import type { ComposerSkillItem } from '../../../app/composables/composer-skills'
 import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
 import { useComposerBuiltinCommand } from '../../../app/composables/composer-builtin-command'
@@ -85,11 +86,21 @@ const codeExecutionFeature = reactive({
   variant: null,
 })
 
+const googleDriveFeature = reactive({
+  enabled: false,
+  active: false,
+  variant: null,
+})
+
 mockNuxtImport('useFeature', () => {
   return (key: string) => {
     return computed(() => {
       if (key === 'code-execution' || key === 'code-execution.files') {
         return codeExecutionFeature
+      }
+
+      if (key === 'google.drive') {
+        return googleDriveFeature
       }
 
       return key === 'artifacts'
@@ -295,6 +306,7 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
         ChatInputArtifactPicker: artifactPickerStub,
         LazyChatInputSkillPicker: skillPickerStub,
         ChatInputSkillPicker: skillPickerStub,
+        LazyChatInputCommandMirror: CommandMirror,
         LazyChatInputModelsTrigger: true,
         LazyChatInputFilesTrigger: true,
         LazyChatInputReasoningTrigger: true,
@@ -4598,6 +4610,132 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
+    })
+  })
+
+  describe('the Google link highlight', () => {
+    const DOC_LINK = 'https://docs.google.com/document/d/1ExampleExampleExampleExample0123456789/edit'
+    const SHEET_LINK = 'https://docs.google.com/spreadsheets/d/1SheetSheetSheetSheetSheet0123456789/edit'
+
+    beforeEach(() => {
+      googleDriveFeature.active = true
+    })
+
+    afterEach(() => {
+      googleDriveFeature.active = false
+      ;(mocks.useChatInput() as { isDeepResearchModel: { value: boolean } })
+        .isDeepResearchModel.value = false
+    })
+
+    async function typeText(wrapper: ChatInputWrapper, text: string) {
+      await wrapper.get('[data-testid="chat-input-textarea"]').setValue(text)
+      await flushPromises()
+    }
+
+    function readHighlightedLinks(wrapper: ChatInputWrapper): string[] {
+      return wrapper.findAll('[data-testid="command-mirror-link"]')
+        .map((mark) => {
+          return mark.text()
+        })
+    }
+
+    it('highlights a typed or pasted link and mirrors the text exactly',
+      async () => {
+        const wrapper = await mountChatInput()
+
+        await typeText(wrapper, `see ${DOC_LINK} please`)
+
+        expect(readHighlightedLinks(wrapper)).toEqual([DOC_LINK])
+        expect(wrapper.get('[data-testid="command-mirror"]').element
+          .textContent).toBe(`see ${DOC_LINK} please `)
+      })
+
+    it('highlights every link in the message', async () => {
+      const wrapper = await mountChatInput()
+
+      await typeText(wrapper, `${DOC_LINK}\nand ${SHEET_LINK} and ${DOC_LINK}`)
+
+      expect(readHighlightedLinks(wrapper))
+        .toEqual([DOC_LINK, SHEET_LINK, DOC_LINK])
+    })
+
+    it('follows the text: gone once the link is edited into something that '
+      + 'is no longer a link', async () => {
+      const wrapper = await mountChatInput()
+
+      await typeText(wrapper, `see ${DOC_LINK}`)
+
+      expect(readHighlightedLinks(wrapper)).toEqual([DOC_LINK])
+
+      await typeText(wrapper, 'see https://docs.google.com/')
+
+      expect(readHighlightedLinks(wrapper)).toEqual([])
+      expect(wrapper.find('[data-testid="command-mirror"]').exists())
+        .toBe(false)
+
+      await typeText(wrapper, `see ${DOC_LINK}`)
+
+      expect(readHighlightedLinks(wrapper)).toEqual([DOC_LINK])
+
+      await typeText(wrapper, `see ${DOC_LINK.replace('/document/', '/forms/')}`)
+
+      expect(readHighlightedLinks(wrapper)).toEqual([])
+    })
+
+    it('does not highlight a link inside inline code or a code block',
+      async () => {
+        const wrapper = await mountChatInput()
+
+        await typeText(wrapper, `code \`${DOC_LINK}\` here`)
+
+        expect(readHighlightedLinks(wrapper)).toEqual([])
+
+        await typeText(wrapper, `\`\`\`\n${DOC_LINK}\n\`\`\`\n${SHEET_LINK} x`)
+
+        expect(readHighlightedLinks(wrapper)).toEqual([SHEET_LINK])
+      })
+
+    it('does not highlight while Google Drive is not active', async () => {
+      googleDriveFeature.active = false
+
+      const wrapper = await mountChatInput()
+
+      await typeText(wrapper, `see ${DOC_LINK}`)
+
+      expect(readHighlightedLinks(wrapper)).toEqual([])
+      expect(wrapper.find('[data-testid="command-mirror"]').exists())
+        .toBe(false)
+    })
+
+    it('does not highlight for a deep research model', async () => {
+      ;(mocks.useChatInput() as { isDeepResearchModel: { value: boolean } })
+        .isDeepResearchModel.value = true
+
+      const wrapper = await mountChatInput()
+
+      await typeText(wrapper, `see ${DOC_LINK}`)
+
+      expect(readHighlightedLinks(wrapper)).toEqual([])
+    })
+
+    it('adds no element to the layout of the composer, only the overlay '
+      + 'inside the textarea wrapper', async () => {
+      const wrapper = await mountChatInput()
+      const textareaWrapper = wrapper.get('[data-testid="chat-input-textarea"]')
+        .element.parentElement!
+
+      await typeText(wrapper, 'hello')
+
+      const childCountBefore = textareaWrapper.children.length
+
+      await typeText(wrapper, `see ${DOC_LINK}`)
+
+      const mirror = wrapper.get('[data-testid="command-mirror"]').element
+
+      expect(textareaWrapper.children.length).toBe(childCountBefore + 1)
+      expect(mirror.parentElement).toBe(textareaWrapper)
+      expect(mirror.classList.contains('absolute')).toBe(true)
+      expect(mirror.classList.contains('pointer-events-none')).toBe(true)
     })
   })
 

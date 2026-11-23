@@ -1,7 +1,7 @@
 <template>
   <section
     v-if="byo"
-    class="grid gap-4 p-4 sm:p-6"
+    class="grid min-w-0 gap-4 p-4 sm:p-6"
     aria-labelledby="google-byo-heading"
     data-testid="google-byo"
   >
@@ -64,7 +64,8 @@
         >
           Connectors page</NuxtLink>.
       </p>
-      <div class="grid gap-2">
+      <ProfileGoogleOwnClientGuide :reduced="reduced" />
+      <div class="grid min-w-0 gap-2">
         <p class="text-sm font-semibold">
           Redirect URI to register on your client
         </p>
@@ -204,7 +205,7 @@
           && byo.hasClient
           && offeredOptions.length > 0
       "
-      class="grid gap-2"
+      class="grid min-w-0 gap-2"
       data-testid="google-byo-capabilities-form"
     >
       <legend class="text-sm font-semibold">

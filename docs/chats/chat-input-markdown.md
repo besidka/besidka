@@ -347,19 +347,63 @@ section 10.5). It reuses three things from here:
 
 **Mirror overlay (`ChatInput/CommandMirror.vue`).** The textarea stays a plain
 `<textarea>` with a transparent background. While a typed command is the active
-invocation, a `div` is rendered behind it, inside a `relative` wrapper, with the
-same text and the token wrapped in a `<mark>` whose text is transparent and
-whose background is `bg-accent/25` (the inline-code pink). For the two to line
-up it copies the textarea's computed font family, size, weight, letter and word
-spacing, line height, tab size and padding (re-read on a `ResizeObserver`
-tick), uses `white-space: pre-wrap` and `overflow-wrap: break-word`, appends a
-trailing space so a final newline keeps its line, and follows `scroll`. It has
-no padding or border on the `<mark>`, because that would change wrapping. It
-renders text by interpolation only, is `aria-hidden` and `pointer-events-none`,
-and is mounted only while a token is highlighted, so a message without a
-command renders exactly as before. A TipTap or ProseMirror editor stays
-deferred (see "Rejected for now" below). Alignment on iOS Safari is not checked
-by the headless specs and needs the Simulator.
+invocation, or the text holds a recognized Google link (next section), a `div`
+is rendered over the textarea (`absolute inset-0 z-10`, inside the `relative`
+wrapper) with the same text, transparent, and every highlighted range wrapped
+in a `<mark class="composer-command-token">`: an opaque soft accent badge
+(`main.css`) that covers the textarea's own glyphs and paints its own. For the
+two to line up it copies the textarea's computed font family, size, weight,
+letter and word spacing, line height, tab size and padding (re-read on a
+`ResizeObserver` tick), uses `white-space: pre-wrap` and
+`overflow-wrap: break-word`, appends one trailing space so a final newline
+keeps its line, and follows `scroll`. The badge pads its sides with
+box-shadows, never with padding or border, because those would change
+wrapping. It renders text by interpolation only, is `aria-hidden` and
+`pointer-events-none`, and is mounted only while a range is highlighted, so a
+message without one renders exactly as before. A TipTap or ProseMirror editor
+stays deferred (see "Rejected for now" below). Alignment on iOS Safari is not
+checked by the headless specs and needs the Simulator.
+
+The component takes `ranges` (`{ start, end, kind }`, `kind` `command` or
+`google-link`; the old `start` and `end` props still mean one command range).
+`app/utils/composer-mirror-ranges.ts` sorts them, clamps them into the text,
+clips an overlap to start where the earlier range ends and drops empty,
+reversed and non-numeric ones, so a bad range never throws. The badge is
+opaque, so it would hide the caret and any selection. At a badge's start or
+end the matching side padding is dropped (`data-caret`); with the caret
+strictly inside a badge, or a selection overlapping it, the badge is dropped
+altogether (`data-reveal`) and the textarea's own text, caret and selection
+show.
+
+### Google link highlight
+
+A Google Docs, Sheets, Slides or Drive link that Besidka recognizes (the
+parser of `docs/google.md`, section 12.15, run by `findGoogleDriveLinkRanges`
+on the textarea text) gets the same badge as a slash command, for every such
+link in the message, including a repeat of the same file and links past the
+fifth, which are highlighted but never requested. The ranges come from a
+`computed` over the text in `ChatInput.client.vue`, so the highlight follows
+typing, paste, scroll and resize with no debounce, and it is gone as soon as
+the text stops being a recognized link (an edited path, a link turned into
+inline code, a half-typed id at the end of the text). It is off while Google
+Drive is not active for the user and for deep research models.
+
+Why the link is not shortened to a label: the highlight is a layer above a
+plain textarea and must keep the character widths of the text underneath, or
+the caret and the selection drift away from what is drawn. A short label such
+as "Google Doc" would need the deferred rich editor ("Rejected for now"). The
+composer height does not change: the layer is absolutely positioned, adds no
+box to the flow, and the spacer (`docs/chat-scroll-spacer.md`) reads the
+composer height as before.
+
+The mirror re-reads the selection after every text change, including a
+programmatic one that fires no `input` event (the prefill hook,
+`insertTextAtSelection`, Vue assigning `value`), and it also copies the
+computed `fontKerning`, `fontVariantLigatures`, `fontFeatureSettings`,
+`fontStretch`, `textRendering` and `hyphens` of the textarea, because they
+change glyph widths or line breaks. Under `@media (forced-colors: active)`
+(Windows High Contrast) the overlay is hidden through `main.css`, so the system
+colors do not paint a second copy of the text over the textarea.
 
 **At send** the active token and the blanks after it are cut from the typed
 text before it is joined with the pasted-text chips, so the stored text, a
@@ -567,6 +611,10 @@ than structure-preserving paste.
   (the typed command: trigger, token, strip, keys, IME, backspace, tile sync,
   overlay), and `tests/e2e/chat/skills.spec.ts` (type `/mee`, pick, highlight,
   tile, send without the token).
+- The Google link highlight: `tests/unit/utils/composer-mirror-ranges.spec.ts`,
+  the "with a list of ranges" block of `CommandMirror.spec.ts`,
+  `findGoogleDriveLinkRanges` in `tests/unit/utils/google-drive-links.spec.ts`
+  and "the Google link highlight" in `tests/unit/components/ChatInput.spec.ts`.
 - `tests/unit/utils/knowledge-html-to-markdown.spec.ts` (`htmlToChatMarkdown`).
 - `tests/unit/utils/remark-disable-html.spec.ts` (the real `parseMarkdown`
   with `getParserOptions('user')`: literal generics and tags, every directive
