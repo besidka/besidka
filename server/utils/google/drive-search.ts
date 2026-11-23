@@ -12,7 +12,7 @@ import { readReason } from '~~/server/utils/google/drive'
 import { googleFetchJson } from '~~/server/utils/google/http'
 
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files'
-const SEARCH_FIELDS = 'files(id,name,mimeType,modifiedTime)'
+const SEARCH_FIELDS = 'files(id,name,mimeType,modifiedTime,parents)'
 const FOLDER_MEDIA_TYPE = 'application/vnd.google-apps.folder'
 
 const KIND_MEDIA_TYPES: Readonly<
@@ -52,6 +52,7 @@ export interface DriveSearchHit {
   name: string
   mimeType: string
   modifiedTime: Date | null
+  parentId: string | null
 }
 
 export type DriveSearchResult
@@ -156,11 +157,20 @@ export async function searchDriveFiles(
           return []
         }
 
+        const parents: unknown = record.parents
+        const parentId = Array.isArray(parents)
+          && parents.length === 1
+          && typeof parents[0] === 'string'
+          && GOOGLE_DRIVE_FILE_ID_PATTERN.test(parents[0])
+          ? parents[0]
+          : null
+
         return [{
           id: record.id,
           name: typeof record.name === 'string' ? record.name : '',
           mimeType: typeof record.mimeType === 'string' ? record.mimeType : '',
           modifiedTime: Number.isNaN(modified) ? null : new Date(modified),
+          parentId,
         }]
       }),
     }

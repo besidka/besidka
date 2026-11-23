@@ -734,6 +734,45 @@ describe('Google bring-your-own client routes', () => {
         expect(url.searchParams.get('scope')).not.toContain('calendar')
       })
 
+    it('asks for the full drive scope when drive-write comes with drive-read',
+      async () => {
+        await saveClient()
+
+        const url = await startByo(['drive-read', 'drive-write'])
+        const scopes = url.searchParams.get('scope')!.split(' ')
+
+        expect(scopes.sort()).toEqual([
+          'openid',
+          EMAIL_SCOPE,
+          DRIVE_READONLY,
+          `${AUTH}drive`,
+        ].sort())
+        expect(scopes).not.toContain(DRIVE_FILE)
+      })
+
+    it('refuses drive-write without drive-read, without calling Google',
+      async () => {
+        await saveClient()
+
+        const failure = await failureOf(call('start', {
+          body: { capabilities: ['drive-write'] },
+        }))
+
+        expect(failure.status).toBe(400)
+        expect(failure.message).toContain('needs Drive read access')
+      })
+
+    it('accepts drive-write alone when the stored grant already holds '
+      + 'drive-read', async () => {
+      await saveClient()
+      await connectByo(['drive-read'])
+
+      const url = await startByo(['drive-write'])
+
+      expect(url.searchParams.get('scope')!.split(' '))
+        .toEqual(expect.arrayContaining([DRIVE_READONLY, `${AUTH}drive`]))
+    })
+
     it.each([
       ['no capability', { capabilities: [] }],
       ['an unknown capability', { capabilities: ['drive-picked'] }],

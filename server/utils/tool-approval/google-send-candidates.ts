@@ -14,7 +14,9 @@ import { checkGoogleByoAccess } from '~~/server/utils/google/byo-access'
 import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
 import { buildGoogleByoTools } from '~~/server/utils/google/byo-tools'
 import { buildGoogleCalendarTools } from '~~/server/utils/google/calendar-tools'
+import { buildGoogleReferenceIndex } from '~~/server/utils/google/chat-references'
 import { buildGoogleDriveTools } from '~~/server/utils/google/drive-tools'
+import { buildGoogleDriveWriteTools } from '~~/server/utils/google/drive-write-tools'
 import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
 import { readGoogleConnection } from '~~/server/utils/google/store'
 import {
@@ -186,6 +188,14 @@ async function buildByoCandidates(input: {
   }
 
   const chatGrantHashes = await input.readChatGrantHashes()
+  const index = await buildGoogleReferenceIndex({
+    db: input.db,
+    userId: input.userId,
+    chatPublicId: input.chatPublicId,
+    priorParts: input.priorParts,
+    grantedScopes: connection.grantedScopes,
+    logger: input.logger,
+  })
   const byo = await buildGoogleByoTools({
     db: input.db,
     kv: useKV(),
@@ -193,8 +203,19 @@ async function buildByoCandidates(input: {
     chatPublicId: input.chatPublicId,
     accountEmail: connection.googleEmail,
     priorParts: input.priorParts,
+    index,
     grantedScopes: connection.grantedScopes,
     chatGrantHashes,
+    guard: input.guard,
+    logger: input.logger,
+  })
+  const driveWrite = await buildGoogleDriveWriteTools({
+    db: input.db,
+    kv: useKV(),
+    userId: input.userId,
+    grantedScopes: connection.grantedScopes,
+    chatGrantHashes,
+    index,
     guard: input.guard,
     logger: input.logger,
   })
@@ -218,10 +239,12 @@ async function buildByoCandidates(input: {
         return allowed.includes(toolName)
       }),
     ),
+    ...driveWrite.tools,
     ...calendar.tools,
   }
   const allowedEntries = new Map([
     ...[...byo.entries].filter(([toolName]) => allowed.includes(toolName)),
+    ...driveWrite.entries,
     ...calendar.entries,
   ])
 
