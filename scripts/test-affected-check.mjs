@@ -758,6 +758,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/compliance.spec.ts',
     'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
+    'tests/unit/utils/memory/lazy-rule-compilation.spec.ts',
     'tests/unit/utils/chats/share-pii-check.spec.ts',
     ...memoryJevTests,
   ]

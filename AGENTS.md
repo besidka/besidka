@@ -636,6 +636,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   previews, shared preview resources, passkeys only on the long-lived
   host), the bootstrap-PR hazard, owner OAuth-callback steps, and revert
   criteria
+- `docs/worker-startup.md` - Worker startup time (BES-469): why a lazy
+  `import()` defers nothing while the module sits in `chunks/nitro/nitro.mjs`,
+  the rule for no heavy top-level work (regex rule tables, schemas, catalog
+  merges; cache the settled value, never a promise), the 1 s limit and error
+  10021 at deploy validation, how to measure (`wrangler check startup` is
+  local, `Worker Startup Time` on deploy is authoritative, about 1.4 to 1.9
+  times the local number), the measured numbers, and the chunking, service
+  binding and `find_additional_modules` options left to the owner
 - `docs/stacked-prs.md` - When to group PRs and how: the umbrella pattern
   (children `--base` the parent branch, no CI on children, parent builds
   everything) versus native `gh stack` layers (only the top layer builds,
