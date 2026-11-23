@@ -165,6 +165,8 @@ describe('google tool catalog', () => {
         google__drive_list_folder: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
         google__drive_create_folder:
           GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
+        google__drive_rename: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
+        google__drive_move: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__gmail_search: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
         google__gmail_read_thread: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__gmail_create_draft: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
@@ -208,6 +210,8 @@ describe('google tool catalog', () => {
         google__drive_list_folder: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
         google__drive_create_folder:
           GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__drive_rename: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__drive_move: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
         google__gmail_search: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
         google__gmail_read_thread:
           GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,

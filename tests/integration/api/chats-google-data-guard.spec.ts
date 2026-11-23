@@ -789,10 +789,14 @@ describe('chat send data guard', () => {
         })
       })
 
-      it('does not flag a chat that only created a folder', async () => {
+      it.each([
+        ['created a folder', 'google__drive_create_folder'],
+        ['renamed an item', 'google__drive_rename'],
+        ['moved an item', 'google__drive_move'],
+      ])('does not flag a chat that only %s', async (_label, toolName) => {
         const result = await runSend({
           googleDataAt: null,
-          storedMessages: storedFolderMessage('google__drive_create_folder'),
+          storedMessages: storedFolderMessage(toolName),
           directModel: { providerId: 'openai', modelId: 'gpt-5-mini' },
         })
 

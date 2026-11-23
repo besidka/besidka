@@ -113,6 +113,36 @@ describe('getApprovalStepModel', () => {
       )).not.toHaveProperty('driveNames')
     })
 
+  it('keeps the item, source and target names with a kind and refuses any '
+    + 'other kind in the browser too', () => {
+    const names = {
+      item: { name: 'Plan', id: 'item-id-0123456789', kind: 'folder' },
+      from: { name: 'Projects', id: 'folder-id-0123456789' },
+      to: { name: 'Archive', id: 'target-id-0123456789' },
+    }
+
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ driveNames: names })),
+    )?.driveNames).toEqual(names)
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({
+        driveNames: {
+          item: { name: 'Plan', id: 'item-id-0123456789', kind: 'shortcut' },
+        },
+      })),
+    )).not.toHaveProperty('driveNames')
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({
+        driveNames: {
+          item: { name: 'a'.repeat(201), id: 'item-id-0123456789' },
+        },
+      })),
+    )).not.toHaveProperty('driveNames')
+  })
+
   it('falls back to the default reason and Allow once without data', () => {
     const model = getApprovalStepModel(connectorPart(), new Map())
 

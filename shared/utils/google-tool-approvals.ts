@@ -54,6 +54,12 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
   [`${GOOGLE_TOOL_NAME_PREFIX}drive_create_folder`]: {
     returnsGoogleContent: false,
   },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_rename`]: {
+    returnsGoogleContent: false,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_move`]: {
+    returnsGoogleContent: false,
+  },
   [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: {
     returnsGoogleContent: true,
     emptyListHoldsNoContent: true,
@@ -78,6 +84,8 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
 const GOOGLE_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   `${GOOGLE_TOOL_NAME_PREFIX}drive_save_file`,
   `${GOOGLE_TOOL_NAME_PREFIX}drive_create_folder`,
+  `${GOOGLE_TOOL_NAME_PREFIX}drive_rename`,
+  `${GOOGLE_TOOL_NAME_PREFIX}drive_move`,
   `${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`,
   `${GOOGLE_TOOL_NAME_PREFIX}calendar_create_event`,
 ])

@@ -2635,6 +2635,133 @@ describe('tool approval continuation', () => {
       })
     })
 
+    describe.each([
+      ['google__drive_rename', 'Rename an item', {
+        itemId: 'item-id-0123456789',
+        newName: 'Plan',
+      }],
+      ['google__drive_move', 'Move an item', {
+        itemId: 'item-id-0123456789',
+        fromFolderId: 'root',
+        toFolderId: 'folder-id-0123456789',
+      }],
+    ])('a %s the user blocked or switched off after approving it', (
+      toolName,
+      summary,
+      callInput,
+    ) => {
+      const BLOCKED_TEXT = 'This tool is blocked in the user\'s settings, so '
+        + 'the action did not run.'
+      let changeExecute: ReturnType<typeof vi.fn>
+
+      beforeEach(async () => {
+        const { buildGoogleApprovalEntry } = await import(
+          '~~/server/utils/tool-approval/send'
+        )
+
+        changeExecute = vi.fn(async () => ({
+          references: [{ id: 'item-id-0123456789' }],
+          alreadyDone: false,
+        }))
+        mocks.googleSend = {
+          tools: {
+            [toolName]: tool({
+              description: 'Change a Drive item.',
+              inputSchema: z.record(z.string(), z.string()),
+              execute: changeExecute,
+            }),
+          },
+          entries: new Map([
+            [toolName, buildGoogleApprovalEntry({
+              toolName,
+              kind: 'write',
+              definitionHash: GOOGLE_HASH,
+              summary,
+              toolApprovalsActive: true,
+            })],
+          ]),
+        }
+      })
+
+      async function pauseOnChange() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [toolCallChunks('call-c', toolName, callInput)],
+        })
+      }
+
+      it('asks with Allow once only and runs it when nothing changed',
+        async () => {
+          const paused = await pauseOnChange()
+          const [approvalId] = paused.approvalIds
+
+          expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+            family: 'google',
+            access: 'write',
+            toolName,
+            rememberOptions: ['once'],
+            input: callInput,
+          })
+          expect(changeExecute).not.toHaveBeenCalled()
+
+          await answer(paused, [
+            { approvalId, approved: true },
+          ], [textChunks('Done.')])
+
+          expect(changeExecute).toHaveBeenCalledTimes(1)
+          expect(changeExecute.mock.calls[0]![1]).toMatchObject({
+            approvalId,
+          })
+        })
+
+      it('denies it with the blocked text and never calls Google once the '
+        + 'tool is Blocked', async () => {
+        const paused = await pauseOnChange()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleBlockedNames = [toolName]
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(changeExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+      })
+
+      it('denies it with the blocked text and never calls Google once '
+        + 'Drive is switched off in the chat', async () => {
+        const paused = await pauseOnChange()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleServicesOff = ['drive']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(changeExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+      })
+
+      it('does not run it when the user denies it', async () => {
+        const paused = await pauseOnChange()
+
+        await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: false },
+        ])
+
+        expect(changeExecute).not.toHaveBeenCalled()
+      })
+    })
+
     describe('with the real Drive tools', () => {
       const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
 
@@ -3571,8 +3698,10 @@ describe('tool approval continuation', () => {
       const GENERATED_ID = 'generated-id-0123456789'
       const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
       const NEW_FOLDER = { name: 'Reports', parentFolderId: FOLDER_ID }
+      const SECOND_FOLDER_ID = 'second-folder-id-01234'
       let driveFetch: ReturnType<typeof vi.fn>
       let createStatus = 200
+      let secondFolder = false
 
       function outsideFrames(prompt: string): string {
         return prompt.replace(FRAME, '')
@@ -3614,12 +3743,31 @@ describe('tool approval continuation', () => {
           ownedByMe: true,
           shared: false,
           trashed: false,
-          capabilities: { canAddChildren: true },
+          capabilities: {
+            canAddChildren: true,
+            canRename: true,
+            canMoveItemWithinDrive: true,
+          },
         }
 
         createStatus = 200
+        secondFolder = false
         driveFetch = vi.fn(async (input: string, init?: RequestInit) => {
           const url = new URL(input)
+
+          if (init?.method === 'PATCH') {
+            const sent = JSON.parse(
+              Buffer.from(init.body as Uint8Array).toString() || '{}',
+            )
+            const added = url.searchParams.get('addParents')
+
+            return Response.json({
+              id: url.pathname.split('/').at(-1),
+              name: sent.name ?? FOLDER_NAME,
+              mimeType: folder.mimeType,
+              parents: [added ?? ROOT_ID],
+            })
+          }
 
           if (url.pathname === '/drive/v3/files/generateIds') {
             return Response.json({ ids: [GENERATED_ID] })
@@ -3643,11 +3791,12 @@ describe('tool approval continuation', () => {
 
           if (url.pathname === '/drive/v3/files') {
             return Response.json({
-              files: [{
-                id: FOLDER_ID,
-                name: FOLDER_NAME,
-                ...folder,
-              }],
+              files: [
+                { id: FOLDER_ID, name: FOLDER_NAME, ...folder },
+                ...(secondFolder
+                  ? [{ id: SECOND_FOLDER_ID, name: 'Archive', ...folder }]
+                  : []),
+              ],
             })
           }
 
@@ -3806,6 +3955,165 @@ describe('tool approval continuation', () => {
         expect(prompt).toContain('may or may not have been created')
         expect(prompt).toContain('check their Google Drive before trying again')
       })
+
+      function patchCalls() {
+        return driveFetch.mock.calls.filter((call) => {
+          return (call[1] as RequestInit | undefined)?.method === 'PATCH'
+        })
+      }
+
+      it('renames a listed folder once approved: the card names the old name '
+        + 'from the chat, one PATCH sends only the new name, and only a '
+        + 'reference is stored', async () => {
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-l', 'google__drive_list_folder', {
+              folderId: 'root',
+            }),
+            toolCallChunks('call-r', 'google__drive_rename', {
+              itemId: FOLDER_ID,
+              newName: 'Renamed',
+            }),
+          ],
+        })
+        const [approvalId] = paused.approvalIds
+        const approvalPart = paused.assistantParts.find((part: any) => {
+          return part.type === 'data-tool-approval'
+            && part.data.toolCallId === 'call-r'
+        }) as any
+
+        expect(approvalPart.data).toMatchObject({
+          rememberOptions: ['once'],
+          summary: `Rename "${FOLDER_NAME}" to "Renamed" in your Google Drive`,
+          driveNames: {
+            item: { name: FOLDER_NAME, id: FOLDER_ID, kind: 'folder' },
+          },
+        })
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__drive_rename',
+          rememberOptions: ['once'],
+          input: { itemId: FOLDER_ID, newName: 'Renamed' },
+        })
+        expect(patchCalls()).toHaveLength(0)
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Renamed it.')])
+        const update = mocks.updates.at(-1)!
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(patchCalls()).toHaveLength(1)
+        expect(JSON.parse(Buffer.from(
+          patchCalls()[0]![1].body as Uint8Array,
+        ).toString())).toEqual({ name: 'Renamed' })
+        expect(outsideFrames(prompt)).not.toContain(FOLDER_NAME)
+        expect(prompt).not.toContain('drive.google.com')
+        expect(findPart(update.parts, 'tool-google__drive_rename'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: FOLDER_ID,
+                kind: 'drive-folder',
+                title: 'Renamed',
+                parentId: ROOT_ID,
+              }],
+            },
+          })
+      })
+
+      it('moves a listed folder once approved: the card names the item and '
+        + 'the target, one PATCH carries only the parents in its query',
+      async () => {
+        secondFolder = true
+
+        const moveInput = {
+          itemId: FOLDER_ID,
+          fromFolderId: 'root',
+          toFolderId: SECOND_FOLDER_ID,
+        }
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-l', 'google__drive_list_folder', {
+              folderId: 'root',
+            }),
+            toolCallChunks('call-m', 'google__drive_move', moveInput),
+          ],
+        })
+        const [approvalId] = paused.approvalIds
+        const approvalPart = paused.assistantParts.find((part: any) => {
+          return part.type === 'data-tool-approval'
+            && part.data.toolCallId === 'call-m'
+        }) as any
+
+        expect(approvalPart.data).toMatchObject({
+          rememberOptions: ['once'],
+          summary: `Move "${FOLDER_NAME}" from My Drive to "Archive" in your `
+            + 'Google Drive',
+          driveNames: {
+            item: { name: FOLDER_NAME, id: FOLDER_ID, kind: 'folder' },
+            to: { name: 'Archive', id: SECOND_FOLDER_ID, kind: 'folder' },
+          },
+        })
+        expect(approvalPart.data.driveNames).not.toHaveProperty('from')
+        expect(patchCalls()).toHaveLength(0)
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Moved it.')])
+        const update = mocks.updates.at(-1)!
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+        const [patchedUrl, patchedInit] = patchCalls()[0]! as [
+          string,
+          RequestInit,
+        ]
+        const parsed = new URL(patchedUrl)
+
+        expect(patchCalls()).toHaveLength(1)
+        expect(Buffer.from(patchedInit.body as Uint8Array).toString())
+          .toBe('{}')
+        expect(parsed.searchParams.get('addParents')).toBe(SECOND_FOLDER_ID)
+        expect(parsed.searchParams.get('removeParents')).toBe(ROOT_ID)
+        expect(outsideFrames(prompt)).not.toContain(FOLDER_NAME)
+        expect(findPart(update.parts, 'tool-google__drive_move'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: FOLDER_ID,
+                kind: 'drive-folder',
+                parentId: SECOND_FOLDER_ID,
+              }],
+            },
+          })
+      })
+
+      it('refuses a rename of an id the chat never returned without asking',
+        async () => {
+          const paused = await pauseTurn({
+            servers: [linear],
+            connectorIds: [],
+            steps: [
+              toolCallChunks('call-r', 'google__drive_rename', {
+                itemId: 'unknown-item-id-0123456',
+                newName: 'Renamed',
+              }),
+            ],
+          })
+
+          expect(paused.approvalIds).toHaveLength(0)
+          expect(patchCalls()).toHaveLength(0)
+        })
     })
   })
 

@@ -13,9 +13,14 @@ export const GOOGLE_DRIVE_READ_FOUND_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}driv
 export const GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_list_folder`
 export const GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_create_folder`
 
+export const GOOGLE_DRIVE_RENAME_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_rename`
+export const GOOGLE_DRIVE_MOVE_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_move`
+
 export const GOOGLE_DRIVE_WRITE_TOOL_NAMES: readonly string[] = [
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
+  GOOGLE_DRIVE_RENAME_TOOL_NAME,
+  GOOGLE_DRIVE_MOVE_TOOL_NAME,
 ]
 
 export const GOOGLE_DRIVE_TOOL_NAMES: readonly string[] = [
@@ -225,6 +230,16 @@ const TOOL_STEP_TITLES: Readonly<Record<string, {
     pending: 'Creating a folder in Google Drive',
     done: 'Created a folder in Google Drive',
     failed: 'Creating a folder in Google Drive failed',
+  },
+  [GOOGLE_DRIVE_RENAME_TOOL_NAME]: {
+    pending: 'Renaming an item in Google Drive',
+    done: 'Renamed an item in Google Drive',
+    failed: 'Renaming an item in Google Drive failed',
+  },
+  [GOOGLE_DRIVE_MOVE_TOOL_NAME]: {
+    pending: 'Moving an item in Google Drive',
+    done: 'Moved an item in Google Drive',
+    failed: 'Moving an item in Google Drive failed',
   },
 }
 
