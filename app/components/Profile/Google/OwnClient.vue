@@ -64,6 +64,7 @@
         >
           Connectors page</NuxtLink>.
       </p>
+      <ProfileGoogleOwnClientGuide :reduced="reduced" />
       <div class="grid gap-2">
         <p class="text-sm font-semibold">
           Redirect URI to register on your client

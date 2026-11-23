@@ -4,6 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, reactive, ref } from 'vue'
 import OwnClient from '../../../../../app/components/Profile/Google/OwnClient.vue'
 import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
+import {
+  GOOGLE_BYO_CAPABILITIES,
+  getGoogleByoScopes,
+} from '#shared/utils/google-byo'
+import { GOOGLE_CONNECTORS_PATH } from '#shared/utils/google-connectors'
+import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
+import { GOOGLE_CONNECTION_SCOPES } from '~~/server/utils/google/client'
 import type {
   GoogleByoConnectionStatus,
   GoogleConnectionStatusResponse,
@@ -796,6 +803,140 @@ describe('Profile/Google/OwnClient', () => {
         .exists()).toBe(false)
       expect(wrapper.find('[data-testid="google-byo-capabilities-form"]')
         .exists()).toBe(true)
+    })
+  })
+
+  describe('setup guide', () => {
+    const SCOPE_URL_PATTERN = /https:\/\/www\.googleapis\.com\/auth\/[a-z.]+|openid/g
+
+    async function mountReduced() {
+      const wrapper = await mountSuspended(OwnClient, {
+        props: { reduced: true },
+        attachTo: document.body,
+      })
+
+      await flushPromises()
+
+      return wrapper
+    }
+
+    it('is collapsed by default with a clear summary line', async () => {
+      const wrapper = await mountOwnClient()
+      const guide = wrapper.get('[data-testid="google-byo-guide"]')
+      const summary = wrapper.get('[data-testid="google-byo-guide-summary"]')
+
+      expect(guide.element.tagName).toBe('DETAILS')
+      expect((guide.element as HTMLDetailsElement).open).toBe(false)
+      expect(guide.attributes('open')).toBeUndefined()
+      expect(summary.element.tagName).toBe('SUMMARY')
+      expect(summary.text()).toBe('How to set up your own Google client')
+    })
+
+    it('expands to the steps and the failure list', async () => {
+      const wrapper = await mountOwnClient()
+      const guide = wrapper.get('[data-testid="google-byo-guide"]')
+
+      ;(guide.element as HTMLDetailsElement).open = true
+      await flushPromises()
+
+      expect((guide.element as HTMLDetailsElement).open).toBe(true)
+      expect(guide.findAll(
+        '[data-testid="google-byo-guide-steps"] > li',
+      )).toHaveLength(7)
+      expect(guide.get('[data-testid="google-byo-guide-warning"]').text())
+        .toContain('every 7 days')
+      expect(guide.get('[data-testid="google-byo-guide-failures"]').text())
+        .toContain('The Gmail API is not turned on')
+    })
+
+    it('links only to the Google Cloud console', async () => {
+      const wrapper = await mountOwnClient()
+      const links = wrapper.findAll(
+        '[data-testid="google-byo-guide"] a[target="_blank"]',
+      )
+
+      expect(links.length).toBeGreaterThan(0)
+
+      for (const link of links) {
+        expect(link.attributes('href') ?? link.attributes('to'))
+          .toMatch(/^https:\/\/console\.cloud\.google\.com\//)
+        expect(link.attributes('rel')).toContain('noopener')
+      }
+    })
+
+    it('lists exactly the scopes the own client requests', async () => {
+      const wrapper = await mountOwnClient()
+      const listed = wrapper
+        .get('[data-testid="google-byo-guide-scopes"]')
+        .text()
+        .match(SCOPE_URL_PATTERN) ?? []
+      const expected = [
+        ...GOOGLE_CONNECTION_SCOPES.byo,
+        ...getGoogleByoScopes([...GOOGLE_BYO_CAPABILITIES]),
+      ]
+
+      expect([...new Set(listed)].sort()).toEqual([...expected].sort())
+      expect(listed).not.toContain(GOOGLE_SCOPES.driveFile)
+      expect(listed).not.toContain(GOOGLE_SCOPES.profile)
+    })
+
+    it('shows the redirect path without a host and never the client',
+      async () => {
+        setByo({ hasClient: true })
+
+        const wrapper = await mountOwnClient()
+        const guide = wrapper.get('[data-testid="google-byo-guide"]')
+
+        expect(guide.text()).toContain('/api/v1/google/byo/callback')
+        expect(guide.text()).not.toContain('https://besidka.com')
+        expect(guide.text()).not.toContain(CLIENT_ID)
+        expect(guide.text()).not.toContain(CLIENT_SECRET)
+      })
+
+    it('sends the full card to Connect on the card itself', async () => {
+      const wrapper = await mountOwnClient()
+      const guide = wrapper.get('[data-testid="google-byo-guide"]')
+
+      expect(guide.find('[data-testid="google-byo-guide-connectors-link"]')
+        .exists()).toBe(false)
+      expect(guide.get('[data-testid="google-byo-guide-warning"]').text())
+        .toContain('press Reconnect on this card')
+    })
+
+    it('shows in the reduced card and sends it to Connectors', async () => {
+      const wrapper = await mountReduced()
+      const guide = wrapper.get('[data-testid="google-byo-guide"]')
+
+      expect((guide.element as HTMLDetailsElement).open).toBe(false)
+      const link = guide.get('[data-testid="google-byo-guide-connectors-link"]')
+
+      expect(link.attributes('href') ?? link.attributes('to'))
+        .toBe(GOOGLE_CONNECTORS_PATH)
+      expect(guide.get('[data-testid="google-byo-guide-warning"]').text())
+        .toContain('use the Connectors page')
+    })
+
+    it('is hidden for a user who cannot manage an own client', async () => {
+      setByo({ canManage: false, redirectUri: null, hasClient: true })
+
+      const full = await mountOwnClient()
+
+      expect(full.find('[data-testid="google-byo-guide"]').exists())
+        .toBe(false)
+
+      const reduced = await mountReduced()
+
+      expect(reduced.find('[data-testid="google-byo-guide"]').exists())
+        .toBe(false)
+    })
+
+    it('is hidden when the status carries no own client', async () => {
+      setByo(null)
+
+      const wrapper = await mountOwnClient()
+
+      expect(wrapper.find('[data-testid="google-byo-guide"]').exists())
+        .toBe(false)
     })
   })
 })

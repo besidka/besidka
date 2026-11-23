@@ -637,7 +637,8 @@ bring-your-own route answers 404.
 
 There is no public BYO guide page and no video: a page under
 `content/key-guides` would be public on `/guides`, in the sitemap and in
-`llms.txt`.
+`llms.txt`. The same steps are written for the user as a collapsed guide
+inside the card (section 19).
 
 ## 7. Not in this phase
 
@@ -1193,6 +1194,8 @@ bring-your-own one.
 - No public bring-your-own client, no guide page under
   `content/key-guides` (it would be public on `/guides`, in the sitemap and
   in `llms.txt`), no video, no entry in `providerMeta` or any provider list.
+  The text guide that exists lives inside the card, not in content
+  (section 19).
 - No Gmail, Calendar or full Drive tool in this child; nothing called those
   APIs then (the Gmail and Drive search tools came with section 14).
 - No KMS: the client secret and the tokens are encrypted with the Worker
@@ -4249,3 +4252,60 @@ MCP is unchanged (`docs/mcp-server.md`, item 8: the switches are not readable
 or writable there). No account-wide switch, no per-tool switch per chat (a
 tool is Blocked per user, section 17). A restore:
 `docs/d1-restore-reconciliation.md`, "Tool approvals".
+
+## 19. The setup guide on the own-client card (BES-458)
+
+A text guide, "How to set up your own Google client", sits inside the
+"Your own Google OAuth client" card (section 10.7). It is a `<details>`
+element, closed by default, with the same classes, icon and chevron as the
+"How to get a key" guide on the provider cards
+(`app/components/Profile/Keys/Guide.vue`). It is a component of its own,
+`app/components/Profile/Google/OwnClientGuide.vue`, and not a use of `Guide.vue`:
+that one reads a Nuxt Content document (video, "What you need" block, key
+button, open and analytics logic), and a document under `content/key-guides`
+is a public page. No shared component changed, so `docs/key-guides.md` is
+unchanged.
+
+- **Where it shows.** Inside the `canManage` branch of the card, above the
+  redirect address and the client form, in the full card and in the reduced
+  card shown with the `connectors` flag. A user who cannot manage an own client
+  sees none of it. Step 7 and the 7-day note name the card's Connect button in
+  the full card and the Connectors page in the reduced one.
+- **What it says.** Seven steps: a project, the Gmail, Google Calendar and
+  Google Drive APIs, the consent screen (External, you as a test user), the
+  scopes, a "Web application" client with the redirect address the card shows
+  (only the path `/api/v1/google/byo/callback` is written in the guide, never a
+  host), saving the client id and secret (Google shows a secret once), and
+  connecting. Then the "Google hasn't verified this app" warning, the 7-day
+  expiry while the consent screen is in Testing and what to do (connect again;
+  publishing the app ends the expiry, section 6 step 2), and four failures. Links go only to
+  `console.cloud.google.com` pages.
+- **How the scope list stays in sync.** The guide holds no scope strings. The
+  always-asked scopes (`openid` and the email scope) are
+  `GOOGLE_BYO_GUIDE_SIGN_IN_SCOPES` in `shared/utils/google-byo-guide.ts`; the
+  rest comes from `getGoogleByoScopes([capability])` for each entry of
+  `GOOGLE_BYO_CAPABILITIES`, the same map the start route uses.
+  `tests/unit/utils/google-byo-guide.spec.ts` compares the always-asked scopes
+  with `GOOGLE_CONNECTION_SCOPES.byo` (the server constant, so a change there
+  fails the test) and checks that `drive.file` and `userinfo.profile` are
+  absent. `tests/unit/components/Profile/Google/OwnClient.spec.ts` reads the
+  scopes from the rendered guide text and compares them with the sign-in
+  scopes plus `getGoogleByoScopes` of all capabilities.
+- **Failures, and what was left out.** Each failure is tied to text in the repo:
+  the card's "Google could not be connected" (check client id, secret and
+  redirect address), the callback's access-denied result ("You canceled on the
+  Google page"), the chat sentences "The Gmail API is not turned on" (and the
+  Google Calendar and Google Drive forms), and `invalid_client` after a secret
+  replacement (section 9.4). The Google error name `redirect_uri_mismatch` is
+  not in the repo and is not named; the redirect advice is the runbook's.
+  "Not a test user causes access denied" is also unsourced here, so the guide
+  only says to check the test-user list when you did not cancel.
+- **Not verified.** The console page links and the page names (Branding,
+  Audience, Data access, Clients) were written from section 6 and Google's
+  console layout and were not opened in a browser for this change. Nothing was
+  run against a real Google project (section 10.9).
+- **Decisions.** No video: launch media comes at the end of the program. No
+  public `/guides/` page: the card is admin-only today, and a new indexable
+  route needs the owner's decision about the route cap in `docs/seo.md`.
+- **Scroll spacer.** The guide is in a profile page, not in a chat message or
+  the composer, so `docs/chat-scroll-spacer.md` does not apply to it.
