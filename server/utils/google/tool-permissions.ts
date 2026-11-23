@@ -14,6 +14,8 @@ import type {
   GoogleToolPermissionMode,
 } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -66,6 +68,48 @@ export function pickGoogleToolPermissionMode(
   modes: GoogleToolPermissionModes,
 ): GoogleToolPermissionMode {
   return modes.get(toolName) ?? GOOGLE_TOOL_DEFAULT_MODE
+}
+
+/**
+ * Turns every Google Always allow of the user back to Needs approval, by
+ * deleting the `allow` rows of the catalog tools. Called when the own
+ * client's connection ends (disconnect, `invalid_grant`, or a different
+ * Google account replacing it), so a permission given for one account never
+ * runs against another. Rows with any other mode (Blocked) stay. A failure
+ * is logged and never stops the connection from ending: a tool without an
+ * active connection is not offered anyway. Returns how many rows it
+ * cleared.
+ */
+export async function clearGoogleAlwaysAllow(
+  userId: number,
+  logger: LoggerLike,
+  db: DbClient = useDb(),
+): Promise<number> {
+  try {
+    const cleared = await db.delete(schema.besidkaToolPermissions)
+      .where(and(
+        eq(schema.besidkaToolPermissions.userId, userId),
+        eq(schema.besidkaToolPermissions.mode, 'allow'),
+        inArray(
+          schema.besidkaToolPermissions.toolName,
+          GOOGLE_TOOL_CATALOG.map(tool => tool.name),
+        ),
+      ))
+      .returning({ id: schema.besidkaToolPermissions.id })
+
+    return cleared.length
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        google: {
+          alwaysAllowCleared: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    return 0
+  }
 }
 
 function invalidPermission(why: string) {

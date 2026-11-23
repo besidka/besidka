@@ -376,6 +376,82 @@ describe('Google tokens', () => {
       expect((await connectionRow('byo'))!.status).toBe('active')
     })
 
+  describe('Always allow when access ends', () => {
+    async function seedPermissionRows() {
+      await testDb.db.insert(schema.besidkaToolPermissions).values([
+        { userId, toolName: 'google__gmail_search', mode: 'allow' },
+        { userId, toolName: 'google__drive_read_file', mode: 'allow' },
+        { userId, toolName: 'google__gmail_read_thread', mode: 'blocked' },
+      ])
+    }
+
+    async function permissionRows() {
+      const rows = await testDb.db
+        .select()
+        .from(schema.besidkaToolPermissions)
+        .where(eq(schema.besidkaToolPermissions.userId, userId))
+
+      return rows.map(row => `${row.toolName}:${row.mode}`).sort()
+    }
+
+    it('turns the own client\'s Always allow rows back to ask on '
+      + 'invalid_grant, keeping Blocked', async () => {
+      await seedGoogleByoAccess(testDb.db, userId)
+      await seedGoogleByoClient()
+      useGoogle({
+        token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
+      })
+      await seedConnection({ clientMode: 'byo', expiresInMs: 0 })
+      await seedPermissionRows()
+
+      const { getGoogleAccessToken } = await tokensModule()
+
+      await getGoogleAccessToken({ userId, clientMode: 'byo' }, dependencies())
+
+      expect(await permissionRows()).toEqual([
+        'google__gmail_read_thread:blocked',
+      ])
+    })
+
+    it('keeps them when only Besidka\'s client loses access', async () => {
+      useGoogle({
+        token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
+      })
+      await seedConnection({ expiresInMs: 0 })
+      await seedPermissionRows()
+
+      const { getGoogleAccessToken } = await tokensModule()
+
+      await getGoogleAccessToken(
+        { userId, clientMode: 'besidka' },
+        dependencies(),
+      )
+
+      expect(await permissionRows()).toEqual([
+        'google__drive_read_file:allow',
+        'google__gmail_read_thread:blocked',
+        'google__gmail_search:allow',
+      ])
+    })
+
+    it('keeps them when Google does not answer invalid_grant', async () => {
+      await seedGoogleByoAccess(testDb.db, userId)
+      await seedGoogleByoClient()
+      useGoogle({ token: () => ({ status: 500, body: {} }) })
+      await seedConnection({ clientMode: 'byo', expiresInMs: 0 })
+      await seedPermissionRows()
+
+      const { getGoogleAccessToken } = await tokensModule()
+
+      await getGoogleAccessToken(
+        { userId, clientMode: 'byo' },
+        dependencies(),
+      ).catch(() => undefined)
+
+      expect(await permissionRows()).toContain('google__gmail_search:allow')
+    })
+  })
+
   it('keeps Besidka\'s copies when the own client loses access', async () => {
     await seedGoogleByoAccess(testDb.db, userId)
     await seedGoogleByoClient()

@@ -24,6 +24,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 })
 
 const {
+  clearGoogleAlwaysAllow,
   loadGoogleToolPermissionModes,
   partitionGoogleToolsForMode,
   pickGoogleToolPermissionMode,
@@ -308,6 +309,52 @@ describe('Google tool permissions', () => {
       expect((await loadGoogleToolPermissionModes(otherUserId, testDb.db))
         .get(GOOGLE_GMAIL_SEARCH_TOOL_NAME)).toBe('blocked')
     })
+  })
+
+  describe('clearGoogleAlwaysAllow', () => {
+    it('deletes only the Google allow rows of this user', async () => {
+      const otherUserId = await seedUser(testDb.db, null)
+
+      await insertRow(GOOGLE_GMAIL_SEARCH_TOOL_NAME, 'allow')
+      await insertRow(GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME, 'blocked')
+      await insertRow('list_files', 'allow')
+      await insertRow(GOOGLE_GMAIL_SEARCH_TOOL_NAME, 'allow', otherUserId)
+
+      const logger = { set: vi.fn() }
+      const cleared = await clearGoogleAlwaysAllow(userId, logger, testDb.db)
+      const rows = await testDb.db.select()
+        .from(schema.besidkaToolPermissions)
+
+      expect(cleared).toBe(1)
+      expect(rows.map(row => `${row.userId}:${row.toolName}:${row.mode}`)
+        .sort()).toEqual([
+        `${userId}:${GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME}:blocked`,
+        `${userId}:list_files:allow`,
+        `${otherUserId}:${GOOGLE_GMAIL_SEARCH_TOOL_NAME}:allow`,
+      ].sort())
+      expect(logger.set).not.toHaveBeenCalled()
+    })
+
+    it('logs a failure and reports none cleared instead of throwing',
+      async () => {
+        const logger = { set: vi.fn() }
+        const failingDb = {
+          delete: () => {
+            throw new Error('D1 down')
+          },
+        }
+
+        expect(await clearGoogleAlwaysAllow(
+          userId,
+          logger,
+          failingDb as never,
+        )).toBe(0)
+        expect(logger.set).toHaveBeenCalledWith({
+          attributes: {
+            google: { alwaysAllowCleared: 'failed', error: 'D1 down' },
+          },
+        })
+      })
   })
 
   describe('resolveGoogleTargetTools', () => {

@@ -4117,6 +4117,43 @@ with `blocked` before that, so an off service still wins. A card for a tool
 set to Needs approval is unchanged: Allow once, plus Allow in this chat for
 reads, never Always allow.
 
+**Warnings and the real blast radius.** The user's grant wins over taint (the
+owner's rule of 2026-11-20), so an always-allowed write can carry text from
+other content into the user's account, and no mitigation was added. The
+warning says so: a Calendar write "may carry text from other content (such as
+an email) into your calendar, where people who can see your calendar can read
+it"; the Drive write group says a rename of a shared file shows the new name to
+the people it is shared with, next to the sentence that Google's permission
+also allows deleting and sharing while Besidka has no code that does; the
+Gmail write says a draft can be addressed to anyone and that drafts are never
+sent. Once-only reads keep their own warning. The texts are
+`getGoogleToolAlwaysAllowWarning` in `shared/utils/google-tool-catalog.ts`.
+
+**Model-facing text.** The descriptions of the draft, event, folder, rename
+and move tools no longer say the user "must approve each": they say the user
+may be asked first and that a result saying it ran means it ran, because a
+run under Always allow shows no card. Only those write tools' definition
+hashes changed; a write never has a chat grant, so no grant is invalidated.
+
+**A refused claim.** The sentence the model reads when the claim already
+exists fits both cases (a repeat of the call, or a provider that reused one
+tool call id for a different write in the same message): "This tool call id
+was already used in this message, so nothing was sent. If you meant to run a
+different action, ask again in a new message." The hourly cap refuses the
+write the same way (never a card), with no marker.
+
+**When the own client's connection ends.** `clearGoogleAlwaysAllow`
+(`server/utils/google/tool-permissions.ts`) deletes the user's `allow` rows of
+the Google catalog tools, so a permission given for one Google account never
+runs against another. It runs when the own (`byo`) connection is disconnected
+(`disconnectGoogleConnection`, which the Disconnect route, the own-client
+delete, the MCP `disconnect_google` and the own-client sweep all call), on
+`invalid_grant` (`endAccessAfterInvalidGrant`) and when a different Google
+account replaces it (`replaceDifferentAccount`). Blocked rows and every row of
+another user or of a Besidka tool stay; Besidka's own client ending changes
+nothing here. A failure is logged and never stops the connection from ending.
+A reconnect of the same account keeps the settings.
+
 **The chat panel.** The Approvals list of the chat panel
 (`listChatToolApprovalGrants`) shows each Google tool set to Always allow
 (except those of a service switched off in that chat) as "Always allowed, in

@@ -38,6 +38,11 @@ import type { GoogleSendTools } from '~~/server/utils/tool-approval/google-send-
 
 const ALL_SCOPES = Object.values(GOOGLE_SCOPES)
 
+const DRIVE_WRITE_WARNING = 'Always allow lets the model create, rename and '
+  + 'move Drive items without asking. A rename of a file that is shared with '
+  + 'others shows the new name to them. Google\'s permission for Drive also '
+  + 'allows deleting and sharing; Besidka has no code that deletes or shares.'
+
 const logger = { set: () => undefined, warn: () => undefined }
 
 const stubStores = {
@@ -294,32 +299,26 @@ describe('google tool catalog', () => {
           + 'people wrote in them.',
         google__drive_list_folder: 'Always allow lets the model read this '
           + 'without asking, including text written by other people.',
-        google__drive_create_folder: 'Always allow lets the model create, '
-          + 'rename and move Drive items without asking. Google\'s '
-          + 'permission for Drive also allows deleting and sharing; Besidka '
-          + 'has no code that deletes or shares.',
-        google__drive_rename: 'Always allow lets the model create, rename '
-          + 'and move Drive items without asking. Google\'s permission for '
-          + 'Drive also allows deleting and sharing; Besidka has no code '
-          + 'that deletes or shares.',
-        google__drive_move: 'Always allow lets the model create, rename and '
-          + 'move Drive items without asking. Google\'s permission for Drive '
-          + 'also allows deleting and sharing; Besidka has no code that '
-          + 'deletes or shares.',
+        google__drive_create_folder: DRIVE_WRITE_WARNING,
+        google__drive_rename: DRIVE_WRITE_WARNING,
+        google__drive_move: DRIVE_WRITE_WARNING,
         google__gmail_search: 'Always allow lets the model read this '
           + 'without asking, including text written by other people.',
         google__gmail_read_thread: 'Always allow lets the model open whole '
           + 'email threads without asking, including everything other '
           + 'people wrote in them.',
         google__gmail_create_draft: 'Always allow lets the model create '
-          + 'drafts without asking. Google\'s permission for drafts also '
+          + 'drafts without asking. A draft can be addressed to anyone, and '
+          + 'drafts are never sent. Google\'s permission for drafts also '
           + 'allows sending mail; Besidka has no code that sends mail.',
         google__calendar_list_events: 'Always allow lets the model read this '
           + 'without asking, including text written by other people.',
         google__calendar_free_busy: 'Always allow lets the model read this '
           + 'without asking, including text written by other people.',
         google__calendar_create_event: 'Always allow lets the model create '
-          + 'events without asking.',
+          + 'events without asking. Events may carry text from other '
+          + 'content (such as an email) into your calendar, where people who '
+          + 'can see your calendar can read it.',
       })
     })
 

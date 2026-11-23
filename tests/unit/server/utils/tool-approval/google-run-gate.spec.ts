@@ -104,6 +104,101 @@ describe('the run gate of a Google write that runs without asking', () => {
     })
   })
 
+  describe('through a send', () => {
+    const FOLDER = 'google__drive_create_folder'
+
+    async function guardedFolderTool(
+      kv: ReturnType<typeof createFakeKv>,
+      execute: ReturnType<typeof vi.fn>,
+    ) {
+      const { buildGoogleApprovalEntry, createSendToolApproval }
+        = await import('~~/server/utils/tool-approval/send')
+      const { createApprovalState } = await import(
+        '~~/server/utils/tool-approval/state'
+      )
+      const approval = createSendToolApproval({ state: createApprovalState() })
+      const entry = {
+        ...buildGoogleApprovalEntry({
+          toolName: FOLDER,
+          kind: 'write',
+          definitionHash: 'a'.repeat(64),
+          summary: 'Create a folder',
+          toolApprovalsActive: true,
+        }),
+        permissionMode: 'allow' as const,
+      }
+
+      approval.registerTools(
+        { [FOLDER]: {} } as never,
+        new Map([[FOLDER, entry]]),
+      )
+
+      const tools = approval.guardNativeWrites(
+        { [FOLDER]: { execute } } as never,
+        gateWith(kv),
+      ) as unknown as Record<string, {
+        execute: (input: unknown, options?: unknown) => Promise<unknown>
+      }>
+
+      return {
+        approval,
+        run: async (toolCallId: string, input: unknown) => {
+          approval.toolApproval({
+            toolCall: { toolCallId, toolName: FOLDER, input },
+          })
+
+          return await tools[FOLDER]!.execute(input, { toolCallId })
+        },
+      }
+    }
+
+    it('sends nothing for a second, different write under a reused tool '
+      + 'call id, and says why', async () => {
+      const execute = vi.fn(async () => 'created')
+      const { run } = await guardedFolderTool(createFakeKv(), execute)
+
+      await run('call-1', { name: 'First' })
+
+      await expect(run('call-1', { name: 'Second' })).rejects.toMatchObject({
+        message: GOOGLE_RUN_ALREADY_CLAIMED_TEXT,
+      })
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(execute).toHaveBeenCalledWith(
+        { name: 'First' },
+        expect.objectContaining({ executionId: expect.stringMatching(/^exec_/) }),
+      )
+      expect(GOOGLE_RUN_ALREADY_CLAIMED_TEXT).toBe(
+        'This tool call id was already used in this message, so nothing was '
+        + 'sent. If you meant to run a different action, ask again in a new '
+        + 'message.',
+      )
+    })
+
+    it('refuses a write at the hourly cap instead of asking, without a '
+      + 'marker, and sends nothing', async () => {
+      const hour = Math.floor(NOW / (60 * 60 * 1000))
+      const kv = createFakeKv({
+        [`google-always-allow-writes:${userId}:${hour}`]:
+          String(GOOGLE_ALWAYS_ALLOW_WRITES_PER_HOUR),
+      })
+      const execute = vi.fn(async () => 'created')
+      const { approval, run } = await guardedFolderTool(kv, execute)
+
+      await expect(run('call-1', { name: 'Reports' })).rejects.toMatchObject({
+        message: GOOGLE_RUN_HOURLY_CAP_TEXT,
+      })
+      expect(execute).not.toHaveBeenCalled()
+      expect(approval.getPendingDecision('call-1')).toBeUndefined()
+      expect(approval.getGrantScope('call-1')).toBeNull()
+      expect(GOOGLE_RUN_HOURLY_CAP_TEXT).toBe(
+        'Always allow has reached its limit of 30 Google write calls an '
+        + 'hour, so this call did not run. Stop calling Google write tools '
+        + 'now. Tell the user what is done and that the rest can continue in '
+        + 'the next hour.',
+      )
+    })
+  })
+
   describe('begin', () => {
     it('claims the call in the approval claims table and records the result',
       async () => {

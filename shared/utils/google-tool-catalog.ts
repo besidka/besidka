@@ -296,13 +296,17 @@ const GOOGLE_ALWAYS_ALLOW_ONCE_ONLY_READ_WARNINGS: Readonly<
 const GOOGLE_ALWAYS_ALLOW_WRITE_WARNINGS: Readonly<
   Record<GoogleService, string>
 > = {
-  gmail: 'Always allow lets the model create drafts without asking. '
+  gmail: 'Always allow lets the model create drafts without asking. A draft '
+    + 'can be addressed to anyone, and drafts are never sent. '
     + 'Google\'s permission for drafts also allows sending mail; Besidka has '
     + 'no code that sends mail.',
-  calendar: 'Always allow lets the model create events without asking.',
+  calendar: 'Always allow lets the model create events without asking. '
+    + 'Events may carry text from other content (such as an email) into your '
+    + 'calendar, where people who can see your calendar can read it.',
   drive: 'Always allow lets the model create, rename and move Drive items '
-    + 'without asking. Google\'s permission for Drive also allows deleting '
-    + 'and sharing; Besidka has no code that deletes or shares.',
+    + 'without asking. A rename of a file that is shared with others shows '
+    + 'the new name to them. Google\'s permission for Drive also allows '
+    + 'deleting and sharing; Besidka has no code that deletes or shares.',
 }
 
 /**

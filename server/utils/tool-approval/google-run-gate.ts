@@ -18,9 +18,9 @@ const KV_KEY_PREFIX = 'google-always-allow-writes'
 const KV_KEY_TTL_SECONDS = 2 * 60 * 60
 const KV_MIN_WRITE_SPACING_MS = 1100
 
-export const GOOGLE_RUN_ALREADY_CLAIMED_TEXT = 'This Google call was already '
-  + 'started once, so it did not run again. It may or may not have finished: '
-  + 'tell the user to check Google before asking for it again.'
+export const GOOGLE_RUN_ALREADY_CLAIMED_TEXT = 'This tool call id was '
+  + 'already used in this message, so nothing was sent. If you meant to run '
+  + 'a different action, ask again in a new message.'
 
 export const GOOGLE_RUN_HOURLY_CAP_TEXT = 'Always allow has reached its '
   + `limit of ${GOOGLE_ALWAYS_ALLOW_WRITES_PER_HOUR} Google write calls an `

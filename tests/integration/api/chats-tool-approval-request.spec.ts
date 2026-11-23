@@ -1822,6 +1822,34 @@ describe('tool approval requests in the chat send', () => {
         expect(findPart(parts, 'data-tool-grant')).toBeUndefined()
       })
 
+    it('shows the model the hourly cap sentence and never asks the user',
+      async () => {
+        const { GOOGLE_RUN_HOURLY_CAP_TEXT } = await import(
+          '~~/server/utils/tool-approval/google-run-gate'
+        )
+
+        await offerTools()
+
+        mocks.googleAllowedNames = [WRITE]
+        mocks.googleRunRefusal = GOOGLE_RUN_HOURLY_CAP_TEXT
+
+        const { assistantInsert, doStream } = await runSend({
+          servers: [linear],
+          steps: [
+            toolCallChunks('call-w', WRITE, { query: 'Reports' }),
+            textChunks('Stopped.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+        const secondPrompt = JSON.stringify(
+          (doStream.mock.calls[1]?.[0] as { prompt?: unknown })?.prompt,
+        )
+
+        expect(executes[WRITE]).not.toHaveBeenCalled()
+        expect(secondPrompt).toContain('limit of 30 Google write calls an hour')
+        expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+      })
+
     it('still asks for a once-only read set to Needs approval and runs it '
       + 'when set to Always allow', async () => {
       await offerTools()

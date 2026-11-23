@@ -495,7 +495,11 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
   any other: the step 2b reset (`UPDATE besidka_tool_permissions SET mode =
   'ask' WHERE mode = 'allow'`) matches `google__` rows too, because it has no
   filter on the tool name, so a Google tool that runs without asking stops
-  doing so until the user sets it again. Until that reset has run, a restored
+  doing so until the user sets it again. This includes a row the app deleted
+  in the window when the own client's connection ended, was lost or changed
+  Google account (`clearGoogleAlwaysAllow`, `docs/google.md`, section 17.7):
+  the restore brings it back, and the same reset removes it again. Until that
+  reset has run, a restored
   `allow` on a tool of Besidka's own Google client reads as `ask`
   (`readGoogleToolPermissionMode`), never as `allow`.
 - **Per-chat Google switches follow `besidka_chat_settings`.** The column

@@ -120,6 +120,7 @@ describe('Google bring-your-own client routes', () => {
   let restoreRuntimeConfig: () => void = () => {}
   let codeChallenges: string[]
   let grantedScope: string
+  let byoSubject: string | null
 
   function useGoogle() {
     google = createFakeGoogle({
@@ -148,13 +149,50 @@ describe('Google bring-your-own client routes', () => {
             scope: clientId === BYO_CLIENT_ID
               ? grantedScope
               : `openid ${EMAIL_SCOPE} ${DRIVE_FILE}`,
-            id_token: makeIdToken({ aud: clientId }),
+            id_token: makeIdToken({
+              aud: clientId,
+              ...(clientId === BYO_CLIENT_ID && byoSubject
+                ? { sub: byoSubject, email: `${byoSubject}@example.test` }
+                : {}),
+            }),
           },
         }
       },
     })
     vi.stubGlobal('fetch', google.fetch)
   }
+
+  async function seedPermissionRows() {
+    await testDb.db.insert(schema.besidkaToolPermissions).values([
+      { userId, toolName: 'google__gmail_search', mode: 'allow' },
+      { userId, toolName: 'google__drive_rename', mode: 'allow' },
+      { userId, toolName: 'google__drive_read_file', mode: 'allow' },
+      { userId, toolName: 'google__gmail_read_thread', mode: 'blocked' },
+      { userId, toolName: 'list_files', mode: 'allow' },
+    ])
+  }
+
+  async function permissionRows() {
+    const rows = await testDb.db
+      .select()
+      .from(schema.besidkaToolPermissions)
+      .where(eq(schema.besidkaToolPermissions.userId, userId))
+
+    return rows.map(row => `${row.toolName}:${row.mode}`).sort()
+  }
+
+  const ALL_PERMISSION_ROWS = [
+    'google__drive_read_file:allow',
+    'google__drive_rename:allow',
+    'google__gmail_read_thread:blocked',
+    'google__gmail_search:allow',
+    'list_files:allow',
+  ]
+
+  const WITHOUT_OWN_CLIENT_ALLOW = [
+    'google__gmail_read_thread:blocked',
+    'list_files:allow',
+  ]
 
   async function call(
     route: keyof typeof ROUTES,
@@ -296,6 +334,7 @@ describe('Google bring-your-own client routes', () => {
     mocks.flags = new Set(['google.drive'])
     mocks.logged = []
     codeChallenges = []
+    byoSubject = null
     grantedScope = `openid ${EMAIL_SCOPE} ${DRIVE_READONLY}`
     testDb = createMemoryExtractionTestDb()
     kv = createFakeConnectorKv()
@@ -1004,6 +1043,49 @@ describe('Google bring-your-own client routes', () => {
         expect((await connectionRow('besidka'))!.status).toBe('active')
         expect(await fileCount()).toBe(1)
       })
+
+    it('turns the Google Always allow settings back to ask when the own '
+      + 'client disconnects, and keeps Blocked and every other row',
+    async () => {
+      await seedPermissionRows()
+
+      await call('disconnect', { body: { clientMode: 'byo' } })
+
+      expect(await permissionRows()).toEqual(WITHOUT_OWN_CLIENT_ALLOW)
+    })
+
+    it('keeps the Google Always allow settings when only Besidka\'s client '
+      + 'disconnects', async () => {
+      await seedPermissionRows()
+
+      await call('disconnect')
+
+      expect(await permissionRows()).toEqual(ALL_PERMISSION_ROWS)
+    })
+
+    it('turns them back to ask when the own client is deleted', async () => {
+      await seedPermissionRows()
+
+      await call('remove')
+
+      expect(await permissionRows()).toEqual(WITHOUT_OWN_CLIENT_ALLOW)
+    })
+
+    it('turns them back to ask when a different Google account replaces '
+      + 'the own connection, and not when the same account reconnects',
+    async () => {
+      await seedPermissionRows()
+      await connectByo()
+
+      expect(await permissionRows()).toEqual(ALL_PERMISSION_ROWS)
+
+      byoSubject = 'second-subject'
+      await connectByo()
+
+      expect((await connectionRow('byo'))!.googleSubject)
+        .toBe('second-subject')
+      expect(await permissionRows()).toEqual(WITHOUT_OWN_CLIENT_ALLOW)
+    })
 
     it('deletes Besidka\'s copies when Besidka\'s client disconnects, '
       + 'even while the own client stays', async () => {

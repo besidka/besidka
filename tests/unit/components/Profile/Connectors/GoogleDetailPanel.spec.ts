@@ -412,6 +412,7 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         '[data-testid="tool-permissions-group-warning-write"]',
       ).text()).toBe(
         'Always allow lets the model create drafts without asking. '
+        + 'A draft can be addressed to anyone, and drafts are never sent. '
         + 'Google\'s permission for drafts also allows sending mail; '
         + 'Besidka has no code that sends mail.',
       )
@@ -426,7 +427,9 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       expect(wrapper.get(
         '[data-testid="tool-permissions-group-warning-write"]',
       ).text()).toBe(
-        'Always allow lets the model create events without asking.',
+        'Always allow lets the model create events without asking. '
+        + 'Events may carry text from other content (such as an email) into '
+        + 'your calendar, where people who can see your calendar can read it.',
       )
     })
 
@@ -441,8 +444,9 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         '[data-testid="tool-permissions-group-warning-write"]',
       ).text()).toBe(
         'Always allow lets the model create, rename and move Drive items '
-        + 'without asking. Google\'s permission for Drive also allows '
-        + 'deleting and sharing; Besidka has no code that deletes or '
+        + 'without asking. A rename of a file that is shared with others '
+        + 'shows the new name to them. Google\'s permission for Drive also '
+        + 'allows deleting and sharing; Besidka has no code that deletes or '
         + 'shares.',
       )
     })

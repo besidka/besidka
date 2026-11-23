@@ -9,6 +9,7 @@ import {
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
+import { clearGoogleAlwaysAllow } from '~~/server/utils/google/tool-permissions'
 import {
   buildGoogleRedirectUri,
   filterByoCapabilityScopes,
@@ -340,6 +341,10 @@ async function replaceDifferentAccount(
   )
   await markGoogleConnectionRevoked(db, connectionId)
 
+  if (oauthState.clientMode === 'byo') {
+    await clearGoogleAlwaysAllow(oauthState.userId, logger, db)
+  }
+
   let complete = false
 
   try {
@@ -412,6 +417,10 @@ export async function disconnectGoogleConnection(input: {
   const endedAt = new Date(input.now ?? Date.now())
 
   await markGoogleConnectionRevoked(db, connectionId)
+
+  if (clientMode === 'byo') {
+    await clearGoogleAlwaysAllow(userId, logger, db)
+  }
 
   let filesDeleted = 0
   let complete = false
