@@ -3,10 +3,12 @@ import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
 import {
   GOOGLE_TOOLS_OPEN_KEYS_LABEL,
   GOOGLE_TOOLS_WITHHELD_KEYS_PATH,
-  GOOGLE_TOOLS_WITHHELD_NOTES,
+  getGoogleToolsWithheldNote,
+  googleProviderNeedsPaidTier,
   isGoogleToolsWithheldReason,
 } from '#shared/utils/google-tools-withheld'
 import type {
+  GoogleToolsRecipientHint,
   GoogleToolsWithheldNote,
   GoogleToolsWithheldReason,
 } from '#shared/utils/google-tools-withheld'
@@ -93,17 +95,19 @@ const GATEWAY_NOTE: GoogleToolsWithheldNote = {
 
 /**
  * The text that explains a reason in the connector picker, or null for a
- * reason that has none to show.
+ * reason that has none to show. The refused-recipient text depends on the
+ * recipient (see `getGoogleToolsWithheldNote`).
  */
 export function getGoogleToolsUnavailableNote(
   reason: GoogleToolsUnavailableReason,
+  recipient: GoogleToolsRecipientHint = {},
 ): GoogleToolsWithheldNote | null {
   if (reason === GOOGLE_TOOLS_GATEWAY_REASON) {
     return GATEWAY_NOTE
   }
 
   return isGoogleToolsWithheldReason(reason)
-    ? GOOGLE_TOOLS_WITHHELD_NOTES[reason]
+    ? getGoogleToolsWithheldNote(reason, recipient)
     : null
 }
 
@@ -126,15 +130,19 @@ export interface GoogleToolsNoteActionContext {
   recipientProviderId: string | null
   hasGeminiKey: boolean
   geminiPaidTierConfirmed: boolean
+  isGateway?: boolean
 }
 
 /**
  * The actions under the note of a reason. Only a recipient the allow-list
- * refuses has any: the API Keys link always, the inline paid-tier
- * confirmation only for a direct Gemini model whose saved key is not yet
- * confirmed (a confirmed one is never shown the control, so one tap cannot
- * withdraw the statement), and a way to another model for every recipient
- * that confirming cannot lift.
+ * refuses has any. The API Keys link and the inline paid-tier confirmation
+ * exist only for a direct Gemini model (the one refusal the API Keys page can
+ * lift; the confirmation shows only while the saved key is not yet
+ * confirmed, so one tap cannot withdraw the statement). A provider the list
+ * refuses outright (DeepSeek, Moonshot AI) or allows only on models its
+ * vendor serves (Qwen) gets just a way to another model, because nothing on
+ * the API Keys page unlocks it. A gateway keeps the link and the way to
+ * another model.
  */
 export function getGoogleToolsUnavailableActions(
   reason: GoogleToolsUnavailableReason,
@@ -144,28 +152,29 @@ export function getGoogleToolsUnavailableActions(
     return []
   }
 
-  const actions: GoogleToolsNoteAction[] = [{
+  const openApiKeys: GoogleToolsNoteAction = {
     kind: 'open-api-keys',
     label: GOOGLE_TOOLS_OPEN_KEYS_LABEL,
     path: GOOGLE_TOOLS_WITHHELD_KEYS_PATH,
-  }]
-
-  const isGeminiAwaitingConfirmation
-    = context.recipientProviderId === GEMINI_PROVIDER_ID
-      && !context.geminiPaidTierConfirmed
-
-  if (isGeminiAwaitingConfirmation) {
-    if (context.hasGeminiKey) {
-      actions.push({ kind: 'confirm-paid-tier' })
-    }
-
-    return actions
   }
-
-  actions.push({
+  const chooseModel: GoogleToolsNoteAction = {
     kind: 'choose-model',
     label: GOOGLE_TOOLS_CHOOSE_MODEL_LABEL,
-  })
+  }
 
-  return actions
+  if (context.isGateway === true) {
+    return [openApiKeys, chooseModel]
+  }
+
+  if (!googleProviderNeedsPaidTier(context.recipientProviderId)) {
+    return [chooseModel]
+  }
+
+  if (context.geminiPaidTierConfirmed) {
+    return [openApiKeys, chooseModel]
+  }
+
+  return context.hasGeminiKey
+    ? [openApiKeys, { kind: 'confirm-paid-tier' }]
+    : [openApiKeys]
 }

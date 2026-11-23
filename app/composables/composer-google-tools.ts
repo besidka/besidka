@@ -95,15 +95,20 @@ export function buildComposerGoogleRows(input: {
   servicesOff: readonly GoogleService[]
   reason: GoogleToolsUnavailableReason | null
   recipientProviderId?: string | null
+  isGatewayRecipient?: boolean
   hasGeminiKey?: boolean
   geminiPaidTierConfirmed?: boolean
 }): ComposerGoogleRow[] {
   const reasonNote = input.reason
-    ? getGoogleToolsUnavailableNote(input.reason)
+    ? getGoogleToolsUnavailableNote(input.reason, {
+      providerId: input.recipientProviderId ?? null,
+      isGateway: input.isGatewayRecipient === true,
+    })
     : null
   const reasonActions = input.reason && reasonNote
     ? getGoogleToolsUnavailableActions(input.reason, {
       recipientProviderId: input.recipientProviderId ?? null,
+      isGateway: input.isGatewayRecipient === true,
       hasGeminiKey: input.hasGeminiKey === true,
       geminiPaidTierConfirmed: input.geminiPaidTierConfirmed === true,
     })
@@ -329,6 +334,7 @@ export function useComposerGoogleTools(
       servicesOff: servicesOff.value,
       reason: unavailableReason.value,
       recipientProviderId: recipientProviderId.value,
+      isGatewayRecipient: modelSelection.value.source === 'gateway',
       hasGeminiKey: keyStatusForProvider(GEMINI_PROVIDER_ID) === 'saved',
       geminiPaidTierConfirmed: isGeminiPaidTierConfirmed.value,
     })
