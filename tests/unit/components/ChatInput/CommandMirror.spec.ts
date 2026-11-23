@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -222,6 +224,77 @@ describe('ChatInput/CommandMirror', () => {
     expect(style.paddingBottom).toBe('12px')
     expect(style.paddingLeft).toBe('16px')
     expect(style.fontFamily).toContain('Menlo')
+  })
+
+  it('copies the properties that change glyph widths and line breaks',
+    async () => {
+      const textarea = createTextarea()
+
+      textarea.style.fontKerning = 'none'
+      textarea.style.fontVariantLigatures = 'none'
+      textarea.style.fontFeatureSettings = '"liga" 0'
+      textarea.style.fontStretch = '75%'
+      textarea.style.textRendering = 'optimizeLegibility'
+      textarea.style.hyphens = 'auto'
+
+      const wrapper = await mountMirror({ textarea })
+
+      await flushPromises()
+
+      const style = (wrapper.element as HTMLElement).style
+
+      expect(style.fontKerning).toBe('none')
+      expect(style.fontVariantLigatures).toBe('none')
+      expect(style.fontFeatureSettings).toContain('liga')
+      expect(style.fontStretch).toBe('75%')
+      expect(style.textRendering).toBe('optimizeLegibility')
+      expect(style.hyphens).toBe('auto')
+    })
+
+  it('re-reads the selection after a text change that fires no input event',
+    async () => {
+      const textarea = createTextarea()
+
+      textarea.value = 'Please /c this'
+      textarea.focus()
+      textarea.setSelectionRange(0, 0)
+
+      const wrapper = await mountMirror({ textarea, start: 7, end: 9 })
+      const token = () => {
+        return wrapper.get('[data-testid="command-mirror-token"]')
+      }
+
+      await flushPromises()
+
+      expect(token().attributes('data-reveal')).toBeUndefined()
+
+      textarea.value = 'Please /c that'
+      textarea.setSelectionRange(8, 8)
+
+      await wrapper.setProps({ text: 'Please /c that' })
+      await flushPromises()
+
+      expect(token().attributes('data-reveal')).toBe('true')
+
+      textarea.value = 'Please /c thin'
+      textarea.setSelectionRange(9, 9)
+
+      await wrapper.setProps({ text: 'Please /c thin' })
+      await flushPromises()
+
+      expect(token().attributes('data-reveal')).toBeUndefined()
+      expect(token().attributes('data-caret')).toBe('end')
+    })
+
+  it('hides the overlay under forced colors', () => {
+    const mainCss = readFileSync(
+      join(process.cwd(), 'app/assets/css/main.css'),
+      'utf-8',
+    )
+
+    expect(mainCss).toMatch(
+      /@media \(forced-colors: active\) \{\s*\.composer-command-mirror \{\s*display: none;\s*\}\s*\}/,
+    )
   })
 
   it('copies the metrics of a textarea that arrives later', async () => {

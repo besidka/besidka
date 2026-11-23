@@ -396,6 +396,15 @@ composer height does not change: the layer is absolutely positioned, adds no
 box to the flow, and the spacer (`docs/chat-scroll-spacer.md`) reads the
 composer height as before.
 
+The mirror re-reads the selection after every text change, including a
+programmatic one that fires no `input` event (the prefill hook,
+`insertTextAtSelection`, Vue assigning `value`), and it also copies the
+computed `fontKerning`, `fontVariantLigatures`, `fontFeatureSettings`,
+`fontStretch`, `textRendering` and `hyphens` of the textarea, because they
+change glyph widths or line breaks. Under `@media (forced-colors: active)`
+(Windows High Contrast) the overlay is hidden through `main.css`, so the system
+colors do not paint a second copy of the text over the textarea.
+
 **At send** the active token and the blanks after it are cut from the typed
 text before it is joined with the pasted-text chips, so the stored text, a
 share and a branch never contain the command name.

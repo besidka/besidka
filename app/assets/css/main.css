@@ -1316,3 +1316,9 @@ div:focus-visible:not([role="region"]) {
     color: transparent;
   }
 }
+
+@media (forced-colors: active) {
+  .composer-command-mirror {
+    display: none;
+  }
+}

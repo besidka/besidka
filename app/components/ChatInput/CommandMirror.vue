@@ -1,7 +1,7 @@
 <template>
   <div
     ref="mirrorRef"
-    class="pointer-events-none absolute inset-0 z-10 overflow-hidden whitespace-pre-wrap break-words text-transparent"
+    class="composer-command-mirror pointer-events-none absolute inset-0 z-10 overflow-hidden whitespace-pre-wrap break-words text-transparent"
     :style="metrics"
     aria-hidden="true"
     data-testid="command-mirror"
@@ -38,6 +38,12 @@ const MIRRORED_PROPERTIES = [
   'tabSize',
   'textTransform',
   'textIndent',
+  'fontKerning',
+  'fontVariantLigatures',
+  'fontFeatureSettings',
+  'fontStretch',
+  'textRendering',
+  'hyphens',
   'paddingTop',
   'paddingRight',
   'paddingBottom',
@@ -165,6 +171,7 @@ watch(() => props.textarea, copyMetrics, { immediate: true })
 watch(() => props.text, async () => {
   await nextTick()
   syncScroll()
+  readSelection()
 }, { flush: 'post' })
 
 onMounted(() => {
