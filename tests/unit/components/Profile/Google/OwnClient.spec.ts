@@ -630,9 +630,9 @@ describe('Profile/Google/OwnClient', () => {
           .text()
 
         expect(text).toContain('Change files in Google Drive')
-        expect(text).toContain('Lets Besidka create folders in your Drive, '
-          + 'each time you approve. Renaming, moving and creating files '
-          + 'will be added later.')
+        expect(text).toContain('Lets Besidka create folders, and rename and '
+          + 'move files and folders you own, each time you approve. Creating '
+          + 'files comes in the next change.')
         expect(text).toContain('Google\'s permission for this also allows '
           + 'deleting and sharing; Besidka has no code that deletes or '
           + 'shares.')
@@ -717,6 +717,27 @@ describe('Profile/Google/OwnClient', () => {
           .text()).toContain('Besidka has no code that deletes or shares')
         expect(wrapper.find(writeBox).exists()).toBe(false)
       })
+
+    it('tells what the model can do with the granted access and that it '
+      + 'never deletes or shares', async () => {
+      setByo({
+        hasClient: true,
+        connection: connection({
+          capabilities: ['identity', 'drive-read', 'drive-write'],
+        }),
+      })
+
+      const hint = (await mountOwnClient())
+        .get('[data-testid="google-byo-tools-hint"]')
+        .text()
+
+      expect(hint).toContain('list your folders, create a folder in your '
+        + 'own My Drive, and rename or move files and folders you own, '
+        + 'after you approve each one. Creating files comes in the next '
+        + 'change.')
+      expect(hint).toContain('It never deletes anything and never changes '
+        + 'who can see a file.')
+    })
   })
 
   it('disconnects the own client behind a confirmation', async () => {

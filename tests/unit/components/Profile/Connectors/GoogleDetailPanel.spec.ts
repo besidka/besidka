@@ -481,6 +481,8 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
           'google__drive_list_folder',
           'google__drive_save_file',
           'google__drive_create_folder',
+          'google__drive_rename',
+          'google__drive_move',
         ])
         expect(wrapper.get('[data-testid="google-detail-own-client-hint"]')
           .text()).toContain('needs Google Drive read access')
@@ -540,6 +542,9 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       expect(text).toContain('Without Change files access it never changes '
         + 'a Google file.')
       expect(text).toContain('One exception')
+      expect(text).toContain('create a folder, and rename or move files and '
+        + 'folders you own, in your own My Drive after you approve each one. '
+        + 'It cannot delete anything or change who can see a file.')
     })
 
     it('has no own-client hint once Drive read access is granted',

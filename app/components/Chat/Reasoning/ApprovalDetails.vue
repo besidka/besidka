@@ -30,8 +30,11 @@
       v-if="driveChange"
       class="flex flex-col gap-1"
     >
-      <h4 class="text-xs font-medium text-base-content/70">
-        Folder
+      <h4
+        class="text-xs font-medium text-base-content/70"
+        data-testid="approval-details-drive-heading"
+      >
+        {{ getDriveChangeHeading(driveChange) }}
       </h4>
       <ChatReasoningDriveChange :view="driveChange" />
     </section>
@@ -96,7 +99,10 @@ import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-ev
 import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
 import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
-import { readDriveWriteApprovalView } from '#shared/utils/google-drive-write'
+import {
+  getDriveChangeHeading,
+  readDriveWriteApprovalView,
+} from '#shared/utils/google-drive-write'
 import type { DriveWriteApprovalView } from '#shared/utils/google-drive-write'
 import { readApprovalDriveNames } from '#shared/utils/tool-approval-parts'
 import type { DriveNames } from '#shared/utils/tool-approval-parts'

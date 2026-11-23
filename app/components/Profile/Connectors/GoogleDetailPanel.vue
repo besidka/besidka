@@ -256,6 +256,7 @@
 
 <script setup lang="ts">
 import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
+import { GOOGLE_DRIVE_WRITE_INFO_TEXT } from '#shared/utils/google-drive-write'
 import {
   GOOGLE_ENTRY_IDS,
   GOOGLE_KEYS_TAB_PATH,
@@ -303,11 +304,6 @@ const INFO_TEXTS: Readonly<Record<GoogleEntryId, string>> = {
   'google-calendar': GOOGLE_CALENDAR_ACCESS_NOTE,
 }
 
-const DRIVE_WRITE_INFO_TEXT = 'One exception: with your own Google client '
-  + 'and Change files access, it can also create a folder in your own My '
-  + 'Drive after you approve it. It cannot delete anything or change who can '
-  + 'see a file.'
-
 const props = defineProps<{
   entryId: GoogleEntryId
 }>()
@@ -328,7 +324,7 @@ const infoText = computed<string>(() => {
   const base = INFO_TEXTS[props.entryId]
 
   return props.entryId === 'google-drive' && isDriveWriteGranted.value
-    ? `${base} ${DRIVE_WRITE_INFO_TEXT}`
+    ? `${base} ${GOOGLE_DRIVE_WRITE_INFO_TEXT}`
     : base
 })
 
