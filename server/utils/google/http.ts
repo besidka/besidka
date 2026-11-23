@@ -68,9 +68,11 @@ export function redirectRefused() {
   })
 }
 
+export const GOOGLE_TIMED_OUT_MESSAGE = 'Google did not answer in time'
+
 export function timedOut(timeoutMs: number) {
   return createError({
-    message: 'Google did not answer in time',
+    message: GOOGLE_TIMED_OUT_MESSAGE,
     status: 504,
     why: `No complete answer arrived within ${timeoutMs} ms`,
     fix: 'Try again in a moment',

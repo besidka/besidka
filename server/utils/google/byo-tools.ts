@@ -136,6 +136,24 @@ const SKIPPABLE_THREAD_FAILURES: ReadonlySet<GmailFailureCode> = new Set([
   'bad_request',
 ])
 const SEARCH_UNREADABLE_THREADS_MAX = 3
+const UNREADABLE_CODE_KEYS_MAX = 6
+
+function countUnreadableCode(
+  counts: Record<string, number>,
+  failure: { status?: number, observed?: string },
+): void {
+  const key = failure.status !== undefined
+    ? String(failure.status)
+    : failure.observed ?? 'unknown'
+
+  const isNewKey = !(key in counts)
+
+  if (isNewKey && Object.keys(counts).length >= UNREADABLE_CODE_KEYS_MAX) {
+    return
+  }
+
+  counts[key] = (counts[key] ?? 0) + 1
+}
 
 const FAILURE_STATUS: Readonly<Record<GmailFailureCode, number>> = {
   reauthorize: 409,
@@ -1129,6 +1147,7 @@ export async function buildGoogleByoTools(
       const entries: SearchEntry[] = []
       let skippedThreads = 0
       let unreadableThreads = 0
+      const unreadableCodes: Record<string, number> = {}
 
       for (const threadId of listed.value) {
         if (unreadableThreads >= SEARCH_UNREADABLE_THREADS_MAX) {
@@ -1152,6 +1171,7 @@ export async function buildGoogleByoTools(
 
           if (SKIPPABLE_THREAD_FAILURES.has(metadata.code)) {
             unreadableThreads += 1
+            countUnreadableCode(unreadableCodes, metadata)
 
             continue
           }
@@ -1174,6 +1194,7 @@ export async function buildGoogleByoTools(
               threads: entries.length,
               skipped: skippedThreads,
               unreadable: unreadableThreads,
+              unreadableCodes,
             },
           },
         },

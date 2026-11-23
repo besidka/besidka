@@ -6,6 +6,7 @@ import {
 import { readReason } from '~~/server/utils/google/drive'
 import {
   GOOGLE_RESPONSE_TOO_LARGE_MESSAGE,
+  GOOGLE_TIMED_OUT_MESSAGE,
   googleFetchJson,
 } from '~~/server/utils/google/http'
 import type {
@@ -59,9 +60,16 @@ export const GMAIL_FAILURE_TEXT: Readonly<Record<GmailFailureCode, string>> = {
     + 'in a moment.',
 }
 
+export type GmailFailureObservation = 'timeout' | 'non-json' | 'unreachable'
+
 export type GmailResult<Value>
   = | { ok: true, value: Value }
-    | { ok: false, code: GmailFailureCode }
+    | {
+      ok: false
+      code: GmailFailureCode
+      status?: number
+      observed?: GmailFailureObservation
+    }
 
 const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set([
   'rateLimitExceeded',
@@ -155,12 +163,23 @@ async function requestJson(
         code: response.ok
           ? 'failed'
           : classifyGmailFailure(response.status, readReason(response.body)),
+        ...(response.ok
+          ? { observed: 'non-json' as const }
+          : { status: response.status }),
       }
     }
 
     return { ok: true, value: response.body }
   } catch (exception) {
-    return { ok: false, code: classifyGoogleRequestException(exception) }
+    const message = exception instanceof Error ? exception.message : ''
+
+    return {
+      ok: false,
+      code: classifyGoogleRequestException(exception),
+      observed: message === GOOGLE_TIMED_OUT_MESSAGE
+        ? 'timeout'
+        : 'unreachable',
+    }
   }
 }
 

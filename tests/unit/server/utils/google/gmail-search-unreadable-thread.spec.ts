@@ -60,7 +60,10 @@ function fakeGmail(
   })
 }
 
-async function runSearch(fetchImpl: ReturnType<typeof fakeGmail>) {
+async function runSearch(
+  fetchImpl: ReturnType<typeof fakeGmail>,
+  logger: { set: ReturnType<typeof vi.fn> } = { set: vi.fn() },
+) {
   const built = await buildGoogleByoTools({
     db: {} as never,
     kv: {} as never,
@@ -68,7 +71,7 @@ async function runSearch(fetchImpl: ReturnType<typeof fakeGmail>) {
     grantedScopes: Object.values(GOOGLE_SCOPES),
     chatGrantHashes: {},
     index: createGoogleReferenceIndex([]),
-    logger: { set: vi.fn() } as never,
+    logger: logger as never,
     fetchImpl: fetchImpl as never,
   })
   const search = built.tools.google__gmail_search as unknown as {
@@ -126,6 +129,30 @@ describe('google__gmail_search with a thread Gmail cannot read', () => {
         status: 502,
       })
     })
+
+  it('logs how many unreadable threads answered each Gmail status, as '
+    + 'numbers only', async () => {
+    const logger = { set: vi.fn() }
+
+    await runSearch(fakeGmail(['t1', 't2', 't3', 't4'], {
+      t2: () => googleError(500, 'backendError'),
+      t3: () => new Response('<html>Bad gateway</html>', { status: 200 }),
+      t4: () => googleError(500, 'backendError'),
+    }), logger)
+
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        googleByoTools: {
+          gmailSearch: {
+            threads: 1,
+            skipped: 0,
+            unreadable: 3,
+            unreadableCodes: { '500': 2, 'non-json': 1 },
+          },
+        },
+      },
+    })
+  })
 
   it('stops asking Gmail after three unreadable threads', async () => {
     const ids = ['t1', 't2', 't3', 't4', 't5', 't6']
