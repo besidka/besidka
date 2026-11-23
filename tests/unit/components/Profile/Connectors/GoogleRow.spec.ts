@@ -87,6 +87,58 @@ describe('Profile/Connectors/GoogleRow', () => {
     expect(wrapper.emitted('open')).toEqual([['google-calendar']])
   })
 
+  it('has the title as the only open control and stretches it over the row',
+    async () => {
+      const wrapper = await mountRow(buildEntry('google-gmail'))
+      const controls = wrapper.findAll('button, a')
+
+      expect(wrapper.findAll(OPEN)).toHaveLength(1)
+      expect(controls).toHaveLength(2)
+      expect(wrapper.classes()).toContain('relative')
+      expect(wrapper.get(OPEN).classes()).toEqual(
+        expect.arrayContaining([
+          'after:absolute',
+          'after:inset-0',
+          'cursor-pointer',
+        ]),
+      )
+    })
+
+  it('keeps the action button above the stretched title', async () => {
+    const entry = buildEntry('google-gmail')
+    const wrapper = await mountRow(entry)
+
+    expect(wrapper.get(ACTION).classes())
+      .toEqual(expect.arrayContaining(['relative', 'z-10']))
+
+    await wrapper.get(ACTION).trigger('click')
+
+    expect(wrapper.emitted('action')).toEqual([[entry]])
+    expect(wrapper.emitted('open')).toBeUndefined()
+  })
+
+  it('keeps the Labs link above the stretched title', async () => {
+    const wrapper = await mountRow(
+      buildEntry('google-drive', null, false),
+    )
+
+    expect(wrapper.get(ACTION).classes())
+      .toEqual(expect.arrayContaining(['relative', 'z-10']))
+  })
+
+  it('shows a hover state until the row is selected', async () => {
+    const idle = await mountRow(buildEntry('google-gmail'))
+    const selected = await mountRow(
+      buildEntry('google-gmail'),
+      { isSelected: true },
+    )
+
+    expect(idle.classes()).toContain('hover:bg-base-200/60')
+    expect(idle.classes()).not.toContain('bg-base-200')
+    expect(selected.classes()).toContain('bg-base-200')
+    expect(selected.classes()).not.toContain('hover:bg-base-200/60')
+  })
+
   it('emits the entry from its action button', async () => {
     const entry = buildEntry('google-drive')
     const wrapper = await mountRow(entry)
@@ -96,21 +148,22 @@ describe('Profile/Connectors/GoogleRow', () => {
     expect(wrapper.emitted('action')).toEqual([[entry]])
   })
 
-  it('shows the email and a Disconnect action when connected', async () => {
-    const wrapper = await mountRow(buildEntry('google-drive', {
+  it('shows the email and no row action when connected', async () => {
+    const entry = buildEntry('google-drive', {
       clientMode: 'besidka',
       status: 'active',
       email: 'person@example.test',
       isWorkspaceAccount: false,
       capabilities: ['identity', 'drive-picked'],
       connectedAt: '2026-11-22T12:00:00.000Z',
-    }))
+    })
+    const wrapper = await mountRow(entry)
 
+    expect(entry.action).toBe('disconnect')
     expect(wrapper.get(STATE).text()).toBe('person@example.test')
-    expect(wrapper.get(ACTION).text()).toBe('Disconnect')
-    expect(wrapper.get(ACTION).classes()).not.toContain('btn-primary')
-    expect(wrapper.get(ACTION).attributes('aria-label'))
-      .toBe('Disconnect, Google Drive')
+    expect(wrapper.find(ACTION).exists()).toBe(false)
+    expect(wrapper.findAll('button, a')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Disconnect')
   })
 
   it('links to Labs while the service is off there', async () => {

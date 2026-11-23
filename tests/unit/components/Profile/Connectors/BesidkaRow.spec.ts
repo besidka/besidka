@@ -8,6 +8,7 @@ enableAutoUnmount(afterEach)
 
 const OPEN = '[data-testid="besidka-connector-row-open"]'
 const TOGGLE = '[data-testid="besidka-connector-row-toggle"]'
+const BADGE = '[data-testid="besidka-connector-row-badge"]'
 
 async function mountRow(props: Record<string, unknown> = {}) {
   return mountSuspended(BesidkaRow, {
@@ -40,10 +41,70 @@ describe('Profile/Connectors/BesidkaRow', () => {
     expect(wrapper.emitted('open')).toHaveLength(1)
   })
 
+  it('shows the same Built in badge as the Google rows', async () => {
+    const wrapper = await mountRow()
+    const badge = wrapper.get(BADGE)
+
+    expect(badge.text()).toBe('Built in')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft', 'badge-sm', 'shrink-0']),
+    )
+    expect(wrapper.find('[data-testid="connector-row-remove"]').exists())
+      .toBe(false)
+  })
+
+  it('shows the Built in badge while the opt-in is off', async () => {
+    const wrapper = await mountRow({ isActive: false })
+
+    expect(wrapper.get(BADGE).text()).toBe('Built in')
+  })
+
+  it('has the title as the only open control and stretches it over the row',
+    async () => {
+      const wrapper = await mountRow()
+
+      expect(wrapper.findAll('button, a')).toHaveLength(1)
+      expect(wrapper.findAll(OPEN)).toHaveLength(1)
+      expect(wrapper.classes()).toContain('relative')
+      expect(wrapper.get(OPEN).classes()).toEqual(
+        expect.arrayContaining([
+          'after:absolute',
+          'after:inset-0',
+          'cursor-pointer',
+        ]),
+      )
+    })
+
+  it('keeps the switch above the stretched title and does not open',
+    async () => {
+      const wrapper = await mountRow({ isActive: false })
+      const label = wrapper.get(TOGGLE).element.closest('label')!
+
+      expect(label.classList.contains('relative')).toBe(true)
+      expect(label.classList.contains('z-10')).toBe(true)
+
+      await wrapper.get(TOGGLE).trigger('change')
+
+      expect(wrapper.emitted('open')).toBeUndefined()
+    })
+
+  it('shows a hover state only while the opt-in is on and not selected',
+    async () => {
+      const active = await mountRow()
+      const inactive = await mountRow({ isActive: false })
+      const selected = await mountRow({ isSelected: true })
+
+      expect(active.classes()).toContain('hover:bg-base-200/60')
+      expect(inactive.classes()).not.toContain('hover:bg-base-200/60')
+      expect(selected.classes()).toContain('bg-base-200')
+      expect(selected.classes()).not.toContain('hover:bg-base-200/60')
+    })
+
   it('has no open button while the opt-in is off', async () => {
     const wrapper = await mountRow({ isActive: false })
 
     expect(wrapper.find(OPEN).exists()).toBe(false)
+    expect(wrapper.findAll('button, a')).toHaveLength(0)
     expect((wrapper.get(TOGGLE).element as HTMLInputElement).checked)
       .toBe(false)
   })

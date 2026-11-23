@@ -1,7 +1,7 @@
 <template>
   <li
-    class="list-row items-center gap-3 py-3"
-    :class="{ 'bg-base-200': isSelected }"
+    class="list-row relative items-center gap-3 py-3 transition-colors"
+    :class="isSelected ? 'bg-base-200' : 'hover:bg-base-200/60'"
     :data-testid="`google-entry-row-${entry.id}`"
   >
     <div
@@ -19,7 +19,7 @@
       <div class="flex min-w-0 items-center gap-2">
         <button
           type="button"
-          class="link no-underline block min-w-0 truncate rounded-box text-left font-medium"
+          class="link no-underline block min-w-0 cursor-pointer truncate text-left font-medium after:absolute after:inset-0 after:rounded-box after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-primary"
           data-testid="google-entry-row-open"
           @click="emit('open', entry.id)"
         >
@@ -48,7 +48,7 @@
     <NuxtLink
       v-if="entry.action === 'link' && entry.linkPath"
       :to="entry.linkPath"
-      class="btn btn-sm min-h-11 shrink-0 sm:min-h-8"
+      class="btn btn-sm relative z-10 min-h-11 shrink-0 sm:min-h-8"
       :class="ACTION_PLACEMENT"
       :aria-label="actionAriaLabel"
       data-testid="google-entry-row-action"
@@ -56,9 +56,9 @@
       {{ entry.actionLabel }}
     </NuxtLink>
     <button
-      v-else-if="entry.action"
+      v-else-if="entry.action && entry.action !== 'disconnect'"
       type="button"
-      class="btn btn-sm min-h-11 shrink-0 sm:min-h-8"
+      class="btn btn-sm relative z-10 min-h-11 shrink-0 sm:min-h-8"
       :class="[ACTION_PLACEMENT, { 'btn-primary': isPrimaryAction }]"
       :disabled="isBusy"
       :aria-busy="isBusy"
