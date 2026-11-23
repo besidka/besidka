@@ -304,6 +304,7 @@ describe('Chat/Reasoning/ApprovalStep', () => {
   it.each([
     'google__gmail_create_draft',
     'google__drive_save_file',
+    'google__drive_create_folder',
     'google__calendar_create_event',
   ])('never approves the Google write %s on Enter from the card', async (
     toolName,
@@ -589,6 +590,83 @@ describe('Chat/Reasoning/ApprovalStep', () => {
         expect(other.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
         expect(broken.wrapper.find(testId('gmail-draft')).exists()).toBe(false)
       })
+  })
+
+  describe('a Google Drive folder', () => {
+    const FOLDER_ID = 'folder-id-0123456789'
+
+    function folderModel(
+      overrides: Partial<ApprovalStepModel> = {},
+    ): ApprovalStepModel {
+      return createModel({
+        toolName: 'google__drive_create_folder',
+        connectorSlug: null,
+        tool: 'google__drive_create_folder',
+        input: { name: 'Reports', parentFolderId: FOLDER_ID },
+        driveNames: { folder: { name: 'Projects', id: FOLDER_ID } },
+        summary: 'Create the folder "Reports" inside "Projects"',
+        ...overrides,
+      })
+    }
+
+    it('shows the folder name, its parent and the exact id', async () => {
+      const { wrapper } = await mountStep({ model: folderModel() })
+      const card = wrapper.get(testId('drive-change'))
+
+      expect(card.get(testId('drive-change-name')).text()).toBe('Reports')
+      expect(card.get(testId('drive-change-parent')).text())
+        .toContain('“Projects”')
+      expect(card.get(testId('drive-change-parent-id')).text())
+        .toBe(FOLDER_ID)
+      expect(card.get(testId('drive-change-note')).text())
+        .toContain('cannot delete files')
+    })
+
+    it('shows the top level of My Drive for a call with no parent',
+      async () => {
+        const { wrapper } = await mountStep({
+          model: folderModel({
+            input: { name: 'Reports' },
+            driveNames: undefined,
+          }),
+        })
+
+        expect(wrapper.get(testId('drive-change-parent')).text())
+          .toBe('My Drive (top level)')
+      })
+
+    it('shows no card for an input the server would refuse', async () => {
+      const { wrapper } = await mountStep({
+        model: folderModel({ input: { name: '../../x' } }),
+      })
+
+      expect(wrapper.find(testId('drive-change')).exists()).toBe(false)
+    })
+
+    it('names the parent only for the id the server wrote it for',
+      async () => {
+        const { wrapper } = await mountStep({
+          model: folderModel({
+            driveNames: { folder: { name: 'Other', id: 'other-id-0123456789' } },
+          }),
+        })
+
+        expect(wrapper.get(testId('drive-change-parent')).text())
+          .not.toContain('Other')
+        expect(wrapper.get(testId('drive-change-parent-id')).text())
+          .toBe(FOLDER_ID)
+      })
+
+    it('hands the names to the details panel', async () => {
+      const { wrapper } = await mountStep({ model: folderModel() })
+
+      await wrapper.get(testId('details')).trigger('click')
+
+      expect(useSidePanel().currentView.value?.props).toMatchObject({
+        toolName: 'google__drive_create_folder',
+        driveNames: { folder: { name: 'Projects', id: FOLDER_ID } },
+      })
+    })
   })
 
   describe('a Google Calendar event', () => {

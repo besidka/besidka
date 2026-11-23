@@ -9,6 +9,7 @@ const GOOGLE_WRITE_TOOL_NAMES = [
   'google__calendar_create_event',
   'google__gmail_create_draft',
   'google__drive_save_file',
+  'google__drive_create_folder',
 ]
 
 const EVENT_INPUT = {
@@ -88,6 +89,49 @@ describe('Chat/Reasoning/ApprovalDetails', () => {
       expect(card.get(testId('calendar-event-note')).text())
         .toContain('Nobody is invited and no email is sent')
     })
+
+  it('shows the same folder view as the approval card, with the names the '
+    + 'server wrote and no way to allow it', async () => {
+    const folderId = 'folder-id-0123456789'
+    const wrapper = await mountSuspended(ApprovalDetails, {
+      props: {
+        title: 'Approval',
+        toolName: 'google__drive_create_folder',
+        summaryLine: '',
+        reasonText: 'Changes data',
+        input: { name: 'Reports', parentFolderId: folderId },
+        isShortened: false,
+        driveNames: { folder: { name: 'Projects', id: folderId } },
+      },
+    })
+    const card = wrapper.get(testId('drive-change'))
+
+    expect(card.get(testId('drive-change-name')).text()).toBe('Reports')
+    expect(card.get(testId('drive-change-parent')).text())
+      .toContain('“Projects”')
+    expect(card.get(testId('drive-change-parent-id')).text()).toBe(folderId)
+    expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('names no parent for names of the wrong shape', async () => {
+    const folderId = 'folder-id-0123456789'
+    const wrapper = await mountSuspended(ApprovalDetails, {
+      props: {
+        title: 'Approval',
+        toolName: 'google__drive_create_folder',
+        summaryLine: '',
+        reasonText: 'Changes data',
+        input: { name: 'Reports', parentFolderId: folderId },
+        isShortened: false,
+        driveNames: {
+          folder: { name: 'a'.repeat(300), id: folderId },
+        } as never,
+      },
+    })
+
+    expect(wrapper.get(testId('drive-change-parent')).text())
+      .not.toContain('aaaa')
+  })
 
   it('shows the same draft view as the approval card for a create-draft call',
     async () => {

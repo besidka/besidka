@@ -574,6 +574,128 @@ describe('Profile/Google/OwnClient', () => {
       })
     })
 
+  describe('the Change files checkbox', () => {
+    const writeBox = '[data-testid="google-byo-capability-drive-write"]'
+    const readBox = '[data-testid="google-byo-capability-drive-read"]'
+    const lockedHint = '[data-testid="google-byo-capability-drive-write-locked"]'
+
+    it('is nested under the read box and off until the read box is ticked',
+      async () => {
+        setByo({ hasClient: true })
+
+        const wrapper = await mountOwnClient()
+        const write = wrapper.get(writeBox)
+
+        expect(write.attributes('disabled')).toBeDefined()
+        expect((write.element as HTMLInputElement).checked).toBe(false)
+        expect(wrapper.get(lockedHint).text())
+          .toContain('Tick the read access first')
+        expect(wrapper.get(writeBox).element.closest('label')?.classList)
+          .toContain('ml-6')
+
+        await wrapper.get(readBox).setValue(true)
+
+        expect(wrapper.get(writeBox).attributes('disabled')).toBeUndefined()
+        expect(wrapper.find(lockedHint).exists()).toBe(false)
+      })
+
+    it('says what it allows and that Besidka has no delete or share code',
+      async () => {
+        setByo({ hasClient: true })
+
+        const text = (await mountOwnClient())
+          .get('[data-testid="google-byo-capabilities-form"]')
+          .text()
+
+        expect(text).toContain('Change files in Google Drive')
+        expect(text).toContain('Lets Besidka create files and folders, and '
+          + 'rename and move files you own, each time you approve.')
+        expect(text).toContain('Google\'s permission for this also allows '
+          + 'deleting and sharing; Besidka has no code that deletes or '
+          + 'shares.')
+      })
+
+    it('clears itself when the read box is unticked', async () => {
+      setByo({ hasClient: true })
+
+      const wrapper = await mountOwnClient()
+
+      await wrapper.get(readBox).setValue(true)
+      await wrapper.get(writeBox).setValue(true)
+      await wrapper.get(readBox).setValue(false)
+
+      expect((wrapper.get(writeBox).element as HTMLInputElement).checked)
+        .toBe(false)
+      expect(wrapper.get(writeBox).attributes('disabled')).toBeDefined()
+    })
+
+    it('connects with both capabilities in one request', async () => {
+      setByo({ hasClient: true })
+      fetchMock.mockResolvedValue({
+        authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?z=3',
+      })
+
+      const wrapper = await mountOwnClient()
+
+      await wrapper.get(readBox).setValue(true)
+      await wrapper.get(writeBox).setValue(true)
+      await wrapper.get('[data-testid="google-byo-connect"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/google/byo/start', {
+        method: 'POST',
+        body: {
+          capabilities: ['drive-read', 'drive-write'],
+          returnTo: '/profile/keys?tab=google',
+        },
+      })
+    })
+
+    it('is enabled in Add access when read access is already granted',
+      async () => {
+        setByo({ hasClient: true, connection: connection() })
+        fetchMock.mockResolvedValue({
+          authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?w=4',
+        })
+
+        const wrapper = await mountOwnClient()
+
+        expect(wrapper.get(writeBox).attributes('disabled')).toBeUndefined()
+
+        await wrapper.get(writeBox).setValue(true)
+        await wrapper.get('[data-testid="google-byo-connect"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/google/byo/start', {
+          method: 'POST',
+          body: {
+            capabilities: ['drive-read', 'drive-write'],
+            returnTo: '/profile/keys?tab=google',
+          },
+        })
+      })
+
+    it('lists the grant and repeats the scope note once it is granted',
+      async () => {
+        setByo({
+          hasClient: true,
+          connection: connection({
+            capabilities: ['identity', 'drive-read', 'drive-write'],
+          }),
+        })
+
+        const wrapper = await mountOwnClient()
+
+        expect(wrapper.get('[data-testid="google-byo-granted"]').text())
+          .toContain('Change files in Google Drive')
+        expect(wrapper.get('[data-testid="google-byo-drive-write-note"]')
+          .text()).toContain('Besidka has no code that deletes or shares')
+        expect(wrapper.find(writeBox).exists()).toBe(false)
+      })
+  })
+
   it('disconnects the own client behind a confirmation', async () => {
     setByo({ hasClient: true, connection: connection() })
     confirmMock.mockResolvedValue({ label: 'Disconnect', index: 0 })

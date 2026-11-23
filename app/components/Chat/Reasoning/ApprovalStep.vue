@@ -80,6 +80,11 @@
         :view="calendarEvent"
         class="mt-1.5"
       />
+      <ChatReasoningDriveChange
+        v-if="driveChange"
+        :view="driveChange"
+        class="mt-1.5"
+      />
       <details
         v-if="clippedPreview.text"
         class="mt-1 text-xs"
@@ -232,6 +237,8 @@ import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-ev
 import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
+import { readDriveWriteApprovalView } from '#shared/utils/google-drive-write'
+import type { DriveWriteApprovalView } from '#shared/utils/google-drive-write'
 import { isGoogleWriteToolName } from '#shared/utils/google-tool-approvals'
 import type {
   ApprovalStepModel,
@@ -355,6 +362,14 @@ const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
   return readCreateEventApprovalView(props.model.toolName, props.model.input)
 })
 
+const driveChange = computed<DriveWriteApprovalView | null>(() => {
+  return readDriveWriteApprovalView(
+    props.model.toolName,
+    props.model.input,
+    props.model.driveNames,
+  )
+})
+
 const approvalLinkLabel = computed<string>(() => {
   const link = props.model.link ?? ''
 
@@ -474,6 +489,7 @@ function openDetails() {
       input: props.model.input,
       isShortened: isShortened.value,
       preview: props.model.preview,
+      driveNames: props.model.driveNames,
     },
   })
 }

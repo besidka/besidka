@@ -6,6 +6,11 @@ import {
   describeCalendarFreeBusyDay,
 } from '#shared/utils/google-calendar-tools'
 import {
+  GOOGLE_DRIVE_FOLDER_REFERENCE_KIND,
+  GOOGLE_DRIVE_ROOT_REFERENCE_KIND,
+} from '#shared/utils/google-drive-tools'
+import { GOOGLE_DRIVE_ROOT_TITLE } from '#shared/utils/google-drive-write'
+import {
   GOOGLE_GMAIL_DRAFT_REFERENCE_KIND,
   GOOGLE_GMAIL_THREAD_REFERENCE_KIND,
 } from '#shared/utils/google-gmail-tools'
@@ -115,6 +120,22 @@ export function describeGoogleStepReference(
       linkLabel: day
         ? `Open ${day} in Google Calendar`
         : 'Open Google Calendar',
+    }
+  }
+
+  if (reference.kind === GOOGLE_DRIVE_ROOT_REFERENCE_KIND) {
+    return {
+      text: GOOGLE_DRIVE_ROOT_TITLE,
+      linkText: 'Open in Google Drive',
+      linkLabel: 'Open My Drive in Google Drive',
+    }
+  }
+
+  if (reference.kind === GOOGLE_DRIVE_FOLDER_REFERENCE_KIND) {
+    return {
+      text: reference.title || 'Google Drive folder',
+      linkText: 'Open in Google Drive',
+      linkLabel: `Open ${reference.title || 'folder'} in Google Drive`,
     }
   }
 

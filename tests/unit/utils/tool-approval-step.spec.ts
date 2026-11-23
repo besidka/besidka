@@ -91,6 +91,28 @@ describe('getApprovalStepModel', () => {
     )).not.toHaveProperty('link')
   })
 
+  it('keeps the Drive names of the server data only when they are valid',
+    () => {
+      const names = {
+        folder: { name: 'Projects', id: 'folder-id-0123456789' },
+      }
+
+      expect(getApprovalStepModel(
+        connectorPart(),
+        dataMap(approvalData({ driveNames: names })),
+      )?.driveNames).toEqual(names)
+      expect(getApprovalStepModel(
+        connectorPart(),
+        dataMap(approvalData({
+          driveNames: { folder: { name: 'x', id: 'bad id' } },
+        })),
+      )).not.toHaveProperty('driveNames')
+      expect(getApprovalStepModel(
+        connectorPart(),
+        dataMap(approvalData({ driveNames: { other: names.folder } })),
+      )).not.toHaveProperty('driveNames')
+    })
+
   it('falls back to the default reason and Allow once without data', () => {
     const model = getApprovalStepModel(connectorPart(), new Map())
 
