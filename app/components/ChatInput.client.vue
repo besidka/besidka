@@ -257,6 +257,7 @@
       @toggle-besidka="composerBesidkaTools.toggle"
       @toggle-google="composerGoogleTools.toggle"
       @retry-google="composerGoogleTools.retry"
+      @choose-model="chooseAnotherModel"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"
@@ -2043,6 +2044,13 @@ function openConnectorPicker() {
   isConnectorPickerOpen.value = true
   composerConnectors.refresh()
   composerGoogleTools.refresh()
+}
+
+async function chooseAnotherModel() {
+  isConnectorPickerOpen.value = false
+
+  await nextTick()
+  await nuxtApp.callHook('chat-input:open-model-picker')
 }
 
 watch(isConnectorsEnabled, (isEnabled) => {

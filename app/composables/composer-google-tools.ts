@@ -9,10 +9,13 @@ import type { GoogleConnectionStatusResponse } from '#shared/utils/google-connec
 import { GOOGLE_SERVICES } from '#shared/utils/google-tool-catalog'
 import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import {
+  GEMINI_PROVIDER_ID,
+  getGoogleToolsUnavailableActions,
   getGoogleToolsUnavailableNote,
   getGoogleToolsUnavailableReason,
 } from '#shared/utils/google-tools-availability'
 import type {
+  GoogleToolsNoteAction,
   GoogleToolsUnavailableReason,
 } from '#shared/utils/google-tools-availability'
 import type { GoogleToolsWithheldNote } from '#shared/utils/google-tools-withheld'
@@ -57,6 +60,7 @@ export interface ComposerGoogleRow {
   isOn: boolean
   subLine: string
   reasonNote: GoogleToolsWithheldNote | null
+  reasonActions: GoogleToolsNoteAction[]
   link: ComposerGoogleRowLink | null
 }
 
@@ -84,16 +88,26 @@ function buildLink(entry: GoogleEntry): ComposerGoogleRowLink {
  * the account no longer passes the gate for (`unavailable`) gets no row.
  * `reason` is why this send offers no Google tool at all, the same for every
  * service: the switch is then disabled and the reason sits behind an info
- * button.
+ * button, with the actions that can lift the reason under it.
  */
 export function buildComposerGoogleRows(input: {
   entries: readonly GoogleEntry[]
   servicesOff: readonly GoogleService[]
   reason: GoogleToolsUnavailableReason | null
+  recipientProviderId?: string | null
+  hasGeminiKey?: boolean
+  geminiPaidTierConfirmed?: boolean
 }): ComposerGoogleRow[] {
   const reasonNote = input.reason
     ? getGoogleToolsUnavailableNote(input.reason)
     : null
+  const reasonActions = input.reason && reasonNote
+    ? getGoogleToolsUnavailableActions(input.reason, {
+      recipientProviderId: input.recipientProviderId ?? null,
+      hasGeminiKey: input.hasGeminiKey === true,
+      geminiPaidTierConfirmed: input.geminiPaidTierConfirmed === true,
+    })
+    : []
 
   return input.entries.flatMap((entry): ComposerGoogleRow[] => {
     if (entry.state === 'unavailable') {
@@ -114,6 +128,7 @@ export function buildComposerGoogleRows(input: {
         isOn: false,
         subLine: entry.stateLine,
         reasonNote: null,
+        reasonActions: [],
         link: buildLink(entry),
       }]
     }
@@ -133,6 +148,7 @@ export function buildComposerGoogleRows(input: {
       isOn,
       subLine,
       reasonNote,
+      reasonActions,
       link: null,
     }]
   })
@@ -231,7 +247,7 @@ export function useComposerGoogleTools(
   const { selection } = useGoogleToolsSelection()
   const { selection: modelSelection } = useUserModel()
   const { isChatHoldingGoogleData } = useChatGoogleData()
-  const { isGeminiPaidTierConfirmed } = useUserKeys()
+  const { isGeminiPaidTierConfirmed, keyStatusForProvider } = useUserKeys()
   const driveFeature = useFeature('google.drive')
   const gmailFeature = useFeature('google.gmail')
   const calendarFeature = useFeature('google.calendar')
@@ -265,13 +281,19 @@ export function useComposerGoogleTools(
       : []
   })
 
+  const recipientProviderId = computed<string | null>(() => {
+    const current = modelSelection.value
+
+    return current.source === 'gateway'
+      ? null
+      : getModel(current.modelId).provider?.id ?? null
+  })
+
   const unavailableReason = computed<GoogleToolsUnavailableReason | null>(
     () => {
       const current = modelSelection.value
       const isGateway = current.source === 'gateway'
-      const providerId = isGateway
-        ? null
-        : getModel(current.modelId).provider?.id ?? null
+      const providerId = recipientProviderId.value
       const tools = toValue(context.enabledTools)
       const hasNativeSearch = tools.includes('web_search')
       const providerToolsStayCallable
@@ -306,6 +328,9 @@ export function useComposerGoogleTools(
       }),
       servicesOff: servicesOff.value,
       reason: unavailableReason.value,
+      recipientProviderId: recipientProviderId.value,
+      hasGeminiKey: keyStatusForProvider(GEMINI_PROVIDER_ID) === 'saved',
+      geminiPaidTierConfirmed: isGeminiPaidTierConfirmed.value,
     })
   })
 

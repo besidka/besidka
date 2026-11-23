@@ -180,6 +180,27 @@ describe('ChatInput/ModelsTrigger', () => {
     )).toHaveLength(1)
   })
 
+  it('opens from the open-model-picker hook and stays open on a repeat',
+    async () => {
+      const wrapper = await mountPicker()
+      const nuxtApp = useNuxtApp()
+
+      expect(wrapper.find('[data-testid="models-picker-panel"]').exists())
+        .toBe(false)
+
+      await nuxtApp.callHook('chat-input:open-model-picker')
+
+      expect(wrapper.find('[data-testid="models-picker-panel"]').exists())
+        .toBe(true)
+      expect(wrapper.get('[data-testid="current-model-trigger"]')
+        .attributes('aria-expanded')).toBe('true')
+
+      await nuxtApp.callHook('chat-input:open-model-picker')
+
+      expect(wrapper.get('[data-testid="current-model-trigger"]')
+        .attributes('aria-expanded')).toBe('true')
+    })
+
   it('shows only the image generation icon for a purpose-built image model', async () => {
     mocks.getProviders.mockReturnValue({
       providers: [{

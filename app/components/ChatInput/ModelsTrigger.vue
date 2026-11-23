@@ -280,6 +280,16 @@ function onSheetClose() {
   closeAndRestoreFocus()
 }
 
+const nuxtApp = useNuxtApp()
+
+nuxtApp.hook('chat-input:open-model-picker', async () => {
+  if (isOpen.value) {
+    return
+  }
+
+  await toggle()
+})
+
 watch(openPopover, (current) => {
   if (current !== 'models' && isOpen.value) {
     close()

@@ -3472,6 +3472,7 @@ export default defineEventHandler(async (event) => {
               documentsContextLine,
               skillsInstructionBlock,
               connectorsInstructionBlock,
+              googleToolsWithheldReason,
               toolIndexBlock: toolIndex?.instructions ?? null,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
@@ -3789,6 +3790,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: false,
               skillsInstructionBlock: skillsSend.activeSkillsBlock,
               connectorsInstructionBlock,
+              googleToolsWithheldReason,
               currentDateInstruction,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),

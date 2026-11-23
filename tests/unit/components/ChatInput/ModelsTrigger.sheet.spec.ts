@@ -257,6 +257,25 @@ describe('ChatInput/ModelsTrigger below md', () => {
       expect(document.activeElement).toBe(box.element)
     })
 
+  it('opens the sheet and focuses its box from the open-model-picker hook',
+    async () => {
+      const wrapper = await mountPicker()
+
+      await useNuxtApp().callHook('chat-input:open-model-picker')
+      await flushPromises()
+
+      const box = wrapper.get('[data-testid="models-picker-sheet-box"]')
+
+      expect(dialog.showModal).toHaveBeenCalledOnce()
+      expect(isSheetOpen(wrapper)).toBe(true)
+      expect(document.activeElement).toBe(box.element)
+
+      await useNuxtApp().callHook('chat-input:open-model-picker')
+      await flushPromises()
+
+      expect(dialog.showModal).toHaveBeenCalledOnce()
+    })
+
   it('releases the panel when the sheet closes before showModal runs',
     async () => {
       const wrapper = await mountPicker()
