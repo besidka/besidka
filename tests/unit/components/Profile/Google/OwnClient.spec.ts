@@ -212,8 +212,8 @@ describe('Profile/Google/OwnClient', () => {
     await wrapper.get('[data-testid="google-byo-client-secret"]')
       .setValue(CLIENT_SECRET)
 
-    expect(wrapper.get('[data-testid="google-byo-save"]')
-      .attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="google-byo-save"]').classes())
+      .toContain('btn-disabled')
   })
 
   it('shows the server\'s refusal in an alert', async () => {
@@ -259,7 +259,6 @@ describe('Profile/Google/OwnClient', () => {
     })
 
     const wrapper = await mountOwnClient()
-    const connect = wrapper.get('[data-testid="google-byo-connect"]')
     const ids = ['drive-read', 'gmail-read', 'gmail-compose', 'calendar']
 
     for (const id of ids) {
@@ -270,11 +269,12 @@ describe('Profile/Google/OwnClient', () => {
       expect((checkbox.element as HTMLInputElement).checked).toBe(false)
     }
 
-    expect(connect.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="google-byo-connect"]').classes())
+      .toContain('btn-disabled')
 
     await wrapper.get('[data-testid="google-byo-capability-gmail-read"]')
       .setValue(true)
-    await connect.trigger('click')
+    await wrapper.get('[data-testid="google-byo-connect"]').trigger('click')
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/google/byo/start', {
@@ -757,6 +757,42 @@ describe('Profile/Google/OwnClient', () => {
     }
   })
 
+  it('lays Delete and Save out like the provider key card', async () => {
+    setByo({ hasClient: true })
+
+    const wrapper = await mountOwnClient()
+    const remove = wrapper.get('[data-testid="google-byo-delete"]')
+    const save = wrapper.get('[data-testid="google-byo-save"]')
+    const row = save.element.parentElement?.parentElement as HTMLElement
+
+    expect(remove.classes()).toEqual(expect.arrayContaining([
+      'btn',
+      'btn-error',
+      'btn-outline',
+      'w-full',
+    ]))
+    expect(save.classes()).toEqual(expect.arrayContaining([
+      'btn',
+      'btn-primary',
+      'w-full',
+    ]))
+    expect(save.classes()).not.toContain('btn-sm')
+    expect(remove.element.parentElement?.parentElement).toBe(row)
+    expect(row.className).toBe(
+      'max-md:grid md:flex md:place-content-end gap-2',
+    )
+    expect(
+      remove.element.compareDocumentPosition(save.element)
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(remove.text()).toBe('Delete')
+    expect(remove.attributes('aria-label')).toBe('Delete client')
+    expect(save.text()).toBe('Save')
+    expect(save.attributes('aria-label')).toBe('Save client')
+    expect(remove.html()).toContain('trash')
+    expect(save.html()).toContain('cloud-upload')
+  })
+
   it('does nothing when the disconnect is canceled', async () => {
     setByo({ hasClient: true, connection: connection() })
     confirmMock.mockResolvedValue(null)
@@ -962,6 +998,34 @@ describe('Profile/Google/OwnClient', () => {
 
       return wrapper
     }
+
+    it('sits at the bottom of the card, after the actions row', async () => {
+      setByo({ hasClient: true })
+
+      const wrapper = await mountOwnClient()
+      const guide = wrapper.get('[data-testid="google-byo-guide"]')
+      const save = wrapper.get('[data-testid="google-byo-save"]')
+      const section = wrapper.get('[data-testid="google-byo"]')
+
+      expect(
+        save.element.compareDocumentPosition(guide.element)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      expect(section.element.lastElementChild).toBe(guide.element)
+    })
+
+    it('sits after the actions row in the reduced card too', async () => {
+      const wrapper = await mountReduced()
+      const guide = wrapper.get('[data-testid="google-byo-guide"]')
+      const save = wrapper.get('[data-testid="google-byo-save"]')
+
+      expect(
+        save.element.compareDocumentPosition(guide.element)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      expect(wrapper.get('[data-testid="google-byo"]').element.lastElementChild)
+        .toBe(guide.element)
+    })
 
     it('is collapsed by default with a clear summary line', async () => {
       const wrapper = await mountOwnClient()

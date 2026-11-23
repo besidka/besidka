@@ -21,17 +21,25 @@
       </h3>
       <span
         v-if="connectionState === 'connected'"
-        class="badge badge-soft badge-success badge-sm"
+        class="badge badge-soft badge-success badge-sm gap-1"
         data-testid="google-byo-status"
       >
-        Connected
+        <Icon
+          name="lucide:circle-check"
+          size="12"
+        />
+        <span class="max-xs:sr-only">Connected</span>
       </span>
       <span
         v-else-if="connectionState === 'needs_reauth'"
-        class="badge badge-soft badge-warning badge-sm"
+        class="badge badge-soft badge-warning badge-sm gap-1"
         data-testid="google-byo-status"
       >
-        Reconnect needed
+        <Icon
+          name="lucide:circle-alert"
+          size="12"
+        />
+        <span class="max-xs:sr-only">Reconnect needed</span>
       </span>
     </div>
     <p
@@ -64,11 +72,8 @@
         >
           Connectors page</NuxtLink>.
       </p>
-      <ProfileGoogleOwnClientGuide :reduced="reduced" />
-      <div class="grid min-w-0 gap-2">
-        <p class="text-sm font-semibold">
-          Redirect URI to register on your client
-        </p>
+      <div class="min-w-0">
+        <UiFormFieldLabel label="Redirect URI to register on your client" />
         <div class="flex items-center gap-2">
           <code
             class="min-w-0 flex-1 break-all rounded-box bg-base-200 px-3 py-2
@@ -89,90 +94,112 @@
           </button>
         </div>
       </div>
-      <p
-        v-if="byo.hasClient"
-        class="text-sm"
-        data-testid="google-byo-client-saved"
-      >
-        A client is saved. Its id and secret are never shown again; enter
-        both values to replace them.
-      </p>
       <form
-        class="grid gap-3"
+        novalidate
         data-testid="google-byo-client-form"
         @submit.prevent="saveClient"
       >
-        <label class="grid gap-1 text-sm">
-          <span class="font-semibold">Client ID</span>
-          <span class="input w-full">
-            <input
-              v-model="clientId"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="your-client-id.apps.googleusercontent.com"
-              :disabled="isBusy"
-              data-testid="google-byo-client-id"
+        <UiFormFieldset>
+          <UiFormLabel class="[--radius-field:0.5rem]">
+            <UiFormFieldLabel label="Client ID" />
+            <label class="relative input w-full rounded-field">
+              <span class="label">
+                <Icon
+                  name="lucide:id-card"
+                  size="16"
+                />
+              </span>
+              <input
+                v-model="clientId"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="your-client-id.apps.googleusercontent.com"
+                :disabled="isBusy"
+                data-testid="google-byo-client-id"
+              >
+              <span class="label">
+                <UiFormPasteButton
+                  :disabled="isBusy"
+                  @paste="pasteClientId"
+                />
+              </span>
+            </label>
+          </UiFormLabel>
+          <UiFormLabel class="[--radius-field:0.5rem]">
+            <UiFormFieldLabel label="Client secret" />
+            <label class="relative input w-full rounded-field">
+              <span class="label">
+                <Icon
+                  name="lucide:key-round"
+                  size="16"
+                />
+              </span>
+              <input
+                v-model="clientSecret"
+                type="password"
+                autocomplete="new-password"
+                spellcheck="false"
+                :placeholder="byo.hasClient
+                  ? 'Enter a new secret to replace the saved one'
+                  : 'The client secret from the same client'"
+                :disabled="isBusy"
+                data-testid="google-byo-client-secret"
+              >
+              <span class="label">
+                <UiFormPasteButton
+                  :disabled="isBusy"
+                  @paste="pasteClientSecret"
+                />
+              </span>
+            </label>
+            <p
+              v-if="byo.hasClient"
+              class="fieldset-label mt-2 flex-col items-start
+                text-base-content/80"
+              data-testid="google-byo-client-saved"
             >
-            <UiFormPasteButton
-              :disabled="isBusy"
-              @paste="pasteClientId"
-            />
-          </span>
-        </label>
-        <label class="grid gap-1 text-sm">
-          <span class="font-semibold">Client secret</span>
-          <span class="input w-full">
-            <input
-              v-model="clientSecret"
-              type="password"
-              autocomplete="new-password"
-              spellcheck="false"
-              :placeholder="byo.hasClient
-                ? 'Enter a new secret to replace the saved one'
-                : 'The client secret from the same client'"
-              :disabled="isBusy"
-              data-testid="google-byo-client-secret"
-            >
-            <UiFormPasteButton
-              :disabled="isBusy"
-              @paste="pasteClientSecret"
-            />
-          </span>
-        </label>
-        <div
-          v-if="saveError"
-          role="alert"
-          class="alert alert-soft alert-error text-sm"
-          data-testid="google-byo-save-error"
-        >
-          <Icon
-            name="lucide:circle-alert"
-            size="16"
-            class="shrink-0"
-          />
-          <p>{{ saveError }}</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            class="btn btn-primary btn-sm"
-            :disabled="isBusy || !canSaveClient"
-            data-testid="google-byo-save"
+              A client is saved. Its id and secret are never shown again;
+              enter both values to replace them.
+            </p>
+          </UiFormLabel>
+          <div
+            v-if="saveError"
+            role="alert"
+            class="alert alert-soft alert-error text-sm"
+            data-testid="google-byo-save-error"
           >
-            Save client
-          </button>
-          <UiButton
-            v-if="byo.hasClient"
-            mode="error"
-            text="Delete client"
-            icon-name="lucide:trash"
-            :disabled="isBusy"
-            outline
-            data-testid="google-byo-delete"
-            @click="deleteClient"
-          />
-        </div>
+            <Icon
+              name="lucide:circle-alert"
+              size="16"
+              class="shrink-0"
+            />
+            <p>{{ saveError }}</p>
+          </div>
+          <div class="max-md:grid md:flex md:place-content-end gap-2">
+            <UiButton
+              v-if="byo.hasClient"
+              mode="error"
+              text="Delete"
+              title="Delete client"
+              icon-name="lucide:trash"
+              :disabled="isBusy"
+              class="w-full"
+              outline
+              data-testid="google-byo-delete"
+              @click="deleteClient"
+            />
+            <UiButton
+              type="submit"
+              text="Save"
+              title="Save client"
+              icon-name="lucide:cloud-upload"
+              :disabled="isBusy || !canSaveClient"
+              class="w-full"
+              data-testid="google-byo-save"
+            />
+          </div>
+        </UiFormFieldset>
       </form>
     </template>
     <template v-else>
@@ -185,13 +212,15 @@
       </p>
       <div
         v-if="byo.hasClient"
-        class="flex flex-wrap gap-2"
+        class="max-md:grid md:flex md:place-content-end gap-2"
       >
         <UiButton
           mode="error"
-          text="Delete client"
+          text="Delete"
+          title="Delete client"
           icon-name="lucide:trash"
           :disabled="isBusy"
+          class="w-full"
           outline
           data-testid="google-byo-delete"
           @click="deleteClient"
@@ -262,16 +291,15 @@
           >{{ GOOGLE_DRIVE_WRITE_NEEDS_READ_HINT }}</span>
         </span>
       </label>
-      <div>
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
+      <div class="max-md:grid md:flex md:place-content-end gap-2">
+        <UiButton
+          :text="connectButtonLabel"
+          icon-name="lucide:plug"
           :disabled="isBusy || selectedCapabilities.length === 0"
+          class="w-full"
           data-testid="google-byo-connect"
           @click="connect"
-        >
-          {{ connectButtonLabel }}
-        </button>
+        />
       </div>
     </fieldset>
     <template v-if="connection && showsConnectionControls">
@@ -360,18 +388,23 @@
           </ul>
         </div>
       </div>
-      <div>
+      <div class="max-md:grid md:flex md:place-content-end gap-2">
         <UiButton
           mode="error"
           text="Disconnect"
           icon-name="lucide:unplug"
           :disabled="isBusy"
+          class="w-full"
           outline
           data-testid="google-byo-disconnect"
           @click="disconnect"
         />
       </div>
     </template>
+    <ProfileGoogleOwnClientGuide
+      v-if="byo.canManage"
+      :reduced="reduced"
+    />
   </section>
 </template>
 
