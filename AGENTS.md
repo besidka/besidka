@@ -878,9 +878,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
-- `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, in
-  progress, 2026-11-22): the umbrella `feat/google-connectors` and what
-  exists on it so far (the four `google.*` flags with `optIn: 'required'`,
+- `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, 2026-11-23):
+  the umbrella `feat/google-connectors` is feature-complete for 4b and not
+  merged into `main` (the owner decides), with the status block listing what
+  is still open, and what exists on it (the four `google.*` flags with `optIn: 'required'`,
   `google.gmail` and `google.calendar` under `google.byo`;
   `shared/utils/google-scopes.ts` with
   `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`
@@ -951,7 +952,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (explicit offset that must match the IANA zone at that instant, the spring
   gap, the exclusive all-day end), the card that shows the validated request
   body, references of an id, a link and a day only, and the owner's
-  real-account checklist)
+  real-account checklist), and section 17, per-tool permissions with Always
+  allow for own-client tools only (17.7), and section 19, Drive writes on the
+  own client (scope `drive`, create folder and file, rename, move, the write
+  boundary with no delete, trash, copy or share), section 19.14, created-file
+  cards, the preview, Outputs and Download as a real file, and section 21,
+  quotas and cost (the Worker startup rule is in `docs/worker-startup.md`)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes
