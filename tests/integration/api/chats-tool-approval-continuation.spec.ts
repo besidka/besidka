@@ -55,6 +55,7 @@ const mocks = vi.hoisted(() => ({
     tools: Record<string, unknown>
     entries: Map<string, unknown>
   }>),
+  googleBlockedNames: [] as string[],
   pickedRead: null as null | Record<string, any>,
   saveFile: null as null | ((...args: unknown[]) => unknown),
   failRateLimitRead: false,
@@ -250,11 +251,20 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
     buildGoogleSendToolCandidates: async (input: {
       priorParts?: readonly unknown[]
     }) => {
-      if (mocks.googleSendFactory) {
-        return await mocks.googleSendFactory(input)
-      }
+      const built = (
+        mocks.googleSendFactory
+          ? await mocks.googleSendFactory(input)
+          : mocks.googleSend ?? actual.noGoogleSendTools()
+      ) as never
 
-      return mocks.googleSend ?? actual.noGoogleSendTools()
+      return mocks.googleBlockedNames.length
+        ? actual.dropBlockedGoogleTools(
+          built,
+          new Map(mocks.googleBlockedNames.map((toolName) => {
+            return [toolName, 'blocked' as const]
+          })),
+        )
+        : built
     },
   }
 })
@@ -911,6 +921,7 @@ describe('tool approval continuation', () => {
     mocks.providerTools = {}
     mocks.googleSend = null
     mocks.googleSendFactory = null
+    mocks.googleBlockedNames = []
     mocks.failRateLimitRead = false
     mocks.chatGoogleDataAt = null
     mocks.memoryWrites = []
@@ -2297,6 +2308,83 @@ describe('tool approval continuation', () => {
         expect(prompt).not.toContain('SECRET GOOGLE BODY')
         expect(prompt).toContain('could not be kept')
       })
+
+    describe('a tool the user set to Blocked after approving it', () => {
+      const BLOCKED_TEXT = 'This tool is blocked in the user\'s settings, so '
+        + 'the action did not run.'
+
+      it('denies the approved write with the blocked text and never calls '
+        + 'Google', async () => {
+        const paused = await pauseAfterGoogleRead()
+        const [approvalId] = paused.approvalIds
+
+        expect(writeExecute).not.toHaveBeenCalled()
+
+        mocks.googleBlockedNames = ['google__calendar_create_event']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(writeExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+        expect(writtenChunks().some(chunk => chunk.type === 'error'))
+          .toBe(false)
+      })
+
+      it('gives the earlier read\'s stashed body to the model and removes it '
+        + 'once the continuation finished, as for any answer', async () => {
+        const paused = await pauseAfterGoogleRead()
+        const [approvalId] = paused.approvalIds
+        const key = await stashKey(paused.messagePublicId)
+
+        mocks.googleBlockedNames = ['google__calendar_create_event']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(writeExecute).not.toHaveBeenCalled()
+        expect(JSON.stringify((doStream.mock.calls[0]?.[0] as any)?.prompt))
+          .toContain('SECRET GOOGLE BODY')
+        expect(mocks.kv.has(key)).toBe(false)
+      })
+
+      it('still runs the approved call when another tool is the Blocked one',
+        async () => {
+          const paused = await pauseAfterGoogleRead()
+          const [approvalId] = paused.approvalIds
+
+          mocks.googleBlockedNames = ['google__drive_search']
+
+          await answer(paused, [
+            { approvalId, approved: true },
+          ], [textChunks('Scheduled the review.')])
+
+          expect(writeExecute).toHaveBeenCalledTimes(1)
+        })
+
+      it('says the tool is no longer available only when it has no entry '
+        + 'at all', async () => {
+        const paused = await pauseAfterGoogleRead()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleSend = null
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(writeExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toMatchObject({
+          type: 'execution-denied',
+          reason: expect.stringContaining('no longer available'),
+        })
+      })
+    })
 
     describe('with the real Drive tools', () => {
       const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'

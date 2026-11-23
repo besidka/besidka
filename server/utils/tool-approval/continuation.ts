@@ -476,18 +476,26 @@ export async function loadContinuation(input: {
  * tool permissions (`resolveBesidkaPermissionModes`, keyed by the tool name
  * of the call), so a tool the user set to Blocked after approving does not
  * run on resume; a Besidka call with no resolved mode fails closed as
- * Blocked. Connector tools keep `ask`: their Blocked state is the C-5 tool
- * settings, which hide the tool from the live tool set, so the replay reads
- * it as missing. The registry is not imported here on purpose: the chat
- * route loads it only when an answer is a Besidka call.
+ * Blocked. A Google tool reads the stored Google modes the send resolved
+ * (`googleModes`, only Blocked or Needs approval exist for it): a tool the
+ * user set to Blocked after approving is denied as blocked, and a tool with
+ * no stored mode means `ask`. Connector tools keep `ask`: their Blocked
+ * state is the C-5 tool settings, which hide the tool from the live tool
+ * set, so the replay reads it as missing. The registry is not imported here
+ * on purpose: the chat route loads it only when an answer is a Besidka call.
  */
 export function resolveReplayPermissionMode(
   family: ToolFamily | null = null,
   toolName = '',
   besidkaModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
+  googleModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
 ): ToolPermissionMode {
   if (family === 'besidka') {
     return besidkaModes.get(toolName) ?? 'blocked'
+  }
+
+  if (family === 'google') {
+    return googleModes.get(toolName) ?? 'ask'
   }
 
   return 'ask'
@@ -519,6 +527,7 @@ export function decideContinuation(input: {
   entries: ReadonlyMap<string, SendToolEntry>
   state: ApprovalState
   besidkaPermissionModes?: ReadonlyMap<string, ToolPermissionMode>
+  googlePermissionModes?: ReadonlyMap<string, ToolPermissionMode>
 }): ContinuationDecision[] {
   const replayState = cloneState(input.state)
 
@@ -549,6 +558,7 @@ export function decideContinuation(input: {
         entry?.descriptor.family ?? record.family,
         record.toolName,
         input.besidkaPermissionModes,
+        input.googlePermissionModes,
       ),
     })
 

@@ -598,6 +598,43 @@ describe('resolveReplayPermissionMode', () => {
     expect(resolveReplayPermissionMode('besidka', 'besidka__list_files'))
       .toBe('blocked')
   })
+
+  it('reads the Google modes of a Google tool, with "ask" as the default',
+    () => {
+      const googleModes = new Map([['google__gmail_search', 'blocked' as const]])
+
+      expect(resolveReplayPermissionMode(
+        'google',
+        'google__gmail_search',
+        undefined,
+        googleModes,
+      )).toBe('blocked')
+      expect(resolveReplayPermissionMode(
+        'google',
+        'google__gmail_read_thread',
+        undefined,
+        googleModes,
+      )).toBe('ask')
+      expect(resolveReplayPermissionMode('google', 'google__gmail_search'))
+        .toBe('ask')
+    })
+
+  it('never lets a Google mode reach a Besidka or connector tool', () => {
+    const googleModes = new Map([['besidka__list_files', 'blocked' as const]])
+
+    expect(resolveReplayPermissionMode(
+      'connector',
+      'besidka__list_files',
+      undefined,
+      googleModes,
+    )).toBe('ask')
+    expect(resolveReplayPermissionMode(
+      'besidka',
+      'besidka__list_files',
+      new Map([['besidka__list_files', 'allow' as const]]),
+      googleModes,
+    )).toBe('allow')
+  })
 })
 
 describe('decideContinuation with Besidka tool permissions', () => {

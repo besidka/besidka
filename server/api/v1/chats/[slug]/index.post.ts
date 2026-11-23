@@ -2798,6 +2798,7 @@ export default defineEventHandler(async (event) => {
         entries: toolApprovalSend.entries,
         state: resume.loaded.state,
         besidkaPermissionModes,
+        googlePermissionModes: googleSend.permissionModes,
       })
 
       const resumedMessages = buildResumedAssistantMessages({
