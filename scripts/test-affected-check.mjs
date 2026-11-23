@@ -1825,6 +1825,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Connectors/DirectoryDetailPanel.spec.ts',
     'tests/unit/composables/connector-directory.spec.ts',
     'tests/unit/components/Profile/Connectors/Avatar.spec.ts',
+    'tests/unit/components/Profile/Connectors/Row.spec.ts',
     'tests/unit/components/Profile/Connectors/BesidkaRow.spec.ts',
     'tests/unit/components/Profile/Connectors/GoogleRow.spec.ts',
     'tests/unit/components/Profile/Connectors/GoogleCards.spec.ts',
