@@ -5401,9 +5401,22 @@ with an ASCII `filename` and the exact `filename*` (the name is
 `buildGoogleFileDownloadName`: control, invisible and direction characters,
 path separators and `<>:"|?*` become spaces, leading dots and trailing dots
 and spaces go, at most 120 characters by code point, the format's extension
-added unless the title already ends with it; a text file keeps an extension it
-has), `Content-Type` from the allowlist, `Content-Length`,
+added unless the title already ends with it; a text file keeps an extension
+only from `txt`, `md`, `csv`, `json`, `log`, `yaml`, `yml`, `xml` and `tsv`,
+case-insensitive, so `fix.command` or `x.html` becomes `fix.command.txt` and
+`x.html.txt`). The ASCII fallback `filename` is cleaned again after Unicode
+normalization (`/ \ < > : | ? * % ; "` become `_`, leading dots and trailing
+dots and spaces go, `download` when nothing is left), because fullwidth
+characters fold into those separators there; `filename*` carries the exact
+name. `Content-Type` comes from the allowlist, with `Content-Length`,
 `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`.
+
+The hourly limiter is best-effort: it is a read-then-write on KV, not an
+atomic counter, and it counts before the chat and Drive lookups, so a
+refused request uses budget too; when KV cannot count, the request is refused
+(fail closed). An XLSX export keeps whatever cells the create-file validator
+allowed at creation; a formula was refused then (section 19.12), so the
+export carries none that Besidka wrote.
 
 Nothing is stored: no R2, D1 or KV copy of the file, no model, no cache. The
 bytes go from Drive through the Worker to the browser, and the token never

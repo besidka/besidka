@@ -10,7 +10,7 @@ import {
   findGoogleFileDownloadOption,
   getGoogleFileDownloadOptions,
   isGoogleFileDownloadFormat,
-} from '../../../shared/utils/google-file-download'
+} from '#shared/utils/google-file-download'
 
 describe('the download allowlist', () => {
   it('offers the documented formats per kind and nothing else', () => {
@@ -110,6 +110,45 @@ describe('buildGoogleFileDownloadName', () => {
       .toBe('Plan v1.2.docx')
   })
 
+  it.each([
+    ['fix.command', 'fix.command.txt'],
+    ['x.hta', 'x.hta.txt'],
+    ['a.bat', 'a.bat.txt'],
+    ['p.ps1', 'p.ps1.txt'],
+    ['x.html', 'x.html.txt'],
+    ['x.svg', 'x.svg.txt'],
+    ['run.sh', 'run.sh.txt'],
+    ['setup.exe', 'setup.exe.txt'],
+  ])('does not keep the dangerous extension of the text file %s', (
+    title,
+    expected,
+  ) => {
+    expect(buildGoogleFileDownloadName(title, 'text', 'txt')).toBe(expected)
+  })
+
+  it.each([
+    'notes.txt',
+    'notes.md',
+    'data.csv',
+    'data.json',
+    'app.log',
+    'config.yaml',
+    'config.yml',
+    'feed.xml',
+    'data.tsv',
+    'NOTES.MD',
+    'Data.JSON',
+  ])('keeps the allowlisted extension of the text file %s', (title) => {
+    expect(buildGoogleFileDownloadName(title, 'text', 'txt')).toBe(title)
+  })
+
+  it('leaves document and spreadsheet names to their format', () => {
+    expect(buildGoogleFileDownloadName('fix.command', 'document', 'docx'))
+      .toBe('fix.command.docx')
+    expect(buildGoogleFileDownloadName('x.hta', 'spreadsheet', 'csv'))
+      .toBe('x.hta.csv')
+  })
+
   it('removes path parts, control and direction characters', () => {
     expect(buildGoogleFileDownloadName('../../etc/passwd', 'text', 'txt'))
       .toBe('etc passwd.txt')
@@ -166,8 +205,39 @@ describe('buildGoogleFileDisposition', () => {
     expect(value.split('\n')).toHaveLength(1)
   })
 
-  it('uses a plain fallback when nothing ASCII is left', () => {
-    expect(buildGoogleFileDisposition('Звіт.docx'))
-      .toContain('filename="download.docx"')
+  it('cleans the ASCII name after normalization, so fullwidth separators '
+    + 'cannot become path or header characters', () => {
+    expect(buildGoogleFileDisposition('．．／etc／x．txt'))
+      .toContain('filename="_etc_x.txt"')
+    expect(buildGoogleFileDisposition('a<b>c%d;e.txt'))
+      .toContain('filename="a_b_c_d_e.txt"')
+    expect(buildGoogleFileDisposition('ａ＜ｂ＞ｃ％ｄ；ｅ．txt'))
+      .toContain('filename="a_b_c_d_e.txt"')
+    expect(buildGoogleFileDisposition('＼＼ｄｅｖ＼ｘ．txt'))
+      .toContain('filename="__dev_x.txt"')
+  })
+
+  it('falls back to download for a name that normalizes to only dots',
+    () => {
+      expect(buildGoogleFileDisposition('．．．'))
+        .toContain('filename="download"')
+      expect(buildGoogleFileDisposition('. . .'))
+        .toContain('filename="download"')
+    })
+
+  it('keeps the exact name in filename*', () => {
+    expect(buildGoogleFileDisposition('a<b>c%d;e.txt')).toContain(
+      'filename*=UTF-8\'\'a%3Cb%3Ec%25d%3Be.txt',
+    )
+  })
+
+  it('drops leading dots of the ASCII name, and keeps the exact one in '
+    + 'filename*', () => {
+    const value = buildGoogleFileDisposition('Звіт.docx')
+
+    expect(value).toContain('filename="docx"')
+    expect(value).toContain(
+      'filename*=UTF-8\'\'%D0%97%D0%B2%D1%96%D1%82.docx',
+    )
   })
 })

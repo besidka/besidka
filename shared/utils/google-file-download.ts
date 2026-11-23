@@ -122,7 +122,18 @@ export function buildGoogleFileDownloadUrl(input: {
 }
 
 const UNSAFE_NAME_CHARACTERS = new Set(['/', '\\', '<', '>', ':', '"', '|', '?', '*'])
-const EXISTING_EXTENSION_PATTERN = /^\.[A-Za-z0-9]{1,10}$/
+const KEPT_TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.txt',
+  '.md',
+  '.csv',
+  '.json',
+  '.log',
+  '.yaml',
+  '.yml',
+  '.xml',
+  '.tsv',
+])
+const SAFE_EXTENSION_PATTERN = /^\.[A-Za-z0-9]{1,10}$/
 
 function isUnsafeNameCharacter(character: string): boolean {
   const code = character.codePointAt(0) ?? 0
@@ -163,7 +174,7 @@ function splitName(
   const dotIndex = cleaned.lastIndexOf('.')
   const existing = dotIndex > 0 ? cleaned.slice(dotIndex) : ''
 
-  if (kind === 'text' && EXISTING_EXTENSION_PATTERN.test(existing)) {
+  if (kind === 'text' && KEPT_TEXT_EXTENSIONS.has(existing.toLowerCase())) {
     return { base: cleaned.slice(0, dotIndex), extension: existing }
   }
 
@@ -177,7 +188,9 @@ function splitName(
  * trailing dots and spaces go, the base is cut by code point so the whole
  * name stays within `GOOGLE_FILE_DOWNLOAD_NAME_MAX`, and the extension of the
  * chosen format is added unless the title already ends with it. A plain text
- * file keeps an extension it already has (`notes.md` stays `notes.md`).
+ * file keeps an extension only from a short allowlist of text formats
+ * (`notes.md` stays `notes.md`); any other one gets `.txt` appended, so a
+ * title such as `fix.command` or `x.html` is never saved with that extension.
  */
 export function buildGoogleFileDownloadName(
   title: string,
@@ -200,10 +213,13 @@ export function buildGoogleFileDownloadName(
 }
 
 const PERCENT_ENCODED_CHARACTERS = /[!'()*]/g
+const UNSAFE_FALLBACK_CHARACTERS = /[/\\<>:|?*%;"]/g
 
 /**
  * The `Content-Disposition` of an attachment: a plain ASCII `filename` for
- * old clients and the exact name as `filename*` (RFC 5987).
+ * old clients and the exact name as `filename*` (RFC 5987). The ASCII name is
+ * cleaned after Unicode normalization, because fullwidth separators fold
+ * into `/`, `..`, `<`, `%` and `;` there.
  */
 export function buildGoogleFileDisposition(fileName: string): string {
   const extensionIndex = fileName.lastIndexOf('.')
@@ -211,11 +227,11 @@ export function buildGoogleFileDisposition(fileName: string): string {
   const asciiName = fileName
     .normalize('NFKD')
     .replace(/[^\x20-\x7e]/g, '')
-    .replace(/["\\]/g, '_')
-    .trim()
-  const fallbackName = !asciiName || asciiName.startsWith('.')
-    ? `download${extension}`
-    : asciiName
+    .replace(UNSAFE_FALLBACK_CHARACTERS, '_')
+    .replace(/^[.\s]+/, '')
+    .replace(/[.\s]+$/, '')
+  const safeExtension = SAFE_EXTENSION_PATTERN.test(extension) ? extension : ''
+  const fallbackName = asciiName || `download${safeExtension}`
   const encodedName = encodeURIComponent(fileName)
     .replace(PERCENT_ENCODED_CHARACTERS, (character) => {
       return `%${character.charCodeAt(0).toString(16).toUpperCase()}`
