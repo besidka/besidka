@@ -22,7 +22,8 @@ const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files'
 const GENERATE_IDS_URL = `${DRIVE_FILES_URL}/generateIds`
 const CREATED_FIELDS = 'id,name,mimeType,parents'
 const ITEM_META_FIELDS = 'id,name,mimeType,parents,ownedByMe,shared,driveId,'
-  + 'trashed,appProperties,capabilities(canAddChildren)'
+  + 'trashed,appProperties,'
+  + 'capabilities(canAddChildren,canRename,canMoveItemWithinDrive)'
 const LIST_FIELDS = 'nextPageToken,files(id,name,mimeType,parents,ownedByMe,'
   + 'shared,driveId)'
 const APPROVAL_PROPERTY = 'besidkaApproval'
@@ -205,6 +206,11 @@ function isBoundaryItemId(value: string): boolean {
   return isDriveRootAlias(value) || isDriveWriteId(value)
 }
 
+function driveItemUrl(itemId: string, query: Record<string, string>): string {
+  return `${DRIVE_FILES_URL}/${encodeURIComponent(itemId)}?${
+    new URLSearchParams(query).toString()}`
+}
+
 function toBase64Url(bytes: Uint8Array): string {
   let binary = ''
 
@@ -301,6 +307,8 @@ export interface DriveItemMeta {
   driveId: string | null
   trashed: boolean | null
   canAddChildren: boolean | null
+  canRename: boolean | null
+  canMoveItemWithinDrive: boolean | null
   approvalDigest: string | null
 }
 
@@ -360,6 +368,10 @@ function readItemMeta(value: Record<string, unknown>): DriveItemMeta | null {
       : null,
     trashed: booleanOrNull(value.trashed),
     canAddChildren: booleanOrNull(capabilities?.canAddChildren),
+    canRename: booleanOrNull(capabilities?.canRename),
+    canMoveItemWithinDrive: booleanOrNull(
+      capabilities?.canMoveItemWithinDrive,
+    ),
     approvalDigest: typeof approval === 'string' ? approval : null,
   }
 }
@@ -380,10 +392,10 @@ export async function readDriveItemMeta(
   }
 
   const result = await requestJson(
-    `${DRIVE_FILES_URL}/${encodeURIComponent(itemId)}?${new URLSearchParams({
+    driveItemUrl(itemId, {
       supportsAllDrives: 'true',
       fields: ITEM_META_FIELDS,
-    }).toString()}`,
+    }),
     { method: 'GET', headers: headersOf(context) },
     toFetchOptions(context, {}),
   )
@@ -426,6 +438,139 @@ export async function createDriveItem(
         contentType: 'application/json',
         data: new TextEncoder().encode(
           JSON.stringify(metadata),
+        ) as Uint8Array<ArrayBuffer>,
+      },
+    },
+    toFetchOptions(context, {}),
+  )
+
+  if (!result.ok) {
+    return result
+  }
+
+  const meta = readItemMeta(result.value)
+
+  return meta
+    ? {
+      ok: true,
+      value: {
+        id: meta.id,
+        name: meta.name,
+        mimeType: meta.mimeType,
+        parents: meta.parents,
+      },
+    }
+    : { ok: false, code: 'failed' }
+}
+
+export type DriveChangeOperation = 'rename' | 'move'
+
+export const DRIVE_CHANGE_FAILURE_TEXT: Readonly<
+  Record<DriveChangeOperation, Partial<Record<DriveWriteFailureCode, string>>>
+> = {
+  rename: {
+    no_access: 'Google Drive did not allow renaming this item. The user may '
+      + 'have no permission to change it, or Besidka needs the Change files '
+      + 'access in the Besidka settings. Nothing was renamed.',
+    not_found: 'Google Drive could not find that item, or the user has no '
+      + 'access to it. Nothing was renamed.',
+    bad_request: 'Google Drive refused the new name. Nothing was renamed.',
+    failed: 'Google Drive did not confirm the rename, so it may or may not '
+      + 'have happened. Ask the user to check the name in their Google Drive '
+      + 'before trying again.',
+  },
+  move: {
+    no_access: 'Google Drive did not allow moving this item. The user may '
+      + 'have no permission to move it or to add to that folder, or Besidka '
+      + 'needs the Change files access in the Besidka settings. Nothing was '
+      + 'moved.',
+    not_found: 'Google Drive could not find the item or one of the folders, '
+      + 'or the user has no access to them. Nothing was moved.',
+    bad_request: 'Google Drive refused the move. A folder cannot be moved '
+      + 'into itself or into one of its own subfolders. Nothing was moved.',
+    failed: 'Google Drive did not confirm the move, so it may or may not have '
+      + 'happened. Ask the user to check the folder in their Google Drive '
+      + 'before trying again.',
+  },
+}
+
+export interface DrivePatchRequest {
+  itemId: string
+  query: Record<string, string>
+  body: Record<string, unknown>
+}
+
+function patchQuery(extra: Record<string, string>): Record<string, string> {
+  return { ...extra, supportsAllDrives: 'true', fields: CREATED_FIELDS }
+}
+
+/**
+ * The request that renames one item: the id in the URL path, only the
+ * `supportsAllDrives` and `fields` query keys, and a body of exactly
+ * `{ name }`. Nothing else can be in it, whatever object the caller passes.
+ */
+export function buildDriveRenameRequest(input: {
+  itemId: string
+  name: string
+}): DrivePatchRequest {
+  return {
+    itemId: input.itemId,
+    query: patchQuery({}),
+    body: { name: input.name },
+  }
+}
+
+/**
+ * The request that moves one item from one parent to another: the id in the
+ * URL path, only the query keys `addParents`, `removeParents`,
+ * `supportsAllDrives` and `fields`, and an empty body. Both parents are real
+ * Drive ids; the caller resolves the `root` alias to the id of My Drive.
+ */
+export function buildDriveMoveRequest(input: {
+  itemId: string
+  fromParentId: string
+  toParentId: string
+}): DrivePatchRequest {
+  return {
+    itemId: input.itemId,
+    query: patchQuery({
+      addParents: input.toParentId,
+      removeParents: input.fromParentId,
+    }),
+    body: {},
+  }
+}
+
+function isPatchRequestShapeValid(request: DrivePatchRequest): boolean {
+  return isDriveWriteId(request.itemId)
+    && [request.query.addParents, request.query.removeParents].every(
+      parent => parent === undefined || isDriveWriteId(parent),
+    )
+}
+
+/**
+ * The one PATCH of this module, on `/drive/v3/files/<id>` only (never the
+ * upload endpoint, which would edit content): a rename or a move built by
+ * `buildDriveRenameRequest` or `buildDriveMoveRequest`. Every id is checked
+ * for the shape of a Drive id before it reaches the URL.
+ */
+export async function patchDriveItem(
+  request: DrivePatchRequest,
+  context: DriveWriteContext,
+): Promise<DriveWriteResult<CreatedDriveItem>> {
+  if (!isPatchRequestShapeValid(request)) {
+    return { ok: false, code: 'bad_request' }
+  }
+
+  const result = await requestJson(
+    driveItemUrl(request.itemId, request.query),
+    {
+      method: 'PATCH',
+      headers: headersOf(context),
+      rawBody: {
+        contentType: 'application/json',
+        data: new TextEncoder().encode(
+          JSON.stringify(request.body),
         ) as Uint8Array<ArrayBuffer>,
       },
     },

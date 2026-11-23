@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  DRIVE_CHANGE_FAILURE_TEXT,
   DRIVE_WRITE_FAILURE_TEXT,
   buildDriveCreateDigest,
   buildDriveCreateMetadata,
+  buildDriveMoveRequest,
+  buildDriveRenameRequest,
   classifyDriveWriteFailure,
   createDriveItem,
   generateDriveId,
   isDriveRootMeta,
   listDriveFolderChildren,
+  patchDriveItem,
   readDriveItemMeta,
   searchDriveFolders,
 } from '~~/server/utils/google/drive-write-api'
@@ -98,6 +102,8 @@ describe('isDriveRootMeta', () => {
     driveId: null as string | null,
     trashed: false,
     canAddChildren: true,
+    canRename: true,
+    canMoveItemWithinDrive: true,
     approvalDigest: null,
   }
 
@@ -150,7 +156,11 @@ describe('the Drive requests', () => {
       shared: false,
       trashed: false,
       appProperties: { besidkaApproval: 'digest' },
-      capabilities: { canAddChildren: true },
+      capabilities: {
+        canAddChildren: true,
+        canRename: true,
+        canMoveItemWithinDrive: false,
+      },
       permissions: [{ emailAddress: 'someone@example.test' }],
     })
     const result = await readDriveItemMeta(FOLDER_ID, {
@@ -170,6 +180,8 @@ describe('the Drive requests', () => {
         driveId: null,
         trashed: false,
         canAddChildren: true,
+        canRename: true,
+        canMoveItemWithinDrive: false,
         approvalDigest: 'digest',
       },
     })
@@ -178,6 +190,9 @@ describe('the Drive requests', () => {
 
     expect(url.searchParams.get('supportsAllDrives')).toBe('true')
     expect(url.searchParams.get('fields')).not.toContain('permissions')
+    expect(url.searchParams.get('fields')).toContain(
+      'capabilities(canAddChildren,canRename,canMoveItemWithinDrive)',
+    )
   })
 
   it('refuses an answer whose parent has no Drive id shape, so it is never '
@@ -329,4 +344,185 @@ describe('the Drive requests', () => {
         },
       })
     })
+})
+
+describe('the rename and move requests', () => {
+  const context = { accessToken: 'token' }
+
+  it('builds a rename whose body is exactly the new name', () => {
+    const hostile = {
+      itemId: FOLDER_ID,
+      name: 'Plan',
+      permissions: [{ type: 'anyone', role: 'writer' }],
+      trashed: true,
+      parents: ['x'],
+      description: 'x',
+    }
+    const request = buildDriveRenameRequest(hostile)
+
+    expect(request.itemId).toBe(FOLDER_ID)
+    expect(request.body).toEqual({ name: 'Plan' })
+    expect(Object.keys(request.query).sort()).toEqual([
+      'fields',
+      'supportsAllDrives',
+    ])
+    expect(JSON.stringify(request)).not.toMatch(
+      /permissions|trashed|description|"parents"/,
+    )
+  })
+
+  it('builds a move with only the four query keys and an empty body', () => {
+    const request = buildDriveMoveRequest({
+      itemId: FOLDER_ID,
+      fromParentId: PARENT_ID,
+      toParentId: 'target-id-0123456789',
+    })
+
+    expect(request.body).toEqual({})
+    expect(Object.keys(request.query).sort()).toEqual([
+      'addParents',
+      'fields',
+      'removeParents',
+      'supportsAllDrives',
+    ])
+    expect(request.query.addParents).toBe('target-id-0123456789')
+    expect(request.query.removeParents).toBe(PARENT_ID)
+  })
+
+  it('patches one item on the files endpoint and reads the answer',
+    async () => {
+      const fetchImpl = respond(200, {
+        id: FOLDER_ID,
+        name: 'Plan',
+        mimeType: 'text/plain',
+        parents: [PARENT_ID],
+      })
+      const result = await patchDriveItem(
+        buildDriveRenameRequest({ itemId: FOLDER_ID, name: 'Plan' }),
+        { ...context, fetchImpl },
+      )
+      const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+        string,
+        RequestInit,
+      ]
+      const parsed = new URL(url)
+
+      expect(result).toEqual({
+        ok: true,
+        value: {
+          id: FOLDER_ID,
+          name: 'Plan',
+          mimeType: 'text/plain',
+          parents: [PARENT_ID],
+        },
+      })
+      expect(init.method).toBe('PATCH')
+      expect(parsed.pathname).toBe(`/drive/v3/files/${FOLDER_ID}`)
+      expect(parsed.searchParams.get('supportsAllDrives')).toBe('true')
+      expect(new TextDecoder().decode(init.body as Uint8Array))
+        .toBe('{"name":"Plan"}')
+    })
+
+  it('sends the move parents in the query and nothing in the body',
+    async () => {
+      const fetchImpl = respond(200, {
+        id: FOLDER_ID,
+        parents: ['target-id-0123456789'],
+      })
+
+      await patchDriveItem(
+        buildDriveMoveRequest({
+          itemId: FOLDER_ID,
+          fromParentId: PARENT_ID,
+          toParentId: 'target-id-0123456789',
+        }),
+        { ...context, fetchImpl },
+      )
+
+      const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+        string,
+        RequestInit,
+      ]
+      const parsed = new URL(url)
+
+      expect(parsed.searchParams.get('addParents'))
+        .toBe('target-id-0123456789')
+      expect(parsed.searchParams.get('removeParents')).toBe(PARENT_ID)
+      expect(new TextDecoder().decode(init.body as Uint8Array)).toBe('{}')
+    })
+
+  it.each([
+    ['an item id with a path', `${FOLDER_ID}/permissions`],
+    ['the alias root', 'root'],
+    ['an id with a query', `${FOLDER_ID}?alt=media`],
+    ['a short id', 'short'],
+    ['an empty id', ''],
+  ])('sends no request for %s as the item', async (_label, itemId) => {
+    const fetchImpl = respond(200, {})
+
+    expect(await patchDriveItem(
+      buildDriveRenameRequest({ itemId, name: 'Plan' }),
+      { ...context, fetchImpl },
+    )).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a path', '../x'],
+    ['a list', `${PARENT_ID},other-id-0123456789`],
+    ['the alias root', 'root'],
+  ])('sends no move request when a parent is %s', async (_label, parent) => {
+    const fetchImpl = respond(200, {})
+
+    expect(await patchDriveItem(
+      buildDriveMoveRequest({
+        itemId: FOLDER_ID,
+        fromParentId: PARENT_ID,
+        toParentId: parent,
+      }),
+      { ...context, fetchImpl },
+    )).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('classifies a failed patch and gives a fixed sentence per operation',
+    async () => {
+      const request = buildDriveRenameRequest({
+        itemId: FOLDER_ID,
+        name: 'Plan',
+      })
+
+      expect(await patchDriveItem(request, {
+        ...context,
+        fetchImpl: respond(403, {
+          error: { errors: [{ reason: 'insufficientFilePermissions' }] },
+        }),
+      })).toEqual({ ok: false, code: 'no_access' })
+      expect(await patchDriveItem(request, {
+        ...context,
+        fetchImpl: respond(404, {}),
+      })).toEqual({ ok: false, code: 'not_found' })
+      expect(await patchDriveItem(request, {
+        ...context,
+        fetchImpl: respond(400, {}),
+      })).toEqual({ ok: false, code: 'bad_request' })
+      expect(await patchDriveItem(request, {
+        ...context,
+        fetchImpl: respond(429, {}),
+      })).toEqual({ ok: false, code: 'rate_limited' })
+      expect(DRIVE_CHANGE_FAILURE_TEXT.move.bad_request)
+        .toContain('into itself')
+      expect(DRIVE_CHANGE_FAILURE_TEXT.rename.no_access)
+        .toContain('Nothing was renamed')
+    })
+
+  it('refuses an answer without a Drive id as not understood', async () => {
+    expect(await patchDriveItem(
+      buildDriveRenameRequest({ itemId: FOLDER_ID, name: 'Plan' }),
+      {
+        ...context,
+        fetchImpl: respond(200, { name: 'Plan' }),
+      },
+    )).toEqual({ ok: false, code: 'failed' })
+  })
 })

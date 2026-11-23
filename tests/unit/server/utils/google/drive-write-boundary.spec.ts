@@ -1,8 +1,16 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { buildDriveCreateMetadata } from '~~/server/utils/google/drive-write-api'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  buildDriveCreateMetadata,
+  buildDriveMoveRequest,
+  buildDriveRenameRequest,
+  patchDriveItem,
+} from '~~/server/utils/google/drive-write-api'
 
+const ITEM_ID = 'item-id-0123456789'
+const PARENT_ID = 'parent-id-0123456789'
+const TARGET_ID = 'target-id-0123456789'
 const ROOT = process.cwd()
 const API_PATH = 'server/utils/google/drive-write-api.ts'
 const TOOLS_PATH = 'server/utils/google/drive-write-tools.ts'
@@ -22,27 +30,143 @@ function read(path: string): string {
 }
 
 describe('the Drive write boundary', () => {
-  it('has a Drive write module that only reads, and creates with a POST',
-    () => {
-      const source = read(API_PATH)
+  it('has a Drive write module that reads, creates with one POST and '
+    + 'changes with one PATCH, and never deletes or replaces', () => {
+    const source = read(API_PATH)
 
-      expect(source).not.toMatch(
-        /method: 'DELETE'|method: 'PUT'|method: 'PATCH'/,
-      )
-      expect(source.match(/method: 'POST'/g)).toHaveLength(1)
-      expect(source.match(/method: 'GET'/g)?.length).toBeGreaterThan(0)
-    })
+    expect(source).not.toMatch(/method: 'DELETE'|method: 'PUT'/)
+    expect(source.match(/method: 'POST'/g)).toHaveLength(1)
+    expect(source.match(/method: 'PATCH'/g)).toHaveLength(1)
+    expect(source.match(/method: 'GET'/g)?.length).toBeGreaterThan(0)
+  })
 
-  it('pins the HTTP methods the Google client can send to GET and POST, so '
-    + 'adding PATCH in a later change must update this spec on purpose',
+  it('pins the HTTP methods the Google client can send to GET, POST and '
+    + 'PATCH, so adding another method must update this spec on purpose',
   () => {
     const source = read('server/utils/google/http.ts')
     const declarations = source.match(/^\s*method: '.+$/gm) ?? []
 
     expect(declarations.map(line => line.trim())).toEqual([
-      'method: \'GET\' | \'POST\'',
+      'method: \'GET\' | \'POST\' | \'PATCH\'',
     ])
-    expect(source).not.toMatch(/'DELETE'|'PUT'|'PATCH'/)
+    expect(source).not.toMatch(/'DELETE'|'PUT'/)
+  })
+
+  it('sends PATCH from the Drive write module only, and no DELETE or PUT '
+    + 'from anywhere in the server', () => {
+    const serverFiles = sourceFilesUnder('server')
+    const patchers = serverFiles
+      .filter((path) => {
+        const source = read(path)
+
+        return /\bPATCH\b/.test(source)
+          && /googleFetchJson|google\/http|GoogleFetchRequest/.test(source)
+      })
+      .sort()
+
+    expect(patchers).toEqual([
+      'server/utils/google/drive-write-api.ts',
+      'server/utils/google/http.ts',
+    ])
+
+    for (const path of sourceFilesUnder('server/utils/google')) {
+      expect(read(path), path).not.toMatch(
+        /method: 'DELETE'|method: 'PUT'|method: "DELETE"|method: "PUT"/,
+      )
+    }
+
+    for (const path of sourceFilesUnder('server/api/v1/google')) {
+      expect(read(path), path).not.toMatch(
+        /method: 'DELETE'|method: 'PUT'|method: 'PATCH'/,
+      )
+    }
+  })
+
+  it('patches only /drive/v3/files/<id>, never the upload endpoint that '
+    + 'would edit content', async () => {
+    const calls: string[] = []
+    const fetchImpl = vi.fn(async (url: string) => {
+      calls.push(url)
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+
+    await patchDriveItem(
+      buildDriveRenameRequest({ itemId: ITEM_ID, name: 'Plan' }),
+      { accessToken: 'token', fetchImpl },
+    )
+    await patchDriveItem(
+      buildDriveMoveRequest({
+        itemId: ITEM_ID,
+        fromParentId: PARENT_ID,
+        toParentId: TARGET_ID,
+      }),
+      { accessToken: 'token', fetchImpl },
+    )
+
+    expect(calls).toHaveLength(2)
+
+    for (const call of calls) {
+      const url = new URL(call)
+
+      expect(url.origin).toBe('https://www.googleapis.com')
+      expect(url.pathname).toBe(`/drive/v3/files/${ITEM_ID}`)
+      expect(call).not.toContain('/upload/')
+      expect(call).not.toContain('uploadType')
+    }
+
+    expect(read(API_PATH)).not.toMatch(/\/upload\/drive/)
+  })
+
+  it('sends a rename body of exactly the name and a move with only the '
+    + 'four query keys and an empty body', async () => {
+    const sent: Array<{ url: URL, body: string }> = []
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      sent.push({
+        url: new URL(url),
+        body: new TextDecoder().decode(init.body as Uint8Array),
+      })
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+
+    await patchDriveItem(
+      buildDriveRenameRequest({
+        itemId: ITEM_ID,
+        name: 'Plan',
+        permissions: [{ type: 'anyone' }],
+        trashed: true,
+      } as Parameters<typeof buildDriveRenameRequest>[0]),
+      { accessToken: 'token', fetchImpl },
+    )
+    await patchDriveItem(
+      buildDriveMoveRequest({
+        itemId: ITEM_ID,
+        fromParentId: PARENT_ID,
+        toParentId: TARGET_ID,
+        writersCanShare: true,
+      } as Parameters<typeof buildDriveMoveRequest>[0]),
+      { accessToken: 'token', fetchImpl },
+    )
+
+    expect(sent[0]!.body).toBe('{"name":"Plan"}')
+    expect([...sent[0]!.url.searchParams.keys()].sort()).toEqual([
+      'fields',
+      'supportsAllDrives',
+    ])
+    expect(sent[1]!.body).toBe('{}')
+    expect([...sent[1]!.url.searchParams.keys()].sort()).toEqual([
+      'addParents',
+      'fields',
+      'removeParents',
+      'supportsAllDrives',
+    ])
+
+    for (const request of sent) {
+      expect(`${request.url.search}${request.body}`).not.toMatch(
+        /permissions|trashed|writersCanShare|shortcutDetails|description/,
+      )
+    }
   })
 
   it('checks the id shape in the one function that puts an id in a URL '
@@ -69,7 +193,7 @@ describe('the Drive write boundary', () => {
   it('sends supportsAllDrives on every file request it builds', () => {
     const source = read(API_PATH)
 
-    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(3)
+    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(4)
   })
 
   it('copies only the five allowed keys, even from an object that carries '
@@ -144,12 +268,16 @@ describe('the Drive write boundary', () => {
       const source = read(path)
 
       expect(source, path).not.toMatch(/drive-write-api|drive-write-tools/)
-      expect(source, path).not.toMatch(/google__drive_(create|list_folder)/)
+      expect(source, path).not.toMatch(
+        /google__drive_(create|list_folder|rename|move)/,
+      )
     }
 
     const surface = read('config/mcp-surface.json')
 
-    expect(surface).not.toMatch(/drive_create_folder|drive_list_folder/)
+    expect(surface).not.toMatch(
+      /drive_create_folder|drive_list_folder|drive_rename|drive_move/,
+    )
   })
 
   it('has no delete, trash or share code path in the Google utilities', () => {
