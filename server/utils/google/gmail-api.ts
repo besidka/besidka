@@ -62,14 +62,72 @@ export const GMAIL_FAILURE_TEXT: Readonly<Record<GmailFailureCode, string>> = {
 
 export type GmailFailureObservation = 'timeout' | 'non-json' | 'unreachable'
 
+export interface GmailFailure {
+  ok: false
+  code: GmailFailureCode
+  status?: number
+  reason?: string | null
+  observed?: GmailFailureObservation
+}
+
 export type GmailResult<Value>
   = | { ok: true, value: Value }
-    | {
-      ok: false
-      code: GmailFailureCode
-      status?: number
-      observed?: GmailFailureObservation
-    }
+    | GmailFailure
+
+const SUFFIXED_FAILURE_CODES: ReadonlySet<GmailFailureCode> = new Set([
+  'failed',
+  'bad_request',
+])
+const OBSERVED_FAILURE_SUFFIX: Readonly<
+  Record<GmailFailureObservation, string>
+> = {
+  'timeout': ' (Gmail did not answer in time.)',
+  'non-json': ' (Gmail answered with something that was not JSON.)',
+  'unreachable': ' (Gmail could not be reached.)',
+}
+const GMAIL_REASON_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,40}$/
+const FIRST_HTTP_STATUS = 100
+const LAST_HTTP_STATUS = 599
+
+function sanitizeGmailReason(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const reason = value.trim()
+
+  return GMAIL_REASON_PATTERN.test(reason) ? reason : null
+}
+
+/**
+ * The fixed-format tail added to the `failed` and `bad_request` sentences:
+ * the HTTP status Gmail answered and, when it is a short identifier
+ * (`sanitizeGmailReason`), its reason, or one fixed phrase for a timeout, a
+ * body that was not JSON and a request that never got an answer. Google's
+ * message text, exception text, ids and the search are never part of it.
+ */
+export function gmailFailureSuffix(failure: GmailFailure): string {
+  if (!SUFFIXED_FAILURE_CODES.has(failure.code)) {
+    return ''
+  }
+
+  const { status } = failure
+
+  if (
+    typeof status === 'number'
+    && Number.isInteger(status)
+    && status >= FIRST_HTTP_STATUS
+    && status <= LAST_HTTP_STATUS
+  ) {
+    const reason = sanitizeGmailReason(failure.reason)
+
+    return reason
+      ? ` (Gmail answered ${status}, reason ${reason}.)`
+      : ` (Gmail answered ${status}.)`
+  }
+
+  return failure.observed ? OBSERVED_FAILURE_SUFFIX[failure.observed] : ''
+}
 
 const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set([
   'rateLimitExceeded',
@@ -165,7 +223,10 @@ async function requestJson(
           : classifyGmailFailure(response.status, readReason(response.body)),
         ...(response.ok
           ? { observed: 'non-json' as const }
-          : { status: response.status }),
+          : {
+            status: response.status,
+            reason: sanitizeGmailReason(readReason(response.body)),
+          }),
       }
     }
 

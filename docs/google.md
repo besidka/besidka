@@ -2883,7 +2883,15 @@ a 5xx, a timeout or a body that is not JSON is skipped and counted in the note
 (never the whole search), the search stops asking Gmail after three such
 threads, and it fails with the generic sentence only when no thread could be
 read, while 401, `accessNotConfigured`, 403 and quota answers still fail the
-whole search; Drive search has its own wording of the same codes
+whole search; the `failed` and `bad_request` sentences of every Gmail tool end
+with a fixed tail built by `gmailFailureSuffix` (` (Gmail answered 500, reason
+backendError.)`, the reason kept only when it matches
+`^[A-Za-z][A-Za-z0-9_]{0,40}$`, or ` (Gmail did not answer in time.)`,
+` (Gmail answered with something that was not JSON.)`, ` (Gmail could not be
+reached.)`), never Google's message text, exception text, an id or the search,
+and a search whose threads were all unreadable names the first one's status; the
+log keeps the count per status under `gmailSearch.unreadableCodes`; Drive
+search has its own wording of the same codes
 (`DRIVE_SEARCH_FAILURE_TEXT`, "the Google Drive API is not turned on"). A failed call keeps the send's transient taint but never sets
 the sticky chat flag (section 5.3). HTML mail is converted to text by a linear
 scanner (`htmlToPlainText`): `script`, `style`, `head`, `title`, `svg` and
