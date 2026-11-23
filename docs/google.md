@@ -2900,7 +2900,10 @@ backendError.)`, the reason kept only when it matches
 ` (Gmail answered with something that was not JSON.)`, ` (Gmail could not be
 reached.)`), never Google's message text, exception text, an id or the search,
 and a search whose threads were all unreadable names the first one's status; the
-log keeps the count per status under `gmailSearch.unreadableCodes`; Drive
+log keeps the count per status under `gmailSearch.unreadableCodes`; a thread
+list that answers with an empty 200 body (what a search with no match can
+return under the `fields` mask) is no match, not "not JSON", while HTML, text,
+an array and a bare `null` stay "not JSON"; Drive
 search has its own wording of the same codes
 (`DRIVE_SEARCH_FAILURE_TEXT`, "the Google Drive API is not turned on"). A failed call keeps the send's transient taint but never sets
 the sticky chat flag (section 5.3). HTML mail is converted to text by a linear

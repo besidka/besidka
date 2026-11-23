@@ -211,9 +211,14 @@ async function requestJson(
   url: string,
   request: Parameters<typeof googleFetchJson>[1],
   options: GoogleFetchOptions,
+  isEmptyAnswerNothing = false,
 ): Promise<GmailResult<Record<string, unknown>>> {
   try {
     const response = await googleFetchJson(url, request, options)
+
+    if (isEmptyAnswerNothing && response.ok && response.bytes === 0) {
+      return { ok: true, value: {} }
+    }
 
     if (!response.ok || !response.body) {
       return {
@@ -248,11 +253,13 @@ async function getJson(
   url: string,
   context: GmailRequestContext,
   extra: GoogleFetchOptions = {},
+  isEmptyAnswerNothing = false,
 ): Promise<GmailResult<Record<string, unknown>>> {
   return await requestJson(
     url,
     { method: 'GET', headers: headersOf(context) },
     toFetchOptions(context, extra),
+    isEmptyAnswerNothing,
   )
 }
 
@@ -271,7 +278,7 @@ export async function listGmailThreads(
     ['maxResults', String(maxResults)],
     ['includeSpamTrash', 'false'],
     ['fields', THREAD_LIST_FIELDS],
-  ])}`, context)
+  ])}`, context, {}, true)
 
   if (!result.ok) {
     return result

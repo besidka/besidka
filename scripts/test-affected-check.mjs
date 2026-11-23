@@ -2219,6 +2219,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/google/gmail-boundary.spec.ts',
     'tests/unit/server/utils/google/gmail-search-unreadable-thread.spec.ts',
     'tests/unit/server/utils/google/gmail-failure-status.spec.ts',
+    'tests/unit/server/utils/google/gmail-empty-result.spec.ts',
     'tests/unit/server/utils/google/data-guard.spec.ts',
     'tests/unit/server/utils/google/http.spec.ts',
     'tests/unit/server/utils/google/token-boundary.spec.ts',
