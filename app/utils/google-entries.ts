@@ -75,9 +75,11 @@ export const GOOGLE_ENTRY_DEFINITIONS: Readonly<
     service: 'drive',
     title: 'Google Drive',
     icon: GOOGLE_DRIVE_ICON,
-    description: 'Files you pick. Covers Docs, Sheets and Slides. Besidka '
-      + 'reads the files you pick (Sheets through the Sheets API) and never '
-      + 'edits Google files.',
+    description: 'Files you pick. Covers Docs, Sheets and Slides. With '
+      + 'Besidka\'s built-in Google connection it only reads the files you '
+      + 'pick (Sheets through the Sheets API) and saves a file only after '
+      + 'you approve it. With your own Google client and Change files '
+      + 'access it can also create folders when you approve.',
     connectLabel: 'Connect Google Drive',
   },
   'google-gmail': {

@@ -63,16 +63,21 @@ describe('Profile/Connectors/GoogleRow', () => {
       .toBe(false)
   })
 
-  it('shows the Drive description with the Sheets and read-only promise',
-    async () => {
-      const wrapper = await mountRow(buildEntry('google-drive'))
-      const description = wrapper
-        .get('[data-testid="google-entry-row-description"]').text()
+  it('shows the Drive description for both client modes', async () => {
+    const wrapper = await mountRow(buildEntry('google-drive'))
+    const description = wrapper
+      .get('[data-testid="google-entry-row-description"]').text()
 
-      expect(description).toContain('Files you pick.')
-      expect(description).toContain('Docs, Sheets and Slides')
-      expect(description).toContain('never edits Google files')
-    })
+    expect(description).toContain('Files you pick.')
+    expect(description).toContain('Docs, Sheets and Slides')
+    expect(description).toContain('only reads the files you pick')
+    expect(description).toContain('Besidka\'s built-in Google connection')
+    expect(description).toContain('saves a file only after you approve it')
+    expect(description).toContain('your own Google client')
+    expect(description).toContain('Change files access')
+    expect(description).toContain('create folders when you approve')
+    expect(description).not.toContain('never edits Google files')
+  })
 
   it('opens the panel from the name', async () => {
     const wrapper = await mountRow(buildEntry('google-calendar'))

@@ -4299,8 +4299,8 @@ The card shows "Change files in Google Drive" nested under "All your Google
 Drive files, read only": disabled with a hint until the read box is ticked or
 read access is already granted, and cleared again when the read box is
 unticked, so the client never sends the pair the route refuses. Its note says
-"Lets Besidka create files and folders, and rename and move files you own, each
-time you approve." and "Google's permission for this also allows deleting and
+"Lets Besidka create folders in your Drive, each time you approve. Renaming,
+moving and creating files will be added later." and "Google's permission for this also allows deleting and
 sharing; Besidka has no code that deletes or shares." (the same shape as the
 `gmail.compose` note; once granted the second sentence stays on the card).
 The missing-tools note lists "Changing files needs Change files access." like
@@ -4474,8 +4474,8 @@ rules and caps, the Doc and Sheet preview). No migration, no change to
 domain with default link sharing may make a new folder visible in the
 organization: that is the organization's policy, not a Besidka path, and
 the card does not claim otherwise. The legal rows (pre-check, DPIA, Art. 30)
-for creating and organizing files in the user's own Drive are the owner's
-(plan question Q3).
+for creating and organizing files in the user's own Drive are drafted in
+section 19.8 (plan question Q3).
 
 ### 19.7 Owner checklist, with a real Google project
 
@@ -4490,6 +4490,37 @@ for creating and organizing files in the user's own Drive are the owner's
    the KV record) and confirm a single folder exists afterwards.
 5. Record what Google answers for the points in section 19.6 and update this
    section.
+
+### 19.8 Legal and privacy
+
+Engineer-drafted, not lawyer-reviewed (plan question Q3):
+
+- `docs/legal/prechecks/google.md`: rows 16 (scope sensitivity and Google's
+  rules for an own client), 17 (what a stolen `drive` token can do compared
+  with `drive.readonly`) and 18 (data flows of a write), plus the Drive-write
+  measures added to rows 13 (untrusted frames, ids only from the chat, no
+  delete or share, the boundary spec) and 14 (per-call approval).
+- `docs/legal/dpia.md`: risk 75 (over-broad scope, mistaken or injected
+  creation, data left in the user's Drive) with its residual risk.
+- `docs/legal/art30-record.md`: row 33 and a review-log entry.
+
+Google's own review of a hypothetical public client with the `drive` scope is
+not in scope of any of them. The Privacy Policy and Terms do not describe the
+Google features yet (G-10), so this change edited no public legal text and no
+revision hash moved. Whether a notice is needed is the owner's decision.
+
+The legal rows record what is built (PR1: the permission, `list_folder`,
+`create_folder`, the boundary spec, the live check of the create-folder
+parent, the approval card) apart from what is planned (PR2: rename and move;
+PR3: create file). The go verdict of pre-check row 18 depends on the real
+account checklist in section 19.7, which is still open.
+
+Copy to update when the later PRs land: after PR2, the exception text in
+`GoogleDetailPanel.vue` (`DRIVE_WRITE_INFO_TEXT`) and
+`GOOGLE_DRIVE_WRITE_TOOLS_HINT` must also mention rename and move; until PR2
+and PR3 ship, `GOOGLE_DRIVE_WRITE_ACCESS_NOTE` says only what is built
+("create folders ... Renaming, moving and creating files will be added
+later") and each of those PRs must reword it again.
 
 ## 20. The setup guide on the own-client card (BES-458)
 
