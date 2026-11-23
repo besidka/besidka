@@ -327,8 +327,9 @@ const CREATE_FILE_INPUT_KEYS: readonly string[] = [
 const HTML_START_PATTERN = /<[A-Za-z/!?]/
 const INLINE_LINK_TARGET_PATTERN = /\]\(\s*<?([^\s)>]*)/g
 const REFERENCE_LINK_TARGET_PATTERN
-  = /^ {0,3}\[(?!\^)[^\]\n]*\]:[ \t]*<?([^\s>]*)/gm
+  = /(\[\^[^\]\n]*)?\]:\s*<?([^\s>]*)/g
 const ALLOWED_LINK_TARGET_PATTERN = /^(?:https?:|mailto:)/i
+const CELL_DELIMITER_PATTERN = /[;\t]/
 const PLAIN_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
 export const GOOGLE_DRIVE_FILE_REFUSAL_TEXT = {
@@ -382,8 +383,8 @@ function readLinkTargets(content: string): string[] {
     ...[...content.matchAll(INLINE_LINK_TARGET_PATTERN)].map((match) => {
       return match[1] ?? ''
     }),
-    ...[...content.matchAll(REFERENCE_LINK_TARGET_PATTERN)].map((match) => {
-      return match[1] ?? ''
+    ...[...content.matchAll(REFERENCE_LINK_TARGET_PATTERN)].flatMap((match) => {
+      return match[1] === undefined ? [match[2] ?? ''] : []
     }),
   ]
 }
@@ -556,12 +557,8 @@ export function parseStrictCsv(
     : { ok: true, value: rows }
 }
 
-function isFormulaCell(cell: string): boolean {
-  if (cell.startsWith('\t') || cell.startsWith('\r')) {
-    return true
-  }
-
-  const trimmed = cell.trimStart()
+function isFormulaSegment(segment: string): boolean {
+  const trimmed = segment.trimStart()
   const first = trimmed[0]
 
   if (first === '=' || first === '@') {
@@ -571,6 +568,14 @@ function isFormulaCell(cell: string): boolean {
   return (first === '+' || first === '-') && !PLAIN_NUMBER_PATTERN.test(
     trimmed.trimEnd(),
   )
+}
+
+function isFormulaCell(cell: string): boolean {
+  if (cell.startsWith('\t') || cell.startsWith('\r')) {
+    return true
+  }
+
+  return cell.split(CELL_DELIMITER_PATTERN).some(isFormulaSegment)
 }
 
 function validateCsvContent(

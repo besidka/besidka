@@ -199,6 +199,13 @@ describe('Markdown rules', () => {
     ['an encoded scheme', '[x](&#106;avascript:alert(1))'],
     ['a reference definition with a bad scheme', '[x][1]\n\n[1]: javascript:x'],
     ['an indented reference definition', '[x][1]\n\n   [1]: ftp://e.test/x'],
+    ['a definition in a blockquote', '> [x]: javascript:alert(1)'],
+    ['a definition in a list item', '- [x]: data:text/html,AAAA'],
+    ['a definition with an escaped bracket', '[a\\]b]: javascript:x'],
+    ['a definition with a label over two lines', '[a\nb]: javascript:x'],
+    ['a definition with the target on the next line', '[x]:\n  javascript:x'],
+    ['a definition with an angle-bracket target', '[x]: <data:text/html,A>'],
+    ['a definition with no target', '[x]:'],
   ])('refuses %s', (_label, content) => {
     expect(validateCreateFileInput(document(content)).ok).toBe(false)
   })
@@ -210,6 +217,9 @@ describe('Markdown rules', () => {
     ['an upper-case HTTPS link', '[x](HTTPS://example.test)'],
     ['a reference definition with https', '[x][1]\n\n[1]: https://e.test/x'],
     ['a footnote definition', 'Text[^1]\n\n[^1]: A note with words.'],
+    ['a definition with https', '[x]: https://example.com'],
+    ['a definition in a blockquote with https', '> [x]: HTTPS://example.com'],
+    ['a footnote in a list item', '- [^note]: A note with words.'],
     ['a less-than sign before a space', 'when a < b then c'],
     ['a less-than sign before a digit', '1<2 and 3 <4'],
     ['a less-than sign at the end', 'a <'],
@@ -329,6 +339,13 @@ describe('CSV rules', () => {
     ['a non-breaking space then an equals sign', ' =1+1'],
     ['a percent after a minus', '-5%'],
     ['a number with a comma', '-1,5'],
+    ['an equals sign after a semicolon', 'a;=1+1'],
+    ['an at sign after a semicolon', 'a;@SUM(A1)'],
+    ['a plus formula after a semicolon', 'a;+SUM(A1)'],
+    ['a minus formula after a semicolon', 'a;-1+2'],
+    ['an equals sign after a semicolon and a space', 'a; =1+1'],
+    ['an equals sign after a tab', 'a\t=1+1'],
+    ['a minus word after a tab', 'a\t-cmd|calc'],
   ])('refuses %s as the first cell', (_label, cell) => {
     const quoted = `"${cell.replaceAll('"', '""')}",b\n`
     const isPlain = !/[,"\n]/.test(cell)
@@ -366,6 +383,10 @@ describe('CSV rules', () => {
     '2026-12-01',
     'a=b',
     'x@example.test',
+    'a; b',
+    'x;1',
+    'a;-5',
+    'a\t5',
     'plus + minus - words',
     '  padded text',
   ])('accepts the cell %j', (cell) => {
