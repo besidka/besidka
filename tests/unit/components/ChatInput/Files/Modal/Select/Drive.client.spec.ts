@@ -62,6 +62,13 @@ mockNuxtImport('useGoogleConnection', () => () => ({
   status: connectionStatus,
   refresh: mocks.refreshConnection,
 }))
+const connectorsActive = shallowRef<boolean>(false)
+
+mockNuxtImport('useFeature', () => () => computed(() => ({
+  enabled: connectorsActive.value,
+  active: connectorsActive.value,
+  variant: null,
+})))
 mockNuxtImport('useLazyFetch', () => () => ({ data: shallowRef(null) }))
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
@@ -272,6 +279,7 @@ describe('ChatInput/Files/Modal/Select/Drive', () => {
       }
     })
     mocks.libraryOptions = null
+    connectorsActive.value = false
     connectionResponse.value = null
     connectionStatus.value = 'pending'
     files.value = []
@@ -326,6 +334,29 @@ describe('ChatInput/Files/Modal/Select/Drive', () => {
         )
         expect(wrapper.find('[data-testid="files-drive-pick"]').exists())
           .toBe(false)
+      })
+
+    it('opens the Google Drive panel on the Connectors page when it exists',
+      async () => {
+        connectorsActive.value = true
+        connectionResponse.value = { connection: null, canConnect: true }
+        connectionStatus.value = 'success'
+
+        const wrapper = await mountDrive()
+        const status = wrapper.get('[data-testid="files-drive-status"]')
+
+        expect(status.text()).toContain(
+          'Connect Google Drive on the Connectors page to pick files from it.',
+        )
+
+        await wrapper.get('[data-testid="files-drive-connect"]')
+          .trigger('click')
+
+        expect(wrapper.get('[data-testid="files-drive-connect"]').text())
+          .toBe('Open Connectors')
+        expect(mocks.closeDialog).toHaveBeenCalledOnce()
+        expect(mocks.navigateTo)
+          .toHaveBeenCalledWith('/chats/connectors?panel=google-drive')
       })
 
     it('offers a reconnect when Google no longer accepts the connection',

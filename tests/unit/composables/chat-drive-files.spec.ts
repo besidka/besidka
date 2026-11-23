@@ -69,11 +69,15 @@ function connectionStatus(
   }
 }
 
-mockNuxtImport('useFeature', () => () => computed(() => ({
-  enabled: featureActive.value,
-  active: featureActive.value,
-  variant: null,
-})))
+const connectorsActive = shallowRef<boolean>(true)
+
+mockNuxtImport('useFeature', () => (key: string) => computed(() => {
+  const isActive = key === 'connectors'
+    ? connectorsActive.value
+    : featureActive.value
+
+  return { enabled: isActive, active: isActive, variant: null }
+}))
 
 const PICKED = {
   id: 'drive-file-1-aaaaaaaaaaaa',
@@ -130,6 +134,7 @@ describe('useChatDriveFiles', () => {
     Object.values(mocks).forEach(mock => mock.mockReset())
     routeSlug.value = 'chat-1'
     featureActive.value = true
+    connectorsActive.value = true
     connectionData.value = connectionStatus()
     clearNuxtState('google-drive-unreadable-links')
     mocks.ensureSendConsent.mockResolvedValue(true)
@@ -241,12 +246,37 @@ describe('useChatDriveFiles', () => {
   })
 
   it.each(['not-connected', 'reauthorize'])(
-    'leads to the Google tab with one plain sentence when %s',
+    'leads to the Google Drive panel with one plain sentence when %s',
     async (code) => {
       mocks.pick.mockResolvedValue({
         status: 'error',
         code,
         message: 'Reconnect',
+      })
+      mocks.confirm.mockResolvedValue({ label: 'Open Connectors', index: 0 })
+
+      const { subject } = createSubject()
+
+      await subject.attachFromDrive()
+
+      expect(mocks.confirm).toHaveBeenCalledWith({
+        text: 'Connect Google Drive on the Connectors page to attach files '
+          + 'from it.',
+        actions: ['Open Connectors'],
+        labelDecline: 'Not now',
+      })
+      expect(mocks.navigateTo)
+        .toHaveBeenCalledWith('/chats/connectors?panel=google-drive')
+    },
+  )
+
+  it('leads to the Google tab of API Keys without the connectors flag',
+    async () => {
+      connectorsActive.value = false
+      mocks.pick.mockResolvedValue({
+        status: 'error',
+        code: 'not-connected',
+        message: 'Not connected',
       })
       mocks.confirm.mockResolvedValue({ label: 'Open API Keys', index: 0 })
 
@@ -261,23 +291,23 @@ describe('useChatDriveFiles', () => {
         labelDecline: 'Not now',
       })
       expect(mocks.navigateTo).toHaveBeenCalledWith('/profile/keys?tab=google')
-    },
-  )
-
-  it('stays on the page when the user declines to open API Keys', async () => {
-    mocks.pick.mockResolvedValue({
-      status: 'error',
-      code: 'not-connected',
-      message: 'Not connected',
     })
-    mocks.confirm.mockResolvedValue(null)
 
-    const { subject } = createSubject()
+  it('stays on the page when the user declines to open the connect page',
+    async () => {
+      mocks.pick.mockResolvedValue({
+        status: 'error',
+        code: 'not-connected',
+        message: 'Not connected',
+      })
+      mocks.confirm.mockResolvedValue(null)
 
-    await subject.attachFromDrive()
+      const { subject } = createSubject()
 
-    expect(mocks.navigateTo).not.toHaveBeenCalled()
-  })
+      await subject.attachFromDrive()
+
+      expect(mocks.navigateTo).not.toHaveBeenCalled()
+    })
 
   it('shows any other picker failure as an error with its reason',
     async () => {
