@@ -5328,3 +5328,58 @@ unchanged.
   (unlike `break-words`, it also lowers the min-content width). Keep both on
   any new string of that kind. The 390 px result was not measured in a browser
   for this change; check it on the preview.
+
+## 21. Quotas and cost, and the audit items left as they are (BES-467)
+
+### 21.1 Quotas and cost
+
+Besidka pays nothing to Google for any of the Google features, and the
+quotas below are counted against the Google Cloud project that owns the
+OAuth client, never against a Besidka account.
+
+- **Sheets API.** Free within its quota: 300 read requests a minute per
+  project and 60 a minute per user, and Google answers 429 above them
+  (section 13 maps it to `sheets_quota`; the 429 behavior itself is NOT
+  VERIFIED against a real project). Besidka adds its own per-user and
+  app-wide limits below Google's (`sheets-rate-limit.ts`).
+- **Drive, Gmail and Calendar APIs.** Each has quotas per Google Cloud
+  project (and per user inside it). The project that owns the OAuth client is
+  the one limited, and billed if Google ever bills it; Google publishes no
+  prices for these three APIs, so there is no cost to record and Besidka has
+  no cost line for them (unlike the provider-native web search of
+  `docs/web-search-cost-accounting.md`).
+- **Whose project that is.** With Besidka's client (`drive.file`, the Picker)
+  the quota is Besidka's own Cloud project. With the owner-only own client
+  (section 10) the project is the owner's, so the limits and any future
+  charge sit with the owner. A user who is not the owner has no own client
+  today.
+- **When a quota is hit.** The user sees the fixed "slow down, try again in a
+  minute" sentences of each service; nothing is retried in the background.
+
+### 21.2 Audit items left as they are
+
+The final audit of the Google phase (BES-467) left these on purpose. Each
+is a known limit, not an unknown:
+
+- **No Calendar visibility.** Besidka reads and creates events on the
+  primary calendar only and cannot see what other calendars, guests or
+  permissions the user has; free and busy answers for the primary calendar.
+- **The hourly write cap is not exact across Workers.** The cap of 30
+  writes an hour is a KV counter per clock hour, and KV has no atomic
+  increment, so two Workers racing at the limit can let one extra write
+  through. The claim row of a write still stops a replay.
+- **A D1 restore brings back older values of `google_data_at`,
+  `paid_tier_confirmed_at` and the Always allow rows.** A chat flagged in the
+  restore window reads as clean again, a cleared paid-tier confirmation
+  returns, and a deleted `allow` row returns. The runbook in
+  `docs/d1-restore-reconciliation.md` names a step for each (the paid-tier
+  confirmations are wiped, the flag is set again from the Axiom ledger, and
+  step 2b resets Always allow to ask). Nothing resets them automatically.
+- **The app CSP has no `connect-src`.** That predates the Google phase and
+  adding one would restrict every request of the app, so none was added
+  (section 12, the CSP paragraph before "Who gets it").
+- **Not reviewed in depth.** The `?authuser=` link form of a Gmail thread
+  (section 14) and the limits of the Sheets reader (section 13) were read
+  during the audit but not tested against real accounts.
+- **The Picker frame fallback** stays on the key alone when the render left
+  no feature state (section 12, "Who gets it").
