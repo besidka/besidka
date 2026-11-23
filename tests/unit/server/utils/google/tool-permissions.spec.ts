@@ -353,7 +353,7 @@ describe('Google tool permissions', () => {
         )).toBe(0)
         expect(logger.set).toHaveBeenCalledWith({
           attributes: {
-            google: { alwaysAllowCleared: 'failed', error: 'D1 down' },
+            google: { alwaysAllowCleared: 'failed', errorName: 'Error' },
           },
         })
       })

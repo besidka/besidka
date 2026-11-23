@@ -6,7 +6,7 @@ import {
   createOAuthState,
   createPkcePair,
 } from '~~/server/utils/connectors/oauth-client'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
 import {
@@ -398,7 +398,7 @@ async function replaceDifferentAccount(
     logConnection(logger, {
       step: 'replace-cleanup',
       connectionId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
   }
 
@@ -477,7 +477,7 @@ export async function disconnectGoogleConnection(input: {
     logConnection(logger, {
       step: 'disconnect-cleanup',
       connectionId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
   }
 

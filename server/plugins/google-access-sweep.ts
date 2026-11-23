@@ -2,7 +2,7 @@ import { createRequestLogger } from 'evlog'
 import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types'
 import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { GoogleFetchOptions } from '~~/server/utils/google/http'
 
 const GOOGLE_ACCESS_SWEEP_CRON = '0 * * * *'
@@ -114,7 +114,10 @@ export async function runGoogleAccessSweepJob(
     status = 500
     logger.set({
       attributes: {
-        googleAccessSweep: { error: exceptionMessage(exception) },
+        googleAccessSweep: {
+          error: 'failed',
+          ...exceptionSummary(exception),
+        },
       },
     })
   }

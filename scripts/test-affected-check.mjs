@@ -5648,6 +5648,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
     },
     {
+      pattern: /^server\/(utils\/google\/[^/]+|plugins\/google-access-sweep)\.ts$/,
+      tests: ['tests/unit/server/utils/google/log-boundary.spec.ts'],
+    },
+    {
       pattern: /^server\/utils\/(auth|files\/convert-files-for-ai)\.ts$/,
       tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
     },

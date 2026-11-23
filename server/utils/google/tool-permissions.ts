@@ -14,10 +14,7 @@ import type {
   GoogleToolPermissionMode,
 } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
-import {
-  exceptionMessage,
-  exceptionSummary,
-} from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
@@ -97,7 +94,7 @@ export async function clearGoogleAlwaysAllow(
       attributes: {
         google: {
           alwaysAllowCleared: 'failed',
-          error: exceptionMessage(exception),
+          ...exceptionSummary(exception),
         },
       },
     })

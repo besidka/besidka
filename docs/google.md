@@ -908,7 +908,12 @@ counts of granted scopes, whether the dedicated client is in use),
 `lock-busy`, `lock-unavailable`, `failed` with Google's error code),
 `attributes.googleAccessEnded` and `attributes.googleAccessSweep` (counts,
 including the stale-connection check), and `attributes.googlePurge`. Never a
-token, a code, a state value, an email or a file name.
+token, a code, a state value, an email or a file name. A caught exception is
+logged as its error name and the code and name of its cause
+(`exceptionSummary`) next to a fixed code such as `failed`, never as its
+message: a message can carry a file name, a Drive title or a bound parameter
+(BES-467). `tests/unit/server/utils/google/log-boundary.spec.ts` fails when
+`server/utils/google` or the sweep plugin calls `exceptionMessage`.
 
 ### 9.9 UI
 
