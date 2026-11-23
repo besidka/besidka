@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
+import { GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE } from '#shared/utils/google-tool-catalog'
 import { getRequestHeader } from 'nuxt/server'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { assertConnectorWriteRequest } from '~~/server/utils/connectors/route'
@@ -20,7 +21,14 @@ const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 
 export type GoogleRateLimitBucket
-  = 'write' | 'read' | 'picker' | 'import' | 'link' | 'save' | 'none'
+  = | 'write'
+    | 'read'
+    | 'picker'
+    | 'import'
+    | 'link'
+    | 'save'
+    | 'permission'
+    | 'none'
 
 const RATE_LIMIT_BUCKETS: Readonly<Record<
   Exclude<GoogleRateLimitBucket, 'none'>,
@@ -45,6 +53,10 @@ const RATE_LIMIT_BUCKETS: Readonly<Record<
   link: {
     prefix: 'google-drive-link-rate-limit',
     max: GOOGLE_DRIVE_LINKS_PER_MINUTE,
+  },
+  permission: {
+    prefix: 'google-tool-permission-rate-limit',
+    max: GOOGLE_TOOL_PERMISSION_WRITES_PER_MINUTE,
   },
   save: {
     prefix: 'google-drive-save-rate-limit',
