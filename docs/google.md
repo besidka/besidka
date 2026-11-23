@@ -4899,10 +4899,18 @@ sentences per operation (`DRIVE_CHANGE_FAILURE_TEXT`) for the PATCH only: 403
 not have happened; check the name in your Google Drive". A failed live check
 before the PATCH (the item, the root or a folder read) uses the general
 sentence of section 19.4, which says nothing was changed, because nothing was
-sent. An item the user owns but has shared stays renamable and movable: the
-v1 rule checks `ownedByMe` and the absence of `driveId` for the item, and
-`shared` only for the folders of a move. Nothing here can trash, copy or
-share. The model gets a fixed message and `renamed` and `alreadyDone` flags and
+sent. An item the user owns but has shared is refused (BES-467, the final
+audit of the Google phase; the PR2 text said it stayed renamable and movable):
+the live check requires `ownedByMe`, no `driveId`, not trashed and
+`shared === false`, so an unknown `shared` also refuses. Under Always allow a
+rename is a silent write channel: the new name, which the model may have taken
+from text another person wrote, is visible to everyone the item is shared
+with, and a move changes the place they find it. The fixed sentence is "That
+item is shared with other people, so Besidka will not rename or move it.
+Nothing was changed.", the log code is `refusal: shared`, and no PATCH is sent.
+`shared` was already in the live `files.get` field mask. Folders keep their
+stricter rule for a move (source and target folders unshared). Nothing here
+can trash, copy or share. The model gets a fixed message and `renamed` and `alreadyDone` flags and
 no name; the stored reference holds the id, kind, new title, link and parent
 id.
 
