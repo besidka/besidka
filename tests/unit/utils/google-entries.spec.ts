@@ -81,8 +81,26 @@ describe('resolveGoogleEntries', () => {
         { connection: connection() },
       )
 
-      expect(entryOf('google-drive', data)?.state).toBe('off-in-labs')
-      expect(entryOf('google-drive', data)?.canDisconnect).toBe(true)
+      expect(entryOf('google-drive', data)).toMatchObject({
+        state: 'unavailable',
+        stateLine: 'Not available for this account',
+        action: 'disconnect',
+        actionLabel: 'Disconnect',
+        linkPath: null,
+        canDisconnect: true,
+      })
+    })
+
+    it('keeps Off in Labs only while the feature is enabled', () => {
+      const data = input(
+        { driveFeature: { enabled: true, active: false } },
+        { connection: connection() },
+      )
+
+      expect(entryOf('google-drive', data)).toMatchObject({
+        state: 'off-in-labs',
+        action: 'link',
+      })
     })
 
     it('offers to connect when nothing is connected', () => {
@@ -335,14 +353,25 @@ describe('getGoogleByoRequestedCapabilities', () => {
     )).toEqual(['gmail-read', 'gmail-compose'])
   })
 
-  it('ignores what a connection that needs reconnecting held', () => {
+  it('carries over what a connection that needs reconnecting held', () => {
     const stale = connection({
       clientMode: 'byo',
       status: 'needs_reauth',
+      capabilities: ['identity', 'gmail-read', 'calendar', 'drive-read'],
+    })
+
+    expect(getGoogleByoRequestedCapabilities(['gmail-read'], stale, true))
+      .toEqual(['drive-read', 'gmail-read', 'calendar'])
+  })
+
+  it('ignores what a revoked connection held', () => {
+    const revoked = connection({
+      clientMode: 'byo',
+      status: 'revoked',
       capabilities: ['identity', 'gmail-read'],
     })
 
-    expect(getGoogleByoRequestedCapabilities(['calendar'], stale, true))
+    expect(getGoogleByoRequestedCapabilities(['calendar'], revoked, true))
       .toEqual(['calendar'])
   })
 

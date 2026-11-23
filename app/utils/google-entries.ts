@@ -154,6 +154,15 @@ function resolveDriveEntry(input: GoogleEntriesInput): GoogleEntry | null {
     return null
   }
 
+  if (!driveFeature.enabled) {
+    return buildEntry(definition, 'besidka', connection, {
+      state: 'unavailable',
+      email: connection?.email ?? null,
+      action: 'disconnect',
+      actionLabel: 'Disconnect',
+    })
+  }
+
   if (!driveFeature.active) {
     return buildEntry(definition, 'besidka', connection, {
       state: 'off-in-labs',
@@ -339,16 +348,19 @@ export function resolveGoogleEntries(
 
 /**
  * The capabilities an own-client connect or "Add access" asks Google for:
- * what an active connection already holds plus the new ones, so adding one
- * service never drops another. `calendar` is left out while Google Calendar
- * is off in Labs, because the server refuses it then.
+ * what an active or needs-reconnect connection already holds plus the new
+ * ones, so adding or reconnecting one service never drops another.
+ * `calendar` is left out while Google Calendar is off in Labs, because the
+ * server refuses it then.
  */
 export function getGoogleByoRequestedCapabilities(
   additions: readonly GoogleByoCapability[],
   connection: GoogleConnectionSummary | null,
   isCalendarActive: boolean,
 ): GoogleByoCapability[] {
-  const held = connection?.status === 'active'
+  const holdsCapabilities = connection?.status === 'active'
+    || connection?.status === 'needs_reauth'
+  const held = connection && holdsCapabilities
     ? GOOGLE_BYO_CAPABILITIES.filter((capability) => {
       return connection.capabilities.includes(capability)
     })
