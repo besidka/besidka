@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => ({
     tools: Record<string, unknown>
     entries: Map<string, unknown>
   },
+  googleBlockedNames: [] as string[],
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -74,7 +75,16 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
   return {
     ...actual,
     buildGoogleSendToolCandidates: async () => {
-      return mocks.googleSend ?? actual.noGoogleSendTools()
+      const built = (mocks.googleSend ?? actual.noGoogleSendTools()) as never
+
+      return mocks.googleBlockedNames.length
+        ? actual.dropBlockedGoogleTools(
+          built,
+          new Map(mocks.googleBlockedNames.map((toolName) => {
+            return [toolName, 'blocked' as const]
+          })),
+        )
+        : built
     },
   }
 })
@@ -605,6 +615,7 @@ describe('tool approval requests in the chat send', () => {
     mocks.failBatch = false
     mocks.failChatFlag = false
     mocks.googleSend = null
+    mocks.googleBlockedNames = []
     Object.assign(mocks.store, {
       connectors: [],
       credentials: null,
@@ -1475,6 +1486,77 @@ describe('tool approval requests in the chat send', () => {
       .map((offeredTool: { name: string }) => offeredTool.name)
 
     expect(offered).not.toContain('google__drive_search')
+  })
+
+  describe('a Google tool the user set to Blocked', () => {
+    async function offerGmailTools() {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+      const names = ['google__gmail_search', 'google__gmail_read_thread']
+
+      mocks.googleSend = {
+        tools: Object.fromEntries(names.map((name) => {
+          return [name, tool({
+            description: 'A Gmail tool.',
+            inputSchema: z.object({ query: z.string().optional() }),
+            execute: vi.fn(async () => ({ references: [] })),
+          })]
+        })),
+        entries: new Map(names.map((name) => {
+          return [name, buildGoogleApprovalEntry({
+            toolName: name,
+            kind: 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'A Gmail tool',
+            toolApprovalsActive: true,
+          })]
+        })),
+      }
+    }
+
+    async function offeredNames() {
+      const { doStream } = await runSend({
+        servers: [linear],
+        steps: [textChunks('Plain answer.')],
+      })
+
+      return ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((offeredTool: { name: string }) => offeredTool.name)
+    }
+
+    it('offers every Gmail tool when nothing is Blocked', async () => {
+      await offerGmailTools()
+
+      expect(await offeredNames()).toEqual(expect.arrayContaining([
+        'google__gmail_search',
+        'google__gmail_read_thread',
+      ]))
+    })
+
+    it('does not offer a Blocked Gmail search and keeps the other tool',
+      async () => {
+        await offerGmailTools()
+
+        mocks.googleBlockedNames = ['google__gmail_search']
+
+        const offered = await offeredNames()
+
+        expect(offered).not.toContain('google__gmail_search')
+        expect(offered).toContain('google__gmail_read_thread')
+      })
+
+    it('offers no Google tool when every one is Blocked', async () => {
+      await offerGmailTools()
+
+      mocks.googleBlockedNames = [
+        'google__gmail_search',
+        'google__gmail_read_thread',
+      ]
+
+      expect((await offeredNames())
+        .filter((name: string) => name.startsWith('google__'))).toEqual([])
+    })
   })
 
   it('runs a granted Google read, stores references only and sets the chat '

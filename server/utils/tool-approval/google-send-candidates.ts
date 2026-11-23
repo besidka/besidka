@@ -1,6 +1,7 @@
 import type { ToolSet } from 'ai'
 import { GOOGLE_GMAIL_TOOL_NAMES } from '#shared/utils/google-gmail-tools'
 import { GOOGLE_SCOPES, hasScopes } from '#shared/utils/google-scopes'
+import type { GoogleToolPermissionMode } from '#shared/utils/google-tool-catalog'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { checkGoogleByoAccess } from '~~/server/utils/google/byo-access'
 import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
@@ -9,20 +10,89 @@ import { buildGoogleCalendarTools } from '~~/server/utils/google/calendar-tools'
 import { buildGoogleDriveTools } from '~~/server/utils/google/drive-tools'
 import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
 import { readGoogleConnection } from '~~/server/utils/google/store'
+import {
+  loadGoogleToolPermissionModes,
+  pickGoogleToolPermissionMode,
+} from '~~/server/utils/google/tool-permissions'
+import type { GoogleToolPermissionModes } from '~~/server/utils/google/tool-permissions'
 import { readGoogleChatGrantHashes } from '~~/server/utils/tool-approval/google'
+import { buildBlockedGoogleEntry } from '~~/server/utils/tool-approval/send'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 
 /**
  * The Google tools of one send and their approval entries, built with
- * `buildGoogleApprovalEntry`.
+ * `buildGoogleApprovalEntry`. A tool the user set to Blocked is not in
+ * `tools`; its entry is an entry-only `buildBlockedGoogleEntry` record, so
+ * an approval given before the Block is denied as blocked on resume.
+ * `permissionModes` are the stored Google modes the send resolved (a tool
+ * with no entry means "ask"), which the continuation reads.
  */
 export interface GoogleSendTools {
   tools: ToolSet
   entries: ReadonlyMap<string, SendToolEntry>
+  permissionModes?: ReadonlyMap<string, GoogleToolPermissionMode>
 }
 
 export function noGoogleSendTools(): GoogleSendTools {
   return { tools: {}, entries: new Map() }
+}
+
+async function readGooglePermissionModes(
+  db: ReturnType<typeof useDb>,
+  userId: number,
+  toolNames: readonly string[],
+  logger: LoggerLike,
+): Promise<GoogleToolPermissionModes> {
+  try {
+    return await loadGoogleToolPermissionModes(userId, db)
+  } catch {
+    logger.set({
+      attributes: { googleDataGuard: { googleToolPermissions: 'unavailable' } },
+    })
+
+    return new Map(toolNames.map((toolName) => {
+      return [toolName, 'blocked' as const]
+    }))
+  }
+}
+
+/**
+ * Takes the tools the user set to Blocked out of a send's Google tools. Each
+ * keeps an entry-only Blocked record, so the continuation answers an
+ * approval given before the Block with the blocked denial instead of "no
+ * longer available". Only removes tools: the data guard, the gateway
+ * safeguards and the recipient check depend on the chat alone.
+ */
+export function dropBlockedGoogleTools(
+  google: GoogleSendTools,
+  modes: GoogleToolPermissionModes,
+): GoogleSendTools {
+  const tools: ToolSet = {}
+  const entries = new Map<string, SendToolEntry>()
+
+  for (const [toolName, entry] of google.entries) {
+    if (pickGoogleToolPermissionMode(toolName, modes) !== 'blocked') {
+      entries.set(toolName, entry)
+
+      continue
+    }
+
+    entries.set(toolName, buildBlockedGoogleEntry({
+      toolName,
+      kind: entry.descriptor.access === 'read'
+        && !entry.descriptor.destructiveHint
+        ? 'read'
+        : 'write',
+    }))
+  }
+
+  for (const [toolName, tool] of Object.entries(google.tools)) {
+    if (pickGoogleToolPermissionMode(toolName, modes) !== 'blocked') {
+      tools[toolName] = tool
+    }
+  }
+
+  return { tools, entries, permissionModes: modes }
 }
 
 function logCandidates(
@@ -217,7 +287,19 @@ export async function buildGoogleSendToolCandidates(input: {
     }
   }
 
-  logCandidates(input.logger, combined.entries.size, reasons)
+  if (combined.entries.size > 0) {
+    combined = dropBlockedGoogleTools(
+      combined,
+      await readGooglePermissionModes(
+        db,
+        input.userId,
+        [...combined.entries.keys()],
+        input.logger,
+      ),
+    )
+  }
+
+  logCandidates(input.logger, Object.keys(combined.tools).length, reasons)
 
   return combined
 }

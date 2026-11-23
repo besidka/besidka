@@ -31,7 +31,20 @@ export interface GoogleSendPlan {
 }
 
 function hasGoogleSendTools(google: GoogleSendTools): boolean {
-  return google.entries.size > 0 || Object.keys(google.tools).length > 0
+  return Object.keys(google.tools).length > 0
+    || [...google.entries.values()].some((entry) => {
+      return entry.permissionMode !== 'blocked'
+    })
+}
+
+function blockedGoogleEntriesOnly(google: GoogleSendTools): GoogleSendTools {
+  return {
+    tools: {},
+    entries: new Map([...google.entries].filter(([, entry]) => {
+      return entry.permissionMode === 'blocked'
+    })),
+    permissionModes: google.permissionModes ?? new Map(),
+  }
 }
 
 /**
@@ -159,7 +172,10 @@ export async function getGoogleSendTools(input: {
   logger: LoggerLike
 }): Promise<GoogleSendToolsDecision> {
   if (!hasGoogleSendTools(input.plan.candidates)) {
-    return withheld(null)
+    return {
+      ...blockedGoogleEntriesOnly(input.plan.candidates),
+      withheldReason: null,
+    }
   }
 
   if (input.toolCallingAllowed === false) {
