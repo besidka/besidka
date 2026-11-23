@@ -755,23 +755,83 @@ describe('Google Drive file creation on the owner\'s own client', () => {
       })
 
     it.each([
-      [403, 'insufficientFilePermissions', 'no_access'],
-      [403, 'storageQuotaExceeded', 'drive_full'],
-      [403, 'accessNotConfigured', 'api_disabled'],
-      [429, '', 'rate_limited'],
-      [400, '', 'bad_request'],
+      [403, 'insufficientFilePermissions', 'no_access',
+        ' (Google answered 403, reason insufficientFilePermissions.)'],
+      [403, 'forbidden', 'no_access',
+        ' (Google answered 403, reason forbidden.)'],
+      [403, 'storageQuotaExceeded', 'drive_full',
+        ' (Google answered 403, reason storageQuotaExceeded.)'],
+      [403, 'accessNotConfigured', 'api_disabled',
+        ' (Google answered 403, reason accessNotConfigured.)'],
+      [429, '', 'rate_limited', ' (Google answered 429.)'],
+      [400, '', 'bad_request', ' (Google answered 400.)'],
+      [400, 'invalid', 'bad_request',
+        ' (Google answered 400, reason invalid.)'],
+      [403, HOSTILE_NAME, 'no_access', ' (Google answered 403.)'],
     ] as const)('answers %i %s with a fixed sentence', async (
       status,
       reason,
       code,
+      suffix,
     ) => {
       drive.uploadStatus = status
       drive.uploadReason = reason
 
       const message = await rejectionOf(createFile(await tools(), input))
 
-      expect(message).toBe(DRIVE_WRITE_FAILURE_TEXT[code])
+      expect(message).toBe(`${DRIVE_WRITE_FAILURE_TEXT[code]}${suffix}`)
       expect(message).not.toContain(HOSTILE_NAME)
+    })
+
+    it.each([
+      ['document', 'Plan', MARKDOWN],
+      ['spreadsheet', 'Table', 'a,b\n1,2\n'],
+      ['text', 'Notes', 'plain'],
+    ] as const)('says what Google answered when a %s upload is refused',
+      async (kind, name, content) => {
+        drive.uploadStatus = 403
+        drive.uploadReason = 'forbidden'
+
+        const message = await rejectionOf(
+          createFile(await tools(), { name, kind, content }),
+        )
+
+        expect(message).toBe(
+          DRIVE_WRITE_FAILURE_TEXT.no_access
+          + ' (Google answered 403, reason forbidden.)',
+        )
+      })
+
+    it('logs the status and the reason Google answered', async () => {
+      drive.uploadStatus = 403
+      drive.uploadReason = 'forbidden'
+
+      await rejectionOf(createFile(await tools(), input))
+
+      const logged = JSON.stringify(mocks.logged)
+
+      expect(logged).toContain('"googleStatus":403')
+      expect(logged).toContain('"googleReason":"forbidden"')
+    })
+
+    it('logs no reason when Google sent a hostile one', async () => {
+      drive.uploadStatus = 403
+      drive.uploadReason = HOSTILE_NAME
+
+      await rejectionOf(createFile(await tools(), input))
+
+      const logged = JSON.stringify(mocks.logged)
+
+      expect(logged).toContain('"googleReason":null')
+      expect(logged).not.toContain(HOSTILE_NAME)
+    })
+
+    it('adds the status to the log of an unconfirmed create', async () => {
+      drive.uploadStatus = 500
+
+      await rejectionOf(createFile(await tools(), input))
+
+      expect(JSON.stringify(mocks.logged)).toContain('"googleStatus":500')
     })
 
     it('creates nothing when the id cannot be stored', async () => {
