@@ -9,10 +9,12 @@ import {
 import {
   GOOGLE_SERVICES,
   GOOGLE_TOOL_APPROVAL_LABELS,
+  GOOGLE_TOOL_ALWAYS_ALLOW_HINTS,
   GOOGLE_TOOL_CATALOG,
   GOOGLE_TOOL_PERMISSION_MODES,
   findGoogleCatalogTool,
   getGoogleServiceTools,
+  getGoogleToolAlwaysAllowHint,
   getGoogleToolApprovalLabel,
   isGoogleToolPermissionMode,
   readGoogleToolPermissionMode,
@@ -172,6 +174,31 @@ describe('google tool catalog', () => {
       expect(readGoogleToolPermissionMode('blocked')).toBe('blocked')
       expect(readGoogleToolPermissionMode('allow')).toBe('blocked')
       expect(readGoogleToolPermissionMode('x')).toBe('blocked')
+    })
+
+    it('says why Always allow is off for each tool', () => {
+      const hints = Object.fromEntries(GOOGLE_TOOL_CATALOG.map((tool) => {
+        return [tool.name, getGoogleToolAlwaysAllowHint(tool)]
+      }))
+
+      expect(hints).toEqual({
+        google__drive_list_picked: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__drive_read_file: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__drive_save_file: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__drive_search: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__drive_read_found_file:
+          GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__gmail_search: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__gmail_read_thread:
+          GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__gmail_create_draft:
+          GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__calendar_list_events:
+          GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__calendar_free_busy: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__calendar_create_event:
+          GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+      })
     })
 
     it('finds a catalog tool by its exposed name only', () => {

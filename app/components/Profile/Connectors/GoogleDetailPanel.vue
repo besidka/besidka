@@ -153,7 +153,7 @@
       </div>
 
       <section
-        v-if="toolGroups.length"
+        v-if="toolGroups.length && !permissions.isUnavailable.value"
         class="grid gap-3"
         aria-labelledby="google-detail-tools-heading"
         data-testid="google-detail-tools"
@@ -170,39 +170,52 @@
         >
           {{ toolsIntro }}
         </p>
-        <section
-          v-for="group in toolGroups"
-          :key="group.kind"
-          class="grid gap-1"
-          :aria-labelledby="`google-detail-tools-${group.kind}`"
-          :data-testid="`google-detail-tools-${group.kind}`"
+        <p
+          class="text-xs text-base-content/70"
+          data-testid="google-detail-tools-blocked-note"
         >
-          <h4
-            :id="`google-detail-tools-${group.kind}`"
-            class="text-xs font-semibold uppercase text-base-content/70"
+          A blocked tool is never offered to the model. Google tools have no
+          Always allow.
+        </p>
+        <UiSidePanelSkeleton
+          v-if="permissions.status.value === 'pending' && !hasPermissionData"
+          :lines="3"
+        />
+        <div
+          v-else-if="permissions.error.value && !hasPermissionData"
+          class="alert alert-error alert-soft"
+          role="alert"
+          data-testid="google-detail-tools-error"
+        >
+          <Icon
+            name="lucide:circle-alert"
+            size="16"
+            class="shrink-0"
+            aria-hidden="true"
+          />
+          <span>The tool permissions did not load.</span>
+          <button
+            type="button"
+            class="btn btn-sm"
+            data-testid="google-detail-tools-retry"
+            @click="permissions.refresh()"
           >
-            {{ group.label }}
-          </h4>
-          <ul class="grid gap-2">
-            <li
-              v-for="tool in group.tools"
-              :key="tool.name"
-              class="flex flex-wrap items-center justify-between gap-2"
-              data-testid="google-detail-tool"
-              :data-tool-name="tool.name"
-            >
-              <span class="min-w-0 break-words text-sm">
-                {{ tool.title }}
-              </span>
-              <span
-                class="badge badge-soft badge-sm shrink-0"
-                data-testid="google-detail-tool-approval"
-              >
-                {{ getGoogleToolApprovalLabel(tool) }}
-              </span>
-            </li>
-          </ul>
-        </section>
+            Retry
+          </button>
+        </div>
+        <UiToolPermissions
+          v-else
+          :groups="permissionGroups"
+          @set-tools="onSetTools"
+          @set-group="onSetGroup"
+        />
+        <p
+          class="sr-only"
+          aria-live="polite"
+          data-testid="google-detail-permission-live"
+        >
+          {{ permissions.announcement.value }}
+        </p>
       </section>
 
       <section
@@ -250,11 +263,19 @@ import {
 import type { GoogleEntryId } from '#shared/utils/google-connectors'
 import {
   GOOGLE_TOOL_APPROVAL_LABELS,
+  GOOGLE_TOOL_PERMISSION_MODES,
   getGoogleServiceTools,
+  getGoogleToolAlwaysAllowHint,
   getGoogleToolApprovalLabel,
+  isGoogleToolPermissionMode,
 } from '#shared/utils/google-tool-catalog'
 import type { GoogleToolCatalogEntry } from '#shared/utils/google-tool-catalog'
+import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 import type { GoogleEntry } from '~/utils/google-entries'
+import type {
+  ToolPermissionChange,
+  ToolPermissionGroup,
+} from '~/utils/tool-permissions'
 
 interface ToolGroup {
   kind: 'read' | 'write'
@@ -287,6 +308,7 @@ const props = defineProps<{
 const { data, status, refresh, entries } = useGoogleEntries()
 const actions = useGoogleEntryActions()
 const { isBusy, announcement } = actions
+const permissions = useGoogleToolPermissions()
 const isInfoOpen = shallowRef<boolean>(false)
 
 const entry = computed<GoogleEntry | null>(() => {
@@ -325,6 +347,54 @@ const toolGroups = computed<ToolGroup[]>(() => {
     },
   ].filter(group => group.tools.length > 0)
 })
+
+const hasPermissionData = computed<boolean>(() => {
+  return permissions.tools.value.length > 0
+})
+
+const permissionGroups = computed<ToolPermissionGroup[]>(() => {
+  const modesByName = new Map(permissions.tools.value.map((tool) => {
+    return [tool.name, tool.mode]
+  }))
+
+  return toolGroups.value.map((group) => {
+    return {
+      id: group.kind,
+      label: group.label,
+      tools: group.tools
+        .filter(tool => modesByName.has(tool.name))
+        .map((tool) => {
+          return {
+            name: tool.name,
+            title: tool.title,
+            mode: modesByName.get(tool.name) ?? 'ask',
+            modes: GOOGLE_TOOL_PERMISSION_MODES,
+            unavailableHint: getGoogleToolAlwaysAllowHint(tool),
+          }
+        }),
+    }
+  })
+})
+
+async function saveChanges(changes: ToolPermissionChange[]) {
+  for (const change of changes) {
+    if (isGoogleToolPermissionMode(change.mode)) {
+      await permissions.save({ tool: change.name }, change.mode)
+    }
+  }
+}
+
+async function onSetTools(changes: ToolPermissionChange[]) {
+  await saveChanges(changes)
+}
+
+async function onSetGroup(
+  _groupId: string,
+  _mode: ToolPermissionMode,
+  changes: ToolPermissionChange[],
+) {
+  await saveChanges(changes)
+}
 
 const toolsIntro = computed<string>(() => {
   const listedTools = toolGroups.value.flatMap(group => group.tools)
