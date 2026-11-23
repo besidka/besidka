@@ -4,6 +4,7 @@ import {
   GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE,
 } from '#shared/utils/google-drive-write'
 import {
+  ANCESTOR_FIELDS,
   DRIVE_CHANGE_FAILURE_TEXT,
   DRIVE_WRITE_FAILURE_TEXT,
   buildDriveCreateDigest,
@@ -17,6 +18,7 @@ import {
   driveFailureSuffix,
   findDriveItemsByApprovalDigest,
   generateDriveId,
+  ITEM_META_FIELDS,
   isDriveRootMeta,
   listDriveFolderChildren,
   patchDriveItem,
@@ -440,6 +442,64 @@ describe('the Drive requests', () => {
         },
       })
     })
+})
+
+describe('the live field masks of the safety checks', () => {
+  function fieldNamesOf(mask: string): string[] {
+    let depth = 0
+    let current = ''
+    const names: string[] = []
+
+    for (const character of mask) {
+      if (character === '(') {
+        depth += 1
+      } else if (character === ')') {
+        depth -= 1
+      }
+
+      if (character === ',' && depth === 0) {
+        names.push(current)
+        current = ''
+      } else {
+        current += character
+      }
+    }
+
+    names.push(current)
+
+    return names.map(name => name.replace(/\(.*$/, ''))
+  }
+
+  it('asks for every field the item checks refuse on', () => {
+    expect(fieldNamesOf(ITEM_META_FIELDS)).toEqual(expect.arrayContaining([
+      'id',
+      'parents',
+      'shared',
+      'ownedByMe',
+      'driveId',
+      'trashed',
+    ]))
+  })
+
+  it('asks for every field the ancestry walk refuses on', () => {
+    expect(fieldNamesOf(ANCESTOR_FIELDS)).toEqual(expect.arrayContaining([
+      'id',
+      'parents',
+      'shared',
+      'ownedByMe',
+      'driveId',
+      'trashed',
+    ]))
+  })
+
+  it('sends the item mask on the live item read', async () => {
+    const fetchImpl = respond(200, { id: FOLDER_ID })
+
+    await readDriveItemMeta(FOLDER_ID, { accessToken: 'token', fetchImpl })
+
+    expect(new URL(String(fetchImpl.mock.calls[0]![0])).searchParams
+      .get('fields')).toBe(ITEM_META_FIELDS)
+  })
 })
 
 describe('readDriveAncestor', () => {

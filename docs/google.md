@@ -4933,13 +4933,29 @@ asking (`failsWithoutRunning` plus the refusal latch). The name goes through
    `fields=id,name,mimeType,parents,ownedByMe,shared,driveId,trashed,appProperties,capabilities(canAddChildren,canRename,canMoveItemWithinDrive)`
    and `supportsAllDrives=true`;
 3. refuses an item in a shared drive (`driveId`), in the trash, not owned by
-   the user (`ownedByMe !== true`, so a missing field fails closed), or My
-   Drive itself (the live root check of section 19.11);
+   the user (`ownedByMe !== true`, so a missing field fails closed), shared
+   with other people (`shared !== false`, so a missing or non-boolean field
+   fails closed), or My Drive itself (the live root check of section 19.11);
 4. succeeds without a request when the live name already equals the new name:
    `alreadyDone: true`. That is how a retry of the same approval ends;
 5. otherwise refuses when the cleaned live name is not the cleaned title the
    chat found ("renamed since it was found in this chat; search again") and when
    `capabilities.canRename` is not true;
+5a. walks the ancestry of the item itself, as the move and the create parent
+   do (BES-467, follow-up of the re-verification): the item has exactly one
+   parent in v1, read from the same live `files.get`, and the walk goes from
+   that parent up to the live root, one `files.get` per level with the mask
+   `id,parents,shared,driveId,ownedByMe,trashed`, at most 20 levels. A file
+   that sits inside a shared tree is refused even when Drive reports
+   `shared: false` for it, because it only inherits the sharing (how Drive
+   reports that is NOT VERIFIED against a real account). An ancestor that is
+   shared, in a shared drive, not owned or in the trash is refused with the
+   ancestry sentences of section 19.10 ("A folder above that folder is ...",
+   then "Nothing was renamed."; log code `ancestry-shared` and the like). An
+   item with no parent or with more than one, the depth limit and an ancestor
+   read that fails are "not confirmed": nothing is sent. The walk runs only
+   when a PATCH would follow, so an item that already has the new name costs
+   no ancestor read; the card is unchanged;
 6. `PATCH /drive/v3/files/<id>?supportsAllDrives=true&fields=id,name,mimeType,parents`
    with the body exactly `{ "name": <newName> }` (`buildDriveRenameRequest`
    copies nothing else, whatever object it gets), and treats an answer for
@@ -5034,7 +5050,11 @@ order, `execute`:
    This catches sharing that a folder only inherits, whichever way Drive
    reports `shared` for it. The same walk (without the cycle check) runs on
    the parent of `create_folder` (section 19.4, step 6), with "Nothing was
-   created." in its sentences;
+   created." in its sentences, and on the item of a rename (section 19.9,
+   step 5a), with "Nothing was renamed.". The moved item's own parent needs no
+   walk of its own: step 4 requires `parents` to be exactly `[fromFolderId]`
+   before the walk, so the walk of the source folder is the walk of the item's
+   own parent chain;
 6. `PATCH /drive/v3/files/<id>?addParents=<to>&removeParents=<from>&supportsAllDrives=true&fields=id,name,mimeType,parents`
    with an empty body `{}` (`buildDriveMoveRequest`: only those four query
    keys), and treats an answer whose `parents` is not exactly the target as
@@ -5411,3 +5431,17 @@ is a known limit, not an unknown:
   during the audit but not tested against real accounts.
 - **The Picker frame fallback** stays on the key alone when the render left
   no feature state (section 12, "Who gets it").
+- **Always allow needs an active own-client connection.** `PUT
+  /api/v1/google/tool-permissions` answers 409 ("Google is not connected")
+  for a mode of `allow` unless the user has a `google_connections` row of the
+  own client with status `active`, so a second tab cannot store a grant
+  between the clear that a first connect runs and the connection it saves.
+  A reconnect that replaces a different account still has the old connection
+  active during that short window; the clear runs before the save and fails
+  closed (`clearGoogleAlwaysAllowOrThrow`). Blocked and Needs approval need no
+  connection.
+- **The source-scan specs have blind spots.** The startup-imports spec checks
+  a fixed list of heavy modules, does not see Nitro auto-imports and does not
+  scan recursively, and the log-boundary spec is a regex scan of a fixed set
+  of files, so a reviewer must still read the import graph and the log calls
+  of a changed Google file.
