@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
@@ -467,12 +467,28 @@ async function getHandler() {
   return module.default
 }
 
-async function runSend(input: {
+const inFlightSends = new Set<Promise<unknown>>()
+
+function runSend(input: SendInput) {
+  const pending = executeSend(input)
+  const forget = () => {
+    inFlightSends.delete(pending)
+  }
+
+  inFlightSends.add(pending)
+  pending.then(forget, forget)
+
+  return pending
+}
+
+interface SendInput {
   steps: Array<Array<Record<string, unknown>>>
   scenario?: DbScenario
   tools?: string[]
   gateway?: { toolCall: boolean | undefined }
-}) {
+}
+
+async function executeSend(input: SendInput) {
   const { model, doStream } = createScriptedModel(input.steps)
 
   vi.stubGlobal('useOpenAI', vi.fn(async () => ({
@@ -552,9 +568,16 @@ function readAttribute(name: string) {
 
 const MEMORY_ON: SettingsRow = { memoryEnabled: true }
 
-describe('memory send-path wiring', () => {
-  afterEach(() => {
+describe('memory send-path wiring', { timeout: 30_000 }, () => {
+  beforeAll(async () => {
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    await getHandler()
+    vi.unstubAllGlobals()
+  }, 60_000)
+
+  afterEach(async () => {
     vi.useRealTimers()
+    await Promise.allSettled([...inFlightSends])
   })
 
   beforeEach(() => {
