@@ -699,7 +699,7 @@ describe('Profile/Google/OwnClient', () => {
 
       expect(infoMock).toHaveBeenCalledWith(
         'Google granted only part of the access',
-        'Only what Google granted is listed on this card.',
+        'Only what Google granted is listed here.',
       )
       expect(refreshMock).toHaveBeenCalled()
       expect(navigateToMock).toHaveBeenCalledWith(
@@ -715,5 +715,87 @@ describe('Profile/Google/OwnClient', () => {
 
     expect(successMock).not.toHaveBeenCalled()
     expect(navigateToMock).not.toHaveBeenCalled()
+  })
+
+  describe('reduced to the credential', () => {
+    async function mountReduced() {
+      const wrapper = await mountSuspended(OwnClient, {
+        attachTo: document.body,
+        props: { reduced: true },
+      })
+
+      await flushPromises()
+
+      return wrapper
+    }
+
+    it('keeps the client form and points to the Connectors page', async () => {
+      setByo({ hasClient: true })
+
+      const wrapper = await mountReduced()
+
+      expect(wrapper.find('[data-testid="google-byo-client-form"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="google-byo-delete"]').exists())
+        .toBe(true)
+      expect(wrapper.get('[data-testid="google-byo-connectors-line"]')
+        .text().replace(/\s+/g, ' '))
+        .toBe(
+          'Connect Gmail, Google Calendar and whole-Drive search on the '
+          + 'Connectors page.',
+        )
+      const link = wrapper.get('[data-testid="google-byo-connectors-link"]')
+
+      expect(link.attributes('href') ?? link.attributes('to'))
+        .toBe('/chats/connectors')
+    })
+
+    it('moves the capability boxes, Connect and Disconnect to the entries',
+      async () => {
+        setByo({
+          hasClient: true,
+          connection: connection({ capabilities: ['identity', 'gmail-read'] }),
+        })
+
+        const wrapper = await mountReduced()
+
+        expect(wrapper.find('[data-testid="google-byo-capabilities-form"]')
+          .exists()).toBe(false)
+        expect(wrapper.find('[data-testid="google-byo-connect"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="google-byo-disconnect"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="google-byo-email"]').exists())
+          .toBe(false)
+      })
+
+    it('keeps Delete client and Disconnect for a former owner', async () => {
+      setByo({
+        canManage: false,
+        redirectUri: null,
+        hasClient: true,
+        connection: connection(),
+      })
+
+      const wrapper = await mountReduced()
+
+      expect(wrapper.find('[data-testid="google-byo-connectors-line"]')
+        .exists()).toBe(false)
+      expect(wrapper.find('[data-testid="google-byo-delete"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="google-byo-disconnect"]').exists())
+        .toBe(true)
+    })
+
+    it('is the full card by default', async () => {
+      setByo({ hasClient: true })
+
+      const wrapper = await mountOwnClient()
+
+      expect(wrapper.find('[data-testid="google-byo-connectors-line"]')
+        .exists()).toBe(false)
+      expect(wrapper.find('[data-testid="google-byo-capabilities-form"]')
+        .exists()).toBe(true)
+    })
   })
 })

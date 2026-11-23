@@ -1,4 +1,8 @@
 import {
+  GOOGLE_CONNECTORS_PATH,
+  GOOGLE_KEYS_TAB_PATH,
+} from '#shared/utils/google-connectors'
+import {
   GOOGLE_CAPABILITIES,
   GOOGLE_SCOPES,
   GOOGLE_SCOPE_CAPABILITIES,
@@ -31,7 +35,9 @@ export const GOOGLE_CONNECT_RESULTS = [
 
 export type GoogleConnectResult = typeof GOOGLE_CONNECT_RESULTS[number]
 
-export const GOOGLE_CONNECT_DEFAULT_RETURN_PATH = '/profile/keys?tab=google'
+export const GOOGLE_CONNECT_DEFAULT_RETURN_PATH = GOOGLE_CONNECTORS_PATH
+
+export const GOOGLE_CONNECT_KEYS_RETURN_PATH = GOOGLE_KEYS_TAB_PATH
 
 export type GooglePartialCalendarAccess = 'events' | 'free-busy'
 

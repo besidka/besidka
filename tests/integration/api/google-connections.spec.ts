@@ -406,7 +406,7 @@ describe('Google connection routes', () => {
         code: 'auth-code',
       })
 
-      expect(location).toBe('/profile/keys?tab=google&google=connected')
+      expect(location).toBe('/chats/connectors?google=connected')
     })
   })
 
@@ -415,7 +415,7 @@ describe('Google connection routes', () => {
       const location = await connect()
       const [row] = await connectionRows()
 
-      expect(location).toBe('/profile/keys?tab=google&google=connected')
+      expect(location).toBe('/chats/connectors?google=connected')
       expect(row).toEqual(expect.objectContaining({
         clientMode: 'besidka',
         status: 'active',
@@ -444,7 +444,7 @@ describe('Google connection routes', () => {
       })
 
       expect(event.res.headers.get('location'))
-        .toBe('/profile/keys?tab=google&google=connected')
+        .toBe('/chats/connectors?google=connected')
     })
 
     it('refuses a replayed state', async () => {
@@ -454,7 +454,7 @@ describe('Google connection routes', () => {
       await callback(query)
 
       expect(await callback(query))
-        .toBe('/profile/keys?tab=google&google=expired')
+        .toBe('/chats/connectors?google=expired')
       expect(google.tokenRequests()).toHaveLength(1)
     })
 
@@ -468,14 +468,14 @@ describe('Google connection routes', () => {
         code: 'auth-code',
       })
 
-      expect(location).toBe('/profile/keys?tab=google&google=error')
+      expect(location).toBe('/chats/connectors?google=error')
       expect(google.tokenRequests()).toHaveLength(0)
       expect(await connectionRows()).toEqual([])
     })
 
     it('refuses a malformed state without reading KV', async () => {
       expect(await callback({ state: 'x', code: 'auth-code' }))
-        .toBe('/profile/keys?tab=google&google=error')
+        .toBe('/chats/connectors?google=error')
       expect(kv.get).not.toHaveBeenCalled()
     })
 
@@ -486,7 +486,7 @@ describe('Google connection routes', () => {
         error: 'access_denied',
       })
 
-      expect(location).toBe('/profile/keys?tab=google&google=denied')
+      expect(location).toBe('/chats/connectors?google=denied')
       expect(google.fetch).not.toHaveBeenCalled()
     })
 
@@ -506,7 +506,7 @@ describe('Google connection routes', () => {
       })
 
       expect(await connect())
-        .toBe('/profile/keys?tab=google&google=missing_scope')
+        .toBe('/chats/connectors?google=missing_scope')
       expect(await connectionRows()).toEqual([])
       expect(google.revokeRequests()[0]!.form.get('token'))
         .toBe('refresh-partial')
@@ -527,7 +527,7 @@ describe('Google connection routes', () => {
         },
       })
 
-      expect(await connect()).toBe('/profile/keys?tab=google&google=error')
+      expect(await connect()).toBe('/chats/connectors?google=error')
       expect(await connectionRows()).toEqual([])
     })
 
@@ -559,7 +559,7 @@ describe('Google connection routes', () => {
       expect(await callback({
         state: restart.searchParams.get('state')!,
         code: 'auth-code',
-      })).toBe('/profile/keys?tab=google&google=error')
+      })).toBe('/chats/connectors?google=error')
       expect(await connectionRows()).toEqual([])
     })
 
@@ -612,7 +612,7 @@ describe('Google connection routes', () => {
           },
         })
 
-        expect(await connect()).toBe('/profile/keys?tab=google&google=error')
+        expect(await connect()).toBe('/chats/connectors?google=error')
 
         const [row] = await connectionRows()
 
@@ -646,7 +646,7 @@ describe('Google connection routes', () => {
         })
 
         expect(await connect())
-          .toBe('/profile/keys?tab=google&google=connected')
+          .toBe('/chats/connectors?google=connected')
 
         const [row] = await connectionRows()
 

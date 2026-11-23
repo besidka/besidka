@@ -5,12 +5,14 @@ import {
   GOOGLE_CALENDAR_ICON,
   GOOGLE_DRIVE_ICON,
   GOOGLE_GMAIL_ICON,
+  GOOGLE_G_ICON,
 } from '#shared/utils/google-brand-icons'
 
 const BRAND_ICONS = [
   GOOGLE_DRIVE_ICON,
   GOOGLE_GMAIL_ICON,
   GOOGLE_CALENDAR_ICON,
+  GOOGLE_G_ICON,
 ]
 
 describe('google-brand-icons', () => {
@@ -18,6 +20,18 @@ describe('google-brand-icons', () => {
     expect(GOOGLE_DRIVE_ICON).toBe('logos:google-drive')
     expect(GOOGLE_GMAIL_ICON).toBe('logos:google-gmail')
     expect(GOOGLE_CALENDAR_ICON).toBe('logos:google-calendar')
+    expect(GOOGLE_G_ICON).toBe('logos:google-icon')
+  })
+
+  it('names marks that exist in the installed logos collection', () => {
+    const collection = JSON.parse(readFileSync(
+      resolve('node_modules/@iconify-json/logos/icons.json'),
+      'utf8',
+    )) as { icons: Record<string, unknown> }
+
+    for (const icon of BRAND_ICONS) {
+      expect(collection.icons[icon.replace('logos:', '')], icon).toBeDefined()
+    }
   })
 
   it('lists every mark in the client icon bundle', () => {

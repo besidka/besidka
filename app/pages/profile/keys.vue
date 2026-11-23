@@ -172,7 +172,7 @@
     />
   </div>
   <div
-    v-if="isGoogleTabVisible"
+    v-if="isGoogleTabShown"
     v-show="activeTab === googleTabId"
     :id="`key-panel-${googleTabId}`"
     role="tabpanel"
@@ -180,10 +180,13 @@
     :data-testid="`key-panel-${googleTabId}`"
   >
     <UiBubble>
-      <ProfileGoogleConnection />
+      <ProfileGoogleConnection v-if="!isConnectorsActive" />
       <template v-if="googleConnectionData?.byo">
-        <div class="divider my-0" />
-        <ProfileGoogleOwnClient />
+        <div
+          v-if="!isConnectorsActive"
+          class="divider my-0"
+        />
+        <ProfileGoogleOwnClient :reduced="isConnectorsActive" />
       </template>
     </UiBubble>
   </div>
@@ -191,7 +194,7 @@
 <script setup lang="ts">
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import type { Providers, Provider } from '#shared/types/providers.d'
-import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
+import { GOOGLE_G_ICON } from '#shared/utils/google-brand-icons'
 import {
   enabledGateways,
   enabledMemoryCheckProviders,
@@ -239,12 +242,20 @@ useSeoMeta({
 const config = useRuntimeConfig().public
 const route = useRoute()
 const googleDriveFeature = useFeature('google.drive')
+const connectorsFeature = useFeature('connectors')
 const { data: googleConnectionData } = await useGoogleConnection()
 
-const isGoogleTabVisible = computed<boolean>(() => {
-  return googleDriveFeature.value.active
-    || !!googleConnectionData.value?.connection
-    || !!googleConnectionData.value?.byo
+const isConnectorsActive = computed<boolean>(() => {
+  return connectorsFeature.value.active
+})
+
+const isGoogleTabShown = computed<boolean>(() => {
+  return isGoogleTabVisible({
+    isConnectorsActive: isConnectorsActive.value,
+    isDriveActive: googleDriveFeature.value.active,
+    hasConnection: !!googleConnectionData.value?.connection,
+    hasByoStatus: !!googleConnectionData.value?.byo,
+  })
 })
 
 const baseTabs: KeyTab[] = [
@@ -261,11 +272,11 @@ const baseTabs: KeyTab[] = [
 const googleTab: KeyTab = {
   id: googleTabId,
   label: 'Google',
-  icon: GOOGLE_DRIVE_ICON,
+  icon: GOOGLE_G_ICON,
 }
 
 const tabs = computed<KeyTab[]>(() => {
-  return isGoogleTabVisible.value ? [...baseTabs, googleTab] : baseTabs
+  return isGoogleTabShown.value ? [...baseTabs, googleTab] : baseTabs
 })
 
 resetKeyGuideTracking()
