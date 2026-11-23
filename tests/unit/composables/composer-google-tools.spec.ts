@@ -896,20 +896,43 @@ describe('useComposerGoogleTools', () => {
         expect(composable.unavailableReason.value).toBeNull()
       })
 
-    it('offers the keys link and a way to another model for a refused '
-      + 'non-Gemini model', async () => {
-      modelSelection.value = { source: 'provider', modelId: 'deepseek-flash' }
+    it('offers only a way to another model, with the provider named in the '
+      + 'note, for DeepSeek and Moonshot AI', async () => {
+      for (const [modelId, name] of [
+        ['deepseek-flash', 'DeepSeek'],
+        ['kimi-k2.6', 'Moonshot AI'],
+      ] as const) {
+        modelSelection.value = { source: 'provider', modelId }
 
-      const { composable } = await rowsFor()
+        const { composable } = await rowsFor()
 
-      expect(composable.rows.value[0]?.reasonActions).toEqual([
-        {
-          kind: 'open-api-keys',
-          label: 'Open API Keys',
-          path: '/profile/keys?provider=google',
-        },
-        { kind: 'choose-model', label: 'Choose another model' },
-      ])
+        expect(composable.rows.value[0]?.reasonActions).toEqual([
+          { kind: 'choose-model', label: 'Choose another model' },
+        ])
+        expect(composable.rows.value[0]?.reasonNote?.detail)
+          .toContain(`${name} may use API inputs for training`)
+        expect(composable.rows.value[0]?.reasonNote?.detail)
+          .not.toContain('API Keys page')
+      }
+    })
+
+    it('keeps the keys link, the paid-tier text and another model for a '
+      + 'gateway model', async () => {
+      modelSelection.value = {
+        source: 'gateway',
+        gatewayId: 'openrouter',
+        modelId: 'deepseek/deepseek-chat',
+      }
+
+      const { composable } = await rowsFor(SLUG)
+
+      holdsBySlug.value = { [SLUG]: true }
+
+      expect(composable.rows.value[0]?.reasonActions.map((action) => {
+        return action.kind
+      })).toEqual(['open-api-keys', 'choose-model'])
+      expect(composable.rows.value[0]?.reasonNote?.detail)
+        .toContain('confirm on the API Keys page')
     })
 
     it('offers the inline paid-tier confirmation for Gemini with a saved '

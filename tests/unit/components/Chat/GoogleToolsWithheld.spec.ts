@@ -12,15 +12,19 @@ function createMessage(parts: unknown[]): UIMessage {
   } as UIMessage
 }
 
-function mountWithReason(reason: unknown) {
-  return mountSuspended(GoogleToolsWithheld, {
-    props: {
-      message: createMessage([
-        { type: 'data-google-tools-withheld', data: { reason } },
-        { type: 'text', text: 'An answer.' },
-      ]),
-    },
-  })
+function mountWithReason(reason: unknown, usageProvider?: string) {
+  const message = createMessage([
+    { type: 'data-google-tools-withheld', data: { reason } },
+    { type: 'text', text: 'An answer.' },
+  ])
+
+  if (usageProvider) {
+    message.metadata = {
+      usage: { model: 'a-model', provider: usageProvider },
+    }
+  }
+
+  return mountSuspended(GoogleToolsWithheld, { props: { message } })
 }
 
 describe('Chat/GoogleToolsWithheld', () => {
@@ -43,23 +47,59 @@ describe('Chat/GoogleToolsWithheld', () => {
     expect(wrapper.text()).toBe('')
   })
 
-  it('says the model may not receive Google data and links the keys page',
-    async () => {
-      const wrapper = await mountWithReason('model_may_not_receive_google_data')
+  it('says the model may not receive Google data and links the keys page '
+    + 'for a Gemini message', async () => {
+    const wrapper = await mountWithReason(
+      'model_may_not_receive_google_data',
+      'google',
+    )
 
-      expect(wrapper.find('[data-testid="google-tools-withheld-summary"]')
-        .text()).toContain('Google tools were not offered to this model.')
+    expect(wrapper.find('[data-testid="google-tools-withheld-summary"]')
+      .text()).toContain('Google tools were not offered to this model.')
+    expect(wrapper.find('[data-testid="google-tools-withheld-detail"]')
+      .text()).toContain(
+      'Besidka does not send Google data to a model that may use it for '
+      + 'training. Pick another model, or confirm on the API Keys page '
+      + 'that your Gemini key is a paid one.',
+    )
+    const link = wrapper.find('[data-testid="google-tools-withheld-link"]')
+
+    expect(link.attributes('href') ?? link.attributes('to'))
+      .toBe('/profile/keys?provider=google')
+  })
+
+  it('names the provider and shows no keys link for a DeepSeek message',
+    async () => {
+      const wrapper = await mountWithReason(
+        'model_may_not_receive_google_data',
+        'deepseek',
+      )
+      const detail = wrapper.find('[data-testid="google-tools-withheld-detail"]')
+
+      expect(detail.text()).toContain('DeepSeek may use API inputs for '
+        + 'training, so Besidka does not send Google data to it.')
+      expect(detail.text()).not.toContain('API Keys page')
+      expect(wrapper.find('[data-testid="google-tools-withheld-link"]')
+        .exists()).toBe(false)
+    })
+
+  it('stays neutral and shows no keys link when the message model is '
+    + 'unknown or a gateway', async () => {
+    for (const usageProvider of [undefined, 'openrouter']) {
+      const wrapper = await mountWithReason(
+        'model_may_not_receive_google_data',
+        usageProvider,
+      )
+
       expect(wrapper.find('[data-testid="google-tools-withheld-detail"]')
         .text()).toContain(
         'Besidka does not send Google data to a model that may use it for '
-        + 'training. Pick another model, or confirm on the API Keys page '
-        + 'that your Gemini key is a paid one.',
+        + 'training. Pick another model.',
       )
-      const link = wrapper.find('[data-testid="google-tools-withheld-link"]')
-
-      expect(link.attributes('href') ?? link.attributes('to'))
-        .toBe('/profile/keys?provider=google')
-    })
+      expect(wrapper.find('[data-testid="google-tools-withheld-link"]')
+        .exists()).toBe(false)
+    }
+  })
 
   it('says Google tools are not offered with a built-in provider tool',
     async () => {

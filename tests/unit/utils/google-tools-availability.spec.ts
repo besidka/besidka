@@ -9,10 +9,7 @@ import {
 import type {
   GoogleToolsAvailabilityInput,
 } from '#shared/utils/google-tools-availability'
-import {
-  GOOGLE_TOOLS_WITHHELD_NOTES,
-  GOOGLE_TOOLS_WITHHELD_REASONS,
-} from '#shared/utils/google-tools-withheld'
+import { GOOGLE_TOOLS_WITHHELD_NOTES } from '#shared/utils/google-tools-withheld'
 
 function input(
   overrides: Partial<GoogleToolsAvailabilityInput> = {},
@@ -146,11 +143,66 @@ describe('getGoogleToolsUnavailableReason', () => {
 })
 
 describe('getGoogleToolsUnavailableNote', () => {
-  it('reuses the withheld notes for the two withheld reasons', () => {
-    for (const reason of GOOGLE_TOOLS_WITHHELD_REASONS) {
-      expect(getGoogleToolsUnavailableNote(reason))
-        .toEqual(GOOGLE_TOOLS_WITHHELD_NOTES[reason])
+  it('reuses the withheld note of the provider tool reason', () => {
+    expect(getGoogleToolsUnavailableNote('provider_tool_not_removable'))
+      .toEqual(GOOGLE_TOOLS_WITHHELD_NOTES.provider_tool_not_removable)
+  })
+
+  it('keeps the paid-tier text and link for Gemini and for a gateway',
+    () => {
+      const note = GOOGLE_TOOLS_WITHHELD_NOTES.model_may_not_receive_google_data
+
+      expect(getGoogleToolsUnavailableNote(
+        'model_may_not_receive_google_data',
+        { providerId: 'google' },
+      )).toEqual(note)
+      expect(getGoogleToolsUnavailableNote(
+        'model_may_not_receive_google_data',
+        { providerId: null, isGateway: true },
+      )).toEqual(note)
+    })
+
+  it('names DeepSeek and Moonshot AI and offers no keys link', () => {
+    for (const [providerId, name] of [
+      ['deepseek', 'DeepSeek'],
+      ['moonshotai', 'Moonshot AI'],
+    ] as const) {
+      const note = getGoogleToolsUnavailableNote(
+        'model_may_not_receive_google_data',
+        { providerId },
+      )
+
+      expect(note?.detail).toBe(
+        `${name} may use API inputs for training, so Besidka does not send `
+        + 'Google data to it. Pick Anthropic, OpenAI, xAI or Gemini on a paid '
+        + 'key.',
+      )
+      expect(note?.linkLabel).toBeNull()
     }
+  })
+
+  it('explains the Qwen condition without a keys link', () => {
+    const note = getGoogleToolsUnavailableNote(
+      'model_may_not_receive_google_data',
+      { providerId: 'qwen' },
+    )
+
+    expect(note?.detail).toContain(
+      'Qwen is allowed for Google data only on models Alibaba serves itself',
+    )
+    expect(note?.linkLabel).toBeNull()
+  })
+
+  it('stays neutral for an unknown recipient', () => {
+    const note = getGoogleToolsUnavailableNote(
+      'model_may_not_receive_google_data',
+    )
+
+    expect(note?.detail).toBe(
+      'Besidka does not send Google data to a model that may use it for '
+      + 'training. Pick another model.',
+    )
+    expect(note?.linkLabel).toBeNull()
   })
 
   it('tells the user to attach a Drive file first for the gateway reason',
@@ -211,18 +263,44 @@ describe('getGoogleToolsUnavailableActions', () => {
     )).toEqual([keysLink, chooseModel])
   })
 
-  it('offers the keys link and a way to another model for any other '
-    + 'recipient', () => {
-    for (const recipientProviderId of ['deepseek', 'moonshotai', 'qwen', null]) {
+  it('offers only a way to another model for DeepSeek, Moonshot AI and '
+    + 'Qwen, whatever the Gemini key says', () => {
+    for (const recipientProviderId of ['deepseek', 'moonshotai', 'qwen']) {
+      for (const geminiPaidTierConfirmed of [false, true]) {
+        expect(getGoogleToolsUnavailableActions(
+          'model_may_not_receive_google_data',
+          {
+            recipientProviderId,
+            hasGeminiKey: true,
+            geminiPaidTierConfirmed,
+          },
+        )).toEqual([chooseModel])
+      }
+    }
+  })
+
+  it('offers only a way to another model for an unknown direct recipient',
+    () => {
       expect(getGoogleToolsUnavailableActions(
         'model_may_not_receive_google_data',
         {
-          recipientProviderId,
+          recipientProviderId: null,
           hasGeminiKey: true,
           geminiPaidTierConfirmed: false,
         },
-      )).toEqual([keysLink, chooseModel])
-    }
+      )).toEqual([chooseModel])
+    })
+
+  it('keeps the keys link and a way to another model for a gateway', () => {
+    expect(getGoogleToolsUnavailableActions(
+      'model_may_not_receive_google_data',
+      {
+        recipientProviderId: null,
+        isGateway: true,
+        hasGeminiKey: true,
+        geminiPaidTierConfirmed: false,
+      },
+    )).toEqual([keysLink, chooseModel])
   })
 
   it('offers nothing for the other reasons', () => {

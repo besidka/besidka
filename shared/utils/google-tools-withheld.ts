@@ -1,3 +1,8 @@
+import type { SupportedProviderId } from '#shared/types/providers.d'
+import { GOOGLE_DATA_PROVIDER_RULES } from '#shared/utils/google-data-policy'
+import type { GoogleDataRule } from '#shared/utils/google-data-policy'
+import { providerMeta } from '#shared/utils/provider-meta'
+
 export const GOOGLE_TOOLS_WITHHELD_PART_TYPE = 'data-google-tools-withheld'
 
 export const GOOGLE_TOOLS_WITHHELD_REASONS = [
@@ -42,6 +47,118 @@ export const GOOGLE_TOOLS_WITHHELD_NOTES: Record<
       + 'chat.',
     linkLabel: null,
   },
+}
+
+export const GOOGLE_TOOLS_NEUTRAL_REFUSED_DETAIL = 'Besidka does not send '
+  + 'Google data to a model that may use it for training. Pick another '
+  + 'model.'
+
+export interface GoogleToolsRecipientHint {
+  providerId?: string | null
+  isGateway?: boolean
+}
+
+export function findGoogleProviderRule(
+  providerId: string | null | undefined,
+): GoogleDataRule | null {
+  if (!providerId || !Object.hasOwn(GOOGLE_DATA_PROVIDER_RULES, providerId)) {
+    return null
+  }
+
+  return GOOGLE_DATA_PROVIDER_RULES[providerId as SupportedProviderId]
+}
+
+export function googleProviderNeedsPaidTier(
+  providerId: string | null | undefined,
+): boolean {
+  return findGoogleProviderRule(providerId)
+    ?.conditions.includes('gemini-paid-tier-confirmed') === true
+}
+
+function getProviderDisplayName(providerId: string): string {
+  const meta = providerMeta[providerId]
+
+  return meta?.shortLabel ?? meta?.label ?? providerId
+}
+
+function describeAllowedAlternatives(): string {
+  const rules = Object.values(GOOGLE_DATA_PROVIDER_RULES)
+  const allowedNames = rules
+    .filter(rule => rule.verdict === 'allowed')
+    .map(rule => getProviderDisplayName(rule.id))
+  const hasPaidTierProvider = rules.some((rule) => {
+    return rule.conditions.includes('gemini-paid-tier-confirmed')
+  })
+
+  return hasPaidTierProvider
+    ? `${allowedNames.join(', ')} or Gemini on a paid key`
+    : allowedNames.join(' or ')
+}
+
+/**
+ * The note for a refused recipient, worded for the recipient's own verdict in
+ * the Google data allow-list (`GOOGLE_DATA_PROVIDER_RULES`). Only a Gemini
+ * model keeps the paid-tier wording and the API Keys link, because the
+ * confirmation on that page lifts the refusal for Gemini and for nothing
+ * else. A provider the list refuses (its API terms allow training on inputs)
+ * has no route, so it gets no link. A provider the list allows only on
+ * models its vendor serves itself says so. A gateway keeps the generic
+ * wording, and anything unresolved (a past message whose model is unknown)
+ * gets a neutral text without a link.
+ */
+export function getGoogleToolsWithheldNote(
+  reason: GoogleToolsWithheldReason,
+  recipient: GoogleToolsRecipientHint = {},
+): GoogleToolsWithheldNote {
+  const note = GOOGLE_TOOLS_WITHHELD_NOTES[reason]
+
+  if (
+    reason !== 'model_may_not_receive_google_data'
+    || recipient.isGateway === true
+  ) {
+    return note
+  }
+
+  const rule = findGoogleProviderRule(recipient.providerId)
+  const neutralNote: GoogleToolsWithheldNote = {
+    summary: note.summary,
+    detail: GOOGLE_TOOLS_NEUTRAL_REFUSED_DETAIL,
+    linkLabel: null,
+  }
+
+  if (!rule) {
+    return neutralNote
+  }
+
+  if (googleProviderNeedsPaidTier(rule.id)) {
+    return note
+  }
+
+  const providerName = getProviderDisplayName(rule.id)
+
+  if (rule.verdict === 'refused') {
+    return {
+      summary: note.summary,
+      detail: `${providerName} may use API inputs for training, so Besidka `
+        + 'does not send Google data to it. Pick '
+        + `${describeAllowedAlternatives()}.`,
+      linkLabel: null,
+    }
+  }
+
+  if (rule.conditions.includes('alibaba-served-model')) {
+    return {
+      summary: note.summary,
+      detail: `${providerName} is allowed for Google data only on models `
+        + 'Alibaba serves itself, because Alibaba does not train on inputs '
+        + 'for those. This model is served by another vendor, whose terms '
+        + 'apply, so Besidka does not send Google data to it. Pick another '
+        + 'model.',
+      linkLabel: null,
+    }
+  }
+
+  return neutralNote
 }
 
 /**
