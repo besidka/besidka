@@ -64,6 +64,16 @@
               Connected
             </span>
             <button
+              v-else-if="!isConnectable(entry)"
+              type="button"
+              class="btn btn-sm relative z-10 shrink-0 min-h-11 sm:min-h-8"
+              :aria-label="`Open ${entry.title}`"
+              data-testid="google-entry-card-details"
+              @click="emit('open', entry.id)"
+            >
+              Details
+            </button>
+            <button
               v-else
               type="button"
               class="btn btn-primary btn-sm relative z-10 shrink-0 min-h-11 sm:min-h-8"
@@ -97,5 +107,9 @@ const emit = defineEmits<{
 
 function isConnected(entry: GoogleEntry): boolean {
   return entry.state === 'connected' || entry.state === 'partial'
+}
+
+function isConnectable(entry: GoogleEntry): boolean {
+  return entry.action === 'connect' || entry.action === 'reconnect'
 }
 </script>
