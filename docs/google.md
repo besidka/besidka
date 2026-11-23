@@ -2990,6 +2990,21 @@ stored message keeps the one from the first send. The part comes from
 no model output and no server text is rendered, and an unknown code renders
 nothing.
 
+For `model_may_not_receive_google_data` only (BES-466), the send also adds one
+fixed sentence to the system prompt (`GOOGLE_TOOLS_MODEL_REFUSED_INSTRUCTION`
+in `shared/utils/google-tools-withheld.ts`, added by `buildChatInstructions`
+before the date line, on the main model call and on the search answer
+continuation of the same send): "The user has Google
+services connected in Besidka (Drive, Gmail, Calendar), but they are not
+available to this model. If the request needs them, say so and suggest
+switching to another model; do not suggest connecting a service." Without it
+the model told a user whose Google was connected that no calendar was
+connected. It holds no Google data, name, count or request text, and it is
+written exactly when the withheld part is (the user has candidates and the
+recipient was refused), also on a resumed send, never for the other reason or
+for a user without candidates. The knowledge-budget estimate at the start of
+the route does not count it (about 50 tokens).
+
 `Chat/GoogleToolsWithheld.vue` shows it above the answer as a collapsed
 `<details>` line (the pattern of `Chat/OmittedContextFiles.vue`) whose
 expanded body is a `ChatInputToolsMenuInfoNote`; the first reason links to
@@ -4409,6 +4424,28 @@ When the predicate gives a reason, every switch is disabled, the sub-line
 reads "Not available with this model" and an info button (click to open, like
 the "+" menu notes) shows the reason text from
 `getGoogleToolsUnavailableNote`; the Drive "+" hint names the connector list.
+The switch of such a row is drawn unchecked and plainly `disabled` (daisyUI's
+own disabled look, no custom opacity): `:checked="row.isOn && !row.reasonNote"`
+changes only what is shown, the stored per-chat choice is untouched and no
+`PUT` is sent. Under the text the note carries the actions of
+`getGoogleToolsUnavailableActions` (BES-466), computed per row in
+`buildComposerGoogleRows` as `reasonActions`:
+
+| Reason | Actions |
+| --- | --- |
+| `model_may_not_receive_google_data`, direct Gemini with a saved key that is not confirmed | "Open API Keys" (`/profile/keys?provider=google`, the Google card) and the API Keys page's own paid-tier confirmation (`ProfileKeysGeminiPaidTier`: the same statement "This key is on a Google Cloud project with billing enabled", the same note and the same `POST /api/v1/profiles/keys/google/paid-tier`, so no new legal text; once ticked the reason lifts and the row becomes a normal switch) |
+| `model_may_not_receive_google_data`, direct Gemini without a saved key | "Open API Keys" |
+| `model_may_not_receive_google_data`, any other recipient (DeepSeek, Moonshot AI, Qwen, a gateway model, or a Gemini model that is refused although its key is confirmed, where the confirmation can no longer help and is never shown again) | "Open API Keys" and "Choose another model" |
+| `provider_tool_not_removable`, `gateway_needs_google_data`, `tool_calling_off` | none (text only. The web search and Run code toggles live in the "+" menu and their state in `ChatInput.client.vue`, but the picker has no one-call control to turn the provider tool off for one message, so no link was built) |
+
+"Choose another model" emits `choose-model` up through
+`ConnectorPicker.client.vue` to `ChatInput.client.vue`, which closes the
+connector dialog, waits one tick so its `close()` has run, and then calls the
+`chat-input:open-model-picker` hook that `ModelsTrigger.vue` listens to (the
+dropdown at md+, the bottom sheet below; a repeat while it is open does
+nothing). The same "Open API Keys" link sits in the chat's withheld note
+(`Chat/GoogleToolsWithheld.vue`); that note is a record of a past send and has
+no inline confirmation.
 The rows keep the keyboard order logo, text, info button, switch, `min-h-11`
 on a phone, and a polite live region (text from the composable, set after the
 save settles) says "Gmail is now off in this chat", or after a rollback "Gmail

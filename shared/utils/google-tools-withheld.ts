@@ -10,6 +10,14 @@ export type GoogleToolsWithheldReason
 
 export const GOOGLE_TOOLS_WITHHELD_KEYS_PATH = '/profile/keys?provider=google'
 
+export const GOOGLE_TOOLS_OPEN_KEYS_LABEL = 'Open API Keys'
+
+export const GOOGLE_TOOLS_MODEL_REFUSED_INSTRUCTION = 'The user has Google '
+  + 'services connected in Besidka (Drive, Gmail, Calendar), but they are '
+  + 'not available to this model. If the request needs them, say so and '
+  + 'suggest switching to another model; do not suggest connecting a '
+  + 'service.'
+
 export interface GoogleToolsWithheldNote {
   summary: string
   detail: string
@@ -25,7 +33,7 @@ export const GOOGLE_TOOLS_WITHHELD_NOTES: Record<
     detail: 'Besidka does not send Google data to a model that may use it '
       + 'for training. Pick another model, or confirm on the API Keys page '
       + 'that your Gemini key is a paid one.',
-    linkLabel: 'Open API Keys',
+    linkLabel: GOOGLE_TOOLS_OPEN_KEYS_LABEL,
   },
   provider_tool_not_removable: {
     summary: 'Google tools were not offered with a built-in provider tool.',

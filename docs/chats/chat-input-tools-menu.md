@@ -550,7 +550,11 @@ Discover tab of `/chats/connectors?tab=discover`) and
 "Manage connectors" (`/chats/connectors`), the Besidka row when that feature
 is active, up to three Google rows (`ConnectorPickerGoogleRow.vue`: Google
 Drive, Gmail and Google Calendar, one switch per service per chat, with the
-"Not available with this model" state and its info button; outside the limit,
+"Not available with this model" state (an unchecked, plainly disabled switch,
+and an info button whose note carries "Open API Keys", the paid-tier
+confirmation for Gemini or "Choose another model", which closes this dialog
+and opens the model picker through the `chat-input:open-model-picker` hook;
+`docs/google.md` section 18.6); outside the limit,
 not in the bulk buttons, `docs/google.md` section 18; the Drive "+" hint names
 this list), a toggle per connector (title, host as plain text, a `badge
 badge-soft` when it is `drifted`), at most five on, and the limit hint ("A

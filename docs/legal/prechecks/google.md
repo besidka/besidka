@@ -104,7 +104,7 @@ flagged as carrying Google data (row 2).
 |---|---|---|---|
 | Anthropic | No | Yes | none |
 | OpenAI | No (since 2023-03-01) | Yes | none |
-| Google Gemini API | Paid: no. Unpaid: yes, with human review | Only on a paid key | The terms move EEA/CH/UK key holders to paid-tier data terms even on free quota, but Besidka cannot verify the key holder's location, so every user confirms per key: "This key is on a Google Cloud project with billing enabled". |
+| Google Gemini API | Paid: no. Unpaid: yes, with human review | Only on a paid key | The terms move EEA/CH/UK key holders to paid-tier data terms even on free quota, but Besidka cannot verify the key holder's location, so every user confirms per key: "This key is on a Google Cloud project with billing enabled". Since BES-466 the same confirmation is also offered inline in the connector picker's reason note for a direct Gemini model: it renders the API Keys page's own `ProfileKeysGeminiPaidTier` component, so it shows the identical statement and note and posts to the same `POST /api/v1/profiles/keys/google/paid-tier` route as an explicit tick; no new text or route. |
 | xAI | No (not without explicit permission) | Yes | none; which terms bind a self-serve key is UNVERIFIED |
 | DeepSeek | No no-training promise for API traffic; the privacy policy lists training on inputs with an opt-out | **No** | blocked |
 | Moonshot AI | Yes by default | **No** | blocked |

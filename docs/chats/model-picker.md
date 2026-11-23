@@ -128,6 +128,17 @@ picking a model. All of them return focus to the model button.
 - The picker and the tools menu share `useState('chat-input:open-popover')`,
   so opening one closes the other.
 
+### Opening it from elsewhere
+
+`ModelsTrigger.vue` listens to the `chat-input:open-model-picker` Nuxt hook
+and runs the same `toggle()` as the button (nothing when it is already open),
+so the dropdown or the sheet opens exactly as from a click. The connector
+picker's "Choose another model" action (`docs/google.md` section 18.6) calls
+it: `ChatInput.client.vue` first closes the connector dialog and waits one
+tick, so that dialog's `close()` (and its focus restore) has finished before
+the models sheet calls `showModal()`; the two sheets never overlap. This has
+been unit tested only (no browser or iOS check).
+
 Model details (the info button) render inline under their row, so they
 scroll with the list and are never clipped.
 

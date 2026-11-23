@@ -17,8 +17,20 @@ const SWITCH_ROW: ComposerGoogleRow = {
   isOn: true,
   subLine: 'person@example.test',
   reasonNote: null,
+  reasonActions: [],
   link: null,
 }
+
+const KEYS_ACTION = {
+  kind: 'open-api-keys',
+  label: 'Open API Keys',
+  path: '/profile/keys?provider=google',
+} as const
+
+const CHOOSE_MODEL_ACTION = {
+  kind: 'choose-model',
+  label: 'Choose another model',
+} as const
 
 const REASON_NOTE = {
   summary: 'Google tools were not offered to this model.',
@@ -38,6 +50,13 @@ async function mountRow(
       isSaving: false,
       choiceState,
       ...props,
+    },
+    global: {
+      stubs: {
+        ProfileKeysGeminiPaidTier: {
+          template: '<div data-testid="gemini-paid-tier-stub" />',
+        },
+      },
     },
     attachTo: document.body,
   })
@@ -252,6 +271,95 @@ describe('ChatInput/ConnectorPickerGoogleRow', () => {
         .toBe(false)
       expect(byId(wrapper, 'connector-picker-google-note-gmail').exists())
         .toBe(false)
+    })
+
+    it('shows the switch unchecked and plainly disabled, even when the '
+      + 'chat choice is on', async () => {
+      const wrapper = await mountRow({
+        isOn: true,
+        subLine: 'Not available with this model',
+        reasonNote: REASON_NOTE,
+      })
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+
+      expect((toggle.element as HTMLInputElement).checked).toBe(false)
+      expect(toggle.attributes('disabled')).toBeDefined()
+      expect(toggle.classes()).not.toContain('opacity-60')
+      expect(toggle.attributes('aria-label')).toBe('Use Gmail in this chat')
+      expect(wrapper.html()).toContain('cursor-not-allowed')
+    })
+
+    it('shows no actions for a note without any', async () => {
+      const wrapper = await mountRow({
+        subLine: 'Not available with this model',
+        reasonNote: REASON_NOTE,
+      })
+
+      expect(byId(wrapper, 'connector-picker-google-actions-gmail').exists())
+        .toBe(false)
+    })
+
+    it('shows the keys link and the model button for a refused '
+      + 'non-Gemini model', async () => {
+      const wrapper = await mountRow({
+        subLine: 'Not available with this model',
+        reasonNote: REASON_NOTE,
+        reasonActions: [KEYS_ACTION, CHOOSE_MODEL_ACTION],
+      })
+      const link = byId(wrapper, 'connector-picker-google-action-keys-gmail')
+      const button = byId(wrapper, 'connector-picker-google-action-model-gmail')
+
+      expect(link.text()).toBe('Open API Keys')
+      expect(link.html()).toContain('/profile/keys?provider=google')
+      expect(link.classes()).toEqual(expect.arrayContaining([
+        'btn',
+        'btn-sm',
+        'min-h-11',
+        'sm:min-h-8',
+      ]))
+      expect(button.text()).toBe('Choose another model')
+      expect(button.classes()).toEqual(expect.arrayContaining([
+        'btn',
+        'btn-sm',
+        'min-h-11',
+        'sm:min-h-8',
+      ]))
+      expect(byId(wrapper, 'gemini-paid-tier-stub').exists()).toBe(false)
+    })
+
+    it('emits navigate from the keys link and choose-model from the '
+      + 'model button', async () => {
+      const wrapper = await mountRow({
+        subLine: 'Not available with this model',
+        reasonNote: REASON_NOTE,
+        reasonActions: [KEYS_ACTION, CHOOSE_MODEL_ACTION],
+      })
+
+      await byId(wrapper, 'connector-picker-google-action-keys-gmail')
+        .trigger('click')
+
+      expect(wrapper.emitted('navigate')).toHaveLength(1)
+      expect(wrapper.emitted('choose-model')).toBeUndefined()
+
+      await byId(wrapper, 'connector-picker-google-action-model-gmail')
+        .trigger('click')
+
+      expect(wrapper.emitted('choose-model')).toHaveLength(1)
+    })
+
+    it('shows the existing paid-tier confirmation for Gemini and no model '
+      + 'button', async () => {
+      const wrapper = await mountRow({
+        subLine: 'Not available with this model',
+        reasonNote: REASON_NOTE,
+        reasonActions: [KEYS_ACTION, { kind: 'confirm-paid-tier' }],
+      })
+
+      expect(byId(wrapper, 'gemini-paid-tier-stub').exists()).toBe(true)
+      expect(byId(wrapper, 'connector-picker-google-action-keys-gmail')
+        .exists()).toBe(true)
+      expect(byId(wrapper, 'connector-picker-google-action-model-gmail')
+        .exists()).toBe(false)
     })
 
     it('does not emit a toggle for a disabled switch', async () => {

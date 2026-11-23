@@ -175,6 +175,68 @@ describe('buildChatInstructions', () => {
       .toBe(buildChatInstructions({ ...baseInput }))
   })
 
+  describe('the Google model-refused sentence', () => {
+    const SENTENCE = 'The user has Google services connected in Besidka '
+      + '(Drive, Gmail, Calendar), but they are not available to this '
+      + 'model. If the request needs them, say so and suggest switching to '
+      + 'another model; do not suggest connecting a service.'
+
+    it('is added, exactly, when the recipient was refused', () => {
+      const systemText = buildChatInstructions({
+        ...baseInput,
+        googleToolsWithheldReason: 'model_may_not_receive_google_data',
+      })
+
+      expect(systemText).toContain(SENTENCE)
+      expect(systemText.split(SENTENCE)).toHaveLength(2)
+      expect(systemText.indexOf(SENTENCE))
+        .toBeLessThan(systemText.indexOf(DATE_LINE))
+      expect(systemText.endsWith(DATE_LINE)).toBe(true)
+    })
+
+    it('is added to a search answer continuation, which has no tools', () => {
+      const systemText = buildChatInstructions({
+        ...baseInput,
+        requestedTools: [],
+        hasChatSearchTools: false,
+        hasKnowledgeTools: false,
+        googleToolsWithheldReason: 'model_may_not_receive_google_data',
+      })
+
+      expect(systemText).toContain(SENTENCE)
+    })
+
+    it('is absent for the other reason, for no reason and by default', () => {
+      for (const googleToolsWithheldReason of [
+        'provider_tool_not_removable',
+        null,
+        undefined,
+      ] as const) {
+        expect(buildChatInstructions({
+          ...baseInput,
+          googleToolsWithheldReason,
+        })).not.toContain('Google services connected')
+      }
+
+      expect(withoutLastLine(buildChatInstructions({
+        ...baseInput,
+        googleToolsWithheldReason: 'provider_tool_not_removable',
+      }))).toBe(BEFORE.none)
+    })
+
+    it('holds no request or connection data', () => {
+      const withSentence = buildChatInstructions({
+        ...baseInput,
+        googleToolsWithheldReason: 'model_may_not_receive_google_data',
+      })
+      const without = buildChatInstructions(baseInput)
+
+      expect(withSentence.replace(SENTENCE, '').replace('\n\n\n\n', '\n\n'))
+        .toBe(without)
+      expect(SENTENCE).not.toMatch(/@|\d/)
+    })
+  })
+
   it('states the date on a gateway send as well', () => {
     const systemText = buildChatInstructions({
       ...baseInput,
