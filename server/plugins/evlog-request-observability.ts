@@ -77,13 +77,15 @@ const QUERY_FREE_PATH_PREFIXES = [
   '/api/v1/connectors/oauth/callback',
   '/api/v1/google/oauth/callback',
   '/api/v1/google/byo/callback',
+  '/api/v1/google/drive/created-files/download',
 ]
 
 /**
  * Drops the query string from admin API paths, so an admin's user search
  * text (`?q=`) never reaches the wide event (compliance pre-check C15), and
  * from the connector and Google OAuth callbacks, whose query carries the
- * authorization code and the state.
+ * authorization code and the state, and from the created file download,
+ * whose query names a chat and a Drive file.
  */
 export function toLoggedPath(path: unknown): unknown {
   if (typeof path !== 'string' || !path.includes('?')) {

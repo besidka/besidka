@@ -5291,8 +5291,9 @@ generated documents: a card in the message, a click that opens a preview in the
 side panel with an "Open in Google Docs", "Open in Google Sheets" or "Open in
 Google Drive" button, and a row under Outputs in the chat context panel.
 
-**What is persisted, and where the card reads it.** Nothing new is persisted
-and no server route changed. After a reload the message already holds the tool
+**What is persisted, and where the card reads it.** Nothing new is persisted,
+and the card and the preview call no server route (only the Download menu
+does, see "Download as a real file" below). After a reload the message already holds the tool
 part `tool-google__drive_create_file` with the full `input` (`name`, `kind`,
 `content`, `folderId`), because `redactGoogleToolPartsForPersistence` only
 redacts the output, and with the `output` `{ references: [{ id, kind: 'file',
@@ -5338,7 +5339,98 @@ this rule: if the user edits the file in Google afterward, the preview and the
 card still show the text Besidka sent, and only the "Open in" button reaches
 the current file. Re-reading the file would be a Drive read the user did not
 ask for, so it is not done. The content region is focusable with
-`role="region"` and the name "File content". There is no Download button yet.
+`role="region"` and the name "File content". The panel header has a Download
+menu next to "Open in" (next section).
+
+**Download as a real file (BES-468, task 4).** The preview header offers
+"Download", a `<details>` menu (`Chat/GoogleFileDownload.vue`, icon only below
+`sm` so the header fits at 360 px) with the formats of the kind
+(`GOOGLE_FILE_DOWNLOADS`, `shared/utils/google-file-download.ts`, the one
+allowlist):
+
+| Kind | Menu entry | Drive call | Content-Type |
+|---|---|---|---|
+| Google Doc | "Download as Word (.docx)" | `files.export` to the OOXML Word type | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+| Google Doc | "Download as text (.txt)" | `files.export` to `text/plain` | `text/plain; charset=utf-8` |
+| Google Sheet | "Download as Excel (.xlsx)" | `files.export` to the OOXML Excel type | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| Google Sheet | "Download first sheet as CSV" | `files.export` to `text/csv`, Google's CSV is the first sheet only and the label says so | `text/csv; charset=utf-8` |
+| Text file | "Download as text" | `files.get?alt=media`, the raw file, no export | `text/plain; charset=utf-8` |
+
+Each entry is a plain `<a href download>` to
+`GET /api/v1/google/drive/created-files/download?chatSlug=&fileId=&format=`
+(`server/api/v1/google/drive/created-files/download.get.ts`), handled by
+`useFileDownload().onDownloadClick` like the other download buttons (the iOS
+home-screen app gets the share sheet). The browser handles the attachment, so
+an error does not navigate the tab but shows as a failed download in the
+browser's own list: the server answers with a plain message, but with an
+anchor no toast can show it. A fetch with a toast would show it and would
+hold the file in browser memory; the anchor was chosen (the design allowed
+either). The item is disabled for 1.5 seconds after a click, because a
+second request within a second would meet KV's one write a second on the
+rate-limit key and fail closed.
+
+Order on the server: `requireGoogleByoAccess` (same-origin read guard,
+session, admin plus `google.byo`, whose parent flag `google.drive` is
+implied; a 404 for anyone else), the hourly rate limit (30 downloads an
+hour for a user, KV bucket `google-file-download-rate-limit`, fail closed with
+`Retry-After`; it counts every request that passes the gate, so a refused
+request uses budget too), the strict query (`chatSlug` a ULID, `fileId` a
+Drive id, `format` an enum; any other key is a 400), `requireLegalConsent`, the
+chat (the signed-in user's, by slug), and the file: `fileId` counts only if
+that chat's stored tool parts, read with `readGoogleCreatedFile` from
+assistant messages only, name it. The kind and the name come from the stored
+part and never from the query. The newest 1,000 messages of the chat are read
+(`loadChatContextRows`, the same bound as the context panel), so a file in an
+older message answers 404. A format that the kind does not allow is a 400.
+Then `requireGoogleAccessToken` for the `byo` mode with `drive.readonly`
+(404 without an active own connection, 409 to reconnect), the narrow
+`files.get` (`readDriveItemMeta`) that refuses a file in the trash (404), in
+a shared drive (409) or of another type than the one created (409), and the
+export or the raw read through `googleFetchBytes` (the one-hop redirect rule
+and host allowlist of section 12.4, 10 MiB cap while the body streams,
+`redirect: 'manual'`). Drive's own refusals map to fixed sentences worded for
+the own client (`GOOGLE_FILE_DOWNLOAD_FAILURES`): 413 above 10 MB
+(`exportSizeLimitExceeded` or the cap), 403, 404, 429, 409 and 502.
+
+The answer is buffered up to 10 MiB and then sent in one piece (`new
+Response(bytes)`), not piped. A pass-through would have committed a 200 and
+then handed the user a truncated, corrupt file when the cap tripped or Drive
+broke off; buffering lets every refusal be a status before the first byte and
+lets the log carry the byte count. Headers: `Content-Disposition: attachment`
+with an ASCII `filename` and the exact `filename*` (the name is
+`buildGoogleFileDownloadName`: control, invisible and direction characters,
+path separators and `<>:"|?*` become spaces, leading dots and trailing dots
+and spaces go, at most 120 characters by code point, the format's extension
+added unless the title already ends with it; a text file keeps an extension
+only from `txt`, `md`, `csv`, `json`, `log`, `yaml`, `yml`, `xml` and `tsv`,
+case-insensitive, so `fix.command` or `x.html` becomes `fix.command.txt` and
+`x.html.txt`). The ASCII fallback `filename` is cleaned again after Unicode
+normalization (`/ \ < > : | ? * % ; "` become `_`, leading dots and trailing
+dots and spaces go, `download` when nothing is left), because fullwidth
+characters fold into those separators there; `filename*` carries the exact
+name. `Content-Type` comes from the allowlist, with `Content-Length`,
+`X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`.
+
+The hourly limiter is best-effort: it is a read-then-write on KV, not an
+atomic counter, and it counts before the chat and Drive lookups, so a
+refused request uses budget too; when KV cannot count, the request is refused
+(fail closed). An XLSX export keeps whatever cells the create-file validator
+allowed at creation; a formula was refused then (section 19.12), so the
+export carries none that Besidka wrote.
+
+Nothing is stored: no R2, D1 or KV copy of the file, no model, no cache. The
+bytes go from Drive through the Worker to the browser, and the token never
+leaves the server. Logs hold the user id (from the gate), kind, format, byte
+count and outcome (and the status of a refusal, or the error name and code of
+an unexpected one) under `attributes.googleCreatedFileDownload`; never a name,
+content, token or message text, and never an id: the route is in
+`QUERY_FREE_PATH_PREFIXES` of `evlog-request-observability.ts`, so the
+logged path drops the query (chat slug and Drive file id). The chat's Google
+switch (section 18) and the tool permission modes only remove model tools; the
+Download is a user action on a file the user already approved, so they do not
+gate it. Not verified against a real Drive: that `files.export` answers
+Word, Excel and CSV for a file the app created with the `drive.readonly`
+token, and whether an export redirects (section 12.4 has the same gap).
 
 **Where it appears.** `Chat/GoogleFile.vue` renders after the answer text,
 like the document and artifact cards: `isOutputCardPart` includes a part only
@@ -5383,13 +5475,18 @@ OWNER STEP: request the official artwork through the Partner Marketing Hub and
 replace the three constants (one line each), or point the three constants at
 the Drive logo as the fallback.
 
-**Not built.** A Download button that exports the file from Drive (task 4,
-later); cards for created folders, renames and moves; creating Slides.
+**Not built.** Cards for created folders, renames and moves; creating Slides;
+a download of a file whose message is older than the newest 1,000 of its chat.
 `tests/unit/components/Chat/GoogleFile.spec.ts`, `GoogleFilePreview.spec.ts`,
-`GoogleFileHeaderAction.spec.ts`, `tests/unit/utils/google-created-file.spec.ts`
+`GoogleFileHeaderAction.spec.ts`, `GoogleFileDownload.spec.ts`,
+`tests/unit/utils/google-created-file.spec.ts`,
+`tests/unit/utils/google-file-download.spec.ts`,
+`tests/unit/server/utils/google/created-file-download.spec.ts` and
+`tests/integration/api/google-created-file-download.spec.ts`,
 and the Google files cases of `build-chat-context.spec.ts` and
 `ContextPanel.spec.ts` cover it. Nothing here was seen in a browser; the card,
-the panel header and the Outputs row are NOT VERIFIED visually, and the
+the panel header with the Download menu at 360 px and the Outputs row are NOT
+VERIFIED visually, and the
 `thesvg-color` icons were not compared with Google's current artwork.
 
 ## 20. The setup guide on the own-client card (BES-458)

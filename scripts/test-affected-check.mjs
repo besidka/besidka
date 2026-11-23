@@ -2833,10 +2833,26 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/GoogleFile.spec.ts',
     'tests/unit/components/Chat/GoogleFilePreview.spec.ts',
     'tests/unit/components/Chat/GoogleFileHeaderAction.spec.ts',
+    'tests/unit/components/Chat/GoogleFileDownload.spec.ts',
+    'tests/unit/utils/google-file-download.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/pages/chats/[slug].spec.ts',
     'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
     'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+  ]
+
+  const googleFileDownloadTests = [
+    'tests/integration/api/google-created-file-download.spec.ts',
+    'tests/unit/server/utils/google/created-file-download.spec.ts',
+    'tests/unit/utils/google-file-download.spec.ts',
+    'tests/unit/utils/google-created-file.spec.ts',
+    'tests/unit/components/Chat/GoogleFileDownload.spec.ts',
+    'tests/unit/components/Chat/GoogleFileHeaderAction.spec.ts',
+    'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+    'tests/unit/server/utils/google/log-boundary.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/google/drive-write-boundary.spec.ts',
+    'tests/unit/server/routes/waf-blocked-paths.spec.ts',
   ]
 
   const messageSearchTests = [
@@ -3955,8 +3971,13 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/google-created-file\.ts|app\/components\/Chat\/GoogleFile(Preview|HeaderAction)?\.vue|app\/composables\/google-file-preview\.ts)$/,
+        /^(shared\/utils\/google-(created-file|file-download)\.ts|app\/components\/Chat\/GoogleFile(Preview|HeaderAction|Download)?\.vue|app\/composables\/google-file-preview\.ts)$/,
       tests: googleFileCardsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-file-download|google-created-file|google-drive-write|google-drive)\.ts|server\/utils\/google\/(created-file-download|route|drive-write-api|drive|download|tokens|byo-access|http)\.ts|server\/api\/v1\/google\/drive\/created-files\/.*\.ts|server\/utils\/chats\/context\/load-chat-context\.ts|server\/plugins\/evlog-request-observability\.ts|app\/components\/Chat\/GoogleFileDownload\.vue|tests\/setup\/helpers\/(google-connections|connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+      tests: googleFileDownloadTests,
     },
     {
       pattern:
@@ -4037,7 +4058,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|GoogleFile(Preview|HeaderAction)\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
+        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|GoogleFile(Preview|HeaderAction|Download)\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
       tests: SPACER_SUITES,
     },
     {

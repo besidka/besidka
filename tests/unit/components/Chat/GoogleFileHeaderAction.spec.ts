@@ -34,6 +34,37 @@ describe('Chat/GoogleFileHeaderAction', () => {
     expect(link.attributes('rel')).toBe('noopener noreferrer')
   })
 
+  it('offers Download next to Open when the file and the chat are known',
+    async () => {
+      const wrapper = await mountSuspended(ChatGoogleFileHeaderAction, {
+        props: {
+          kind: 'spreadsheet',
+          openLink: OPEN_LINK,
+          title: 'Budget',
+          fileId: 'abcdefghij1234567890',
+          chatSlug: '01JABCDEFGHJKMNPQRSTVWXYZ0',
+        } as never,
+      })
+
+      expect(wrapper.find('[data-testid="google-file-download"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="google-file-download-csv"]').text())
+        .toBe('Download first sheet as CSV')
+      expect(wrapper.find('[data-testid="google-file-open"]').exists())
+        .toBe(true)
+    })
+
+  it('shows only Open without a chat to download from', async () => {
+    const wrapper = await mountSuspended(ChatGoogleFileHeaderAction, {
+      props: { kind: 'document', openLink: OPEN_LINK } as never,
+    })
+
+    expect(wrapper.find('[data-testid="google-file-download"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="google-file-open"]').exists())
+      .toBe(true)
+  })
+
   it('does not copy the other panel props onto the link', async () => {
     const wrapper = await mountSuspended(ChatGoogleFileHeaderAction, {
       props: {

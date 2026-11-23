@@ -7,8 +7,8 @@ import type { GoogleCreatedFile } from '#shared/utils/google-created-file'
 
 export type GoogleFilePreviewTarget = Pick<
   GoogleCreatedFile,
-  'toolCallId' | 'title' | 'kind' | 'content' | 'openLink'
->
+  'toolCallId' | 'id' | 'title' | 'kind' | 'content' | 'openLink'
+> & { chatSlug: string }
 
 export function getGoogleFilePreviewViewKey(toolCallId: string): string {
   return getGoogleFileItemId(toolCallId)
@@ -23,6 +23,8 @@ function toSidePanelView(target: GoogleFilePreviewTarget) {
     headerActions: LazyChatGoogleFileHeaderAction,
     props: {
       toolCallId: target.toolCallId,
+      fileId: target.id,
+      chatSlug: target.chatSlug,
       title: target.title,
       kind: target.kind,
       content: target.content,

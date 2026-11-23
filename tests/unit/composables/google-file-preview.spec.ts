@@ -10,6 +10,8 @@ enableAutoUnmount(afterEach)
 
 const TARGET = {
   toolCallId: 'call_1',
+  id: 'abcdefghij1234567890',
+  chatSlug: '01JABCDEFGHJKMNPQRSTVWXYZ0',
   title: 'Plan',
   kind: 'document' as const,
   content: '# Plan',
@@ -36,6 +38,8 @@ describe('useGoogleFilePreview', () => {
     expect(sidePanel.mode.value).toBe('detail')
     expect(sidePanel.currentView.value?.props).toEqual({
       toolCallId: 'call_1',
+      fileId: 'abcdefghij1234567890',
+      chatSlug: '01JABCDEFGHJKMNPQRSTVWXYZ0',
       title: 'Plan',
       kind: 'document',
       content: '# Plan',
