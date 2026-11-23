@@ -441,6 +441,28 @@ describe('connector image parts in shares and branches', () => {
     expect(JSON.stringify(message)).not.toContain('1AbCdEfGhIjKlMnOpQrStUvWxYz')
   })
 
+  it('drops the Google tools withheld note from a share and a branch',
+    () => {
+      const message = {
+        id: 'assistant-withheld',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'data-google-tools-withheld',
+            data: { reason: 'model_may_not_receive_google_data' },
+          },
+          { type: 'text', text: 'I have no calendar access.' },
+        ],
+      } as unknown as UIMessage
+
+      expect(filterPublicParts([message])[0]!.parts).toEqual([
+        { type: 'text', text: 'I have no calendar access.' },
+      ])
+      expect(stripToolPartsFromBranchedMessage(message.parts)).toEqual([
+        { type: 'text', text: 'I have no calendar access.' },
+      ])
+    })
+
   it('drops the stopped marker from a share and keeps it in a branch',
     () => {
       const stoppedReply = {
