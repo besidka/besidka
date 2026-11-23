@@ -232,6 +232,27 @@ describe('useGoogleEntryActions', () => {
     })
   })
 
+  it('adds Change files access next to what is granted and returns to '
+    + 'the Drive panel', async () => {
+    setStatus({}, {
+      connection: summary({
+        clientMode: 'byo',
+        capabilities: ['identity', 'gmail-read', 'drive-read'],
+      }),
+    })
+
+    await useGoogleEntryActions().addDriveWriteAccess(entryOf('google-drive'))
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/google/byo/start', {
+      method: 'POST',
+      body: {
+        capabilities: ['drive-read', 'gmail-read', 'drive-write'],
+        returnTo: '/chats/connectors?panel=google-drive',
+      },
+    })
+    expect(mocks.navigateTo).toHaveBeenCalled()
+  })
+
   it('shows the server\'s reason when the connect cannot start', async () => {
     setStatus()
     mocks.fetch.mockRejectedValue({

@@ -4308,6 +4308,22 @@ the other capabilities, but only for an owner who has Drive read access granted
 and no Change files access, so a Gmail-only or Calendar-only owner never sees
 it; an owner with read access only now sees that line.
 
+With the `connectors` flag the own-client card is the reduced variant (client
+id and secret only), so the permission is asked in the Google Drive panel on
+Connectors instead (`GoogleDetailPanel.vue`, shown for `byo.canManage` with a
+saved client; `resolveGoogleDriveWriteAccess` in `app/utils/google-entries.ts`
+picks the state). With Drive read access granted on an active connection and
+Change files missing it shows the "Change files in Google Drive" checkbox
+with the same two notes and an "Add access" button, enabled once the box is
+ticked. The button (`addDriveWriteAccess`) posts to
+`/api/v1/google/byo/start` with the held capabilities plus `drive-write` and
+`returnTo` `/chats/connectors?panel=google-drive`, so the result message
+lands on the Drive panel and not on Gmail. Without read access (or while the
+connection needs a reconnect) the box is disabled with "Needs Drive read
+access first" next to the existing read "Add access"; once granted the panel
+shows "Change files access granted". The Drive entry itself never turns
+"partial" for this capability.
+
 ### 19.2 The tools
 
 | Tool | Kind | Input | Result |

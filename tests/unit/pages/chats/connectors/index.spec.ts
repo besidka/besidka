@@ -1120,6 +1120,19 @@ describe('chats connectors page', () => {
         })
       })
 
+    it('opens the Drive panel after an own-client Change files grant',
+      async () => {
+        mocks.query = { 'google-byo': 'connected', 'panel': 'google-drive' }
+
+        await mountPage()
+
+        expect(mocks.reportGoogleResult)
+          .toHaveBeenCalledWith('byo', 'connected')
+        expect(mocks.refreshGoogle).toHaveBeenCalled()
+        expect(mocks.googlePanelOpen).toHaveBeenCalledWith('google-drive')
+        expect(mocks.googlePanelOpen).not.toHaveBeenCalledWith('google-gmail')
+      })
+
     it('opens the Gmail panel for an own-client result without a panel',
       async () => {
         mocks.query = { 'google-byo': 'denied' }
