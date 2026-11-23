@@ -35,6 +35,7 @@ import {
   GOOGLE_DRIVE_ROOT_TITLE,
   GOOGLE_DRIVE_WRITE_TOOL_SCOPES,
   GOOGLE_DRIVE_WRITE_TRUST_NOTE,
+  isDriveConvertedKind,
   isDriveRootAlias,
   parseStrictCsv,
   validateCreateFileInput,
@@ -80,6 +81,7 @@ import {
   buildDriveRenameRequest,
   createDriveFileWithContent,
   createDriveItem,
+  findDriveItemsByApprovalDigest,
   driveFailureSuffix,
   generateDriveId,
   isDriveRootMeta,
@@ -1269,6 +1271,131 @@ export async function buildGoogleDriveWriteTools(
     }
   }
 
+  interface FileCreateOutcome {
+    itemId: string
+    alreadyExisted: boolean
+    createdParents: string[]
+    createdMimeType: string
+  }
+
+  interface FileCreateAttempt {
+    expected: ExpectedCreate
+    digest: string
+    context: DriveWriteContext
+    root: RootResolver
+  }
+
+  async function createGeneratedIdFile(
+    attempt: FileCreateAttempt & {
+      input: {
+        id: string
+        name: string
+        kind: DriveFileKind
+        content: string
+        parentId: string | null
+      }
+    },
+  ): Promise<FileCreateOutcome> {
+    const created = await createDriveFileWithContent(
+      { ...attempt.input, approvalDigest: attempt.digest },
+      attempt.context,
+    )
+    const confirmed = await confirmCreate({
+      created,
+      itemId: attempt.input.id,
+      expected: attempt.expected,
+      digest: attempt.digest,
+      context: attempt.context,
+      root: attempt.root,
+    })
+
+    return { itemId: attempt.input.id, ...confirmed }
+  }
+
+  /**
+   * The create of a Doc or a Sheet. Drive refuses a client id for a converted
+   * upload, so the retry protection is a lookup of this approval's marker
+   * before the create: one hit that reads back as ours (marker, approved
+   * name, converted type, approved parent) is the earlier run's file and
+   * nothing is created again; none means create without an id; two hits, a
+   * hit that is not ours or a lookup that did not run say "not confirmed"
+   * and create nothing. An ambiguous create answer is "not confirmed" and is
+   * never retried here.
+   */
+  async function createConvertedFile(
+    attempt: FileCreateAttempt & {
+      input: {
+        name: string
+        kind: DriveFileKind
+        content: string
+        parentId: string | null
+      }
+    },
+  ): Promise<FileCreateOutcome> {
+    const { expected } = attempt
+    const found = await findDriveItemsByApprovalDigest(
+      attempt.digest,
+      attempt.context,
+    )
+
+    if (!found.ok) {
+      return throwUnconfirmed(true, found)
+    }
+
+    if (found.value.length > 1) {
+      return throwUnconfirmed(true)
+    }
+
+    const [hit] = found.value
+
+    if (hit) {
+      let rootId: string | null = null
+
+      if (expected.parentFolderId === null) {
+        try {
+          rootId = (await attempt.root.resolve()).id
+        } catch {
+          return throwUnconfirmed(true)
+        }
+      }
+
+      if (!isOurItem(hit, expected, attempt.digest, rootId)) {
+        return throwUnconfirmed(true)
+      }
+
+      return {
+        itemId: hit.id,
+        alreadyExisted: true,
+        createdParents: hit.parents,
+        createdMimeType: hit.mimeType,
+      }
+    }
+
+    const created = await createDriveFileWithContent(
+      { ...attempt.input, id: null, approvalDigest: attempt.digest },
+      attempt.context,
+    )
+
+    if (created.ok) {
+      return {
+        itemId: created.value.id,
+        alreadyExisted: false,
+        createdParents: created.value.parents,
+        createdMimeType: created.value.mimeType,
+      }
+    }
+
+    if (
+      created.code === 'failed'
+      || created.code === 'too_large'
+      || created.code === 'conflict'
+    ) {
+      return throwUnconfirmed(true, created)
+    }
+
+    throw failureOf(created)
+  }
+
   const listFolderTool = withFollowUpTurn(tool({
     description: LIST_FOLDER_DESCRIPTION,
     inputSchema: listFolderInputSchema,
@@ -1538,10 +1665,13 @@ export async function buildGoogleDriveWriteTools(
       }
 
       const spec = GOOGLE_DRIVE_FILE_KIND_SPECS[kind]
+      const isConverted = isDriveConvertedKind(kind)
       const context = await readContext()
       const root = createRootResolver(context)
       const digest = await buildDriveCreateDigest(userId, executionId)
-      const fileId = await readCreateId(digest, context)
+      const plannedFileId = isConverted
+        ? null
+        : await readCreateId(digest, context)
 
       if (parentId !== null) {
         const parent = await readDriveItemMeta(parentId, context)
@@ -1564,34 +1694,33 @@ export async function buildGoogleDriveWriteTools(
         })
       }
 
-      const created = await createDriveFileWithContent(
-        {
-          id: fileId,
-          name,
-          kind,
-          content,
-          parentId,
-          approvalDigest: digest,
-        },
-        context,
-      )
+      const expected: ExpectedCreate = {
+        name,
+        mimeType: spec.targetMimeType,
+        parentFolderId: parentId,
+        isFile: true,
+      }
+      const outcome = plannedFileId === null
+        ? await createConvertedFile({
+          input: { name, kind, content, parentId },
+          expected,
+          digest,
+          context,
+          root,
+        })
+        : await createGeneratedIdFile({
+          input: { id: plannedFileId, name, kind, content, parentId },
+          expected,
+          digest,
+          context,
+          root,
+        })
       const {
+        itemId: fileId,
         alreadyExisted,
         createdParents,
         createdMimeType,
-      } = await confirmCreate({
-        created,
-        itemId: fileId,
-        expected: {
-          name,
-          mimeType: spec.targetMimeType,
-          parentFolderId: parentId,
-          isFile: true,
-        },
-        digest,
-        context,
-        root,
-      })
+      } = outcome
       const table = kind === 'spreadsheet' ? parseStrictCsv(content) : null
       const rows = table?.ok ? table.value : null
       const isTypeMismatch = createdMimeType !== spec.targetMimeType

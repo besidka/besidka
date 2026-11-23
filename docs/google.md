@@ -373,7 +373,7 @@ Assistant text that summarizes a Google result is not redacted either.
 
 | KV key | Holds | TTL | Deleted by |
 |---|---|---|---|
-| `google-drive-create:<digest>`, `<digest>` = base64url SHA-256 of `drive-create`, the user id and the approval id (or the execution id of an Always allow run) | The Drive file id that `files.generateIds` returned for one approved create of a folder or a file (sections 19.4 and 19.12), so a second run of the same approval sends the same id | 24 hours | Expiry only |
+| `google-drive-create:<digest>`, `<digest>` = base64url SHA-256 of `drive-create`, the user id and the approval id (or the execution id of an Always allow run) | The Drive file id that `files.generateIds` returned for one approved create of a folder or a plain text file (sections 19.4 and 19.12; a Doc or a Sheet takes no id and writes no such key), so a second run of the same approval sends the same id | 24 hours | Expiry only |
 | `tool-approval:result:<id>`, `<id>` = base64url SHA-256 of message public id and tool call id | One Google result body or error text of a paused turn, with user, chat and message ids checked on read | 24 hours | A finished continuation (`deleteResumedTurn`), a new user message, chat deletion and account purge, through the `resultIds` list of the per-chat index `tool-approval:chat:<chatPublicId>` |
 
 The stash is written by `recordToolApprovalPause` with the pause records,
@@ -4727,6 +4727,14 @@ a generated id from `files.generateIds` is accepted by a create; the alias
 client can read an item back. Everything else of the older list is not
 settled, and a missing field still refuses.
 
+Settled by the live check of 2026-11-25 (preview, real Drive): a plain text
+file created with a `generateIds` id works, but Drive answers `403
+generatedIdNotSupported` when a multipart upload converts to a Google
+Workspace type (`application/vnd.google-apps.*`) and carries a client `id`.
+So a Doc or a Sheet is created with no `id` (section 19.12), and the
+statement above that a generated id is accepted holds for folders and plain
+files only.
+
 Not verified against a real Google account (owner checklist, section 19.7):
 that a folder moved into its own descendant answers 400 or 403 (both map to
 the cycle sentence); that `shared` is true for a folder that only inherits
@@ -4784,6 +4792,11 @@ user's own Drive are drafted in section 19.8 (plan question Q3).
 8. Text file (PR3): create one with non-Latin text and an emoji and confirm
    it opens unchanged. Rename the file in the same chat (the created file joins
    `writableItems`).
+9. Converted create without an id (the 2026-11-25 fix, not yet verified live):
+   create a Doc and a Sheet (no `generatedIdNotSupported`), then force a second
+   run of the same approval (for example by editing the claim) and confirm that
+   the lookup finds the first file and no second one is made, and note whether
+   `appProperties has` finds a file seconds after its creation.
 
 The live checks of 2026-11-24 (an owner-run test on a real Drive: create
 folder, rename and move) settled: `canRename` and `canMoveItemWithinDrive`
@@ -5047,9 +5060,11 @@ second POST of that module and the only call to the upload endpoint,
 `resumable` or `media` upload type, on a PATCH to it and on any other file that
 mentions it except the older Besidka save, `drive-upload.ts`). Every field is
 read once into a local and checked: the id and the parent have the shape of a
-Drive id, the digest is a base64url SHA-256, and the name, kind and content
-pass `validateCreateFileInput` again, so a hand-built object cannot send
-anything else; the metadata JSON is `buildDriveCreateMetadata` (`id`, `name`,
+Drive id (or, for a Doc or a Sheet, there is no id at all and an id is
+refused, `isDriveConvertedKind`), the digest is a base64url SHA-256, and the
+name, kind and content pass `validateCreateFileInput` again, so a hand-built
+object cannot send anything else; the metadata JSON is
+`buildDriveCreateMetadata` (`id` for a text file only, `name`,
 the target media type, at most one `parents` entry, `appProperties`), the
 second part is the content with the upload type and `charset=UTF-8`. The
 boundary is random per request and drawn again (three tries, then refused)
@@ -5059,19 +5074,46 @@ if the content or the metadata contains it.
 `readExecutionId` (an approval id or the Always allow execution id, refused
 with no token and no request when neither exists); a folder other than My Drive
 must be in `folders` (the real root id is refused, use `root` or leave the
-folder out); a fresh token; the digest and the KV id (`generateIds`, the same
-`google-drive-create:` record, 24 hours; a failed put refuses before the
-create); for a folder other than My Drive the live checks (a folder, not in a
+folder out); a fresh token; the digest and, for a text file only, the KV id
+(`generateIds`, the same `google-drive-create:` record, 24 hours; a failed put
+refuses before the create; a Doc or a Sheet takes the lookup described below
+instead); for a folder other than My Drive the live checks (a folder, not in a
 shared drive, not trashed, owned, not shared, `canAddChildren`) and the
 ancestry walk of section 19.10 step 5a with "Nothing was created."; the
-upload; the confirmation. A 409 is a success only after `files.get(id)` shows
-this digest, the approved name, the target media type of the kind and exactly
+upload; the confirmation. For a text file a 409 is a success only after
+`files.get(id)` shows this digest, the approved name, the target media type of the kind and exactly
 one parent (the approved folder, or the live root id for My Drive); a missing
 answer, a timeout, a 5xx, an oversized answer and a 409 that is not ours say
 "Google Drive did not confirm the file, so it may or may not have been
 created. Ask the user to check their Google Drive before trying again." A
 refusal before the upload says nothing was created. Under Always allow the run
 gate claims the execution id and the tool behaves the same.
+
+**A Doc or a Sheet has no client id, so the retry protection is a lookup.**
+Drive refuses a client `id` on a converted upload (`generatedIdNotSupported`,
+settled 2026-11-25), so for `document` and `spreadsheet` the tool does not call
+`generateIds`, writes no `google-drive-create:` key and sends no `id`; the
+metadata still carries `appProperties.besidkaApproval = <digest>`. After the
+folder checks and before the create it looks the marker up with
+`GET /drive/v3/files?q=appProperties has { key='besidkaApproval' and value='<digest>' } and trashed=false&spaces=drive&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name,mimeType,parents,appProperties)&pageSize=2`
+(`findDriveItemsByApprovalDigest`; the digest must match `[A-Za-z0-9_-]{16,64}`
+or the call is refused before a request, so the query holds only the marker):
+
+| Lookup answer | Result |
+|---|---|
+| no hit | create without an id |
+| one hit that reads back as ours (the marker, the approved name, the converted type, exactly the approved parent or the live root id) | success with `alreadyExisted`, no create ("no second file was made") |
+| one hit that does not read back as ours, or two hits | "not confirmed", nothing is created |
+| the lookup could not run (403, 429, 5xx, no answer, an answer without a list or with an item without a Drive id) | "not confirmed", nothing is created: it fails closed |
+
+An ambiguous create answer (no answer, a timeout, a 5xx, an oversized answer)
+is "not confirmed" with the same wording and is never answered by a blind
+create in the same call. The limit of the design: Drive's `appProperties has`
+search can lag for a file made a moment ago, so a lookup may miss a file an
+earlier run just created; the D1 claim of the approval or of the Always allow
+execution id (2-minute lease, an interrupted claim never re-runs) is the
+primary guard and the lookup is the second. A text file keeps the
+`generateIds` and KV flow above, which the live check confirmed.
 
 **What the model gets and what is stored.** A fixed message, `file_id` and the
 approved `name` (taken from the validated input, never from Drive's answer),

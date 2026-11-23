@@ -5,6 +5,7 @@ import {
 import {
   GOOGLE_DRIVE_FILE_KIND_SPECS,
   GOOGLE_DRIVE_LIST_FOLDER_MAX,
+  isDriveConvertedKind,
   isDriveRootAlias,
   isDriveWriteId,
   validateCreateFileInput,
@@ -346,22 +347,23 @@ export interface DriveCreateMetadataInput {
   name: string
   mimeType: string
   parentId: string | null
-  id: string
+  id: string | null
   approvalDigest: string
 }
 
 /**
  * The metadata body of one create, copied field by field: a name, a media
- * type, at most one parent, the id that `generateDriveId` returned and one
- * app property. Nothing else can be in it, whatever object the caller
- * passes: no permissions, no description, no sharing flags, no shortcut
- * details. A missing parent sends no `parents`, which means My Drive.
+ * type, at most one parent, the id that `generateDriveId` returned (none for
+ * a converted upload, which Drive refuses an id for) and one app property.
+ * Nothing else can be in it, whatever object the caller passes: no
+ * permissions, no description, no sharing flags, no shortcut details. A
+ * missing parent sends no `parents`, which means My Drive.
  */
 export function buildDriveCreateMetadata(
   input: DriveCreateMetadataInput,
 ): Record<string, unknown> {
   return {
-    id: input.id,
+    ...(input.id ? { id: input.id } : {}),
     name: input.name,
     mimeType: input.mimeType,
     ...(input.parentId ? { parents: [input.parentId] } : {}),
@@ -544,6 +546,61 @@ export async function readDriveAncestor(
   return meta ? { ok: true, value: meta } : { ok: false, code: 'failed' }
 }
 
+const LOOKUP_DIGEST_PATTERN = /^[A-Za-z0-9_-]{16,64}$/
+const LOOKUP_FIELDS = 'files(id,name,mimeType,parents,appProperties)'
+const LOOKUP_PAGE_SIZE = 2
+
+/**
+ * The items that carry one retry marker (`appProperties.besidkaApproval`),
+ * not in the trash, at most two. It is the retry protection of a converted
+ * create, which has no client id: one hit is the earlier run's file, none
+ * means nothing was created yet, two are ambiguous. The digest must be a
+ * base64url value of 16 to 64 characters, so it cannot carry query syntax,
+ * and an answer that holds an item without a Drive id shape fails. It is a
+ * GET on the files endpoint; Drive's property search can lag for a file made
+ * a moment ago, which the approval claim covers.
+ */
+export async function findDriveItemsByApprovalDigest(
+  digest: string,
+  context: DriveWriteContext,
+): Promise<DriveWriteResult<DriveItemMeta[]>> {
+  if (typeof digest !== 'string' || !LOOKUP_DIGEST_PATTERN.test(digest)) {
+    return { ok: false, code: 'bad_request' }
+  }
+
+  const result = await requestJson(
+    `${DRIVE_FILES_URL}?${new URLSearchParams({
+      q: `appProperties has { key='${APPROVAL_PROPERTY}' and value='${
+        escapeDriveQueryText(digest)}' } and trashed=false`,
+      spaces: 'drive',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+      fields: LOOKUP_FIELDS,
+      pageSize: String(LOOKUP_PAGE_SIZE),
+    }).toString()}`,
+    { method: 'GET', headers: headersOf(context) },
+    toFetchOptions(context, {}),
+  )
+
+  if (!result.ok) {
+    return result
+  }
+
+  const files = result.value.files
+
+  if (!Array.isArray(files)) {
+    return { ok: false, code: 'failed' }
+  }
+
+  const items = files.map((file) => {
+    return isRecord(file) ? readItemMeta(file) : null
+  })
+
+  return items.every(item => item !== null)
+    ? { ok: true, value: items }
+    : { ok: false, code: 'failed' }
+}
+
 export interface CreatedDriveItem {
   id: string
   name: string
@@ -653,7 +710,7 @@ export function buildDriveCreateMultipart(input: {
 }
 
 export interface DriveCreateFileInput {
-  id: string
+  id: string | null
   name: string
   kind: DriveFileKind
   content: string
@@ -669,7 +726,9 @@ export interface DriveCreateFileInput {
  * local and checked: the id and the parent have the shape of a Drive id, the
  * digest is a base64url SHA-256, and the name, kind and content pass
  * `validateCreateFileInput` again, so the body is built from checked values
- * only. The media types come from the kind map, never from the caller.
+ * only. The media types come from the kind map, never from the caller. A
+ * converted kind (a Doc or a Sheet) must come with no id, a plain text file
+ * with a Drive id: Drive answers `generatedIdNotSupported` for the first.
  */
 export async function createDriveFileWithContent(
   input: DriveCreateFileInput,
@@ -684,7 +743,7 @@ export async function createDriveFileWithContent(
   const hasParent = parentId !== null
 
   if (
-    !isDriveWriteId(id)
+    (id !== null && !isDriveWriteId(id))
     || (hasParent && !isDriveWriteId(parentId))
     || typeof approvalDigest !== 'string'
     || !APPROVAL_DIGEST_PATTERN.test(approvalDigest)
@@ -703,10 +762,16 @@ export async function createDriveFileWithContent(
     return { ok: false, code: 'bad_request' }
   }
 
+  const isConverted = isDriveConvertedKind(request.value.kind)
+
+  if (isConverted === (id !== null)) {
+    return { ok: false, code: 'bad_request' }
+  }
+
   const spec = GOOGLE_DRIVE_FILE_KIND_SPECS[request.value.kind]
   const multipart = buildDriveCreateMultipart({
     metadata: buildDriveCreateMetadata({
-      id,
+      id: id as string | null,
       name: request.value.name,
       mimeType: spec.targetMimeType,
       parentId: request.value.folderId,
