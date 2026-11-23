@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { GOOGLE_CALENDAR_TOOL_SCOPES } from '#shared/utils/google-calendar-tools'
-import { GOOGLE_DRIVE_WRITE_TOOL_NAMES } from '#shared/utils/google-drive-tools'
+import {
+  GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+  GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
+  GOOGLE_DRIVE_MOVE_TOOL_NAME,
+  GOOGLE_DRIVE_RENAME_TOOL_NAME,
+  GOOGLE_DRIVE_WRITE_TOOL_NAMES,
+} from '#shared/utils/google-drive-tools'
 import { GOOGLE_DRIVE_WRITE_TOOL_SCOPES } from '#shared/utils/google-drive-write'
 import { GOOGLE_BYO_TOOL_SCOPES } from '#shared/utils/google-gmail-tools'
 import {
@@ -93,6 +99,34 @@ describe('google tool catalog', () => {
     const names = GOOGLE_TOOL_CATALOG.map(tool => tool.name)
 
     expect(new Set(names).size).toBe(names.length)
+  })
+
+  it('tells the model to name created and changed Drive items, never to '
+    + 'print an id or a link', async () => {
+    const tools = await buildGoogleDriveWriteTools({
+      ...stubStores,
+      grantedScopes: ALL_SCOPES,
+      index: createGoogleReferenceIndex([]),
+    })
+    const descriptionOf = (name: string) => {
+      return String(tools.tools[name]?.description)
+    }
+
+    expect(descriptionOf(GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME)).toContain(
+      'The user sees a card with the file name and an Open button, so '
+      + 'refer to the file by its name and kind, and never print its id or '
+      + 'a link.',
+    )
+    expect(descriptionOf(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME)).toContain(
+      'Name the folder in words; never print its id.',
+    )
+    expect(descriptionOf(GOOGLE_DRIVE_RENAME_TOOL_NAME)).toContain(
+      'Name the item in words, by its old and new name; never print its id.',
+    )
+    expect(descriptionOf(GOOGLE_DRIVE_MOVE_TOOL_NAME)).toContain(
+      'Name the item and the folder it went to in words; never print their '
+      + 'ids.',
+    )
   })
 
   it('gives every tool the kind its approval entry declares', async () => {
