@@ -849,6 +849,71 @@ describe('Profile/Google/OwnClient', () => {
         .toContain('The Gmail API is not turned on')
     })
 
+    it('names redirect_uri_mismatch as its own failure entry', async () => {
+      const wrapper = await mountOwnClient()
+      const entry = wrapper
+        .get('[data-testid="google-byo-guide-redirect-mismatch"]')
+        .text()
+      const failures = wrapper
+        .get('[data-testid="google-byo-guide-failures"]')
+        .text()
+
+      expect(entry).toContain('redirect_uri_mismatch')
+      expect(entry).toContain('does not match an authorized redirect URI')
+      expect(entry).toContain('scheme, host, path, no trailing slash')
+      expect(entry).toContain('one entry for each host')
+      expect(entry).toContain('about 5 minutes to a few hours')
+      expect(failures).toContain('Google could not be connected')
+    })
+
+    it('presents Publish app and Testing as an honest choice', async () => {
+      const wrapper = await mountOwnClient()
+      const publish = wrapper
+        .get('[data-testid="google-byo-guide-publish"]')
+        .text()
+      const testing = wrapper
+        .get('[data-testid="google-byo-guide-testing"]')
+        .text()
+      const steps = wrapper
+        .get('[data-testid="google-byo-guide-steps"]')
+        .text()
+
+      expect(publish).toContain('Recommended: publish the app')
+      expect(publish).toContain('Publish app')
+      expect(publish).toContain('"In production"')
+      expect(publish).toContain('ends the 7-day expiry')
+      expect(publish).toContain('Google hasn\'t verified this app')
+      expect(testing).toContain('Alternative: stay in Testing')
+      expect(testing).toContain('test user')
+      expect(testing).toContain('every 7 days')
+      expect(steps).toContain('application home page and a privacy policy')
+      expect(steps).toContain('a link to any page you control is enough')
+      expect(steps).toContain('developer contact email')
+    })
+
+    it('tells the user to check the project picker in steps 1 and 2',
+      async () => {
+        const wrapper = await mountOwnClient()
+        const steps = wrapper.findAll(
+          '[data-testid="google-byo-guide-steps"] > li',
+        )
+
+        expect(steps[0]?.text()).toContain('project picker')
+        expect(steps[1]?.text()).toContain('project picker')
+        expect(steps[1]?.text()).toContain('"API is not turned on" error')
+      })
+
+    it('has a test list entry that applies only in Testing', async () => {
+      const wrapper = await mountOwnClient()
+      const entry = wrapper
+        .get('[data-testid="google-byo-guide-test-users"]')
+        .text()
+
+      expect(entry).toContain('only listed test users can connect')
+      expect(entry).toContain('Audience, Test users')
+      expect(entry).toContain('only in Testing')
+    })
+
     it('links only to the Google Cloud console', async () => {
       const wrapper = await mountOwnClient()
       const links = wrapper.findAll(

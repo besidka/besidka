@@ -4272,14 +4272,33 @@ unchanged.
   sees none of it. Step 7 and the 7-day note name the card's Connect button in
   the full card and the Connectors page in the reduced one.
 - **What it says.** Seven steps: a project, the Gmail, Google Calendar and
-  Google Drive APIs, the consent screen (External, you as a test user), the
+  Google Drive APIs, the consent screen (External, then an explicit choice
+  between publishing the app and staying in Testing), the
   scopes, a "Web application" client with the redirect address the card shows
   (only the path `/api/v1/google/byo/callback` is written in the guide, never a
   host), saving the client id and secret (Google shows a secret once), and
-  connecting. Then the "Google hasn't verified this app" warning, the 7-day
-  expiry while the consent screen is in Testing and what to do (connect again;
-  publishing the app ends the expiry, section 6 step 2), and four failures. Links go only to
-  `console.cloud.google.com` pages.
+  connecting. Steps 1 and 2 each tell the user to check that the console's
+  project picker shows the project they created, because the console opens the
+  last project used and enabling an API in the wrong project produces the "API
+  is not turned on" error. Then the "Google hasn't verified this app" warning,
+  the 7-day expiry for a user who stayed in Testing and what to do (connect
+  again), and six failures. Links go only to `console.cloud.google.com` pages.
+- **Testing or Publish app (agrees with section 6 step 2).** The guide does
+  not leave Testing as the silent default. Step 3 gives the user two options.
+  Recommended: press Publish app on the Audience page, so the status is "In
+  production" and the 7-day expiry of refresh tokens ends; the app stays
+  unverified, so Google still shows the "Google hasn't verified this app"
+  warning, which is expected for your own client. Alternative: stay in
+  Testing, add your own Google account as a test user, and connect again every
+  7 days. For an external app in production the guide says that Google asks
+  for an application home page and a privacy policy link on the Branding page,
+  and that a link to any page the user controls is enough for a personal setup;
+  it names no URL (the owner's runbook uses besidka.com pages, which the guide
+  must not give to other users). Step 3 also names the developer contact email
+  that the Branding page asks for next to the support email. Section 6 step 2
+  and the guide now agree: publish is the recommendation, the 7-day expiry is
+  the cost of Testing. The runbook and the guide differ only in the home page
+  and privacy links, by design.
 - **How the scope list stays in sync.** The guide holds no scope strings. The
   always-asked scopes (`openid` and the email scope) are
   `GOOGLE_BYO_GUIDE_SIGN_IN_SCOPES` in `shared/utils/google-byo-guide.ts`; the
@@ -4291,15 +4310,23 @@ unchanged.
   absent. `tests/unit/components/Profile/Google/OwnClient.spec.ts` reads the
   scopes from the rendered guide text and compares them with the sign-in
   scopes plus `getGoogleByoScopes` of all capabilities.
-- **Failures, and what was left out.** Each failure is tied to text in the repo:
-  the card's "Google could not be connected" (check client id, secret and
-  redirect address), the callback's access-denied result ("You canceled on the
-  Google page"), the chat sentences "The Gmail API is not turned on" (and the
-  Google Calendar and Google Drive forms), and `invalid_client` after a secret
-  replacement (section 9.4). The Google error name `redirect_uri_mismatch` is
-  not in the repo and is not named; the redirect advice is the runbook's.
-  "Not a test user causes access denied" is also unsourced here, so the guide
-  only says to check the test-user list when you did not cancel.
+- **Failures, and what was left out.** Six entries. Four are tied to text in
+  the repo: the card's "Google could not be connected" (check client id, secret
+  and redirect address, pointing at the next entries), the callback's
+  access-denied result ("You canceled on the Google page"; the test-list check
+  now applies only in Testing), the chat sentences "The Gmail API is not turned
+  on" (and the Google Calendar and Google Drive forms), and `invalid_client`
+  after a secret replacement (section 9.4). Two come from Google's public
+  documentation (OAuth 2.0 for web server applications, and the Google Auth
+  Platform Audience and Branding help). First, `redirect_uri_mismatch` is its
+  own entry: a wrong redirect address fails on Google's own page, so the user
+  never sees Besidka's toast. It says the redirect address sent in the
+  authorization request does not match an authorized redirect URI for the OAuth
+  client ID; that it must match exactly (scheme, host, path, no trailing slash)
+  the address shown on the card, with one entry for each host; and that a change
+  to the client can take from about 5 minutes to a few hours to apply. Second,
+  "Your account is not on the test list": while the app is in Testing only
+  listed test users can connect; add the account under Audience, Test users.
 - **Not verified.** The console page links and the page names (Branding,
   Audience, Data access, Clients) were written from section 6 and Google's
   console layout and were not opened in a browser for this change. Nothing was

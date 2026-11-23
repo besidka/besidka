@@ -26,7 +26,9 @@
         <ol data-testid="google-byo-guide-steps">
           <li>
             <strong>Create or choose a Google Cloud project.</strong>
-            Use a project of your own.
+            Use a project of your own. The console opens the project it
+            used last, so check that the project picker at the top shows
+            the project you created before you open the links below.
             <NuxtLink
               :to="GOOGLE_CLOUD_CONSOLE_LINKS.createProject.url"
               class="link"
@@ -40,7 +42,10 @@
             <strong>Turn on the APIs you will use.</strong>
             Open each page and press Enable. Gmail access needs the Gmail
             API, Google Calendar needs the Google Calendar API, and Drive
-            search needs the Google Drive API.
+            search needs the Google Drive API. Before you press Enable,
+            check that the project picker at the top still shows your
+            project. Enabling an API in the wrong project produces the
+            "API is not turned on" error.
             <ul data-testid="google-byo-guide-apis">
               <li
                 v-for="api in GOOGLE_BYO_GUIDE_APIS"
@@ -61,8 +66,28 @@
             <strong>Set up the consent screen.</strong>
             Give the app a name that shows it is yours, for example
             "Your name's client for Besidka". Use your own email as the
-            support email. Set the audience to External. Then add your own
-            Google account as a test user.
+            support email. Google's Branding page also asks for a developer
+            contact email: use your own again. Set the audience to
+            External. For an external app in production, Google asks for an
+            application home page and a privacy policy link on the Branding
+            page. For a personal setup, a link to any page you control is
+            enough. Then choose how long the access lasts.
+            <ul data-testid="google-byo-guide-audience-choice">
+              <li data-testid="google-byo-guide-publish">
+                <strong>Recommended: publish the app.</strong>
+                On the Audience page press Publish app, so the status is
+                "In production". This ends the 7-day expiry of the access.
+                The app stays unverified, so Google still shows the "Google
+                hasn't verified this app" warning. That is expected for
+                your own client.
+              </li>
+              <li data-testid="google-byo-guide-testing">
+                <strong>Alternative: stay in Testing.</strong>
+                Add your own Google account as a test user on the Audience
+                page. In Testing, Google ends the access every 7 days, and
+                you connect again each time.
+              </li>
+            </ul>
             <ul>
               <li>
                 <NuxtLink
@@ -73,7 +98,8 @@
                 >
                   {{ GOOGLE_CLOUD_CONSOLE_LINKS.branding.label }}
                 </NuxtLink>
-                for the name and the support email
+                for the name, the two emails, the home page and the privacy
+                policy link
               </li>
               <li>
                 <NuxtLink
@@ -84,7 +110,7 @@
                 >
                   {{ GOOGLE_CLOUD_CONSOLE_LINKS.audience.label }}
                 </NuxtLink>
-                for External and the test user
+                for External, Publish app and the test users
               </li>
             </ul>
           </li>
@@ -174,31 +200,48 @@
         <p data-testid="google-byo-guide-warning">
           Google shows a "Google hasn't verified this app" warning. That is
           expected for your own client. Continue only on your own account.
-          While the consent screen is in Testing, Google ends the access
-          every 7 days. When that happens, connect again:
+          If you stayed in Testing, Google ends the access every 7 days.
+          When that happens, connect again:
           <template v-if="reduced">
             use the Connectors page.
           </template>
           <template v-else>
             press Reconnect on this card.
           </template>
-          To stop the 7-day expiry, publish the app on the consent screen.
-          It stays unverified.
+          Publishing the app on the Audience page (step 3) ends the 7-day
+          expiry. The app stays unverified.
         </p>
         <h4>If something fails</h4>
         <ul data-testid="google-byo-guide-failures">
           <li>
             <strong>"Google could not be connected".</strong>
-            Check the client ID, the secret and the redirect address. The
-            redirect address on your client must match the one shown on
-            this card character for character, including the path.
+            Check the client ID, the secret and the redirect address on
+            your client, as described in the next entries.
+          </li>
+          <li data-testid="google-byo-guide-redirect-mismatch">
+            <strong><code>redirect_uri_mismatch</code> on Google's own
+              page.</strong>
+            A wrong redirect address fails on Google's page, so Besidka
+            never shows its own message for it. The redirect address sent
+            in the authorization request does not match an authorized
+            redirect URI for the OAuth client ID. It must match exactly
+            (scheme, host, path, no trailing slash) the address shown on
+            this card, with one entry for each host you open Besidka on. A
+            change to the client can take from about 5 minutes to a few
+            hours to apply.
           </li>
           <li>
             <strong>"Google was not connected: you canceled on the Google
               page".</strong>
             Besidka shows this when Google reports access denied. Connect
-            again and press Continue. If you did not cancel, check that
-            your account is listed as a test user.
+            again and press Continue. If you did not cancel and the app is
+            in Testing, check that your account is on the test list.
+          </li>
+          <li data-testid="google-byo-guide-test-users">
+            <strong>Your account is not on the test list.</strong>
+            While the app is in Testing, only listed test users can
+            connect. Add your Google account under Audience, Test users.
+            This applies only in Testing.
           </li>
           <li>
             <strong>"The Gmail API is not turned on" (or the Google
