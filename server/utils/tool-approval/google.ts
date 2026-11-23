@@ -13,7 +13,7 @@ import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
 import * as schema from '~~/server/db/schema'
 import { readBesidkaChatSettings } from '~~/server/utils/besidka-tools/chat-settings'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { StashedResult } from '~~/server/utils/tool-approval/continuation'
 import {
@@ -285,7 +285,7 @@ export async function markChatGoogleData(
       attributes: {
         googleTools: {
           chatFlag: 'failed',
-          error: exceptionMessage(exception),
+          ...exceptionSummary(exception),
         },
       },
     })
@@ -568,7 +568,7 @@ export async function loadGoogleToolResults(input: {
   }) as Array<Record<string, unknown> & { toolCallId: string }>
   let loaded = 0
   let failed = 0
-  let lastError: string | null = null
+  let lastFailure: Record<string, string> | null = null
 
   for (const part of googleParts) {
     try {
@@ -597,7 +597,7 @@ export async function loadGoogleToolResults(input: {
       }
     } catch (exception) {
       failed += 1
-      lastError = exceptionMessage(exception)
+      lastFailure = exceptionSummary(exception)
     }
 
     const unavailable = unavailableResultOf(part)
@@ -614,7 +614,7 @@ export async function loadGoogleToolResults(input: {
           stashCalls: googleParts.length,
           stashLoaded: loaded,
           stashFailed: failed,
-          ...(lastError ? { stashError: lastError } : {}),
+          ...(lastFailure ?? {}),
         },
       },
     })
@@ -659,7 +659,7 @@ export async function readGoogleChatSettings(
       attributes: {
         googleTools: {
           chatGrantsRead: 'failed',
-          error: exceptionMessage(exception),
+          ...exceptionSummary(exception),
         },
       },
     })
@@ -692,7 +692,7 @@ export async function deleteGoogleToolResults(input: {
 }): Promise<void> {
   const toolCallIds = googleToolCallIdsOf(input.parts)
   let failed = 0
-  let lastError: string | null = null
+  let lastFailure: Record<string, string> | null = null
 
   for (const toolCallId of toolCallIds) {
     try {
@@ -702,7 +702,7 @@ export async function deleteGoogleToolResults(input: {
       )
     } catch (exception) {
       failed += 1
-      lastError = exceptionMessage(exception)
+      lastFailure = exceptionSummary(exception)
     }
   }
 
@@ -712,7 +712,7 @@ export async function deleteGoogleToolResults(input: {
         googleTools: {
           stashDelete: 'failed',
           failed,
-          ...(lastError ? { error: lastError } : {}),
+          ...(lastFailure ?? {}),
         },
       },
     })

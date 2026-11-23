@@ -9,6 +9,7 @@ import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storag
 import { GOOGLE_TOOL_KINDS } from '#shared/utils/google-tool-approvals'
 import { enforceGoogleRateLimit } from '~~/server/utils/google/route'
 import {
+  hasActiveGoogleByoConnection,
   loadGoogleToolPermissionModes,
   partitionGoogleToolsForMode,
   resolveGoogleTargetTools,
@@ -120,6 +121,15 @@ export default defineEventHandler(async (event) => {
       status: 400,
       why: 'Always allow is not available for this Google tool',
       fix: 'Pick Needs approval or Blocked',
+    })
+  }
+
+  if (body.data.mode === 'allow' && !(await hasActiveGoogleByoConnection(userId))) {
+    throw createError({
+      message: 'Google is not connected',
+      status: 409,
+      why: 'Always allow applies only to a connected Google account of your own client',
+      fix: 'Connect Google first, then turn Always allow on',
     })
   }
 

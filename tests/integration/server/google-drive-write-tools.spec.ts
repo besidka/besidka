@@ -1412,6 +1412,8 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
         expect(paths()).toEqual([
           `GET /drive/v3/files/${FILE_ID}`,
+          'GET /drive/v3/files/root',
+          `GET /drive/v3/files/${CHILD_ID}`,
           `PATCH /drive/v3/files/${FILE_ID}`,
         ])
         expect(JSON.parse(patches()[0]!.body)).toEqual({ name: 'plan.txt' })
@@ -1479,6 +1481,10 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         ['an unknown owner', { ownedByMe: undefined }, 'someone else'],
         ['an item shared with other people', { shared: true }, 'shared with'],
         ['an unknown sharing state', { shared: undefined }, 'shared with'],
+        ['a sharing flag sent as the text "true"', { shared: 'true' },
+          'shared with'],
+        ['a sharing flag sent as the text "false"', { shared: 'false' },
+          'shared with'],
         ['an item in a shared drive', { driveId: 'd1' }, 'shared drive'],
         ['a trashed item', { trashed: true }, 'in the trash'],
         ['an item renamed since it was found', { name: 'moved.txt' }, 'renamed'],
@@ -1778,6 +1784,9 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         ['an item someone else owns', FILE_ID, { ownedByMe: false }, 'someone else'],
         ['an item shared with other people', FILE_ID, { shared: true }, 'shared with other people, so Besidka will not'],
         ['an unknown sharing state on the item', FILE_ID, { shared: undefined }, 'shared with other people, so Besidka will not'],
+        ['a sharing flag sent as the text "true" on the item', FILE_ID, { shared: 'true' }, 'shared with other people, so Besidka will not'],
+        ['a sharing flag sent as the text "false" on the item', FILE_ID, { shared: 'false' }, 'shared with other people, so Besidka will not'],
+        ['a sharing flag sent as the text "true" on the target', ARCHIVE_ID, { shared: 'true' }, 'shared with other people'],
         ['an item in a shared drive', FILE_ID, { driveId: 'd1' }, 'shared drive'],
         ['a trashed item', FILE_ID, { trashed: true }, 'in the trash'],
         ['an item renamed since it was found', FILE_ID, { name: 'x.txt' }, 'renamed'],
@@ -2492,6 +2501,219 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
         expect(again.alreadyDone).toBe(true)
         expect(patches()).toHaveLength(1)
+      })
+    })
+
+    describe('the ancestry of a renamed item', () => {
+      const TOP_ID = 'top-folder-id-012345'
+      const MID_ID = 'mid-folder-id-0123456'
+      const ANCESTOR_FIELDS = 'id,parents,shared,driveId,ownedByMe,trashed'
+      const input = { itemId: FILE_ID, newName: 'plan.txt' }
+
+      function chainId(position: number): string {
+        return `chain-id-${String(position).padStart(3, '0')}`
+      }
+
+      function ancestorReads() {
+        return drive.requests.filter((request) => {
+          return new URL(request.url).searchParams.get('fields')
+            === ANCESTOR_FIELDS
+        })
+      }
+
+      beforeEach(() => {
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: [ROOT_ID],
+        })
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+        })
+        drive.items[CHILD_ID] = folderMeta(CHILD_ID, {
+          name: 'Projects',
+          parents: [MID_ID],
+        })
+      })
+
+      it('walks the own parents of the item up to the root and then '
+        + 'renames', async () => {
+        const { toolMap } = await known()
+        const output = await rename(toolMap, input)
+
+        expect(output).toMatchObject({ renamed: true, alreadyDone: false })
+        expect(paths()).toEqual([
+          `GET /drive/v3/files/${FILE_ID}`,
+          'GET /drive/v3/files/root',
+          `GET /drive/v3/files/${CHILD_ID}`,
+          `GET /drive/v3/files/${MID_ID}`,
+          `GET /drive/v3/files/${TOP_ID}`,
+          `PATCH /drive/v3/files/${FILE_ID}`,
+        ])
+        expect(ancestorReads()).toHaveLength(3)
+      })
+
+      it('reads no ancestor for an item that is already named so', async () => {
+        const { toolMap } = await known()
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, {
+          name: 'plan.txt',
+          parents: [CHILD_ID],
+        })
+
+        expect(await rename(toolMap, input))
+          .toMatchObject({ alreadyDone: true })
+        expect(ancestorReads()).toHaveLength(0)
+        expect(patches()).toHaveLength(0)
+      })
+
+      it.each([
+        ['a shared folder', { shared: true }, 'shared with other people'],
+        ['a folder with an unknown sharing state', { shared: undefined },
+          'shared with other people'],
+        ['a shared-drive folder', { driveId: 'd1' }, 'shared drive'],
+        ['a folder someone else owns', { ownedByMe: false }, 'someone else'],
+        ['a trashed folder', { trashed: true }, 'in the trash'],
+      ])('refuses a file inside %s with nothing sent', async (
+        _label,
+        change,
+        sentence,
+      ) => {
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+          ...change,
+        })
+
+        const { toolMap } = await known()
+        const message = await rejectionOf(rename(toolMap, input))
+
+        expect(message).toContain('A folder above that folder')
+        expect(message).toContain(sentence)
+        expect(message).toContain('Nothing was renamed.')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('refuses a file whose direct parent is shared, even though the '
+        + 'file itself reports it is not shared', async () => {
+        drive.items[CHILD_ID] = folderMeta(CHILD_ID, {
+          name: 'Projects',
+          parents: [MID_ID],
+          shared: true,
+        })
+
+        const { toolMap } = await known()
+
+        expect(await rejectionOf(rename(toolMap, input)))
+          .toContain('A folder above that folder is shared')
+        expect(patches()).toHaveLength(0)
+        expect(JSON.stringify(mocks.logged))
+          .toContain('"driveRename":{"refusal":"ancestry-shared"')
+      })
+
+      it('refuses past the depth limit as not confirmed, with nothing sent',
+        async () => {
+          for (let position = 0; position < 25; position += 1) {
+            drive.items[chainId(position)] = folderMeta(chainId(position), {
+              name: `Level ${position}`,
+              parents: [position === 24 ? ROOT_ID : chainId(position + 1)],
+            })
+          }
+
+          drive.items[CHILD_ID] = folderMeta(CHILD_ID, {
+            name: 'Projects',
+            parents: [chainId(0)],
+          })
+
+          const { toolMap } = await known()
+          const message = await rejectionOf(rename(toolMap, input))
+
+          expect(message).toContain('could not confirm')
+          expect(ancestorReads()).toHaveLength(20)
+          expect(patches()).toHaveLength(0)
+        })
+
+      it('refuses as not confirmed when an ancestor read fails', async () => {
+        const original = drive.fetch.getMockImplementation()!
+
+        drive.fetch.mockImplementation(async (
+          requestUrl: string,
+          init?: RequestInit,
+        ) => {
+          return requestUrl.includes(`/files/${MID_ID}`)
+            ? new Response('{}', { status: 500 })
+            : await original(requestUrl, init)
+        })
+
+        const { toolMap } = await known()
+
+        expect(await rejectionOf(rename(toolMap, input)))
+          .toContain('could not confirm')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it.each([
+        ['two parents', { parents: [CHILD_ID, TOP_ID] }],
+        ['no parent', { parents: undefined }],
+      ])('refuses an item with %s as not confirmed', async (_label, change) => {
+        drive.items[FILE_ID] = fileMeta(FILE_ID, change)
+
+        const { toolMap } = await known()
+        const message = await rejectionOf(rename(toolMap, input))
+
+        expect(message).toContain('could not confirm')
+        expect(message).toContain('Nothing was renamed.')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('renames a folder inside an unshared chain', async () => {
+        drive.items[ARCHIVE_ID] = folderMeta(ARCHIVE_ID, {
+          name: 'Archive',
+          parents: [CHILD_ID],
+        })
+
+        const { toolMap } = await known()
+
+        expect(await rename(toolMap, { itemId: ARCHIVE_ID, newName: 'Old' }))
+          .toMatchObject({ renamed: true })
+        expect(ancestorReads()).toHaveLength(3)
+      })
+
+      it('refuses a folder inside a shared tree', async () => {
+        drive.items[ARCHIVE_ID] = folderMeta(ARCHIVE_ID, {
+          name: 'Archive',
+          parents: [CHILD_ID],
+        })
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: [ROOT_ID],
+          shared: true,
+        })
+
+        const { toolMap } = await known()
+
+        expect(await rejectionOf(rename(toolMap, {
+          itemId: ARCHIVE_ID,
+          newName: 'Old',
+        }))).toContain('shared with other people')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('keeps the card equal to the request', async () => {
+        const { entryOf } = await known()
+        const entry = entryOf(GOOGLE_DRIVE_RENAME_TOOL_NAME)
+        const view = readDriveWriteApprovalView(
+          GOOGLE_DRIVE_RENAME_TOOL_NAME,
+          input,
+          await entry.describeNames?.(input),
+        )
+
+        expect(view).toEqual({
+          kind: 'rename',
+          item: { id: FILE_ID, name: 'notes.txt', kind: 'file' },
+          newName: 'plan.txt',
+        })
+        expect(drive.requests).toHaveLength(0)
       })
     })
 

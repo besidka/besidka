@@ -248,12 +248,14 @@ const NOTHING_DONE_TEXT: Readonly<Record<FolderOperation, string>> = {
   create: 'Nothing was created.',
   createFile: 'Nothing was created.',
   move: 'Nothing was moved.',
+  rename: 'Nothing was renamed.',
 }
 
 const FOLDER_OPERATION_LOG_KEYS: Readonly<Record<FolderOperation, string>> = {
   create: 'driveCreateFolder',
   createFile: 'driveCreateFile',
   move: 'driveMove',
+  rename: 'driveRename',
 }
 
 const ANCESTOR_REFUSAL_TEXT = {
@@ -273,7 +275,7 @@ const ANCESTRY_UNCONFIRMED_TEXT = 'Besidka could not confirm which folders '
   + 'contain that folder, because it is nested too deeply, it sits in a '
   + 'folder the user cannot see, or Google Drive did not answer.'
 
-type FolderOperation = 'create' | 'createFile' | 'move'
+type FolderOperation = 'create' | 'createFile' | 'move' | 'rename'
 
 interface RootResolver {
   resolve: () => Promise<DriveItemMeta>
@@ -1871,11 +1873,12 @@ export async function buildGoogleDriveWriteTools(
       }
 
       const context = await readContext()
+      const root = createRootResolver(context)
       const item = await assertChangeableItem(
         itemId,
         'rename',
         context,
-        createRootResolver(context),
+        root,
       )
       const alreadyDone = isSameName(item.name, newName)
 
@@ -1887,6 +1890,14 @@ export async function buildGoogleDriveWriteTools(
         if (item.canRename !== true) {
           refuseItem('rename', 'cannotRename', 403)
         }
+
+        await assertAncestry({
+          folder: item,
+          itemId: null,
+          operation: 'rename',
+          context,
+          root,
+        })
 
         const patched = await patchDriveItem(
           buildDriveRenameRequest({ itemId, name: newName }),

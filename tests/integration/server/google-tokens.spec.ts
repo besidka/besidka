@@ -413,6 +413,48 @@ describe('Google tokens', () => {
       ])
     })
 
+    it('still ends access, revokes and deletes the copies when the clear '
+      + 'of Always allow fails, and logs only a summary', async () => {
+      await seedGoogleByoAccess(testDb.db, userId)
+      await seedGoogleByoClient()
+      useGoogle({
+        token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
+      })
+      await seedConnection({ clientMode: 'byo', expiresInMs: 60_000 })
+      await seedPermissionRows()
+      await seedGoogleFile('user/drive-a.pdf')
+
+      const originalDelete = testDb.db.delete.bind(testDb.db)
+
+      vi.spyOn(testDb.db, 'delete').mockImplementation(((table: unknown) => {
+        if (table === schema.besidkaToolPermissions) {
+          throw new Error('D1 down for user@example.com')
+        }
+
+        return originalDelete(table as never)
+      }) as never)
+
+      const { getGoogleAccessToken } = await tokensModule()
+      const result = await getGoogleAccessToken(
+        { userId, clientMode: 'byo' },
+        dependencies(),
+      )
+
+      expect(result).toEqual({ status: 'needs_reauth' })
+      expect(await connectionRow('byo')).toEqual(expect.objectContaining({
+        status: 'needs_reauth',
+        accessToken: null,
+        refreshToken: null,
+      }))
+      expect(google.revokeRequests()).toHaveLength(1)
+      expect(await googleFileCount()).toBe(0)
+      expect(await permissionRows()).toContain('google__gmail_search:allow')
+      expect(JSON.stringify(logger.set.mock.calls))
+        .toContain('"alwaysAllowCleared":"failed"')
+      expect(JSON.stringify(logger.set.mock.calls))
+        .not.toContain('example.com')
+    })
+
     it('keeps them when only Besidka\'s client loses access', async () => {
       useGoogle({
         token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
