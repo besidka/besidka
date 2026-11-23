@@ -798,7 +798,9 @@ export default defineNuxtConfig({
     },
     clientBundle: {
       icons: [
+        'lucide:chevron-down',
         'lucide:circle-alert',
+        'lucide:circle-question-mark',
         'lucide:copy',
         'lucide:git-branch-plus',
         'lucide:info',
