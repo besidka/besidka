@@ -246,12 +246,15 @@
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
+      :google-rows="composerGoogleTools.rows.value"
+      :is-google-saving="composerGoogleTools.isSaving.value"
       :is-loaded="composerConnectors.isLoaded.value"
       :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
       @enable="composerConnectors.enable"
       @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
+      @toggle-google="composerGoogleTools.toggle"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"
@@ -1050,6 +1053,12 @@ const composerConnectors = useComposerConnectors(() => {
 })
 const composerBesidkaTools = useComposerBesidkaTools(() => {
   return route.name === 'chats-slug' ? String(route.params.slug) : null
+})
+const composerGoogleTools = useComposerGoogleTools(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+}, {
+  enabledTools: () => tools.value,
+  isToolCallingSupported: () => isToolCallingSupported.value,
 })
 const skillInvocation = useComposerSkillInvocation()
 const builtinCommand = useComposerBuiltinCommand()
@@ -2011,6 +2020,7 @@ function openConnectorPicker() {
   isConnectorPickerMounted.value = true
   isConnectorPickerOpen.value = true
   composerConnectors.refresh()
+  composerGoogleTools.refresh()
 }
 
 watch(isConnectorsEnabled, (isEnabled) => {

@@ -151,6 +151,29 @@
               @change="emit('toggle-besidka')"
             >
           </label>
+          <div
+            v-if="googleRows.length"
+            role="group"
+            aria-label="Google"
+            data-testid="connector-picker-google"
+          >
+            <ChatInputConnectorPickerGoogleRow
+              v-for="row in googleRows"
+              :key="row.entryId"
+              :row="row"
+              :is-saving="isGoogleSaving"
+              @toggle="onToggleGoogle(row, $event)"
+              @navigate="close"
+            />
+            <p
+              class="sr-only"
+              role="status"
+              aria-live="polite"
+              data-testid="connector-picker-google-status"
+            >
+              {{ googleNotice }}
+            </p>
+          </div>
           <ul
             v-if="items.length"
             class="grid grid-cols-[minmax(0,1fr)] gap-0.5"
@@ -337,7 +360,9 @@ import {
   CONNECTOR_TOOL_MODE_LABELS,
   CONNECTORS_PER_SEND,
 } from '#shared/utils/connectors-policy'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import { planTurnAllOn } from '~/composables/composer-connectors'
+import type { ComposerGoogleRow } from '~/composables/composer-google-tools'
 import type {
   ComposerConnectorItem,
   ComposerDisabledConnectorItem,
@@ -351,12 +376,16 @@ const props = withDefaults(defineProps<{
   isAtLimit: boolean
   isSaving: boolean
   besidka?: { enabled: boolean, isSaving: boolean } | null
+  googleRows?: ComposerGoogleRow[]
+  isGoogleSaving?: boolean
   isLoaded?: boolean
   isRegistryAvailable?: boolean
 }>(), {
   disabledItems: () => [],
   offIds: () => [],
   besidka: null,
+  googleRows: () => [],
+  isGoogleSaving: false,
   isLoaded: true,
   isRegistryAvailable: false,
 })
@@ -366,6 +395,7 @@ const emit = defineEmits<{
   'enable': [connectorId: string]
   'set-all': [connectorIds: string[]]
   'toggle-besidka': []
+  'toggle-google': [service: GoogleService]
 }>()
 
 const isOpen = defineModel<boolean>('open', { default: false })
@@ -377,6 +407,7 @@ const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const boxRef = useTemplateRef<HTMLDivElement>('boxRef')
 
 const bulkNotice = shallowRef<string>('')
+const googleNotice = shallowRef<string>('')
 
 const manualItems = computed<ComposerConnectorItem[]>(() => {
   return props.items.filter(item => item.toolMode === 'manual')
@@ -448,6 +479,12 @@ function onToggle(connectorId: string) {
   emit('toggle', connectorId)
 }
 
+function onToggleGoogle(row: ComposerGoogleRow, service: GoogleService) {
+  googleNotice.value = `${row.title} is now ${row.isOn ? 'off' : 'on'} in `
+    + 'this chat'
+  emit('toggle-google', service)
+}
+
 function getModeLabel(item: ComposerConnectorItem): string {
   return CONNECTOR_TOOL_MODE_LABELS[item.toolMode]
 }
@@ -499,6 +536,7 @@ async function showDialog() {
 watch(isOpen, async (open) => {
   if (!open) {
     bulkNotice.value = ''
+    googleNotice.value = ''
 
     if (dialogRef.value?.open) {
       dialogRef.value.close()
