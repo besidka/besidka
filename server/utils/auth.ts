@@ -36,10 +36,6 @@ import {
   OAUTH_ACCESS_TOKEN_TTL_SECONDS,
   OAUTH_REFRESH_TOKEN_TTL_SECONDS,
 } from '~~/server/utils/oauth/token-ttl'
-import {
-  purgeUserData,
-  purgeUserOAuthData,
-} from './account/purge-user-data'
 import { notifyOAuthAppConnected } from './account/notify-oauth-app-connected'
 import { revokeUserOAuthGrants } from './account/revoke-user-oauth-grants'
 import {
@@ -576,6 +572,10 @@ function createAuth() {
           })
         },
         async beforeDelete(user) {
+          const { purgeUserData, purgeUserOAuthData } = await import(
+            '~~/server/utils/account/purge-user-data'
+          )
+
           await purgeUserOAuthData({ userId: Number(user.id) })
           await purgeUserData({ userId: Number(user.id) })
         },

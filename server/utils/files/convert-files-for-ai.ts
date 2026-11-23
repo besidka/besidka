@@ -1,6 +1,5 @@
 import type { UIMessage } from 'ai'
 import { useLogger } from 'evlog'
-import { fitWorkbookMap } from '@besidka/doc-renderer/workbook-map'
 import { normalizeMediaType } from '#shared/utils/files'
 import { resolveFileDelivery } from '#shared/utils/file-delivery'
 import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
@@ -98,11 +97,22 @@ function isStructureOnly(
  * text version, never from the text itself. A workbook map carried from an
  * earlier message is fitted to `CARRIED_TEXT_FILE_MAX_BYTES`.
  */
-function officeTextToSend(
+async function fitCarriedWorkbookMap(
+  text: string,
+  maxBytes: number,
+): Promise<string> {
+  const { fitWorkbookMap } = await import(
+    '@besidka/doc-renderer/workbook-map'
+  )
+
+  return fitWorkbookMap(text, maxBytes)
+}
+
+async function officeTextToSend(
   officeText: LoadedOfficeText,
   mediaType: string,
   isCarriedStructureOnly: boolean,
-): { text: string, isWorkbookMap: boolean, isShortened: boolean } {
+): Promise<{ text: string, isWorkbookMap: boolean, isShortened: boolean }> {
   const isWorkbookMap = getOfficeFormatByMediaType(mediaType) === 'xlsx'
     && officeText.textVersion >= WORKBOOK_MAP_TEXT_VERSION
 
@@ -110,7 +120,10 @@ function officeTextToSend(
     return { text: officeText.text, isWorkbookMap, isShortened: false }
   }
 
-  const text = fitWorkbookMap(officeText.text, CARRIED_TEXT_FILE_MAX_BYTES)
+  const text = await fitCarriedWorkbookMap(
+    officeText.text,
+    CARRIED_TEXT_FILE_MAX_BYTES,
+  )
 
   return { text, isWorkbookMap, isShortened: text !== officeText.text }
 }
@@ -257,7 +270,7 @@ export async function convertFilesForAI(
       }
 
       if (officeText) {
-        const sent = officeTextToSend(
+        const sent = await officeTextToSend(
           officeText,
           mediaType,
           isStructureOnly(options, message.id, storageKey),
@@ -295,7 +308,10 @@ export async function convertFilesForAI(
 
           if (isGoogleWorkbookMapFile({ ...ownedFile, type: mediaType })) {
             const text = isStructureOnly(options, message.id, storageKey)
-              ? fitWorkbookMap(textContent, CARRIED_TEXT_FILE_MAX_BYTES)
+              ? await fitCarriedWorkbookMap(
+                textContent,
+                CARRIED_TEXT_FILE_MAX_BYTES,
+              )
               : textContent
             const formatted = formatOfficeFilePart({
               filename: part.filename,
