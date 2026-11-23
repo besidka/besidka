@@ -262,11 +262,37 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_URL: https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}
         run: |
-          pnpm exec wrangler preview \
-            --env production \
-            --name "pr-${PR_NUMBER}" \
-            --message "$PR_URL" \
-            --json > "$RUNNER_TEMP/preview.json"
+          set -o pipefail
+          PREVIEW_JSON="$RUNNER_TEMP/preview.json"
+          PREVIEW_ERR="$RUNNER_TEMP/preview.err"
+          STARTUP_ERROR_PATTERN='code: 10021|Script startup exceeded CPU time limit'
+
+          deploy_preview() {
+            pnpm exec wrangler preview \
+              --env production \
+              --name "pr-${PR_NUMBER}" \
+              --message "$PR_URL" \
+              --json 2>&1 > "$PREVIEW_JSON" | tee "$PREVIEW_ERR"
+          }
+
+          if deploy_preview; then
+            STATUS=0
+          else
+            STATUS=$?
+          fi
+
+          if [ "$STATUS" -ne 0 ]; then
+            if ! grep -qE "$STARTUP_ERROR_PATTERN" "$PREVIEW_ERR" "$PREVIEW_JSON" 2> /dev/null; then
+              exit "$STATUS"
+            fi
+
+            echo "::warning::Preview deploy retried once after Cloudflare error 10021"
+            echo "Preview deploy retried once after Cloudflare error 10021 (Worker startup validation). Waiting 20 seconds." >> "$GITHUB_STEP_SUMMARY"
+            sleep 20
+            deploy_preview
+          fi
+
+          sed -n '/^{/,$p' "$PREVIEW_JSON" | jq -r '.. | objects | to_entries[] | select((.key | test("startup"; "i")) and (.value | type != "object" and type != "array")) | "Worker startup from wrangler preview: \(.key) = \(.value)"' || true
 
       - name: Download artifacts runtime build
         id: runtime-artifact
