@@ -170,19 +170,33 @@
       <ChatInputFilesAttachedChipShell
         v-for="placeholderIndex in checkingLinkCount"
         :key="`checking-link-${placeholderIndex}`"
+        :is-bare="!hasAnyFiles"
         role="status"
         aria-label="Checking Google link"
         data-testid="google-link-skeleton"
       >
-        <ChatInputFilesAttachedChipPreviewBox
-          data-testid="google-link-skeleton-preview"
+        <div
+          v-if="!hasAnyFiles"
+          class="flex items-center gap-2.5 h-10 w-32 pl-2 pr-7 rounded-box border border-base-300 bg-base-100/70"
+          data-testid="google-link-skeleton-pill"
         >
-          <div class="skeleton skeleton--default size-full" />
-        </ChatInputFilesAttachedChipPreviewBox>
-        <div class="flex flex-col items-start gap-1 min-w-0 pr-2">
-          <div class="skeleton skeleton--default h-3 w-28 rounded-sm" />
-          <div class="skeleton skeleton--default h-2.5 w-16 rounded-sm" />
+          <div class="skeleton skeleton--default size-4 shrink-0 rounded-sm" />
+          <div class="flex flex-col flex-1 gap-1 min-w-0">
+            <div class="skeleton skeleton--default h-2 w-14 rounded-sm" />
+            <div class="skeleton skeleton--default h-2.5 w-full rounded-sm" />
+          </div>
         </div>
+        <template v-else>
+          <ChatInputFilesAttachedChipPreviewBox
+            data-testid="google-link-skeleton-preview"
+          >
+            <div class="skeleton skeleton--default size-full" />
+          </ChatInputFilesAttachedChipPreviewBox>
+          <div class="flex flex-col items-start gap-1 min-w-0 pr-2">
+            <div class="skeleton skeleton--default h-3 w-28 rounded-sm" />
+            <div class="skeleton skeleton--default h-2.5 w-16 rounded-sm" />
+          </div>
+        </template>
       </ChatInputFilesAttachedChipShell>
       <!-- Uploading files -->
       <ChatInputFilesAttachedChipShell
@@ -653,11 +667,12 @@ const hasAnyFiles = computed<boolean>(() => {
     || uploadingFilesArray.value.length > 0
     || props.driveImports.length > 0
     || props.pastedTexts.length > 0
-    || props.checkingLinkCount > 0
 })
 
 const hasAnyItems = computed<boolean>(() => {
-  return hasAnyFiles.value || props.tiles.length > 0
+  return hasAnyFiles.value
+    || props.checkingLinkCount > 0
+    || props.tiles.length > 0
 })
 
 const attachmentsLabel = computed<string>(() => {
