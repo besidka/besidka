@@ -261,6 +261,7 @@ import {
   GOOGLE_KEYS_TAB_PATH,
 } from '#shared/utils/google-connectors'
 import type { GoogleEntryId } from '#shared/utils/google-connectors'
+import { GOOGLE_TOOL_KINDS } from '#shared/utils/google-tool-approvals'
 import {
   GOOGLE_TOOL_APPROVAL_LABELS,
   GOOGLE_TOOL_PERMISSION_MODES,
@@ -402,11 +403,16 @@ async function onSetTools(changes: ToolPermissionChange[]) {
 }
 
 async function onSetGroup(
-  _groupId: string,
-  _mode: ToolPermissionMode,
-  changes: ToolPermissionChange[],
+  groupId: string,
+  mode: ToolPermissionMode,
 ) {
-  await saveChanges(changes)
+  const kind = GOOGLE_TOOL_KINDS.find(candidate => candidate === groupId)
+
+  if (!entry.value || !kind || !isGoogleToolPermissionMode(mode)) {
+    return
+  }
+
+  await permissions.save({ service: entry.value.service, kind }, mode)
 }
 
 const toolsIntro = computed<string>(() => {

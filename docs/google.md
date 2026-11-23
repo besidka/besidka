@@ -3975,8 +3975,10 @@ for a `PUT` the write limit.
 
 A user who reaches none gets 404 on both routes. `GET` answers
 `{ tools: [{ name, service, mode }] }` for the reachable tools. `PUT` takes
-`{ tool, mode }` or `{ service, mode }` (every reachable tool of the service)
-with `mode` `blocked` or `ask`: `allow`, an unknown mode, an unknown or
+`{ tool, mode }`, `{ service, mode }` (every reachable tool of the service) or
+`{ service, kind, mode }` (its reachable read or write tools; the panel's
+Read and Write group selects send this, one request per group change, one
+slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode, an unknown or
 Besidka tool name, a body with both fields, or a body over 1 KiB (413 by
 `Content-Length`) is refused; a known tool the user cannot reach is 404. 60
 changes a minute per user in KV, failing closed (a KV error is a 429, never an

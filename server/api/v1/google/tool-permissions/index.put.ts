@@ -6,10 +6,14 @@ import {
   GOOGLE_TOOL_PERMISSION_MODES,
 } from '#shared/utils/google-tool-catalog'
 import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storage-request'
+import { GOOGLE_TOOL_KINDS } from '#shared/utils/google-tool-approvals'
 import {
   loadGoogleToolPermissionModes,
   resolveGoogleTargetTools,
   setGoogleToolPermissions,
+} from '~~/server/utils/google/tool-permissions'
+import type {
+  GoogleToolPermissionTarget,
 } from '~~/server/utils/google/tool-permissions'
 import {
   requireGoogleToolPermissionsAccess,
@@ -32,11 +36,31 @@ const bodySchema = z.union([
     service: z.enum(GOOGLE_SERVICES),
     mode: modeSchema,
   }),
+  z.strictObject({
+    service: z.enum(GOOGLE_SERVICES),
+    kind: z.enum(GOOGLE_TOOL_KINDS),
+    mode: modeSchema,
+  }),
 ])
+
+function describeTarget(
+  target: GoogleToolPermissionTarget,
+): { scope: string, name: string } {
+  if ('tool' in target) {
+    return { scope: 'tool', name: target.tool }
+  }
+
+  if ('kind' in target) {
+    return { scope: 'kind', name: `${target.service}:${target.kind}` }
+  }
+
+  return { scope: 'service', name: target.service }
+}
 
 /**
  * Sets the signed-in user's mode for one Google tool (`{ tool, mode }`) or
- * for every tool of a service they may reach (`{ service, mode }`) and
+ * for every tool of a service they may reach (`{ service, mode }`), or for
+ * the read or write tools of a service (`{ service, kind, mode }`), and
  * answers with the full list. The mode is "blocked" or "ask" only: "allow"
  * is a 400, as is a name outside the catalog; a tool the user may not reach
  * is a 404. "ask" is the default and deletes the row.
@@ -60,9 +84,12 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const target = 'tool' in body.data
+  const target: GoogleToolPermissionTarget = 'tool' in body.data
     ? { tool: body.data.tool }
-    : { service: body.data.service }
+    : 'kind' in body.data
+      ? { service: body.data.service, kind: body.data.kind }
+      : { service: body.data.service }
+  const described = describeTarget(target)
   const reachableNames = new Set(reachable.map(tool => tool.name))
   const targetTools = resolveGoogleTargetTools(target).filter((tool) => {
     return reachableNames.has(tool.name)
@@ -87,8 +114,8 @@ export default defineEventHandler(async (event) => {
       google: {
         toolPermission: {
           action: 'set',
-          scope: 'tool' in target ? 'tool' : 'service',
-          target: 'tool' in target ? target.tool : target.service,
+          scope: described.scope,
+          target: described.name,
           mode: body.data.mode,
           changed,
         },

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { GOOGLE_TOOL_NAME_PREFIX } from '#shared/utils/google-tool-approvals'
+import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
 import {
   GOOGLE_TOOL_CATALOG,
   GOOGLE_TOOL_DEFAULT_MODE,
@@ -21,6 +22,7 @@ export type GoogleToolPermissionModes
 export type GoogleToolPermissionTarget
   = | { tool: string }
     | { service: GoogleService }
+    | { service: GoogleService, kind: GoogleToolKind }
 
 /**
  * The stored mode of each Google tool that has a row, from one read of the
@@ -88,6 +90,7 @@ export function resolveGoogleTargetTools(
 
   return GOOGLE_TOOL_CATALOG.filter((tool) => {
     return tool.service === target.service
+      && (!('kind' in target) || tool.kind === target.kind)
   })
 }
 

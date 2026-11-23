@@ -3,6 +3,7 @@ import {
   GOOGLE_TOOL_MODE_LABELS,
   findGoogleCatalogTool,
 } from '#shared/utils/google-tool-catalog'
+import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
 import type {
   GoogleService,
   GoogleToolPermissionMode,
@@ -11,18 +12,30 @@ import type {
 export type GoogleToolPermissionTarget
   = | { tool: string }
     | { service: GoogleService }
+    | { service: GoogleService, kind: GoogleToolKind }
 
 export const GOOGLE_TOOL_PERMISSIONS_KEY = 'google-tool-permissions'
 
 const NOT_FOUND_STATUS = 404
 
+const SERVICE_LABELS: Readonly<Record<GoogleService, string>> = {
+  drive: 'Drive',
+  gmail: 'Gmail',
+  calendar: 'Calendar',
+}
+
 /**
  * The user's Google tool permissions with optimistic saves. A change shows
  * at once; the server answers with the stored list, which replaces the local
  * one, and a failure drops the optimistic value and reports the error.
- * `isUnavailable` is true when the account reaches no Google tool (a 404),
- * which is not an error to show. `announcement` is the text of the last
- * saved change for a polite live region.
+ * Each save takes a sequence number and owns the tools it names until a
+ * later save names them: a response only decides the tools its save still
+ * owns, so overlapping saves that settle out of order leave the last click
+ * on screen. A failure refetches once nothing is pending, so the list
+ * matches what the server kept. `isUnavailable` is true when the account
+ * reaches no Google tool (a 404), which is not an error to show.
+ * `announcement` is the text of the last saved change for a polite live
+ * region.
  */
 export function useGoogleToolPermissions() {
   const { data, status, error, refresh } = useLazyFetch(
@@ -34,6 +47,9 @@ export function useGoogleToolPermissions() {
   )
   const savingCount = shallowRef<number>(0)
   const announcement = shallowRef<string>('')
+  const latestSaveByTool = new Map<string, number>()
+  let saveSequence = 0
+  let needsRefresh = false
 
   const tools = computed(() => {
     return (data.value?.tools ?? []).map((tool) => {
@@ -52,9 +68,16 @@ export function useGoogleToolPermissions() {
   function findTargetNames(target: GoogleToolPermissionTarget): string[] {
     return (data.value?.tools ?? [])
       .filter((tool) => {
-        return 'tool' in target
-          ? tool.name === target.tool
-          : tool.service === target.service
+        if ('tool' in target) {
+          return tool.name === target.tool
+        }
+
+        if (tool.service !== target.service) {
+          return false
+        }
+
+        return !('kind' in target)
+          || findGoogleCatalogTool(tool.name)?.kind === target.kind
       })
       .map(tool => tool.name)
   }
@@ -69,13 +92,11 @@ export function useGoogleToolPermissions() {
     optimisticModes.value = next
   }
 
-  function clearOptimistic(names: string[], mode: GoogleToolPermissionMode) {
+  function clearOptimistic(names: string[]) {
     const next = { ...optimisticModes.value }
 
     for (const name of names) {
-      if (next[name] === mode) {
-        Reflect.deleteProperty(next, name)
-      }
+      Reflect.deleteProperty(next, name)
     }
 
     optimisticModes.value = next
@@ -85,11 +106,38 @@ export function useGoogleToolPermissions() {
     target: GoogleToolPermissionTarget,
     mode: GoogleToolPermissionMode,
   ): string {
-    const subject = 'tool' in target
-      ? findGoogleCatalogTool(target.tool)?.title ?? 'This tool'
-      : 'All tools of this service'
+    const modeLabel = GOOGLE_TOOL_MODE_LABELS[mode]
 
-    return `${subject}: ${GOOGLE_TOOL_MODE_LABELS[mode]}.`
+    if ('tool' in target) {
+      const title = findGoogleCatalogTool(target.tool)?.title ?? 'This tool'
+
+      return `${title}: ${modeLabel}.`
+    }
+
+    const service = SERVICE_LABELS[target.service]
+    const subject = 'kind' in target
+      ? `${service} ${target.kind} tools`
+      : `${service} tools`
+
+    return `${subject}: ${modeLabel}.`
+  }
+
+  function mergeSupersededTools(
+    response: NonNullable<typeof data.value>,
+    seq: number,
+  ): NonNullable<typeof data.value> {
+    const currentTools = data.value?.tools ?? []
+
+    return {
+      ...response,
+      tools: response.tools.map((tool) => {
+        if (latestSaveByTool.get(tool.name) === seq) {
+          return tool
+        }
+
+        return currentTools.find(current => current.name === tool.name) ?? tool
+      }),
+    }
   }
 
   async function save(
@@ -98,8 +146,20 @@ export function useGoogleToolPermissions() {
   ) {
     const names = findTargetNames(target)
 
+    saveSequence += 1
+
+    const seq = saveSequence
+
+    for (const name of names) {
+      latestSaveByTool.set(name, seq)
+    }
+
     setOptimistic(names, mode)
     savingCount.value += 1
+
+    const ownedNames = () => {
+      return names.filter(name => latestSaveByTool.get(name) === seq)
+    }
 
     try {
       const response = await $fetch('/api/v1/google/tool-permissions', {
@@ -107,19 +167,28 @@ export function useGoogleToolPermissions() {
         body: { ...target, mode },
       })
 
-      data.value = response
-      announcement.value = describeChange(target, mode)
+      data.value = mergeSupersededTools(response, seq)
+
+      if (ownedNames().length > 0) {
+        announcement.value = describeChange(target, mode)
+      }
     } catch (exception) {
       const parsedException = parseError(exception)
 
+      needsRefresh = true
       announcement.value = ''
       useErrorMessage(
         parsedException.message || 'Failed to save the permission',
         parsedException.why,
       )
     } finally {
-      clearOptimistic(names, mode)
+      clearOptimistic(ownedNames())
       savingCount.value -= 1
+
+      if (savingCount.value === 0 && needsRefresh) {
+        needsRefresh = false
+        await refresh()
+      }
     }
   }
 

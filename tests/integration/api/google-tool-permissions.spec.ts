@@ -283,6 +283,63 @@ describe('Google tool permission routes', () => {
       ])
     })
 
+    it('sets only the tools of one kind of a service in one request',
+      async () => {
+        const result = await put({
+          service: 'drive',
+          kind: 'read',
+          mode: 'blocked',
+        })
+
+        expect(modeOf(result)).toEqual({
+          google__drive_list_picked: 'blocked',
+          google__drive_read_file: 'blocked',
+          google__drive_save_file: 'ask',
+        })
+        expect((await rows()).map(row => row.toolName).sort()).toEqual([
+          'google__drive_list_picked',
+          'google__drive_read_file',
+        ])
+        expect(mocks.logged).toContainEqual({
+          attributes: {
+            google: {
+              toolPermission: {
+                action: 'set',
+                scope: 'kind',
+                target: 'drive:read',
+                mode: 'blocked',
+                changed: 2,
+              },
+            },
+          },
+        })
+      })
+
+    it('answers 404 for a kind whose service the user cannot reach and '
+      + '400 for an unknown kind or a kind with a tool', async () => {
+      expect((await failureOf(put({
+        service: 'gmail',
+        kind: 'read',
+        mode: 'blocked',
+      }))).status).toBe(404)
+
+      for (const body of [
+        { service: 'drive', kind: 'admin', mode: 'blocked' },
+        { service: 'drive', kind: 'read', mode: 'allow' },
+        {
+          tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+          service: 'drive',
+          kind: 'read',
+          mode: 'blocked',
+        },
+        { kind: 'read', mode: 'blocked' },
+      ]) {
+        expect((await failureOf(put(body))).status).toBe(400)
+      }
+
+      expect(await rows()).toHaveLength(0)
+    })
+
     it('sets the own-client Drive tools of an admin with the service',
       async () => {
         mocks.isAdmin = true

@@ -375,8 +375,7 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       await flushPromises()
 
       expect(mocks.savePermission.mock.calls).toEqual([
-        [{ tool: 'google__drive_list_picked' }, 'blocked'],
-        [{ tool: 'google__drive_read_file' }, 'blocked'],
+        [{ service: 'drive', kind: 'read' }, 'blocked'],
       ])
     })
 

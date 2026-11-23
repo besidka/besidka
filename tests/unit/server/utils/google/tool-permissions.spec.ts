@@ -229,5 +229,23 @@ describe('Google tool permissions', () => {
       expect(resolveGoogleTargetTools({ service: 'drive' }))
         .toEqual(getGoogleServiceTools('drive'))
     })
+
+    it('returns only the read or write tools of a service for a kind', () => {
+      const reads = resolveGoogleTargetTools({
+        service: 'drive',
+        kind: 'read',
+      })
+      const writes = resolveGoogleTargetTools({
+        service: 'drive',
+        kind: 'write',
+      })
+
+      expect(reads.length).toBeGreaterThan(0)
+      expect(writes.length).toBeGreaterThan(0)
+      expect(reads.every(tool => tool.kind === 'read')).toBe(true)
+      expect(writes.every(tool => tool.kind === 'write')).toBe(true)
+      expect(reads.length + writes.length)
+        .toBe(getGoogleServiceTools('drive').length)
+    })
   })
 })
