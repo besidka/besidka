@@ -94,9 +94,59 @@ export const DRIVE_CREATE_NO_APPROVAL_TEXT = 'Nothing was created in Google '
 export const DRIVE_CHANGE_NO_APPROVAL_TEXT = 'Nothing was changed in Google '
   + 'Drive.'
 
+export interface DriveWriteFailureDetail {
+  code: DriveWriteFailureCode
+  status?: number
+  reason?: string | null
+}
+
 export type DriveWriteResult<Value>
   = | { ok: true, value: Value }
-    | { ok: false, code: DriveWriteFailureCode }
+    | ({ ok: false } & DriveWriteFailureDetail)
+
+const DRIVE_REASON_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,40}$/
+const FIRST_HTTP_STATUS = 100
+const LAST_HTTP_STATUS = 599
+
+/**
+ * A reason from a Drive answer, only when it is a short identifier such as
+ * `forbidden`: it is shown to the model and written to the logs, so a value
+ * with spaces, markup, other scripts or more than 41 characters becomes null.
+ */
+export function sanitizeDriveReason(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const reason = value.trim()
+
+  return DRIVE_REASON_PATTERN.test(reason) ? reason : null
+}
+
+/**
+ * The fixed-format tail of a failure sentence: the HTTP status Google
+ * answered and, when it passed `sanitizeDriveReason`, its reason. Google's
+ * message text is never part of it. Empty when the status is not known.
+ */
+export function driveFailureSuffix(
+  status: number | null | undefined,
+  reason?: unknown,
+): string {
+  if (
+    typeof status !== 'number'
+    || !Number.isInteger(status)
+    || status < FIRST_HTTP_STATUS
+    || status > LAST_HTTP_STATUS
+  ) {
+    return ''
+  }
+
+  const safeReason = sanitizeDriveReason(reason)
+
+  return safeReason
+    ? ` (Google answered ${status}, reason ${safeReason}.)`
+    : ` (Google answered ${status}.)`
+}
 
 const RATE_LIMIT_REASONS: ReadonlySet<string> = new Set([
   'rateLimitExceeded',
@@ -129,6 +179,39 @@ function readDriveReason(body: Record<string, unknown> | null): string | null {
   }
 
   return readReason(body)
+}
+
+function firstReason(entries: unknown): unknown {
+  if (!Array.isArray(entries)) {
+    return undefined
+  }
+
+  for (const entry of entries) {
+    if (isRecord(entry) && typeof entry.reason === 'string') {
+      return entry.reason
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * The reason Google reported, for the failure sentence and the logs: the
+ * first `error.errors[].reason`, else the first `error.details[].reason`,
+ * kept only when `sanitizeDriveReason` accepts it.
+ */
+export function readReportedDriveReason(
+  body: Record<string, unknown> | null,
+): string | null {
+  const error = body?.error
+
+  if (!isRecord(error)) {
+    return null
+  }
+
+  return sanitizeDriveReason(
+    firstReason(error.errors) ?? firstReason(error.details),
+  )
 }
 
 /**
@@ -198,16 +281,20 @@ async function requestJson(
   try {
     const response = await googleFetchJson(url, request, options)
 
-    if (!response.ok || !response.body) {
+    if (!response.ok) {
       return {
         ok: false,
-        code: response.ok
-          ? 'failed'
-          : classifyDriveWriteFailure(
-            response.status,
-            readDriveReason(response.body),
-          ),
+        code: classifyDriveWriteFailure(
+          response.status,
+          readDriveReason(response.body),
+        ),
+        status: response.status,
+        reason: readReportedDriveReason(response.body),
       }
+    }
+
+    if (!response.body) {
+      return { ok: false, code: 'failed' }
     }
 
     return { ok: true, value: response.body }

@@ -888,15 +888,24 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
     })
 
     it.each([
-      [403, 'insufficientFilePermissions', 'no_access'],
-      [403, 'storageQuotaExceeded', 'drive_full'],
-      [403, 'accessNotConfigured', 'api_disabled'],
-      [429, '', 'rate_limited'],
-      [400, '', 'bad_request'],
+      [403, 'insufficientFilePermissions', 'no_access',
+        ' (Google answered 403, reason insufficientFilePermissions.)'],
+      [403, 'forbidden', 'no_access',
+        ' (Google answered 403, reason forbidden.)'],
+      [403, 'storageQuotaExceeded', 'drive_full',
+        ' (Google answered 403, reason storageQuotaExceeded.)'],
+      [403, 'accessNotConfigured', 'api_disabled',
+        ' (Google answered 403, reason accessNotConfigured.)'],
+      [429, '', 'rate_limited', ' (Google answered 429.)'],
+      [400, '', 'bad_request', ' (Google answered 400.)'],
+      [400, 'invalid', 'bad_request',
+        ' (Google answered 400, reason invalid.)'],
+      [403, HOSTILE_NAME, 'no_access', ' (Google answered 403.)'],
     ] as const)('answers %i %s with a fixed sentence', async (
       status,
       reason,
       code,
+      suffix,
     ) => {
       drive.createStatus = status
       drive.createReason = reason
@@ -905,8 +914,41 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         create(await tools(), { name: 'Reports' }),
       )
 
-      expect(message).toBe(DRIVE_WRITE_FAILURE_TEXT[code])
+      expect(message).toBe(`${DRIVE_WRITE_FAILURE_TEXT[code]}${suffix}`)
       expect(message).not.toContain(HOSTILE_NAME)
+    })
+
+    it('logs the status and the reason Google answered', async () => {
+      drive.createStatus = 403
+      drive.createReason = 'forbidden'
+
+      await rejectionOf(create(await tools(), { name: 'Reports' }))
+
+      const logged = JSON.stringify(mocks.logged)
+
+      expect(logged).toContain('"googleStatus":403')
+      expect(logged).toContain('"googleReason":"forbidden"')
+    })
+
+    it('logs no reason when Google sent a hostile one', async () => {
+      drive.createStatus = 403
+      drive.createReason = HOSTILE_NAME
+
+      await rejectionOf(create(await tools(), { name: 'Reports' }))
+
+      const logged = JSON.stringify(mocks.logged)
+
+      expect(logged).toContain('"googleStatus":403')
+      expect(logged).toContain('"googleReason":null')
+      expect(logged).not.toContain(HOSTILE_NAME)
+    })
+
+    it('adds the status to the log of an unconfirmed create', async () => {
+      drive.createStatus = 500
+
+      await rejectionOf(create(await tools(), { name: 'Reports' }))
+
+      expect(JSON.stringify(mocks.logged)).toContain('"googleStatus":500')
     })
 
     it('refuses without a token or a request when there is no approval id',
@@ -1549,15 +1591,22 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
       })
 
       it.each([
-        [403, 'insufficientFilePermissions', 'Nothing was renamed'],
-        [404, '', 'Nothing was renamed'],
-        [400, '', 'Nothing was renamed'],
-        [429, '', 'slow down'],
-        [500, '', 'may or may not'],
+        [403, 'insufficientFilePermissions', 'Nothing was renamed',
+          ' (Google answered 403, reason insufficientFilePermissions.)'],
+        [403, 'forbidden', 'Nothing was renamed',
+          ' (Google answered 403, reason forbidden.)'],
+        [404, '', 'Nothing was renamed', ' (Google answered 404.)'],
+        [400, '', 'Nothing was renamed', ' (Google answered 400.)'],
+        [400, 'invalid', 'Nothing was renamed',
+          ' (Google answered 400, reason invalid.)'],
+        [429, '', 'slow down', ' (Google answered 429.)'],
+        [500, '', 'may or may not', ' (Google answered 500.)'],
+        [403, HOSTILE_NAME, 'Nothing was renamed', ' (Google answered 403.)'],
       ] as const)('answers %i %s with a fixed sentence', async (
         status,
         reason,
         sentence,
+        suffix,
       ) => {
         const { toolMap } = await known()
 
@@ -1567,6 +1616,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         const message = await rejectionOf(rename(toolMap, input))
 
         expect(message).toContain(sentence)
+        expect(message.endsWith(`.${suffix}`)).toBe(true)
         expect(message).not.toContain(HOSTILE_NAME)
       })
 
@@ -1861,19 +1911,29 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
         const message = await rejectionOf(move(toolMap, input))
 
-        expect(message).toBe('Google Drive refused the move. Nothing was moved.')
+        expect(message).toBe(
+          'Google Drive refused the move. Nothing was moved. '
+          + '(Google answered 400.)',
+        )
         expect(message).not.toContain('itself')
       })
 
       it.each([
-        [403, 'insufficientFilePermissions', 'Nothing was moved'],
-        [404, '', 'Nothing was moved'],
-        [429, '', 'slow down'],
-        [500, '', 'may or may not'],
+        [403, 'insufficientFilePermissions', 'Nothing was moved',
+          ' (Google answered 403, reason insufficientFilePermissions.)'],
+        [403, 'forbidden', 'Nothing was moved',
+          ' (Google answered 403, reason forbidden.)'],
+        [404, '', 'Nothing was moved', ' (Google answered 404.)'],
+        [400, 'invalid', 'Nothing was moved',
+          ' (Google answered 400, reason invalid.)'],
+        [429, '', 'slow down', ' (Google answered 429.)'],
+        [500, '', 'may or may not', ' (Google answered 500.)'],
+        [403, HOSTILE_NAME, 'Nothing was moved', ' (Google answered 403.)'],
       ] as const)('answers %i %s with a fixed sentence', async (
         status,
         reason,
         sentence,
+        suffix,
       ) => {
         const { toolMap } = await known()
 
@@ -1883,6 +1943,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         const message = await rejectionOf(move(toolMap, input))
 
         expect(message).toContain(sentence)
+        expect(message.endsWith(`.${suffix}`)).toBe(true)
         expect(message).not.toContain(HOSTILE_NAME)
       })
 

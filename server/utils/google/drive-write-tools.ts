@@ -80,12 +80,14 @@ import {
   buildDriveRenameRequest,
   createDriveFileWithContent,
   createDriveItem,
+  driveFailureSuffix,
   generateDriveId,
   isDriveRootMeta,
   listDriveFolderChildren,
   patchDriveItem,
   readDriveAncestor,
   readDriveItemMeta,
+  sanitizeDriveReason,
   searchDriveFolders,
 } from '~~/server/utils/google/drive-write-api'
 import type {
@@ -93,6 +95,7 @@ import type {
   DriveItemMeta,
   DriveWriteContext,
   DriveWriteFailureCode,
+  DriveWriteFailureDetail,
   ListedDriveItem,
 } from '~~/server/utils/google/drive-write-api'
 import { cleanMailField } from '~~/server/utils/google/gmail-text'
@@ -482,14 +485,30 @@ function toolFailure(message: string, status: number) {
   })
 }
 
-function failureOf(
-  code: DriveWriteFailureCode,
+function buildFailure(
+  detail: DriveWriteFailureDetail,
   operation?: DriveChangeOperation,
 ) {
-  const text = (operation && DRIVE_CHANGE_FAILURE_TEXT[operation][code])
-    || DRIVE_WRITE_FAILURE_TEXT[code]
+  const text = (operation && DRIVE_CHANGE_FAILURE_TEXT[operation][detail.code])
+    || DRIVE_WRITE_FAILURE_TEXT[detail.code]
 
-  return toolFailure(text, FAILURE_STATUS[code])
+  return toolFailure(
+    `${text}${driveFailureSuffix(detail.status, detail.reason)}`,
+    FAILURE_STATUS[detail.code],
+  )
+}
+
+function googleAnswerAttributes(
+  detail: DriveWriteFailureDetail | undefined,
+): Record<string, unknown> {
+  if (!detail || detail.status === undefined) {
+    return {}
+  }
+
+  return {
+    googleStatus: detail.status,
+    googleReason: sanitizeDriveReason(detail.reason),
+  }
 }
 
 function byteLengthOf(text: string): number {
@@ -763,6 +782,24 @@ export async function buildGoogleDriveWriteTools(
     }
   }
 
+  function failureOf(
+    detail: DriveWriteFailureDetail,
+    operation?: DriveChangeOperation,
+  ) {
+    logger.set({
+      attributes: {
+        googleByoTools: {
+          driveFailure: {
+            code: detail.code,
+            ...googleAnswerAttributes(detail),
+          },
+        },
+      },
+    })
+
+    return buildFailure(detail, operation)
+  }
+
   function latchKey(toolName: string, id: string): string {
     return `${toolName}:${id}`
   }
@@ -885,7 +922,7 @@ export async function buildGoogleDriveWriteTools(
       const answer = await readDriveItemMeta(GOOGLE_DRIVE_ROOT_ALIAS, context)
 
       if (!answer.ok) {
-        throw failureOf(answer.code)
+        throw failureOf(answer)
       }
 
       if (!isDriveRootMeta(answer.value)) {
@@ -914,7 +951,7 @@ export async function buildGoogleDriveWriteTools(
     const answer = await readDriveItemMeta(itemId, context)
 
     if (!answer.ok) {
-      throw failureOf(answer.code)
+      throw failureOf(answer)
     }
 
     const meta = answer.value
@@ -1065,7 +1102,7 @@ export async function buildGoogleDriveWriteTools(
     const answer = await readDriveItemMeta(folderId, context)
 
     if (!answer.ok) {
-      throw failureOf(answer.code)
+      throw failureOf(answer)
     }
 
     if (await root.isRoot(answer.value)) {
@@ -1104,7 +1141,7 @@ export async function buildGoogleDriveWriteTools(
     const generated = await generateDriveId(context)
 
     if (!generated.ok) {
-      throw failureOf(generated.code)
+      throw failureOf(generated)
     }
 
     try {
@@ -1144,12 +1181,16 @@ export async function buildGoogleDriveWriteTools(
       && hasExpectedParent
   }
 
-  function throwUnconfirmed(isFile: boolean): never {
+  function throwUnconfirmed(
+    isFile: boolean,
+    detail?: DriveWriteFailureDetail,
+  ): never {
     logger.set({
       attributes: {
         googleByoTools: {
           [isFile ? 'driveCreateFile' : 'driveCreateFolder']: {
             unconfirmed: true,
+            ...googleAnswerAttributes(detail),
           },
         },
       },
@@ -1196,11 +1237,11 @@ export async function buildGoogleDriveWriteTools(
     }
 
     if (created.code === 'failed' || created.code === 'too_large') {
-      return throwUnconfirmed(expected.isFile)
+      return throwUnconfirmed(expected.isFile, created)
     }
 
     if (created.code !== 'conflict') {
-      throw failureOf(created.code)
+      throw failureOf(created)
     }
 
     const existing = await readDriveItemMeta(attempt.itemId, attempt.context)
@@ -1266,7 +1307,7 @@ export async function buildGoogleDriveWriteTools(
         const meta = await readDriveItemMeta(folderId, context)
 
         if (!meta.ok) {
-          throw failureOf(meta.code)
+          throw failureOf(meta)
         }
 
         if (meta.value.mimeType !== GOOGLE_DRIVE_FOLDER_MIME_TYPE) {
@@ -1301,7 +1342,7 @@ export async function buildGoogleDriveWriteTools(
       }
 
       if (!listed.ok) {
-        throw failureOf(listed.code)
+        throw failureOf(listed)
       }
 
       const items = listed.value.items.map((item) => {
@@ -1382,7 +1423,7 @@ export async function buildGoogleDriveWriteTools(
         const parent = await readDriveItemMeta(parentId, context)
 
         if (!parent.ok) {
-          throw failureOf(parent.code)
+          throw failureOf(parent)
         }
 
         if (await root.isRoot(parent.value)) {
@@ -1506,7 +1547,7 @@ export async function buildGoogleDriveWriteTools(
         const parent = await readDriveItemMeta(parentId, context)
 
         if (!parent.ok) {
-          throw failureOf(parent.code)
+          throw failureOf(parent)
         }
 
         if (await root.isRoot(parent.value)) {
@@ -1718,14 +1759,14 @@ export async function buildGoogleDriveWriteTools(
         )
 
         if (!patched.ok) {
-          throw failureOf(patched.code, 'rename')
+          throw failureOf(patched, 'rename')
         }
 
         if (
           patched.value.id !== itemId
           || !isSameName(patched.value.name, newName)
         ) {
-          throw failureOf('failed', 'rename')
+          throw failureOf({ code: 'failed' }, 'rename')
         }
       }
 
@@ -1839,7 +1880,7 @@ export async function buildGoogleDriveWriteTools(
             throw toolFailure(MOVE_CYCLE_TEXT, FAILURE_STATUS.bad_request)
           }
 
-          throw failureOf(patched.code, 'move')
+          throw failureOf(patched, 'move')
         }
 
         if (
@@ -1847,7 +1888,7 @@ export async function buildGoogleDriveWriteTools(
           || patched.value.parents.length !== 1
           || patched.value.parents[0] !== toId
         ) {
-          throw failureOf('failed', 'move')
+          throw failureOf({ code: 'failed' }, 'move')
         }
       }
 

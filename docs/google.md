@@ -5108,6 +5108,36 @@ top, no further), `DriveChange.spec.ts` checks the bounded region, and
 four spacer suites. A preview check at 390x844 and 1280x800 is still the
 owner's.
 
+### 19.13 What Google answered, in the failure sentence (BES-460)
+
+A real-account failure showed only the fixed sentence of its code: creating a
+Google Doc or Sheet answered "did not allow" while a text file worked, and
+the preview logs were not readable, so the real status and reason could not be
+seen. Every failure sentence of the Drive write tools (create file, create
+folder, rename, move, and the folder list that shares the path) now ends with
+a fixed-format tail, ` (Google answered 403, reason forbidden.)`, or
+` (Google answered 400.)` when there is no usable reason. It is built by one
+helper, `driveFailureSuffix`, next to `DRIVE_WRITE_FAILURE_TEXT`. The status
+is the HTTP status of the answer. The reason is the first
+`error.errors[].reason` (else the first `error.details[].reason`) and is kept
+only when it matches `^[A-Za-z][A-Za-z0-9_]{0,40}$` after trimming
+(`sanitizeDriveReason`); anything else (spaces, markup, other scripts, more
+than 41 characters, a sentence that tries to instruct the model) becomes no
+reason. Google's message text is still never forwarded. The sentence of a
+create that Drive did not confirm is unchanged, because there the answer is
+unknown by design.
+
+The same two values go to the wide event under
+`attributes.googleByoTools.driveFailure` (`code`, `googleStatus`,
+`googleReason`) and, for an unconfirmed create, next to `unconfirmed` in
+`driveCreateFile` or `driveCreateFolder`. They sit inside the existing
+`attributes` map, so the Axiom schema field limit is not affected (see
+`docs/axiom-map-fields.md`). The approval card, the stored summaries and the
+reloaded step do not change. `tests/unit/server/utils/google/drive-write-api.spec.ts`
+covers the helper with hostile reasons, and the two Drive write integration
+specs assert the exact sentence per tool for 403 with `forbidden`, 400 with
+`invalid`, an answer without a reason and a hostile reason.
+
 ## 20. The setup guide on the own-client card (BES-458)
 
 A text guide, "How to set up your own Google client", sits inside the
