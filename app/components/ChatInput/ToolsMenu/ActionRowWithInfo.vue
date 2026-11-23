@@ -77,6 +77,8 @@
 </template>
 
 <script setup lang="ts">
+import { isMulticolorBrandIcon } from '#shared/utils/google-brand-icons'
+
 const props = defineProps<{
   label: string
   testId: string
@@ -96,7 +98,7 @@ const noteId = useId()
 const isNoteOpen = shallowRef<boolean>(false)
 
 const isBrandIcon = computed<boolean>(() => {
-  return !!props.icon?.startsWith('logos:')
+  return isMulticolorBrandIcon(props.icon)
 })
 const noteElement = useTemplateRef<ComponentPublicInstance>('noteElement')
 

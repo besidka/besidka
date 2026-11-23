@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   STORAGE_CATEGORY_META,
   formatStorageCount,
@@ -13,7 +14,7 @@ describe('storage categories', () => {
     })).toEqual([
       ['aiImages', 'AI images', 'lucide:images'],
       ['uploads', 'Uploaded files', 'lucide:paperclip'],
-      ['googleDrive', 'Google Drive copies', 'logos:google-drive'],
+      ['googleDrive', 'Google Drive copies', GOOGLE_DRIVE_ICON],
       ['generatedFiles', 'Generated files', 'lucide:file-text'],
       ['connectorImages', 'Connector images', 'lucide:plug'],
       ['artifacts', 'Artifacts', 'lucide:app-window'],

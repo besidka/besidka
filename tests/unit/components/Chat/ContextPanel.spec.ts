@@ -1536,7 +1536,7 @@ describe('Chat/ContextPanel', () => {
         expect(row.text()).toContain('Quarterly plan')
         expect(row.text()).toContain('Google Docs')
         expect(row.element.tagName).toBe('BUTTON')
-        expect(row.find('[class*="i-thesvg-color"]').exists()).toBe(true)
+        expect(row.find('[class*="i-google-brand"]').exists()).toBe(true)
       })
 
     it('names Google Sheets and Google Drive for the other kinds',

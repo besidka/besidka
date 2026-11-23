@@ -25,7 +25,14 @@ note (section 21). Still open:
   owner's decision.
 - The consent screen in production and the dedicated Drive client
   (section 9.12).
-- The official Docs, Sheets and Slides artwork (section 19.14).
+- OWNER DECISION: the attribution sentence that Google's Drive branding page
+  asks for when the Drive logo is used ("Google Drive is a trademark of Google
+  Inc. Use of this trademark is subject to Google Permissions", in the app
+  title or description). Besidka shows none, and any public text is the
+  owner's call (section 12.9, `docs/legal/prechecks/google.md`, row 9).
+- The Partner Marketing Hub approval for the Docs, Sheets and Slides icons,
+  and the Gmail and Calendar logos, which come from `logos:*` and may predate
+  the 2026 redesign (section 19.14).
 - iOS Safari and installed PWA checks (sections 3 and 12.9).
 - The owner decision on a stricter injection mitigation for Always allow
   (section 17.7).
@@ -1664,16 +1671,19 @@ toasts with what to check.
 Branding: the text is always "Google Drive" in full. The mark is Google's
 official multicolor Drive logo, unmodified (owner decision of 2026-11-22: the
 generic `lucide:hard-drive` icon was also Besidka's own Storage icon, and a
-colored mark gives the association). It is `logos:google-drive` from the
-Iconify `logos` collection (CC0-1.0, `@iconify-json/logos`, a dev-only
-dependency), matched against the `drive_2026` product logo that Google's Drive
-branding page links to. Google's rules: resize only, no other change, no
-tint, a tooltip on an icon button, and Besidka's own logo larger when the two
-appear together. The marks live in `shared/utils/google-brand-icons.ts`
-(`GOOGLE_DRIVE_ICON`, `GOOGLE_GMAIL_ICON`, `GOOGLE_CALENDAR_ICON`), are listed
-in `icon.clientBundle.icons`, never take a `text-*` color, opacity or filter,
-and render as a background image, not a mask (see
-`docs/nuxt-icon-collections.md`). The Storage page and its search row keep
+colored mark gives the association). Since BES-468 it is `google-brand:drive`,
+Google's own `drive_2026` SVG in the local `google-brand` collection (see
+`docs/nuxt-icon-collections.md`); it replaced `logos:google-drive` from the
+Iconify `logos` collection, which is no longer used for Drive. Google's rules:
+resize only, no other change, no tint, a tooltip on an icon button, and
+Besidka's own logo larger when the two appear together. The marks live in
+`shared/utils/google-brand-icons.ts` (`GOOGLE_DRIVE_ICON`, `GOOGLE_GMAIL_ICON`,
+`GOOGLE_CALENDAR_ICON`), never take a `text-*` color, opacity or filter, and
+render as a background image, not a mask. Google's Drive branding page also asks
+for the sentence "Google Drive is a trademark of Google Inc. Use of this
+trademark is subject to Google Permissions" in the app title or description
+when the logo is used; Besidka shows none, which is an open owner decision (see
+"Still open" at the top and row 9 of the pre-check). The Storage page and its search row keep
 `lucide:hard-drive`; they are not Google Drive.
 
 NOT VERIFIED without a real Google account, to check on the preview (a test
@@ -5494,23 +5504,28 @@ product name in full ("Google Docs", "Google Sheets", "Google Drive") and is
 never alone: in the card (next to the title and a badge that names the product in full,
 "Google Docs" or "Google Sheets", or "Text file" for a text file, with the
 "Open in" link naming the product too), in the preview header and in the Outputs row. The
-icons are `thesvg-color:google-docs` and `thesvg-color:google-sheets`
-(`@iconify-json/thesvg-color`, MIT, a third-party redraw of unknown currency:
-the colors look like the pre-2026 logos), and the text file uses the Drive
-logo. They are only resized, with no tint, opacity or filter, and each is behind
-one constant in `shared/utils/google-brand-icons.ts` (`GOOGLE_DOCS_ICON`,
-`GOOGLE_SHEETS_ICON`, `GOOGLE_SLIDES_ICON`), so a replacement needs no
-component change; a spec asserts that the components use the constants and no
-literal icon name. `GOOGLE_SLIDES_ICON` exists only for completeness: there is
-no Slides create kind. Google publishes no per-product branding page for Docs,
-Sheets or Slides (only the Drive page), and its partner guidance says to use
-product icons only with a text reference, the full product names, the app's own
-brand more prominent than the Google icon, the most current icon, and official
-artwork only through the Partner Marketing Hub. The legal status of these
-marks is therefore UNVERIFIED (`docs/legal/prechecks/google.md`, row 9).
-OWNER STEP: request the official artwork through the Partner Marketing Hub and
-replace the three constants (one line each), or point the three constants at
-the Drive logo as the fallback.
+icons are `google-brand:docs` and `google-brand:sheets`, and the text file uses
+the Drive logo, `google-brand:drive`: Google's own 2026 product icons, bundled
+unmodified in the local `google-brand` collection (`docs/nuxt-icon-collections.md`
+has the source URLs, the SHA-256 list and the one viewBox attribute added to two
+files). They replaced the third-party redraws of the pre-2026 logos
+(`@iconify-json/thesvg-color`, removed). They are only resized, with no tint,
+opacity or filter, and each is behind one constant in
+`shared/utils/google-brand-icons.ts` (`GOOGLE_DOCS_ICON`, `GOOGLE_SHEETS_ICON`,
+`GOOGLE_SLIDES_ICON`, `GOOGLE_DRIVE_ICON`); a spec asserts that the components
+use the constants and no literal icon name. `GOOGLE_SLIDES_ICON` exists only for
+completeness: there is no Slides create kind. The same constant
+`GOOGLE_DRIVE_ICON` feeds the Drive marks everywhere (the "+" menu row, the
+Labs and Connectors entries, the API Keys Google tab, the file manager tab and
+picker, the Drive import chips, Save to Google Drive, the context panel and the
+reasoning step icons), so they all show the new Drive logo; it is the same brand
+and Google's Drive branding page covers it. The license status of Docs, Sheets
+and Slides in an app is still open: the Workspace download page offers the
+elements for an organization's internal communications, Google publishes no
+developer branding page for those three (only the Drive page), and its Partner
+Marketing Hub guidance says a product icon needs an approval request
+(`docs/legal/prechecks/google.md`, row 9). OWNER STEP: decide whether to request
+the Hub approval; the artwork needs no code change if it is granted.
 
 **Not built.** Cards for created folders, renames and moves; creating Slides;
 a download of a file whose message is older than the newest 1,000 of its chat.
@@ -5524,7 +5539,9 @@ and the Google files cases of `build-chat-context.spec.ts` and
 `ContextPanel.spec.ts` cover it. Nothing here was seen in a browser; the card,
 the panel header with the Download menu at 360 px and the Outputs row are NOT
 VERIFIED visually, and the
-`thesvg-color` icons were not compared with Google's current artwork.
+`google-brand` icons were compared with Google's ZIP and its May 2026
+announcement only by rendering them with sharp, not in a browser. The Sheets PNG in
+Google's ZIP is rotated 180 degrees against the SVG that ships.
 
 ## 20. The setup guide on the own-client card (BES-458)
 

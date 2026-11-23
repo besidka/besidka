@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatInputToolsState } from '~/types/chat-input-tools'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   buildChatInputTiles,
   countSelectedConnectors,
@@ -792,7 +793,7 @@ describe('buildGoogleLinkTile', () => {
     expect(tile).toMatchObject({
       id: 'google-file',
       section: null,
-      icon: { kind: 'icon', name: 'logos:google-drive' },
+      icon: { kind: 'icon', name: GOOGLE_DRIVE_ICON },
       caption: 'Google Drive',
       value: 'Attach file',
       ariaLabel: 'Attach the Google file from the link',

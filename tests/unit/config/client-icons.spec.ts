@@ -38,9 +38,26 @@ function iconNamesIn(directory: string): Map<string, string[]> {
 }
 
 describe('icons of client-only Google components', () => {
-  const clientIcons: string[] = (configuration as {
-    icon: { clientBundle: { icons: string[] } }
-  }).icon.clientBundle.icons
+  const iconConfiguration = (configuration as {
+    icon: {
+      clientBundle: { icons: string[], includeCustomCollections?: boolean }
+      customCollections?: { prefix: string }[]
+    }
+  }).icon
+  const clientIcons: string[] = iconConfiguration.clientBundle.icons
+  const bundledCollectionPrefixes: string[] = iconConfiguration
+    .clientBundle.includeCustomCollections
+    ? (iconConfiguration.customCollections ?? []).map((collection) => {
+      return `${collection.prefix}:`
+    })
+    : []
+
+  function isInClientBundle(name: string): boolean {
+    return clientIcons.includes(name)
+      || bundledCollectionPrefixes.some((prefix) => {
+        return name.startsWith(prefix)
+      })
+  }
 
   it('are all in the client bundle, so none waits for the icon route',
     () => {
@@ -49,7 +66,7 @@ describe('icons of client-only Google components', () => {
       expect(used.size).toBeGreaterThan(0)
 
       const missing = [...used.entries()]
-        .filter(([name]) => !clientIcons.includes(name))
+        .filter(([name]) => !isInClientBundle(name))
         .map(([name, files]) => `${name} (${files.join(', ')})`)
 
       expect(missing).toEqual([])
@@ -58,10 +75,10 @@ describe('icons of client-only Google components', () => {
   it('include every logo of a created Google file card, none by a literal',
     () => {
       for (const icon of Object.values(GOOGLE_FILE_KIND_ICONS)) {
-        expect(clientIcons).toContain(icon)
+        expect(isInClientBundle(icon), icon).toBe(true)
       }
 
-      expect(clientIcons).toContain(GOOGLE_SLIDES_ICON)
+      expect(isInClientBundle(GOOGLE_SLIDES_ICON)).toBe(true)
     })
 
   it('include the Disconnect icon of the Drive card and the own client',

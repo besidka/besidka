@@ -372,8 +372,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/nuxt-icon-collections.md` - Why `icon.collections`/
   `icon.serverBundle.collections` are pinned to four prefixes: `@nuxt/icon`'s
   per-`<Icon>` reactive-array sort over the default ~220-entry catalog, the
-  rule for adding a new prefix, why `thesvg` stays excluded, and revert
-  criteria
+  rule for adding a new prefix, why `thesvg` stays excluded, the local
+  `google-brand` custom collection (Google's official 2026 Drive, Docs, Sheets
+  and Slides SVGs: source URLs, SHA-256 list, the one added `viewBox`, why the
+  folder sits outside the `nuxt-svgo` path), and revert criteria
 - `docs/axiom-map-fields.md` - Why `besidka-prod` hit Axiom's 256-field
   schema limit, the `attributes` map-field convention that fixes it, the
   `scripts/axiom-declare-map-field.mjs` rollout step that MUST run before

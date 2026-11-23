@@ -2845,7 +2845,7 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   ("Created DOCX"); while the input still streams there is no `format`, so the
   generic title stays. Skills use `lucide:sparkles`, memory the memory icon,
   chat and project knowledge their own icons, and the future `besidka__*` tools
-  the Besidka mark, and the `google__` Drive tools the Google Drive logo (`logos:google-drive`) with
+  the Besidka mark, and the `google__` Drive tools the Google Drive logo (`GOOGLE_DRIVE_ICON`, `google-brand:drive`) with
   a
   title that names "Google Drive" in full (`docs/google.md`, section 13).
   Artifacts and code execution have icons in the registry,

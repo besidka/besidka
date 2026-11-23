@@ -1,9 +1,10 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
+import { GOOGLE_DRIVE_ICON } from '../../../../../shared/utils/google-brand-icons'
 import GoogleStep from '../../../../../app/components/Chat/Reasoning/GoogleStep.vue'
 
 const LINK = 'https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz'
-const ICON = { kind: 'iconify', name: 'logos:google-drive' } as const
+const ICON = { kind: 'iconify', name: GOOGLE_DRIVE_ICON } as const
 
 function data(overrides: Record<string, unknown> = {}) {
   return {

@@ -1,5 +1,9 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  GOOGLE_DRIVE_ICON,
+  GOOGLE_GMAIL_ICON,
+} from '../../../../../shared/utils/google-brand-icons'
 import ActionRowWithInfo from '../../../../../app/components/ChatInput/ToolsMenu/ActionRowWithInfo.vue'
 
 function mountRow(props: Record<string, unknown> = {}) {
@@ -162,10 +166,12 @@ describe('ChatInput/ToolsMenu/ActionRowWithInfo', () => {
 
   it('fades a monochrome icon but never a multicolor brand mark', async () => {
     const plain = await mountRow()
-    const brand = await mountRow({ icon: 'logos:google-drive' })
+    const brand = await mountRow({ icon: GOOGLE_DRIVE_ICON })
+    const logo = await mountRow({ icon: GOOGLE_GMAIL_ICON })
 
     expect(plain.find('.opacity-75').exists()).toBe(true)
     expect(brand.find('.opacity-75').exists()).toBe(false)
+    expect(logo.find('.opacity-75').exists()).toBe(false)
   })
 
   it('is as high as the other action rows', async () => {
