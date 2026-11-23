@@ -2263,6 +2263,40 @@ export function getAffectedTests(changedFiles) {
     ...SPACER_SUITES,
   ]
 
+  const googleDriveWriteTests = [
+    'tests/unit/utils/google-drive-write.spec.ts',
+    'tests/unit/utils/google-scopes.spec.ts',
+    'tests/unit/utils/google-byo.spec.ts',
+    'tests/unit/utils/google-step.spec.ts',
+    'tests/unit/utils/google-tool-catalog.spec.ts',
+    'tests/unit/utils/google-tool-approvals.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/server/utils/google/drive-write-api.spec.ts',
+    'tests/unit/server/utils/google/drive-write-boundary.spec.ts',
+    'tests/unit/server/utils/google/chat-references.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/tool-output.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-drive-write.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-gmail.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-candidates.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/integration/server/google-drive-write-tools.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-tool-permissions.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/unit/components/Chat/Reasoning/DriveChange.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalDetails.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
   const googleDriveTabTests = [
     'tests/integration/api/google-drive-refresh.spec.ts',
     'tests/integration/api/google-drive-import.spec.ts',
@@ -4330,6 +4364,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(google-calendar-event|google-calendar-tools|google-connections|google-gmail-draft-view|google-scopes|google-byo|google-gmail-tools|google-tool-approvals|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(calendar-api|calendar-tools|store|gmail-text|byo-access|tokens|send-guard|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|ApprovalDetails|CalendarEvent|GmailDraft|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
       tests: googleCalendarToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-drive-write|google-drive-tools|google-gmail-tools|google-tool-approvals|google-tool-catalog|google-scopes|google-byo|google-connections|tool-approval-parts)\.ts|server\/utils\/google\/(drive-write-api|drive-write-tools|refusal-latch|chat-references|drive-search|byo-tools|byo-access|tokens|send-guard|tool-output|http)\.ts|server\/utils\/tool-approval\/(policy|send|google|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|ApprovalDetails|DriveChange|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/components\/Profile\/Connectors\/GoogleDetailPanel\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleDriveWriteTests,
     },
     {
       pattern:
