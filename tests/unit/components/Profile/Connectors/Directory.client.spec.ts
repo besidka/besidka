@@ -4,7 +4,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 import Directory from '../../../../../app/components/Profile/Connectors/Directory.client.vue'
 import type { ConnectorDirectoryHome } from '#shared/types/connectors.d'
+import { resolveGoogleEntries } from '../../../../../app/utils/google-entries'
+import type { GoogleEntry } from '../../../../../app/utils/google-entries'
 import { createDirectoryItem } from '../../../../setup/helpers/connectors-ui'
+
+function createGoogleEntries(isConnected = false): GoogleEntry[] {
+  return resolveGoogleEntries({
+    status: {
+      connection: isConnected
+        ? {
+          clientMode: 'besidka',
+          status: 'active',
+          email: 'person@example.test',
+          isWorkspaceAccount: false,
+          capabilities: ['identity', 'drive-picked'],
+          connectedAt: '2026-11-22T12:00:00.000Z',
+        }
+        : null,
+      canConnect: true,
+      dedicatedClient: true,
+      byo: {
+        canManage: true,
+        redirectUri: 'https://besidka.example/api/v1/google/byo/callback',
+        hasClient: true,
+        connection: null,
+      },
+    },
+    driveFeature: { enabled: true, active: true },
+    isGmailActive: true,
+    isCalendarActive: true,
+  })
+}
 
 enableAutoUnmount(afterEach)
 
@@ -13,10 +43,19 @@ const mocks = vi.hoisted(() => ({
   refreshHome: vi.fn(),
   add: vi.fn(),
   openEntry: vi.fn(),
+  openGooglePanel: vi.fn(),
 }))
 
 const homeData = ref<ConnectorDirectoryHome | null>(null)
 const isAdmin = ref<boolean>(false)
+const googleEntries = ref<GoogleEntry[]>([])
+
+mockNuxtImport('useGoogleEntries', () => {
+  return () => ({ entries: googleEntries })
+})
+mockNuxtImport('useGoogleEntryPanel', () => {
+  return () => ({ open: mocks.openGooglePanel })
+})
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useIsAdmin', () => () => computed(() => isAdmin.value))
@@ -77,6 +116,7 @@ describe('Profile/Connectors/Directory', () => {
   beforeEach(() => {
     homeData.value = createHome()
     isAdmin.value = false
+    googleEntries.value = []
     for (const mock of Object.values(mocks)) {
       mock.mockReset()
     }
@@ -201,6 +241,118 @@ describe('Profile/Connectors/Directory', () => {
       .exists()).toBe(true)
     expect(wrapper.find('[data-testid="connector-directory-section-top"]')
       .exists()).toBe(false)
+  })
+
+  describe('Built into Besidka', () => {
+    const SECTION = '[data-testid="connector-directory-section-built-in"]'
+    const CARD = '[data-testid="google-entry-card"]'
+
+    it('is the first section with the same entries as Yours', async () => {
+      googleEntries.value = createGoogleEntries()
+
+      const wrapper = await mountDirectory()
+      const sections = wrapper.findAll('section')
+      const section = wrapper.get(SECTION)
+
+      expect(sections[0]!.attributes('data-testid'))
+        .toBe('connector-directory-section-built-in')
+      expect(section.get('h3').text()).toContain('Built into Besidka')
+      expect(section.findAll(CARD).map(card => card.attributes('data-entry-id')))
+        .toEqual(['google-drive', 'google-gmail', 'google-calendar'])
+    })
+
+    it('is not listed when no Google entry is available', async () => {
+      const wrapper = await mountDirectory()
+
+      expect(wrapper.find(SECTION).exists()).toBe(false)
+    })
+
+    it('shows Connected or Connect and opens the panel', async () => {
+      googleEntries.value = createGoogleEntries(true)
+
+      const wrapper = await mountDirectory()
+      const cards = wrapper.findAll(CARD)
+
+      expect(cards[0]!.find('[data-testid="google-entry-card-connected"]')
+        .exists()).toBe(true)
+      expect(cards[1]!.find('[data-testid="google-entry-card-connect"]')
+        .exists()).toBe(true)
+
+      await cards[1]!.get('[data-testid="google-entry-card-connect"]')
+        .trigger('click')
+      await cards[2]!.get('[data-testid="google-entry-card-open"]')
+        .trigger('click')
+
+      expect(mocks.openGooglePanel).toHaveBeenNthCalledWith(1, 'google-gmail')
+      expect(mocks.openGooglePanel)
+        .toHaveBeenNthCalledWith(2, 'google-calendar')
+    })
+
+    it('does not count toward the Added state of the directory', async () => {
+      googleEntries.value = createGoogleEntries(true)
+
+      const wrapper = await mountDirectory()
+
+      expect(wrapper.find(SECTION)
+        .find('[data-testid="connector-directory-added"]').exists())
+        .toBe(false)
+      expect(wrapper.find(SECTION)
+        .find('[data-testid="connector-directory-card"]').exists())
+        .toBe(false)
+    })
+
+    it.each([
+      ['google', ['google-drive', 'google-gmail', 'google-calendar']],
+      ['gmail', ['google-gmail']],
+      ['calendar', ['google-calendar']],
+      ['sheets', ['google-drive']],
+    ])('puts the matching entries above the results for %s',
+      async (word, expectedIds) => {
+        googleEntries.value = createGoogleEntries()
+
+        const wrapper = await mountDirectory()
+
+        await wrapper.get('[data-testid="connector-directory-query"]')
+          .setValue(word)
+        await new Promise(resolve => setTimeout(resolve, 350))
+        await flushPromises()
+
+        const sections = wrapper.findAll('section')
+
+        expect(sections[0]!.attributes('data-testid'))
+          .toBe('connector-directory-section-built-in')
+        expect(sections[1]!.attributes('data-testid'))
+          .toBe('connector-directory-list')
+        expect(wrapper.findAll(CARD).map(card => card.attributes('data-entry-id')))
+          .toEqual(expectedIds)
+        expect(wrapper.get('[data-testid="connector-directory-total"]').text())
+          .toBe('35')
+      })
+
+    it('stays out of a search that does not mention Google', async () => {
+      googleEntries.value = createGoogleEntries()
+
+      const wrapper = await mountDirectory()
+
+      await wrapper.get('[data-testid="connector-directory-query"]')
+        .setValue('notion')
+      await new Promise(resolve => setTimeout(resolve, 350))
+      await flushPromises()
+
+      expect(wrapper.find(SECTION).exists()).toBe(false)
+    })
+
+    it('stays out of the full list of another section', async () => {
+      googleEntries.value = createGoogleEntries()
+
+      const wrapper = await mountDirectory()
+
+      await wrapper.get('[data-testid="connector-directory-show-all-top"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find(SECTION).exists()).toBe(false)
+    })
   })
 
   it('shows Sync now to admins only', async () => {

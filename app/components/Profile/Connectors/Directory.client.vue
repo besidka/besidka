@@ -69,6 +69,12 @@
       {{ liveMessage }}
     </p>
 
+    <ProfileConnectorsGoogleCards
+      v-if="visibleGoogleEntries.length"
+      :entries="visibleGoogleEntries"
+      @open="googlePanel.open"
+    />
+
     <section
       v-if="isListMode"
       class="grid grid-cols-[minmax(0,1fr)] gap-3"
@@ -241,6 +247,8 @@ import type {
   ConnectorDirectoryHome,
   ConnectorDirectoryItem,
 } from '#shared/types/connectors.d'
+import { findGoogleEntriesForSearch } from '#shared/utils/google-connectors'
+import type { GoogleEntry } from '~/utils/google-entries'
 
 interface SyncStatus {
   rows: number
@@ -262,7 +270,9 @@ const MAX_SYNC_RUNS = 12
 
 const isAdmin = useIsAdmin()
 const actions = useConnectorDirectoryActions()
+const googlePanel = useGoogleEntryPanel()
 const { connectors } = useConnectorsPage()
+const { entries: googleEntries } = useGoogleEntries()
 
 const {
   data: homeData,
@@ -298,6 +308,18 @@ const isSearchActive = computed<boolean>(() => {
 
 const isListMode = computed<boolean>(() => {
   return isSearchActive.value || openSection.value !== null
+})
+
+const visibleGoogleEntries = computed<GoogleEntry[]>(() => {
+  if (isSearchActive.value) {
+    const matchingIds = findGoogleEntriesForSearch(trimmedQuery.value)
+
+    return googleEntries.value.filter((entry) => {
+      return matchingIds.includes(entry.id)
+    })
+  }
+
+  return openSection.value ? [] : googleEntries.value
 })
 
 const listHeading = computed<string>(() => {
