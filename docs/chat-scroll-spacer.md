@@ -101,8 +101,10 @@ fires when the layout changed and not before.
 - **Relying on the final adjust at `ready`.** It runs once, at the end. The
   user sees the message slide for the whole turn, as in the 343 px case in
   "Approval pauses and continuations" and the July 2026 image case.
-- **Widening a test timeout.** The e2e specs measure the position per frame.
-  A longer timeout hides a slide that the spacer never fixed.
+- **Widening a test timeout.** The e2e specs poll the layout with
+  `expect.poll`, so a longer timeout lets a late recovery pass, such as the
+  final adjust at `ready`, and hides a slide the user saw for the whole turn.
+  Assert the position during the turn, before the next content arrives.
 
 ### Checklist for every new element
 
@@ -142,10 +144,14 @@ open items are listed after the table.
 | Reasoning box auto-collapse when the text starts (`Reasoning.vue`, `isMainExpanded`) | Top of the last assistant message, mid-stream | NOT covered by a trigger. The pin was sized from the user message, so it only clamps if the reply falls below that; the final adjust corrects the rest |
 | Reasoning box opened or closed by the user after `ready` | Same | NOT covered |
 | Pending image skeleton (phantom, then real) | Standalone message or inline | `reservePinnedSpace('instant')` on the rising edge; the swap is height neutral because turns are gated on `isTurnActive` |
-| Generic loader (`Chat/Loader.client.vue`) | After the last message | The first visible content replaces it in the same patch. NOT covered if something removes it with nothing in its place |
+| Generic loader (`Chat/Loader.client.vue`) | After the last message | Nothing to cover: it is `h-0` with an absolutely placed bubble and only fades (`opacity-0`), so showing and hiding it never changes the page height |
 | Research clarify and pending blocks | Siblings of the message list | `reservePinnedSpace()` from the `[slug].vue` watcher |
-| Artifact card (`Chat/Artifact/Card.vue`), document card (`Chat/Document.vue`), code run (`Chat/CodeExecution.vue`) | Message parts; streaming, ready and failed states differ in height | The final adjust at `ready`. A state change mid-turn: NOT covered |
-| Files, Drive files (`Chat/DriveFiles.vue`), omitted-context note, connectors notice, URL sources, auto web search chip, tool rounds, reply stopped, error card | In the message, mostly at the end of a turn | The final adjust at `ready` (they appear before or with it) |
+| Artifact card (`Chat/Artifact/Card.vue`), document card (`Chat/Document.vue`) | Message parts; streaming, ready and failed states differ in height | The final adjust at `ready`. A state change mid-turn: NOT covered |
+| Code run card (`Chat/CodeExecution.vue`), "Show more lines" and the details opened inline by the user (`isExpanded`) | In the message | The final adjust at `ready` for the card itself. A user toggle after `ready`: NOT covered. The detail view in the side panel (`CodeExecution/Detail.vue`) is out of flow |
+| Generated image (`Chat/GeneratedImage.vue`) | In the message | By design: the box reserves its height with `aspectRatio` and a same-size skeleton, so the image loading does not resize it |
+| Images in Markdown text | In the message | NOT covered. The app has no `ProseImg` override and no reserved size, so a lazy image that loads after the measurement grows the message |
+| Error card (`Chat/ErrorCard.vue`) | Replaces the reply text when a turn fails | NOT covered: the turn ends in `error`, and the final adjust runs only at `ready` |
+| Files, Drive files (`Chat/DriveFiles.vue`), omitted-context note, connectors notice, URL sources, auto web search chip, tool rounds, reply stopped | In the message, mostly at the end of a turn | The final adjust at `ready` (they appear before or with it) |
 | Composer attachments row: file chips, upload skeleton, Drive import note, link skeleton, pasted-text chips, setting tiles (`SettingTile.vue`, 150 ms height transition) | In the composer root, counted on purpose | `chat-input:height` from the `useElementSize` watcher (every change while the textarea is empty, only the first one with a draft typed), from the tiles watcher (tiles appearing or leaving, draft typed), from `chat:attach-file`, with `chat:scroll-to-bottom` on attach. With a draft typed, removing a chip or finishing an upload is NOT reported; it only refreshes at the next report |
 | Composer overlays: command picker, approval chip, connector suggestion | `chat-input-overlays`, `absolute bottom-full` | Not measured by design; they never change the reported height. `composer-overlays-spacer.spec.ts` |
 | Keyboard | Visual viewport | The `keyboardInset` watcher |
@@ -161,10 +167,13 @@ Not fixed here. Each needs a trigger and the tests from the checklist.
 - A reasoning box or an approval step `details` opened or closed by the user
   after `ready`, and the reasoning auto-collapse mid-stream outside a
   continuation: the content changes height with no trigger.
-- An artifact, document or code run card whose state changes height in the
-  middle of a turn (streaming to failed or unavailable).
-- The loader leaving with no content in its place, for example a turn that
-  ends in `error` (the final adjust only runs at `ready`).
+- An artifact or document card whose state changes height in the middle of a
+  turn (streaming to failed or unavailable).
+- The code run card opened or closed by the user after `ready`.
+- Images in Markdown text: no reserved height, so a late load grows the
+  message after the measurement.
+- A turn that ends in `error`: the error card replaces the text, and the final
+  adjust runs only at `ready`, so nothing recomputes the spacer.
 - `chat-input:height` does not recompute the spacer after a push, so a
   composer that grows or shrinks after a pin changes only `inputHeight`.
 
@@ -449,8 +458,9 @@ chat it pinned), so a settled layout is never touched. One frame at the
 displaced position can still occur: the resize notification arrives after the
 layout that clamped. Do not replace this with a falling-edge
 `scrollIntoView()` (see the image-generation section for why). This is the
-first case of a general rule, written down in "Elements that appear,
-disappear or resize: the rule" near the top: an element that leaves after a
+first case of a general rule, written down in
+[Elements that appear, disappear or resize: the rule](#elements-that-appear-disappear-or-resize-the-rule)
+near the top: an element that leaves after a
 measurement needs a trigger of its own, and `keepContinuationPinned()` is
 the one that exists for continuations.
 
