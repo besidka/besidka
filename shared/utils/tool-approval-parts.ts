@@ -30,6 +30,18 @@ const AWAITING_APPROVAL_STATES = new Set<string>([
   'approval-responded',
 ])
 
+export interface DriveName {
+  name: string
+  id: string
+}
+
+export interface DriveNames {
+  item?: DriveName
+  from?: DriveName
+  to?: DriveName
+  folder?: DriveName
+}
+
 export interface ToolApprovalPartData {
   approvalId: string
   toolCallId: string
@@ -39,6 +51,85 @@ export interface ToolApprovalPartData {
   rememberOptions: ToolApprovalRemember[]
   preview?: string
   link?: string
+  driveNames?: DriveNames
+}
+
+export const DRIVE_NAME_MAX_LENGTH = 200
+const DRIVE_NAME_ID_PATTERN = /^[A-Za-z0-9_-]{10,128}$/
+const DRIVE_NAMES_KEYS: readonly (keyof DriveNames)[] = [
+  'item',
+  'from',
+  'to',
+  'folder',
+]
+
+function readDriveName(value: unknown): DriveName | null {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || Array.isArray(value)
+  ) {
+    return null
+  }
+
+  const { name, id, ...rest } = value as Record<string, unknown>
+
+  if (
+    Object.keys(rest).length > 0
+    || typeof name !== 'string'
+    || !name
+    || name.length > DRIVE_NAME_MAX_LENGTH
+    || typeof id !== 'string'
+    || !DRIVE_NAME_ID_PATTERN.test(id)
+  ) {
+    return null
+  }
+
+  return { name, id }
+}
+
+/**
+ * The names a Drive approval card shows next to the ids of its input (the
+ * folder a call names, the item it renames or moves), as the server wrote
+ * them from the chat's own Drive results. Any shape other than an object of
+ * the four known keys, each a name of 1 to 200 characters with the id it
+ * stands for, is null, on the server before it is stored and in the browser
+ * before it is shown, so a name is never shown beside an id it was not
+ * written for.
+ */
+export function readApprovalDriveNames(value: unknown): DriveNames | null {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || Array.isArray(value)
+  ) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const names: DriveNames = {}
+
+  for (const key of Object.keys(record)) {
+    if (!(DRIVE_NAMES_KEYS as readonly string[]).includes(key)) {
+      return null
+    }
+  }
+
+  for (const key of DRIVE_NAMES_KEYS) {
+    if (record[key] === undefined) {
+      continue
+    }
+
+    const driveName = readDriveName(record[key])
+
+    if (!driveName) {
+      return null
+    }
+
+    names[key] = driveName
+  }
+
+  return Object.keys(names).length > 0 ? names : null
 }
 
 const APPROVAL_LINK_MAX_LENGTH = 2048

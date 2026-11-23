@@ -37,6 +37,7 @@ describe('google-byo-guide', () => {
     expect(listed.sort()).toEqual([
       GOOGLE_SCOPES.calendarEventsFreebusy,
       GOOGLE_SCOPES.calendarEventsOwned,
+      GOOGLE_SCOPES.drive,
       GOOGLE_SCOPES.driveReadonly,
       GOOGLE_SCOPES.gmailCompose,
       GOOGLE_SCOPES.gmailReadonly,

@@ -302,6 +302,11 @@ const INFO_TEXTS: Readonly<Record<GoogleEntryId, string>> = {
   'google-calendar': GOOGLE_CALENDAR_ACCESS_NOTE,
 }
 
+const DRIVE_WRITE_INFO_TEXT = 'One exception: with your own Google client '
+  + 'and Change files access, it can also create a folder in your own My '
+  + 'Drive after you approve it. It cannot delete anything or change who can '
+  + 'see a file.'
+
 const props = defineProps<{
   entryId: GoogleEntryId
 }>()
@@ -319,7 +324,11 @@ const entry = computed<GoogleEntry | null>(() => {
 })
 
 const infoText = computed<string>(() => {
-  return INFO_TEXTS[props.entryId]
+  const base = INFO_TEXTS[props.entryId]
+
+  return props.entryId === 'google-drive' && isDriveWriteGranted.value
+    ? `${base} ${DRIVE_WRITE_INFO_TEXT}`
+    : base
 })
 
 const isOwnClientOwner = computed<boolean>(() => {
@@ -349,6 +358,21 @@ const toolGroups = computed<ToolGroup[]>(() => {
   ].filter(group => group.tools.length > 0)
 })
 
+const isDriveWriteGranted = computed<boolean>(() => {
+  const connection = data.value?.byo?.connection
+
+  return connection?.status === 'active'
+    && connection.capabilities.includes('drive-write')
+})
+
+function getUnavailableHint(tool: GoogleToolCatalogEntry): string {
+  const hint = getGoogleToolAlwaysAllowHint(tool)
+
+  return tool.neededCapability === 'drive-write' && !isDriveWriteGranted.value
+    ? `${hint} Needs Change files access.`
+    : hint
+}
+
 const hasPermissionData = computed<boolean>(() => {
   return permissions.tools.value.length > 0
 })
@@ -370,7 +394,7 @@ const permissionGroups = computed<ToolPermissionGroup[]>(() => {
             title: tool.title,
             mode: modesByName.get(tool.name) ?? 'ask',
             modes: GOOGLE_TOOL_PERMISSION_MODES,
-            unavailableHint: getGoogleToolAlwaysAllowHint(tool),
+            unavailableHint: getUnavailableHint(tool),
           }
         }),
     }

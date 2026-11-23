@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { getGoogleStepData } from '../../../app/utils/google-step'
+import {
+  describeGoogleStepReference,
+  getGoogleStepData,
+} from '../../../app/utils/google-step'
 import {
   REASONING_STEP_GENERIC_ICON,
   resolveReasoningStepSource,
@@ -93,6 +96,43 @@ describe('getGoogleStepData', () => {
       toolName: 'google__drive_list_picked',
       output: { references: [{ id: 'a', title: 'A' }] },
     }))?.references).toHaveLength(1)
+  })
+})
+
+describe('describeGoogleStepReference for Drive folders', () => {
+  const folder = {
+    id: 'folder-id-0123456789',
+    kind: 'drive-folder',
+    title: 'Projects',
+    link: LINK,
+    date: '',
+  }
+
+  it('names a folder by its stored name with an Open in Google Drive link',
+    () => {
+      expect(describeGoogleStepReference(folder)).toEqual({
+        text: 'Projects',
+        linkText: 'Open in Google Drive',
+        linkLabel: 'Open Projects in Google Drive',
+      })
+      expect(describeGoogleStepReference({ ...folder, title: '' }).text)
+        .toBe('Google Drive folder')
+    })
+
+  it('shows My Drive under the fixed title whatever the stored title says',
+    () => {
+      expect(describeGoogleStepReference({
+        ...folder,
+        kind: 'drive-root',
+        title: 'Forged',
+      }).text).toBe('My Drive')
+    })
+
+  it('reads the Drive folder step titles', () => {
+    expect(getToolStepTitle('google__drive_create_folder', false, false))
+      .toBe('Created a folder in Google Drive')
+    expect(getToolStepTitle('google__drive_list_folder', false, false))
+      .toBe('Listed folders in Google Drive')
   })
 })
 

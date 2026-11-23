@@ -34,6 +34,7 @@ const REFERENCE_TITLE_MAX_LENGTH = 300
 const REFERENCE_LINK_MAX_LENGTH = 2048
 const REFERENCE_DATE_MAX_LENGTH = 64
 const REFERENCE_KIND_MAX_LENGTH = 32
+const REFERENCE_PARENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 export const GOOGLE_TOOL_ERROR_PERSISTED_TEXT = 'The Google tool did not '
   + 'return a result.'
@@ -60,6 +61,7 @@ export interface GoogleToolReference {
   title?: string
   link?: string
   date?: string
+  parentId?: string
 }
 
 /**
@@ -342,6 +344,10 @@ function toReference(value: unknown): GoogleToolReference | null {
   const title = clampText(value.title, REFERENCE_TITLE_MAX_LENGTH)
   const link = safeLink(value.link)
   const date = clampText(value.date, REFERENCE_DATE_MAX_LENGTH)
+  const parentId = typeof value.parentId === 'string'
+    && REFERENCE_PARENT_ID_PATTERN.test(value.parentId)
+    ? value.parentId
+    : undefined
 
   return {
     id,
@@ -349,6 +355,7 @@ function toReference(value: unknown): GoogleToolReference | null {
     ...(title ? { title } : {}),
     ...(link ? { link } : {}),
     ...(date ? { date } : {}),
+    ...(parentId ? { parentId } : {}),
   }
 }
 

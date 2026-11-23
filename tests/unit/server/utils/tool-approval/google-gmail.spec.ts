@@ -185,6 +185,7 @@ describe('the Gmail tool registrations', () => {
     expect(GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE).toEqual({
       [GOOGLE_GMAIL_SEARCH_TOOL_NAME]: 5,
       [GOOGLE_DRIVE_SEARCH_TOOL_NAME]: 5,
+      google__drive_list_folder: 5,
       google__calendar_list_events: 5,
       google__calendar_free_busy: 5,
     })

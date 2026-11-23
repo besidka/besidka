@@ -2523,6 +2523,118 @@ describe('tool approval continuation', () => {
       })
     })
 
+    describe('a Drive folder create the user blocked or switched off after '
+      + 'approving it', () => {
+      const BLOCKED_TEXT = 'This tool is blocked in the user\'s settings, so '
+        + 'the action did not run.'
+      let createExecute: ReturnType<typeof vi.fn>
+
+      beforeEach(async () => {
+        const { buildGoogleApprovalEntry } = await import(
+          '~~/server/utils/tool-approval/send'
+        )
+
+        createExecute = vi.fn(async () => ({
+          references: [{ id: 'folder-id-0123456789' }],
+          created: true,
+        }))
+        mocks.googleSend = {
+          tools: {
+            google__drive_create_folder: tool({
+              description: 'Create a folder.',
+              inputSchema: z.object({ name: z.string() }),
+              execute: createExecute,
+            }),
+          },
+          entries: new Map([
+            ['google__drive_create_folder', buildGoogleApprovalEntry({
+              toolName: 'google__drive_create_folder',
+              kind: 'write',
+              definitionHash: GOOGLE_HASH,
+              summary: 'Create a folder in your Google Drive',
+              toolApprovalsActive: true,
+            })],
+          ]),
+        }
+      })
+
+      async function pauseOnCreate() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-f', 'google__drive_create_folder', {
+              name: 'Reports',
+            }),
+          ],
+        })
+      }
+
+      it('runs the approved create when nothing changed', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        expect(createExecute).not.toHaveBeenCalled()
+
+        await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+
+        expect(createExecute).toHaveBeenCalledTimes(1)
+      })
+
+      it('denies it with the blocked text and never calls Google once the '
+        + 'tool is Blocked', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleBlockedNames = ['google__drive_create_folder']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(createExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+        expect(writtenChunks().some(chunk => chunk.type === 'error'))
+          .toBe(false)
+      })
+
+      it('denies it with the blocked text and never calls Google once '
+        + 'Drive is switched off in the chat', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleServicesOff = ['drive']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(createExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+      })
+
+      it('still runs it when only the folder list is Blocked', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleBlockedNames = ['google__drive_list_folder']
+
+        await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+
+        expect(createExecute).toHaveBeenCalledTimes(1)
+      })
+    })
+
     describe('with the real Drive tools', () => {
       const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
 
@@ -3449,6 +3561,250 @@ describe('tool approval continuation', () => {
         expect(outsideFrames(prompt)).not.toContain(EVENT_TITLE)
         expect(prompt).not.toContain(LISTED_EVENT_LINK_ID)
         expect(prompt).not.toContain(CREATED_EVENT_LINK_ID)
+      })
+    })
+
+    describe('with the real Drive folder tools', () => {
+      const FOLDER_NAME = 'SECRET FOLDER NAME'
+      const ROOT_ID = 'real-root-id-0123456789'
+      const FOLDER_ID = 'listed-folder-id-0123456'
+      const GENERATED_ID = 'generated-id-0123456789'
+      const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
+      const NEW_FOLDER = { name: 'Reports', parentFolderId: FOLDER_ID }
+      let driveFetch: ReturnType<typeof vi.fn>
+      let createStatus = 200
+
+      function outsideFrames(prompt: string): string {
+        return prompt.replace(FRAME, '')
+      }
+
+      function folderPosts() {
+        return driveFetch.mock.calls.filter((call) => {
+          return (call[1] as RequestInit | undefined)?.method === 'POST'
+        })
+      }
+
+      async function pauseAfterListing() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-l', 'google__drive_list_folder', {
+              folderId: 'root',
+            }),
+            toolCallChunks(
+              'call-w',
+              'google__drive_create_folder',
+              NEW_FOLDER,
+            ),
+          ],
+        })
+      }
+
+      beforeEach(async () => {
+        const { buildGoogleDriveWriteTools } = await import(
+          '~~/server/utils/google/drive-write-tools'
+        )
+        const { createGoogleReferenceIndex } = await import(
+          '~~/server/utils/google/chat-references'
+        )
+        const store = new Map<string, string>()
+        const folder = {
+          mimeType: 'application/vnd.google-apps.folder',
+          ownedByMe: true,
+          shared: false,
+          trashed: false,
+          capabilities: { canAddChildren: true },
+        }
+
+        createStatus = 200
+        driveFetch = vi.fn(async (input: string, init?: RequestInit) => {
+          const url = new URL(input)
+
+          if (url.pathname === '/drive/v3/files/generateIds') {
+            return Response.json({ ids: [GENERATED_ID] })
+          }
+
+          if (url.pathname === '/drive/v3/files' && init?.method === 'POST') {
+            if (createStatus !== 200) {
+              return Response.json(
+                { error: { errors: [{ reason: 'backendError' }] } },
+                { status: createStatus },
+              )
+            }
+
+            return Response.json({
+              id: GENERATED_ID,
+              name: 'Reports',
+              mimeType: folder.mimeType,
+              parents: [FOLDER_ID],
+            })
+          }
+
+          if (url.pathname === '/drive/v3/files') {
+            return Response.json({
+              files: [{
+                id: FOLDER_ID,
+                name: FOLDER_NAME,
+                ...folder,
+              }],
+            })
+          }
+
+          const id = url.pathname.split('/').at(-1)
+
+          return Response.json({
+            id: id === 'root' ? ROOT_ID : id,
+            name: id === 'root' ? 'My Drive' : FOLDER_NAME,
+            parents: id === 'root' ? [] : [ROOT_ID],
+            ...folder,
+          })
+        })
+
+        const build = (
+          grants: Record<string, string> = {},
+          priorParts: readonly unknown[] = [],
+        ) => {
+          return buildGoogleDriveWriteTools({
+            db: {} as never,
+            kv: {
+              get: async (key: string) => store.get(key) ?? null,
+              put: async (key: string, value: string) => {
+                store.set(key, value)
+              },
+            } as never,
+            userId: 1,
+            grantedScopes: [
+              'https://www.googleapis.com/auth/drive',
+              'https://www.googleapis.com/auth/drive.readonly',
+            ],
+            chatGrantHashes: grants,
+            index: createGoogleReferenceIndex([priorParts]),
+            logger: { set: vi.fn() },
+            fetchImpl: driveFetch as never,
+          })
+        }
+        const hash = (await build()).entries
+          .get('google__drive_list_folder')!.descriptor.definitionHash!
+
+        mocks.googleSendFactory = async (input) => {
+          return await build(
+            { google__drive_list_folder: hash },
+            input.priorParts,
+          )
+        }
+      })
+
+      it('shows the names the chat knows on the card, stores references '
+        + 'only and creates one folder once approved', async () => {
+        const paused = await pauseAfterListing()
+        const [approvalId] = paused.approvalIds
+        const approvalPart = paused.assistantParts.find((part: any) => {
+          return part.type === 'data-tool-approval'
+            && part.data.toolCallId === 'call-w'
+        }) as any
+
+        expect(findPart(paused.assistantParts, 'tool-google__drive_list_folder'))
+          .toMatchObject({
+            state: 'output-available',
+            output: {
+              bodyRemoved: true,
+              references: [
+                { id: ROOT_ID, kind: 'drive-root', title: 'My Drive' },
+                {
+                  id: FOLDER_ID,
+                  kind: 'drive-folder',
+                  title: FOLDER_NAME,
+                  parentId: ROOT_ID,
+                },
+              ],
+            },
+          })
+        expect(approvalPart.data).toMatchObject({
+          rememberOptions: ['once'],
+          summary: `Create the folder "Reports" inside "${FOLDER_NAME}" in `
+            + 'your Google Drive',
+          driveNames: { folder: { name: FOLDER_NAME, id: FOLDER_ID } },
+        })
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__drive_create_folder',
+          rememberOptions: ['once'],
+          input: NEW_FOLDER,
+        })
+        expect(folderPosts()).toHaveLength(0)
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+        const update = mocks.updates.at(-1)!
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(folderPosts()).toHaveLength(1)
+
+        const body = JSON.parse(Buffer.from(
+          folderPosts()[0]![1].body as Uint8Array,
+        ).toString())
+
+        expect(body).toMatchObject({
+          id: GENERATED_ID,
+          name: 'Reports',
+          parents: [FOLDER_ID],
+        })
+        expect(Object.keys(body).sort()).toEqual([
+          'appProperties',
+          'id',
+          'mimeType',
+          'name',
+          'parents',
+        ])
+        expect(prompt).toContain(FOLDER_NAME)
+        expect(outsideFrames(prompt)).not.toContain(FOLDER_NAME)
+        expect(prompt).toContain(GENERATED_ID)
+        expect(prompt).not.toContain('drive.google.com')
+        expect(findPart(update.parts, 'tool-google__drive_create_folder'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: GENERATED_ID,
+                kind: 'drive-folder',
+                title: 'Reports',
+                parentId: FOLDER_ID,
+              }],
+            },
+          })
+      })
+
+      it('does not create the folder when the user denies it', async () => {
+        const paused = await pauseAfterListing()
+
+        await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: false },
+        ])
+
+        expect(folderPosts()).toHaveLength(0)
+      })
+
+      it('tells the model an approved create that Google then fails may '
+        + 'have made the folder', async () => {
+        const paused = await pauseAfterListing()
+
+        createStatus = 500
+
+        const { doStream } = await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: true },
+        ], [textChunks('It failed.')])
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+
+        expect(folderPosts()).toHaveLength(1)
+        expect(prompt).toContain('may or may not have been created')
+        expect(prompt).toContain('check their Google Drive before trying again')
       })
     })
   })

@@ -27,6 +27,15 @@
       <ChatReasoningCalendarEvent :view="calendarEvent" />
     </section>
     <section
+      v-if="driveChange"
+      class="flex flex-col gap-1"
+    >
+      <h4 class="text-xs font-medium text-base-content/70">
+        Folder
+      </h4>
+      <ChatReasoningDriveChange :view="driveChange" />
+    </section>
+    <section
       v-if="gmailDraft"
       class="flex flex-col gap-1"
     >
@@ -87,6 +96,10 @@ import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-ev
 import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
 import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
 import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import { readDriveWriteApprovalView } from '#shared/utils/google-drive-write'
+import type { DriveWriteApprovalView } from '#shared/utils/google-drive-write'
+import { readApprovalDriveNames } from '#shared/utils/tool-approval-parts'
+import type { DriveNames } from '#shared/utils/tool-approval-parts'
 
 const props = defineProps<{
   title: string
@@ -96,7 +109,16 @@ const props = defineProps<{
   input: unknown
   isShortened: boolean
   preview?: string
+  driveNames?: DriveNames
 }>()
+
+const driveChange = computed<DriveWriteApprovalView | null>(() => {
+  return readDriveWriteApprovalView(
+    props.toolName,
+    props.input,
+    readApprovalDriveNames(props.driveNames),
+  )
+})
 
 const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
   return readCreateEventApprovalView(props.toolName, props.input)

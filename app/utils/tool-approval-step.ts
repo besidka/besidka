@@ -3,11 +3,15 @@ import type {
   ToolApprovalReason,
   ToolApprovalRemember,
 } from '#shared/utils/tool-approval-policy'
-import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
+import type {
+  DriveNames,
+  ToolApprovalPartData,
+} from '#shared/utils/tool-approval-parts'
 import type { ToolApprovalFailure } from '~/composables/tool-approvals'
 import {
   isToolApprovalDataPart,
   isToolGrantDataPart,
+  readApprovalDriveNames,
   readApprovalLink,
 } from '#shared/utils/tool-approval-parts'
 import {
@@ -48,6 +52,7 @@ export interface ApprovalStepModel {
   rememberOptions: ToolApprovalRemember[]
   preview: string
   link?: string
+  driveNames?: DriveNames
   input: unknown
   partState: string
   approved: boolean | null
@@ -208,6 +213,7 @@ export function getApprovalStepModel(
   const connector = parseConnectorToolName(toolName)
   const isBesidka = isBesidkaChatToolName(toolName)
   const link = readApprovalLink(data?.link)
+  const driveNames = readApprovalDriveNames(data?.driveNames)
 
   return {
     approvalId,
@@ -223,6 +229,7 @@ export function getApprovalStepModel(
     rememberOptions: readRememberOptions(data?.rememberOptions),
     preview: typeof data?.preview === 'string' ? data.preview : '',
     ...(link ? { link } : {}),
+    ...(driveNames ? { driveNames } : {}),
     input: part.input,
     partState: part.state,
     approved: typeof approval?.approved === 'boolean'

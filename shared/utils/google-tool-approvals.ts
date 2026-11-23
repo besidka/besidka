@@ -48,6 +48,12 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
   [`${GOOGLE_TOOL_NAME_PREFIX}drive_read_found_file`]: {
     returnsGoogleContent: true,
   },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_list_folder`]: {
+    returnsGoogleContent: true,
+  },
+  [`${GOOGLE_TOOL_NAME_PREFIX}drive_create_folder`]: {
+    returnsGoogleContent: false,
+  },
   [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: {
     returnsGoogleContent: true,
     emptyListHoldsNoContent: true,
@@ -71,6 +77,7 @@ export const GOOGLE_TOOL_PROPERTIES: Readonly<
 
 const GOOGLE_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   `${GOOGLE_TOOL_NAME_PREFIX}drive_save_file`,
+  `${GOOGLE_TOOL_NAME_PREFIX}drive_create_folder`,
   `${GOOGLE_TOOL_NAME_PREFIX}gmail_create_draft`,
   `${GOOGLE_TOOL_NAME_PREFIX}calendar_create_event`,
 ])
@@ -96,6 +103,8 @@ export const GOOGLE_TOOL_CHAT_GRANT_LABELS: Readonly<Record<string, string>>
     [`${GOOGLE_TOOL_NAME_PREFIX}drive_list_picked`]: 'Allow listing the '
       + 'files you picked from Google Drive in this chat',
     [`${GOOGLE_TOOL_NAME_PREFIX}drive_search`]: 'Allow searching any file '
+      + 'in your Google Drive in this chat',
+    [`${GOOGLE_TOOL_NAME_PREFIX}drive_list_folder`]: 'Allow listing folders '
       + 'in your Google Drive in this chat',
     [`${GOOGLE_TOOL_NAME_PREFIX}gmail_search`]: 'Allow searching all your '
       + 'Gmail in this chat',

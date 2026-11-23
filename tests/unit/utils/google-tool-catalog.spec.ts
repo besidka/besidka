@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GOOGLE_CALENDAR_TOOL_SCOPES } from '#shared/utils/google-calendar-tools'
+import { GOOGLE_DRIVE_WRITE_TOOL_NAMES } from '#shared/utils/google-drive-tools'
+import { GOOGLE_DRIVE_WRITE_TOOL_SCOPES } from '#shared/utils/google-drive-write'
 import { GOOGLE_BYO_TOOL_SCOPES } from '#shared/utils/google-gmail-tools'
 import {
   GOOGLE_SCOPES,
@@ -21,8 +23,10 @@ import {
 } from '#shared/utils/google-tool-catalog'
 import { FEATURE_REGISTRY } from '#shared/utils/features/registry'
 import { buildGoogleByoTools } from '~~/server/utils/google/byo-tools'
+import { createGoogleReferenceIndex } from '~~/server/utils/google/chat-references'
 import { buildGoogleCalendarTools } from '~~/server/utils/google/calendar-tools'
 import { buildGoogleDriveTools } from '~~/server/utils/google/drive-tools'
+import { buildGoogleDriveWriteTools } from '~~/server/utils/google/drive-write-tools'
 import type { GoogleSendTools } from '~~/server/utils/tool-approval/google-send-candidates'
 
 const ALL_SCOPES = Object.values(GOOGLE_SCOPES)
@@ -47,6 +51,11 @@ async function buildAllTools(): Promise<GoogleSendTools[]> {
       ...stubStores,
       grantedScopes: ALL_SCOPES,
     }),
+    await buildGoogleDriveWriteTools({
+      ...stubStores,
+      grantedScopes: ALL_SCOPES,
+      index: createGoogleReferenceIndex([]),
+    }),
     await buildGoogleCalendarTools({
       ...stubStores,
       grantedScopes: ALL_SCOPES,
@@ -55,7 +64,7 @@ async function buildAllTools(): Promise<GoogleSendTools[]> {
 }
 
 describe('google tool catalog', () => {
-  it('lists exactly the tools the three builders offer', async () => {
+  it('lists exactly the tools the four builders offer', async () => {
     const built = await buildAllTools()
     const builtNames = built.flatMap((tools) => {
       return Object.keys(tools.tools)
@@ -89,6 +98,9 @@ describe('google tool catalog', () => {
     const scopesByTool = {
       ...GOOGLE_BYO_TOOL_SCOPES,
       ...GOOGLE_CALENDAR_TOOL_SCOPES,
+      ...Object.fromEntries(GOOGLE_DRIVE_WRITE_TOOL_NAMES.map((name) => {
+        return [name, GOOGLE_DRIVE_WRITE_TOOL_SCOPES]
+      })),
     }
 
     for (const tool of GOOGLE_TOOL_CATALOG) {
@@ -101,13 +113,15 @@ describe('google tool catalog', () => {
         continue
       }
 
-      expect(
-        hasScopes(
-          GOOGLE_SCOPE_CAPABILITIES[tool.neededCapability].scopes,
-          required,
-        ),
-        tool.name,
-      ).toBe(true)
+      const needsDriveRead = tool.neededCapability === 'drive-write'
+      const granted = [
+        ...GOOGLE_SCOPE_CAPABILITIES[tool.neededCapability].scopes,
+        ...(needsDriveRead
+          ? GOOGLE_SCOPE_CAPABILITIES['drive-read'].scopes
+          : []),
+      ]
+
+      expect(hasScopes(granted, required), tool.name).toBe(true)
       expect(tool.client, tool.name).toBe('byo')
     }
   })
@@ -148,6 +162,9 @@ describe('google tool catalog', () => {
         google__drive_search: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
         google__drive_read_found_file:
           GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
+        google__drive_list_folder: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
+        google__drive_create_folder:
+          GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__gmail_search: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
         google__gmail_read_thread: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__gmail_create_draft: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
@@ -187,6 +204,9 @@ describe('google tool catalog', () => {
         google__drive_save_file: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
         google__drive_search: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
         google__drive_read_found_file:
+          GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
+        google__drive_list_folder: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
+        google__drive_create_folder:
           GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.asksEveryTime,
         google__gmail_search: GOOGLE_TOOL_ALWAYS_ALLOW_HINTS.chatGrant,
         google__gmail_read_thread:

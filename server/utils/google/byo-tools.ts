@@ -53,10 +53,7 @@ import { frameUntrustedResult } from '~~/server/utils/connectors/tool-definition
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import { truncateToByteBudget } from '~~/server/utils/skills/runtime/text'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import {
-  createGoogleReferenceIndex,
-  loadChatSearchParts,
-} from '~~/server/utils/google/chat-references'
+import { buildGoogleReferenceIndex } from '~~/server/utils/google/chat-references'
 import type {
   GoogleReferenceIndex,
   KnownGoogleItem,
@@ -104,6 +101,7 @@ import {
 import type { GmailAttachmentInfo } from '~~/server/utils/google/gmail-text'
 import { safeFileType } from '~~/server/utils/google/file-type'
 import { decodeMailHtmlEntities } from '~~/server/utils/google/html-entities'
+import { createRefusalLatch } from '~~/server/utils/google/refusal-latch'
 import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
 import type { GoogleSendGuard } from '~~/server/utils/google/send-guard'
 import {
@@ -338,6 +336,7 @@ export interface GoogleByoToolsInput {
   chatPublicId?: string
   accountEmail?: string | null
   priorParts?: readonly unknown[]
+  index?: GoogleReferenceIndex
   grantedScopes: string | readonly string[]
   chatGrantHashes: Readonly<Record<string, string>>
   priorCalls?: number
@@ -675,6 +674,7 @@ function describeDriveHit(hit: DriveSearchHit): string {
     `name: ${sanitizeDriveFileName(hit.name)}`,
     `type: ${cleanMailField(hit.mimeType, 100)}`,
     `modified: ${hit.modifiedTime ? hit.modifiedTime.toISOString() : 'unknown'}`,
+    ...(hit.parentId ? [`parent_folder_id: ${hit.parentId}`] : []),
   ].join(' | ')
 }
 
@@ -682,6 +682,7 @@ function driveFileReference(
   id: string,
   name: string,
   modifiedTime: Date | null,
+  parentId: string | null = null,
 ): GoogleToolReference {
   return {
     id,
@@ -689,6 +690,7 @@ function driveFileReference(
     title: sanitizeDriveFileName(name),
     link: buildDriveFileLink(id),
     ...(modifiedTime ? { date: modifiedTime.toISOString() } : {}),
+    ...(parentId ? { parentId } : {}),
   }
 }
 
@@ -702,7 +704,12 @@ function buildDriveSearchOutput(
 
   return {
     references: shown.map((hit) => {
-      return driveFileReference(hit.id, hit.name, hit.modifiedTime)
+      return driveFileReference(
+        hit.id,
+        hit.name,
+        hit.modifiedTime,
+        hit.parentId,
+      )
     }),
     count: shown.length,
     files: shown.length > 0
@@ -853,62 +860,6 @@ function asRawText(value: unknown, key: string): string | null {
 }
 
 /**
- * Calls (by tool and the id they name) that the approval let through
- * without asking because the id was unknown when the call was judged, so
- * `execute` refuses them even if a sibling search of the same step adds
- * the id before they run. One mark refuses one call.
- */
-function createRefusalLatch() {
-  const marks = new Map<string, number>()
-
-  return {
-    mark(key: string): void {
-      marks.set(key, (marks.get(key) ?? 0) + 1)
-    },
-    take(key: string): boolean {
-      const count = marks.get(key) ?? 0
-
-      if (count === 0) {
-        return false
-      }
-
-      if (count === 1) {
-        marks.delete(key)
-      } else {
-        marks.set(key, count - 1)
-      }
-
-      return true
-    },
-  }
-}
-
-const READS_NEEDING_THE_INDEX: readonly string[] = [
-  GOOGLE_GMAIL_READ_THREAD_TOOL_NAME,
-  GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME,
-  GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
-]
-
-async function buildReferenceIndex(
-  input: GoogleByoToolsInput,
-): Promise<GoogleReferenceIndex> {
-  const needsStoredParts = !!input.chatPublicId
-    && READS_NEEDING_THE_INDEX.some((toolName) => {
-      return hasScopes(input.grantedScopes, GOOGLE_BYO_TOOL_SCOPES[toolName]!)
-    })
-  const storedParts = needsStoredParts && input.chatPublicId
-    ? await loadChatSearchParts({
-      db: input.db,
-      userId: input.userId,
-      chatPublicId: input.chatPublicId,
-      logger: input.logger,
-    })
-    : []
-
-  return createGoogleReferenceIndex([...storedParts, input.priorParts ?? []])
-}
-
-/**
  * The Gmail and Drive tools of a send on the owner's own Google client
  * ("BYO"), with their approval entries. Only the tools whose scope the
  * stored `byo` connection grants are built: `gmail.readonly` for the search
@@ -938,7 +889,7 @@ export async function buildGoogleByoTools(
     logger,
   })
   const { serialized, consumeCall } = guard
-  const index = await buildReferenceIndex(input)
+  const index = input.index ?? await buildGoogleReferenceIndex(input)
   const refusals = createRefusalLatch()
   const hashes = {
     search: await hashGoogleTool(

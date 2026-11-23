@@ -5,6 +5,8 @@ import {
   GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME,
 } from '#shared/utils/google-calendar-tools'
 import {
+  GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
+  GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_LIST_TOOL_NAME,
   GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
   GOOGLE_DRIVE_READ_TOOL_NAME,
@@ -86,6 +88,24 @@ export const GOOGLE_TOOL_CATALOG: readonly GoogleToolCatalogEntry[] = [
     title: 'Read a file a search found',
     client: 'byo',
     neededCapability: 'drive-read',
+    flag: 'google.byo',
+  },
+  {
+    name: GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
+    service: 'drive',
+    kind: 'read',
+    title: 'List folders in your Google Drive',
+    client: 'byo',
+    neededCapability: 'drive-write',
+    flag: 'google.byo',
+  },
+  {
+    name: GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
+    service: 'drive',
+    kind: 'write',
+    title: 'Create a folder in your Google Drive',
+    client: 'byo',
+    neededCapability: 'drive-write',
     flag: 'google.byo',
   },
   {

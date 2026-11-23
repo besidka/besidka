@@ -16,6 +16,7 @@ export const GOOGLE_BYO_RESULT_QUERY_KEY = 'google-byo'
 
 export const GOOGLE_BYO_CAPABILITIES = [
   'drive-read',
+  'drive-write',
   'gmail-read',
   'gmail-compose',
   'calendar',

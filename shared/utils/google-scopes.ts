@@ -13,6 +13,7 @@ export const GOOGLE_SCOPES = {
   profile: `${GOOGLE_AUTH_PREFIX}userinfo.profile`,
   driveFile: `${GOOGLE_AUTH_PREFIX}drive.file`,
   driveReadonly: `${GOOGLE_AUTH_PREFIX}drive.readonly`,
+  drive: `${GOOGLE_AUTH_PREFIX}drive`,
   gmailReadonly: `${GOOGLE_AUTH_PREFIX}gmail.readonly`,
   gmailCompose: `${GOOGLE_AUTH_PREFIX}gmail.compose`,
   calendarEventsOwned: `${GOOGLE_AUTH_PREFIX}calendar.events.owned`,
@@ -25,6 +26,7 @@ export const GOOGLE_CAPABILITIES = [
   'identity',
   'drive-picked',
   'drive-read',
+  'drive-write',
   'gmail-read',
   'gmail-compose',
   'calendar',
@@ -56,6 +58,12 @@ export const GOOGLE_SCOPE_CAPABILITIES: Readonly<
   },
   'drive-read': {
     scopes: [GOOGLE_SCOPES.driveReadonly],
+    clients: ['byo'],
+    classification: 'restricted',
+    provisional: false,
+  },
+  'drive-write': {
+    scopes: [GOOGLE_SCOPES.drive],
     clients: ['byo'],
     classification: 'restricted',
     provisional: false,

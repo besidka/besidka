@@ -21,9 +21,11 @@ import {
   TOOL_GRANT_DATA_PART_TYPE,
   hasAwaitingApprovalToolPart,
   isToolGrantDataPart,
+  readApprovalDriveNames,
   readApprovalLink,
 } from '#shared/utils/tool-approval-parts'
 import type {
+  DriveNames,
   ToolApprovalPartData,
   ToolGrantPartData,
   ToolGrantScope,
@@ -139,9 +141,12 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * then taints the send like any Google call.
  * `describeLink` gives the card one link to look at what the call names
  * before answering (the Gmail thread a read or a reply names); only links
- * `readApprovalLink` accepts are shown. `chatGrantRunsMax` caps how many
- * calls of the tool one message runs under "Allow in this chat"; past it
- * each call asks again.
+ * `readApprovalLink` accepts are shown. `describeNames` gives the card the
+ * names of the Drive items a call names by id (the folder to create in), read
+ * from the chat's own Drive results and never from a new Google call; only
+ * names `readApprovalDriveNames` accepts are shown. `chatGrantRunsMax` caps
+ * how many calls of the tool one message runs under "Allow in this chat";
+ * past it each call asks again.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
@@ -149,6 +154,7 @@ export interface SendToolEntry {
   summarize?: (input: unknown) => string
   describe?: (input: unknown) => Promise<string | null>
   describeLink?: (input: unknown) => Promise<string | null>
+  describeNames?: (input: unknown) => Promise<DriveNames | null>
   chatGrantRunsMax?: number
   taintsRun?: (input: unknown) => Promise<boolean>
   preview?: (input: unknown) => string | null
@@ -197,6 +203,7 @@ export interface PendingToolApprovalDecision {
   summary: string
   preview: string | null
   link?: string | null
+  driveNames?: DriveNames | null
 }
 
 export interface ToolApprovalCall {
@@ -323,6 +330,7 @@ async function describeCall(
   input: unknown,
 ): Promise<void> {
   await describeCallLink(pending, input)
+  await describeCallNames(pending, input)
 
   if (!pending.entry.describe) {
     return
@@ -351,6 +359,23 @@ async function describeCallLink(
     pending.link = readApprovalLink(await pending.entry.describeLink(input))
   } catch {
     pending.link = null
+  }
+}
+
+async function describeCallNames(
+  pending: PendingToolApprovalDecision,
+  input: unknown,
+): Promise<void> {
+  if (!pending.entry.describeNames) {
+    return
+  }
+
+  try {
+    pending.driveNames = readApprovalDriveNames(
+      await pending.entry.describeNames(input),
+    )
+  } catch {
+    pending.driveNames = null
   }
 }
 
@@ -1525,6 +1550,7 @@ export function createToolApprovalStreamCollector(
           rememberOptions: [...pending.decision.rememberOptions],
           ...(pending.preview ? { preview: pending.preview } : {}),
           ...(pending.link ? { link: pending.link } : {}),
+          ...(pending.driveNames ? { driveNames: pending.driveNames } : {}),
         }
 
         controller.enqueue({

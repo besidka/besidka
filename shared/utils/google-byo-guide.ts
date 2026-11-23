@@ -56,7 +56,7 @@ export const GOOGLE_BYO_GUIDE_APIS: readonly GoogleByoGuideApi[] = [
   {
     label: 'Google Drive API',
     url: `${GOOGLE_CLOUD_CONSOLE_ORIGIN}/apis/library/drive.googleapis.com`,
-    capabilities: ['drive-read'],
+    capabilities: ['drive-read', 'drive-write'],
   },
 ]
 
@@ -69,6 +69,7 @@ const GOOGLE_BYO_GUIDE_CAPABILITY_LABELS: Readonly<
   Record<GoogleByoCapability, string>
 > = {
   'drive-read': 'Google Drive, read only',
+  'drive-write': 'Google Drive, change files',
   'gmail-read': 'Gmail, read only',
   'gmail-compose': 'Gmail drafts',
   'calendar': 'Google Calendar (both scopes)',
