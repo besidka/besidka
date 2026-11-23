@@ -298,6 +298,17 @@ describe('what Google said about a failed file', () => {
   })
 })
 
+describe('Google Drive reconnect wording', () => {
+  it('names no page the user may not have', () => {
+    expect(GOOGLE_DRIVE_FAILURE_REASONS.reauthorize).toBe(
+      'Google no longer accepts the connection. Reconnect Google Drive in '
+      + 'your Besidka settings.',
+    )
+    expect(GOOGLE_DRIVE_FAILURE_REASONS.reauthorize)
+      .not.toMatch(/Connectors page|API Keys page/)
+  })
+})
+
 describe('Drive refresh failure reasons', () => {
   it('has a reason for the refresh-only codes', () => {
     expect(getDriveRefreshFailureReason('unknown_version'))

@@ -77,3 +77,24 @@ describe('getGoogleDriveToolStepTitle', () => {
       .toBe('Used Google Drive')
   })
 })
+
+describe('Google Drive save failure wording', () => {
+  it('points to the Besidka settings, not to a page a user may lack', () => {
+    expect(GOOGLE_DRIVE_SAVE_FAILURE_MESSAGES.not_connected).toBe(
+      'Google Drive is not connected. Connect it in your Besidka settings '
+      + 'first.',
+    )
+    expect(GOOGLE_DRIVE_SAVE_FAILURE_MESSAGES.reauthorize).toBe(
+      'Google no longer accepts the connection. Reconnect Google Drive in '
+      + 'your Besidka settings.',
+    )
+    expect(GOOGLE_DRIVE_SAVE_FAILURE_MESSAGES.no_access).toContain(
+      'in your Besidka settings and allow access to the files Besidka '
+      + 'creates.',
+    )
+
+    for (const message of Object.values(GOOGLE_DRIVE_SAVE_FAILURE_MESSAGES)) {
+      expect(message).not.toMatch(/Connectors page|API Keys page/)
+    }
+  })
+})
