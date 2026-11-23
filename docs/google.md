@@ -198,8 +198,10 @@ Rules that go with the table:
 - Tool results from Drive, Gmail and Calendar are saved as references only
   (id, title or subject, date). The model sees the body only in the turn that
   fetched it.
-- Google tools ask before they run ("Allow once" or "Allow in this chat"); no
-  "Always allow". Writes ask once only. There is no tool that sends mail.
+- Google tools ask before they run ("Allow once" or "Allow in this chat").
+  Writes ask once only. "Always allow" exists only as a per-tool setting on
+  the Connectors page for the tools of the owner-only own client (section
+  17.7); no prompt offers it. There is no tool that sends mail.
 - Copies of Google files live in the user's files with
   `external_source = 'google'` (`GOOGLE_EXTERNAL_SOURCES`, one value, as the
   pre-check says) and are labeled at attach time ("Saves a copy in your
@@ -261,8 +263,9 @@ the one place the chat route assembles Google tools, with entries built by
 
 | Call | Decision | Options | What lifts it |
 |---|---|---|---|
+| Google tool of the own client set to Always allow | Run, no prompt (rule 11, `grant: 'always'`, the step shows "Ran without asking (Always allowed)") | None | The user's per-tool setting, wins over once-only reads and taint; capped (section 17.7) |
 | Google read | Ask (`default`, rule 11) | Allow once, Allow in this chat | A Google chat grant with the same name and definition hash |
-| Google write | Ask (`always-ask`, rule 11) | Allow once | Nothing: Always allow, the permission mode and taint are ignored |
+| Google write | Ask (`always-ask`, rule 11) | Allow once | Nothing: a chat grant and taint are ignored (only Always allow on an own-client tool lifts it) |
 | Connector call while the send holds `google` taint | Ask (`google-egress`, rule 12) | Allow once, Allow in this chat | The tool's Google egress grant in this chat; the call then goes through the ordinary connector rules |
 | Besidka tool that is not a plain read, while the send holds `google` taint | Ask (`untrusted-output`, rule 13) | Allow once | Nothing: its Allow mode, Always allow and chat grants are ignored (`create_file`, `add_project_text`, `add_project_note`, `update_project_instructions`, `branch_chat`, `share_artifact` and every other Besidka write) |
 | Besidka read after `google` taint | Its existing rules | As before | As before |
@@ -274,7 +277,8 @@ rule 11 (Google tools), rule 10 (consent gate), the native rules (1, 2, 5,
 8), rule 12 (Google egress), rule 13 (Besidka writes after Google content),
 then rules 6, 7, 2, 3, 5 and 9.
 
-No Google prompt ever offers Always allow. Blocked still denies. The
+No Google prompt ever offers Always allow: it is set on the Connectors page,
+and only for the own-client tools (section 17.7). Blocked still denies. The
 egress prompt says "Content from Google in this chat may be sent to this
 connector". Its Allow in this chat stores only the egress grant, never the
 ordinary chat grant: an ungranted write can ask a second time, which keeps
@@ -2897,8 +2901,10 @@ start the next read with no prompt: it asks every time with Allow once only
 (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`; rule 11 in `resolveGoogleApproval` ignores
 any chat grant for it, a tightening of the policy, tested). The read of a found
 Drive file is on the same list, because a shared file is writable by whoever
-shared it. The draft is a write: Allow once only, whatever grant, permission
-mode or taint. Always allow is never offered for any of the five. The draft
+shared it. The draft is a write: Allow once only, whatever chat grant or taint. A card
+never offers Always allow for any of the five; the user can set each tool to
+Always allow on the Connectors page (section 17.7), and that setting wins
+over the once-only rule. The draft
 needs both `gmail.compose` and, to reply in a thread, `gmail.readonly`.
 
 **Granted searches are capped.** A search under "Allow in this chat" runs
@@ -3267,8 +3273,9 @@ would be swept as an orphan or outlive the BYO grant), so it was not built.
   found id as "not one of the files the user picked" without a call to Google
   (tested);
 - asks every time with Allow once only (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`): no
-  chat grant and never Always allow, because a shared file is writable by
-  whoever shared it;
+  chat grant and no Always allow on the card, because a shared file is
+  writable by whoever shared it (the user's own per-tool Always allow on the
+  Connectors page, section 17.7, does run it, with its own warning);
 - applies the rules of `importDriveFiles` without its copy: metadata on all
   drives first, a folder or trashed file refused, Docs exported to Markdown
   (plain text when Markdown is refused), Sheets to the first sheet in CSV,
@@ -3452,9 +3459,10 @@ this chat" grant as `google__gmail_search`, with the same cap of 5 granted
 calls per message (`GOOGLE_CALENDAR_GRANTED_CALLS_PER_MESSAGE`, in the same
 `GOOGLE_CHAT_GRANT_RUNS_PER_MESSAGE` map, counted from the stored
 `data-tool-grant` markers so a pause or a "Continue" round does not reset it).
-The write asks every time with Allow once only, whatever grant, permission
-mode or taint (rule 11, `isGoogleWriteToolName`), and Enter on its card never
-approves it. Always allow is never offered for any of the three.
+The write asks every time with Allow once only, whatever chat grant or taint
+(rule 11, `isGoogleWriteToolName`), and Enter on its card never approves it.
+A card never offers Always allow for any of the three; the per-tool setting
+of section 17.7 is the only way to run one without asking.
 
 **Untrusted text.** Titles, locations, descriptions and organizer names go
 through `cleanMailField`, the same cleaning as mail: control characters,
@@ -3798,7 +3806,7 @@ links.
 - No attendees, conferencing, recurrence, reminders override or attachments in
   a created event; no edit or delete.
 - Approvals as in section 14: reads ask (or take the capped chat grant), the
-  write asks once, never Always allow.
+  write asks once; Always allow only as the per-tool setting of section 17.7.
 - MCP is unchanged: no Calendar tool, `config/mcp-surface.json` unchanged, the
   MCP modules import none of this code, and a chat that read Calendar is
   withheld from `get_chat` through the sticky flag.
@@ -3960,16 +3968,19 @@ a version bump (not part of this child).
 
 ### 17.2 Modes
 
-Only `blocked` and `ask` exist for a Google tool (`GOOGLE_TOOL_PERMISSION_MODES`
-in `shared/utils/google-tool-catalog.ts`), for reads and writes, in every
-chat. No row means Needs approval. A stored `allow` or any unknown value
-reads as `blocked` (`readGoogleToolPermissionMode`), so an unreadable
-setting never lets a tool run. "Allow in this chat" is still the approval
-card's chat grant (at most 5 granted runs per message); once-only reads
-(`google__gmail_read_thread`, `google__drive_read_found_file`) and the three
-writes ask every time whatever the user chose. Rule 11 of
-`resolveToolApproval` is untouched: rule 0 denies `blocked` first, and every
-other mode reaches rule 11, which never offers Always allow.
+`blocked`, `ask` and `allow` exist for a Google tool
+(`GOOGLE_TOOL_PERMISSION_MODES` in `shared/utils/google-tool-catalog.ts`), in
+every chat. `allow` (Always allow, BES-465) is for the tools that exist only
+on the owner-only own client; section 17.7 has the rule. No row means Needs
+approval. `readGoogleToolPermissionMode(toolName, stored)` reads a stored
+`allow` as `allow` for an allowable tool and as `ask` for any other (a
+restored or hand-written row), and any unknown value as `blocked`, so an
+unreadable setting never lets a tool run. "Allow in this chat" is still the
+approval card's chat grant (at most 5 granted runs per message); once-only
+reads (`google__gmail_read_thread`, `google__drive_read_found_file`) and the
+writes ask every time unless the user set the tool to Always allow. Rule 0
+of `resolveToolApproval` denies `blocked` first, and rule 11 runs a tool set
+to Always allow and decides every other mode as before.
 
 The Besidka loader and `PUT /api/v1/besidka-tools/permissions` are
 unchanged. Besidka rows use bare registry names and Google rows start with
@@ -3981,7 +3992,8 @@ Besidka mode.
 
 `server/utils/google/tool-permissions.ts`: `loadGoogleToolPermissionModes`
 reads the user's rows once and keeps only `google__` names;
-`setGoogleToolPermissions` upserts `blocked` rows in one batch and, for
+`setGoogleToolPermissions` upserts `blocked` and `allow` rows in one batch
+(`allow` only for the tools `isGoogleToolAlwaysAllowable` accepts) and, for
 `ask`, deletes the rows (the default needs no storage).
 
 `GET` and `PUT /api/v1/google/tool-permissions` (directory form). Gate, in
@@ -3998,19 +4010,23 @@ for a `PUT` the write limit.
 | Calendar tools | the admin gate plus `google.calendar` |
 
 A user who reaches none gets 404 on both routes. `GET` answers
-`{ tools: [{ name, service, mode }] }` for the reachable tools. `PUT` takes
-`{ tool, mode }`, `{ service, mode }` (every reachable tool of the service) or
-`{ service, kind, mode }` (its reachable read or write tools; the panel's
-Read and Write group selects send this, one request per group change, one
-slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode,
-an unknown or Besidka tool name, a body with both fields, or a body over 1 KiB
-(413 by `Content-Length`) is refused; a known tool the user cannot reach is
-404. The limit is 60 changes a minute per user and target (the tool, the
+`{ tools: [{ name, service, mode, alwaysAllowable }] }` for the reachable
+tools. `PUT` takes `{ tool, mode }`, `{ service, mode }` (every reachable tool
+of the service) or `{ service, kind, mode }` (its reachable read or write
+tools; the panel's Read and Write group selects send this, one request per
+group change, one slot of the budget) with `mode` `blocked`, `ask` or
+`allow`, and answers `{ tools, unchanged }`. `allow` for one tool that
+cannot be always allowed is a 400 before the rate limit counts; in a group
+request `allow` applies to the members that can take it and `unchanged` names
+the rest (a 400 when none can). An unknown mode, an unknown or Besidka tool
+name, a body with both fields, or a body over 1 KiB (413 by `Content-Length`)
+is refused; a known tool the user cannot reach is 404. The limit is 60 changes a minute per user and target (the tool, the
 service or the service and kind), in KV on the key `<user id>:tool:<name>`,
 `:service:<service>` or `:kind:<service>:<kind>`, counted after the target is
 resolved against the catalog and failing closed (a KV error is a 429, never an
 allow); section 18.5 says why the key carries the target. The log holds the
-action, the scope, the target and the mode, nothing else.
+action, the scope, the target, the mode and the counts of changed and
+unchanged tools, nothing else.
 
 ### 17.4 Send path and replay
 
@@ -4040,12 +4056,18 @@ answer (the 24-hour expiry is the fallback when the delete fails).
 ### 17.5 The panel
 
 `ProfileConnectorsGoogleDetailPanel` replaces the read-only list with
-`UiToolPermissions` (Read and Write groups). Each tool has `modes: ['blocked',
-'ask']`, so Always allow shows disabled with a hint: "Google reads ask. Allow
-one for a chat from its approval." for reads, "Asks every time." for writes and
-once-only reads (`getGoogleToolAlwaysAllowHint`). `useGoogleToolPermissions`
-saves optimistically and rolls back on an error, and a polite live region
-names the saved change ("Search your Gmail: Blocked."). The tool list is the
+`UiToolPermissions` (Read and Write groups). Each tool has the modes
+`getGoogleToolModes` gives: all three for an own-client tool, and for a tool of
+Besidka's own client `['blocked', 'ask']`, so its Always allow shows disabled
+with the hint "Needs approval: this connection goes through Google's app
+review." (`getGoogleToolAlwaysAllowHint`). A group shows the warnings of its
+own-client tools (`getGoogleToolAlwaysAllowWarning`), the same markup as the
+Besidka "Delete and share" group, and "Custom" when its tools differ.
+`useGoogleToolPermissions`
+saves optimistically and rolls back on an error, skips the tools that cannot
+take Always allow when it sets a group, and a polite live region
+names the saved change ("Search your Gmail: Blocked.", and "N stayed as they
+were." after a group request that left some). The tool list is the
 panel's catalog filter intersected with what `GET` returns. A user whose `GET`
 is 404 sees no tools section. The own-client hints ("Needs your own Google
 client", "Needs Drive read access") are unchanged.
@@ -4059,6 +4081,105 @@ Per-chat service switches, the connector picker rows and the "not available
 with this model" state (child 3, section 18). Google tool permissions are not
 readable or writable over MCP (`docs/mcp-server.md`, "What MCP does not do",
 item 8). A restore: `docs/d1-restore-reconciliation.md`, "Tool approvals".
+
+### 17.7 Always allow (BES-465, owner request of 2026-11-23)
+
+The user can set a Google tool to Always allow on the Connectors page. It
+turns "ask" into "run" and nothing else: the per-chat service switches
+(`google_services_off`, which win over it), Blocked, the replay denial after
+an approval, the admin, 2FA and `google.byo` gate at call time, the data guard
+and the recipient check, taint, withholding and the boundary specs are exactly
+as before.
+
+**Which tools (the legal decision).** `isGoogleToolAlwaysAllowable` in
+`shared/utils/google-tool-catalog.ts` is the one rule: a catalog entry whose
+`client` is `byo`. That is Gmail (search, read thread, create draft), Calendar
+(list events, free/busy, create event) and the Drive tools of the own client
+(search, read found file, list folder, create folder, rename, move). The tools
+reachable through Besidka's own Google client (`drive.file` and the Picker:
+list picked, read file, save file) keep asking with Allow once or Allow in this
+chat, show Always allow disabled with "Needs approval: this connection goes
+through Google's app review.", and a stored `allow` for one reads as `ask`.
+The routes, the resolver, the policy and the panel all call that one function;
+the policy calls it by tool name again, so an `allow` on an entry that is not
+allowable never runs.
+
+**Policy.** Rule 0 stays first. Rule 11 (`resolveGoogleApproval`) has one new
+branch: `permissionMode === 'allow'` for an allowable tool returns the run
+decision with `grant: 'always'`, which `send.ts` turns into the
+`data-tool-grant` marker with scope `always` ("Ran without asking (Always
+allowed)", the same marker connector and Besidka tools show). It wins over
+once-only reads (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`) and taint, because the
+2026-11-20 rule says the user's grant wins over taint. The mode reaches the
+policy through `dropBlockedGoogleTools`, which stamps `permissionMode: 'allow'`
+on the kept entries of such tools; the per-chat switches overwrite the mode map
+with `blocked` before that, so an off service still wins. A card for a tool
+set to Needs approval is unchanged: Allow once, plus Allow in this chat for
+reads, never Always allow.
+
+**Caps.** Past a cap the call asks again with its usual options.
+
+| What | Cap | Where |
+| --- | --- | --- |
+| Always-allowed reads | 5 a tool in one message (`GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE`, the number of the chat-grant searches) | `createSendToolApproval`, counted from the `always` markers of the reply so a pause or a "Continue" round does not reset it |
+| Always-allowed writes | 10 in one message across all Google write tools (`GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE`) | the same |
+| Always-allowed writes | 30 an hour for a user (`GOOGLE_ALWAYS_ALLOW_WRITES_PER_HOUR`), a KV counter per clock hour, written at most once every 1.1 seconds, failing closed | `createGoogleRunGate`; over it the call is refused with a sentence the model reads ("Always allow has reached its limit of 30 Google write calls an hour ...") and writes no marker |
+
+The existing backstops still apply: 12 built-in calls a turn and 30 Google
+calls a message (`createGoogleSendGuard`).
+
+**Execution id.** A call that runs without asking has no approval, so no
+`approvalId`. The wrapper `guardNativeWrites` already wraps every Google tool;
+for a write that the policy cleared as always allowed it takes the claim and
+the hourly slot first (`createGoogleRunGate`,
+`server/utils/tool-approval/google-run-gate.ts`), then calls the tool with
+`executionId` in its options, derived on the server from the user, chat,
+message and the provider's tool call id (`exec_` and a SHA-256, never from the
+model's input). The claim is a row in `tool_approval_claims`, the table that
+gives "one approval, one write": the same call can claim only once, so it can
+never create two folders or two events, including when a resumed stream
+replays it, and the claim is marked done or failed after the write. A claim
+that is lost, a spent budget, an unreadable counter or a missing gate refuses
+the write and drops its marker. `readExecutionId`
+(`server/utils/google/execution-id.ts`) reads `approvalId` or `executionId`,
+and `create_folder` (the retry digest), `create_event` (the client event id),
+rename and move accept either. Gmail has no client-side id for a draft: the
+claim is its only guard against a second draft from one call. A fresh call
+the model makes after an interrupted run has a new tool call id and is not
+covered; the card path has the same limit.
+
+**Differences from the Besidka precedent (`docs/besidka-tools.md`).** Kept on
+purpose, with the reason:
+
+- Always allow is per tool and only for the own-client tools, because the
+  legal decision limits it there; Besidka's tiers take it for every tool.
+- It lives only on the Connectors page. A Google approval card never offers
+  it, where a connector or Besidka card offers it: the Google cards stay as
+  the pre-check wrote them.
+- A write needs the claim and the hourly cap, which no Besidka tool has:
+  Google writes create things in the user's account that cannot be undone from
+  Besidka.
+- Reads are capped at 5 a tool in a message; a Besidka Allow has no cap.
+- It runs after taint of any kind, as a Besidka Allow does, but it never
+  touches the data guard, the recipient check, rule 12 or rule 13: those
+  protect where Google content may go, and Besidka's own Allow mode is
+  bypassed by rule 13 in the same way.
+- A restored row reads as `ask`, not `blocked`, for an unlisted tool.
+- The warning lines say what each group lets the model do; the own-client Drive
+  write group names the broader Google permission ("also allows deleting and
+  sharing; Besidka has no code that deletes or shares").
+- No MCP tool reads or sets it (`docs/mcp-server.md`).
+
+**Legal records** (engineer-drafted): `docs/legal/prechecks/google.md` rows
+14 and 19 (the research finding, the verdict "go with changes", and what to
+re-check if the owner verifies the own client or opens it to other users),
+`docs/legal/dpia.md` risks 75 and 76, `docs/legal/art30-record.md` row 33.
+No notice, no consent version and no public legal text changed: whether the
+Privacy Policy needs a word about it is the owner's decision.
+
+**Not verified.** Nothing here was seen in a browser or run against Google:
+the panel, the marker and the caps are covered by unit and integration specs
+with mocked Google calls only.
 
 ## 18. Per-chat Google switches and picker rows (BES-454, child 3)
 

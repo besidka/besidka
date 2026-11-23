@@ -1608,8 +1608,9 @@ and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
    (the same reason as items 1 and 6, and as the connector "Always allow" in
    `docs/connectors.md`, section 11). They are set in Labs, in the Tool
    permissions panel (`docs/besidka-tools.md`). The same holds for the
-   Google tool permissions (BES-454: `google__` rows in the same table, only
-   Blocked or Needs approval, set from the Google panel on Connectors): no
+   Google tool permissions (BES-454: `google__` rows in the same table,
+   Blocked, Needs approval or, since BES-465, Always allow for the own-client
+   tools only, set from the Google panel on Connectors): no
    tool reads or writes them, and `config/mcp-surface.json` is unchanged.
    The per-chat Google switches (BES-454, child 3:
    `besidka_chat_settings.google_services_off`, the `GET` and `PUT

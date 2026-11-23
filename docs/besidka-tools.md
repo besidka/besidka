@@ -54,8 +54,9 @@ whole-database restore resets every `allow` to `ask`
 (`docs/d1-restore-reconciliation.md`).
 
 The Google tools (`google__drive_*`, `google__gmail_*`, `google__calendar_*`)
-share the table: a row keyed by the exposed `google__` name, with only
-`blocked` or `ask` and never Always allow, read and written by
+share the table: a row keyed by the exposed `google__` name, with `blocked`,
+`ask`, or `allow` only for a tool of the owner-only own client (BES-465,
+`docs/google.md`, section 17.7), read and written by
 `/api/v1/google/tool-permissions`, not by the routes below (see
 `docs/google.md`, section 17). Besidka rows use bare registry names, so the
 two never collide: this loader reads every row but looks a tool up by its

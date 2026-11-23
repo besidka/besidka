@@ -487,21 +487,27 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
   setting made in the window is lost with the restore. The reset in step 2b
   does not touch `blocked`, so a tool Blocked before B stays Blocked.
 - **Google tool permissions follow the same table.** A `google__` row
-  (`docs/google.md`, section 17) holds only `blocked`, and "Needs approval" is
-  the absence of a row. A Block made in the window is lost and a switch
-  reverted in the window returns, so the tool falls back to "asks": the user
-  is asked again, which fails safe. Google tools have no Always allow; a
-  stored `allow` on a `google__` row (never written by the app) is read as
-  `blocked`, and the step 2b reset turns it to `ask`.
+  (`docs/google.md`, section 17) holds `blocked`, or `allow` for a tool of
+  the owner-only own client (BES-465), and "Needs approval" is the absence of
+  a row. A Block made in the window is lost and a switch reverted in the
+  window returns, so the tool falls back to "asks": the user is asked again,
+  which fails safe. A revoked Google "Always allow" comes back as a row like
+  any other: the step 2b reset (`UPDATE besidka_tool_permissions SET mode =
+  'ask' WHERE mode = 'allow'`) matches `google__` rows too, because it has no
+  filter on the tool name, so a Google tool that runs without asking stops
+  doing so until the user sets it again. Until that reset has run, a restored
+  `allow` on a tool of Besidka's own Google client reads as `ask`
+  (`readGoogleToolPermissionMode`), never as `allow`.
 - **Per-chat Google switches follow `besidka_chat_settings`.** The column
   `google_services_off` (nullable `text`, a JSON list of `drive`, `gmail` and
   `calendar`; null means every service on, `docs/google.md`, section 18)
   rolls back with its row. A switch changed in the window returns to its older
   value, and a chat whose row was created in the window loses it and reads
   "every service on", which is the default. A service the user had switched
-  off can therefore be offered again, but only with the same per-call
-  approvals as before (no Google tool has Always allow), so this fails safe
-  like a returning Block. The step 2b reset SQL blanks `always_allow_tools`
+  off can therefore be offered again, but a returning Always allow row is
+  reset by step 2b, so after the reset every call asks (the user's Always allow
+  setting must be set again), which fails safe like a returning Block. The
+  step 2b reset SQL blanks `always_allow_tools`
   only and does not touch `google_services_off`: after the reset the switches
   are exactly what the restore brought back. Tell users in the notice (step
   7) to check which Google services are on in a chat. A corrupt stored value
