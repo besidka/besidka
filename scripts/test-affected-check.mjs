@@ -2823,6 +2823,22 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat-context-pin.spec.ts',
   ]
 
+  const googleFileCardsTests = [
+    'tests/unit/utils/google-created-file.spec.ts',
+    'tests/unit/utils/artifact-parts.spec.ts',
+    'tests/unit/utils/message-part-spacing.spec.ts',
+    'tests/unit/utils/google-brand-icons.spec.ts',
+    'tests/unit/config/client-icons.spec.ts',
+    'tests/unit/composables/google-file-preview.spec.ts',
+    'tests/unit/components/Chat/GoogleFile.spec.ts',
+    'tests/unit/components/Chat/GoogleFilePreview.spec.ts',
+    'tests/unit/components/Chat/GoogleFileHeaderAction.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/pages/chats/[slug].spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+  ]
+
   const messageSearchTests = [
     'tests/unit/utils/search/text.spec.ts',
     'tests/unit/utils/search/ukrainian-stemmer.spec.ts',
@@ -3203,6 +3219,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/message-part-spacing.spec.ts',
         'tests/unit/utils/artifact-parts.spec.ts',
+        ...SPACER_SUITES,
       ],
     },
     {
@@ -3938,6 +3955,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/google-created-file\.ts|app\/components\/Chat\/GoogleFile(Preview|HeaderAction)?\.vue|app\/composables\/google-file-preview\.ts)$/,
+      tests: googleFileCardsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-created-file\.ts|app\/composables\/google-file-preview\.ts)$/,
+      tests: SPACER_SUITES,
+    },
+    {
+      pattern:
         /^(app\/composables\/(search-modal|files-modal-handoff)\.ts|app\/components\/Search\/.*\.vue)$/,
       tests: searchModalTests,
     },
@@ -4010,7 +4037,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
+        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|GoogleFile(Preview|HeaderAction)\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
       tests: SPACER_SUITES,
     },
     {

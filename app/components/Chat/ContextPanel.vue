@@ -300,7 +300,7 @@
               :key="item.id"
             >
               <a
-                v-if="item.href"
+                v-if="item.href && item.kind !== 'google-file'"
                 :href="item.href"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -397,6 +397,7 @@ import type {
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
 import { isArtifactKind } from '#shared/utils/artifacts'
 import { isDocumentFormat } from '#shared/utils/documents'
+import { readGoogleFileToolCallId } from '#shared/utils/google-created-file'
 import { formatMessageCost } from '#shared/utils/message-format'
 import {
   CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
@@ -418,6 +419,7 @@ const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
 const { close, push: pushSidePanelView } = useSidePanel()
+const { pushRegistered: pushGoogleFilePreview } = useGoogleFilePreview()
 const { open: openArtifact } = useArtifactPanel()
 const artifactsFeature = useFeature('artifacts')
 const connectorsFeature = useFeature('connectors')
@@ -711,8 +713,18 @@ function openDocumentItem(item: ChatContextItem): boolean {
   return true
 }
 
+function openGoogleFileItem(item: ChatContextItem): boolean {
+  const toolCallId = readGoogleFileToolCallId(item.id)
+
+  return toolCallId !== null && pushGoogleFilePreview(toolCallId)
+}
+
 async function onItemClick(item: ChatContextItem) {
   if (item.kind === 'document' && openDocumentItem(item)) {
+    return
+  }
+
+  if (item.kind === 'google-file' && openGoogleFileItem(item)) {
     return
   }
 

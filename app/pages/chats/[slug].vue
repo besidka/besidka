@@ -150,6 +150,10 @@
               "
               :model-id="getMessageModelId(m)"
             />
+            <ChatGoogleFile
+              v-else-if="isGoogleCreatedFilePart(part)"
+              :part="part"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
@@ -347,6 +351,7 @@ import { getPartGaps } from '~/utils/message-part-spacing'
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
+  isGoogleCreatedFilePart,
   orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 

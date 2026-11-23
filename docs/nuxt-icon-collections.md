@@ -100,6 +100,21 @@ box (`Chat/Reasoning/StepIcon.vue`, `size-full` at 14px, shared with every
 iconify step) still forces a square, an accepted distortion that is not
 visible at that size.
 
+`thesvg-color` follows the same rule (BES-468). It backs exactly three icons,
+the Google Docs, Google Sheets and Google Slides marks
+(`shared/utils/google-brand-icons.ts`: `GOOGLE_DOCS_ICON`,
+`GOOGLE_SHEETS_ICON`, `GOOGLE_SLIDES_ICON`), because `logos` has no Docs or
+Sheets mark that is colored and the plain `thesvg` set is mono. The prefix is
+not pinned in `icon.collections`; `@iconify-json/thesvg-color` (MIT, exact
+version `1.2.28`, released 2026-11-17, older than the 1440 minute
+`minimumReleaseAge`) is a dev-only dependency and `icon.clientBundle.icons`
+lists the three icons (about 5 KB), so they ship in the client bundle and
+render on the server from it. They are third-party redraws, not Google's
+artwork; the branding status and the owner step to replace the three constants
+are in `docs/google.md` 19.14 and `docs/legal/prechecks/google.md`, row 9.
+`GOOGLE_SLIDES_ICON` has no component yet because no Slides create kind
+exists.
+
 ## The landing footer logos are in the client bundle too
 
 The landing page (footer and `content/index.md`) uses three

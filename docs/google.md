@@ -5282,6 +5282,105 @@ covers the helper with hostile reasons, and the two Drive write integration
 specs assert the exact sentence per tool for 403 with `forbidden`, 400 with
 `invalid`, an answer without a reason and a hostile reason.
 
+### 19.14 Output cards for created files (BES-468)
+
+A Google Doc, Sheet or text file that `google__drive_create_file` created used
+to show only a collapsed step ("Created a file in Google Drive") while the
+model printed a bare file id. It is now an output card like Besidka's own
+generated documents: a card in the message, a click that opens a preview in the
+side panel with an "Open in Google Docs", "Open in Google Sheets" or "Open in
+Google Drive" button, and a row under Outputs in the chat context panel.
+
+**What is persisted, and where the card reads it.** Nothing new is persisted
+and no server route changed. After a reload the message already holds the tool
+part `tool-google__drive_create_file` with the full `input` (`name`, `kind`,
+`content`, `folderId`), because `redactGoogleToolPartsForPersistence` only
+redacts the output, and with the `output` `{ references: [{ id, kind: 'file',
+title, link, parentId? }], bodyRemoved, note }`. That holds on the approved
+path and on the Always allow path alike. `readGoogleCreatedFile`
+(`shared/utils/google-created-file.ts`, shared because the context section on
+the server needs the same reading) turns a part into `{ toolCallId, kind,
+title, content, id, openLink }`. It returns `null` for any other part, for any
+state but `output-available` (waiting for approval, failed, denied), for a
+missing reference (an unconfirmed create), for an id that fails the Drive id
+shape, for a kind outside `document | spreadsheet | text` and for a title or
+content that is not a string. Nothing is read from Google Drive to render the
+card: it shows the input the user approved and the id Drive returned. Do not
+add a `data-*` part for this: it would be public unless denied.
+
+**The deep link is derived, never copied.** `buildGoogleFileOpenLink(kind, id)`
+builds `https://docs.google.com/document/d/<id>/edit`,
+`https://docs.google.com/spreadsheets/d/<id>/edit` or, for a text file, the
+existing `https://drive.google.com/open?id=<id>` from the validated id and the
+validated kind, and returns `null` for anything else. The stored `link` string
+is not used as a source. Every link opens with `target="_blank"` and
+`rel="noopener noreferrer"`.
+
+**The preview shows the file as created.** `Chat/GoogleFilePreview.vue` renders
+the approved input: a document as Markdown through `MDCCached` with the user
+parser options of `useChatFormat()` (HTML is escaped to text, MDC directives
+are off), a spreadsheet as an accessible table built from `parseStrictCsv`
+(the first row is the header; a CSV that cannot be read falls back to plain
+text), a text file as a wrapped `<pre>`. A note under the title says "As
+created by Besidka. Later edits in Google are not shown here." The limit of
+this rule: if the user edits the file in Google afterward, the preview and the
+card still show the text Besidka sent, and only the "Open in" button reaches
+the current file. Re-reading the file would be a Drive read the user did not
+ask for, so it is not done. The content region is focusable with
+`role="region"` and the name "File content". There is no Download button yet.
+
+**Where it appears.** `Chat/GoogleFile.vue` renders after the answer text,
+like the document and artifact cards: `isOutputCardPart` includes a part only
+while `readGoogleCreatedFile` accepts it, so a waiting or failed call stays a
+step and never moves. Unlike an artifact or a document, the part is a card by
+state, not by type: when the call settles its rendered key changes from
+`part-<n>` to `card-<n>`, which re-keys only the parts after it. Text before
+the call keeps its key; text after it in the same message would re-mount once,
+and in the usual flow that text arrives after the call settles. The card registers its file on mount in a client-only
+registry (`useGoogleFilePreview`), so the context panel can open the same
+preview by tool call id without holding the message parts, and nothing of the
+file text enters the page payload. The Outputs section `google-files`
+(`group: 'outputs'`, `visibility: 'private'`) lists the same parts with
+`id: google-file:<toolCallId>`, `meta.fileKind`, the editor link as `href` and
+no content. In the panel a click pushes the preview, so Back returns to
+Context; a file whose card is not mounted falls back to scrolling to the
+message. Shared chats and visitor branches drop every tool part
+(`filterPublicParts`), so neither the card nor the Outputs row reaches them;
+`tests/unit/server/utils/chats/share-public-parts.spec.ts` and the card spec
+prove it.
+
+**Logos and branding status.** The logo sits next to a text label with the
+product name in full ("Google Docs", "Google Sheets", "Google Drive") and is
+never alone: in the card (next to the title and a badge that names the product in full,
+"Google Docs" or "Google Sheets", or "Text file" for a text file, with the
+"Open in" link naming the product too), in the preview header and in the Outputs row. The
+icons are `thesvg-color:google-docs` and `thesvg-color:google-sheets`
+(`@iconify-json/thesvg-color`, MIT, a third-party redraw of unknown currency:
+the colors look like the pre-2026 logos), and the text file uses the Drive
+logo. They are only resized, with no tint, opacity or filter, and each is behind
+one constant in `shared/utils/google-brand-icons.ts` (`GOOGLE_DOCS_ICON`,
+`GOOGLE_SHEETS_ICON`, `GOOGLE_SLIDES_ICON`), so a replacement needs no
+component change; a spec asserts that the components use the constants and no
+literal icon name. `GOOGLE_SLIDES_ICON` exists only for completeness: there is
+no Slides create kind. Google publishes no per-product branding page for Docs,
+Sheets or Slides (only the Drive page), and its partner guidance says to use
+product icons only with a text reference, the full product names, the app's own
+brand more prominent than the Google icon, the most current icon, and official
+artwork only through the Partner Marketing Hub. The legal status of these
+marks is therefore UNVERIFIED (`docs/legal/prechecks/google.md`, row 9).
+OWNER STEP: request the official artwork through the Partner Marketing Hub and
+replace the three constants (one line each), or point the three constants at
+the Drive logo as the fallback.
+
+**Not built.** A Download button that exports the file from Drive (task 4,
+later); cards for created folders, renames and moves; creating Slides.
+`tests/unit/components/Chat/GoogleFile.spec.ts`, `GoogleFilePreview.spec.ts`,
+`GoogleFileHeaderAction.spec.ts`, `tests/unit/utils/google-created-file.spec.ts`
+and the Google files cases of `build-chat-context.spec.ts` and
+`ContextPanel.spec.ts` cover it. Nothing here was seen in a browser; the card,
+the panel header and the Outputs row are NOT VERIFIED visually, and the
+`thesvg-color` icons were not compared with Google's current artwork.
+
 ## 20. The setup guide on the own-client card (BES-458)
 
 A text guide, "How to set up your own Google client", sits inside the

@@ -11,6 +11,10 @@ import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
 import { isDataDocumentPart } from '#shared/utils/documents'
 import { isHiddenFilePart } from '#shared/utils/files'
+import {
+  getGoogleFileItemId,
+  readGoogleCreatedFile,
+} from '#shared/utils/google-created-file'
 import { isDriveFileReference } from '#shared/utils/google-drive'
 import {
   MEMORY_FORGET_TOOL_NAME,
@@ -308,6 +312,31 @@ const documentsSection: ChatContextSection = {
           documentId: part.data.documentId,
           documentFormat: part.data.format,
         },
+      })
+    }
+  },
+}
+
+const googleFilesSection: ChatContextSection = {
+  id: 'google-files',
+  group: 'outputs',
+  visibility: 'private',
+  collect(message, accumulator) {
+    for (const part of message.parts) {
+      const file = readGoogleCreatedFile(part)
+
+      if (!file) {
+        continue
+      }
+
+      accumulator.add('outputs', {
+        id: getGoogleFileItemId(file.toolCallId),
+        sectionId: 'google-files',
+        kind: 'google-file',
+        title: toTitle(file.title),
+        messageId: message.id,
+        href: file.openLink,
+        meta: { fileKind: file.kind },
       })
     }
   },
@@ -771,6 +800,7 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   researchReportsSection,
   artifactsSection,
   documentsSection,
+  googleFilesSection,
   attachedArtifactsSection,
   uploadedFilesSection,
   driveFilesSection,

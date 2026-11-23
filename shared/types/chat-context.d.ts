@@ -1,5 +1,6 @@
 import type { ArtifactKind } from '#shared/utils/artifacts'
 import type { DocumentFormat } from '#shared/utils/documents'
+import type { GoogleCreatedFileKind } from '#shared/utils/google-created-file'
 
 export type ChatContextGroup = 'outputs' | 'inputs' | 'used'
 
@@ -16,6 +17,7 @@ export type ChatContextItemKind
     | 'artifact'
     | 'code-execution'
     | 'document'
+    | 'google-file'
     | 'skill'
     | 'connector'
 
@@ -35,6 +37,7 @@ export interface ChatContextItemMeta {
   latestVersion?: number
   documentId?: string
   documentFormat?: DocumentFormat
+  fileKind?: GoogleCreatedFileKind
   tool?: string
   outcome?: ChatContextConnectorOutcome
   connectorId?: string

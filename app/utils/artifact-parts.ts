@@ -1,5 +1,6 @@
 import type { ArtifactKind } from '#shared/utils/artifacts'
 import { isDocumentPartType } from '#shared/utils/documents'
+import { readGoogleCreatedFile } from '#shared/utils/google-created-file'
 import { parseError } from 'evlog'
 import {
   ARTIFACT_DATA_PART_TYPE,
@@ -132,8 +133,12 @@ export function isArtifactMessagePart(part: unknown): boolean {
     || isArtifactToolPartType(record.type)
 }
 
+export function isGoogleCreatedFilePart(part: unknown): boolean {
+  return readGoogleCreatedFile(part) !== null
+}
+
 export function isOutputCardPart(part: unknown): boolean {
-  if (isArtifactMessagePart(part)) {
+  if (isArtifactMessagePart(part) || isGoogleCreatedFilePart(part)) {
     return true
   }
 
