@@ -2443,8 +2443,16 @@ paste waits again. Pasted text with no Google link takes the 800 ms path.
 
 **The placeholder.** From the moment a link passed the client parser, the
 connection check and the queue, until its answer, the attachments row shows
-one placeholder per link (at most five) in the place and the outer size of an
-attached-file chip: `role="status"`, the name "Checking Google link", not
+one placeholder per link (at most five). It takes the form of what the check
+usually turns into: with no file, image, copy or pasted text chip in the row it
+is a 40 px pill (`h-10 w-32`, the radius and border of a tile, one icon block
+and two text lines) so the row stays 40 px and the tiles stay pills before,
+during and after the check; with a real item in the row it has the outer size
+of an attached-file chip (64 px) like its neighbors. The skeleton does not
+count as an attachment for the tile variant (`hasAnyFiles` in
+`Files/Attached/Preview.client.vue`), so it never switches the row to the
+square layout, and the composer height reaches the spacer through the existing
+`useElementSize` watcher, with no timer. `role="status"`, the name "Checking Google link", not
 focusable, `skeleton skeleton--default` blocks (daisyUI's `.skeleton`
 animates only under `prefers-reduced-motion: no-preference`),
 `data-testid="google-link-skeleton"`. `useChatDriveFiles` keeps the ids in
