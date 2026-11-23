@@ -21,6 +21,15 @@ import type { GoogleEntry } from '~/utils/google-entries'
 
 export const NEW_CHAT_GOOGLE_TOOLS_KEY = 'new'
 
+export const googleServicePutQueue = createSpacedKeyedQueue()
+
+const GOOGLE_SERVICE_FALLBACK_TITLES: Readonly<Record<GoogleService, string>>
+  = {
+    drive: 'Google Drive',
+    gmail: 'Gmail',
+    calendar: 'Google Calendar',
+  }
+
 export const GOOGLE_ROW_UNAVAILABLE_LINE = 'Not available with this model'
 
 export const GOOGLE_ROW_OFF_LINE = 'Off in this chat'
@@ -31,6 +40,8 @@ export interface GoogleToolsSelectionState {
   isKnown: boolean
   shouldSend: boolean
 }
+
+export type GoogleChoiceState = 'ready' | 'loading' | 'error'
 
 export interface ComposerGoogleRowLink {
   label: string
@@ -141,11 +152,35 @@ export function useGoogleToolsAvailability() {
 }
 
 /**
+ * The `googleServicesOff` field of a send body: present only while a choice
+ * handed over from the new-chat page has not been carried by a send that
+ * went through (`shouldSend`). Later sends of the chat never carry it, so
+ * the picker's saves are the only writer of an existing chat's choice.
+ */
+export function getGoogleServicesOffField(
+  selection: GoogleToolsSelectionState,
+  isAvailable: boolean,
+  chatSlug: string,
+): { googleServicesOff?: GoogleService[] } {
+  if (
+    !isAvailable
+    || !selection.isKnown
+    || !selection.shouldSend
+    || selection.chatKey !== chatSlug
+  ) {
+    return {}
+  }
+
+  return { googleServicesOff: selection.off }
+}
+
+/**
  * The per-chat Google choice shared by the picker and the send body. Every
  * service is on by default. `isKnown` is false until the stored choice was
  * read (or handed over from the new-chat page), so a send never overwrites a
  * stored choice it has not seen; `shouldSend` is true only for a choice
- * handed over from the new-chat page, which the first send carries.
+ * handed over from the new-chat page, which the first send carries until
+ * `settleFirstSend` clears it.
  */
 export function useGoogleToolsSelection() {
   const selection = useState<GoogleToolsSelectionState>(
@@ -171,7 +206,18 @@ export function useGoogleToolsSelection() {
     }
   }
 
-  return { selection, handOff }
+  function settleFirstSend(chatSlug: string) {
+    if (
+      selection.value.chatKey !== chatSlug
+      || !selection.value.shouldSend
+    ) {
+      return
+    }
+
+    selection.value = { ...selection.value, shouldSend: false }
+  }
+
+  return { selection, handOff, settleFirstSend }
 }
 
 export function useComposerGoogleTools(
@@ -189,12 +235,28 @@ export function useComposerGoogleTools(
   const driveFeature = useFeature('google.drive')
   const gmailFeature = useFeature('google.gmail')
   const calendarFeature = useFeature('google.calendar')
-  const isSaving = shallowRef<boolean>(false)
-  const loadingChatKey = shallowRef<string | null>(null)
+  const savingServices = shallowRef<GoogleService[]>([])
+  const hasLoadFailed = shallowRef<boolean>(false)
+  const announcement = shallowRef<string>('')
   const status = shallowRef<GoogleConnectionStatusResponse | null>(null)
+  let loadSequence = 0
+  let statusSequence = 0
 
   const chatKey = computed<string>(() => {
     return toValue(chatSlug) ?? NEW_CHAT_GOOGLE_TOOLS_KEY
+  })
+
+  const isChoiceKnown = computed<boolean>(() => {
+    return selection.value.chatKey === chatKey.value
+      && selection.value.isKnown
+  })
+
+  const choiceState = computed<GoogleChoiceState>(() => {
+    if (isChoiceKnown.value) {
+      return 'ready'
+    }
+
+    return hasLoadFailed.value ? 'error' : 'loading'
   })
 
   const servicesOff = computed<GoogleService[]>(() => {
@@ -248,6 +310,8 @@ export function useComposerGoogleTools(
   })
 
   watch(chatKey, (key) => {
+    hasLoadFailed.value = false
+
     if (selection.value.chatKey === key) {
       return
     }
@@ -260,117 +324,186 @@ export function useComposerGoogleTools(
     }
   }, { immediate: true })
 
-  watch(
-    [isAvailable, chatKey, () => selection.value.isKnown],
-    async ([available, key, isKnown]) => {
+  async function loadStoredChoice(key: string) {
+    loadSequence += 1
+
+    const sequence = loadSequence
+
+    hasLoadFailed.value = false
+
+    try {
+      const response = await $fetch(`/api/v1/chats/${key}/google-tools`)
+
       if (
-        !available
-        || isKnown
-        || key === NEW_CHAT_GOOGLE_TOOLS_KEY
-        || loadingChatKey.value === key
+        sequence !== loadSequence
+        || selection.value.chatKey !== key
+        || selection.value.isKnown
       ) {
         return
       }
 
-      loadingChatKey.value = key
-
-      try {
-        const response = await $fetch(`/api/v1/chats/${key}/google-tools`)
-
-        if (selection.value.chatKey !== key || selection.value.isKnown) {
-          return
-        }
-
-        selection.value = {
-          chatKey: key,
-          off: GOOGLE_SERVICES.filter(service => !response[service]),
-          isKnown: true,
-          shouldSend: false,
-        }
-      } catch {
-        return
-      } finally {
-        loadingChatKey.value = null
+      selection.value = {
+        chatKey: key,
+        off: GOOGLE_SERVICES.filter(service => !response[service]),
+        isKnown: true,
+        shouldSend: false,
       }
+    } catch {
+      if (sequence === loadSequence) {
+        hasLoadFailed.value = true
+      }
+    }
+  }
+
+  watch(
+    [isAvailable, chatKey, () => selection.value.isKnown],
+    ([available, key, isKnown]) => {
+      if (!available || isKnown || key === NEW_CHAT_GOOGLE_TOOLS_KEY) {
+        return
+      }
+
+      loadStoredChoice(key)
     },
     { immediate: true },
   )
+
+  function retry() {
+    if (
+      !isAvailable.value
+      || isChoiceKnown.value
+      || chatKey.value === NEW_CHAT_GOOGLE_TOOLS_KEY
+    ) {
+      return
+    }
+
+    loadStoredChoice(chatKey.value)
+  }
 
   async function refresh() {
     if (!isAvailable.value) {
       return
     }
 
+    announcement.value = ''
+    statusSequence += 1
+
+    const sequence = statusSequence
+
     try {
-      status.value = await $fetch('/api/v1/google/connections')
+      const response = await $fetch('/api/v1/google/connections')
+
+      if (sequence === statusSequence) {
+        status.value = response
+      }
     } catch {
       return
     }
   }
 
-  async function toggle(service: GoogleService) {
-    if (isSaving.value) {
-      return
-    }
+  function describeService(service: GoogleService): string {
+    return rows.value.find(row => row.service === service)?.title
+      ?? GOOGLE_SERVICE_FALLBACK_TITLES[service]
+  }
 
-    const key = chatKey.value
-    const slug = toValue(chatSlug)
-    const previous = selection.value
-    const isOn = !servicesOff.value.includes(service)
-    const off = isOn
-      ? [...servicesOff.value, service]
-      : servicesOff.value.filter(entry => entry !== service)
+  function setServiceState(
+    key: string,
+    service: GoogleService,
+    isOn: boolean,
+  ) {
+    const others = selection.value.off.filter(entry => entry !== service)
 
     selection.value = {
+      ...selection.value,
       chatKey: key,
-      off,
+      off: GOOGLE_SERVICES.filter((entry) => {
+        return entry === service ? !isOn : others.includes(entry)
+      }),
       isKnown: true,
-      shouldSend: previous.chatKey === key && previous.shouldSend,
     }
+  }
 
-    if (!slug) {
+  async function toggle(service: GoogleService) {
+    const key = chatKey.value
+
+    if (
+      !isChoiceKnown.value
+      || savingServices.value.includes(service)
+    ) {
       return
     }
 
-    isSaving.value = true
+    const slug = toValue(chatSlug)
+    const wasOn = !servicesOff.value.includes(service)
+    const title = describeService(service)
+
+    setServiceState(key, service, !wasOn)
+
+    if (!slug) {
+      announcement.value = `${title} is now ${wasOn ? 'off' : 'on'} in `
+        + 'this chat'
+
+      return
+    }
+
+    savingServices.value = [...savingServices.value, service]
 
     try {
-      const response = await $fetch(`/api/v1/chats/${slug}/google-tools`, {
-        method: 'PUT',
-        body: { service, enabled: !isOn },
+      const response = await googleServicePutQueue.enqueue(service, () => {
+        return $fetch(`/api/v1/chats/${slug}/google-tools`, {
+          method: 'PUT',
+          body: { service, enabled: !wasOn },
+        })
       })
 
       if (selection.value.chatKey === key) {
+        const pending = savingServices.value.filter((entry) => {
+          return entry !== service
+        })
+
         selection.value = {
           chatKey: key,
-          off: GOOGLE_SERVICES.filter(entry => !response[entry]),
+          off: GOOGLE_SERVICES.filter((entry) => {
+            return pending.includes(entry)
+              ? selection.value.off.includes(entry)
+              : !response[entry]
+          }),
           isKnown: true,
           shouldSend: false,
         }
       }
+
+      announcement.value = `${title} is now ${wasOn ? 'off' : 'on'} in `
+        + 'this chat'
     } catch (exception) {
       if (selection.value.chatKey === key) {
-        selection.value = previous
+        setServiceState(key, service, wasOn)
       }
 
       const parsedException = parseError(exception)
 
+      announcement.value = `${title} is back ${wasOn ? 'on' : 'off'} in `
+        + 'this chat. Saving failed.'
       useErrorMessage(
         parsedException.message || 'Could not update Google tools',
         parsedException.why,
       )
     } finally {
-      isSaving.value = false
+      savingServices.value = savingServices.value.filter((entry) => {
+        return entry !== service
+      })
     }
   }
 
   return {
     isAvailable,
-    isSaving,
+    savingServices,
+    choiceState,
+    announcement,
     rows,
     servicesOff,
     unavailableReason,
     refresh,
+    retry,
     toggle,
   }
 }

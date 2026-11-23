@@ -832,8 +832,8 @@ npx wrangler kv bulk delete tool-approval-key-names.json --binding KV --env prod
 
 See "Tool approvals" above for why every grant is reset. Tools set to
 `blocked` stay as they were at B, and the per-chat Google switches
-(`besidka_chat_settings.google_services_off`) are not part of the reset. Tell users to re-grant "Always allow" in
-the notice (step 7).
+(`besidka_chat_settings.google_services_off`) are not part of the reset. Tell
+users to re-grant "Always allow" in the notice (step 7).
 
 ### 2c. Disarm legal notice emails and restore the owner's decisions
 

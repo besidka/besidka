@@ -341,6 +341,33 @@ describe('per-chat Google switch routes', () => {
         .status).toBe(429)
     })
 
+    it('counts each service on its own KV key, so two quick switches of '
+      + 'different services never share one', async () => {
+      await put({ service: 'gmail', enabled: false })
+      await put({ service: 'drive', enabled: false })
+      await put({ service: 'gmail', enabled: true })
+
+      const keys = kv.put.mock.calls.map(([key]) => key)
+
+      expect(keys).toEqual([
+        `google-chat-service-rate-limit:${userId}:gmail`,
+        `google-chat-service-rate-limit:${userId}:drive`,
+        `google-chat-service-rate-limit:${userId}:gmail`,
+      ])
+    })
+
+    it('limits each service on its own, not the user as a whole',
+      async () => {
+        for (let change = 0; change < 60; change += 1) {
+          await put({ service: 'gmail', enabled: change % 2 === 0 })
+        }
+
+        expect(await put({ service: 'drive', enabled: false }))
+          .toMatchObject({ drive: false })
+        expect((await failureOf(put({ service: 'gmail', enabled: true })))
+          .status).toBe(429)
+      })
+
     it('does not count a read against the write limit', async () => {
       for (let read = 0; read < 70; read += 1) {
         await call(getPath)

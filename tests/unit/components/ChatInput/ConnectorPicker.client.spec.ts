@@ -105,7 +105,9 @@ async function mountPicker(
     isSaving: boolean
     besidka: { enabled: boolean, isSaving: boolean } | null
     googleRows: ComposerGoogleRow[]
-    isGoogleSaving: boolean
+    googleSavingServices: Array<'drive' | 'gmail' | 'calendar'>
+    googleChoiceState: 'ready' | 'loading' | 'error'
+    googleAnnouncement: string
     isLoaded: boolean
     isRegistryAvailable: boolean
   }> = {},
@@ -338,17 +340,76 @@ describe('ChatInput/ConnectorPicker', () => {
       expect(wrapper.emitted('toggle-besidka')).toBeUndefined()
     })
 
-    it('announces a change in a polite live region', async () => {
-      await mountPicker({ googleRows: [googleRow()] })
-
-      get('connector-picker-google-toggle-gmail').click()
-      await flushPromises()
-
+    it('shows the announcement it is given in a polite live region, and '
+      + 'does not write one on a click', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow()],
+        googleAnnouncement: 'Gmail is back on in this chat. Saving failed.',
+      })
       const status = get('connector-picker-google-status')
 
       expect(status.getAttribute('role')).toBe('status')
       expect(status.getAttribute('aria-live')).toBe('polite')
-      expect(status.textContent).toContain('Gmail is now off in this chat')
+      expect(status.textContent)
+        .toContain('Gmail is back on in this chat. Saving failed.')
+
+      await wrapper.setProps({ googleAnnouncement: '' })
+
+      get('connector-picker-google-toggle-gmail').click()
+      await flushPromises()
+
+      expect(status.textContent).toBe('')
+    })
+
+    it('marks only the rows that are saving as inert', async () => {
+      await mountPicker({
+        googleRows: [googleRow(), googleRow({
+          entryId: 'google-calendar',
+          service: 'calendar',
+          title: 'Google Calendar',
+        })],
+        googleSavingServices: ['gmail'],
+      })
+
+      expect(get('connector-picker-google-toggle-gmail')
+        .getAttribute('aria-disabled')).toBe('true')
+      expect(get('connector-picker-google-toggle-calendar')
+        .getAttribute('aria-disabled')).toBeNull()
+    })
+
+    it('shows loading rows without an error line while the choice is '
+      + 'unknown', async () => {
+      await mountPicker({
+        googleRows: [googleRow()],
+        googleChoiceState: 'loading',
+      })
+
+      expect(find('connector-picker-google-loading-gmail')).not.toBeNull()
+      expect(find('connector-picker-google-error')).toBeNull()
+      expect(get('connector-picker-google-toggle-gmail')
+        .getAttribute('aria-disabled')).toBe('true')
+    })
+
+    it('shows a one-line error with a Try again button inside the Google '
+      + 'group after a failed read, and emits a retry', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow()],
+        googleChoiceState: 'error',
+      })
+      const error = get('connector-picker-google-error')
+      const retry = get('connector-picker-google-retry')
+
+      expect(get('connector-picker-google').contains(error)).toBe(true)
+      expect(error.textContent).toContain('Could not load')
+      expect(retry.textContent?.trim()).toBe('Try again')
+      expect(retry.className).toContain('max-sm:min-h-11')
+      expect(get('connector-picker-google-toggle-gmail')
+        .getAttribute('aria-disabled')).toBe('true')
+
+      retry.click()
+      await flushPromises()
+
+      expect(wrapper.emitted('retry-google')).toHaveLength(1)
     })
 
     it('keeps the rows out of the connector limit', async () => {

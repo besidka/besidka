@@ -1,6 +1,7 @@
 <template>
   <div
     class="flex flex-col"
+    :aria-busy="isChoiceLoading || undefined"
     :data-testid="`connector-picker-google-${row.service}`"
   >
     <div
@@ -20,8 +21,8 @@
         :for="row.kind === 'switch' ? inputId : undefined"
         class="flex min-w-0 grow flex-col"
         :class="{
-          'cursor-pointer': row.kind === 'switch' && !isDisabled,
-          'cursor-not-allowed': row.kind === 'switch' && isDisabled,
+          'cursor-pointer': row.kind === 'switch' && !isInert,
+          'cursor-not-allowed': row.kind === 'switch' && isInert,
         }"
       >
         <span class="truncate text-sm font-medium">
@@ -31,9 +32,21 @@
           class="truncate text-xs text-base-content/60"
           :data-testid="`connector-picker-google-subline-${row.service}`"
         >
-          {{ row.subLine }}
+          {{ subLine }}
         </span>
       </component>
+      <span
+        v-if="isChoiceLoading"
+        class="loading loading-spinner loading-xs shrink-0 text-base-content/60"
+        role="presentation"
+        :data-testid="`connector-picker-google-loading-${row.service}`"
+      />
+      <span
+        v-if="isChoiceLoading"
+        class="sr-only"
+      >
+        Loading
+      </span>
       <button
         v-if="row.reasonNote"
         type="button"
@@ -55,12 +68,15 @@
         :id="inputId"
         type="checkbox"
         class="toggle toggle-sm toggle-accent shrink-0"
+        :class="{ 'opacity-60': isBlocked }"
         role="switch"
         :checked="row.isOn"
         :disabled="isDisabled"
+        :aria-disabled="isBlocked || undefined"
         :aria-label="`Use ${row.title} in this chat`"
         :data-testid="`connector-picker-google-toggle-${row.service}`"
-        @change="emit('toggle', row.service)"
+        @click="onClick"
+        @change="onChange"
       >
       <NuxtLink
         v-else-if="row.link"
@@ -86,12 +102,18 @@
 
 <script setup lang="ts">
 import type { GoogleService } from '#shared/utils/google-tool-catalog'
-import type { ComposerGoogleRow } from '~/composables/composer-google-tools'
+import type {
+  ComposerGoogleRow,
+  GoogleChoiceState,
+} from '~/composables/composer-google-tools'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   row: ComposerGoogleRow
   isSaving: boolean
-}>()
+  choiceState?: GoogleChoiceState
+}>(), {
+  choiceState: 'ready',
+})
 
 const emit = defineEmits<{
   toggle: [service: GoogleService]
@@ -103,6 +125,39 @@ const noteId = useId()
 const isNoteOpen = shallowRef<boolean>(false)
 
 const isDisabled = computed<boolean>(() => {
-  return props.isSaving || props.row.reasonNote !== null
+  return props.row.reasonNote !== null
 })
+
+const isChoiceLoading = computed<boolean>(() => {
+  return props.row.kind === 'switch' && props.choiceState === 'loading'
+})
+
+const isBlocked = computed<boolean>(() => {
+  return props.isSaving
+    || (props.row.kind === 'switch' && props.choiceState !== 'ready')
+})
+
+const isInert = computed<boolean>(() => {
+  return isDisabled.value || isBlocked.value
+})
+
+const subLine = computed<string>(() => {
+  return isChoiceLoading.value ? 'Checking this chat' : props.row.subLine
+})
+
+function onClick(event: Event) {
+  if (isBlocked.value) {
+    event.preventDefault()
+  }
+}
+
+function onChange(event: Event) {
+  if (isBlocked.value) {
+    (event.target as HTMLInputElement).checked = props.row.isOn
+
+    return
+  }
+
+  emit('toggle', props.row.service)
+}
 </script>

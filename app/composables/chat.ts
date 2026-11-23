@@ -50,7 +50,6 @@ import {
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
 import { withDriveFileParts } from '#shared/utils/google-drive'
-import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import {
   CONNECTORS_NOTICE_PART_TYPE,
   getConnectorToolCall,
@@ -1044,7 +1043,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const isBesidkaToolsAvailable = useBesidkaToolsAvailability()
   const { selection: besidkaToolsSelection } = useBesidkaToolsSelection()
   const isGoogleToolsAvailable = useGoogleToolsAvailability()
-  const { selection: googleToolsSelection } = useGoogleToolsSelection()
+  const {
+    selection: googleToolsSelection,
+    settleFirstSend: settleGoogleFirstSend,
+  } = useGoogleToolsSelection()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -1149,23 +1151,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }
 
     return { besidkaToolsEnabled: enabled }
-  }
-
-  function getGoogleServicesOffField(): {
-    googleServicesOff?: GoogleService[]
-  } {
-    const { chatKey, off, isKnown, shouldSend } = googleToolsSelection.value
-
-    if (
-      !isGoogleToolsAvailable.value
-      || !isKnown
-      || !shouldSend
-      || chatKey !== chatSlug
-    ) {
-      return {}
-    }
-
-    return { googleServicesOff: off }
   }
 
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
@@ -1280,7 +1265,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             ),
             ...getConnectorIdsField(),
             ...getBesidkaToolsField(),
-            ...getGoogleServicesOffField(),
+            ...getGoogleServicesOffField(
+              googleToolsSelection.value,
+              isGoogleToolsAvailable.value,
+              chatSlug,
+            ),
             ...getStoppedRunField(lastMessage?.id),
             ...getClientTimeZoneField(),
           },
@@ -1315,6 +1304,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       isError,
       messages,
     }) {
+      if (!isError && !isSdkDisconnect) {
+        settleGoogleFirstSend(chatSlug)
+      }
+
       const isStallAbort = isSdkAbort && isStreamStallAbort
       const isAbort = isSdkAbort && !isStallAbort
       const isDisconnect = isSdkDisconnect || isStallAbort

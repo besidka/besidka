@@ -247,7 +247,9 @@
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
       :google-rows="composerGoogleTools.rows.value"
-      :is-google-saving="composerGoogleTools.isSaving.value"
+      :google-saving-services="composerGoogleTools.savingServices.value"
+      :google-choice-state="composerGoogleTools.choiceState.value"
+      :google-announcement="composerGoogleTools.announcement.value"
       :is-loaded="composerConnectors.isLoaded.value"
       :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
@@ -255,6 +257,7 @@
       @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
       @toggle-google="composerGoogleTools.toggle"
+      @retry-google="composerGoogleTools.retry"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"

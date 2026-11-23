@@ -34,10 +34,13 @@ export function toGoogleChatServiceStates(
  * The gate of the per-chat Google switch routes, in this order: the
  * same-origin guard (the write guard for a `PUT`), a session, the chat,
  * which must belong to the user (a 404 otherwise, also for a malformed
- * slug), the `google.drive` flag active for this user (a 404 otherwise),
- * then, for a `PUT`, the write limit of 60 changes a minute per user, which
- * fails closed when KV cannot count. Returns the session user id and the
- * chat's public id; the routes only ever touch that chat's row.
+ * slug), the `google.drive` flag active for this user (a 404 otherwise).
+ * The write limit of 60 changes a minute is counted by the `PUT` route
+ * itself, per user and service, once the body names the service
+ * (`enforceGoogleRateLimit`), so two quick switches of different services
+ * never share a KV key; it fails closed when KV cannot count. Returns the
+ * session user id and the chat's public id; the routes only ever touch that
+ * chat's row.
  */
 export async function requireGoogleChatToolsAccess(
   event: RequestEvent,
@@ -49,7 +52,7 @@ export async function requireGoogleChatToolsAccess(
   let chatPublicId = ''
   const userId = await requireGoogleAccess(event, {
     write: options.write,
-    rateLimit: options.write ? 'chat-service' : 'none',
+    rateLimit: 'none',
     feature: false,
     authorize: async (sessionUserId) => {
       if (params.error) {

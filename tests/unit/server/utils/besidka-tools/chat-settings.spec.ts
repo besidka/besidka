@@ -460,6 +460,141 @@ describe('Google services switched off in a chat', () => {
       .googleServicesOff).toEqual([])
   })
 
+  function withChangeAfterRead(
+    sabotage: (readNumber: number) => Promise<void>,
+  ): typeof testDb.db {
+    let readCount = 0
+
+    function wrapBuilder(builder: any): any {
+      return new Proxy(builder, {
+        get(target, property) {
+          if (property === 'limit') {
+            return (count: number) => ({
+              then: (
+                resolve: (rows: unknown) => void,
+                reject: (reason: unknown) => void,
+              ) => {
+                target.limit(count).then(async (rows: unknown) => {
+                  readCount += 1
+                  await sabotage(readCount)
+                  resolve(rows)
+                }, reject)
+              },
+            })
+          }
+
+          const value = Reflect.get(target, property)
+
+          return typeof value === 'function'
+            ? (...args: unknown[]) => wrapBuilder(value.apply(target, args))
+            : value
+        },
+      })
+    }
+
+    return new Proxy(testDb.db, {
+      get(target, property) {
+        if (property !== 'select') {
+          const value = Reflect.get(target, property)
+
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+
+        return (...args: unknown[]) => {
+          return wrapBuilder((target.select as any)(...args))
+        }
+      },
+    })
+  }
+
+  async function storedServicesOff(): Promise<string | null> {
+    const [row] = await testDb.db.select({
+      stored: schema.besidkaChatSettings.googleServicesOff,
+    }).from(schema.besidkaChatSettings)
+
+    return row?.stored ?? null
+  }
+
+  it('keeps a change another request lands between the read and the '
+    + 'write', async () => {
+    await setGoogleServicesOff(testDb.db, userId, CHAT, ['drive'])
+
+    const racingDb = withChangeAfterRead(async (readNumber) => {
+      if (readNumber === 1) {
+        await setGoogleServicesOff(
+          testDb.db,
+          userId,
+          CHAT,
+          ['drive', 'calendar'],
+        )
+      }
+    })
+
+    expect(await setGoogleServiceEnabled(
+      racingDb,
+      userId,
+      CHAT,
+      'gmail',
+      false,
+    )).toEqual(['drive', 'gmail', 'calendar'])
+    expect(JSON.parse(await storedServicesOff() ?? 'null'))
+      .toEqual(['drive', 'gmail', 'calendar'])
+  })
+
+  it('retries from null when the row was empty at the read', async () => {
+    await setGoogleServicesOff(testDb.db, userId, CHAT, [])
+
+    const racingDb = withChangeAfterRead(async (readNumber) => {
+      if (readNumber === 1) {
+        await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
+      }
+    })
+
+    expect(await setGoogleServiceEnabled(
+      racingDb,
+      userId,
+      CHAT,
+      'drive',
+      false,
+    )).toEqual(['drive', 'calendar'])
+  })
+
+  it('treats an insert that loses to another insert as a lost swap',
+    async () => {
+      const racingDb = withChangeAfterRead(async (readNumber) => {
+        if (readNumber === 1) {
+          await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
+        }
+      })
+
+      expect(await setGoogleServiceEnabled(
+        racingDb,
+        userId,
+        CHAT,
+        'gmail',
+        false,
+      )).toEqual(['gmail', 'calendar'])
+    })
+
+  it('answers 409 when the swap keeps losing', async () => {
+    const racingDb = withChangeAfterRead(async (readNumber) => {
+      await setGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        readNumber % 2 ? ['calendar'] : ['drive'],
+      )
+    })
+
+    await expect(setGoogleServiceEnabled(
+      racingDb,
+      userId,
+      CHAT,
+      'gmail',
+      false,
+    )).rejects.toMatchObject({ status: 409 })
+  })
+
   it('stores null when every service is on again', async () => {
     await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
     await setGoogleServicesOff(testDb.db, userId, CHAT, [])

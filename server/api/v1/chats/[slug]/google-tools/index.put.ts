@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { GOOGLE_SERVICES } from '#shared/utils/google-tool-catalog'
 import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storage-request'
 import { setGoogleServiceEnabled } from '~~/server/utils/besidka-tools/chat-settings'
+import { enforceGoogleRateLimit } from '~~/server/utils/google/route'
 import {
   requireGoogleChatToolsAccess,
   toGoogleChatServiceStates,
@@ -40,6 +41,13 @@ export default defineEventHandler(async (event) => {
       fix: 'Send a Google service and whether it is on',
     })
   }
+
+  await enforceGoogleRateLimit(
+    event,
+    userId,
+    'chat-service',
+    body.data.service,
+  )
 
   const servicesOff = await setGoogleServiceEnabled(
     useDb(),

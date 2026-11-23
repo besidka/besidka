@@ -12,8 +12,13 @@ import {
   GOOGLE_ROW_UNAVAILABLE_LINE,
   NEW_CHAT_GOOGLE_TOOLS_KEY,
   buildComposerGoogleRows,
+  getGoogleServicesOffField,
+  googleServicePutQueue,
   useComposerGoogleTools,
   useGoogleToolsSelection,
+} from '../../../app/composables/composer-google-tools'
+import type {
+  GoogleToolsSelectionState,
 } from '../../../app/composables/composer-google-tools'
 import { resolveGoogleEntries } from '../../../app/utils/google-entries'
 
@@ -56,6 +61,45 @@ mockNuxtImport('useUserKeys', () => {
 })
 
 const SLUG = '01HZXBBBBBBBBBBBBBBBBBBBBB'
+
+function allOn() {
+  return { drive: true, gmail: true, calendar: true }
+}
+
+function putCalls() {
+  return mocks.fetch.mock.calls.filter(([, init]) => {
+    return (init as { method?: string } | undefined)?.method === 'PUT'
+  })
+}
+
+function deferPuts() {
+  const pending = new Map<string, {
+    resolve: (value: unknown) => void
+    reject: (reason: unknown) => void
+  }>()
+
+  mocks.fetch.mockImplementation((_url: string, init?: {
+    method?: string
+    body?: { service: string }
+  }) => {
+    if (init?.method === 'PUT') {
+      return new Promise((resolve, reject) => {
+        pending.set(init.body!.service, { resolve, reject })
+      })
+    }
+
+    return Promise.resolve(allOn())
+  })
+
+  return {
+    resolve: (service: string, value: unknown) => {
+      pending.get(service)!.resolve(value)
+    },
+    reject: (service: string, reason: unknown) => {
+      pending.get(service)!.reject(reason)
+    },
+  }
+}
 
 function summary(
   patch: Partial<GoogleConnectionSummary> = {},
@@ -308,6 +352,7 @@ describe('useComposerGoogleTools', () => {
     paidTier.value = false
     mocks.fetch.mockReset()
     mocks.errorMessage.mockReset()
+    googleServicePutQueue.reset()
     useGoogleToolsSelection().selection.value = {
       chatKey: NEW_CHAT_GOOGLE_TOOLS_KEY,
       off: [],
@@ -448,31 +493,356 @@ describe('useComposerGoogleTools', () => {
 
     expect(composable.servicesOff.value).toEqual([])
     expect(mocks.errorMessage).toHaveBeenCalled()
-    expect(composable.isSaving.value).toBe(false)
+    expect(composable.savingServices.value).toEqual([])
   })
 
-  it('ignores a second toggle while one is saving', async () => {
-    mocks.fetch.mockResolvedValueOnce({
-      drive: true,
-      gmail: true,
-      calendar: true,
+  it('ignores a second toggle of a service while its save is running',
+    async () => {
+      mocks.fetch.mockResolvedValueOnce(allOn())
+
+      const { composable } = await mountComposable(SLUG)
+      const puts = deferPuts()
+
+      const first = composable.toggle('gmail')
+
+      await flushPromises()
+      await composable.toggle('gmail')
+
+      expect(composable.savingServices.value).toEqual(['gmail'])
+      expect(putCalls()).toHaveLength(1)
+
+      puts.resolve('gmail', { drive: true, gmail: false, calendar: true })
+      await first
+
+      expect(composable.servicesOff.value).toEqual(['gmail'])
+      expect(composable.savingServices.value).toEqual([])
     })
 
+  it('saves another service while one save is running and keeps both '
+    + 'choices when the answers arrive out of order', async () => {
+    mocks.fetch.mockResolvedValueOnce(allOn())
+
     const { composable } = await mountComposable(SLUG)
-    let finish: (value: unknown) => void = () => undefined
+    const puts = deferPuts()
 
-    mocks.fetch.mockReturnValueOnce(new Promise((resolve) => {
-      finish = resolve
-    }))
+    const driveSave = composable.toggle('drive')
+    const gmailSave = composable.toggle('gmail')
 
-    const first = composable.toggle('gmail')
+    await flushPromises()
 
-    await composable.toggle('drive')
+    expect(putCalls()).toHaveLength(2)
+    expect(composable.savingServices.value).toEqual(['drive', 'gmail'])
 
-    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    puts.resolve('drive', { drive: false, gmail: true, calendar: true })
+    await driveSave
 
-    finish({ drive: true, gmail: false, calendar: true })
-    await first
+    expect(composable.servicesOff.value).toEqual(['drive', 'gmail'])
+
+    puts.resolve('gmail', { drive: false, gmail: false, calendar: true })
+    await gmailSave
+
+    expect(composable.servicesOff.value).toEqual(['drive', 'gmail'])
+  })
+
+  it('rolls back only the service whose save failed', async () => {
+    mocks.fetch.mockResolvedValueOnce(allOn())
+
+    const { composable } = await mountComposable(SLUG)
+    const puts = deferPuts()
+
+    const driveSave = composable.toggle('drive')
+    const gmailSave = composable.toggle('gmail')
+
+    await flushPromises()
+    puts.reject('drive', new Error('Nope'))
+    await driveSave
+
+    expect(composable.servicesOff.value).toEqual(['gmail'])
+
+    puts.resolve('gmail', { drive: true, gmail: false, calendar: true })
+    await gmailSave
+
+    expect(composable.servicesOff.value).toEqual(['gmail'])
+  })
+
+  describe('spacing saves of one service', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('queues a second save of the same service until 1.1 s after the '
+      + 'first, and never drops it', async () => {
+      mocks.fetch.mockResolvedValueOnce(allOn())
+
+      const { composable } = await mountComposable(SLUG)
+
+      mocks.fetch.mockImplementation(async (_url: string, init?: {
+        body?: { service: string, enabled: boolean }
+      }) => {
+        return { ...allOn(), gmail: init!.body!.enabled }
+      })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+
+      await composable.toggle('gmail')
+      expect(putCalls()).toHaveLength(1)
+
+      const second = composable.toggle('gmail')
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(putCalls()).toHaveLength(1)
+      expect(composable.savingServices.value).toEqual(['gmail'])
+
+      await vi.advanceTimersByTimeAsync(1099)
+
+      expect(putCalls()).toHaveLength(1)
+
+      await vi.advanceTimersByTimeAsync(1)
+      await second
+
+      expect(putCalls()).toHaveLength(2)
+      expect(composable.servicesOff.value).toEqual([])
+    })
+
+    it('does not delay a save of a different service', async () => {
+      mocks.fetch.mockResolvedValueOnce(allOn())
+
+      const { composable } = await mountComposable(SLUG)
+
+      mocks.fetch.mockImplementation(async () => allOn())
+      vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+
+      await composable.toggle('gmail')
+      await composable.toggle('drive')
+
+      expect(putCalls()).toHaveLength(2)
+    })
+  })
+
+  describe('while the stored choice is not known', () => {
+    it('is loading, ignores toggles and then becomes ready', async () => {
+      let finishLoad: (value: unknown) => void = () => undefined
+
+      mocks.fetch.mockReturnValueOnce(new Promise((resolve) => {
+        finishLoad = resolve
+      }))
+
+      const { composable } = await mountComposable(SLUG)
+
+      expect(composable.choiceState.value).toBe('loading')
+
+      await composable.toggle('gmail')
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(composable.servicesOff.value).toEqual([])
+
+      finishLoad({ drive: true, gmail: false, calendar: true })
+      await flushPromises()
+
+      expect(composable.choiceState.value).toBe('ready')
+      expect(composable.servicesOff.value).toEqual(['gmail'])
+    })
+
+    it('shows an error after a failed read, keeps ignoring toggles and '
+      + 'recovers on retry', async () => {
+      mocks.fetch.mockRejectedValueOnce(new Error('Offline'))
+
+      const { composable } = await mountComposable(SLUG)
+
+      expect(composable.choiceState.value).toBe('error')
+
+      await composable.toggle('gmail')
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(composable.servicesOff.value).toEqual([])
+
+      mocks.fetch.mockResolvedValueOnce({
+        drive: true,
+        gmail: false,
+        calendar: true,
+      })
+      composable.retry()
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(composable.choiceState.value).toBe('ready')
+      expect(composable.servicesOff.value).toEqual(['gmail'])
+    })
+
+    it('goes back to loading while a retry runs', async () => {
+      mocks.fetch.mockRejectedValueOnce(new Error('Offline'))
+
+      const { composable } = await mountComposable(SLUG)
+
+      mocks.fetch.mockReturnValueOnce(new Promise(() => undefined))
+      composable.retry()
+
+      expect(composable.choiceState.value).toBe('loading')
+    })
+
+    it('is ready at once for a new chat', async () => {
+      const { composable } = await mountComposable()
+
+      expect(composable.choiceState.value).toBe('ready')
+    })
+
+    it('ignores the answer of a chat the composer has left', async () => {
+      const otherSlug = '01HZXCCCCCCCCCCCCCCCCCCCCC'
+      let finishFirst: (value: unknown) => void = () => undefined
+
+      mocks.fetch.mockReturnValueOnce(new Promise((resolve) => {
+        finishFirst = resolve
+      }))
+
+      const { composable, slug } = await mountComposable(SLUG)
+
+      mocks.fetch.mockResolvedValueOnce({
+        drive: false,
+        gmail: true,
+        calendar: true,
+      })
+      slug.value = otherSlug
+      await flushPromises()
+
+      expect(composable.servicesOff.value).toEqual(['drive'])
+
+      finishFirst({ drive: true, gmail: false, calendar: false })
+      await flushPromises()
+
+      expect(composable.servicesOff.value).toEqual(['drive'])
+      expect(composable.choiceState.value).toBe('ready')
+    })
+
+    it('keeps the latest connection status when answers arrive out of '
+      + 'order', async () => {
+      let finishFirst: (value: unknown) => void = () => undefined
+
+      mocks.fetch.mockReturnValueOnce(new Promise((resolve) => {
+        finishFirst = resolve
+      }))
+      mocks.fetch.mockResolvedValueOnce(status())
+
+      const { composable } = await mountComposable()
+      const first = composable.refresh()
+
+      await composable.refresh()
+
+      expect(composable.rows.value[0]?.kind).toBe('switch')
+
+      finishFirst(status({ connection: null }))
+      await first
+
+      expect(composable.rows.value[0]?.kind).toBe('switch')
+    })
+  })
+
+  describe('the announcement', () => {
+    it('says the final state after a save', async () => {
+      mocks.fetch.mockResolvedValueOnce(allOn())
+
+      const { composable } = await mountComposable(SLUG)
+
+      mocks.fetch.mockResolvedValueOnce({
+        drive: true,
+        gmail: false,
+        calendar: true,
+      })
+      await composable.toggle('gmail')
+
+      expect(composable.announcement.value)
+        .toBe('Gmail is now off in this chat')
+    })
+
+    it('says it is back and that saving failed after a rollback',
+      async () => {
+        mocks.fetch.mockResolvedValueOnce(allOn())
+
+        const { composable } = await mountComposable(SLUG)
+
+        mocks.fetch.mockRejectedValueOnce(new Error('Nope'))
+        await composable.toggle('gmail')
+
+        expect(composable.announcement.value)
+          .toBe('Gmail is back on in this chat. Saving failed.')
+      })
+
+    it('says it is back off when turning a service on failed', async () => {
+      mocks.fetch.mockResolvedValueOnce({
+        drive: true,
+        gmail: false,
+        calendar: true,
+      })
+
+      const { composable } = await mountComposable(SLUG)
+
+      mocks.fetch.mockRejectedValueOnce(new Error('Nope'))
+      await composable.toggle('gmail')
+
+      expect(composable.announcement.value)
+        .toBe('Gmail is back off in this chat. Saving failed.')
+    })
+
+    it('clears when the connection status is refreshed', async () => {
+      mocks.fetch.mockResolvedValueOnce(allOn())
+
+      const { composable } = await mountComposable(SLUG)
+
+      mocks.fetch.mockResolvedValueOnce(allOn())
+      await composable.toggle('gmail')
+
+      expect(composable.announcement.value).not.toBe('')
+
+      mocks.fetch.mockResolvedValueOnce(status())
+      await composable.refresh()
+
+      expect(composable.announcement.value).toBe('')
+    })
+  })
+
+  describe('the first-send field', () => {
+    const handedOver: GoogleToolsSelectionState = {
+      chatKey: SLUG,
+      off: ['gmail'],
+      isKnown: true,
+      shouldSend: true,
+    }
+
+    it('is sent for a choice handed over from the new-chat page and '
+      + 'not after the first send settled', () => {
+      const { selection, settleFirstSend } = useGoogleToolsSelection()
+
+      selection.value = { ...handedOver }
+
+      expect(getGoogleServicesOffField(selection.value, true, SLUG))
+        .toEqual({ googleServicesOff: ['gmail'] })
+
+      settleFirstSend(SLUG)
+
+      expect(getGoogleServicesOffField(selection.value, true, SLUG))
+        .toEqual({})
+      expect(selection.value.off).toEqual(['gmail'])
+    })
+
+    it('is absent when the feature is off, the choice is unknown or the '
+      + 'chat differs', () => {
+      expect(getGoogleServicesOffField(handedOver, false, SLUG)).toEqual({})
+      expect(getGoogleServicesOffField(
+        { ...handedOver, isKnown: false },
+        true,
+        SLUG,
+      )).toEqual({})
+      expect(getGoogleServicesOffField(handedOver, true, 'other'))
+        .toEqual({})
+    })
+
+    it('is not cleared by the first send of another chat', () => {
+      const { selection, settleFirstSend } = useGoogleToolsSelection()
+
+      selection.value = { ...handedOver }
+      settleFirstSend('other')
+
+      expect(selection.value.shouldSend).toBe(true)
+    })
   })
 
   describe('the reason a model gets no Google tool', () => {

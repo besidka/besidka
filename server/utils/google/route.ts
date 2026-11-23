@@ -87,19 +87,24 @@ function tooManyRequests(
 /**
  * A per-user KV counter, read-then-write and so a flood guard rather than
  * exact accounting. Fails closed: when KV cannot count, the request is
- * refused with `Retry-After: 60`.
+ * refused with `Retry-After: 60`. With a `target` the counter key is the
+ * user plus that target: KV takes about one write a second per key, so
+ * routes whose callers change several things in a row (the per-chat Google
+ * switches, the tool permissions) count each thing on its own key and two
+ * quick changes of different things never share one.
  */
-async function enforceGoogleRateLimit(
+export async function enforceGoogleRateLimit(
   event: RequestEvent,
   userId: number,
   bucket: Exclude<GoogleRateLimitBucket, 'none'>,
+  target?: string,
 ): Promise<void> {
   const { max, prefix } = RATE_LIMIT_BUCKETS[bucket]
   let result: { allowed: boolean, retryAfter: number | null }
 
   try {
     result = await createAuthRateLimitStorage(useKV(), prefix).consume(
-      String(userId),
+      target ? `${userId}:${target}` : String(userId),
       { window: RATE_LIMIT_WINDOW_SECONDS, max },
     )
   } catch {

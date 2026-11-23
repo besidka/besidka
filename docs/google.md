@@ -4141,8 +4141,13 @@ tool approvals and `google.drive` or `google.byo` active, calls
 differs from the stored one and returns it, and the send runs with that list
 even when the write fails (logged). A resume ignores the field. A send
 without it reads nothing extra. The client sends it only while the choice was
-handed over from the new-chat page (`shouldSend`), so an existing chat never
-overwrites a choice made in another tab.
+handed over from the new-chat page (`shouldSend`), and clears that flag
+(`settleFirstSend`, called from `onFinish` before anything else) as soon as a
+send finished without an error or a disconnect. Later sends of the chat never
+carry the field (`getGoogleServicesOffField`, a pure function with its own
+spec), so the picker's `PUT` is the only writer of an existing chat's choice
+and an old tab cannot overwrite a choice made in another tab. A first send
+that failed keeps the flag, so its retry still carries the choice.
 
 ### 18.5 Routes
 
@@ -4152,10 +4157,32 @@ the service is on. `PUT` takes `{ service, enabled }` (strict) and answers the
 same three booleans. Gate, in this order (`requireGoogleChatToolsAccess`): the
 same-origin guard (the write guard for a `PUT`), a session, chat ownership
 (404 for a chat of another user or a malformed slug), `google.drive` active
-(404). A `PUT` then also has the 60 changes a minute per user in KV, in its
-own bucket (`google-chat-service-rate-limit`), failing closed (a KV error is a
-429), and a body of at most 256 bytes (413 by `Content-Length`). The log holds
-the service id and the boolean, never the chat id.
+(404). A `PUT` then has a body of at most 256 bytes (413 by
+`Content-Length`) and the limit of 60 changes a minute, counted after the body
+is read in its own bucket (`google-chat-service-rate-limit`) on the key
+`<user id>:<service>` (`enforceGoogleRateLimit` with a target). KV takes about
+one write a second per key (`docs/connectors.md`, section 6.6, "the KV
+one-write-a-second trap"), and the old key per user made two quick switches of
+different services answer 429 in production only (miniflare does not enforce
+it). The limit is now 60 a minute per service, so at most 180 a minute per
+user, and it still fails closed (a KV error is a 429, never an allowed
+change). The client spaces two saves of one service at least 1.1 s apart
+(`googleServicePutQueue`, `app/utils/spaced-keyed-queue.ts`: queued, never
+dropped, measured from the end of the earlier save). The Workers Rate Limiting
+binding that two other routes use was not an option, because those limiters
+skip the check when the binding is missing or throws, and this one must fail
+closed. The same change applies to `PUT /api/v1/google/tool-permissions`
+(bucket `google-tool-permission-rate-limit`, key `<user id>:tool:<name>`,
+`:service:<service>` or `:kind:<service>:<kind>`, counted after the target is
+resolved against the catalog, so an unknown name never creates a key).
+
+The write is a compare-and-swap (`setGoogleServiceEnabled`): it updates only
+while `google_services_off` still holds the text it read (`IS NULL` for a null
+read) and inserts a missing row with `ON CONFLICT DO NOTHING`; a swap that
+changed no row re-reads and retries, three times at most, and then answers 409
+("Could not save the Google switch"), which the picker rolls back. Two tabs
+switching different services at once both stick. The log holds the service id
+and the boolean, never the chat id.
 
 Known limit: the gate is `google.drive`, as planned, so an admin who has the
 own-client flags but not `google.drive` gets no switches (the picker rows need
@@ -4187,9 +4214,21 @@ reads "Not available with this model" and an info button (click to open, like
 the "+" menu notes) shows the reason text from
 `getGoogleToolsUnavailableNote`; the Drive "+" hint names the connector list.
 The rows keep the keyboard order logo, text, info button, switch, `min-h-11`
-on a phone, and a polite live region says "Gmail is now off in this chat".
-One `isSaving` covers all three rows, so a three-boolean answer cannot
-overwrite a toggle in flight. A new chat keeps the choice in state
+on a phone, and a polite live region (text from the composable, set after the
+save settles) says "Gmail is now off in this chat", or after a rollback "Gmail
+is back on in this chat. Saving failed.".
+While a service saves, only its own switch is inert: it gets `aria-disabled`
+and ignores clicks and changes (the click is cancelled, so the native checkbox
+does not flip), but it is never `disabled`, so keyboard focus stays. Other
+services can be saved at the same time; a response decides only the services
+with no save of their own pending, so overlapping saves that settle out of
+order cannot erase each other's choice, and a failure rolls back that service
+only. While the stored choice is unknown (the `GET` has not answered) the
+switch rows are `aria-disabled`, dimmed, with a spinner and the sub-line
+"Checking this chat", and a toggle does nothing; after a failed `GET` the rows
+stay disabled and the Google group shows a one-line error with a "Try again"
+button (`min-h-11` on a phone). The answer of the `GET` and of the connection
+status fetch is ignored when a newer request exists (sequence counters). A new chat keeps the choice in state
 (`useGoogleToolsSelection`) and `new.vue` hands it to the chat slug with the
 Besidka choice.
 

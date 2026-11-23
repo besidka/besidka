@@ -30,9 +30,16 @@ const REASON_NOTE = {
 async function mountRow(
   row: Partial<ComposerGoogleRow> = {},
   props: { isSaving?: boolean } = {},
+  choiceState: 'ready' | 'loading' | 'error' = 'ready',
 ) {
   return await mountSuspended(ConnectorPickerGoogleRow, {
-    props: { row: { ...SWITCH_ROW, ...row }, isSaving: false, ...props },
+    props: {
+      row: { ...SWITCH_ROW, ...row },
+      isSaving: false,
+      choiceState,
+      ...props,
+    },
+    attachTo: document.body,
   })
 }
 
@@ -74,11 +81,114 @@ describe('ChatInput/ConnectorPickerGoogleRow', () => {
     expect(wrapper.emitted('toggle')).toEqual([['gmail']])
   })
 
-  it('disables the switch while a change is saving', async () => {
-    const wrapper = await mountRow({}, { isSaving: true })
+  describe('while a change is saving', () => {
+    it('keeps the switch focusable: aria-disabled and no disabled '
+      + 'attribute', async () => {
+      const wrapper = await mountRow({}, { isSaving: true })
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
 
-    expect(byId(wrapper, 'connector-picker-google-toggle-gmail')
-      .attributes('disabled')).toBeDefined()
+      expect(toggle.attributes('aria-disabled')).toBe('true')
+      expect(toggle.attributes('disabled')).toBeUndefined()
+    })
+
+    it('keeps focus on the switch', async () => {
+      const wrapper = await mountRow({}, { isSaving: true })
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+
+      const input = toggle.element as HTMLInputElement
+
+      input.focus()
+      await wrapper.setProps({ isSaving: false })
+      await wrapper.setProps({ isSaving: true })
+
+      expect(document.activeElement).toBe(input)
+    })
+
+    it('ignores a repeat click and a change event', async () => {
+      const wrapper = await mountRow({}, { isSaving: true })
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+
+      await toggle.trigger('click')
+      await toggle.trigger('change')
+
+      expect(wrapper.emitted('toggle')).toBeUndefined()
+      expect((toggle.element as HTMLInputElement).checked).toBe(true)
+    })
+
+    it('prevents the native flip of the switch on a click', async () => {
+      const wrapper = await mountRow({}, { isSaving: true })
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+      const event = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      })
+
+      toggle.element.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('does not prevent a click when nothing is saving', async () => {
+      const wrapper = await mountRow()
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+      const event = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      })
+
+      toggle.element.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(false)
+      expect(toggle.attributes('aria-disabled')).toBeUndefined()
+    })
+  })
+
+  describe('while the stored choice is not known', () => {
+    it('shows a loading state, keeps the row height and ignores the '
+      + 'switch', async () => {
+      const wrapper = await mountRow({}, {}, 'loading')
+      const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+
+      expect(toggle.attributes('aria-disabled')).toBe('true')
+      expect(toggle.attributes('disabled')).toBeUndefined()
+      expect(byId(wrapper, 'connector-picker-google-loading-gmail').exists())
+        .toBe(true)
+      expect(byId(wrapper, 'connector-picker-google-subline-gmail').text())
+        .toBe('Checking this chat')
+      expect(wrapper.attributes('aria-busy')).toBe('true')
+      expect(wrapper.html()).toContain('max-sm:min-h-11')
+
+      await toggle.trigger('change')
+
+      expect(wrapper.emitted('toggle')).toBeUndefined()
+    })
+
+    it('disables the switch without a spinner after a failed read',
+      async () => {
+        const wrapper = await mountRow({}, {}, 'error')
+        const toggle = byId(wrapper, 'connector-picker-google-toggle-gmail')
+
+        expect(toggle.attributes('aria-disabled')).toBe('true')
+        expect(byId(wrapper, 'connector-picker-google-loading-gmail')
+          .exists()).toBe(false)
+
+        await toggle.trigger('change')
+
+        expect(wrapper.emitted('toggle')).toBeUndefined()
+      })
+
+    it('does not block a link row', async () => {
+      const wrapper = await mountRow({
+        kind: 'link',
+        subLine: 'Not connected',
+        link: { label: 'Connect', path: '/chats/connectors?panel=google-gmail' },
+      }, {}, 'loading')
+
+      expect(byId(wrapper, 'connector-picker-google-loading-gmail').exists())
+        .toBe(false)
+      expect(byId(wrapper, 'connector-picker-google-link-gmail').exists())
+        .toBe(true)
+    })
   })
 
   it('has the phone touch target classes on the row and the link', async () => {

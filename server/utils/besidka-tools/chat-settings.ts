@@ -1,4 +1,5 @@
-import { and, eq } from 'drizzle-orm'
+import { createError } from 'evlog'
+import { and, eq, isNull } from 'drizzle-orm'
 import { GOOGLE_SERVICES } from '#shared/utils/google-tool-catalog'
 import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
@@ -264,9 +265,35 @@ export async function applyRequestedGoogleServicesOff(
   return requestedKnown
 }
 
+const GOOGLE_SERVICE_WRITE_ATTEMPTS = 3
+
+async function readStoredGoogleServicesOff(
+  db: DbClient,
+  userId: number,
+  chatPublicId: string,
+): Promise<{ exists: boolean, stored: string | null }> {
+  const [row] = await db.select({
+    stored: schema.besidkaChatSettings.googleServicesOff,
+  })
+    .from(schema.besidkaChatSettings)
+    .where(and(
+      eq(schema.besidkaChatSettings.userId, userId),
+      eq(schema.besidkaChatSettings.chatPublicId, chatPublicId),
+    ))
+    .limit(1)
+
+  return { exists: !!row, stored: row?.stored ?? null }
+}
+
 /**
  * Switches one Google service on or off for one chat and keeps the other
- * services as they were.
+ * services as they were. The list is read and written back as a whole, so
+ * the write is a compare-and-swap: it only lands while the stored text is
+ * still the text that was read (a missing row is inserted, and an insert
+ * that loses to a concurrent insert counts as a lost swap). A lost swap
+ * re-reads and tries again, up to three times, so two tabs changing
+ * different services at once both stick; after that it answers 409 and the
+ * caller reverts.
  */
 export async function setGoogleServiceEnabled(
   db: DbClient,
@@ -275,14 +302,53 @@ export async function setGoogleServiceEnabled(
   service: GoogleService,
   enabled: boolean,
 ): Promise<GoogleService[]> {
-  const current = await readBesidkaChatSettings(db, userId, chatPublicId)
-  const off = new Set(current.googleServicesOff)
+  for (let attempt = 0; attempt < GOOGLE_SERVICE_WRITE_ATTEMPTS; attempt += 1) {
+    const { exists, stored } = await readStoredGoogleServicesOff(
+      db,
+      userId,
+      chatPublicId,
+    )
+    const off = new Set(parseGoogleServicesOff(stored))
 
-  if (enabled) {
-    off.delete(service)
-  } else {
-    off.add(service)
+    if (enabled) {
+      off.delete(service)
+    } else {
+      off.add(service)
+    }
+
+    const next = serializeGoogleServicesOff([...off])
+
+    const written = exists
+      ? await db.update(schema.besidkaChatSettings)
+        .set({ googleServicesOff: next, updatedAt: new Date() })
+        .where(and(
+          eq(schema.besidkaChatSettings.userId, userId),
+          eq(schema.besidkaChatSettings.chatPublicId, chatPublicId),
+          stored === null
+            ? isNull(schema.besidkaChatSettings.googleServicesOff)
+            : eq(schema.besidkaChatSettings.googleServicesOff, stored),
+        ))
+        .returning({ id: schema.besidkaChatSettings.id })
+      : await db.insert(schema.besidkaChatSettings)
+        .values({
+          userId,
+          chatPublicId,
+          enabled: DEFAULT_BESIDKA_CHAT_SETTINGS.enabled,
+          alwaysAllowTools: {},
+          googleServicesOff: next,
+        })
+        .onConflictDoNothing()
+        .returning({ id: schema.besidkaChatSettings.id })
+
+    if (written.length) {
+      return parseGoogleServicesOff(next)
+    }
   }
 
-  return setGoogleServicesOff(db, userId, chatPublicId, [...off])
+  throw createError({
+    message: 'Could not save the Google switch',
+    status: 409,
+    why: 'Another change to this chat\'s Google switches kept landing first',
+    fix: 'Try again',
+  })
 }
