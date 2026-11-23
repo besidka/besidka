@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { GOOGLE_SERVICES } from '#shared/utils/google-tool-catalog'
 import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -211,6 +212,56 @@ export async function setGoogleServicesOff(
     })
 
   return parseGoogleServicesOff(stored)
+}
+
+function sameServices(
+  first: readonly GoogleService[],
+  second: readonly GoogleService[],
+): boolean {
+  return first.length === second.length
+    && first.every(service => second.includes(service))
+}
+
+/**
+ * The services a send runs with when its body carries the choice made before
+ * the chat had a slug (`googleServicesOff` of the first send): the request
+ * is stored when it differs from the stored value, and wins for this send
+ * even if the write fails (the failure is logged and the next send reads
+ * the stored value). Without a request nothing is read or written.
+ */
+export async function applyRequestedGoogleServicesOff(
+  db: DbClient,
+  userId: number,
+  chatPublicId: string,
+  requested: readonly GoogleService[] | undefined,
+  logger: { set: (data: Record<string, unknown>) => void },
+): Promise<GoogleService[] | undefined> {
+  if (requested === undefined) {
+    return undefined
+  }
+
+  const requestedKnown = GOOGLE_SERVICES.filter((service) => {
+    return requested.includes(service)
+  })
+
+  try {
+    const stored = await readBesidkaChatSettings(db, userId, chatPublicId)
+
+    if (!sameServices(stored.googleServicesOff, requestedKnown)) {
+      await setGoogleServicesOff(db, userId, chatPublicId, requestedKnown)
+    }
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        googleTools: {
+          servicesOffPersist: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+
+  return requestedKnown
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   canOfferGoogleTools,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import { getGoogleToolsUnavailableReason } from '#shared/utils/google-tools-availability'
 import type { GoogleToolsUnavailableReason } from '#shared/utils/google-tools-availability'
 import { isGoogleToolsWithheldReason } from '#shared/utils/google-tools-withheld'
@@ -64,6 +65,7 @@ export async function planGoogleSendTools(input: {
   googleByoActive?: boolean
   googleGmailActive?: boolean
   googleCalendarActive?: boolean
+  servicesOff?: readonly GoogleService[]
   userId: number
   chatPublicId: string
   gatewayId: string | undefined
@@ -87,6 +89,7 @@ export async function planGoogleSendTools(input: {
       byoActive: input.googleByoActive === true,
       gmailActive: input.googleGmailActive === true,
       calendarActive: input.googleCalendarActive === true,
+      ...(input.servicesOff ? { servicesOff: input.servicesOff } : {}),
       ...(input.featureState ? { featureState: input.featureState } : {}),
       ...(input.priorParts ? { priorParts: input.priorParts } : {}),
       logger: input.logger,

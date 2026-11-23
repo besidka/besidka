@@ -57,6 +57,8 @@ const mocks = vi.hoisted(() => ({
   }>),
   googleBlockedNames: [] as string[],
   googleServicesOff: [] as string[],
+  candidateServicesOff: [] as Array<readonly string[] | undefined>,
+  requestedServicesOff: [] as Array<readonly string[] | undefined>,
   pickedRead: null as null | Record<string, any>,
   saveFile: null as null | ((...args: unknown[]) => unknown),
   failRateLimitRead: false,
@@ -91,6 +93,16 @@ vi.mock('~~/server/utils/besidka-tools/chat-settings', () => ({
   setBesidkaChatEnabled: async () => ({ enabled: true, alwaysAllowTools: {} }),
   addBesidkaChatGrant: async (...args: unknown[]) => {
     mocks.grantCalls.push(args)
+  },
+  applyRequestedGoogleServicesOff: async (
+    _db: unknown,
+    _userId: number,
+    _chatPublicId: string,
+    requested: readonly string[] | undefined,
+  ) => {
+    mocks.requestedServicesOff.push(requested)
+
+    return requested
   },
 }))
 
@@ -251,7 +263,10 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
     ...actual,
     buildGoogleSendToolCandidates: async (input: {
       priorParts?: readonly unknown[]
+      servicesOff?: readonly string[]
     }) => {
+      mocks.candidateServicesOff.push(input.servicesOff)
+
       const built = (
         mocks.googleSendFactory
           ? await mocks.googleSendFactory(input)
@@ -928,6 +943,8 @@ describe('tool approval continuation', () => {
     mocks.googleSendFactory = null
     mocks.googleBlockedNames = []
     mocks.googleServicesOff = []
+    mocks.candidateServicesOff = []
+    mocks.requestedServicesOff = []
     mocks.failRateLimitRead = false
     mocks.chatGoogleDataAt = null
     mocks.memoryWrites = []
@@ -2393,6 +2410,28 @@ describe('tool approval continuation', () => {
           })
           expect(writtenChunks().some(chunk => chunk.type === 'error'))
             .toBe(false)
+        })
+
+        it('ignores a googleServicesOff choice carried by a resume', async () => {
+          const paused = await pauseAfterGoogleRead()
+          const [approvalId] = paused.approvalIds
+
+          mocks.candidateServicesOff = []
+
+          await request({
+            servers: [linear],
+            steps: [textChunks('Scheduled the review.')],
+            body: {
+              ...answerBody(paused.messagePublicId, [
+                { approvalId, approved: true },
+              ]),
+              googleServicesOff: ['calendar', 'gmail', 'drive'],
+            },
+          })
+
+          expect(mocks.requestedServicesOff).toEqual([])
+          expect(mocks.candidateServicesOff).toEqual([undefined])
+          expect(writeExecute).toHaveBeenCalledTimes(1)
         })
 
         it('still runs the approved call when another service is the one '

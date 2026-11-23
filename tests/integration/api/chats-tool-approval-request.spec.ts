@@ -52,6 +52,9 @@ const mocks = vi.hoisted(() => ({
     entries: Map<string, unknown>
   },
   googleBlockedNames: [] as string[],
+  googleServicesOff: [] as string[],
+  candidateServicesOff: [] as Array<readonly string[] | undefined>,
+  requestedServicesOff: [] as Array<readonly string[] | undefined>,
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -74,17 +77,48 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
 
   return {
     ...actual,
-    buildGoogleSendToolCandidates: async () => {
+    buildGoogleSendToolCandidates: async (input: {
+      servicesOff?: readonly string[]
+    }) => {
       const built = (mocks.googleSend ?? actual.noGoogleSendTools()) as never
+      const servicesOff = input.servicesOff ?? mocks.googleServicesOff
 
-      return mocks.googleBlockedNames.length
+      mocks.candidateServicesOff.push(input.servicesOff)
+
+      return mocks.googleBlockedNames.length || servicesOff.length
         ? actual.dropBlockedGoogleTools(
           built,
-          new Map(mocks.googleBlockedNames.map((toolName) => {
-            return [toolName, 'blocked' as const]
-          })),
+          actual.withGoogleServicesOffBlocked(
+            new Map(mocks.googleBlockedNames.map((toolName) => {
+              return [toolName, 'blocked' as const]
+            })),
+            servicesOff as never,
+            (built as { entries: Map<string, unknown> }).entries.keys(),
+          ),
         )
         : built
+    },
+  }
+})
+
+vi.mock('~~/server/utils/besidka-tools/chat-settings', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/besidka-tools/chat-settings')
+  >()
+
+  return {
+    ...actual,
+    applyRequestedGoogleServicesOff: async (
+      _db: unknown,
+      _userId: number,
+      _chatPublicId: string,
+      requested: readonly string[] | undefined,
+    ) => {
+      mocks.requestedServicesOff.push(requested)
+
+      return requested
     },
   }
 })
@@ -493,6 +527,7 @@ async function runSend(input: {
   messageId?: string
   tools?: string[]
   providerTools?: Record<string, unknown>
+  googleServicesOff?: string[]
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -517,6 +552,9 @@ async function runSend(input: {
       tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.connectorIds ? { connectorIds: input.connectorIds } : {}),
+      ...(input.googleServicesOff
+        ? { googleServicesOff: input.googleServicesOff }
+        : {}),
       messages: [{
         id: input.messageId ?? USER_MESSAGE_ID,
         role: 'user',
@@ -616,6 +654,9 @@ describe('tool approval requests in the chat send', () => {
     mocks.failChatFlag = false
     mocks.googleSend = null
     mocks.googleBlockedNames = []
+    mocks.googleServicesOff = []
+    mocks.candidateServicesOff = []
+    mocks.requestedServicesOff = []
     Object.assign(mocks.store, {
       connectors: [],
       credentials: null,
@@ -1556,6 +1597,127 @@ describe('tool approval requests in the chat send', () => {
 
       expect((await offeredNames())
         .filter((name: string) => name.startsWith('google__'))).toEqual([])
+    })
+  })
+
+  describe('a Google service switched off in the chat', () => {
+    const SERVICE_TOOLS = {
+      gmail: ['google__gmail_search', 'google__gmail_read_thread'],
+      calendar: ['google__calendar_list_events'],
+    }
+
+    async function offerGmailAndCalendarTools() {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+      const names = [
+        ...SERVICE_TOOLS.gmail,
+        ...SERVICE_TOOLS.calendar,
+      ]
+
+      mocks.googleSend = {
+        tools: Object.fromEntries(names.map((name) => {
+          return [name, tool({
+            description: 'A Google tool.',
+            inputSchema: z.object({ query: z.string().optional() }),
+            execute: vi.fn(async () => ({ references: [] })),
+          })]
+        })),
+        entries: new Map(names.map((name) => {
+          return [name, buildGoogleApprovalEntry({
+            toolName: name,
+            kind: 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'A Google tool',
+            toolApprovalsActive: true,
+          })]
+        })),
+      }
+    }
+
+    async function offeredNames(
+      overrides: { googleServicesOff?: string[] } = {},
+    ) {
+      const { doStream } = await runSend({
+        servers: [linear],
+        steps: [textChunks('Plain answer.')],
+        ...overrides,
+      })
+
+      return ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((offeredTool: { name: string }) => offeredTool.name)
+    }
+
+    it('offers every service\'s tools when none is off', async () => {
+      await offerGmailAndCalendarTools()
+
+      expect(await offeredNames()).toEqual(expect.arrayContaining([
+        ...SERVICE_TOOLS.gmail,
+        ...SERVICE_TOOLS.calendar,
+      ]))
+    })
+
+    it('offers no Calendar tool when Calendar is off and keeps Gmail',
+      async () => {
+        await offerGmailAndCalendarTools()
+
+        mocks.googleServicesOff = ['calendar']
+
+        const offered = await offeredNames()
+
+        expect(offered).not.toContain('google__calendar_list_events')
+        expect(offered).toEqual(expect.arrayContaining(SERVICE_TOOLS.gmail))
+      })
+
+    it('offers no Google tool when every service is off', async () => {
+      await offerGmailAndCalendarTools()
+
+      mocks.googleServicesOff = ['drive', 'gmail', 'calendar']
+
+      expect((await offeredNames())
+        .filter((name: string) => name.startsWith('google__'))).toEqual([])
+    })
+
+    it('stores the choice a new chat\'s first send carries and runs with it',
+      async () => {
+        await offerGmailAndCalendarTools()
+
+        const offered = await offeredNames({ googleServicesOff: ['gmail'] })
+
+        expect(mocks.requestedServicesOff).toEqual([['gmail']])
+        expect(mocks.candidateServicesOff).toEqual([['gmail']])
+        expect(offered).not.toContain('google__gmail_search')
+        expect(offered).toContain('google__calendar_list_events')
+      })
+
+    it('asks nothing of the settings when the send carries no choice',
+      async () => {
+        await offerGmailAndCalendarTools()
+        await offeredNames()
+
+        expect(mocks.requestedServicesOff).toEqual([])
+        expect(mocks.candidateServicesOff).toEqual([undefined])
+      })
+
+    it.each([
+      ['a duplicate', ['gmail', 'gmail']],
+      ['an unknown service', ['photos']],
+      ['too many entries', ['drive', 'gmail', 'calendar', 'drive']],
+    ])('rejects %s in the choice', async (_label, googleServicesOff) => {
+      await offerGmailAndCalendarTools()
+
+      await expect(offeredNames({ googleServicesOff })).rejects.toBeDefined()
+      expect(mocks.requestedServicesOff).toEqual([])
+    })
+
+    it('ignores the choice when the Google flags are off', async () => {
+      await offerGmailAndCalendarTools()
+
+      mocks.flags.delete('google.drive')
+
+      await offeredNames({ googleServicesOff: ['gmail'] })
+
+      expect(mocks.requestedServicesOff).toEqual([])
     })
   })
 

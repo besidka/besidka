@@ -18,6 +18,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 
 const {
   addBesidkaChatGrant,
+  applyRequestedGoogleServicesOff,
   readBesidkaChatSettings,
   setBesidkaChatEnabled,
   setGoogleServiceEnabled,
@@ -537,6 +538,97 @@ describe('Google services switched off in a chat', () => {
 
     expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
       .googleServicesOff).toEqual([])
+  })
+
+  describe('the choice a new chat\'s first send carries', () => {
+    it('reads and writes nothing without a choice', async () => {
+      const failingDb = new Proxy({}, {
+        get: () => {
+          throw new Error('The database must not be used')
+        },
+      })
+
+      expect(await applyRequestedGoogleServicesOff(
+        failingDb as never,
+        userId,
+        CHAT,
+        undefined,
+        { set: vi.fn() },
+      )).toBeUndefined()
+    })
+
+    it('stores a choice that differs and answers it', async () => {
+      expect(await applyRequestedGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        ['calendar', 'gmail'],
+        { set: vi.fn() },
+      )).toEqual(['gmail', 'calendar'])
+      expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .googleServicesOff).toEqual(['gmail', 'calendar'])
+    })
+
+    it('stores an empty choice as every service on', async () => {
+      await setGoogleServicesOff(testDb.db, userId, CHAT, ['gmail'])
+
+      expect(await applyRequestedGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        [],
+        { set: vi.fn() },
+      )).toEqual([])
+      expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .googleServicesOff).toEqual([])
+    })
+
+    it('leaves the stored row alone when the choice is the same', async () => {
+      await setGoogleServicesOff(testDb.db, userId, CHAT, ['drive'])
+
+      const [before] = await testDb.db.select({
+        updatedAt: schema.besidkaChatSettings.updatedAt,
+      }).from(schema.besidkaChatSettings)
+
+      await applyRequestedGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        ['drive'],
+        { set: vi.fn() },
+      )
+
+      const [after] = await testDb.db.select({
+        updatedAt: schema.besidkaChatSettings.updatedAt,
+      }).from(schema.besidkaChatSettings)
+
+      expect(after?.updatedAt).toEqual(before?.updatedAt)
+    })
+
+    it('still answers the choice and logs when the write fails', async () => {
+      const logger = { set: vi.fn() }
+      const failingDb = {
+        select: () => {
+          throw new Error('D1 down')
+        },
+      }
+
+      expect(await applyRequestedGoogleServicesOff(
+        failingDb as never,
+        userId,
+        CHAT,
+        ['gmail'],
+        logger,
+      )).toEqual(['gmail'])
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          googleTools: {
+            servicesOffPersist: 'failed',
+            error: expect.any(String),
+          },
+        },
+      })
+    })
   })
 
   it('does not touch the switches when the chat grants are reset',
