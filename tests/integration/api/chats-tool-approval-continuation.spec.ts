@@ -3866,6 +3866,30 @@ describe('tool approval continuation', () => {
         })
       }
 
+      function readUpload(init: RequestInit) {
+        const headers = init.headers as Record<string, string>
+        const boundary = headers['content-type']!.split('boundary=')[1]!
+        const [, metadataPart, mediaPart] = Buffer
+          .from(init.body as Uint8Array)
+          .toString()
+          .split(`--${boundary}`)
+        const [, metadataBody] = metadataPart!.split('\r\n\r\n')
+        const [mediaHead, ...mediaRest] = mediaPart!.split('\r\n\r\n')
+
+        return {
+          metadata: JSON.parse(metadataBody!.trim()) as Record<string, any>,
+          mediaType: mediaHead!.trim().replace('Content-Type: ', ''),
+          media: mediaRest.join('\r\n\r\n').replace(/\r\n$/, ''),
+        }
+      }
+
+      function uploadCalls() {
+        return driveFetch.mock.calls.filter((call) => {
+          return new URL(call[0] as string).pathname
+            === '/upload/drive/v3/files'
+        })
+      }
+
       async function pauseAfterListing() {
         return await pauseTurn({
           servers: [linear],
@@ -3924,6 +3948,20 @@ describe('tool approval continuation', () => {
 
           if (url.pathname === '/drive/v3/files/generateIds') {
             return Response.json({ ids: [GENERATED_ID] })
+          }
+
+          if (
+            url.pathname === '/upload/drive/v3/files'
+            && init?.method === 'POST'
+          ) {
+            const { metadata } = readUpload(init)
+
+            return Response.json({
+              id: metadata.id,
+              name: metadata.name,
+              mimeType: metadata.mimeType,
+              parents: metadata.parents ?? [ROOT_ID],
+            })
           }
 
           if (url.pathname === '/drive/v3/files' && init?.method === 'POST') {
@@ -4249,6 +4287,140 @@ describe('tool approval continuation', () => {
               }],
             },
           })
+      })
+
+      it.each([
+        {
+          label: 'a Google Doc from Markdown',
+          input: { name: 'Plan', kind: 'document', content: '# Plan\n\nBody.' },
+          summary: 'Create the Google Doc "Plan" (1 KB) in My Drive',
+          mimeType: 'application/vnd.google-apps.document',
+          mediaType: 'text/markdown; charset=UTF-8',
+        },
+        {
+          label: 'a Google Sheet from CSV',
+          input: { name: 'Totals', kind: 'spreadsheet', content: 'a,b\n1,2\n' },
+          summary: 'Create the Google Sheet "Totals" (1 KB) in My Drive',
+          mimeType: 'application/vnd.google-apps.spreadsheet',
+          mediaType: 'text/csv; charset=UTF-8',
+        },
+        {
+          label: 'a plain text file',
+          input: { name: 'Notes', kind: 'text', content: 'Just text.' },
+          summary: 'Create the text file "Notes" (1 KB) in My Drive',
+          mimeType: 'text/plain',
+          mediaType: 'text/plain; charset=UTF-8',
+        },
+      ])('creates $label once approved: the card input is the whole file, '
+        + 'one upload carries it, and only a reference is stored', async (
+        scenario,
+      ) => {
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks(
+              'call-f',
+              'google__drive_create_file',
+              scenario.input,
+            ),
+          ],
+        })
+        const [approvalId] = paused.approvalIds
+        const approvalPart = paused.assistantParts.find((part: any) => {
+          return part.type === 'data-tool-approval'
+            && part.data.toolCallId === 'call-f'
+        }) as any
+
+        expect(approvalPart.data).toMatchObject({
+          rememberOptions: ['once'],
+          summary: scenario.summary,
+        })
+        expect(approvalPart.data).not.toHaveProperty('driveNames')
+        expect(readKvJson(`tool-approval:${approvalId}`)).toMatchObject({
+          family: 'google',
+          access: 'write',
+          toolName: 'google__drive_create_file',
+          rememberOptions: ['once'],
+          input: scenario.input,
+        })
+        expect(uploadCalls()).toHaveLength(0)
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+        const update = mocks.updates.at(-1)!
+        const prompt = JSON.stringify(
+          (doStream.mock.calls[0]?.[0] as any)?.prompt,
+        )
+        const sent = readUpload(uploadCalls()[0]![1] as RequestInit)
+
+        expect(uploadCalls()).toHaveLength(1)
+        expect(sent.metadata).toMatchObject({
+          id: GENERATED_ID,
+          name: scenario.input.name,
+          mimeType: scenario.mimeType,
+        })
+        expect(Object.keys(sent.metadata).sort()).toEqual([
+          'appProperties',
+          'id',
+          'mimeType',
+          'name',
+        ])
+        expect(sent.mediaType).toBe(scenario.mediaType)
+        expect(sent.media).toBe(scenario.input.content)
+        expect(prompt).toContain(GENERATED_ID)
+        expect(prompt).not.toContain('drive.google.com')
+        expect(findPart(update.parts, 'tool-google__drive_create_file'))
+          .toMatchObject({
+            output: {
+              bodyRemoved: true,
+              references: [{
+                id: GENERATED_ID,
+                kind: 'drive-file',
+                title: scenario.input.name,
+                parentId: ROOT_ID,
+              }],
+            },
+          })
+      })
+
+      it('does not create the file when the user denies it', async () => {
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-f', 'google__drive_create_file', {
+              name: 'Plan',
+              kind: 'text',
+              content: 'x',
+            }),
+          ],
+        })
+
+        await answer(paused, [
+          { approvalId: paused.approvalIds[0], approved: false },
+        ])
+
+        expect(uploadCalls()).toHaveLength(0)
+      })
+
+      it('refuses a file whose content would run as a formula, without '
+        + 'asking', async () => {
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-f', 'google__drive_create_file', {
+              name: 'Totals',
+              kind: 'spreadsheet',
+              content: '=IMPORTXML("https://e.test","//a")',
+            }),
+          ],
+        })
+
+        expect(paused.approvalIds).toHaveLength(0)
+        expect(uploadCalls()).toHaveLength(0)
       })
 
       it('refuses a rename of an id the chat never returned without asking',

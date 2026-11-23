@@ -5,6 +5,7 @@ import {
   GOOGLE_CALENDAR_LIST_EVENTS_TOOL_NAME,
 } from '#shared/utils/google-calendar-tools'
 import {
+  GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_LIST_TOOL_NAME,
@@ -106,6 +107,15 @@ export const GOOGLE_TOOL_CATALOG: readonly GoogleToolCatalogEntry[] = [
     service: 'drive',
     kind: 'write',
     title: 'Create a folder in your Google Drive',
+    client: 'byo',
+    neededCapability: 'drive-write',
+    flag: 'google.byo',
+  },
+  {
+    name: GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
+    service: 'drive',
+    kind: 'write',
+    title: 'Create a file in your Google Drive',
     client: 'byo',
     neededCapability: 'drive-write',
     flag: 'google.byo',
@@ -303,9 +313,11 @@ const GOOGLE_ALWAYS_ALLOW_WRITE_WARNINGS: Readonly<
   calendar: 'Always allow lets the model create events without asking. '
     + 'Events may carry text from other content (such as an email) into your '
     + 'calendar, where people who can see your calendar can read it.',
-  drive: 'Always allow lets the model create, rename and move Drive items '
-    + 'without asking. A rename of a file that is shared with others shows '
-    + 'the new name to them. Google\'s permission for Drive also allows '
+  drive: 'Always allow lets the model create files and folders, and rename '
+    + 'and move Drive items, without asking. The model writes the content of '
+    + 'a new file, and it may carry text from other content (such as an '
+    + 'email) into your Drive. A rename of a file that is shared with others '
+    + 'shows the new name to them. Google\'s permission for Drive also allows '
     + 'deleting and sharing; Besidka has no code that deletes or shares.',
 }
 

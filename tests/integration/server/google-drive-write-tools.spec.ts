@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
+  GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME,
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_MOVE_TOOL_NAME,
@@ -369,7 +370,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
   })
 
   describe('when they are offered', () => {
-    it('offers the list read and the three writes with their classes',
+    it('offers the list read and the four writes with their classes',
       async () => {
         const built = await candidates()
         const entries = [...built.entries].filter(([name]) => {
@@ -381,6 +382,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         }))).toEqual({
           [GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME]: ['read', 'google'],
           [GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME]: ['write', null],
+          [GOOGLE_DRIVE_CREATE_FILE_TOOL_NAME]: ['write', null],
           [GOOGLE_DRIVE_RENAME_TOOL_NAME]: ['write', null],
           [GOOGLE_DRIVE_MOVE_TOOL_NAME]: ['write', null],
         })

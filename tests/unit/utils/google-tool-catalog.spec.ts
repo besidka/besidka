@@ -38,10 +38,13 @@ import type { GoogleSendTools } from '~~/server/utils/tool-approval/google-send-
 
 const ALL_SCOPES = Object.values(GOOGLE_SCOPES)
 
-const DRIVE_WRITE_WARNING = 'Always allow lets the model create, rename and '
-  + 'move Drive items without asking. A rename of a file that is shared with '
-  + 'others shows the new name to them. Google\'s permission for Drive also '
-  + 'allows deleting and sharing; Besidka has no code that deletes or shares.'
+const DRIVE_WRITE_WARNING = 'Always allow lets the model create files and '
+  + 'folders, and rename and move Drive items, without asking. The model '
+  + 'writes the content of a new file, and it may carry text from other '
+  + 'content (such as an email) into your Drive. A rename of a file that is '
+  + 'shared with others shows the new name to them. Google\'s permission for '
+  + 'Drive also allows deleting and sharing; Besidka has no code that deletes '
+  + 'or shares.'
 
 const logger = { set: () => undefined, warn: () => undefined }
 
@@ -177,6 +180,8 @@ describe('google tool catalog', () => {
         google__drive_list_folder: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
         google__drive_create_folder:
           GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
+        google__drive_create_file:
+          GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__drive_rename: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__drive_move: GOOGLE_TOOL_APPROVAL_LABELS.asksEveryTime,
         google__gmail_search: GOOGLE_TOOL_APPROVAL_LABELS.needsApproval,
@@ -210,6 +215,7 @@ describe('google tool catalog', () => {
         'google__calendar_create_event',
         'google__calendar_free_busy',
         'google__calendar_list_events',
+        'google__drive_create_file',
         'google__drive_create_folder',
         'google__drive_list_folder',
         'google__drive_move',
@@ -300,6 +306,7 @@ describe('google tool catalog', () => {
         google__drive_list_folder: 'Always allow lets the model read this '
           + 'without asking, including text written by other people.',
         google__drive_create_folder: DRIVE_WRITE_WARNING,
+        google__drive_create_file: DRIVE_WRITE_WARNING,
         google__drive_rename: DRIVE_WRITE_WARNING,
         google__drive_move: DRIVE_WRITE_WARNING,
         google__gmail_search: 'Always allow lets the model read this '

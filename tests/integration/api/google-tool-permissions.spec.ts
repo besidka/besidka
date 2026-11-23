@@ -204,7 +204,7 @@ describe('Google tool permission routes', () => {
 
         const result = await call(getPath)
 
-        expect(result.tools).toHaveLength(15)
+        expect(result.tools).toHaveLength(16)
         expect(modeOf(result)[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe('ask')
       })
 
@@ -398,7 +398,7 @@ describe('Google tool permission routes', () => {
 
         await put({ service: 'drive', mode: 'blocked' })
 
-        expect(await rows()).toHaveLength(9)
+        expect(await rows()).toHaveLength(10)
       })
 
     it('answers 400 for an unknown mode and a missing mode', async () => {
@@ -481,6 +481,7 @@ describe('Google tool permission routes', () => {
           google__drive_read_found_file: 'allow',
           google__drive_list_folder: 'allow',
           google__drive_create_folder: 'allow',
+          google__drive_create_file: 'allow',
           google__drive_rename: 'allow',
           google__drive_move: 'allow',
         })
@@ -490,6 +491,7 @@ describe('Google tool permission routes', () => {
           'google__drive_save_file',
         ])
         expect((await rows()).map(row => row.mode).sort()).toEqual([
+          'allow',
           'allow',
           'allow',
           'allow',
@@ -544,7 +546,7 @@ describe('Google tool permission routes', () => {
         const blocked = await put({ service: 'drive', mode: 'blocked' })
 
         expect(blocked.unchanged).toEqual([])
-        expect(await rows()).toHaveLength(9)
+        expect(await rows()).toHaveLength(10)
       })
 
       it('turns "allow" back to "ask" by deleting the row', async () => {
@@ -604,7 +606,7 @@ describe('Google tool permission routes', () => {
                 scope: 'service',
                 target: 'drive',
                 mode: 'allow',
-                changed: 6,
+                changed: 7,
                 unchanged: 3,
               },
             },

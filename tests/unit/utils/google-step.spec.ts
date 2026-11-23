@@ -131,6 +131,10 @@ describe('describeGoogleStepReference for Drive folders', () => {
   it('reads the Drive folder step titles', () => {
     expect(getToolStepTitle('google__drive_create_folder', false, false))
       .toBe('Created a folder in Google Drive')
+    expect(getToolStepTitle('google__drive_create_file', false, false))
+      .toBe('Created a file in Google Drive')
+    expect(getToolStepTitle('google__drive_create_file', true, false))
+      .toBe('Creating a file in Google Drive')
     expect(getToolStepTitle('google__drive_list_folder', false, false))
       .toBe('Listed folders in Google Drive')
     expect(getToolStepTitle('google__drive_rename', false, false))

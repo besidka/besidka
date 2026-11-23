@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  GOOGLE_DRIVE_FILE_KIND_SPECS,
+  GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE,
+} from '#shared/utils/google-drive-write'
+import {
   DRIVE_CHANGE_FAILURE_TEXT,
   DRIVE_WRITE_FAILURE_TEXT,
   buildDriveCreateDigest,
   buildDriveCreateMetadata,
+  buildDriveCreateMultipart,
   buildDriveMoveRequest,
   buildDriveRenameRequest,
   classifyDriveWriteFailure,
+  createDriveFileWithContent,
   createDriveItem,
   generateDriveId,
   isDriveRootMeta,
@@ -562,5 +568,260 @@ describe('the rename and move requests', () => {
         fetchImpl: respond(200, { name: 'Plan' }),
       },
     )).toEqual({ ok: false, code: 'failed' })
+  })
+})
+
+describe('the file create request', () => {
+  const context = { accessToken: 'token' }
+  const FILE_ID = 'file-id-0123456789'
+  const DIGEST = 'D'.repeat(43)
+  const baseInput = {
+    id: FILE_ID,
+    name: 'Plan',
+    kind: 'document' as const,
+    content: '# Plan\n\nOne line.',
+    parentId: null as string | null,
+    approvalDigest: DIGEST,
+  }
+
+  function decode(init: RequestInit): string {
+    return new TextDecoder().decode(init.body as Uint8Array)
+  }
+
+  function sentParts(init: RequestInit): {
+    boundary: string
+    metadata: Record<string, unknown>
+    mediaHeader: string
+    media: string
+  } {
+    const headers = init.headers as Record<string, string>
+    const contentType = headers['content-type'] ?? headers['Content-Type']!
+    const boundary = contentType.split('boundary=')[1]!
+    const pieces = decode(init).split(`--${boundary}`)
+    const [, metadataPart, mediaPart] = pieces
+    const [metadataHead, metadataBody] = metadataPart!.split('\r\n\r\n')
+    const [mediaHead, ...mediaRest] = mediaPart!.split('\r\n\r\n')
+
+    expect(metadataHead).toContain('application/json')
+    expect(pieces[3]).toBe('--')
+
+    return {
+      boundary,
+      metadata: JSON.parse(metadataBody!.trim()),
+      mediaHeader: mediaHead!.trim(),
+      media: mediaRest.join('\r\n\r\n').replace(/\r\n$/, ''),
+    }
+  }
+
+  it('posts one multipart upload to the single upload endpoint', async () => {
+    const fetchImpl = respond(200, {
+      id: FILE_ID,
+      name: 'Plan',
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [PARENT_ID],
+    })
+    const result = await createDriveFileWithContent(
+      baseInput,
+      { ...context, fetchImpl },
+    )
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ]
+    const parsed = new URL(url)
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { id: FILE_ID, parents: [PARENT_ID] },
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(init.method).toBe('POST')
+    expect(`${parsed.origin}${parsed.pathname}`).toBe(
+      'https://www.googleapis.com/upload/drive/v3/files',
+    )
+    expect(parsed.searchParams.get('uploadType')).toBe('multipart')
+    expect(parsed.searchParams.get('supportsAllDrives')).toBe('true')
+    expect([...parsed.searchParams.keys()].sort()).toEqual([
+      'fields',
+      'supportsAllDrives',
+      'uploadType',
+    ])
+  })
+
+  it('sends the converted type in the metadata and the upload type on the '
+    + 'content part, copied field by field, for a document', async () => {
+    const fetchImpl = respond(200, { id: FILE_ID })
+
+    await createDriveFileWithContent(
+      {
+        ...baseInput,
+        parentId: PARENT_ID,
+        permissions: [{ type: 'anyone' }],
+        trashed: true,
+        mimeType: 'text/html',
+      } as typeof baseInput,
+      { ...context, fetchImpl },
+    )
+
+    const parts = sentParts(
+      (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1],
+    )
+
+    expect(parts.metadata).toEqual({
+      id: FILE_ID,
+      name: 'Plan',
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [PARENT_ID],
+      appProperties: { besidkaApproval: DIGEST },
+    })
+    expect(parts.mediaHeader).toBe(
+      `Content-Type: ${GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE}; `
+      + 'charset=UTF-8',
+    )
+    expect(parts.media).toBe('# Plan\n\nOne line.')
+    expect(JSON.stringify(parts.metadata)).not.toMatch(
+      /permissions|trashed|text\/html/,
+    )
+  })
+
+  it('converts a spreadsheet from CSV and keeps a text file as text, with no '
+    + 'parents for My Drive', async () => {
+    const fetchImpl = respond(200, { id: FILE_ID })
+
+    await createDriveFileWithContent(
+      { ...baseInput, kind: 'spreadsheet', content: 'a,b\n1,2\n' },
+      { ...context, fetchImpl },
+    )
+    await createDriveFileWithContent(
+      { ...baseInput, kind: 'text', content: 'plain' },
+      { ...context, fetchImpl },
+    )
+
+    const sheet = sentParts(
+      (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1],
+    )
+    const text = sentParts(
+      (fetchImpl.mock.calls[1] as unknown as [string, RequestInit])[1],
+    )
+
+    expect(sheet.metadata.mimeType)
+      .toBe('application/vnd.google-apps.spreadsheet')
+    expect(sheet.mediaHeader).toBe('Content-Type: text/csv; charset=UTF-8')
+    expect(sheet.media).toBe('a,b\n1,2\n')
+    expect(text.metadata.mimeType).toBe('text/plain')
+    expect(text.mediaHeader).toBe('Content-Type: text/plain; charset=UTF-8')
+    expect(Object.keys(sheet.metadata)).not.toContain('parents')
+  })
+
+  it('pins the Markdown upload type in one constant', () => {
+    expect(GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE).toBe('text/markdown')
+    expect(GOOGLE_DRIVE_FILE_KIND_SPECS.document.uploadMimeType)
+      .toBe(GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE)
+  })
+
+  it('sends UTF-8 bytes, not UTF-16 units', async () => {
+    const fetchImpl = respond(200, { id: FILE_ID })
+
+    await createDriveFileWithContent(
+      { ...baseInput, kind: 'text', content: 'Привіт 日本語 😀' },
+      { ...context, fetchImpl },
+    )
+
+    const parts = sentParts(
+      (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1],
+    )
+
+    expect(parts.media).toBe('Привіт 日本語 😀')
+  })
+
+  it.each([
+    ['an id that is not a Drive id', { id: '../x' }],
+    ['a parent that is not a Drive id', { parentId: 'a b' }],
+    ['a digest of the wrong shape', { approvalDigest: 'digest' }],
+    ['a name with a slash', { name: 'a/b' }],
+    ['a kind outside the map', { kind: 'html' }],
+    ['formula content in a spreadsheet', {
+      kind: 'spreadsheet',
+      content: 'a\n=IMPORTXML("x","y")\n',
+    }],
+    ['HTML in a document', { content: '<script>x</script>' }],
+    ['empty content', { content: '' }],
+    ['content over the cap', { content: 'x'.repeat(12_001) }],
+    ['a bidi character in the content', { content: 'a‮b' }],
+  ])('refuses %s before any request', async (_label, override) => {
+    const fetchImpl = respond(200, { id: FILE_ID })
+
+    expect(await createDriveFileWithContent(
+      { ...baseInput, ...override } as typeof baseInput,
+      { ...context, fetchImpl },
+    )).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('refuses the body when every boundary it draws is inside the content',
+    () => {
+      const fixed = '00000000-0000-0000-0000-000000000000'
+      const spy = vi.spyOn(crypto, 'randomUUID')
+        .mockReturnValue(fixed as ReturnType<typeof crypto.randomUUID>)
+
+      try {
+        const boundary = `besidka-${fixed.replaceAll('-', '')}`
+
+        expect(buildDriveCreateMultipart({
+          metadata: { id: FILE_ID },
+          uploadMimeType: 'text/plain',
+          content: `before ${boundary} after`,
+        })).toBeNull()
+        expect(spy).toHaveBeenCalledTimes(3)
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+  it('draws a new boundary when the first one is in the content', () => {
+    const first = '11111111-1111-1111-1111-111111111111'
+    const second = '22222222-2222-2222-2222-222222222222'
+    const spy = vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce(first as ReturnType<typeof crypto.randomUUID>)
+      .mockReturnValueOnce(second as ReturnType<typeof crypto.randomUUID>)
+
+    try {
+      const body = buildDriveCreateMultipart({
+        metadata: { id: FILE_ID },
+        uploadMimeType: 'text/plain',
+        content: `x besidka-${first.replaceAll('-', '')} y`,
+      })
+
+      expect(body?.contentType).toBe(
+        `multipart/related; boundary=besidka-${second.replaceAll('-', '')}`,
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('reports a 409 as a conflict, a 500 as failed and a 403 quota as full',
+    async () => {
+      expect(await createDriveFileWithContent(baseInput, {
+        ...context,
+        fetchImpl: respond(409, { error: { message: 'exists' } }),
+      })).toEqual({ ok: false, code: 'conflict' })
+      expect(await createDriveFileWithContent(baseInput, {
+        ...context,
+        fetchImpl: respond(500, {}),
+      })).toEqual({ ok: false, code: 'failed' })
+      expect(await createDriveFileWithContent(baseInput, {
+        ...context,
+        fetchImpl: respond(403, {
+          error: { errors: [{ reason: 'storageQuotaExceeded' }] },
+        }),
+      })).toEqual({ ok: false, code: 'drive_full' })
+    })
+
+  it('refuses an answer without a Drive id as not understood', async () => {
+    expect(await createDriveFileWithContent(baseInput, {
+      ...context,
+      fetchImpl: respond(200, { name: 'Plan' }),
+    })).toEqual({ ok: false, code: 'failed' })
   })
 })
