@@ -177,6 +177,12 @@ describe('readGoogleCreatedFile', () => {
     expect(readGoogleCreatedFile(createPart({ state }))).toBeNull()
   })
 
+  it('returns null for a preliminary result, which the step shows as working',
+    () => {
+      expect(readGoogleCreatedFile(createPart({ preliminary: true })))
+        .toBeNull()
+    })
+
   it('returns null for another tool part', () => {
     expect(readGoogleCreatedFile(createPart({
       type: 'tool-google__drive_create_folder',

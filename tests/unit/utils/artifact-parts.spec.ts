@@ -239,6 +239,32 @@ describe('isOutputCardPart', () => {
       .toBe(false)
   })
 
+  it('keeps the key of the text before a create call when it settles', () => {
+    const preamble = { type: 'text', text: 'I will create it.' }
+    const pending = {
+      type: 'tool-google__drive_create_file',
+      toolCallId: 'call_1',
+      state: 'approval-requested',
+      input: { name: 'Plan', kind: 'text', content: 'x' },
+    }
+    const settled = {
+      ...pending,
+      state: 'output-available',
+      output: {
+        references: [{
+          id: 'abcdefghij1234567890',
+          kind: 'file',
+          title: 'Plan',
+        }],
+      },
+    }
+
+    expect(getRenderedPartKeys([preamble, pending]))
+      .toEqual(['part-0', 'part-1'])
+    expect(getRenderedPartKeys([preamble, settled]))
+      .toEqual(['part-0', 'card-1'])
+  })
+
   it('orders a created Google file card after the text', () => {
     const file = {
       type: 'tool-google__drive_create_file',

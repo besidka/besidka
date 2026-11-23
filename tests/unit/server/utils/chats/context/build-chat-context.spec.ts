@@ -1488,6 +1488,17 @@ describe('google files section', () => {
     expect(context.outputs).toEqual([])
   })
 
+  it('adds only a count to the MCP summary, never a title or a link', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [googleFilePart('call-1')]),
+    ])
+    const summary = summarizeChatContextForMcp(context)
+
+    expect(summary.outputs).toBe(1)
+    expect(JSON.stringify(summary)).not.toContain('Quarterly')
+    expect(JSON.stringify(summary)).not.toContain(FILE_ID)
+  })
+
   it('never lists created files for a public share', () => {
     const context = publicContext([
       message('m1', 'assistant', [googleFilePart('call-1')]),

@@ -131,6 +131,7 @@ export function readGoogleCreatedFile(
     !record
     || record.type !== GOOGLE_CREATED_FILE_PART_TYPE
     || record.state !== READY_STATE
+    || record.preliminary === true
   ) {
     return null
   }

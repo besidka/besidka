@@ -49,10 +49,10 @@ describe('Chat/GoogleFile', () => {
   })
 
   it.each([
-    ['document', GOOGLE_DOCS_ICON, 'Google Doc', 'Google Docs'],
-    ['spreadsheet', GOOGLE_SHEETS_ICON, 'Google Sheet', 'Google Sheets'],
+    ['document', GOOGLE_DOCS_ICON, 'Google Docs', 'Google Docs'],
+    ['spreadsheet', GOOGLE_SHEETS_ICON, 'Google Sheets', 'Google Sheets'],
     ['text', GOOGLE_DRIVE_ICON, 'Text file', 'Google Drive'],
-  ])('shows the logo, type and product name of a %s', async (
+  ])('shows the logo next to the product name of a %s', async (
     kind,
     icon,
     typeLabel,

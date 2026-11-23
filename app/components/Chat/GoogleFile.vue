@@ -35,7 +35,7 @@
             class="badge badge-soft badge-sm"
             data-testid="google-file-card-type"
           >
-            {{ typeLabel }}
+            {{ badgeLabel }}
           </span>
           <span data-testid="google-file-card-meta">
             in your Google Drive
@@ -86,6 +86,16 @@ const file = computed(() => {
 
 const typeLabel = computed<string>(() => {
   return file.value ? GOOGLE_FILE_KIND_TYPE_LABELS[file.value.kind] : ''
+})
+
+const badgeLabel = computed<string>(() => {
+  if (!file.value) {
+    return ''
+  }
+
+  return file.value.kind === 'text'
+    ? typeLabel.value
+    : GOOGLE_FILE_KIND_LABELS[file.value.kind]
 })
 
 const openLabel = computed<string>(() => {

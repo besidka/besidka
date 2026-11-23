@@ -5312,7 +5312,11 @@ ask for, so it is not done. The content region is focusable with
 **Where it appears.** `Chat/GoogleFile.vue` renders after the answer text,
 like the document and artifact cards: `isOutputCardPart` includes a part only
 while `readGoogleCreatedFile` accepts it, so a waiting or failed call stays a
-step and never moves. The card registers its file on mount in a client-only
+step and never moves. Unlike an artifact or a document, the part is a card by
+state, not by type: when the call settles its rendered key changes from
+`part-<n>` to `card-<n>`, which re-keys only the parts after it. Text before
+the call keeps its key; text after it in the same message would re-mount once,
+and in the usual flow that text arrives after the call settles. The card registers its file on mount in a client-only
 registry (`useGoogleFilePreview`), so the context panel can open the same
 preview by tool call id without holding the message parts, and nothing of the
 file text enters the page payload. The Outputs section `google-files`
@@ -5327,8 +5331,9 @@ prove it.
 
 **Logos and branding status.** The logo sits next to a text label with the
 product name in full ("Google Docs", "Google Sheets", "Google Drive") and is
-never alone: in the card (next to the title and the type badge, with the "Open
-in" link naming the product), in the preview header and in the Outputs row. The
+never alone: in the card (next to the title and a badge that names the product in full,
+"Google Docs" or "Google Sheets", or "Text file" for a text file, with the
+"Open in" link naming the product too), in the preview header and in the Outputs row. The
 icons are `thesvg-color:google-docs` and `thesvg-color:google-sheets`
 (`@iconify-json/thesvg-color`, MIT, a third-party redraw of unknown currency:
 the colors look like the pre-2026 logos), and the text file uses the Drive
