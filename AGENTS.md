@@ -878,9 +878,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
-- `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, in
-  progress, 2026-11-22): the umbrella `feat/google-connectors` and what
-  exists on it so far (the four `google.*` flags with `optIn: 'required'`,
+- `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, 2026-11-23):
+  the umbrella `feat/google-connectors` is feature-complete for 4b and not
+  merged into `main` (the owner decides), with the status block listing what
+  is still open, and what exists on it (the four `google.*` flags with `optIn: 'required'`,
   `google.gmail` and `google.calendar` under `google.byo`;
   `shared/utils/google-scopes.ts` with
   `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`

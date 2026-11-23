@@ -1,29 +1,40 @@
 # Google: Drive, Calendar and Gmail (Phase 4b)
 
-Status: **partly built** (2026-11-22), on the umbrella branch
-`feat/google-connectors`. Built so far: the four `google.*` flags in
-`shared/utils/features/registry.ts` (stage `internal`, `optIn: 'required'`;
-`google.drive`, `google.byo`, `google.gmail` and `google.calendar` are
-`available: true`),
-`shared/utils/google-scopes.ts`,
-`shared/utils/google-data-policy.ts`, the schema child's single migration
-(section 8), the chat runtime every Google tool registers into (section 5.2:
-approvals, taint, the chat flag, references-only results and the approval
-panel rows), the data guard of the allow-list (section 5.3), the connection
-flow of the connections child (section 9: connect and disconnect Google
-Drive, the token store, and deletion when Google access ends), and the
-owner-only bring-your-own client (section 10: the stored client, the admin
-gate, its own callback), the MCP status and disconnect tools (section 11),
-and the Drive Picker (section 12: the token route,
-the import into Besidka storage, the composer row, the `data-drive-file`
-part), the Drive tools (section 13: list, read and save for chat models,
-and the "Save to Google Drive" action) and the Gmail tools on the owner's own
-client (section 14: search, read a thread, create a draft, and Drive search),
-and the Calendar tools on the owner's own client (section 15: list events,
-free and busy time, create one event that invites nobody).
-Not built yet: the legal text. This file grows with every
-child of the umbrella; each child replaces a "design" marker below with
-what was built.
+Status: **built on the umbrella branch `feat/google-connectors` and checked
+on its PR preview (parent PR #1015); not merged into `main`, which is the
+owner's decision** (updated 2026-11-23). The four `google.*` flags in
+`shared/utils/features/registry.ts` are `available: true`, stage `internal`,
+`optIn: 'required'`. Built: the schema child's single migration (section 8);
+the chat runtime, approvals, taint and data guard (sections 5.2 and 5.3);
+connecting Google and Besidka's client with `drive.file` (section 9); the
+owner-only own client (section 10); the MCP status and disconnect tools
+(section 11); the Drive Picker, the Drive tab and Sheets as a workbook map
+(section 12); Drive tools for chat models (section 13); Gmail, Drive search
+and Calendar tools on the own client (sections 14 and 15); the Google entries
+on Connectors, per-tool permissions with Always allow for own-client tools,
+per-chat service switches and the picker reasons (sections 16 to 18); Drive
+writes on the own client: folders, files, rename and move (section 19);
+cards, a preview, an Outputs entry and a Download for created files (section
+19.14); the setup guide on the own-client card (section 20); and the quotas
+note (section 21). Still open:
+
+- The umbrella PR is not merged into `main`.
+- Drive writes stay off in production until the key-management decision
+  (`docs/legal/prechecks/google.md`, rows 12 and 17).
+- The public Privacy Policy and Terms text (G-10); legal notices stay the
+  owner's decision.
+- The consent screen in production and the dedicated Drive client
+  (section 9.12).
+- The official Docs, Sheets and Slides artwork (section 19.14).
+- iOS Safari and installed PWA checks (sections 3 and 12.9).
+- The owner decision on a stricter injection mitigation for Always allow
+  (section 17.7).
+- A live check that Word, Excel and CSV exports work for created files
+  (section 19.14).
+
+Phase 3 (custom research) does not start until Phase 4b is finished (owner
+decision of 2026-11-21). This file grows with every child of the umbrella;
+each child replaces a "design" marker below with what was built.
 
 Binding inputs: `docs/legal/prechecks/google.md` (G-11, BES-313) and
 `docs/agentic-capabilities-roadmap.md`. Where this file and the pre-check
@@ -5660,6 +5671,10 @@ is a known limit, not an unknown:
   active during that short window; the clear runs before the save and fails
   closed (`clearGoogleAlwaysAllowOrThrow`). Blocked and Needs approval need no
   connection.
+- **Startup time is guarded, not proven small.** The Preview Build checks
+  the Worker startup budget, and a lazy `import()` defers nothing while the
+  module sits in the single Nitro chunk, so a Google module must do no heavy
+  top-level work (`docs/worker-startup.md`).
 - **The source-scan specs have blind spots.** The startup-imports spec checks
   a fixed list of heavy modules, does not see Nitro auto-imports and does not
   scan recursively, and the log-boundary spec is a regex scan of a fixed set
