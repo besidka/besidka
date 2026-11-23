@@ -200,6 +200,17 @@ only, with the full name "Google Drive" and a tooltip on an icon button. Docs,
 Sheets and Slides have no such developer page. See `docs/legal/prechecks/google.md`,
 row 9, for the status and the owner step.
 
+Cost, measured 2026-11-23: the four SVGs total about 7.0 KB raw (docs 1.6,
+drive 1.3, sheets 1.5, slides 2.6), and the collection's entry in the generated
+`.nuxt/nuxt-icon-server-bundle.mjs` is about 7.3 KB. The client bundle lost
+about 1 KB (`logos:google-drive`) and about 5 KB (the three `thesvg-color`
+icons) and gained the collection, so the net change is roughly +1 KB.
+
+Size on screen: the marks sit inside a padded 192 box (the Docs glyph spans
+about 66 percent of the width, Drive about 88 percent), so at 10 to 16 px they
+look smaller than the old edge-to-edge Drive logo. That is accepted and still
+to be checked visually on the preview.
+
 Adding another file: drop the unmodified SVG in the folder, give it a viewBox
 only if the loader rejects it (and record both hashes here and in the spec),
 add a constant to `shared/utils/google-brand-icons.ts`, and extend the spec.

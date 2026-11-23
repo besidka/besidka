@@ -25,6 +25,11 @@ note (section 21). Still open:
   owner's decision.
 - The consent screen in production and the dedicated Drive client
   (section 9.12).
+- OWNER DECISION: the attribution sentence that Google's Drive branding page
+  asks for when the Drive logo is used ("Google Drive is a trademark of Google
+  Inc. Use of this trademark is subject to Google Permissions", in the app
+  title or description). Besidka shows none, and any public text is the
+  owner's call (section 12.9, `docs/legal/prechecks/google.md`, row 9).
 - The Partner Marketing Hub approval for the Docs, Sheets and Slides icons,
   and the Gmail and Calendar logos, which come from `logos:*` and may predate
   the 2026 redesign (section 19.14).
@@ -1674,7 +1679,11 @@ resize only, no other change, no tint, a tooltip on an icon button, and
 Besidka's own logo larger when the two appear together. The marks live in
 `shared/utils/google-brand-icons.ts` (`GOOGLE_DRIVE_ICON`, `GOOGLE_GMAIL_ICON`,
 `GOOGLE_CALENDAR_ICON`), never take a `text-*` color, opacity or filter, and
-render as a background image, not a mask. The Storage page and its search row keep
+render as a background image, not a mask. Google's Drive branding page also asks
+for the sentence "Google Drive is a trademark of Google Inc. Use of this
+trademark is subject to Google Permissions" in the app title or description
+when the logo is used; Besidka shows none, which is an open owner decision (see
+"Still open" at the top and row 9 of the pre-check). The Storage page and its search row keep
 `lucide:hard-drive`; they are not Google Drive.
 
 NOT VERIFIED without a real Google account, to check on the preview (a test
