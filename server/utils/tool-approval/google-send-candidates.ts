@@ -1,7 +1,14 @@
 import type { ToolSet } from 'ai'
 import { GOOGLE_GMAIL_TOOL_NAMES } from '#shared/utils/google-gmail-tools'
 import { GOOGLE_SCOPES, hasScopes } from '#shared/utils/google-scopes'
-import type { GoogleToolPermissionMode } from '#shared/utils/google-tool-catalog'
+import {
+  GOOGLE_TOOL_CATALOG,
+  findGoogleCatalogTool,
+} from '#shared/utils/google-tool-catalog'
+import type {
+  GoogleService,
+  GoogleToolPermissionMode,
+} from '#shared/utils/google-tool-catalog'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { checkGoogleByoAccess } from '~~/server/utils/google/byo-access'
 import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
@@ -15,7 +22,8 @@ import {
   pickGoogleToolPermissionMode,
 } from '~~/server/utils/google/tool-permissions'
 import type { GoogleToolPermissionModes } from '~~/server/utils/google/tool-permissions'
-import { readGoogleChatGrantHashes } from '~~/server/utils/tool-approval/google'
+import { readGoogleChatSettings } from '~~/server/utils/tool-approval/google'
+import type { GoogleChatSettings } from '~~/server/utils/tool-approval/google'
 import { buildBlockedGoogleEntry } from '~~/server/utils/tool-approval/send'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 
@@ -95,15 +103,47 @@ export function dropBlockedGoogleTools(
   return { tools, entries, permissionModes: modes }
 }
 
+/**
+ * The Google modes of a send with every tool of a service switched off in
+ * the chat set to Blocked, on top of the stored modes. A tool name that is
+ * not in the catalog counts as off too, so an unknown name is never offered.
+ * `dropBlockedGoogleTools` then removes those tools in the same pass as the
+ * tools the user blocked, and the continuation reads the same map, so an
+ * approval given before a service was switched off is denied as blocked.
+ */
+export function withGoogleServicesOffBlocked(
+  modes: GoogleToolPermissionModes,
+  servicesOff: readonly GoogleService[],
+  toolNames: Iterable<string>,
+): GoogleToolPermissionModes {
+  const merged = new Map(modes)
+
+  for (const tool of GOOGLE_TOOL_CATALOG) {
+    if (servicesOff.includes(tool.service)) {
+      merged.set(tool.name, 'blocked')
+    }
+  }
+
+  for (const toolName of toolNames) {
+    if (!findGoogleCatalogTool(toolName)) {
+      merged.set(toolName, 'blocked')
+    }
+  }
+
+  return merged
+}
+
 function logCandidates(
   logger: LoggerLike,
   count: number,
   reasons: { drive?: string, byo?: string },
+  servicesOff: readonly GoogleService[],
 ): void {
   logger.set({
     attributes: {
       googleDataGuard: {
         googleToolCandidates: count,
+        ...(servicesOff.length ? { googleServicesOff: servicesOff } : {}),
         ...(reasons.drive ? { googleToolCandidatesReason: reasons.drive } : {}),
         ...(reasons.byo ? { googleByoToolCandidatesReason: reasons.byo } : {}),
       },
@@ -206,7 +246,12 @@ async function buildByoCandidates(input: {
  * candidate, which also keeps the gateway safeguards off for them. Every
  * tool of the send shares one chain and one call count
  * (`createGoogleSendGuard`). `priorParts` are the parts of the reply being
- * resumed, whose search results the reads accept. Only
+ * resumed, whose search results the reads accept. After those gates the
+ * tools of a service switched off in this chat (`servicesOff`, else the
+ * chat's stored switches, from the same row read as the grants) are dropped
+ * together with the Blocked tools, each keeping an entry-only Blocked record.
+ * A switch only removes tools: it never changes the gateway safeguards, the
+ * recipient check or the chat's Google-data flag. Only
  * `planGoogleSendTools` calls it, and only when tool approvals are active.
  */
 export async function buildGoogleSendToolCandidates(input: {
@@ -217,6 +262,7 @@ export async function buildGoogleSendToolCandidates(input: {
   byoActive?: boolean
   gmailActive?: boolean
   calendarActive?: boolean
+  servicesOff?: readonly GoogleService[]
   featureState?: GoogleByoFeatureState
   priorParts?: readonly unknown[]
   logger: LoggerLike
@@ -226,16 +272,19 @@ export async function buildGoogleSendToolCandidates(input: {
     priorCalls: input.priorCalls ?? 0,
     logger: input.logger,
   })
-  let chatGrantHashes: Record<string, string> | null = null
-  const readChatGrantHashes = async () => {
-    chatGrantHashes ??= await readGoogleChatGrantHashes(
+  let chatSettings: GoogleChatSettings | null = null
+  const readChatSettings = async () => {
+    chatSettings ??= await readGoogleChatSettings(
       db,
       input.userId,
       input.chatPublicId,
       input.logger,
     )
 
-    return chatGrantHashes
+    return chatSettings
+  }
+  const readChatGrantHashes = async () => {
+    return (await readChatSettings()).grantHashes
   }
   const reasons: { drive?: string, byo?: string } = {}
   let combined = noGoogleSendTools()
@@ -287,19 +336,35 @@ export async function buildGoogleSendToolCandidates(input: {
     }
   }
 
+  const servicesOff = input.servicesOff
+    ?? (combined.entries.size > 0
+      ? (await readChatSettings()).servicesOff
+      : [])
+
   if (combined.entries.size > 0) {
+    const toolNames = [...combined.entries.keys()]
+
     combined = dropBlockedGoogleTools(
       combined,
-      await readGooglePermissionModes(
-        db,
-        input.userId,
-        [...combined.entries.keys()],
-        input.logger,
+      withGoogleServicesOffBlocked(
+        await readGooglePermissionModes(
+          db,
+          input.userId,
+          toolNames,
+          input.logger,
+        ),
+        servicesOff,
+        toolNames,
       ),
     )
   }
 
-  logCandidates(input.logger, Object.keys(combined.tools).length, reasons)
+  logCandidates(
+    input.logger,
+    Object.keys(combined.tools).length,
+    reasons,
+    servicesOff,
+  )
 
   return combined
 }
