@@ -172,6 +172,26 @@ describe('Google bring-your-own client routes', () => {
     ])
   }
 
+  function createPermissionDeleteFailingDb() {
+    return new Proxy(testDb.db, {
+      get(target, property) {
+        const value = Reflect.get(target, property) as unknown
+
+        if (property === 'delete') {
+          return (table: unknown) => {
+            if (table === schema.besidkaToolPermissions) {
+              throw new Error('D1 down')
+            }
+
+            return (target.delete as (table: unknown) => unknown)(table)
+          }
+        }
+
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+  }
+
   async function permissionRows() {
     const rows = await testDb.db
       .select()
@@ -1068,23 +1088,7 @@ describe('Google bring-your-own client routes', () => {
     async () => {
       await seedPermissionRows()
 
-      const failingDb = new Proxy(testDb.db, {
-        get(target, property) {
-          const value = Reflect.get(target, property) as unknown
-
-          if (property === 'delete') {
-            return (table: unknown) => {
-              if (table === schema.besidkaToolPermissions) {
-                throw new Error('D1 down')
-              }
-
-              return (target.delete as (table: unknown) => unknown)(table)
-            }
-          }
-
-          return typeof value === 'function' ? value.bind(target) : value
-        },
-      })
+      const failingDb = createPermissionDeleteFailingDb()
 
       vi.stubGlobal('useDb', () => failingDb)
       await call('disconnect', { body: { clientMode: 'byo' } })
@@ -1106,6 +1110,48 @@ describe('Google bring-your-own client routes', () => {
       await connectByo()
 
       expect(await permissionRows()).toContain('google__gmail_search:allow')
+    })
+
+    it('refuses a connect when the clear fails, saves nothing, revokes the '
+      + 'new grant and keeps the stored rows', async () => {
+      await connectByo()
+      await seedPermissionRows()
+
+      const before = (await connectionRow('byo'))!
+      const failingDb = createPermissionDeleteFailingDb()
+
+      byoSubject = 'second-subject'
+      vi.stubGlobal('useDb', () => failingDb)
+
+      const location = await connectByo()
+
+      vi.stubGlobal('useDb', () => testDb.db)
+
+      const after = (await connectionRow('byo'))!
+
+      expect(location).toBe('/chats/connectors?google-byo=error')
+      expect(after.googleSubject).toBe(before.googleSubject)
+      expect(after.status).toBe('active')
+      expect(revokedTokens()).toEqual([`refresh-${BYO_CLIENT_ID}`])
+      expect(await permissionRows()).toEqual(ALL_PERMISSION_ROWS)
+      expect(JSON.stringify(mocks.logged))
+        .toContain('GOOGLE_PERMISSION_RESET_FAILED')
+      expect(JSON.stringify(mocks.logged)).not.toContain('D1 down')
+    })
+
+    it('connects after the retry when the database is back', async () => {
+      await connectByo()
+      await seedPermissionRows()
+
+      byoSubject = 'second-subject'
+      vi.stubGlobal('useDb', () => createPermissionDeleteFailingDb())
+      await connectByo()
+      vi.stubGlobal('useDb', () => testDb.db)
+      await connectByo()
+
+      expect((await connectionRow('byo'))!.googleSubject)
+        .toBe('second-subject')
+      expect(await permissionRows()).toEqual(WITHOUT_OWN_CLIENT_ALLOW)
     })
 
     it('turns them back to ask when the own client is deleted', async () => {

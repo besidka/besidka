@@ -14,7 +14,10 @@ import type {
   GoogleToolPermissionMode,
 } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  exceptionMessage,
+  exceptionSummary,
+} from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
@@ -78,7 +81,9 @@ export function pickGoogleToolPermissionMode(
  * runs against another. Rows with any other mode (Blocked) stay. A failure
  * is logged and never stops the connection from ending: a tool without an
  * active connection is not offered anyway. Returns how many rows it
- * cleared.
+ * cleared. A connection that starts or replaces another account uses
+ * `clearGoogleAlwaysAllowOrThrow` instead, because there the stored grants
+ * must be gone before the new account exists.
  */
 export async function clearGoogleAlwaysAllow(
   userId: number,
@@ -86,18 +91,7 @@ export async function clearGoogleAlwaysAllow(
   db: DbClient = useDb(),
 ): Promise<number> {
   try {
-    const cleared = await db.delete(schema.besidkaToolPermissions)
-      .where(and(
-        eq(schema.besidkaToolPermissions.userId, userId),
-        eq(schema.besidkaToolPermissions.mode, 'allow'),
-        inArray(
-          schema.besidkaToolPermissions.toolName,
-          GOOGLE_TOOL_CATALOG.map(tool => tool.name),
-        ),
-      ))
-      .returning({ id: schema.besidkaToolPermissions.id })
-
-    return cleared.length
+    return await deleteGoogleAlwaysAllowRows(userId, db)
   } catch (exception) {
     logger.set({
       attributes: {
@@ -110,6 +104,52 @@ export async function clearGoogleAlwaysAllow(
 
     return 0
   }
+}
+
+/**
+ * The fail-closed variant for the paths that save a connection (a first
+ * connect, a reconnect that is not the active same account, and a different
+ * account replacing the old one): a failed delete is logged with the error
+ * name only and rethrown, so the caller refuses the connect and nothing is
+ * saved while an old `allow` could still apply to the new account.
+ */
+export async function clearGoogleAlwaysAllowOrThrow(
+  userId: number,
+  logger: LoggerLike,
+  db: DbClient = useDb(),
+): Promise<number> {
+  try {
+    return await deleteGoogleAlwaysAllowRows(userId, db)
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        google: {
+          alwaysAllowCleared: 'failed',
+          ...exceptionSummary(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+}
+
+async function deleteGoogleAlwaysAllowRows(
+  userId: number,
+  db: DbClient,
+): Promise<number> {
+  const cleared = await db.delete(schema.besidkaToolPermissions)
+    .where(and(
+      eq(schema.besidkaToolPermissions.userId, userId),
+      eq(schema.besidkaToolPermissions.mode, 'allow'),
+      inArray(
+        schema.besidkaToolPermissions.toolName,
+        GOOGLE_TOOL_CATALOG.map(tool => tool.name),
+      ),
+    ))
+    .returning({ id: schema.besidkaToolPermissions.id })
+
+  return cleared.length
 }
 
 function invalidPermission(why: string) {

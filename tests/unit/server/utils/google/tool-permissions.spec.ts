@@ -25,6 +25,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 
 const {
   clearGoogleAlwaysAllow,
+  clearGoogleAlwaysAllowOrThrow,
   loadGoogleToolPermissionModes,
   partitionGoogleToolsForMode,
   pickGoogleToolPermissionMode,
@@ -356,6 +357,43 @@ describe('Google tool permissions', () => {
           },
         })
       })
+  })
+
+  describe('clearGoogleAlwaysAllowOrThrow', () => {
+    it('deletes the Google allow rows of this user like the other variant',
+      async () => {
+        await insertRow(GOOGLE_GMAIL_SEARCH_TOOL_NAME, 'allow')
+        await insertRow('list_files', 'allow')
+
+        const logger = { set: vi.fn() }
+
+        expect(await clearGoogleAlwaysAllowOrThrow(
+          userId,
+          logger,
+          testDb.db,
+        )).toBe(1)
+        expect(logger.set).not.toHaveBeenCalled()
+      })
+
+    it('logs the error name only and rethrows a failure', async () => {
+      const logger = { set: vi.fn() }
+      const failingDb = {
+        delete: () => {
+          throw new Error('D1 down')
+        },
+      }
+
+      await expect(clearGoogleAlwaysAllowOrThrow(
+        userId,
+        logger,
+        failingDb as never,
+      )).rejects.toThrow('D1 down')
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          google: { alwaysAllowCleared: 'failed', errorName: 'Error' },
+        },
+      })
+    })
   })
 
   describe('resolveGoogleTargetTools', () => {

@@ -4164,14 +4164,24 @@ runs against another. It runs when the own (`byo`) connection is disconnected
 (`disconnectGoogleConnection`, which the Disconnect route, the own-client
 delete, the MCP `disconnect_google` and the own-client sweep all call), on
 `invalid_grant` (`endAccessAfterInvalidGrant`) and when a different Google
-account replaces it (`replaceDifferentAccount`). Blocked rows and every row of
-another user or of a Besidka tool stay; Besidka's own client ending changes
-nothing here. A failure is logged and never stops the connection from ending.
-It also runs at every own-client connect that is not an update of an active
-connection of the same Google account (a new row, a revoked or `needs_reauth`
-row, or another account), so a clear that failed at the disconnect is made up
-for at the next fresh connect. A reconnect of the same account while the
-connection is still active keeps the settings.
+account replaces it. Blocked rows and every row of another user or of a
+Besidka tool stay; Besidka's own client ending changes nothing here. At
+disconnect and on `invalid_grant` a failure is logged and never stops the
+connection from ending (those paths must finish). At every own-client connect
+that is not an update of an active connection of the same Google account (a
+new row, a revoked or `needs_reauth` row, or another account, including a
+different account that replaces the old one) the clear is fail-closed
+(`clearGoogleAlwaysAllowOrThrow`, BES-467): it runs before the old connection
+is touched or the new one is saved, and when the delete fails the connect is
+refused with the retryable code `GOOGLE_PERMISSION_RESET_FAILED`, the fresh
+grant is revoked at Google, nothing is saved, and the log holds the error name
+only. A clear that failed at the disconnect is therefore always made up for
+before any new connection exists. A reconnect of the same account while the
+connection is still active keeps the settings. A D1 restore brings deleted
+`allow` rows back and does not reset them by itself: only the manual step 2b of
+`docs/d1-restore-reconciliation.md` turns them to ask, and until it runs a
+restored `allow` on a tool of Besidka's own client still reads as `ask`
+(`readGoogleToolPermissionMode`) while one on an own-client tool applies.
 
 **The chat panel.** The Approvals list of the chat panel
 (`listChatToolApprovalGrants`) shows each Google tool set to Always allow
