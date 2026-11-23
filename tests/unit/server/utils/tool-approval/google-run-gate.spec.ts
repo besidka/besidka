@@ -229,6 +229,25 @@ describe('the run gate of a Google write that runs without asking', () => {
         .toBe('failed')
     })
 
+    it('logs a failed claim finish with a summary, not the message',
+      async () => {
+        const run = await gateWith(createFakeKv()).begin('call-1')
+
+        vi.spyOn(testDb.db, 'update').mockImplementation(() => {
+          throw new Error('D1 down for user@example.com')
+        })
+
+        await run.settle(false)
+
+        expect(logger.set).toHaveBeenCalledWith({
+          attributes: {
+            googleAlwaysAllow: { claimFinish: 'failed', errorName: 'Error' },
+          },
+        })
+        expect(JSON.stringify(logger.set.mock.calls))
+          .not.toContain('example.com')
+      })
+
     it('refuses the same tool call the second time, with a sentence the '
       + 'model can read', async () => {
       const gate = gateWith(createFakeKv())

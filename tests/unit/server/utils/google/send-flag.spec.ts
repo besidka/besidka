@@ -70,9 +70,10 @@ describe('createGoogleDataFlagger', () => {
       expect(update).toHaveBeenCalledTimes(2)
       expect(logger.set).toHaveBeenCalledWith({
         attributes: {
-          googleTools: { chatFlag: 'failed', error: 'D1 down' },
+          googleTools: { chatFlag: 'failed', errorName: 'Error' },
         },
       })
+      expect(JSON.stringify(logger.set.mock.calls)).not.toContain('D1 down')
     })
 })
 

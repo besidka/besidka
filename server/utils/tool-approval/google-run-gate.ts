@@ -2,7 +2,7 @@ import type { KVNamespace } from '@cloudflare/workers-types'
 import { createError } from 'evlog'
 import { GOOGLE_ALWAYS_ALLOW_WRITES_PER_HOUR } from '#shared/utils/google-tool-catalog'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import {
   claimApproval,
   markClaimDone,
@@ -182,7 +182,7 @@ export function createGoogleRunGate(input: {
         attributes: {
           googleAlwaysAllow: {
             claimFinish: 'failed',
-            error: exceptionMessage(exception),
+            ...exceptionSummary(exception),
           },
         },
       })
