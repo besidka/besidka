@@ -1882,6 +1882,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-google-data-guard.spec.ts',
     'tests/integration/api/chats-google-tools-withheld.spec.ts',
     'tests/unit/composables/google-tool-permissions.spec.ts',
+    'tests/unit/utils/spaced-keyed-queue.spec.ts',
     'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
     'tests/unit/components/ui/ToolPermissions.spec.ts',
     'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
@@ -1993,6 +1994,31 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/files/assistant-files.spec.ts',
     'tests/integration/api/chats-google-tools-withheld.spec.ts',
     'tests/integration/api/chats-google-data-guard.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleChatSwitchesTests = [
+    'tests/unit/utils/google-tools-availability.spec.ts',
+    'tests/unit/utils/google-tools-withheld.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-tools.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-candidates.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/integration/api/chats-google-tools.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/api/chats-google-tools-withheld.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/unit/composables/composer-google-tools.spec.ts',
+    'tests/unit/utils/spaced-keyed-queue.spec.ts',
+    'tests/unit/composables/composer-besidka-tools.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPickerGoogleRow.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
     ...SPACER_SUITES,
   ]
 
@@ -4247,6 +4273,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/(google-tools-availability|google-tools-withheld|google-drive-tools)\.ts|server\/utils\/google\/(chat-tools-route|route)\.ts|server\/api\/v1\/chats\/\[slug\]\/(google-tools\/.*|index\.post)\.ts|server\/utils\/besidka-tools\/chat-settings\.ts|server\/utils\/tool-approval\/(google|google-send-candidates|google-send-tools|grants)\.ts|server\/db\/schemas\/tool-approvals\.ts|\.drizzle\/migrations\/[^/]+_hesitant_inhumans\/.*|app\/composables\/(composer-google-tools|chat)\.ts|app\/utils\/spaced-keyed-queue\.ts|app\/components\/ChatInput\/ConnectorPicker(GoogleRow)?(\.client)?\.vue|app\/components\/ChatInput\.client\.vue|app\/pages\/chats\/new\.vue)$/,
+      tests: googleChatSwitchesTests,
+    },
+    {
+      pattern:
         /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|connectors-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/utils\/knowledge\/context\.ts|app\/utils\/labs\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
       tests: toolApprovalRequestTests,
     },
@@ -4337,7 +4368,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-tool-catalog|google-connectors)\.ts|server\/utils\/google\/(tool-permissions|tool-permissions-route|route|picker-token|tokens|drive-picked|drive-found-read|drive-search|gmail-api|byo-tools|calendar-tools|calendar-api)\.ts|server\/api\/v1\/google\/tool-permissions\/.*\.ts|server\/api\/v1\/google\/drive\/picker-token\.post\.ts|server\/utils\/tool-approval\/(google-send-candidates|google-send-tools|send|continuation)\.ts|app\/composables\/google-tool-permissions\.ts|app\/components\/Profile\/Connectors\/GoogleDetailPanel\.vue)$/,
+        /^(shared\/utils\/(google-tool-catalog|google-connectors)\.ts|server\/utils\/google\/(tool-permissions|tool-permissions-route|route|picker-token|tokens|drive-picked|drive-found-read|drive-search|gmail-api|byo-tools|calendar-tools|calendar-api)\.ts|server\/api\/v1\/google\/tool-permissions\/.*\.ts|server\/api\/v1\/google\/drive\/picker-token\.post\.ts|server\/utils\/tool-approval\/(google-send-candidates|google-send-tools|send|continuation)\.ts|app\/composables\/google-tool-permissions\.ts|app\/utils\/spaced-keyed-queue\.ts|app\/components\/Profile\/Connectors\/GoogleDetailPanel\.vue)$/,
       tests: googleToolPermissionsTests,
     },
     {

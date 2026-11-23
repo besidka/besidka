@@ -45,6 +45,7 @@ import {
   loadGoogleToolResults,
   markChatGoogleData,
   readGoogleChatGrantHashes,
+  readGoogleChatSettings,
   holdsStickyGoogleFlagTrigger,
   isGoogleToolResultContent,
   redactGoogleToolPartsForPersistence,
@@ -2235,6 +2236,52 @@ describe('readGoogleChatGrantHashes', () => {
       logger(),
     )).toEqual({})
   })
+})
+
+describe('readGoogleChatSettings', () => {
+  it('returns the Google grants and the services off from one read',
+    async () => {
+      chatSettingsMocks.readBesidkaChatSettings.mockResolvedValueOnce({
+        enabled: true,
+        alwaysAllowTools: {
+          [GOOGLE_READ]: HASH,
+          besidka__list_chats: OTHER_HASH,
+        },
+        googleServicesOff: ['gmail'],
+      })
+
+      expect(await readGoogleChatSettings(
+        {} as never,
+        OWNER.userId,
+        OWNER.chatPublicId,
+        logger(),
+      )).toEqual({
+        grantHashes: { [GOOGLE_READ]: HASH },
+        servicesOff: ['gmail'],
+      })
+      expect(chatSettingsMocks.readBesidkaChatSettings)
+        .toHaveBeenCalledTimes(1)
+    })
+
+  it('reads no grants and every service off when the read fails',
+    async () => {
+      const readLogger = logger()
+
+      chatSettingsMocks.readBesidkaChatSettings.mockRejectedValueOnce(
+        new Error('D1 down'),
+      )
+
+      expect(await readGoogleChatSettings(
+        {} as never,
+        OWNER.userId,
+        OWNER.chatPublicId,
+        readLogger,
+      )).toEqual({
+        grantHashes: {},
+        servicesOff: ['drive', 'gmail', 'calendar'],
+      })
+      expect(readLogger.set).toHaveBeenCalled()
+    })
 })
 
 describe('a Google tool the user set to Blocked', () => {

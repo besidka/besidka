@@ -74,6 +74,7 @@ import type { SearchRates, SearchUsage } from '~~/server/utils/ai/search-usage'
 import type { WebSearchStep } from '~~/server/utils/ai/web-search-cost'
 import { createError, createRequestLogger, log } from 'evlog'
 import { z } from 'zod'
+import { GOOGLE_SERVICES } from '#shared/utils/google-tool-catalog'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -592,6 +593,10 @@ const chatSendBodySchema = z.object({
   offConnectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
     .optional(),
   besidkaToolsEnabled: z.boolean().optional(),
+  googleServicesOff: z.array(z.enum(GOOGLE_SERVICES))
+    .max(GOOGLE_SERVICES.length)
+    .refine(services => new Set(services).size === services.length)
+    .optional(),
   stoppedRunId: z.uuid().optional(),
   timeZone: requestTimeZoneSchema,
   messages: z.array(incomingUserMessageSchema).length(1),
@@ -1575,7 +1580,26 @@ export default defineEventHandler(async (event) => {
     aiLogger,
   )
   const toolApprovalsActive = sendFeatures.isFeatureActive('tool-approvals')
+  const requestedGoogleServicesOff = !isResume
+    && sendBody.googleServicesOff !== undefined
+    && toolApprovalsActive
+    && (
+      sendFeatures.isFeatureActive('google.drive')
+      || sendFeatures.isFeatureActive('google.byo')
+    )
+    ? await (await import('~~/server/utils/besidka-tools/chat-settings'))
+      .applyRequestedGoogleServicesOff(
+        db,
+        userId,
+        chat.id,
+        sendBody.googleServicesOff,
+        aiLogger,
+      )
+    : undefined
   const googleSendPlan = await planGoogleSendTools({
+    ...(requestedGoogleServicesOff
+      ? { servicesOff: requestedGoogleServicesOff }
+      : {}),
     toolApprovalsActive,
     googleDriveActive: sendFeatures.isFeatureActive('google.drive'),
     googleByoActive: sendFeatures.isFeatureActive('google.byo'),

@@ -18,8 +18,11 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 
 const {
   addBesidkaChatGrant,
+  applyRequestedGoogleServicesOff,
   readBesidkaChatSettings,
   setBesidkaChatEnabled,
+  setGoogleServiceEnabled,
+  setGoogleServicesOff,
 } = await import('~~/server/utils/besidka-tools/chat-settings')
 const { applyRememberGrants } = await import(
   '~~/server/utils/tool-approval/continuation'
@@ -28,9 +31,10 @@ const {
   resolveBesidkaPermissionMode,
   setBesidkaToolPermissions,
 } = await import('~~/server/utils/besidka-tools/permissions')
-const { listChatToolApprovalGrants } = await import(
-  '~~/server/utils/tool-approval/grants'
-)
+const { listChatToolApprovalGrants, resetChatToolApprovalGrants }
+  = await import(
+    '~~/server/utils/tool-approval/grants'
+  )
 const { hashBesidkaChatTool } = await import(
   '~~/server/utils/besidka-tools/chat-adapter'
 )
@@ -93,6 +97,7 @@ describe('Besidka chat settings', () => {
     expect(await readBesidkaChatSettings(testDb.db, userId, CHAT)).toEqual({
       enabled: true,
       alwaysAllowTools: {},
+      googleServicesOff: [],
     })
   })
 
@@ -106,6 +111,7 @@ describe('Besidka chat settings', () => {
     expect(await readBesidkaChatSettings(testDb.db, userId, CHAT)).toEqual({
       enabled: false,
       alwaysAllowTools: { besidka__list_files: HASH },
+      googleServicesOff: [],
     })
     expect(await readBesidkaChatSettings(testDb.db, userId, OTHER_CHAT))
       .toMatchObject({ enabled: true })
@@ -136,6 +142,7 @@ describe('Besidka chat settings', () => {
         .toEqual({
           enabled: true,
           alwaysAllowTools: { besidka__list_files: HASH },
+          googleServicesOff: [],
         })
       expect(await resolveBesidkaPermissionMode(userId, 'get_project', {
         db: testDb.db,
@@ -177,9 +184,14 @@ describe('Besidka chat settings', () => {
         .toEqual({
           enabled: true,
           alwaysAllowTools: { run_skill_scripts: HASH },
+          googleServicesOff: [],
         })
       expect(await readBesidkaChatSettings(testDb.db, userId, OTHER_CHAT))
-        .toEqual({ enabled: true, alwaysAllowTools: {} })
+        .toEqual({
+          enabled: true,
+          alwaysAllowTools: {},
+          googleServicesOff: [],
+        })
     })
 
   it('lists the skill scripts grant in the chat panel, so it can be reset',
@@ -229,7 +241,11 @@ describe('Besidka chat settings', () => {
       })
 
       expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
-        .toEqual({ enabled: true, alwaysAllowTools: {} })
+        .toEqual({
+          enabled: true,
+          alwaysAllowTools: {},
+          googleServicesOff: [],
+        })
     })
 
   it('stores nothing for a once or always answer to the scripts consent',
@@ -261,7 +277,11 @@ describe('Besidka chat settings', () => {
       })
 
       expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
-        .toEqual({ enabled: true, alwaysAllowTools: {} })
+        .toEqual({
+          enabled: true,
+          alwaysAllowTools: {},
+          googleServicesOff: [],
+        })
       expect(await testDb.db.select().from(schema.besidkaToolPermissions))
         .toEqual([])
     })
@@ -362,6 +382,7 @@ describe('remember choices for Google reads', () => {
     expect(await readBesidkaChatSettings(testDb.db, userId, CHAT)).toEqual({
       enabled: true,
       alwaysAllowTools: {},
+      googleServicesOff: [],
     })
   })
 
@@ -380,6 +401,386 @@ describe('remember choices for Google reads', () => {
     expect(await readBesidkaChatSettings(testDb.db, userId, CHAT)).toEqual({
       enabled: true,
       alwaysAllowTools: { google__gmail_search: HASH },
+      googleServicesOff: [],
     })
   })
+})
+
+describe('Google services switched off in a chat', () => {
+  let testDb: MemoryExtractionTestDb
+  let userId: number
+
+  beforeEach(async () => {
+    testDb = createMemoryExtractionTestDb()
+    userId = await seedUser(testDb.db, null)
+  })
+
+  afterEach(() => {
+    testDb.close()
+  })
+
+  async function storeRawServicesOff(raw: string) {
+    await testDb.db.insert(schema.besidkaChatSettings).values({
+      userId,
+      chatPublicId: CHAT,
+      enabled: true,
+      alwaysAllowTools: {},
+      googleServicesOff: raw,
+    })
+  }
+
+  it('reads every service on for a chat without a row', async () => {
+    expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+      .googleServicesOff).toEqual([])
+  })
+
+  it('switches one service off and keeps the others', async () => {
+    expect(await setGoogleServiceEnabled(
+      testDb.db,
+      userId,
+      CHAT,
+      'gmail',
+      false,
+    )).toEqual(['gmail'])
+    expect(await setGoogleServiceEnabled(
+      testDb.db,
+      userId,
+      CHAT,
+      'drive',
+      false,
+    )).toEqual(['drive', 'gmail'])
+    expect(await setGoogleServiceEnabled(
+      testDb.db,
+      userId,
+      CHAT,
+      'gmail',
+      true,
+    )).toEqual(['drive'])
+    expect((await readBesidkaChatSettings(testDb.db, userId, OTHER_CHAT))
+      .googleServicesOff).toEqual([])
+  })
+
+  function withChangeAfterRead(
+    sabotage: (readNumber: number) => Promise<void>,
+  ): typeof testDb.db {
+    let readCount = 0
+
+    function wrapBuilder(builder: any): any {
+      return new Proxy(builder, {
+        get(target, property) {
+          if (property === 'limit') {
+            return (count: number) => ({
+              then: (
+                resolve: (rows: unknown) => void,
+                reject: (reason: unknown) => void,
+              ) => {
+                target.limit(count).then(async (rows: unknown) => {
+                  readCount += 1
+                  await sabotage(readCount)
+                  resolve(rows)
+                }, reject)
+              },
+            })
+          }
+
+          const value = Reflect.get(target, property)
+
+          return typeof value === 'function'
+            ? (...args: unknown[]) => wrapBuilder(value.apply(target, args))
+            : value
+        },
+      })
+    }
+
+    return new Proxy(testDb.db, {
+      get(target, property) {
+        if (property !== 'select') {
+          const value = Reflect.get(target, property)
+
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+
+        return (...args: unknown[]) => {
+          return wrapBuilder((target.select as any)(...args))
+        }
+      },
+    })
+  }
+
+  async function storedServicesOff(): Promise<string | null> {
+    const [row] = await testDb.db.select({
+      stored: schema.besidkaChatSettings.googleServicesOff,
+    }).from(schema.besidkaChatSettings)
+
+    return row?.stored ?? null
+  }
+
+  it('keeps a change another request lands between the read and the '
+    + 'write', async () => {
+    await setGoogleServicesOff(testDb.db, userId, CHAT, ['drive'])
+
+    const racingDb = withChangeAfterRead(async (readNumber) => {
+      if (readNumber === 1) {
+        await setGoogleServicesOff(
+          testDb.db,
+          userId,
+          CHAT,
+          ['drive', 'calendar'],
+        )
+      }
+    })
+
+    expect(await setGoogleServiceEnabled(
+      racingDb,
+      userId,
+      CHAT,
+      'gmail',
+      false,
+    )).toEqual(['drive', 'gmail', 'calendar'])
+    expect(JSON.parse(await storedServicesOff() ?? 'null'))
+      .toEqual(['drive', 'gmail', 'calendar'])
+  })
+
+  it('retries from null when the row was empty at the read', async () => {
+    await setGoogleServicesOff(testDb.db, userId, CHAT, [])
+
+    const racingDb = withChangeAfterRead(async (readNumber) => {
+      if (readNumber === 1) {
+        await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
+      }
+    })
+
+    expect(await setGoogleServiceEnabled(
+      racingDb,
+      userId,
+      CHAT,
+      'drive',
+      false,
+    )).toEqual(['drive', 'calendar'])
+  })
+
+  it('treats an insert that loses to another insert as a lost swap',
+    async () => {
+      const racingDb = withChangeAfterRead(async (readNumber) => {
+        if (readNumber === 1) {
+          await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
+        }
+      })
+
+      expect(await setGoogleServiceEnabled(
+        racingDb,
+        userId,
+        CHAT,
+        'gmail',
+        false,
+      )).toEqual(['gmail', 'calendar'])
+    })
+
+  it('answers 409 when the swap keeps losing', async () => {
+    const racingDb = withChangeAfterRead(async (readNumber) => {
+      await setGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        readNumber % 2 ? ['calendar'] : ['drive'],
+      )
+    })
+
+    await expect(setGoogleServiceEnabled(
+      racingDb,
+      userId,
+      CHAT,
+      'gmail',
+      false,
+    )).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('stores null when every service is on again', async () => {
+    await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
+    await setGoogleServicesOff(testDb.db, userId, CHAT, [])
+
+    const [row] = await testDb.db.select({
+      stored: schema.besidkaChatSettings.googleServicesOff,
+    }).from(schema.besidkaChatSettings)
+
+    expect(row?.stored).toBeNull()
+  })
+
+  it('keeps Besidka\'s switch and grants when a service changes',
+    async () => {
+      await addBesidkaChatGrant(testDb.db, userId, CHAT, {
+        toolName: 'besidka__list_files',
+        definitionHash: HASH,
+      })
+      await setBesidkaChatEnabled(testDb.db, userId, CHAT, false)
+      await setGoogleServiceEnabled(testDb.db, userId, CHAT, 'drive', false)
+
+      expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .toEqual({
+          enabled: false,
+          alwaysAllowTools: { besidka__list_files: HASH },
+          googleServicesOff: ['drive'],
+        })
+    })
+
+  it('keeps the services when Besidka\'s switch or a grant changes',
+    async () => {
+      await setGoogleServicesOff(testDb.db, userId, CHAT, ['gmail'])
+      await setBesidkaChatEnabled(testDb.db, userId, CHAT, false)
+      await addBesidkaChatGrant(testDb.db, userId, CHAT, {
+        toolName: 'besidka__list_files',
+        definitionHash: HASH,
+      })
+
+      expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .googleServicesOff).toEqual(['gmail'])
+    })
+
+  it('creates a row with Besidka on and no grants', async () => {
+    await setGoogleServicesOff(testDb.db, userId, CHAT, ['calendar'])
+
+    expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
+      .toEqual({
+        enabled: true,
+        alwaysAllowTools: {},
+        googleServicesOff: ['calendar'],
+      })
+  })
+
+  it.each([
+    ['not JSON', 'drive,gmail'],
+    ['an empty string', ''],
+    ['an object', '{"drive":true}'],
+    ['a number', '3'],
+    ['a list with a non-string entry', '["drive", 1]'],
+    ['a null entry', '[null]'],
+  ])('reads every service off for a corrupt value (%s)', async (_label, raw) => {
+    await storeRawServicesOff(raw)
+
+    expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+      .googleServicesOff).toEqual(['drive', 'gmail', 'calendar'])
+  })
+
+  it('ignores an unknown service id in a valid list', async () => {
+    await storeRawServicesOff('["gmail", "photos", "gmail"]')
+
+    expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+      .googleServicesOff).toEqual(['gmail'])
+  })
+
+  it('reads an empty stored list as every service on', async () => {
+    await storeRawServicesOff('[]')
+
+    expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+      .googleServicesOff).toEqual([])
+  })
+
+  describe('the choice a new chat\'s first send carries', () => {
+    it('reads and writes nothing without a choice', async () => {
+      const failingDb = new Proxy({}, {
+        get: () => {
+          throw new Error('The database must not be used')
+        },
+      })
+
+      expect(await applyRequestedGoogleServicesOff(
+        failingDb as never,
+        userId,
+        CHAT,
+        undefined,
+        { set: vi.fn() },
+      )).toBeUndefined()
+    })
+
+    it('stores a choice that differs and answers it', async () => {
+      expect(await applyRequestedGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        ['calendar', 'gmail'],
+        { set: vi.fn() },
+      )).toEqual(['gmail', 'calendar'])
+      expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .googleServicesOff).toEqual(['gmail', 'calendar'])
+    })
+
+    it('stores an empty choice as every service on', async () => {
+      await setGoogleServicesOff(testDb.db, userId, CHAT, ['gmail'])
+
+      expect(await applyRequestedGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        [],
+        { set: vi.fn() },
+      )).toEqual([])
+      expect((await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .googleServicesOff).toEqual([])
+    })
+
+    it('leaves the stored row alone when the choice is the same', async () => {
+      await setGoogleServicesOff(testDb.db, userId, CHAT, ['drive'])
+
+      const [before] = await testDb.db.select({
+        updatedAt: schema.besidkaChatSettings.updatedAt,
+      }).from(schema.besidkaChatSettings)
+
+      await applyRequestedGoogleServicesOff(
+        testDb.db,
+        userId,
+        CHAT,
+        ['drive'],
+        { set: vi.fn() },
+      )
+
+      const [after] = await testDb.db.select({
+        updatedAt: schema.besidkaChatSettings.updatedAt,
+      }).from(schema.besidkaChatSettings)
+
+      expect(after?.updatedAt).toEqual(before?.updatedAt)
+    })
+
+    it('still answers the choice and logs when the write fails', async () => {
+      const logger = { set: vi.fn() }
+      const failingDb = {
+        select: () => {
+          throw new Error('D1 down')
+        },
+      }
+
+      expect(await applyRequestedGoogleServicesOff(
+        failingDb as never,
+        userId,
+        CHAT,
+        ['gmail'],
+        logger,
+      )).toEqual(['gmail'])
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          googleTools: {
+            servicesOffPersist: 'failed',
+            error: expect.any(String),
+          },
+        },
+      })
+    })
+  })
+
+  it('does not touch the switches when the chat grants are reset',
+    async () => {
+      await setGoogleServicesOff(testDb.db, userId, CHAT, ['gmail', 'drive'])
+      await addBesidkaChatGrant(testDb.db, userId, CHAT, {
+        toolName: 'google__gmail_search',
+        definitionHash: HASH,
+      })
+
+      expect(await resetChatToolApprovalGrants(testDb.db, userId, CHAT))
+        .toBeGreaterThan(0)
+      expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .toEqual({
+          enabled: true,
+          alwaysAllowTools: {},
+          googleServicesOff: ['drive', 'gmail'],
+        })
+    })
 })

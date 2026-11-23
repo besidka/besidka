@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     entries: Map<string, unknown>
   },
   googleBlockedNames: [] as string[],
+  googleServicesOff: [] as string[],
 }))
 
 vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
@@ -45,12 +46,16 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
     buildGoogleSendToolCandidates: async () => {
       const built = mocks.googleCandidates ?? actual.noGoogleSendTools()
 
-      return mocks.googleBlockedNames.length
+      return mocks.googleBlockedNames.length || mocks.googleServicesOff.length
         ? actual.dropBlockedGoogleTools(
           built as never,
-          new Map(mocks.googleBlockedNames.map((toolName) => {
-            return [toolName, 'blocked' as const]
-          })),
+          actual.withGoogleServicesOffBlocked(
+            new Map(mocks.googleBlockedNames.map((toolName) => {
+              return [toolName, 'blocked' as const]
+            })),
+            mocks.googleServicesOff as never,
+            (built as { entries: Map<string, unknown> }).entries.keys(),
+          ),
         )
         : built
     },
@@ -507,6 +512,7 @@ describe('chat send data guard', () => {
     mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
     mocks.googleCandidates = null
     mocks.googleBlockedNames = []
+    mocks.googleServicesOff = []
   })
 
   describe('connectors', () => {
@@ -574,6 +580,48 @@ describe('chat send data guard', () => {
         ]]),
       }
       mocks.googleBlockedNames = ['google__drive_list_picked']
+
+      const refused = await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
+        directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+      })
+
+      expect(refused.error).toMatchObject({
+        status: 403,
+        why: 'This provider may train on your Google data.',
+      })
+      expect(refused.doStream).not.toHaveBeenCalled()
+
+      const gateway = await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
+        gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
+      })
+
+      expect(gatewayOptionsOf(gateway)).toEqual({ googleDataSafeguards: true })
+    })
+
+    it('keeps the 403 for a refused provider and the gateway safeguards when '
+      + 'every Google service is switched off in the chat', async () => {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+
+      mocks.flags.add('tool-approvals')
+      mocks.flags.add('google.drive')
+      mocks.googleCandidates = {
+        tools: { google__drive_list_picked: { execute: vi.fn() } },
+        entries: new Map([[
+          'google__drive_list_picked',
+          buildGoogleApprovalEntry({
+            toolName: 'google__drive_list_picked',
+            kind: 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'List Google Drive files',
+            toolApprovalsActive: true,
+          }),
+        ]]),
+      }
+      mocks.googleServicesOff = ['drive', 'gmail', 'calendar']
 
       const refused = await runSend({
         googleDataAt: GOOGLE_DATA_AT,

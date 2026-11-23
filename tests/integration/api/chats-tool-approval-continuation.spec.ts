@@ -56,6 +56,9 @@ const mocks = vi.hoisted(() => ({
     entries: Map<string, unknown>
   }>),
   googleBlockedNames: [] as string[],
+  googleServicesOff: [] as string[],
+  candidateServicesOff: [] as Array<readonly string[] | undefined>,
+  requestedServicesOff: [] as Array<readonly string[] | undefined>,
   pickedRead: null as null | Record<string, any>,
   saveFile: null as null | ((...args: unknown[]) => unknown),
   failRateLimitRead: false,
@@ -90,6 +93,16 @@ vi.mock('~~/server/utils/besidka-tools/chat-settings', () => ({
   setBesidkaChatEnabled: async () => ({ enabled: true, alwaysAllowTools: {} }),
   addBesidkaChatGrant: async (...args: unknown[]) => {
     mocks.grantCalls.push(args)
+  },
+  applyRequestedGoogleServicesOff: async (
+    _db: unknown,
+    _userId: number,
+    _chatPublicId: string,
+    requested: readonly string[] | undefined,
+  ) => {
+    mocks.requestedServicesOff.push(requested)
+
+    return requested
   },
 }))
 
@@ -250,19 +263,26 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
     ...actual,
     buildGoogleSendToolCandidates: async (input: {
       priorParts?: readonly unknown[]
+      servicesOff?: readonly string[]
     }) => {
+      mocks.candidateServicesOff.push(input.servicesOff)
+
       const built = (
         mocks.googleSendFactory
           ? await mocks.googleSendFactory(input)
           : mocks.googleSend ?? actual.noGoogleSendTools()
       ) as never
 
-      return mocks.googleBlockedNames.length
+      return mocks.googleBlockedNames.length || mocks.googleServicesOff.length
         ? actual.dropBlockedGoogleTools(
           built,
-          new Map(mocks.googleBlockedNames.map((toolName) => {
-            return [toolName, 'blocked' as const]
-          })),
+          actual.withGoogleServicesOffBlocked(
+            new Map(mocks.googleBlockedNames.map((toolName) => {
+              return [toolName, 'blocked' as const]
+            })),
+            mocks.googleServicesOff as never,
+            built.entries.keys(),
+          ),
         )
         : built
     },
@@ -922,6 +942,9 @@ describe('tool approval continuation', () => {
     mocks.googleSend = null
     mocks.googleSendFactory = null
     mocks.googleBlockedNames = []
+    mocks.googleServicesOff = []
+    mocks.candidateServicesOff = []
+    mocks.requestedServicesOff = []
     mocks.failRateLimitRead = false
     mocks.chatGoogleDataAt = null
     mocks.memoryWrites = []
@@ -2366,6 +2389,120 @@ describe('tool approval continuation', () => {
 
           expect(writeExecute).toHaveBeenCalledTimes(1)
         })
+
+      describe('a service the user switched off in the chat after '
+        + 'approving', () => {
+        it('denies the approved write with the blocked text and never calls '
+          + 'Google', async () => {
+          const paused = await pauseAfterGoogleRead()
+          const [approvalId] = paused.approvalIds
+
+          mocks.googleServicesOff = ['calendar']
+
+          const { doStream } = await answer(paused, [
+            { approvalId, approved: true },
+          ], [textChunks('It did not run.')])
+
+          expect(writeExecute).not.toHaveBeenCalled()
+          expect(lastToolMessage(doStream).content[0].output).toEqual({
+            type: 'execution-denied',
+            reason: BLOCKED_TEXT,
+          })
+          expect(writtenChunks().some(chunk => chunk.type === 'error'))
+            .toBe(false)
+        })
+
+        it('ignores a googleServicesOff choice carried by a resume', async () => {
+          const paused = await pauseAfterGoogleRead()
+          const [approvalId] = paused.approvalIds
+
+          mocks.candidateServicesOff = []
+
+          await request({
+            servers: [linear],
+            steps: [textChunks('Scheduled the review.')],
+            body: {
+              ...answerBody(paused.messagePublicId, [
+                { approvalId, approved: true },
+              ]),
+              googleServicesOff: ['calendar', 'gmail', 'drive'],
+            },
+          })
+
+          expect(mocks.requestedServicesOff).toEqual([])
+          expect(mocks.candidateServicesOff).toEqual([undefined])
+          expect(writeExecute).toHaveBeenCalledTimes(1)
+        })
+
+        it('still runs the approved call when another service is the one '
+          + 'switched off', async () => {
+          const paused = await pauseAfterGoogleRead()
+          const [approvalId] = paused.approvalIds
+
+          mocks.googleServicesOff = ['gmail', 'drive']
+
+          await answer(paused, [
+            { approvalId, approved: true },
+          ], [textChunks('Scheduled the review.')])
+
+          expect(writeExecute).toHaveBeenCalledTimes(1)
+        })
+
+        it('denies an approved Gmail search with the blocked text and '
+          + 'never calls Google', async () => {
+          const { buildGoogleApprovalEntry } = await import(
+            '~~/server/utils/tool-approval/send'
+          )
+          const searchExecute = vi.fn(async () => ({
+            references: [{ id: 'thread-1' }],
+            text: 'MAIL BODY',
+          }))
+
+          mocks.googleSend = {
+            tools: {
+              google__gmail_search: tool({
+                description: 'Search Gmail.',
+                inputSchema: z.object({ query: z.string() }),
+                execute: searchExecute,
+              }),
+            },
+            entries: new Map([
+              ['google__gmail_search', buildGoogleApprovalEntry({
+                toolName: 'google__gmail_search',
+                kind: 'read',
+                definitionHash: GOOGLE_HASH,
+                summary: 'Search Gmail',
+                toolApprovalsActive: true,
+              })],
+            ]),
+          }
+
+          const paused = await pauseTurn({
+            servers: [linear],
+            connectorIds: [],
+            steps: [
+              toolCallChunks('call-m', 'google__gmail_search', {
+                query: 'invoice',
+              }),
+            ],
+          })
+          const [approvalId] = paused.approvalIds
+
+          expect(searchExecute).not.toHaveBeenCalled()
+
+          mocks.googleServicesOff = ['gmail']
+
+          const { doStream } = await answer(paused, [
+            { approvalId, approved: true },
+          ], [textChunks('It did not run.')])
+
+          expect(searchExecute).not.toHaveBeenCalled()
+          expect(lastToolMessage(doStream).content[0].output).toEqual({
+            type: 'execution-denied',
+            reason: BLOCKED_TEXT,
+          })
+        })
+      })
 
       it('says the tool is no longer available only when it has no entry '
         + 'at all', async () => {

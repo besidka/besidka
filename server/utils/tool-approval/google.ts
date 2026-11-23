@@ -8,6 +8,8 @@ import {
   isGoogleToolName,
   withoutReferenceNames,
 } from '#shared/utils/google-tool-approvals'
+import { GOOGLE_SERVICES } from '#shared/utils/google-tool-catalog'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import { TOOL_APPROVAL_RECORD_VERSION } from '#shared/utils/tool-approval-policy'
 import * as schema from '~~/server/db/schema'
 import { readBesidkaChatSettings } from '~~/server/utils/besidka-tools/chat-settings'
@@ -615,25 +617,36 @@ export async function loadGoogleToolResults(input: {
 }
 
 /**
- * The "Allow in this chat" grants of Google tools in this chat: the exposed
- * `google__` name mapped to the definition hash the continuation stored in
- * `besidka_chat_settings.alwaysAllowTools`. Pass each tool's hash as
- * `chatGrantHash` to `buildGoogleApprovalEntry`. A failed read is logged
- * and means no grants, so every Google read asks.
+ * What one read of a chat's `besidka_chat_settings` row says about Google:
+ * the "Allow in this chat" grants of Google tools (the exposed `google__`
+ * name mapped to the definition hash the continuation stored in
+ * `alwaysAllowTools`; pass each tool's hash as `chatGrantHash` to
+ * `buildGoogleApprovalEntry`) and the services switched off in this chat
+ * (`google_services_off`). A failed read is logged and fails toward the
+ * restrictive side for both: no grants, so every Google read asks, and every
+ * service off, so no Google tool is offered.
  */
-export async function readGoogleChatGrantHashes(
+export interface GoogleChatSettings {
+  grantHashes: Record<string, string>
+  servicesOff: GoogleService[]
+}
+
+export async function readGoogleChatSettings(
   db: DbClient,
   userId: number,
   chatPublicId: string,
   logger: LoggerLike,
-): Promise<Record<string, string>> {
+): Promise<GoogleChatSettings> {
   try {
     const settings = await readBesidkaChatSettings(db, userId, chatPublicId)
 
-    return Object.fromEntries(Object.entries(settings.alwaysAllowTools)
-      .filter(([key, hash]) => {
-        return isGoogleToolName(key) && typeof hash === 'string' && hash
-      }))
+    return {
+      grantHashes: Object.fromEntries(Object.entries(settings.alwaysAllowTools)
+        .filter(([key, hash]) => {
+          return isGoogleToolName(key) && typeof hash === 'string' && hash
+        })),
+      servicesOff: settings.googleServicesOff ?? [],
+    }
   } catch (exception) {
     logger.set({
       attributes: {
@@ -644,8 +657,18 @@ export async function readGoogleChatGrantHashes(
       },
     })
 
-    return {}
+    return { grantHashes: {}, servicesOff: [...GOOGLE_SERVICES] }
   }
+}
+
+export async function readGoogleChatGrantHashes(
+  db: DbClient,
+  userId: number,
+  chatPublicId: string,
+  logger: LoggerLike,
+): Promise<Record<string, string>> {
+  return (await readGoogleChatSettings(db, userId, chatPublicId, logger))
+    .grantHashes
 }
 
 /**

@@ -90,8 +90,10 @@ export function toGoogleToolPermissionEntries(
 /**
  * The gate of the Google tool permission routes, in this order: the
  * same-origin guard (the write guard for a `PUT`), a session, the tools the
- * user may reach (a 404 when there are none), then, for a `PUT`, the write
- * limit of 60 changes a minute per user, which fails closed when KV cannot
+ * user may reach (a 404 when there are none). The write limit of 60 changes
+ * a minute is counted by the `PUT` route itself, per user and target, once
+ * the body names a target (`enforceGoogleRateLimit`), so two quick changes of
+ * different tools never share a KV key; it fails closed when KV cannot
  * count. Returns the session user id and the reachable tools; the routes
  * only ever touch that user's rows.
  */
@@ -102,7 +104,7 @@ export async function requireGoogleToolPermissionsAccess(
   let reachable: GoogleToolCatalogEntry[] = []
   const userId = await requireGoogleAccess(event, {
     write: options.write,
-    rateLimit: options.write ? 'permission' : 'none',
+    rateLimit: 'none',
     feature: false,
     authorize: async (sessionUserId) => {
       reachable = await listReachableGoogleTools(event, sessionUserId)

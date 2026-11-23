@@ -155,7 +155,7 @@ open items are listed after the table.
 | Composer attachments row: file chips, upload skeleton, Drive import note, link skeleton, pasted-text chips, setting tiles (`SettingTile.vue`, 150 ms height transition) | In the composer root, counted on purpose | `chat-input:height` from the `useElementSize` watcher (every change while the textarea is empty, only the first one with a draft typed), from the tiles watcher (tiles appearing or leaving, draft typed), from `chat:attach-file`, with `chat:scroll-to-bottom` on attach. With a draft typed, removing a chip or finishing an upload is NOT reported; it only refreshes at the next report |
 | Composer overlays: command picker, approval chip, connector suggestion | `chat-input-overlays`, `absolute bottom-full` | Not measured by design; they never change the reported height. `composer-overlays-spacer.spec.ts` |
 | Keyboard | Visual viewport | The `keyboardInset` watcher |
-| "+" tools menu, model picker, file manager modal | Popover, sheet or dialog above the page | Out of flow; they do not change message or composer height |
+| "+" tools menu, model picker, file manager modal, connector picker (its Google rows too: they appear after the connection status loads and change only the dialog's own height) | Popover, sheet or dialog above the page | Out of flow; they do not change message or composer height |
 
 ### Open items
 

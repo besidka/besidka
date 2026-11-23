@@ -3,6 +3,10 @@ import {
   canOfferGoogleTools,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
+import { getGoogleToolsUnavailableReason } from '#shared/utils/google-tools-availability'
+import type { GoogleToolsUnavailableReason } from '#shared/utils/google-tools-availability'
+import { isGoogleToolsWithheldReason } from '#shared/utils/google-tools-withheld'
 import type { GoogleToolsWithheldReason } from '#shared/utils/google-tools-withheld'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
@@ -61,6 +65,7 @@ export async function planGoogleSendTools(input: {
   googleByoActive?: boolean
   googleGmailActive?: boolean
   googleCalendarActive?: boolean
+  servicesOff?: readonly GoogleService[]
   userId: number
   chatPublicId: string
   gatewayId: string | undefined
@@ -84,6 +89,7 @@ export async function planGoogleSendTools(input: {
       byoActive: input.googleByoActive === true,
       gmailActive: input.googleGmailActive === true,
       calendarActive: input.googleCalendarActive === true,
+      ...(input.servicesOff ? { servicesOff: input.servicesOff } : {}),
       ...(input.featureState ? { featureState: input.featureState } : {}),
       ...(input.priorParts ? { priorParts: input.priorParts } : {}),
       logger: input.logger,
@@ -153,6 +159,26 @@ function withheld(
   return { ...noGoogleSendTools(), withheldReason: reason }
 }
 
+const WITHHELD_LOG_LABELS: Record<GoogleToolsUnavailableReason, string> = {
+  tool_calling_off: 'tool-calling-off',
+  provider_tool_not_removable: 'provider-tools-declared',
+  model_may_not_receive_google_data: 'recipient-refused',
+  gateway_needs_google_data: 'gateway-no-google-data',
+}
+
+function withheldFor(
+  reason: GoogleToolsUnavailableReason,
+  logger: LoggerLike,
+): GoogleSendToolsDecision {
+  logger.set({
+    attributes: {
+      googleDataGuard: { googleTools: WITHHELD_LOG_LABELS[reason] },
+    },
+  })
+
+  return withheld(isGoogleToolsWithheldReason(reason) ? reason : null)
+}
+
 /**
  * The Google tools the send registers: the plan's candidates, and none when
  * the send's model may not receive Google data (`mayReceiveGoogleData`, the
@@ -178,28 +204,29 @@ export async function getGoogleSendTools(input: {
     }
   }
 
-  if (input.toolCallingAllowed === false) {
-    input.logger.set({
-      attributes: { googleDataGuard: { googleTools: 'tool-calling-off' } },
-    })
+  const facts = {
+    toolCalling: input.toolCallingAllowed !== false,
+    gateway: false,
+    holdsGoogleData: input.holdsGoogleData === true,
+    providerToolsStayCallable: input.providerToolsStayCallable === true,
+  }
+  const reasonBeforeRecipient = getGoogleToolsUnavailableReason({
+    ...facts,
+    recipientAllowed: true,
+  })
 
-    return withheld(null)
+  if (reasonBeforeRecipient) {
+    return withheldFor(reasonBeforeRecipient, input.logger)
   }
 
-  if (input.providerToolsStayCallable && !input.holdsGoogleData) {
-    input.logger.set({
-      attributes: { googleDataGuard: { googleTools: 'provider-tools-declared' } },
-    })
+  const recipientAllowed = await input.mayReceiveGoogleData()
+  const reason = getGoogleToolsUnavailableReason({
+    ...facts,
+    recipientAllowed,
+  })
 
-    return withheld('provider_tool_not_removable')
-  }
-
-  if (!await input.mayReceiveGoogleData()) {
-    input.logger.set({
-      attributes: { googleDataGuard: { googleTools: 'recipient-refused' } },
-    })
-
-    return withheld('model_may_not_receive_google_data')
+  if (reason) {
+    return withheldFor(reason, input.logger)
   }
 
   return { ...input.plan.candidates, withheldReason: null }

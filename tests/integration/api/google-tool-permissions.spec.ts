@@ -97,6 +97,7 @@ describe('Google tool permission routes', () => {
   let testDb: MemoryExtractionTestDb
   let userId: number
   let sessionUserId: number
+  let kv: ReturnType<typeof createFakeConnectorKv>
 
   function call(path: string, partial: Partial<SkillsRouteEvent> = {}) {
     return handler(path).then((run) => {
@@ -133,7 +134,7 @@ describe('Google tool permission routes', () => {
     userId = await seedUser(testDb.db, null)
     sessionUserId = userId
 
-    const kv = createFakeConnectorKv()
+    kv = createFakeConnectorKv()
 
     vi.stubGlobal('useDb', () => testDb.db)
     vi.stubGlobal('useKV', () => kv)
@@ -496,6 +497,45 @@ describe('Google tool permission routes', () => {
         tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
         mode: 'ask',
       }))).status).toBe(429)
+    })
+
+    it('counts each target on its own KV key, so two quick changes of '
+      + 'different targets never share one', async () => {
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' })
+      await put({ service: 'drive', mode: 'ask' })
+      await put({ service: 'drive', kind: 'read', mode: 'blocked' })
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'ask' })
+
+      const keys = kv.put.mock.calls.map(([key]) => key)
+
+      expect(keys).toEqual([
+        `google-tool-permission-rate-limit:${userId}:tool:`
+        + GOOGLE_DRIVE_LIST_TOOL_NAME,
+        `google-tool-permission-rate-limit:${userId}:service:drive`,
+        `google-tool-permission-rate-limit:${userId}:kind:drive:read`,
+        `google-tool-permission-rate-limit:${userId}:tool:`
+        + GOOGLE_DRIVE_LIST_TOOL_NAME,
+      ])
+    })
+
+    it('limits one target at 60 a minute without limiting another',
+      async () => {
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'ask' })
+        }
+
+        await put({ service: 'drive', mode: 'ask' })
+
+        expect((await failureOf(put({
+          tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+          mode: 'blocked',
+        }))).status).toBe(429)
+      })
+
+    it('does not count a name outside the catalog', async () => {
+      expect((await failureOf(put({ tool: 'x'.repeat(40), mode: 'ask' })))
+        .status).toBe(400)
+      expect(kv.put).not.toHaveBeenCalled()
     })
 
     it('fails closed with a 429 when KV cannot count', async () => {

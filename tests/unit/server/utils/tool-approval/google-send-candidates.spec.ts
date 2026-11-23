@@ -23,6 +23,11 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 const mocks = vi.hoisted(() => ({
   connections: {} as Record<string, unknown>,
   byoVerdict: 'allowed' as string,
+  chatSettings: {
+    grantHashes: {} as Record<string, string>,
+    servicesOff: [] as string[],
+  },
+  chatSettingsReads: 0,
 }))
 
 vi.mock('~~/server/utils/google/store', async (importOriginal) => {
@@ -45,7 +50,11 @@ vi.mock('~~/server/utils/tool-approval/google', async (importOriginal) => {
     ...await importOriginal<
       typeof import('~~/server/utils/tool-approval/google')
     >(),
-    readGoogleChatGrantHashes: async () => ({}),
+    readGoogleChatSettings: async () => {
+      mocks.chatSettingsReads += 1
+
+      return mocks.chatSettings
+    },
   }
 })
 
@@ -90,9 +99,12 @@ vi.mock('~~/server/utils/google/calendar-tools', () => ({
   },
 }))
 
-const { buildGoogleSendToolCandidates, dropBlockedGoogleTools }
-  = await import('~~/server/utils/tool-approval/google-send-candidates')
-const { getGoogleSendTools } = await import(
+const {
+  buildGoogleSendToolCandidates,
+  dropBlockedGoogleTools,
+  withGoogleServicesOffBlocked,
+} = await import('~~/server/utils/tool-approval/google-send-candidates')
+const { getGoogleSendTools, planGoogleSendTools } = await import(
   '~~/server/utils/tool-approval/google-send-tools'
 )
 const {
@@ -141,6 +153,8 @@ describe('Google send candidates and Blocked tools', () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, null)
     mocks.byoVerdict = 'allowed'
+    mocks.chatSettings = { grantHashes: {}, servicesOff: [] }
+    mocks.chatSettingsReads = 0
     mocks.connections = {
       besidka: {
         status: 'active',
@@ -376,6 +390,178 @@ describe('Google send candidates and Blocked tools', () => {
           modes,
         ).permissionModes).toBe(modes)
       }
+    })
+  })
+
+  describe('a service switched off in the chat', () => {
+    function namesOf(service: GoogleService) {
+      return GOOGLE_TOOL_CATALOG
+        .filter(tool => tool.service === service)
+        .map(tool => tool.name)
+    }
+
+    it.each(['drive', 'gmail', 'calendar'] as GoogleService[])(
+      'offers no %s tool and keeps the other services',
+      async (service) => {
+        mocks.chatSettings = { grantHashes: {}, servicesOff: [service] }
+
+        const google = await candidates()
+        const offered = Object.keys(google.tools)
+
+        for (const toolName of namesOf(service)) {
+          expect(offered).not.toContain(toolName)
+        }
+
+        for (const tool of GOOGLE_TOOL_CATALOG) {
+          if (tool.service !== service) {
+            expect(offered).toContain(tool.name)
+          }
+        }
+      },
+    )
+
+    it('keeps an entry-only Blocked record for every dropped tool and '
+      + 'lists it as blocked for the replay', async () => {
+      mocks.chatSettings = { grantHashes: {}, servicesOff: ['gmail'] }
+
+      const google = await candidates()
+
+      for (const toolName of namesOf('gmail')) {
+        expect(google.entries.get(toolName)).toMatchObject({
+          permissionMode: 'blocked',
+          descriptor: { family: 'google', toolName },
+        })
+        expect(google.permissionModes?.get(toolName)).toBe('blocked')
+      }
+
+      expect(google.entries.get('google__gmail_create_draft')?.descriptor)
+        .toMatchObject({ access: 'write', destructiveHint: true })
+      expect(google.permissionModes?.has('google__drive_search')).toBe(false)
+    })
+
+    it('keeps the stored Blocks of the services that stay on', async () => {
+      mocks.chatSettings = { grantHashes: {}, servicesOff: ['gmail'] }
+      await block(['google__calendar_create_event'])
+
+      const google = await candidates()
+
+      expect(google.permissionModes?.get('google__calendar_create_event'))
+        .toBe('blocked')
+      expect(Object.keys(google.tools)).toContain(
+        'google__calendar_list_events',
+      )
+      expect(Object.keys(google.tools)).not.toContain(
+        'google__calendar_create_event',
+      )
+    })
+
+    it('offers nothing and answers no withheld reason when every service '
+      + 'is off', async () => {
+      mocks.chatSettings = {
+        grantHashes: {},
+        servicesOff: ['drive', 'gmail', 'calendar'],
+      }
+
+      const google = await candidates()
+      const mayReceiveGoogleData = vi.fn(async () => false)
+      const decision = await getGoogleSendTools({
+        plan: { candidates: google, gatewaySafeguards: false },
+        mayReceiveGoogleData,
+        providerToolsStayCallable: true,
+        holdsGoogleData: false,
+        logger: logger(),
+      })
+
+      expect(google.tools).toEqual({})
+      expect(google.entries.size).toBe(GOOGLE_TOOL_CATALOG.length)
+      expect(decision.tools).toEqual({})
+      expect(decision.withheldReason).toBeNull()
+      expect(mayReceiveGoogleData).not.toHaveBeenCalled()
+    })
+
+    it('keeps the gateway safeguards of a flagged chat when every service '
+      + 'is off: the switch removes tools only', async () => {
+      const planOf = () => planGoogleSendTools({
+        toolApprovalsActive: true,
+        googleDriveActive: true,
+        googleByoActive: true,
+        googleGmailActive: true,
+        googleCalendarActive: true,
+        userId,
+        chatPublicId: 'chat-1',
+        gatewayId: 'vercel',
+        holdsGoogleData: true,
+        logger: logger(),
+      })
+      const withAllOn = await planOf()
+
+      mocks.chatSettings = {
+        grantHashes: {},
+        servicesOff: ['drive', 'gmail', 'calendar'],
+      }
+
+      const withAllOff = await planOf()
+
+      expect(withAllOn.gatewaySafeguards).toBe(true)
+      expect(withAllOff.gatewaySafeguards).toBe(true)
+      expect(Object.keys(withAllOn.candidates.tools).length)
+        .toBeGreaterThan(0)
+      expect(withAllOff.candidates.tools).toEqual({})
+    })
+
+    it('still asks the data guard for the remaining tools when only some '
+      + 'services are off', async () => {
+      mocks.chatSettings = { grantHashes: {}, servicesOff: ['gmail'] }
+
+      const decision = await getGoogleSendTools({
+        plan: { candidates: await candidates(), gatewaySafeguards: true },
+        mayReceiveGoogleData: async () => false,
+        holdsGoogleData: true,
+        logger: logger(),
+      })
+
+      expect(decision.withheldReason)
+        .toBe('model_may_not_receive_google_data')
+    })
+
+    it('reads the chat row once for the grants and the switches', async () => {
+      mocks.chatSettings = { grantHashes: {}, servicesOff: ['calendar'] }
+
+      await candidates()
+
+      expect(mocks.chatSettingsReads).toBe(1)
+    })
+
+    it('lets an explicit servicesOff win over the stored ones', async () => {
+      mocks.chatSettings = { grantHashes: {}, servicesOff: ['gmail'] }
+
+      const google = await candidates({ servicesOff: ['calendar'] })
+      const offered = Object.keys(google.tools)
+
+      expect(offered).toContain('google__gmail_search')
+      expect(offered).not.toContain('google__calendar_list_events')
+    })
+
+    it('does not widen what the connection grants: no connection, no '
+      + 'Blocked entry', async () => {
+      mocks.connections = {}
+      mocks.chatSettings = { grantHashes: {}, servicesOff: ['gmail'] }
+
+      const google = await candidates()
+
+      expect(google.tools).toEqual({})
+      expect(google.entries.size).toBe(0)
+    })
+
+    it('blocks a tool name the catalog does not know', async () => {
+      const merged = withGoogleServicesOffBlocked(
+        new Map(),
+        [],
+        ['google__gmail_search', 'google__made_up'],
+      )
+
+      expect(merged.get('google__made_up')).toBe('blocked')
+      expect(merged.has('google__gmail_search')).toBe(false)
     })
   })
 })

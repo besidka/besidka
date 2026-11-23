@@ -4651,3 +4651,14 @@ connector rows: they never count toward "N of 20", never appear in
 in" badge. The same entries lead Discover as "Built into Besidka" and open a
 panel with state, Connect and Disconnect and a read-only tool list. See
 `docs/google.md`, section 16.
+
+In the composer's connector picker they are up to three rows after the Besidka
+row (child 3, `docs/google.md`, section 18): outside the five-connector limit,
+not in "Turn all on" and "Turn all off", not in the "N connectors" tile. A
+connected service has a switch ("Use Gmail in this chat", on by default);
+one that is not connected, needs a reconnect, needs the user's own client or
+is off in Labs has a link to where that is fixed; and when the chat's model or
+tools mean no Google tool is offered ("Not available with this model"), the
+switch is disabled and an info button gives the reason. Rows appear only
+with tool approvals and `google.drive` active, and the picker's own rules
+(`connectors` flag, tool calling) still apply.

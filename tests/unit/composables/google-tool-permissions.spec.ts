@@ -1,7 +1,11 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { useGoogleToolPermissions } from '../../../app/composables/google-tool-permissions'
+import {
+  googleToolPermissionPutQueue,
+  useGoogleToolPermissions,
+} from '../../../app/composables/google-tool-permissions'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -64,6 +68,7 @@ describe('useGoogleToolPermissions', () => {
     mocks.fetch.mockReset()
     mocks.error.mockReset()
     mocks.refresh.mockReset()
+    googleToolPermissionPutQueue.reset()
     status.value = 'success'
     fetchError.value = null
     seed()
@@ -91,6 +96,9 @@ describe('useGoogleToolPermissions', () => {
       expect(modesOf(tools.value)[SEARCH]).toBe('blocked')
       expect(modesOf(tools.value)[READ_THREAD]).toBe('ask')
       expect(isSaving.value).toBe(true)
+
+      await flushPromises()
+
       expect(mocks.fetch).toHaveBeenCalledWith(
         '/api/v1/google/tool-permissions',
         { method: 'PUT', body: { tool: SEARCH, mode: 'blocked' } },
@@ -139,6 +147,9 @@ describe('useGoogleToolPermissions', () => {
         [READ_THREAD]: 'blocked',
         [LIST_EVENTS]: 'ask',
       })
+
+      await flushPromises()
+
       expect(mocks.fetch).toHaveBeenCalledWith(
         '/api/v1/google/tool-permissions',
         { method: 'PUT', body: { service: 'gmail', mode: 'blocked' } },
@@ -202,7 +213,7 @@ describe('useGoogleToolPermissions', () => {
 
     const { tools, save, announcement } = useGoogleToolPermissions()
     const savingFirst = save({ tool: SEARCH }, 'blocked')
-    const savingSecond = save({ tool: SEARCH }, 'ask')
+    const savingSecond = save({ service: 'gmail' }, 'ask')
 
     expect(modesOf(tools.value)[SEARCH]).toBe('ask')
 
@@ -225,7 +236,7 @@ describe('useGoogleToolPermissions', () => {
     await savingFirst
 
     expect(modesOf(tools.value)[SEARCH]).toBe('ask')
-    expect(announcement.value).toBe('Search your Gmail: Needs approval.')
+    expect(announcement.value).toBe('Gmail tools: Needs approval.')
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
@@ -239,7 +250,7 @@ describe('useGoogleToolPermissions', () => {
 
     const { tools, save } = useGoogleToolPermissions()
     const savingFirst = save({ tool: SEARCH }, 'blocked')
-    const savingSecond = save({ tool: SEARCH }, 'ask')
+    const savingSecond = save({ service: 'gmail' }, 'ask')
 
     first.resolve({
       tools: [
@@ -274,7 +285,7 @@ describe('useGoogleToolPermissions', () => {
 
       const { tools, save } = useGoogleToolPermissions()
       const savingFirst = save({ tool: SEARCH }, 'blocked')
-      const savingSecond = save({ tool: SEARCH }, 'ask')
+      const savingSecond = save({ service: 'gmail' }, 'ask')
 
       first.resolve({
         tools: [
@@ -318,6 +329,9 @@ describe('useGoogleToolPermissions', () => {
         google__gmail_create_draft: 'ask',
         [LIST_EVENTS]: 'ask',
       })
+
+      await flushPromises()
+
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
       expect(mocks.fetch).toHaveBeenCalledWith(
         '/api/v1/google/tool-permissions',
@@ -354,6 +368,57 @@ describe('useGoogleToolPermissions', () => {
     })
     expect(mocks.error).toHaveBeenCalledTimes(1)
     expect(announcement.value).toBe('')
+  })
+
+  describe('spacing saves of one target', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('queues a second save of the same tool until 1.1 s after the '
+      + 'first, and never drops it', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+      mocks.fetch.mockImplementation(async (
+        _url: string,
+        init: { body: { mode: string } },
+      ) => ({
+        tools: [
+          { name: SEARCH, service: 'gmail', mode: init.body.mode },
+          { name: READ_THREAD, service: 'gmail', mode: 'ask' },
+          { name: LIST_EVENTS, service: 'calendar', mode: 'ask' },
+        ],
+      }))
+
+      const { tools, save } = useGoogleToolPermissions()
+
+      await save({ tool: SEARCH }, 'blocked')
+
+      const second = save({ tool: SEARCH }, 'ask')
+
+      await vi.advanceTimersByTimeAsync(1099)
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(modesOf(tools.value)[SEARCH]).toBe('ask')
+
+      await vi.advanceTimersByTimeAsync(1)
+      await second
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(modesOf(tools.value)[SEARCH]).toBe('ask')
+    })
+
+    it('sends saves of different targets without waiting', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+      mocks.fetch.mockImplementation(async () => ({ tools: data.value!.tools }))
+
+      const { save } = useGoogleToolPermissions()
+
+      await save({ tool: SEARCH }, 'blocked')
+      await save({ tool: READ_THREAD }, 'blocked')
+      await save({ service: 'calendar' }, 'blocked')
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(3)
+    })
   })
 
   it('reads a 404 as the account reaching no Google tool', () => {

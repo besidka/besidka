@@ -32,6 +32,7 @@ export const besidkaChatSettings = snakeCase.table(
     alwaysAllowTools: text({ mode: 'json' })
       .$type<Record<string, string>>()
       .notNull(),
+    googleServicesOff: text(),
   },
   table => [
     uniqueIndex('uq_besidka_chat_settings_user_chat')

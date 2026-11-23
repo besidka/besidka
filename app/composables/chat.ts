@@ -1042,6 +1042,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { selection: connectorSelection } = useChatConnectorSelection()
   const isBesidkaToolsAvailable = useBesidkaToolsAvailability()
   const { selection: besidkaToolsSelection } = useBesidkaToolsSelection()
+  const isGoogleToolsAvailable = useGoogleToolsAvailability()
+  const {
+    selection: googleToolsSelection,
+    settleFirstSend: settleGoogleFirstSend,
+  } = useGoogleToolsSelection()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -1260,6 +1265,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             ),
             ...getConnectorIdsField(),
             ...getBesidkaToolsField(),
+            ...getGoogleServicesOffField(
+              googleToolsSelection.value,
+              isGoogleToolsAvailable.value,
+              chatSlug,
+            ),
             ...getStoppedRunField(lastMessage?.id),
             ...getClientTimeZoneField(),
           },
@@ -1294,6 +1304,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       isError,
       messages,
     }) {
+      if (!isError && !isSdkDisconnect) {
+        settleGoogleFirstSend(chatSlug)
+      }
+
       const isStallAbort = isSdkAbort && isStreamStallAbort
       const isAbort = isSdkAbort && !isStallAbort
       const isDisconnect = isSdkDisconnect || isStallAbort

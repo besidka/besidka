@@ -7,6 +7,7 @@ import {
 } from '#shared/utils/google-tool-catalog'
 import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storage-request'
 import { GOOGLE_TOOL_KINDS } from '#shared/utils/google-tool-approvals'
+import { enforceGoogleRateLimit } from '~~/server/utils/google/route'
 import {
   loadGoogleToolPermissionModes,
   resolveGoogleTargetTools,
@@ -102,6 +103,13 @@ export default defineEventHandler(async (event) => {
       why: 'This Google tool is not available for this account',
     })
   }
+
+  await enforceGoogleRateLimit(
+    event,
+    userId,
+    'permission',
+    `${described.scope}:${described.name}`,
+  )
 
   const changed = await setGoogleToolPermissions(
     userId,

@@ -16,6 +16,20 @@ export type GoogleToolPermissionTarget
 
 export const GOOGLE_TOOL_PERMISSIONS_KEY = 'google-tool-permissions'
 
+export const googleToolPermissionPutQueue = createSpacedKeyedQueue()
+
+function describeTargetKey(target: GoogleToolPermissionTarget): string {
+  if ('tool' in target) {
+    return `tool:${target.tool}`
+  }
+
+  if ('kind' in target) {
+    return `kind:${target.service}:${target.kind}`
+  }
+
+  return `service:${target.service}`
+}
+
 const NOT_FOUND_STATUS = 404
 
 const SERVICE_LABELS: Readonly<Record<GoogleService, string>> = {
@@ -162,10 +176,15 @@ export function useGoogleToolPermissions() {
     }
 
     try {
-      const response = await $fetch('/api/v1/google/tool-permissions', {
-        method: 'PUT',
-        body: { ...target, mode },
-      })
+      const response = await googleToolPermissionPutQueue.enqueue(
+        describeTargetKey(target),
+        () => {
+          return $fetch('/api/v1/google/tool-permissions', {
+            method: 'PUT',
+            body: { ...target, mode },
+          })
+        },
+      )
 
       data.value = mergeSupersededTools(response, seq)
 

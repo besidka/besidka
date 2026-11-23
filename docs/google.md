@@ -3085,7 +3085,8 @@ also allows sending and that Besidka only creates drafts and has no code that
 sends, and, once connected, lists the tools that are off because their access
 was not granted (the Gmail notes only while Gmail is on; Drive search and
 reading found files need Google Drive read access). There is no new page, no
-"+" menu row and no per-send toggle (see 14.7).
+"+" menu row. The per-chat switches that came later (BES-454, section 18)
+live in the connector picker, not in the "+" menu (see 14.7).
 
 ### 14.5 The draft builder
 
@@ -3205,8 +3206,9 @@ Endpoints (documentation read 2026-11-22):
 
 The brief and the plan override the ticket:
 
-- No "+" menu "Google" section, no per-send toggles or tiles, no
-  `chatToolSchema` entries (`google_gmail`, `google_drive_search`), no
+- No "+" menu "Google" section, no per-send toggles or tiles (the owner
+  later chose one switch per service per chat in the connector picker, with
+  every call still asking: section 18), no `chatToolSchema` entries (`google_gmail`, `google_drive_search`), no
   `google_scope_missing` 409: the tools are candidates like the Drive tools
   (14.2), and the owner sees missing access on the API Keys card. Nothing is
   hidden from the "+" menu because the Drive row's hint covers where the tools
@@ -3912,7 +3914,7 @@ Google G (`GOOGLE_G_ICON`).
   (`server/utils/google/*`, `picker-token.ts` links): the child is UI only.
   Fixed in child 2 (section 17.1).
 - Per-tool permissions (child 2, section 17), per-chat switches and the
-  picker rows (child 3 of BES-454).
+  picker rows (child 3 of BES-454, section 18).
 
 ## 17. Per-tool permissions (BES-454, child 2)
 
@@ -3978,12 +3980,15 @@ A user who reaches none gets 404 on both routes. `GET` answers
 `{ tool, mode }`, `{ service, mode }` (every reachable tool of the service) or
 `{ service, kind, mode }` (its reachable read or write tools; the panel's
 Read and Write group selects send this, one request per group change, one
-slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode, an unknown or
-Besidka tool name, a body with both fields, or a body over 1 KiB (413 by
-`Content-Length`) is refused; a known tool the user cannot reach is 404. 60
-changes a minute per user in KV, failing closed (a KV error is a 429, never an
-allow). The log holds the action, the scope, the target and the mode, nothing
-else.
+slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode,
+an unknown or Besidka tool name, a body with both fields, or a body over 1 KiB
+(413 by `Content-Length`) is refused; a known tool the user cannot reach is
+404. The limit is 60 changes a minute per user and target (the tool, the
+service or the service and kind), in KV on the key `<user id>:tool:<name>`,
+`:service:<service>` or `:kind:<service>:<kind>`, counted after the target is
+resolved against the catalog and failing closed (a KV error is a 429, never an
+allow); section 18.5 says why the key carries the target. The log holds the
+action, the scope, the target and the mode, nothing else.
 
 ### 17.4 Send path and replay
 
@@ -4029,6 +4034,218 @@ so `docs/chat-scroll-spacer.md` is not affected.
 ### 17.6 Not done
 
 Per-chat service switches, the connector picker rows and the "not available
-with this model" state (child 3). Google tool permissions are not readable or
-writable over MCP (`docs/mcp-server.md`, "What MCP does not do", item 8). A
-restore: `docs/d1-restore-reconciliation.md`, "Tool approvals".
+with this model" state (child 3, section 18). Google tool permissions are not
+readable or writable over MCP (`docs/mcp-server.md`, "What MCP does not do",
+item 8). A restore: `docs/d1-restore-reconciliation.md`, "Tool approvals".
+
+## 18. Per-chat Google switches and picker rows (BES-454, child 3)
+
+One switch per service per chat: Google Drive, Gmail and Google Calendar.
+Every switch is on for a new chat and every call still asks (sections 5.2 and
+17). A switch only removes tools; it never lifts or changes the data guard.
+
+### 18.1 Data: the one migration
+
+`besidka_chat_settings.google_services_off` is a nullable `text` column with no
+default and no `NOT NULL` (migration `20261123025143_hesitant_inhumans`, the
+single statement ``ALTER TABLE `besidka_chat_settings` ADD `google_services_off` text;``,
+no table rebuild). It holds a JSON list of `drive`, `gmail` and `calendar`,
+or null; null and an empty list mean every service is on, and the setter
+stores null when the last service is switched on again, so the default needs
+no stored value. The column is `text()` and not `text({ mode: 'json' })` on
+purpose: Drizzle's JSON mode parses on read and a corrupt value would throw
+inside `readBesidkaChatSettings` and take Besidka tools and the grants read
+down with it.
+
+`parseGoogleServicesOff` (`server/utils/besidka-tools/chat-settings.ts`)
+reads it:
+
+| Stored value | Reads as |
+| --- | --- |
+| null, `[]` | every service on |
+| a list of strings | the ids it knows, in catalog order; any other string is ignored |
+| text that is not JSON, a JSON value that is not a list, a list with a non-string entry | every service OFF |
+
+Off is the restrictive direction, so a corrupt value never offers a tool the
+user may have switched off; it is tested and the next toggle rewrites it.
+`readBesidkaChatSettings` returns `googleServicesOff` with the rest of the row,
+and `readGoogleChatSettings` (`server/utils/tool-approval/google.ts`) gives
+the send both the Google grants and the switches from that one read; when the
+read fails it answers no grants and every service off (logged), so a D1 error
+never offers a tool. `setGoogleServicesOff` and `setGoogleServiceEnabled`
+write only this column and `updated_at` on an existing row (a row they create
+starts with Besidka on and no grants); `upsertBesidkaChatSettings` never lists
+the column, so a Besidka toggle or a grant cannot overwrite the switches.
+`resetChatToolApprovalGrants` and the restore runbook SQL blank
+`always_allow_tools` only and do not touch the column (a unit test resets a
+chat's grants and reads the switches back unchanged).
+
+### 18.2 The shared reason predicate
+
+`getGoogleToolsUnavailableReason` (`shared/utils/google-tools-availability.ts`,
+pure) is the one place that says why a send offers no Google tool. Inputs:
+`toolCalling`, `gateway`, `holdsGoogleData`, `providerToolsStayCallable`, the
+`recipient` with `geminiPaidTierConfirmed` (or the send's own verdict,
+`recipientAllowed`). It returns null or a reason, checked in this order:
+
+1. `gateway_needs_google_data`: a gateway route in a chat that does not hold
+   Google data yet. The send has no Google candidates there (the gateway
+   safeguards are sent only once Google data is in the chat), so the picker
+   says "Attach a Drive file first". The server never writes this reason on a
+   message: it is not in `GOOGLE_TOOLS_WITHHELD_REASONS`, so the persisted part
+   type is unchanged.
+2. `tool_calling_off`: no text; a model without tool calling gets no tools of
+   any kind and the picker does not exist.
+3. `provider_tool_not_removable`: web search or Run code on direct Anthropic,
+   search on Qwen, in a chat without Google data.
+4. `model_may_not_receive_google_data`: the recipient is not on the data
+   list.
+
+`getGoogleSendTools` uses it for its reason and keeps its behavior and its
+laziness: it calls the predicate once with `recipientAllowed: true` for the
+checks that need no read, and only then asks the data guard (which reads the
+user's keys) and calls it again with the verdict. A table test replays every
+combination of tool calling, provider tool, Google data and verdict against
+the order the function had before. The browser computes the same predicate in
+`useComposerGoogleTools` from the selected model (`useUserModel`), the chat's
+Google flag (`useChatGoogleData`), the enabled tools of the composer and the
+Gemini paid-tier flag. Two known differences: auto web search
+(`resolveWebSearchMode`) can add native search at send time, which the picker
+cannot see; and a gateway route to Anthropic never shows the provider-tool
+reason (the gateway reason comes first, and with Google data the check is
+skipped). The server stays authoritative; the picker is advice.
+
+### 18.3 Send path
+
+`buildGoogleSendToolCandidates` runs its gates as before, then builds one
+modes map: the stored modes (section 17) plus `blocked` for every catalog
+tool of a service switched off in this chat (`withGoogleServicesOffBlocked`;
+a name the catalog does not know is blocked too), and calls
+`dropBlockedGoogleTools` once. The tools of an off service are removed, each
+keeps an entry-only Blocked record, and the same map rides on
+`GoogleSendTools.permissionModes`, so an approval given before the service
+was switched off is denied on resume with the Blocked text ("This tool is
+blocked in the user's settings, so the action did not run."). Two filters in
+a row would overwrite the map, which is why there is one pass. A send whose
+candidates are all off is not "withheld" (no reason, no note), exactly like
+all Blocked.
+
+The Google-data flag of the chat is all the data guard reads: the gateway
+safeguards (`planGoogleSendTools`), the recipient check, the withholding and
+the 403 are the same with every service off, tested in
+`chats-google-data-guard.spec.ts`.
+
+### 18.4 A new chat's first send
+
+The send body takes `googleServicesOff` (at most three unique ids from
+`GOOGLE_SERVICES`, 400 otherwise). A non-resume send that carries it, with
+tool approvals and `google.drive` or `google.byo` active, calls
+`applyRequestedGoogleServicesOff` before the plan: it stores the list when it
+differs from the stored one and returns it, and the send runs with that list
+even when the write fails (logged). A resume ignores the field. A send
+without it reads nothing extra. The client sends it only while the choice was
+handed over from the new-chat page (`shouldSend`), and clears that flag
+(`settleFirstSend`, called from `onFinish` before anything else) as soon as a
+send finished without an error or a disconnect. Later sends of the chat never
+carry the field (`getGoogleServicesOffField`, a pure function with its own
+spec), so the picker's `PUT` is the only writer of an existing chat's choice
+and an old tab cannot overwrite a choice made in another tab. A first send
+that failed keeps the flag, so its retry still carries the choice.
+
+### 18.5 Routes
+
+`GET` and `PUT /api/v1/chats/[slug]/google-tools` (directory form, next to
+`besidka-tools`). `GET` answers `{ drive, gmail, calendar }`, each true while
+the service is on. `PUT` takes `{ service, enabled }` (strict) and answers the
+same three booleans. Gate, in this order (`requireGoogleChatToolsAccess`): the
+same-origin guard (the write guard for a `PUT`), a session, chat ownership
+(404 for a chat of another user or a malformed slug), `google.drive` active
+(404). A `PUT` then has a body of at most 256 bytes (413 by
+`Content-Length`) and the limit of 60 changes a minute, counted after the body
+is read in its own bucket (`google-chat-service-rate-limit`) on the key
+`<user id>:<service>` (`enforceGoogleRateLimit` with a target). KV takes about
+one write a second per key (`docs/connectors.md`, section 6.6, "the KV
+one-write-a-second trap"), and the old key per user made two quick switches of
+different services answer 429 in production only (miniflare does not enforce
+it). The limit is now 60 a minute per service, so at most 180 a minute per
+user, and it still fails closed (a KV error is a 429, never an allowed
+change). The client spaces two saves of one service at least 1.1 s apart
+(`googleServicePutQueue`, `app/utils/spaced-keyed-queue.ts`: queued, never
+dropped, measured from the end of the earlier save). The Workers Rate Limiting
+binding that two other routes use was not an option, because those limiters
+skip the check when the binding is missing or throws, and this one must fail
+closed. The same change applies to `PUT /api/v1/google/tool-permissions`
+(bucket `google-tool-permission-rate-limit`, key `<user id>:tool:<name>`,
+`:service:<service>` or `:kind:<service>:<kind>`, counted after the target is
+resolved against the catalog, so an unknown name never creates a key).
+
+The write is a compare-and-swap (`setGoogleServiceEnabled`): it updates only
+while `google_services_off` still holds the text it read (`IS NULL` for a null
+read) and inserts a missing row with `ON CONFLICT DO NOTHING`; a swap that
+changed no row re-reads and retries, three times at most, and then answers 409
+("Could not save the Google switch"), which the picker rolls back. Two tabs
+switching different services at once both stick. The log holds the service id
+and the boolean, never the chat id.
+
+Known limit: the gate is `google.drive`, as planned, so an admin who has the
+own-client flags but not `google.drive` gets no switches (the picker rows need
+the same flag). Their chats keep every service on.
+
+### 18.6 The picker rows
+
+`ConnectorPicker.client.vue` shows up to three rows after the Besidka row
+(`ConnectorPickerGoogleRow.vue`), outside the five-connector limit, not in
+"Turn all on" and "Turn all off" and not in the connector count. The picker
+exists only with the `connectors` flag and tool calling; the rows need tool
+approvals and `google.drive` too (`useGoogleToolsAvailability`). They come
+from the same `resolveGoogleEntries` the Connectors page uses, so a user never
+sees a row for a service that page hides from them; the connection status is
+fetched when the picker opens, not before, so a user with no Google flag costs
+no request.
+
+| Entry state | Row |
+| --- | --- |
+| connected, partial grant | switch (`role="switch"`, aria-label "Use Gmail in this chat"); sub-line is the account, or "Off in this chat" |
+| not connected | "Not connected" and a Connect link to `/chats/connectors?panel=...` |
+| needs reconnect | "Needs reconnect" and a Reconnect link |
+| needs your own client (admin only) | "Needs your own Google client" and a link to the Google tab |
+| off in Labs | "Off in Labs" and a link to Labs |
+| leftover connection the account may not use | no row |
+
+When the predicate gives a reason, every switch is disabled, the sub-line
+reads "Not available with this model" and an info button (click to open, like
+the "+" menu notes) shows the reason text from
+`getGoogleToolsUnavailableNote`; the Drive "+" hint names the connector list.
+The rows keep the keyboard order logo, text, info button, switch, `min-h-11`
+on a phone, and a polite live region (text from the composable, set after the
+save settles) says "Gmail is now off in this chat", or after a rollback "Gmail
+is back on in this chat. Saving failed.".
+While a service saves, only its own switch is inert: it gets `aria-disabled`
+and ignores clicks and changes (the click is cancelled, so the native checkbox
+does not flip), but it is never `disabled`, so keyboard focus stays. Other
+services can be saved at the same time; a response decides only the services
+with no save of their own pending, so overlapping saves that settle out of
+order cannot erase each other's choice, and a failure rolls back that service
+only. While the stored choice is unknown (the `GET` has not answered) the
+switch rows are `aria-disabled`, dimmed, with a spinner and the sub-line
+"Checking this chat", and a toggle does nothing; after a failed `GET` the rows
+stay disabled and the Google group shows a one-line error with a "Try again"
+button (`min-h-11` on a phone). The answer of the `GET` and of the connection
+status fetch is ignored when a newer request exists (sequence counters). A new chat keeps the choice in state
+(`useGoogleToolsSelection`) and `new.vue` hands it to the chat slug with the
+Besidka choice.
+
+### 18.7 Scroll spacer
+
+The picker is a modal `<dialog>`, out of flow like the model picker, so rows
+that appear after the status loads change only the dialog's own height and
+never the message list or the composer. No timer, no composer chip. The
+affected-test map sends every changed file here to the spacer suites
+(`getAffectedTests` checked for each).
+
+### 18.8 Not done
+
+MCP is unchanged (`docs/mcp-server.md`, item 8: the switches are not readable
+or writable there). No account-wide switch, no per-tool switch per chat (a
+tool is Blocked per user, section 17). A restore:
+`docs/d1-restore-reconciliation.md`, "Tool approvals".
