@@ -4336,3 +4336,12 @@ unchanged.
   route needs the owner's decision about the route cap in `docs/seo.md`.
 - **Scroll spacer.** The guide is in a profile page, not in a chat message or
   the composer, so `docs/chat-scroll-spacer.md` does not apply to it.
+- **Wrap rule.** The card is a one-column grid, so a grid item with the
+  default `min-width: auto` grows to its longest unbroken string (a scope URL
+  in `<code>`) and widens the whole card past a 390 px screen. The card, the
+  guide, its content wrapper, the redirect address box and the capability
+  fieldset carry `min-w-0`, and the guide content and every `<code>` or list
+  item that can hold a scope URL or path carry `[overflow-wrap:anywhere]`
+  (unlike `break-words`, it also lowers the min-content width). Keep both on
+  any new string of that kind. The 390 px result was not measured in a browser
+  for this change; check it on the preview.
