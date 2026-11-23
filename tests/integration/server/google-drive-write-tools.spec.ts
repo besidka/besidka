@@ -2595,6 +2595,197 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         expect(new URL(patches()[0]!.url).searchParams.get('addParents'))
           .toBe(ROOT_ID)
       })
+
+      it('refuses a walk that ends at a parentless folder that is not the '
+        + 'live root, because its parent may be one the user cannot see',
+      async () => {
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: undefined,
+        })
+
+        const { toolMap } = await known(leafParts())
+        const message = await rejectionOf(move(toolMap, moveToLeaf))
+
+        expect(message).toContain('could not confirm')
+        expect(message).toContain('cannot see')
+        expect(patches()).toHaveLength(0)
+        expect(JSON.stringify(mocks.logged))
+          .toContain('"refusal":"ancestry-unconfirmed"')
+      })
+
+      it('refuses a folder moved into itself before any request, with the '
+        + 'cycle sentence', async () => {
+        const { toolMap } = await known(leafParts())
+        const intoItself = {
+          itemId: ARCHIVE_ID,
+          fromFolderId: 'root',
+          toFolderId: ARCHIVE_ID,
+        }
+
+        expect(toolMap[GOOGLE_DRIVE_MOVE_TOOL_NAME]!.inputSchema
+          .safeParse(intoItself).success).toBe(false)
+        expect(await rejectionOf(move(toolMap, intoItself)))
+          .toBe('A folder cannot be moved into itself or into one of its '
+            + 'own subfolders. Nothing was moved.')
+        expect(drive.fetch).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('the ancestry of the parent of a created folder', () => {
+      const TOP_ID = 'top-folder-id-012345'
+      const MID_ID = 'mid-folder-id-0123456'
+      const LEAF_ID = 'leaf-folder-id-012345'
+      const ANCESTOR_FIELDS = 'id,parents,shared,driveId,ownedByMe,trashed'
+      const leafParent = { name: 'Reports', parentFolderId: LEAF_ID }
+
+      function leafParts() {
+        return [{
+          type: 'tool-google__drive_list_folder',
+          state: 'output-available',
+          output: {
+            references: [{
+              id: LEAF_ID,
+              kind: 'drive-folder',
+              title: 'Leaf',
+              parentId: MID_ID,
+            }],
+          },
+        }]
+      }
+
+      function chainId(position: number): string {
+        return `chain-id-${String(position).padStart(3, '0')}`
+      }
+
+      function ancestorReads() {
+        return drive.requests.filter((request) => {
+          return new URL(request.url).searchParams.get('fields')
+            === ANCESTOR_FIELDS
+        })
+      }
+
+      beforeEach(() => {
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: [ROOT_ID],
+        })
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+        })
+        drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+          name: 'Leaf',
+          parents: [MID_ID],
+        })
+      })
+
+      it('walks the parent up to the root with one minimal read per level '
+        + 'and then creates one folder', async () => {
+        const { toolMap } = await known(leafParts())
+        const output = await create(toolMap, leafParent)
+
+        expect(output.created).toBe(true)
+        expect(ancestorReads()).toHaveLength(2)
+        expect(paths().filter(path => path.endsWith('/files/root')))
+          .toHaveLength(1)
+        expect(posts()).toHaveLength(1)
+        expect(JSON.parse(posts()[0]!.body).parents).toEqual([LEAF_ID])
+      })
+
+      it('refuses a parent below a shared grandparent, with nothing created',
+        async () => {
+          drive.items[TOP_ID] = folderMeta(TOP_ID, {
+            name: 'Top',
+            parents: [ROOT_ID],
+            shared: true,
+          })
+
+          const { toolMap } = await known(leafParts())
+          const message = await rejectionOf(create(toolMap, leafParent))
+
+          expect(message).toContain('A folder above that folder is shared')
+          expect(message).toContain('Nothing was created.')
+          expect(posts()).toHaveLength(0)
+          expect(JSON.stringify(mocks.logged))
+            .toContain('"driveCreateFolder":{"refusal":"ancestry-shared"')
+        })
+
+      it.each([
+        ['a shared-drive ancestor', { driveId: 'd1' }, 'shared drive'],
+        ['an ancestor someone else owns', { ownedByMe: false }, 'someone else'],
+        ['a trashed ancestor', { trashed: true }, 'in the trash'],
+        ['an unknown sharing state', { shared: undefined }, 'shared with'],
+      ])('refuses a parent below %s', async (_label, change, sentence) => {
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+          ...change,
+        })
+
+        const { toolMap } = await known(leafParts())
+
+        expect(await rejectionOf(create(toolMap, leafParent)))
+          .toContain(sentence)
+        expect(posts()).toHaveLength(0)
+      })
+
+      it('refuses as not confirmed when an ancestor cannot be read',
+        async () => {
+          Reflect.deleteProperty(drive.items, MID_ID)
+
+          const { toolMap } = await known(leafParts())
+          const message = await rejectionOf(create(toolMap, leafParent))
+
+          expect(message).toContain('could not confirm')
+          expect(message).toContain('Nothing was created.')
+          expect(posts()).toHaveLength(0)
+        })
+
+      it('refuses past the depth limit and a parentless folder that is not '
+        + 'the root', async () => {
+        for (let position = 0; position < 25; position += 1) {
+          drive.items[chainId(position)] = folderMeta(chainId(position), {
+            name: `Level ${position}`,
+            parents: [position === 24 ? ROOT_ID : chainId(position + 1)],
+          })
+        }
+
+        drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+          name: 'Leaf',
+          parents: [chainId(0)],
+        })
+
+        const { toolMap } = await known(leafParts())
+
+        expect(await rejectionOf(create(toolMap, leafParent)))
+          .toContain('could not confirm')
+        expect(ancestorReads()).toHaveLength(20)
+
+        drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+          name: 'Leaf',
+          parents: [MID_ID],
+        })
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: undefined,
+        })
+
+        expect(await rejectionOf(create(toolMap, {
+          ...leafParent,
+          name: 'Other',
+        }, 'approval-2'))).toContain('could not confirm')
+        expect(posts()).toHaveLength(0)
+      })
+
+      it('needs no ancestor read for the top level', async () => {
+        const { toolMap } = await known([])
+
+        await create(toolMap, { name: 'Reports' })
+
+        expect(ancestorReads()).toHaveLength(0)
+        expect(posts()).toHaveLength(1)
+      })
     })
 
     describe('a folder the user owns that has no parent', () => {
@@ -2664,20 +2855,22 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
           .toHaveLength(1)
       })
 
-      it('accepts it as the parent of a new folder after the live checks, '
-        + 'because it is a folder like any other', async () => {
+      it('refuses it as the parent of a new folder as not confirmed, because '
+        + 'a parentless folder that is not the root may sit in a folder the '
+        + 'user cannot see', async () => {
         const { toolMap } = await known([orphanPart()])
 
         await list(toolMap, { folderId: ORPHAN_ID })
         drive.requests.length = 0
 
-        const output = await create(toolMap, {
+        const message = await rejectionOf(create(toolMap, {
           name: 'Reports',
           parentFolderId: ORPHAN_ID,
-        })
+        }))
 
-        expect(output.created).toBe(true)
-        expect(JSON.parse(posts()[0]!.body).parents).toEqual([ORPHAN_ID])
+        expect(message).toContain('could not confirm')
+        expect(message).toContain('Nothing was created.')
+        expect(posts()).toHaveLength(0)
       })
 
       it('does not count a 409 for a top-level create whose folder sits in '
@@ -2696,33 +2889,42 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
           .toBe(DRIVE_CREATE_UNCONFIRMED_TEXT)
       })
 
-      it('is a valid move target and source with its own name on the card',
-        async () => {
-          const { toolMap, entryOf } = await known([
-            orphanPart(),
-            ...knownParts().slice(1),
-          ])
+      it('is refused as a move target and as a move source as not '
+        + 'confirmed, with its own name still on the card', async () => {
+        const { toolMap, entryOf } = await known([
+          orphanPart(),
+          ...knownParts().slice(1),
+        ])
 
-          await list(toolMap, { folderId: ORPHAN_ID })
-          drive.requests.length = 0
+        await list(toolMap, { folderId: ORPHAN_ID })
+        drive.requests.length = 0
 
-          const orphanMove = {
-            itemId: FILE_ID,
-            fromFolderId: ORPHAN_ID,
-            toFolderId: ARCHIVE_ID,
-          }
+        const orphanSource = {
+          itemId: FILE_ID,
+          fromFolderId: ORPHAN_ID,
+          toFolderId: ARCHIVE_ID,
+        }
+        const orphanTarget = {
+          itemId: FILE_ID,
+          fromFolderId: CHILD_ID,
+          toFolderId: ORPHAN_ID,
+        }
 
-          drive.items[FILE_ID] = fileMeta(FILE_ID, { parents: [ORPHAN_ID] })
+        drive.items[FILE_ID] = fileMeta(FILE_ID, { parents: [ORPHAN_ID] })
 
-          expect(await entryOf(GOOGLE_DRIVE_MOVE_TOOL_NAME)
-            .describeNames?.(orphanMove)).toMatchObject({
-            from: { name: 'Orphan', id: ORPHAN_ID },
-          })
-
-          await move(toolMap, orphanMove)
-
-          expect(drive.items[FILE_ID]!.parents).toEqual([ARCHIVE_ID])
+        expect(await entryOf(GOOGLE_DRIVE_MOVE_TOOL_NAME)
+          .describeNames?.(orphanSource)).toMatchObject({
+          from: { name: 'Orphan', id: ORPHAN_ID },
         })
+        expect(await rejectionOf(move(toolMap, orphanSource)))
+          .toContain('could not confirm')
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, { parents: [CHILD_ID] })
+
+        expect(await rejectionOf(move(toolMap, orphanTarget)))
+          .toContain('could not confirm')
+        expect(patches()).toHaveLength(0)
+      })
     })
   })
 })

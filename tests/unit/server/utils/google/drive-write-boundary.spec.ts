@@ -210,7 +210,95 @@ describe('the Drive write boundary', () => {
       query: { fields: '*', supportsAllDrives: 'true' },
       body: { name: 'Plan' },
     }],
-  ])('refuses a hand-built request with %s before any request', async (
+    ['an upper-case AddParents key', {
+      itemId: ITEM_ID,
+      query: {
+        AddParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: {},
+    }],
+    ['an own __proto__ key in the body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: JSON.parse('{"name":"Plan","__proto__":{"trashed":true}}'),
+    }],
+    ['a body that is only an own __proto__ key', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: JSON.parse('{"__proto__":{"name":"x"}}'),
+    }],
+    ['an own __proto__ key in the query', {
+      itemId: ITEM_ID,
+      query: JSON.parse(
+        '{"fields":"id,name,mimeType,parents","supportsAllDrives":"true",'
+        + '"__proto__":{"alt":"media"}}',
+      ),
+      body: { name: 'Plan' },
+    }],
+    ['an object as the name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: { toString: () => 'Plan' } },
+    }],
+    ['an array as the name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: ['Plan'] },
+    }],
+    ['an empty name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: '' },
+    }],
+    ['a name of 201 characters', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'a'.repeat(201) },
+    }],
+    ['a name with a slash', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: '../../x' },
+    }],
+    ['a name with a control character', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'a\u0000b' },
+    }],
+    ['a name with a right-to-left override', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'abc‮def' },
+    }],
+    ['the same folder to add and to remove', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: PARENT_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: {},
+    }],
+    ['a null body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: null,
+    }],
+    ['an array as the query', {
+      itemId: ITEM_ID,
+      query: [],
+      body: { name: 'Plan' },
+    }],
+  ] as never[][])('refuses a hand-built request with %s before any request', async (
     _label,
     request,
   ) => {
@@ -223,6 +311,60 @@ describe('the Drive write boundary', () => {
       fetchImpl,
     })).toEqual({ ok: false, code: 'bad_request' })
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('sends the values it validated when an object answers differently the '
+    + 'second time it is read', async () => {
+    const sent: Array<{ url: string, body: string }> = []
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      sent.push({
+        url,
+        body: new TextDecoder().decode(init.body as Uint8Array),
+      })
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+    const answers = (first: string, later: string) => {
+      let reads = 0
+
+      return () => {
+        reads += 1
+
+        return reads === 1 ? first : later
+      }
+    }
+    const renameRequest = {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: Object.defineProperty({}, 'name', {
+        enumerable: true,
+        get: answers('Plan', '../../x'),
+      }),
+    }
+    const moveRequest = {
+      itemId: ITEM_ID,
+      query: Object.defineProperties({
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      }, {
+        addParents: {
+          enumerable: true,
+          get: answers(TARGET_ID, 'other-id-0123456789'),
+        },
+      }),
+      body: {},
+    }
+
+    await patchDriveItem(renameRequest, {
+      accessToken: 'token',
+      fetchImpl,
+    })
+    await patchDriveItem(moveRequest, { accessToken: 'token', fetchImpl })
+
+    expect(sent[0]!.body).toBe('{"name":"Plan"}')
+    expect(new URL(sent[1]!.url).searchParams.get('addParents'))
+      .toBe(TARGET_ID)
   })
 
   it('calls patchDriveItem from the tools only with the output of a '

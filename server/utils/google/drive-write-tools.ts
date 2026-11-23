@@ -24,6 +24,7 @@ import {
   GOOGLE_DRIVE_LIST_FOLDER_MAX,
   GOOGLE_DRIVE_LIST_FOLDER_QUERY_MAX,
   GOOGLE_DRIVE_LIST_FOLDER_TEXT_BUDGET_BYTES,
+  GOOGLE_DRIVE_MOVE_CYCLE_TEXT,
   GOOGLE_DRIVE_ROOT_ALIAS,
   GOOGLE_DRIVE_ROOT_TITLE,
   GOOGLE_DRIVE_WRITE_TOOL_SCOPES,
@@ -211,24 +212,27 @@ const MOVE_ROOT_ALIAS_TEXT = 'To move an item to or from the top level of My '
 
 const ANCESTRY_MAX_DEPTH = 20
 
+const NOTHING_DONE_TEXT: Readonly<Record<FolderOperation, string>> = {
+  create: 'Nothing was created.',
+  move: 'Nothing was moved.',
+}
+
 const ANCESTOR_REFUSAL_TEXT = {
-  trashed: 'A folder above that folder is in the trash. Nothing was moved.',
+  trashed: 'A folder above that folder is in the trash.',
   sharedDrive: 'A folder above that folder is in a shared drive. Besidka '
-    + 'works only in the user\'s own My Drive and never moves items between '
-    + 'drives. Nothing was moved.',
+    + 'works only in the user\'s own My Drive.',
   notOwned: 'A folder above that folder belongs to someone else. Besidka '
-    + 'only moves items between folders the user owns. Nothing was moved.',
-  shared: 'A folder above that folder is shared with other people, and moving '
-    + 'items into or out of it would change who can see them, so Besidka does '
-    + 'not do it. Nothing was moved.',
+    + 'only works in folders the user owns.',
+  shared: 'A folder above that folder is shared with other people, and a '
+    + 'change inside it would change who can see the item, so Besidka does '
+    + 'not do it.',
 } as const
 
-const MOVE_CYCLE_TEXT = 'A folder cannot be moved into itself or into one of '
-  + 'its own subfolders. Nothing was moved.'
+const MOVE_CYCLE_TEXT = GOOGLE_DRIVE_MOVE_CYCLE_TEXT
 
 const ANCESTRY_UNCONFIRMED_TEXT = 'Besidka could not confirm which folders '
-  + 'contain that folder, because it is nested too deeply or Google Drive did '
-  + 'not answer, so nothing was moved. Try again in a moment.'
+  + 'contain that folder, because it is nested too deeply, it sits in a '
+  + 'folder the user cannot see, or Google Drive did not answer.'
 
 type FolderOperation = 'create' | 'move'
 
@@ -864,40 +868,50 @@ export async function buildGoogleDriveWriteTools(
   }
 
   function refuseAncestry(
+    operation: FolderOperation,
     code: keyof typeof ANCESTOR_REFUSAL_TEXT | 'cycle' | 'unconfirmed',
     status: number,
   ): never {
     logger.set({
       attributes: {
-        googleByoTools: { driveMove: { refusal: `ancestry-${code}` } },
+        googleByoTools: {
+          [operation === 'create' ? 'driveCreateFolder' : 'driveMove']: {
+            refusal: `ancestry-${code}`,
+          },
+        },
       },
     })
 
-    throw toolFailure(
-      code === 'cycle'
-        ? MOVE_CYCLE_TEXT
-        : code === 'unconfirmed'
-          ? ANCESTRY_UNCONFIRMED_TEXT
-          : ANCESTOR_REFUSAL_TEXT[code],
-      status,
-    )
+    if (code === 'cycle') {
+      throw toolFailure(MOVE_CYCLE_TEXT, status)
+    }
+
+    const text = code === 'unconfirmed'
+      ? `${ANCESTRY_UNCONFIRMED_TEXT} ${NOTHING_DONE_TEXT[operation]} Try `
+      + 'again in a moment.'
+      : `${ANCESTOR_REFUSAL_TEXT[code]} ${NOTHING_DONE_TEXT[operation]}`
+
+    throw toolFailure(text, status)
   }
 
-  function assertSafeAncestor(ancestor: DriveItemMeta): void {
+  function assertSafeAncestor(
+    ancestor: DriveItemMeta,
+    operation: FolderOperation,
+  ): void {
     if (ancestor.driveId !== null) {
-      refuseAncestry('sharedDrive', 403)
+      refuseAncestry(operation, 'sharedDrive', 403)
     }
 
     if (ancestor.trashed !== false) {
-      refuseAncestry('trashed', 400)
+      refuseAncestry(operation, 'trashed', 400)
     }
 
     if (ancestor.ownedByMe !== true) {
-      refuseAncestry('notOwned', 403)
+      refuseAncestry(operation, 'notOwned', 403)
     }
 
     if (ancestor.shared !== false) {
-      refuseAncestry('shared', 403)
+      refuseAncestry(operation, 'shared', 403)
     }
   }
 
@@ -906,31 +920,42 @@ export async function buildGoogleDriveWriteTools(
    * level (at most `ANCESTRY_MAX_DEPTH`), so a folder the user owns inside a
    * shared tree is found: the item's own id above the folder is a cycle, and
    * any ancestor that is shared, in a shared drive, not owned or in the trash
-   * is refused. A depth limit, an ancestor read that fails, or a folder with
-   * more than one parent is "not confirmed": nothing is sent.
+   * is refused. The walk ends only at the live root: a folder without
+   * `parents` that is not the root may sit in a folder the user cannot see.
+   * A depth limit, an ancestor read that fails, a folder with more than one
+   * parent, or a parentless folder that is not the root is "not confirmed":
+   * nothing is sent. `itemId` is null for a create (no cycle is possible).
    */
   async function assertAncestry(input: {
     folder: DriveItemMeta
-    itemId: string
+    itemId: string | null
+    operation: FolderOperation
     context: DriveWriteContext
     root: RootResolver
   }): Promise<void> {
+    const { operation } = input
     let current = input.folder
     let rootId: string | null = null
 
     for (let reads = 0; reads <= ANCESTRY_MAX_DEPTH; reads += 1) {
       if (current.parents.length === 0) {
-        return
+        rootId ??= (await input.root.resolve()).id
+
+        if (current.id === rootId) {
+          return
+        }
+
+        refuseAncestry(operation, 'unconfirmed', 409)
       }
 
       const [parentId] = current.parents
 
       if (current.parents.length > 1 || parentId === undefined) {
-        refuseAncestry('unconfirmed', 409)
+        refuseAncestry(operation, 'unconfirmed', 409)
       }
 
-      if (parentId === input.itemId) {
-        refuseAncestry('cycle', 400)
+      if (input.itemId !== null && parentId === input.itemId) {
+        refuseAncestry(operation, 'cycle', 400)
       }
 
       rootId ??= (await input.root.resolve()).id
@@ -946,14 +971,14 @@ export async function buildGoogleDriveWriteTools(
       const ancestor = await readDriveAncestor(parentId, input.context)
 
       if (!ancestor.ok) {
-        refuseAncestry('unconfirmed', 409)
+        refuseAncestry(operation, 'unconfirmed', 409)
       }
 
-      assertSafeAncestor(ancestor.value)
+      assertSafeAncestor(ancestor.value, operation)
       current = ancestor.value
     }
 
-    refuseAncestry('unconfirmed', 409)
+    refuseAncestry(operation, 'unconfirmed', 409)
   }
 
   async function readFolderForMove(
@@ -977,7 +1002,13 @@ export async function buildGoogleDriveWriteTools(
     }
 
     assertWritableFolder(answer.value, 'move')
-    await assertAncestry({ folder: answer.value, itemId, context, root })
+    await assertAncestry({
+      folder: answer.value,
+      itemId,
+      operation: 'move',
+      context,
+      root,
+    })
 
     return answer.value.id
   }
@@ -1267,6 +1298,13 @@ export async function buildGoogleDriveWriteTools(
         }
 
         assertWritableFolder(parent.value, 'create')
+        await assertAncestry({
+          folder: parent.value,
+          itemId: null,
+          operation: 'create',
+          context,
+          root,
+        })
       }
 
       const created = await createDriveItem(

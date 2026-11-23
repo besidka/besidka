@@ -4419,7 +4419,12 @@ order, `execute` of a create:
 6. for a parent other than My Drive, reads it live (`files.get`) and refuses
    unless it is a folder, not in a shared drive (`driveId`), not in the trash,
    owned by the user (`ownedByMe`), not shared (`shared === false`) and the user
-   can add children (`capabilities.canAddChildren`). The checks run at execute,
+   can add children (`capabilities.canAddChildren`), then walks the parent's
+   ancestry up to the live root (at most 20 minimal reads, section 19.10 step
+   5a): an ancestor that is shared, in a shared drive, not owned or in the
+   trash refuses, and a depth limit, a failed read or a parentless folder that
+   is not the root is "not confirmed", so a folder cannot be created into a
+   tree whose visibility it would inherit. The checks run at execute,
    not from the index, because a folder may have been shared after it was
    listed; a missing field fails closed. This is owner question Q1 and Q2:
    shared folders, shared drives and items of other owners are refused in v1,
@@ -4605,7 +4610,11 @@ asking (`failsWithoutRunning` plus the refusal latch). The name goes through
 only a string `name`; the query keys `fields` and `supportsAllDrives`) or
 exactly a move (an empty body; the query keys `addParents`, `removeParents`,
 `fields` and `supportsAllDrives`), whatever object a caller builds by hand, and
-refuses anything else with `bad_request` before any request. The boundary spec
+refuses anything else with `bad_request` before any request. It also checks
+the rename `name` with `validateDriveItemName`, refuses a move whose
+`addParents` equals `removeParents`, reads each value once into locals and
+builds the URL and body from that copy, so an object with getters cannot pass
+one value and send another. The boundary spec
 hands it hostile requests (a `trashed`, `permissions` or `writersCanShare` body
 key, an extra query key), checks that the tools call it only with the output of
 `buildDriveRenameRequest` or `buildDriveMoveRequest`, and scans the server, the
@@ -4669,8 +4678,14 @@ order, `execute`:
    by the user or in the trash is refused ("a folder above that folder is
    ..."). The depth limit, an ancestor read that fails, and a folder with more
    than one parent are "not confirmed" (nothing sent, "try again in a
-   moment"). A folder without a parent ends the walk. This catches sharing
-   that a folder only inherits, whichever way Drive reports `shared` for it;
+   moment"). The walk ends only at the live root: a folder without `parents`
+   that is not the id `files.get('root')` answers with is "not confirmed" too,
+   because Drive also omits `parents` for a folder inside a folder the user
+   cannot see (so an orphaned folder is refused as a move source or target).
+   This catches sharing that a folder only inherits, whichever way Drive
+   reports `shared` for it. The same walk (without the cycle check) runs on
+   the parent of `create_folder` (section 19.4, step 6), with "Nothing was
+   created." in its sentences;
 6. `PATCH /drive/v3/files/<id>?addParents=<to>&removeParents=<from>&supportsAllDrives=true&fields=id,name,mimeType,parents`
    with an empty body `{}` (`buildDriveMoveRequest`: only those four query
    keys), and treats an answer whose `parents` is not exactly the target as
@@ -4706,9 +4721,12 @@ an answer looks like a root (`isDriveRootMeta`), its id is compared with the id
 parent check, in the 409 read-back of a top-level create (the created folder's
 parent must be that id) and in the item and folder checks of rename and move.
 The extra read happens once per call and only for an answer of that shape; the
-alias `root` itself needs none (its answer is the root). An orphan folder is a
-folder like any other: it is listed under its own name, accepted as a parent,
-and shown on a card by its name and id, never as "My Drive (top level)".
+alias `root` itself needs none (its answer is the root). An orphan folder is
+listed under its own name and shown on a card by its name and id, never as "My
+Drive (top level)". Because Drive also omits `parents` for a folder inside a
+folder the user cannot see, an orphan is not used as a create parent or as a
+move source or target: the ancestry walk ends only at the live root and
+otherwise answers "not confirmed" (section 19.10, step 5a).
 
 
 ## 20. The setup guide on the own-client card (BES-458)

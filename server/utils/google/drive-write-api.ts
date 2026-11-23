@@ -6,6 +6,7 @@ import {
   GOOGLE_DRIVE_LIST_FOLDER_MAX,
   isDriveRootAlias,
   isDriveWriteId,
+  validateDriveItemName,
 } from '#shared/utils/google-drive-write'
 import { readReason } from '~~/server/utils/google/drive'
 import { escapeDriveQueryText } from '~~/server/utils/google/drive-search'
@@ -595,56 +596,101 @@ function hasExactKeys(
     && keys.every((key, index) => key === expected[index])
 }
 
-function isRenameShapeValid(request: DrivePatchRequest): boolean {
-  return hasExactKeys(request.body, ['name'])
-    && typeof request.body.name === 'string'
-    && hasExactKeys(request.query, RENAME_QUERY_KEYS)
-}
-
-function isMoveShapeValid(request: DrivePatchRequest): boolean {
-  return hasExactKeys(request.body, [])
-    && hasExactKeys(request.query, MOVE_QUERY_KEYS)
-    && isDriveWriteId(request.query.addParents)
-    && isDriveWriteId(request.query.removeParents)
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Whether a request is exactly a rename (a body of only a string `name`,
- * and the query keys `fields` and `supportsAllDrives`) or exactly a move
- * (an empty body, and the query keys `addParents`, `removeParents`,
- * `fields` and `supportsAllDrives`), whatever object the caller built by
- * hand: no other body key and no other query key reaches Drive.
+ * A copy of a request that is exactly a rename (a body of only a valid
+ * `name`, and the query keys `fields` and `supportsAllDrives`) or exactly a
+ * move (an empty body, and the query keys `addParents`, `removeParents`,
+ * `fields` and `supportsAllDrives`, with two different Drive ids), or null.
+ * Every value is read once into a local and the copy is built from those
+ * locals, so an object whose getters answer differently the second time
+ * cannot pass the check with one value and send another. Whatever the
+ * caller built by hand, no other body key and no other query key (an
+ * upper-case `AddParents`, an own `__proto__` key) reaches Drive.
  */
-function isPatchRequestShapeValid(request: DrivePatchRequest): boolean {
-  return isDriveWriteId(request.itemId)
-    && request.query.supportsAllDrives === 'true'
-    && request.query.fields === CREATED_FIELDS
-    && (isRenameShapeValid(request) || isMoveShapeValid(request))
+function snapshotPatchRequest(request: DrivePatchRequest): {
+  itemId: string
+  query: Record<string, string>
+  body: Record<string, unknown>
+} | null {
+  const itemId: unknown = request.itemId
+  const query: unknown = request.query
+  const body: unknown = request.body
+
+  if (
+    !isDriveWriteId(itemId)
+    || !isPlainRecord(query)
+    || !isPlainRecord(body)
+  ) {
+    return null
+  }
+
+  const supportsAllDrives = query.supportsAllDrives
+  const fields = query.fields
+
+  if (supportsAllDrives !== 'true' || fields !== CREATED_FIELDS) {
+    return null
+  }
+
+  if (hasExactKeys(body, ['name'])) {
+    const name = validateDriveItemName(body.name)
+
+    return name.ok && hasExactKeys(query, RENAME_QUERY_KEYS)
+      ? {
+        itemId,
+        query: { supportsAllDrives, fields },
+        body: { name: name.value },
+      }
+      : null
+  }
+
+  if (!hasExactKeys(body, []) || !hasExactKeys(query, MOVE_QUERY_KEYS)) {
+    return null
+  }
+
+  const addParents = query.addParents
+  const removeParents = query.removeParents
+
+  return isDriveWriteId(addParents)
+    && isDriveWriteId(removeParents)
+    && addParents !== removeParents
+    ? {
+      itemId,
+      query: { addParents, removeParents, supportsAllDrives, fields },
+      body: {},
+    }
+    : null
 }
 
 /**
  * The one PATCH of this module, on `/drive/v3/files/<id>` only (never the
  * upload endpoint, which would edit content): a rename or a move built by
- * `buildDriveRenameRequest` or `buildDriveMoveRequest`. Every id is checked
- * for the shape of a Drive id before it reaches the URL.
+ * `buildDriveRenameRequest` or `buildDriveMoveRequest`. The request is
+ * checked and copied by `snapshotPatchRequest`, and the URL and the body are
+ * built from the copy only.
  */
 export async function patchDriveItem(
   request: DrivePatchRequest,
   context: DriveWriteContext,
 ): Promise<DriveWriteResult<CreatedDriveItem>> {
-  if (!isPatchRequestShapeValid(request)) {
+  const snapshot = snapshotPatchRequest(request)
+
+  if (!snapshot) {
     return { ok: false, code: 'bad_request' }
   }
 
   const result = await requestJson(
-    driveItemUrl(request.itemId, request.query),
+    driveItemUrl(snapshot.itemId, snapshot.query),
     {
       method: 'PATCH',
       headers: headersOf(context),
       rawBody: {
         contentType: 'application/json',
         data: new TextEncoder().encode(
-          JSON.stringify(request.body),
+          JSON.stringify(snapshot.body),
         ) as Uint8Array<ArrayBuffer>,
       },
     },
