@@ -327,8 +327,12 @@ describe('Profile/Google/OwnClient', () => {
 
     expect(hint).not.toContain('Gmail')
     expect(hint).toContain('read the files it found')
-    expect(wrapper.find('[data-testid="google-byo-missing-tools"]').exists())
-      .toBe(false)
+
+    const missing = wrapper.get('[data-testid="google-byo-missing-tools"]')
+
+    expect(missing.text()).not.toContain('Gmail')
+    expect(missing.text()).toContain('Changing files needs Change files '
+      + 'access (and Drive read access)')
   })
 
   it('offers no Calendar access and names no Calendar tool while Calendar is '
@@ -506,6 +510,7 @@ describe('Profile/Google/OwnClient', () => {
         capabilities: [
           'identity',
           'drive-read',
+          'drive-write',
           'gmail-read',
           'gmail-compose',
         ],

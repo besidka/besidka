@@ -30,6 +30,13 @@ describe('google-byo contracts', () => {
       .not.toContain(GOOGLE_SCOPES.driveFile)
   })
 
+  it('offers drive-write as a capability that maps to the drive scope', () => {
+    expect(GOOGLE_BYO_CAPABILITIES).toContain('drive-write')
+    expect(getGoogleByoScopes(['drive-write']))
+      .toEqual([GOOGLE_SCOPES.drive])
+    expect(isGoogleByoCapability('drive-write')).toBe(true)
+  })
+
   it('recognizes capability names only', () => {
     expect(isGoogleByoCapability('calendar')).toBe(true)
     expect(isGoogleByoCapability('drive-picked')).toBe(false)

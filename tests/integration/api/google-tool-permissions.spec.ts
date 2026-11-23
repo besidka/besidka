@@ -180,7 +180,7 @@ describe('Google tool permission routes', () => {
 
         const result = await call(getPath)
 
-        expect(result.tools).toHaveLength(11)
+        expect(result.tools).toHaveLength(13)
         expect(modeOf(result)[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe('ask')
       })
 
@@ -348,7 +348,7 @@ describe('Google tool permission routes', () => {
 
         await put({ service: 'drive', mode: 'blocked' })
 
-        expect(await rows()).toHaveLength(5)
+        expect(await rows()).toHaveLength(7)
       })
 
     it('answers 400 for "allow", an unknown mode and a missing mode',

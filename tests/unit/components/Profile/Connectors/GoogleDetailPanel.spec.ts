@@ -478,7 +478,9 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
           'google__drive_read_file',
           'google__drive_search',
           'google__drive_read_found_file',
+          'google__drive_list_folder',
           'google__drive_save_file',
+          'google__drive_create_folder',
         ])
         expect(wrapper.get('[data-testid="google-detail-own-client-hint"]')
           .text()).toContain('needs Google Drive read access')

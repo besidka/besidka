@@ -232,13 +232,14 @@
         v-for="option in offeredOptions"
         :key="option.id"
         class="flex items-start gap-2 text-sm"
+        :class="option.nestedUnder ? 'ml-6' : undefined"
       >
         <input
           v-model="selectedCapabilities"
           type="checkbox"
           class="checkbox checkbox-sm"
           :value="option.id"
-          :disabled="isBusy"
+          :disabled="isBusy || isOptionLocked(option)"
           :data-testid="`google-byo-capability-${option.id}`"
         >
         <span>
@@ -253,6 +254,11 @@
             v-if="option.note"
             class="block text-xs text-base-content/60"
           >{{ option.note }}</span>
+          <span
+            v-if="isOptionLocked(option)"
+            class="block text-xs text-base-content/60"
+            :data-testid="`google-byo-capability-${option.id}-locked`"
+          >{{ GOOGLE_DRIVE_WRITE_NEEDS_READ_HINT }}</span>
         </span>
       </label>
       <div>
@@ -324,6 +330,13 @@
       >
         {{ COMPOSE_SEND_NOTE }}
       </p>
+      <p
+        v-if="connectionState === 'connected' && isDriveWriteGranted"
+        class="text-sm text-base-content/70"
+        data-testid="google-byo-drive-write-note"
+      >
+        {{ GOOGLE_DRIVE_WRITE_SCOPE_NOTE }}
+      </p>
       <div
         v-if="missingToolNotes.length > 0"
         class="alert alert-soft alert-info text-sm"
@@ -371,6 +384,13 @@ import {
 import type { GoogleByoCapability } from '#shared/utils/google-byo'
 import { GOOGLE_CALENDAR_ICON } from '#shared/utils/google-brand-icons'
 import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
+import {
+  GOOGLE_DRIVE_WRITE_ACCESS_NOTE,
+  GOOGLE_DRIVE_WRITE_NEEDS_READ_HINT,
+  GOOGLE_DRIVE_WRITE_SCOPE_NOTE,
+  GOOGLE_DRIVE_WRITE_TOOLS_HINT,
+  GOOGLE_DRIVE_WRITE_TOOLS_MISSING_NOTE,
+} from '#shared/utils/google-drive-write'
 import { getGoogleByoToolsHint } from '#shared/utils/google-gmail-tools'
 import { GOOGLE_CONNECTORS_PATH } from '#shared/utils/google-connectors'
 import {
@@ -393,6 +413,7 @@ interface CapabilityOption {
   label: string
   note?: string
   icon?: string
+  nestedUnder?: GoogleByoCapability
 }
 
 const COMPOSE_SEND_NOTE = 'Google\'s gmail.compose permission technically '
@@ -406,6 +427,12 @@ const GMAIL_CAPABILITIES: ReadonlySet<GoogleByoCapability> = new Set([
 
 const CAPABILITY_OPTIONS: CapabilityOption[] = [
   { id: 'drive-read', label: 'All your Google Drive files, read only' },
+  {
+    id: 'drive-write',
+    label: 'Change files in Google Drive',
+    note: `${GOOGLE_DRIVE_WRITE_ACCESS_NOTE} ${GOOGLE_DRIVE_WRITE_SCOPE_NOTE}`,
+    nestedUnder: 'drive-read',
+  },
   { id: 'gmail-read', label: 'Your Gmail, read only' },
   {
     id: 'gmail-compose',
@@ -424,6 +451,10 @@ const MISSING_TOOL_NOTES: ReadonlyArray<{
   id: GoogleByoCapability
   note: string
 }> = [
+  {
+    id: 'drive-write',
+    note: GOOGLE_DRIVE_WRITE_TOOLS_MISSING_NOTE,
+  },
   {
     id: 'gmail-read',
     note: 'Searching and reading Gmail needs Gmail read access.',
@@ -545,12 +576,32 @@ const missingToolNotes = computed<string[]>(() => {
 })
 
 const toolsHint = computed<string>(() => {
-  return getGoogleByoToolsHint(isGmailActive.value, isCalendarActive.value)
+  const hint = getGoogleByoToolsHint(
+    isGmailActive.value,
+    isCalendarActive.value,
+  )
+
+  return isDriveWriteGranted.value
+    ? `${hint} ${GOOGLE_DRIVE_WRITE_TOOLS_HINT}`
+    : hint
 })
 
 const isComposeGranted = computed<boolean>(() => {
   return grantedCapabilities.value.includes('gmail-compose')
 })
+
+const isDriveWriteGranted = computed<boolean>(() => {
+  return grantedCapabilities.value.includes('drive-write')
+})
+
+const isDriveReadAvailable = computed<boolean>(() => {
+  return grantedCapabilities.value.includes('drive-read')
+    || selectedCapabilities.value.includes('drive-read')
+})
+
+function isOptionLocked(option: CapabilityOption): boolean {
+  return option.nestedUnder === 'drive-read' && !isDriveReadAvailable.value
+}
 
 const offeredOptions = computed<CapabilityOption[]>(() => {
   return CAPABILITY_OPTIONS.filter((option) => {
@@ -566,7 +617,18 @@ const requestedCapabilities = computed<GoogleByoCapability[]>(() => {
       ...selectedCapabilities.value,
     ]),
   ].filter((id) => {
-    return isCalendarActive.value || id !== 'calendar'
+    return (isCalendarActive.value || id !== 'calendar')
+      && (id !== 'drive-write' || isDriveReadAvailable.value)
+  })
+})
+
+watch(isDriveReadAvailable, (isAvailable) => {
+  if (isAvailable) {
+    return
+  }
+
+  selectedCapabilities.value = selectedCapabilities.value.filter((id) => {
+    return id !== 'drive-write'
   })
 })
 

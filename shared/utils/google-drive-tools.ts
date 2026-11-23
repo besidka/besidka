@@ -10,12 +10,21 @@ export const GOOGLE_DRIVE_SAVE_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_save
 export const GOOGLE_DRIVE_SEARCH_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_search`
 export const GOOGLE_DRIVE_READ_FOUND_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_read_found_file`
 
+export const GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_list_folder`
+export const GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME = `${GOOGLE_TOOL_NAME_PREFIX}drive_create_folder`
+
+export const GOOGLE_DRIVE_WRITE_TOOL_NAMES: readonly string[] = [
+  GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
+  GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
+]
+
 export const GOOGLE_DRIVE_TOOL_NAMES: readonly string[] = [
   GOOGLE_DRIVE_LIST_TOOL_NAME,
   GOOGLE_DRIVE_READ_TOOL_NAME,
   GOOGLE_DRIVE_SAVE_TOOL_NAME,
   GOOGLE_DRIVE_SEARCH_TOOL_NAME,
   GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+  ...GOOGLE_DRIVE_WRITE_TOOL_NAMES,
 ]
 
 export const GOOGLE_DRIVE_FILE_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/
@@ -62,6 +71,8 @@ export const GOOGLE_DRIVE_TOOLS_HINT = 'The model can list and read the '
 export const GOOGLE_DRIVE_TOOLS_INFO_LABEL = 'About Google Drive in chats'
 
 export const GOOGLE_DRIVE_FILE_REFERENCE_KIND = 'drive-file'
+export const GOOGLE_DRIVE_FOLDER_REFERENCE_KIND = 'drive-folder'
+export const GOOGLE_DRIVE_ROOT_REFERENCE_KIND = 'drive-root'
 export const GOOGLE_DRIVE_SAVE_PENDING_PREFIX = 'pending:'
 export const GOOGLE_DRIVE_SAVE_CLAIM_MAX_AGE_MS = 2 * 60 * 1000
 
@@ -204,6 +215,16 @@ const TOOL_STEP_TITLES: Readonly<Record<string, {
     pending: 'Reading a found file from Google Drive',
     done: 'Read a found file from Google Drive',
     failed: 'Reading a found file from Google Drive failed',
+  },
+  [GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME]: {
+    pending: 'Listing folders in Google Drive',
+    done: 'Listed folders in Google Drive',
+    failed: 'Listing folders in Google Drive failed',
+  },
+  [GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME]: {
+    pending: 'Creating a folder in Google Drive',
+    done: 'Created a folder in Google Drive',
+    failed: 'Creating a folder in Google Drive failed',
   },
 }
 

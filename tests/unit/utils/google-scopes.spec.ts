@@ -160,6 +160,7 @@ describe('Google scope capabilities', () => {
 
     expect(byoOnlyScopes).toEqual([
       GOOGLE_SCOPES.driveReadonly,
+      GOOGLE_SCOPES.drive,
       GOOGLE_SCOPES.gmailReadonly,
       GOOGLE_SCOPES.gmailCompose,
       GOOGLE_SCOPES.calendarEventsOwned,
@@ -191,6 +192,21 @@ describe('Google scope capabilities', () => {
     expect(byoScopes).toContain(GOOGLE_SCOPES.gmailCompose)
     expect(byoScopes).toContain(GOOGLE_SCOPES.calendarEventsOwned)
     expect(byoScopes).toContain(GOOGLE_SCOPES.calendarEventsFreebusy)
+  })
+
+  it('offers the full drive scope as the restricted drive-write capability '
+    + 'of the own client only', () => {
+    expect(GOOGLE_SCOPES.drive)
+      .toBe('https://www.googleapis.com/auth/drive')
+    expect(GOOGLE_SCOPE_CAPABILITIES['drive-write'].scopes)
+      .toEqual([GOOGLE_SCOPES.drive])
+    expect(GOOGLE_SCOPE_CAPABILITIES['drive-write'].clients)
+      .toEqual(['byo'])
+    expect(GOOGLE_SCOPE_CAPABILITIES['drive-write'].classification)
+      .toBe('restricted')
+    expect(isCapabilityAllowedForClient('drive-write', 'besidka')).toBe(false)
+    expect(getScopesForClient('besidka')).not.toContain(GOOGLE_SCOPES.drive)
+    expect(getScopesForClient('byo')).toContain(GOOGLE_SCOPES.drive)
   })
 
   it('asks for the two narrow Calendar scopes and never the broad ones', () => {
