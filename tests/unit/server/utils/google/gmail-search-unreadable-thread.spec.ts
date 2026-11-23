@@ -125,7 +125,8 @@ describe('google__gmail_search with a thread Gmail cannot read', () => {
         t1: () => googleError(503, 'backendError'),
         t2: () => googleError(503, 'backendError'),
       }))).rejects.toMatchObject({
-        message: GMAIL_FAILURE_TEXT.failed,
+        message: `${GMAIL_FAILURE_TEXT.failed}`
+          + ' (Gmail answered 503, reason backendError.)',
         status: 502,
       })
     })

@@ -75,9 +75,11 @@ import {
   getGmailThreadMessageIds,
   getGmailThreadMetadata,
   getGmailThreadReplyHeaders,
+  gmailFailureSuffix,
   listGmailThreads,
 } from '~~/server/utils/google/gmail-api'
 import type {
+  GmailFailure,
   GmailFailureCode,
   GmailRequestContext,
 } from '~~/server/utils/google/gmail-api'
@@ -384,6 +386,13 @@ function failureOf(
   texts: Readonly<Record<GmailFailureCode, string>> = GMAIL_FAILURE_TEXT,
 ) {
   return toolFailure(texts[code], FAILURE_STATUS[code])
+}
+
+function gmailFailureOf(failure: GmailFailure) {
+  return toolFailure(
+    `${GMAIL_FAILURE_TEXT[failure.code]}${gmailFailureSuffix(failure)}`,
+    FAILURE_STATUS[failure.code],
+  )
 }
 
 function toRecipients(
@@ -1051,7 +1060,7 @@ export async function buildGoogleByoTools(
     }
 
     if (thread.code !== 'too_large') {
-      throw failureOf(thread.code)
+      throw gmailFailureOf(thread)
     }
 
     return await readLargeThread(threadId, context)
@@ -1071,7 +1080,7 @@ export async function buildGoogleByoTools(
     const listed = await getGmailThreadMessageIds(threadId, context)
 
     if (!listed.ok) {
-      throw failureOf(listed.code)
+      throw gmailFailureOf(listed)
     }
 
     const newestFirst = [...listed.value].sort((first, second) => {
@@ -1103,7 +1112,7 @@ export async function buildGoogleByoTools(
           continue
         }
 
-        throw failureOf(message.code)
+        throw gmailFailureOf(message)
       }
 
       const block = formatThreadMessage(message.value, total - position, total)
@@ -1141,13 +1150,14 @@ export async function buildGoogleByoTools(
       const listed = await listGmailThreads(callInput.query, limit, context)
 
       if (!listed.ok) {
-        throw failureOf(listed.code)
+        throw gmailFailureOf(listed)
       }
 
       const entries: SearchEntry[] = []
       let skippedThreads = 0
       let unreadableThreads = 0
       const unreadableCodes: Record<string, number> = {}
+      let firstUnreadable: GmailFailure | null = null
 
       for (const threadId of listed.value) {
         if (unreadableThreads >= SEARCH_UNREADABLE_THREADS_MAX) {
@@ -1171,12 +1181,13 @@ export async function buildGoogleByoTools(
 
           if (SKIPPABLE_THREAD_FAILURES.has(metadata.code)) {
             unreadableThreads += 1
+            firstUnreadable ??= metadata
             countUnreadableCode(unreadableCodes, metadata)
 
             continue
           }
 
-          throw failureOf(metadata.code)
+          throw gmailFailureOf(metadata)
         }
 
         const newest = sortByInternalDate(recordsOf(metadata.value.messages))
@@ -1200,8 +1211,8 @@ export async function buildGoogleByoTools(
         },
       })
 
-      if (entries.length === 0 && unreadableThreads > 0) {
-        throw failureOf('failed')
+      if (entries.length === 0 && firstUnreadable) {
+        throw gmailFailureOf(firstUnreadable)
       }
 
       const output = fitGoogleToolOutput(
@@ -1302,7 +1313,7 @@ export async function buildGoogleByoTools(
         const headers = await getGmailThreadReplyHeaders(replyThreadId, context)
 
         if (!headers.ok) {
-          throw failureOf(headers.code)
+          throw gmailFailureOf(headers)
         }
 
         replyIds = collectReplyIds(headers.value)
@@ -1338,7 +1349,7 @@ export async function buildGoogleByoTools(
       )
 
       if (!created.ok) {
-        throw failureOf(created.code)
+        throw gmailFailureOf(created)
       }
 
       logger.set({
