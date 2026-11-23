@@ -60,7 +60,7 @@ mockNuxtImport('useChatGoogleData', () => {
 mockNuxtImport('useUserKeys', () => {
   return () => ({
     isGeminiPaidTierConfirmed: computed(() => paidTier.value),
-    hasKeyForProvider: () => hasGeminiKey.value,
+    keyStatusForProvider: () => hasGeminiKey.value ? 'saved' : 'unknown',
   })
 })
 

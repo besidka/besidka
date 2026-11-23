@@ -194,6 +194,18 @@ describe('buildChatInstructions', () => {
       expect(systemText.endsWith(DATE_LINE)).toBe(true)
     })
 
+    it('is added to a search answer continuation, which has no tools', () => {
+      const systemText = buildChatInstructions({
+        ...baseInput,
+        requestedTools: [],
+        hasChatSearchTools: false,
+        hasKnowledgeTools: false,
+        googleToolsWithheldReason: 'model_may_not_receive_google_data',
+      })
+
+      expect(systemText).toContain(SENTENCE)
+    })
+
     it('is absent for the other reason, for no reason and by default', () => {
       for (const googleToolsWithheldReason of [
         'provider_tool_not_removable',

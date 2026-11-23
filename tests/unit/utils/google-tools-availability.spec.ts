@@ -180,15 +180,35 @@ describe('getGoogleToolsUnavailableActions', () => {
     + 'saved key', () => {
     expect(getGoogleToolsUnavailableActions(
       'model_may_not_receive_google_data',
-      { recipientProviderId: 'google', hasGeminiKey: true },
+      {
+        recipientProviderId: 'google',
+        hasGeminiKey: true,
+        geminiPaidTierConfirmed: false,
+      },
     )).toEqual([keysLink, { kind: 'confirm-paid-tier' }])
   })
 
   it('offers only the keys link for Gemini without a saved key', () => {
     expect(getGoogleToolsUnavailableActions(
       'model_may_not_receive_google_data',
-      { recipientProviderId: 'google', hasGeminiKey: false },
+      {
+        recipientProviderId: 'google',
+        hasGeminiKey: false,
+        geminiPaidTierConfirmed: false,
+      },
     )).toEqual([keysLink])
+  })
+
+  it('never offers the confirmation again for a confirmed Gemini key that '
+    + 'is still refused, and offers another model instead', () => {
+    expect(getGoogleToolsUnavailableActions(
+      'model_may_not_receive_google_data',
+      {
+        recipientProviderId: 'google',
+        hasGeminiKey: true,
+        geminiPaidTierConfirmed: true,
+      },
+    )).toEqual([keysLink, chooseModel])
   })
 
   it('offers the keys link and a way to another model for any other '
@@ -196,7 +216,11 @@ describe('getGoogleToolsUnavailableActions', () => {
     for (const recipientProviderId of ['deepseek', 'moonshotai', 'qwen', null]) {
       expect(getGoogleToolsUnavailableActions(
         'model_may_not_receive_google_data',
-        { recipientProviderId, hasGeminiKey: true },
+        {
+          recipientProviderId,
+          hasGeminiKey: true,
+          geminiPaidTierConfirmed: false,
+        },
       )).toEqual([keysLink, chooseModel])
     }
   })
@@ -209,7 +233,11 @@ describe('getGoogleToolsUnavailableActions', () => {
     ] as const) {
       expect(getGoogleToolsUnavailableActions(
         reason,
-        { recipientProviderId: 'deepseek', hasGeminiKey: true },
+        {
+          recipientProviderId: 'deepseek',
+          hasGeminiKey: true,
+          geminiPaidTierConfirmed: false,
+        },
       )).toEqual([])
     }
   })

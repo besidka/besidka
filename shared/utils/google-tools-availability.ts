@@ -125,13 +125,16 @@ export type GoogleToolsNoteAction
 export interface GoogleToolsNoteActionContext {
   recipientProviderId: string | null
   hasGeminiKey: boolean
+  geminiPaidTierConfirmed: boolean
 }
 
 /**
  * The actions under the note of a reason. Only a recipient the allow-list
  * refuses has any: the API Keys link always, the inline paid-tier
- * confirmation for a direct Gemini model with a saved key, and a way to
- * another model for every other recipient.
+ * confirmation only for a direct Gemini model whose saved key is not yet
+ * confirmed (a confirmed one is never shown the control, so one tap cannot
+ * withdraw the statement), and a way to another model for every recipient
+ * that confirming cannot lift.
  */
 export function getGoogleToolsUnavailableActions(
   reason: GoogleToolsUnavailableReason,
@@ -147,7 +150,11 @@ export function getGoogleToolsUnavailableActions(
     path: GOOGLE_TOOLS_WITHHELD_KEYS_PATH,
   }]
 
-  if (context.recipientProviderId === GEMINI_PROVIDER_ID) {
+  const isGeminiAwaitingConfirmation
+    = context.recipientProviderId === GEMINI_PROVIDER_ID
+      && !context.geminiPaidTierConfirmed
+
+  if (isGeminiAwaitingConfirmation) {
     if (context.hasGeminiKey) {
       actions.push({ kind: 'confirm-paid-tier' })
     }

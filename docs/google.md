@@ -2987,7 +2987,8 @@ nothing.
 For `model_may_not_receive_google_data` only (BES-466), the send also adds one
 fixed sentence to the system prompt (`GOOGLE_TOOLS_MODEL_REFUSED_INSTRUCTION`
 in `shared/utils/google-tools-withheld.ts`, added by `buildChatInstructions`
-before the date line, on the main model call only): "The user has Google
+before the date line, on the main model call and on the search answer
+continuation of the same send): "The user has Google
 services connected in Besidka (Drive, Gmail, Calendar), but they are not
 available to this model. If the request needs them, say so and suggest
 switching to another model; do not suggest connecting a service." Without it
@@ -4261,10 +4262,10 @@ changes only what is shown, the stored per-chat choice is untouched and no
 
 | Reason | Actions |
 | --- | --- |
-| `model_may_not_receive_google_data`, direct Gemini with a saved key | "Open API Keys" (`/profile/keys?provider=google`, the Google card) and the API Keys page's own paid-tier confirmation (`ProfileKeysGeminiPaidTier`: the same statement "This key is on a Google Cloud project with billing enabled", the same note and the same `POST /api/v1/profiles/keys/google/paid-tier`, so no new legal text; once ticked the reason lifts and the row becomes a normal switch) |
+| `model_may_not_receive_google_data`, direct Gemini with a saved key that is not confirmed | "Open API Keys" (`/profile/keys?provider=google`, the Google card) and the API Keys page's own paid-tier confirmation (`ProfileKeysGeminiPaidTier`: the same statement "This key is on a Google Cloud project with billing enabled", the same note and the same `POST /api/v1/profiles/keys/google/paid-tier`, so no new legal text; once ticked the reason lifts and the row becomes a normal switch) |
 | `model_may_not_receive_google_data`, direct Gemini without a saved key | "Open API Keys" |
-| `model_may_not_receive_google_data`, any other recipient (DeepSeek, Moonshot AI, Qwen, a gateway model) | "Open API Keys" and "Choose another model" |
-| `provider_tool_not_removable`, `gateway_needs_google_data`, `tool_calling_off` | none (text only; the composer has no control that switches the provider tool off for one message) |
+| `model_may_not_receive_google_data`, any other recipient (DeepSeek, Moonshot AI, Qwen, a gateway model, or a Gemini model that is refused although its key is confirmed, where the confirmation can no longer help and is never shown again) | "Open API Keys" and "Choose another model" |
+| `provider_tool_not_removable`, `gateway_needs_google_data`, `tool_calling_off` | none (text only. The web search and Run code toggles live in the "+" menu and their state in `ChatInput.client.vue`, but the picker has no one-call control to turn the provider tool off for one message, so no link was built) |
 
 "Choose another model" emits `choose-model` up through
 `ConnectorPicker.client.vue` to `ChatInput.client.vue`, which closes the

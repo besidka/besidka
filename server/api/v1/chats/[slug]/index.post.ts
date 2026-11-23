@@ -3790,6 +3790,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: false,
               skillsInstructionBlock: skillsSend.activeSkillsBlock,
               connectorsInstructionBlock,
+              googleToolsWithheldReason,
               currentDateInstruction,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),

@@ -96,6 +96,7 @@ export function buildComposerGoogleRows(input: {
   reason: GoogleToolsUnavailableReason | null
   recipientProviderId?: string | null
   hasGeminiKey?: boolean
+  geminiPaidTierConfirmed?: boolean
 }): ComposerGoogleRow[] {
   const reasonNote = input.reason
     ? getGoogleToolsUnavailableNote(input.reason)
@@ -104,6 +105,7 @@ export function buildComposerGoogleRows(input: {
     ? getGoogleToolsUnavailableActions(input.reason, {
       recipientProviderId: input.recipientProviderId ?? null,
       hasGeminiKey: input.hasGeminiKey === true,
+      geminiPaidTierConfirmed: input.geminiPaidTierConfirmed === true,
     })
     : []
 
@@ -245,7 +247,7 @@ export function useComposerGoogleTools(
   const { selection } = useGoogleToolsSelection()
   const { selection: modelSelection } = useUserModel()
   const { isChatHoldingGoogleData } = useChatGoogleData()
-  const { isGeminiPaidTierConfirmed, hasKeyForProvider } = useUserKeys()
+  const { isGeminiPaidTierConfirmed, keyStatusForProvider } = useUserKeys()
   const driveFeature = useFeature('google.drive')
   const gmailFeature = useFeature('google.gmail')
   const calendarFeature = useFeature('google.calendar')
@@ -327,7 +329,8 @@ export function useComposerGoogleTools(
       servicesOff: servicesOff.value,
       reason: unavailableReason.value,
       recipientProviderId: recipientProviderId.value,
-      hasGeminiKey: hasKeyForProvider(GEMINI_PROVIDER_ID),
+      hasGeminiKey: keyStatusForProvider(GEMINI_PROVIDER_ID) === 'saved',
+      geminiPaidTierConfirmed: isGeminiPaidTierConfirmed.value,
     })
   })
 
