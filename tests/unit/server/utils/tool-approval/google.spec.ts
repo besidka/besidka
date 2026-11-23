@@ -668,6 +668,85 @@ describe('the Google tool gate (tool approvals required)', () => {
     })
   })
 
+  describe('the reason a send offers no Google tool', () => {
+    it('says the model may not receive Google data', async () => {
+      const decision = await getGoogleSendTools({
+        plan: fakePlan(false),
+        mayReceiveGoogleData: async () => false,
+        logger: logger(),
+      })
+
+      expect(decision.tools).toEqual({})
+      expect(decision.entries.size).toBe(0)
+      expect(decision.withheldReason).toBe('model_may_not_receive_google_data')
+    })
+
+    it('says a provider tool stays callable while the chat holds no '
+      + 'Google data', async () => {
+      const mayReceiveGoogleData = vi.fn(async () => true)
+      const decision = await getGoogleSendTools({
+        plan: fakePlan(false),
+        providerToolsStayCallable: true,
+        holdsGoogleData: false,
+        mayReceiveGoogleData,
+        logger: logger(),
+      })
+
+      expect(decision.tools).toEqual({})
+      expect(decision.withheldReason).toBe('provider_tool_not_removable')
+      expect(mayReceiveGoogleData).not.toHaveBeenCalled()
+    })
+
+    it('gives no reason without a candidate', async () => {
+      const decision = await getGoogleSendTools({
+        plan: await planGoogleSendTools(planInput()),
+        providerToolsStayCallable: true,
+        mayReceiveGoogleData: async () => false,
+        logger: logger(),
+      })
+
+      expect(decision.tools).toEqual({})
+      expect(decision.withheldReason).toBeNull()
+    })
+
+    it('gives no reason when the tools are offered', async () => {
+      const decision = await getGoogleSendTools({
+        plan: fakePlan(false),
+        mayReceiveGoogleData: async () => true,
+        logger: logger(),
+      })
+
+      expect(Object.keys(decision.tools)).toEqual(['google__drive_search'])
+      expect(decision.withheldReason).toBeNull()
+    })
+
+    it('gives no reason for a model without tool calling', async () => {
+      const decision = await getGoogleSendTools({
+        plan: fakePlan(false),
+        toolCallingAllowed: false,
+        providerToolsStayCallable: true,
+        mayReceiveGoogleData: async () => false,
+        logger: logger(),
+      })
+
+      expect(decision.tools).toEqual({})
+      expect(decision.withheldReason).toBeNull()
+    })
+
+    it('lets a provider tool through once the chat holds Google data and '
+      + 'asks the data guard', async () => {
+      const decision = await getGoogleSendTools({
+        plan: fakePlan(false),
+        providerToolsStayCallable: true,
+        holdsGoogleData: true,
+        mayReceiveGoogleData: async () => false,
+        logger: logger(),
+      })
+
+      expect(decision.withheldReason).toBe('model_may_not_receive_google_data')
+    })
+  })
+
   it('drops every google__ tool that did not come from the Google assembly',
     () => {
       const tools = {

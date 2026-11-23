@@ -2455,6 +2455,24 @@ describe('connector tool parts in assistant messages', () => {
       ],
     } as unknown as UIMessage)).toBe(true)
   })
+
+  it('does not count the Google tools withheld note as an answer', () => {
+    const withheldPart = {
+      type: 'data-google-tools-withheld',
+      data: { reason: 'model_may_not_receive_google_data' },
+    }
+
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [withheldPart],
+    } as unknown as UIMessage)).toBe(false)
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [withheldPart, { type: 'text', text: 'Answer' }],
+    } as unknown as UIMessage)).toBe(true)
+  })
 })
 
 describe('useChat request body connectorIds', () => {

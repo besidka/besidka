@@ -428,6 +428,10 @@ import type {
   AnthropicThinkingOption,
 } from '~~/server/utils/providers/anthropic'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
+import { createGoogleToolsWithheldPart } from '#shared/utils/google-tools-withheld'
+import type {
+  GoogleToolsWithheldReason,
+} from '#shared/utils/google-tools-withheld'
 import {
   auditConnectorCall,
   createConnectorArgsHasher,
@@ -2439,6 +2443,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const connectorNotices: string[] = []
+  let googleToolsWithheldReason: GoogleToolsWithheldReason | null = null
   const hashConnectorArgs = createConnectorArgsHasher(
     useRuntimeConfig().encryptionKey,
   )
@@ -2731,6 +2736,8 @@ export default defineEventHandler(async (event) => {
       },
       logger: aiLogger,
     })
+
+    googleToolsWithheldReason = googleSend.withheldReason
 
     parsedTools = {
       ...parsedTools,
@@ -3205,6 +3212,14 @@ export default defineEventHandler(async (event) => {
             type: CONNECTORS_NOTICE_PART_TYPE,
             data: { lines: connectorNotices },
           })
+        }
+
+        const googleToolsWithheldPart = !isResume && googleToolsWithheldReason
+          ? createGoogleToolsWithheldPart(googleToolsWithheldReason)
+          : undefined
+
+        if (googleToolsWithheldPart) {
+          writer.write(googleToolsWithheldPart)
         }
 
         if (!isResume && missingFiles.length > 0) {
@@ -3898,6 +3913,9 @@ export default defineEventHandler(async (event) => {
           skillActivationParts: isResume
             ? []
             : skillsSend.streamActivations as unknown as UIMessage['parts'],
+          googleToolsWithheldPart: googleToolsWithheldPart
+            ? googleToolsWithheldPart as unknown as UIMessage['parts'][number]
+            : undefined,
           resume: resume && resumedStoredMessage
             ? {
               storedMessage: resumedStoredMessage,
@@ -6300,6 +6318,7 @@ async function persistAssistantMessageFromStream(input: {
   userMessagePublicId?: string
   pastChatChipPart?: UIMessage['parts'][number]
   skillActivationParts?: UIMessage['parts']
+  googleToolsWithheldPart?: UIMessage['parts'][number]
   getConnectorSecrets?: () => string[]
   isGoogleDerived?: () => boolean
   ensureGoogleDataFlag?: () => Promise<void>
@@ -6433,6 +6452,9 @@ async function persistAssistantMessageFromStream(input: {
           redactSkillToolPartsForPersistence(
             redactMemoryToolPartsForPersistence(
               appendSkillActivationParts([
+                ...(input.googleToolsWithheldPart
+                  ? [input.googleToolsWithheldPart]
+                  : []),
                 ...(input.skillActivationParts ?? []),
                 ...partsBeforeSizeGuard,
               ]),

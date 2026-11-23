@@ -2932,6 +2932,48 @@ keep working (tested). `google.gmail` is
 stage `internal`, `optIn: 'required'`, `spend: 'none'`, still a child of
 `google.byo`.
 
+### 14.2a When no tool is offered: the note (BES-459)
+
+The two withholdings above were silent: the model answered that it had no
+calendar, and nothing told the user why. When the user has Google candidates
+(an active connection and the flags, so `planGoogleSendTools` found tools) and
+`getGoogleSendTools` offers none, its decision carries `withheldReason`:
+
+| Code | When | Note (collapsed line) |
+| --- | --- | --- |
+| `model_may_not_receive_google_data` | `mayReceiveGoogleData` refused the model (for example a Gemini key not confirmed as paid) | "Google tools were not offered to this model." |
+| `provider_tool_not_removable` | a provider-run tool stays callable (`hasUnremovableProviderTool`) and the chat holds no Google data yet | "Google tools were not offered with a built-in provider tool." |
+
+There is no code for a user without candidates, nor for a model without tool
+calling (`toolCallingAllowed === false`). The route writes one
+`data-google-tools-withheld` part (`{ reason }`, nothing else) once per
+assistant message: on the live stream next to the connector notice, and into
+the persisted parts through `persistAssistantMessageFromStream`, so it
+survives a reload. A resumed send (an approval continuation) writes none; the
+stored message keeps the one from the first send. The part comes from
+`shared/utils/google-tools-withheld.ts`, which also holds the fixed texts, so
+no model output and no server text is rendered, and an unknown code renders
+nothing.
+
+`Chat/GoogleToolsWithheld.vue` shows it above the answer as a collapsed
+`<details>` line (the pattern of `Chat/OmittedContextFiles.vue`) whose
+expanded body is a `ChatInputToolsMenuInfoNote`; the first reason links to
+`/profile/keys?provider=google`. The assistant bubble stays hidden until it
+has visible content (`hasVisibleAssistantContent` in `app/composables/chat.ts`),
+and this part is not visible content, so the note appears in the same render
+as the first text and never later; only a user opening the details changes
+the height. A reply that consists of the note only is not stored: the
+server's `hasMeaningfulAssistantParts` in
+`server/utils/chats/persist-user-message.ts` is a whitelist and the part does
+not count, which matches the other notices. The second reason fires for the
+provider tools that cannot be removed between steps: Anthropic web search,
+Anthropic Run code and Qwen search (`hasUnremovableProviderTool`).
+
+The model is told nothing: the part is dropped by the history sanitizer
+(`buildModelContextMessages` keeps text only), no reason text enters the
+system text or the tools, and the part is removed from a public share
+(`filterPublicParts`, so the shared view never has it) and from a branch.
+
 ### 14.3 What is stored, and what the user sees after a reload
 
 D1 holds references only (`redactGoogleToolPartsForPersistence`), plus the
