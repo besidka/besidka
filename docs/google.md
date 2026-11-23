@@ -1586,6 +1586,26 @@ event, the answer falls back to the key alone, which is the earlier
 behavior. Shared chats, `/artifacts/<token>` and the admin pages never get
 the Google source.
 
+The fallback stays `true` on purpose (BES-467, audit item G). Reading Nitro
+2.13 and h3 1.15 (not run on a preview): the SSR plugin calls
+`/api/v1/features` through `useRequestFetch()`, which hands the page's
+`event.context` to the inner request as `req.__unenv__`, but Nitro's
+`onRequest` builds a new context object for the inner event from
+`_platform` only (`event.context = { _platform, ...fetchContext._platform,
+...event.context }`). The feature state that the inner request memoizes is
+therefore most likely on the inner event, not on the page's event, so the
+page's `render:response` hook usually finds no state and the fallback is the
+normal case. Making the no-state answer `false` would then remove the Picker
+frame source for every user, flagged or not. What the fallback allows is only
+a `frame-src` entry for `docs.google.com/picker` in the HTML of `/chats/...`
+for a user without the flag, when the public key is set; that user cannot open
+the Picker, because its token route, the `+` menu entry and the tools all
+need the flag and a connection. The alternatives, each an owner decision:
+load the state in the hook with `useFeatureContext(event)` (one more D1 batch
+and KV read per chat page render, which also repeats the work of the SSR
+plugin), or have the SSR plugin's request share the page's context. Neither
+was built.
+
 The same sources are added by the meta tag the artifact frame inserts on a
 client-side navigation into a chat (`ensureArtifactFramePolicy`, which can
 only add restrictions after it is inserted), under the same conditions: the
