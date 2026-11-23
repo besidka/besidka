@@ -2523,6 +2523,118 @@ describe('tool approval continuation', () => {
       })
     })
 
+    describe('a Drive folder create the user blocked or switched off after '
+      + 'approving it', () => {
+      const BLOCKED_TEXT = 'This tool is blocked in the user\'s settings, so '
+        + 'the action did not run.'
+      let createExecute: ReturnType<typeof vi.fn>
+
+      beforeEach(async () => {
+        const { buildGoogleApprovalEntry } = await import(
+          '~~/server/utils/tool-approval/send'
+        )
+
+        createExecute = vi.fn(async () => ({
+          references: [{ id: 'folder-id-0123456789' }],
+          created: true,
+        }))
+        mocks.googleSend = {
+          tools: {
+            google__drive_create_folder: tool({
+              description: 'Create a folder.',
+              inputSchema: z.object({ name: z.string() }),
+              execute: createExecute,
+            }),
+          },
+          entries: new Map([
+            ['google__drive_create_folder', buildGoogleApprovalEntry({
+              toolName: 'google__drive_create_folder',
+              kind: 'write',
+              definitionHash: GOOGLE_HASH,
+              summary: 'Create a folder in your Google Drive',
+              toolApprovalsActive: true,
+            })],
+          ]),
+        }
+      })
+
+      async function pauseOnCreate() {
+        return await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          steps: [
+            toolCallChunks('call-f', 'google__drive_create_folder', {
+              name: 'Reports',
+            }),
+          ],
+        })
+      }
+
+      it('runs the approved create when nothing changed', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        expect(createExecute).not.toHaveBeenCalled()
+
+        await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+
+        expect(createExecute).toHaveBeenCalledTimes(1)
+      })
+
+      it('denies it with the blocked text and never calls Google once the '
+        + 'tool is Blocked', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleBlockedNames = ['google__drive_create_folder']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(createExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+        expect(writtenChunks().some(chunk => chunk.type === 'error'))
+          .toBe(false)
+      })
+
+      it('denies it with the blocked text and never calls Google once '
+        + 'Drive is switched off in the chat', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleServicesOff = ['drive']
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('It did not run.')])
+
+        expect(createExecute).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: BLOCKED_TEXT,
+        })
+      })
+
+      it('still runs it when only the folder list is Blocked', async () => {
+        const paused = await pauseOnCreate()
+        const [approvalId] = paused.approvalIds
+
+        mocks.googleBlockedNames = ['google__drive_list_folder']
+
+        await answer(paused, [
+          { approvalId, approved: true },
+        ], [textChunks('Created it.')])
+
+        expect(createExecute).toHaveBeenCalledTimes(1)
+      })
+    })
+
     describe('with the real Drive tools', () => {
       const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz'
 

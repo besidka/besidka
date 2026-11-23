@@ -1721,6 +1721,85 @@ describe('tool approval requests in the chat send', () => {
     })
   })
 
+  describe('the Drive folder tools', () => {
+    const FOLDER_TOOLS = [
+      'google__drive_list_folder',
+      'google__drive_create_folder',
+    ]
+
+    async function offerFolderTools() {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+
+      mocks.googleSend = {
+        tools: Object.fromEntries(FOLDER_TOOLS.map((name) => {
+          return [name, tool({
+            description: 'A Drive folder tool.',
+            inputSchema: z.object({ name: z.string().optional() }),
+            execute: vi.fn(async () => ({ references: [] })),
+          })]
+        })),
+        entries: new Map(FOLDER_TOOLS.map((name) => {
+          return [name, buildGoogleApprovalEntry({
+            toolName: name,
+            kind: name.endsWith('create_folder') ? 'write' : 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'A Drive folder tool',
+            toolApprovalsActive: true,
+          })]
+        })),
+      }
+    }
+
+    async function offeredNames() {
+      const { doStream } = await runSend({
+        servers: [linear],
+        steps: [textChunks('Plain answer.')],
+      })
+
+      return ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+        .map((offeredTool: { name: string }) => offeredTool.name)
+    }
+
+    it('offers both when nothing is Blocked or switched off', async () => {
+      await offerFolderTools()
+
+      expect(await offeredNames()).toEqual(expect.arrayContaining(FOLDER_TOOLS))
+    })
+
+    it('offers neither when Drive is switched off in the chat', async () => {
+      await offerFolderTools()
+
+      mocks.googleServicesOff = ['drive']
+
+      const offered = await offeredNames()
+
+      for (const name of FOLDER_TOOLS) {
+        expect(offered).not.toContain(name)
+      }
+    })
+
+    it('keeps both when only another service is switched off', async () => {
+      await offerFolderTools()
+
+      mocks.googleServicesOff = ['gmail', 'calendar']
+
+      expect(await offeredNames()).toEqual(expect.arrayContaining(FOLDER_TOOLS))
+    })
+
+    it('does not offer a Blocked create and keeps the list', async () => {
+      await offerFolderTools()
+
+      mocks.googleBlockedNames = ['google__drive_create_folder']
+
+      const offered = await offeredNames()
+
+      expect(offered).not.toContain('google__drive_create_folder')
+      expect(offered).toContain('google__drive_list_folder')
+    })
+  })
+
   it('runs a granted Google read, stores references only and sets the chat '
     + 'flag', async () => {
     const { buildGoogleApprovalEntry } = await import(

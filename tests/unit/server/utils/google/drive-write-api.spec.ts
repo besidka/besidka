@@ -6,6 +6,7 @@ import {
   classifyDriveWriteFailure,
   createDriveItem,
   generateDriveId,
+  isDriveRootMeta,
   listDriveFolderChildren,
   readDriveItemMeta,
   searchDriveFolders,
@@ -86,6 +87,36 @@ describe('buildDriveCreateDigest', () => {
   })
 })
 
+describe('isDriveRootMeta', () => {
+  const rootMeta = {
+    id: FOLDER_ID,
+    name: 'My Drive',
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: [] as string[],
+    ownedByMe: true as boolean | null,
+    shared: false,
+    driveId: null as string | null,
+    trashed: false,
+    canAddChildren: true,
+    approvalDigest: null,
+  }
+
+  it('is true for an owned folder with no parent outside a shared drive',
+    () => {
+      expect(isDriveRootMeta(rootMeta)).toBe(true)
+    })
+
+  it.each([
+    ['a parent', { parents: [PARENT_ID] }],
+    ['another owner', { ownedByMe: false }],
+    ['an unknown owner', { ownedByMe: null }],
+    ['a shared drive', { driveId: 'drive-1' }],
+    ['another type', { mimeType: 'text/plain' }],
+  ])('is false with %s, whatever the name is', (_label, change) => {
+    expect(isDriveRootMeta({ ...rootMeta, ...change })).toBe(false)
+  })
+})
+
 describe('the Drive requests', () => {
   const context = { accessToken: 'token' }
 
@@ -114,7 +145,7 @@ describe('the Drive requests', () => {
       id: FOLDER_ID,
       name: 'Reports',
       mimeType: 'application/vnd.google-apps.folder',
-      parents: [PARENT_ID, 'not a valid id'],
+      parents: [PARENT_ID],
       ownedByMe: true,
       shared: false,
       trashed: false,
@@ -149,6 +180,57 @@ describe('the Drive requests', () => {
     expect(url.searchParams.get('fields')).not.toContain('permissions')
   })
 
+  it('refuses an answer whose parent has no Drive id shape, so it is never '
+    + 'taken for the top level', async () => {
+    const result = await readDriveItemMeta(FOLDER_ID, {
+      ...context,
+      fetchImpl: respond(200, {
+        id: FOLDER_ID,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: ['not a valid id'],
+        ownedByMe: true,
+      }),
+    })
+
+    expect(result).toEqual({ ok: false, code: 'failed' })
+  })
+
+  it.each([
+    '../../etc/passwd',
+    `${FOLDER_ID}/permissions`,
+    `${FOLDER_ID}?alt=media`,
+    'short',
+    '',
+    'ROOT',
+    `${FOLDER_ID}\r\nx`,
+  ])('sends no request for the id %j', async (itemId) => {
+    const fetchImpl = respond(200, {})
+
+    expect(await readDriveItemMeta(itemId, { ...context, fetchImpl }))
+      .toEqual({ ok: false, code: 'bad_request' })
+    expect(await listDriveFolderChildren(itemId, { ...context, fetchImpl }))
+      .toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('accepts the alias root and a Drive id in a read and a listing',
+    async () => {
+      const meta = respond(200, { id: FOLDER_ID })
+      const children = respond(200, { files: [] })
+
+      await readDriveItemMeta('root', { ...context, fetchImpl: meta })
+      await readDriveItemMeta(FOLDER_ID, { ...context, fetchImpl: meta })
+      await listDriveFolderChildren('root', {
+        ...context,
+        fetchImpl: children,
+      })
+
+      expect(meta).toHaveBeenCalledTimes(2)
+      expect(String(meta.mock.calls[0]![0]))
+        .toContain('/drive/v3/files/root?')
+      expect(children).toHaveBeenCalledTimes(1)
+    })
+
   it('posts one create with supportsAllDrives and reads the answer',
     async () => {
       const fetchImpl = respond(200, {
@@ -182,11 +264,18 @@ describe('the Drive requests', () => {
     })).toEqual({ ok: false, code: 'failed' })
   })
 
-  it('escapes the folder id and the words in a list query', async () => {
+  it('escapes the words in a list query and refuses a folder id that is '
+    + 'query text', async () => {
     const children = respond(200, { files: [] })
     const found = respond(200, { files: [] })
 
-    await listDriveFolderChildren('a\' or \'1\'=\'1', {
+    expect(await listDriveFolderChildren('a\' or \'1\'=\'1', {
+      ...context,
+      fetchImpl: children,
+    })).toEqual({ ok: false, code: 'bad_request' })
+    expect(children).not.toHaveBeenCalled()
+
+    await listDriveFolderChildren(FOLDER_ID, {
       ...context,
       fetchImpl: children,
     })
@@ -198,7 +287,7 @@ describe('the Drive requests', () => {
       .searchParams.get('q')
 
     expect(childrenQuery).toBe(
-      '\'a\\\' or \\\'1\\\'=\\\'1\' in parents and trashed = false',
+      `'${FOLDER_ID}' in parents and trashed = false`,
     )
     expect(foundQuery).toContain('name contains \'it\\\'s\'')
     expect(foundQuery).toContain('trashed = false')

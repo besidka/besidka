@@ -568,6 +568,10 @@ const missingToolNotes = computed<string[]>(() => {
     .filter((item) => {
       return isCalendarActive.value || item.id !== 'calendar'
     })
+    .filter((item) => {
+      return item.id !== 'drive-write'
+        || grantedCapabilities.value.includes('drive-read')
+    })
     .filter(item => !grantedCapabilities.value.includes(item.id))
     .map((item) => {
       return item.id === 'calendar' && partialCalendar

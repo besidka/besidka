@@ -33,6 +33,29 @@ describe('the Drive write boundary', () => {
       expect(source.match(/method: 'GET'/g)?.length).toBeGreaterThan(0)
     })
 
+  it('pins the HTTP methods the Google client can send to GET and POST, so '
+    + 'adding PATCH in a later change must update this spec on purpose',
+  () => {
+    const source = read('server/utils/google/http.ts')
+    const declarations = source.match(/^\s*method: '.+$/gm) ?? []
+
+    expect(declarations.map(line => line.trim())).toEqual([
+      'method: \'GET\' | \'POST\'',
+    ])
+    expect(source).not.toMatch(/'DELETE'|'PUT'|'PATCH'/)
+  })
+
+  it('checks the id shape in the one function that puts an id in a URL '
+    + 'path, with the same rule the tools use', () => {
+    const source = read(API_PATH)
+
+    expect(source).toMatch(
+      /isDriveRootAlias\(value\) \|\| isDriveWriteId\(value\)/,
+    )
+    expect(source.match(/isBoundaryItemId\(/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(source.match(/\$\{DRIVE_FILES_URL\}\/\$\{/g)).toHaveLength(1)
+  })
+
   it('names no endpoint that deletes, shares, copies or watches', () => {
     const source = read(API_PATH)
 

@@ -38,6 +38,9 @@ describe('validateDriveItemName', () => {
   it.each([
     ['an empty name', ''],
     ['a name over 200 units', 'a'.repeat(201)],
+    ['a name of 10,000 characters', 'a'.repeat(10_000)],
+    ['a CRLF line break', 'first\r\nsecond'],
+    ['a CRLF at the end', 'first\r\n'],
     ['a leading space', ' Reports'],
     ['a trailing space', 'Reports '],
     ['a dot', '.'],
@@ -99,6 +102,18 @@ describe('validateCreateFolderInput', () => {
     expect(validateCreateFolderInput({ name: 'Reports', parentFolderId }).ok)
       .toBe(false)
   })
+
+  it('refuses a name the model sends with 10,000 characters or a CRLF',
+    () => {
+      expect(validateCreateFolderInput({ name: 'a'.repeat(10_000) }).ok)
+        .toBe(false)
+      expect(validateCreateFolderInput({ name: 'one\r\ntwo' }).ok)
+        .toBe(false)
+      expect(validateCreateFolderInput({
+        name: 'Reports',
+        parentFolderId: `${FOLDER_ID}\r\nroot`,
+      }).ok).toBe(false)
+    })
 
   it('refuses a bad name and a non-object', () => {
     expect(validateCreateFolderInput({ name: '' }).ok).toBe(false)

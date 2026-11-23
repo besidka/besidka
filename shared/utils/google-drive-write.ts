@@ -35,7 +35,7 @@ export const GOOGLE_DRIVE_WRITE_NEEDS_READ_HINT = 'Tick the read access '
   + 'first; changing files works together with it.'
 
 export const GOOGLE_DRIVE_WRITE_TOOLS_MISSING_NOTE = 'Changing files needs '
-  + 'Change files access (and Drive read access).'
+  + 'Change files access.'
 
 export const GOOGLE_DRIVE_WRITE_TOOLS_HINT = 'With Change files access, the '
   + 'model can also list your folders and create a folder in your own My '

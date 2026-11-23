@@ -639,7 +639,7 @@ bring-your-own route answers 404.
 There is no public BYO guide page and no video: a page under
 `content/key-guides` would be public on `/guides`, in the sitemap and in
 `llms.txt`. The same steps are written for the user as a collapsed guide
-inside the card (section 19).
+inside the card (section 20).
 
 ## 7. Not in this phase
 
@@ -1197,7 +1197,7 @@ bring-your-own one.
   `content/key-guides` (it would be public on `/guides`, in the sitemap and
   in `llms.txt`), no video, no entry in `providerMeta` or any provider list.
   The text guide that exists lives inside the card, not in content
-  (section 19).
+  (section 20).
 - No Gmail, Calendar or full Drive tool in this child; nothing called those
   APIs then (the Gmail and Drive search tools came with section 14).
 - No KMS: the client secret and the tokens are encrypted with the Worker
@@ -4303,9 +4303,10 @@ unticked, so the client never sends the pair the route refuses. Its note says
 time you approve." and "Google's permission for this also allows deleting and
 sharing; Besidka has no code that deletes or shares." (the same shape as the
 `gmail.compose` note; once granted the second sentence stays on the card).
-The missing-tools note lists "Changing files needs Change files access (and
-Drive read access)" like the other capabilities, so an owner with read access
-only now sees that line; it is the one visible change for a read-only owner.
+The missing-tools note lists "Changing files needs Change files access." like
+the other capabilities, but only for an owner who has Drive read access granted
+and no Change files access, so a Gmail-only or Calendar-only owner never sees
+it; an owner with read access only now sees that line.
 
 ### 19.2 The tools
 

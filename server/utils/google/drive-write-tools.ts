@@ -53,6 +53,7 @@ import {
   buildDriveCreateMetadata,
   createDriveItem,
   generateDriveId,
+  isDriveRootMeta,
   listDriveFolderChildren,
   readDriveItemMeta,
   searchDriveFolders,
@@ -644,13 +645,17 @@ export async function buildGoogleDriveWriteTools(
     const { created } = attempt
 
     if (created.ok) {
+      if (created.value.id !== attempt.folderId) {
+        return throwUnconfirmed()
+      }
+
       return {
         alreadyExisted: false,
         createdParents: created.value.parents,
       }
     }
 
-    if (created.code === 'failed') {
+    if (created.code === 'failed' || created.code === 'too_large') {
       return throwUnconfirmed()
     }
 
@@ -727,6 +732,7 @@ export async function buildGoogleDriveWriteTools(
         }
 
         const isRoot = isDriveRootAlias(folderId)
+          || isDriveRootMeta(meta.value)
           || isDriveRootItem(index.folders.get(meta.value.id))
 
         header = {
@@ -828,6 +834,10 @@ export async function buildGoogleDriveWriteTools(
 
         if (!parent.ok) {
           throw failureOf(parent.code)
+        }
+
+        if (isDriveRootMeta(parent.value)) {
+          throw toolFailure(ROOT_ALIAS_TEXT, 400)
         }
 
         assertWritableFolder(parent.value)

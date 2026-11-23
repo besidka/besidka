@@ -74,6 +74,27 @@ describe('Chat/Reasoning/DriveChange', () => {
       .toContain('<img src=x onerror=alert(1)>')
   })
 
+  it('shows a parent folder name from Drive as text, never as markup',
+    async () => {
+      const hostileName = '<script>alert(1)</script><b>bold</b> '
+        + '[x](https://evil.example) <a href="https://evil.example">y</a>'
+      const wrapper = await mountSuspended(DriveChange, {
+        props: {
+          view: view({
+            name: '<i>new</i>',
+            parent: { isRoot: false, name: hostileName, id: FOLDER_ID },
+          }),
+        },
+      })
+
+      expect(wrapper.find('script').exists()).toBe(false)
+      expect(wrapper.find('b').exists()).toBe(false)
+      expect(wrapper.find('i').exists()).toBe(false)
+      expect(wrapper.find('a').exists()).toBe(false)
+      expect(wrapper.get(testId('parent')).text()).toContain(hostileName)
+      expect(wrapper.get(testId('name')).text()).toBe('<i>new</i>')
+    })
+
   it('says Besidka cannot delete files or change who can see them',
     async () => {
       const wrapper = await mountSuspended(DriveChange, {

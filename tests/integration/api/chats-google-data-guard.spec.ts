@@ -748,6 +748,62 @@ describe('chat send data guard', () => {
         expect(result.batches).toHaveLength(1)
       })
 
+    describe('the Drive folder tools', () => {
+      function storedFolderMessage(toolName: string) {
+        return [{
+          id: 'assistant-1',
+          publicId: 'assistant-public-1',
+          role: 'assistant',
+          parts: [{
+            type: `tool-${toolName}`,
+            toolCallId: 'call-1',
+            state: 'output-available',
+            input: {},
+            output: {
+              references: [{
+                id: 'folder-id-0123456789',
+                kind: 'drive-folder',
+                title: 'Reports',
+              }],
+            },
+          }],
+          tools: [],
+          reasoning: 'off',
+          usage: null,
+          createdAt: new Date(1_000),
+        }]
+      }
+
+      it('flags a chat that ran the folder list and refuses a model that '
+        + 'may not see Google data', async () => {
+        const result = await runSend({
+          googleDataAt: null,
+          storedMessages: storedFolderMessage('google__drive_list_folder'),
+          directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+        })
+
+        expect(result.error).toMatchObject({ status: 403 })
+        expect(result.doStream).not.toHaveBeenCalled()
+        expect(result.updateSets).toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+      })
+
+      it('does not flag a chat that only created a folder', async () => {
+        const result = await runSend({
+          googleDataAt: null,
+          storedMessages: storedFolderMessage('google__drive_create_folder'),
+          directModel: { providerId: 'openai', modelId: 'gpt-5-mini' },
+        })
+
+        expect(result.error).toBeNull()
+        expect(result.doStream).toHaveBeenCalled()
+        expect(result.updateSets).not.toContainEqual({
+          googleDataAt: expect.anything(),
+        })
+      })
+    })
+
     it('flags the chat before the guard for an attached Google copy',
       async () => {
         mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([[

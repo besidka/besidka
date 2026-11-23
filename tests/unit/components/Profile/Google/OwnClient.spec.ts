@@ -339,8 +339,23 @@ describe('Profile/Google/OwnClient', () => {
 
     expect(missing.text()).not.toContain('Gmail')
     expect(missing.text()).toContain('Changing files needs Change files '
-      + 'access (and Drive read access)')
+      + 'access.')
+    expect(missing.text()).not.toContain('Drive read access)')
   })
+
+  it('shows no Change files note to an owner without Drive read access',
+    async () => {
+      setByo({
+        hasClient: true,
+        connection: connection({ capabilities: ['identity'] }),
+      })
+
+      const wrapper = await mountOwnClient()
+      const missing = wrapper.get('[data-testid="google-byo-missing-tools"]')
+
+      expect(missing.text()).not.toContain('Changing files')
+      expect(missing.text()).toContain('Searching Google Drive')
+    })
 
   it('offers no Calendar access and names no Calendar tool while Calendar is '
     + 'off in Labs', async () => {

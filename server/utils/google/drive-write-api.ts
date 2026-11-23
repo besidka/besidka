@@ -2,7 +2,11 @@ import {
   GOOGLE_DRIVE_FILE_ID_PATTERN,
   GOOGLE_DRIVE_FOLDER_MIME_TYPE,
 } from '#shared/utils/google-drive'
-import { GOOGLE_DRIVE_LIST_FOLDER_MAX } from '#shared/utils/google-drive-write'
+import {
+  GOOGLE_DRIVE_LIST_FOLDER_MAX,
+  isDriveRootAlias,
+  isDriveWriteId,
+} from '#shared/utils/google-drive-write'
 import { readReason } from '~~/server/utils/google/drive'
 import { escapeDriveQueryText } from '~~/server/utils/google/drive-search'
 import {
@@ -197,6 +201,10 @@ async function requestJson(
   }
 }
 
+function isBoundaryItemId(value: string): boolean {
+  return isDriveRootAlias(value) || isDriveWriteId(value)
+}
+
 function toBase64Url(bytes: Uint8Array): string {
   let binary = ''
 
@@ -300,6 +308,19 @@ function booleanOrNull(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
 }
 
+/**
+ * Whether a live `files.get` answer is the top level of the user's own My
+ * Drive: a folder that nothing contains, that the user owns, outside any
+ * shared drive. The decision is taken from Drive's answer, never from a name
+ * or from what an earlier tool result called the folder.
+ */
+export function isDriveRootMeta(meta: DriveItemMeta): boolean {
+  return meta.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE
+    && meta.parents.length === 0
+    && meta.ownedByMe === true
+    && meta.driveId === null
+}
+
 function readItemMeta(value: Record<string, unknown>): DriveItemMeta | null {
   if (
     typeof value.id !== 'string'
@@ -314,6 +335,11 @@ function readItemMeta(value: Record<string, unknown>): DriveItemMeta | null {
         && GOOGLE_DRIVE_FILE_ID_PATTERN.test(parent)
     })
     : []
+
+  if (Array.isArray(value.parents) && parents.length !== value.parents.length) {
+    return null
+  }
+
   const capabilities = isRecord(value.capabilities)
     ? value.capabilities
     : null
@@ -349,6 +375,10 @@ export async function readDriveItemMeta(
   itemId: string,
   context: DriveWriteContext,
 ): Promise<DriveWriteResult<DriveItemMeta>> {
+  if (!isBoundaryItemId(itemId)) {
+    return { ok: false, code: 'bad_request' }
+  }
+
   const result = await requestJson(
     `${DRIVE_FILES_URL}/${encodeURIComponent(itemId)}?${new URLSearchParams({
       supportsAllDrives: 'true',
@@ -503,6 +533,10 @@ export async function listDriveFolderChildren(
   folderId: string,
   context: DriveWriteContext,
 ): Promise<DriveWriteResult<ListedDriveItems>> {
+  if (!isBoundaryItemId(folderId)) {
+    return { ok: false, code: 'bad_request' }
+  }
+
   return await listDriveItems(
     `'${escapeDriveQueryText(folderId)}' in parents and trashed = false`,
     context,
