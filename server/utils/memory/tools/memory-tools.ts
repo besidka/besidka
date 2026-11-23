@@ -106,6 +106,14 @@ const UNTRUSTED_CONTENT_FIX = 'Tell the user nothing was saved or removed, '
   + 'and that they can repeat the request in a new message with web search '
   + 'turned off.'
 
+const GOOGLE_DATA_WRITE_MESSAGE = 'Memory writes are unavailable in this '
+  + 'chat because it now holds data from the user\'s Google account. Do not '
+  + `call ${MEMORY_WRITE_TOOL_NAME} or ${MEMORY_FORGET_TOOL_NAME} again in `
+  + 'this chat.'
+
+const GOOGLE_DATA_WRITE_FIX = 'Tell the user nothing was saved or removed '
+  + 'and that memory changes can be made in a chat that holds no Google data.'
+
 const PROJECT_MEMORY_OFF_MESSAGE = 'Project memory is turned off for this '
   + 'project.'
 
@@ -277,6 +285,18 @@ function assertNoUntrustedContentSeen(
     message: UNTRUSTED_CONTENT_MESSAGE,
     status: 403,
     fix: UNTRUSTED_CONTENT_FIX,
+  })
+}
+
+function assertWriteAllowed(isWriteAllowed: () => boolean): void {
+  if (isWriteAllowed()) {
+    return
+  }
+
+  throw createError({
+    message: GOOGLE_DATA_WRITE_MESSAGE,
+    status: 403,
+    fix: GOOGLE_DATA_WRITE_FIX,
   })
 }
 
@@ -744,7 +764,7 @@ export function getMemoryTools(input: {
   useAccountMemory: boolean | null
   sourceMessageId: string | null
   userMessageText: string | null
-  allowsWrite?: boolean
+  allowsWrite?: boolean | (() => boolean)
   budget: ChatSearchBudget
   isApprovedByUser?: (call: {
     toolCallId: string | undefined
@@ -766,6 +786,11 @@ export function getMemoryTools(input: {
     logger: input.logger,
   }
   const userMessageText = input.userMessageText
+  const isWriteAllowed = (): boolean => {
+    return typeof input.allowsWrite === 'function'
+      ? input.allowsWrite()
+      : input.allowsWrite !== false
+  }
 
   const readTools = {
     [MEMORY_LIST_TOOL_NAME]: withFollowUpTurn(tool({
@@ -820,7 +845,7 @@ export function getMemoryTools(input: {
   }
 
   if (
-    input.allowsWrite === false
+    !isWriteAllowed()
     || userMessageText === null
     || userMessageText.trim() === ''
   ) {
@@ -841,6 +866,7 @@ export function getMemoryTools(input: {
           consumeChatSearchCall(input.budget)
 
           try {
+            assertWriteAllowed(isWriteAllowed)
             assertNoUntrustedContentSeen(
               input.budget,
               input.isApprovedByUser?.({
@@ -864,6 +890,7 @@ export function getMemoryTools(input: {
           consumeChatSearchCall(input.budget)
 
           try {
+            assertWriteAllowed(isWriteAllowed)
             assertNoUntrustedContentSeen(
               input.budget,
               input.isApprovedByUser?.({

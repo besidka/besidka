@@ -2188,7 +2188,7 @@ export default defineEventHandler(async (event) => {
       useAccountMemory: chat.project?.useAccountMemory ?? null,
       sourceMessageId: newMessage.id,
       userMessageText,
-      allowsWrite: !holdsGoogleData,
+      allowsWrite: () => !isGoogleDerivedSend(),
       budget: chatSearchBudget,
       ...(toolApprovalsActive
         ? {
