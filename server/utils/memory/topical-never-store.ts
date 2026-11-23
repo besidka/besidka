@@ -17,6 +17,12 @@ interface TopicalNeverStoreRule {
   casedSources?: readonly string[]
 }
 
+interface CompiledTopicalRule {
+  kind: TopicalNeverStoreKind
+  expression: RegExp
+  casedExpression: RegExp | null
+}
+
 const HOUSE_NUMBER = String.raw`\d{1,5}[a-z]?`
 const NAME_WORDS = String.raw`(?:\p{L}[\p{L}'.-]* ){1,3}`
 const NAME_WORDS_WITH_COMMA = String.raw`(?:\p{L}[\p{L}'.-]*,? ){1,3}`
@@ -182,17 +188,27 @@ const topicalNeverStoreRules: readonly TopicalNeverStoreRule[] = [
   },
 ]
 
-const compiledTopicalRules = topicalNeverStoreRules.map((rule) => {
-  return {
-    kind: rule.kind,
-    expression: compileSensitiveTextExpression(
-      rule.sources.map(foldPolishDiacritics),
-    ),
-    casedExpression: rule.casedSources
-      ? compileSensitiveTextExpression(rule.casedSources)
-      : null,
+let compiledTopicalRules: readonly CompiledTopicalRule[] | null = null
+
+function getCompiledTopicalRules(): readonly CompiledTopicalRule[] {
+  if (compiledTopicalRules) {
+    return compiledTopicalRules
   }
-})
+
+  compiledTopicalRules = topicalNeverStoreRules.map((rule) => {
+    return {
+      kind: rule.kind,
+      expression: compileSensitiveTextExpression(
+        rule.sources.map(foldPolishDiacritics),
+      ),
+      casedExpression: rule.casedSources
+        ? compileSensitiveTextExpression(rule.casedSources)
+        : null,
+    }
+  })
+
+  return compiledTopicalRules
+}
 
 /**
  * The topical never-store kinds (home address, immigration or residence
@@ -212,7 +228,7 @@ export function detectTopicalNeverStoreKinds(
   const foldedText = foldPolishDiacritics(normalizeSensitiveText(text))
   const casedText = foldPolishDiacritics(normalizeSensitiveTextCase(text))
 
-  return compiledTopicalRules
+  return getCompiledTopicalRules()
     .filter((rule) => {
       return rule.expression.test(foldedText)
         || !!rule.casedExpression?.test(casedText)
