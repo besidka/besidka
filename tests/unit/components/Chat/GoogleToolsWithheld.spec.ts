@@ -61,18 +61,19 @@ describe('Chat/GoogleToolsWithheld', () => {
         .toBe('/profile/keys?provider=google')
     })
 
-  it('says Google tools are not offered with built-in web search',
+  it('says Google tools are not offered with a built-in provider tool',
     async () => {
       const wrapper = await mountWithReason('provider_tool_not_removable')
 
       expect(wrapper.find('[data-testid="google-tools-withheld-summary"]')
         .text()).toContain(
-        'Google tools were not offered with built-in web search.',
+        'Google tools were not offered with a built-in provider tool.',
       )
       expect(wrapper.find('[data-testid="google-tools-withheld-detail"]')
         .text()).toContain(
-        'Turn the built-in web search off for this message, or ask again '
-        + 'after a Google file is in the chat.',
+        'Turn off the provider\'s built-in tool for this message (web '
+        + 'search or Run code), or ask again after a Google file is in the '
+        + 'chat.',
       )
       expect(wrapper.find('[data-testid="google-tools-withheld-link"]')
         .exists()).toBe(false)

@@ -28,9 +28,10 @@ export const GOOGLE_TOOLS_WITHHELD_NOTES: Record<
     linkLabel: 'Open API Keys',
   },
   provider_tool_not_removable: {
-    summary: 'Google tools were not offered with built-in web search.',
-    detail: 'Turn the built-in web search off for this message, or ask '
-      + 'again after a Google file is in the chat.',
+    summary: 'Google tools were not offered with a built-in provider tool.',
+    detail: 'Turn off the provider\'s built-in tool for this message (web '
+      + 'search or Run code), or ask again after a Google file is in the '
+      + 'chat.',
     linkLabel: null,
   },
 }
