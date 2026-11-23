@@ -1,7 +1,7 @@
 <template>
   <li
-    class="list-row items-center gap-3 py-3"
-    :class="{ 'bg-base-200': isSelected }"
+    class="list-row relative items-center gap-3 py-3 transition-colors"
+    :class="isSelected ? 'bg-base-200' : 'hover:bg-base-200/60'"
     data-testid="connector-row"
     :data-connector-id="connector.id"
   >
@@ -14,7 +14,7 @@
     <div class="list-col-grow min-w-0">
       <button
         type="button"
-        class="link no-underline block w-full truncate rounded-box text-left font-medium"
+        class="link no-underline block w-full cursor-pointer truncate text-left font-medium after:absolute after:inset-0 after:rounded-box after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-primary"
         data-testid="connector-row-open"
         @click="emit('open', connector)"
       >
@@ -70,7 +70,7 @@
       <button
         v-if="isUnfinished"
         type="button"
-        class="btn btn-sm btn-ghost min-h-11 sm:min-h-8"
+        class="btn btn-sm btn-ghost relative z-10 min-h-11 sm:min-h-8"
         :disabled="isBusy"
         data-testid="connector-row-remove"
         @click="emit('remove', connector)"
@@ -79,7 +79,7 @@
       </button>
       <button
         type="button"
-        class="btn btn-sm btn-primary min-h-11 sm:min-h-8"
+        class="btn btn-sm btn-primary relative z-10 min-h-11 sm:min-h-8"
         :disabled="isBusy"
         data-testid="connector-row-connect"
         @click="emit('connect', connector)"
@@ -90,7 +90,7 @@
     <button
       v-else-if="needsReview"
       type="button"
-      class="btn btn-sm min-h-11 sm:min-h-8"
+      class="btn btn-sm relative z-10 min-h-11 sm:min-h-8"
       :disabled="isBusy"
       data-testid="connector-row-review"
       @click="emit('open', connector)"
@@ -99,7 +99,7 @@
     </button>
     <label
       v-else
-      class="flex items-center gap-2 text-sm"
+      class="relative z-10 flex items-center gap-2 text-sm"
     >
       <span class="sr-only">Use {{ connector.title }} in chats</span>
       <input

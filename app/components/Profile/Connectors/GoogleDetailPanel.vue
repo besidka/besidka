@@ -250,13 +250,66 @@
           </button>
         </div>
       </section>
+
+      <section
+        v-if="driveWriteAccess !== 'hidden' && entry.id === 'google-drive'"
+        class="grid gap-2 rounded-box border border-base-content/10 p-3"
+        data-testid="google-detail-drive-write"
+      >
+        <p
+          v-if="driveWriteAccess === 'granted'"
+          class="text-sm"
+          data-testid="google-detail-drive-write-granted"
+        >
+          {{ GOOGLE_DRIVE_WRITE_GRANTED_LINE }}
+        </p>
+        <template v-else>
+          <label class="flex items-start gap-2 text-sm">
+            <input
+              v-model="isDriveWriteSelected"
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              :disabled="isBusy || driveWriteAccess === 'needs-read'"
+              data-testid="google-detail-drive-write-checkbox"
+            >
+            <span>
+              {{ GOOGLE_DRIVE_WRITE_LABEL }}
+              <span
+                class="block text-xs text-base-content/60"
+                data-testid="google-detail-drive-write-note"
+              >{{ GOOGLE_DRIVE_WRITE_ACCESS_NOTE }}
+                {{ GOOGLE_DRIVE_WRITE_SCOPE_NOTE }}</span>
+              <span
+                v-if="driveWriteAccess === 'needs-read'"
+                class="block text-xs text-base-content/60"
+                data-testid="google-detail-drive-write-needs-read"
+              >{{ GOOGLE_DRIVE_WRITE_NEEDS_READ_FIRST_HINT }}</span>
+            </span>
+          </label>
+          <div>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm min-h-11 sm:min-h-8"
+              :disabled="isBusy
+                || driveWriteAccess !== 'available'
+                || !isDriveWriteSelected"
+              data-testid="google-detail-drive-write-add-access"
+              @click="actions.addDriveWriteAccess(entry)"
+            >
+              Add access
+            </button>
+          </div>
+        </template>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
-import { GOOGLE_DRIVE_WRITE_INFO_TEXT } from '#shared/utils/google-drive-write'
+import { GOOGLE_DRIVE_WRITE_INFO_TEXT,
+  GOOGLE_DRIVE_WRITE_ACCESS_NOTE,
+  GOOGLE_DRIVE_WRITE_SCOPE_NOTE } from '#shared/utils/google-drive-write'
 import {
   GOOGLE_ENTRY_IDS,
   GOOGLE_KEYS_TAB_PATH,
@@ -273,7 +326,11 @@ import {
 } from '#shared/utils/google-tool-catalog'
 import type { GoogleToolCatalogEntry } from '#shared/utils/google-tool-catalog'
 import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
-import type { GoogleEntry } from '~/utils/google-entries'
+import { resolveGoogleDriveWriteAccess } from '~/utils/google-entries'
+import type {
+  GoogleDriveWriteAccess,
+  GoogleEntry,
+} from '~/utils/google-entries'
 import type {
   ToolPermissionChange,
   ToolPermissionGroup,
@@ -304,6 +361,11 @@ const INFO_TEXTS: Readonly<Record<GoogleEntryId, string>> = {
   'google-calendar': GOOGLE_CALENDAR_ACCESS_NOTE,
 }
 
+const GOOGLE_DRIVE_WRITE_LABEL = 'Change files in Google Drive'
+const GOOGLE_DRIVE_WRITE_GRANTED_LINE = 'Change files access granted'
+const GOOGLE_DRIVE_WRITE_NEEDS_READ_FIRST_HINT
+  = 'Needs Drive read access first'
+
 const props = defineProps<{
   entryId: GoogleEntryId
 }>()
@@ -313,6 +375,7 @@ const actions = useGoogleEntryActions()
 const { isBusy, announcement } = actions
 const permissions = useGoogleToolPermissions()
 const isInfoOpen = shallowRef<boolean>(false)
+const isDriveWriteSelected = shallowRef<boolean>(false)
 
 const entry = computed<GoogleEntry | null>(() => {
   return GOOGLE_ENTRY_IDS.includes(props.entryId)
@@ -353,6 +416,10 @@ const toolGroups = computed<ToolGroup[]>(() => {
       tools: tools.filter(tool => tool.kind === 'write'),
     },
   ].filter(group => group.tools.length > 0)
+})
+
+const driveWriteAccess = computed<GoogleDriveWriteAccess>(() => {
+  return resolveGoogleDriveWriteAccess(data.value?.byo)
 })
 
 const isDriveWriteGranted = computed<boolean>(() => {

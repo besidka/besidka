@@ -10,6 +10,7 @@ import {
 import type { GoogleEntryId } from '#shared/utils/google-connectors'
 import {
   GOOGLE_BYO_DISCONNECT_SERVICES,
+  GOOGLE_BYO_DRIVE_WRITE_CAPABILITIES,
   GOOGLE_BYO_SERVICE_CAPABILITIES,
   GOOGLE_ENTRY_DEFINITIONS,
   getGoogleByoRequestedCapabilities,
@@ -168,6 +169,13 @@ export function useGoogleEntryActions() {
     )
   }
 
+  async function addDriveWriteAccess(entry: GoogleEntry) {
+    await requestOwnClientAccess(
+      entry,
+      GOOGLE_BYO_DRIVE_WRITE_CAPABILITIES,
+    )
+  }
+
   function reportRevoke(isRevoked: boolean) {
     if (isRevoked) {
       return
@@ -270,5 +278,6 @@ export function useGoogleEntryActions() {
     connect,
     disconnect,
     addDriveSearchAccess,
+    addDriveWriteAccess,
   }
 }

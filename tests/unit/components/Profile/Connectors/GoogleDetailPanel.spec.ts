@@ -9,6 +9,10 @@ import type {
   GoogleConnectionStatusResponse,
   GoogleConnectionSummary,
 } from '#shared/utils/google-connections'
+import {
+  GOOGLE_DRIVE_WRITE_ACCESS_NOTE,
+  GOOGLE_DRIVE_WRITE_SCOPE_NOTE,
+} from '#shared/utils/google-drive-write'
 import { GOOGLE_TOOL_CATALOG } from '#shared/utils/google-tool-catalog'
 
 enableAutoUnmount(afterEach)
@@ -17,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   disconnect: vi.fn(),
   addDriveSearchAccess: vi.fn(),
+  addDriveWriteAccess: vi.fn(),
   refresh: vi.fn(),
   refreshPermissions: vi.fn(),
   savePermission: vi.fn(),
@@ -87,6 +92,7 @@ mockNuxtImport('useGoogleEntryActions', () => {
     run: mocks.run,
     disconnect: mocks.disconnect,
     addDriveSearchAccess: mocks.addDriveSearchAccess,
+    addDriveWriteAccess: mocks.addDriveWriteAccess,
   })
 })
 
@@ -545,6 +551,124 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       expect(text).toContain('create a folder, and rename or move files and '
         + 'folders you own, in your own My Drive after you approve each one. '
         + 'It cannot delete anything or change who can see a file.')
+    })
+
+    describe('Change files access', () => {
+      function ownerWith(capabilities: GoogleConnectionSummary['capabilities']) {
+        setStatus({}, {
+          connection: summary({ clientMode: 'byo', capabilities }),
+        })
+      }
+
+      it('offers the checkbox and Add access when read is granted and '
+        + 'write is missing', async () => {
+        ownerWith(['identity', 'drive-read'])
+
+        const wrapper = await mountPanel('google-drive')
+        const checkbox = wrapper.get(
+          '[data-testid="google-detail-drive-write-checkbox"]',
+        )
+        const button = wrapper.get(
+          '[data-testid="google-detail-drive-write-add-access"]',
+        )
+        const section = wrapper.get(
+          '[data-testid="google-detail-drive-write"]',
+        ).text()
+
+        expect(section).toContain('Change files in Google Drive')
+        expect(section).toContain(GOOGLE_DRIVE_WRITE_ACCESS_NOTE)
+        expect(section).toContain(GOOGLE_DRIVE_WRITE_SCOPE_NOTE)
+        expect(checkbox.attributes('disabled')).toBeUndefined()
+        expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+        expect(button.attributes('disabled')).toBeDefined()
+
+        await checkbox.setValue(true)
+
+        expect(button.attributes('disabled')).toBeUndefined()
+
+        await button.trigger('click')
+
+        expect(mocks.addDriveWriteAccess).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'google-drive' }),
+        )
+      })
+
+      it('disables both while another request is running', async () => {
+        ownerWith(['identity', 'drive-read'])
+        isBusy.value = true
+
+        const wrapper = await mountPanel('google-drive')
+
+        expect(wrapper.get(
+          '[data-testid="google-detail-drive-write-checkbox"]',
+        ).attributes('disabled')).toBeDefined()
+        expect(wrapper.get(
+          '[data-testid="google-detail-drive-write-add-access"]',
+        ).attributes('disabled')).toBeDefined()
+      })
+
+      it('shows a read-only line and no checkbox once granted', async () => {
+        ownerWith(['identity', 'drive-read', 'drive-write'])
+
+        const wrapper = await mountPanel('google-drive')
+
+        expect(wrapper.get(
+          '[data-testid="google-detail-drive-write-granted"]',
+        ).text()).toBe('Change files access granted')
+        expect(wrapper.find(
+          '[data-testid="google-detail-drive-write-checkbox"]',
+        ).exists()).toBe(false)
+        expect(wrapper.find(
+          '[data-testid="google-detail-drive-write-add-access"]',
+        ).exists()).toBe(false)
+      })
+
+      it('shows a disabled hint while Drive read access is missing',
+        async () => {
+          ownerWith(['identity', 'gmail-read'])
+
+          const wrapper = await mountPanel('google-drive')
+
+          expect(wrapper.get(
+            '[data-testid="google-detail-drive-write-needs-read"]',
+          ).text()).toBe('Needs Drive read access first')
+          expect(wrapper.get(
+            '[data-testid="google-detail-drive-write-checkbox"]',
+          ).attributes('disabled')).toBeDefined()
+          expect(wrapper.get(
+            '[data-testid="google-detail-drive-write-add-access"]',
+          ).attributes('disabled')).toBeDefined()
+          expect(wrapper.find(
+            '[data-testid="google-detail-own-client-add-access"]',
+          ).exists()).toBe(true)
+        })
+
+      it('shows nothing to a user without the own client gate', async () => {
+        setStatus({}, { canManage: false })
+
+        const wrapper = await mountPanel('google-drive')
+
+        expect(wrapper.find('[data-testid="google-detail-drive-write"]')
+          .exists()).toBe(false)
+      })
+
+      it('shows nothing without a saved client', async () => {
+        setStatus({}, { hasClient: false })
+
+        const wrapper = await mountPanel('google-drive')
+
+        expect(wrapper.find('[data-testid="google-detail-drive-write"]')
+          .exists()).toBe(false)
+      })
+
+      it('is not on the Gmail panel', async () => {
+        ownerWith(['identity', 'drive-read', 'gmail-read'])
+
+        const wrapper = await mountPanel('google-gmail')
+
+        expect(wrapper.find('[data-testid="google-detail-drive-write"]')
+          .exists()).toBe(false)
+      })
     })
 
     it('has no own-client hint once Drive read access is granted',
