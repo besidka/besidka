@@ -548,7 +548,11 @@ opens `ChatInput/ConnectorPicker.client.vue`: a dialog with, from the top,
 "Browse connectors" (only with the `connectors.registry` flag, opens the
 Discover tab of `/chats/connectors?tab=discover`) and
 "Manage connectors" (`/chats/connectors`), the Besidka row when that feature
-is active, a toggle per connector (title, host as plain text, a `badge
+is active, up to three Google rows (`ConnectorPickerGoogleRow.vue`: Google
+Drive, Gmail and Google Calendar, one switch per service per chat, with the
+"Not available with this model" state and its info button; outside the limit,
+not in the bulk buttons, `docs/google.md` section 18; the Drive "+" hint names
+this list), a toggle per connector (title, host as plain text, a `badge
 badge-soft` when it is `drifted`), at most five on, and the limit hint ("A
 message can use up to 5 connectors, Auto ones included": that is
 `CONNECTORS_PER_SEND`. Manual connectors that are on in the chat and Always on

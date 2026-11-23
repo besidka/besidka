@@ -493,6 +493,19 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
   is asked again, which fails safe. Google tools have no Always allow; a
   stored `allow` on a `google__` row (never written by the app) is read as
   `blocked`, and the step 2b reset turns it to `ask`.
+- **Per-chat Google switches follow `besidka_chat_settings`.** The column
+  `google_services_off` (nullable `text`, a JSON list of `drive`, `gmail` and
+  `calendar`; null means every service on, `docs/google.md`, section 18)
+  rolls back with its row. A switch changed in the window returns to its older
+  value, and a chat whose row was created in the window loses it and reads
+  "every service on", which is the default. A service the user had switched
+  off can therefore be offered again, but only with the same per-call
+  approvals as before (no Google tool has Always allow), so this fails safe
+  like a returning Block. The step 2b reset SQL blanks `always_allow_tools`
+  only and does not touch `google_services_off`: after the reset the switches
+  are exactly what the restore brought back. Tell users in the notice (step
+  7) to check which Google services are on in a chat. A corrupt stored value
+  reads as every service off, never on.
 - **`tool-approval:` keys older than the restore point.** The pending
   records (`tool-approval:<approvalId>`), the turn records
   (`tool-approval:turn:<messagePublicId>`) and the result records
@@ -818,7 +831,8 @@ npx wrangler kv bulk delete tool-approval-key-names.json --binding KV --env prod
 ```
 
 See "Tool approvals" above for why every grant is reset. Tools set to
-`blocked` stay as they were at B. Tell users to re-grant "Always allow" in
+`blocked` stay as they were at B, and the per-chat Google switches
+(`besidka_chat_settings.google_services_off`) are not part of the reset. Tell users to re-grant "Always allow" in
 the notice (step 7).
 
 ### 2c. Disarm legal notice emails and restore the owner's decisions

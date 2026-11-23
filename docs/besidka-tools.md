@@ -350,6 +350,9 @@ shows the Connectors row then too, even with no connector. The row toggles
 /api/v1/chats/[slug]/besidka-tools` (`{ enabled }`, same guards as the
 permission routes plus chat ownership). A new chat keeps the choice in state
 and its first send carries `besidkaToolsEnabled`, which the send stores.
+The Google rows under it (`docs/google.md`, section 18) use the same
+`besidka_chat_settings` row through their own column, `google_services_off`,
+and never touch `enabled` or the grants.
 
 ### Approval step
 

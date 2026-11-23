@@ -1611,6 +1611,11 @@ and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
    Google tool permissions (BES-454: `google__` rows in the same table, only
    Blocked or Needs approval, set from the Google panel on Connectors): no
    tool reads or writes them, and `config/mcp-surface.json` is unchanged.
+   The per-chat Google switches (BES-454, child 3:
+   `besidka_chat_settings.google_services_off`, the `GET` and `PUT
+   /api/v1/chats/[slug]/google-tools` routes, one switch per service per chat)
+   are neither readable nor writable over MCP either, and `get_chat` does not
+   show them.
    **Revisit when:** a tool can only lower access (set Blocked or Needs
    approval, never Always allow) and a user names a workflow that needs it.
 
