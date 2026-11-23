@@ -630,8 +630,9 @@ describe('Profile/Google/OwnClient', () => {
           .text()
 
         expect(text).toContain('Change files in Google Drive')
-        expect(text).toContain('Lets Besidka create files and folders, and '
-          + 'rename and move files you own, each time you approve.')
+        expect(text).toContain('Lets Besidka create folders in your Drive, '
+          + 'each time you approve. Renaming, moving and creating files '
+          + 'will be added later.')
         expect(text).toContain('Google\'s permission for this also allows '
           + 'deleting and sharing; Besidka has no code that deletes or '
           + 'shares.')

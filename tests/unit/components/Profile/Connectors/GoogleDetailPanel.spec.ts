@@ -505,6 +505,43 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         .toBe('/profile/keys?tab=google')
     })
 
+    it('says in the info note that Besidka never changes a Google file '
+      + 'without Change files access', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      await wrapper.get('[data-testid="google-detail-info-toggle"]')
+        .trigger('click')
+
+      const text = wrapper.get('[data-testid="google-detail-info"]').text()
+
+      expect(text).toContain('Without Change files access it never changes '
+        + 'a Google file.')
+      expect(text).not.toContain('One exception')
+    })
+
+    it('adds the folder exception to the info note once Change files '
+      + 'access is granted', async () => {
+      setStatus({}, {
+        connection: summary({
+          clientMode: 'byo',
+          capabilities: ['identity', 'drive-read', 'drive-write'],
+        }),
+      })
+
+      const wrapper = await mountPanel('google-drive')
+
+      await wrapper.get('[data-testid="google-detail-info-toggle"]')
+        .trigger('click')
+
+      const text = wrapper.get('[data-testid="google-detail-info"]').text()
+
+      expect(text).toContain('Without Change files access it never changes '
+        + 'a Google file.')
+      expect(text).toContain('One exception')
+    })
+
     it('has no own-client hint once Drive read access is granted',
       async () => {
         setStatus({}, {

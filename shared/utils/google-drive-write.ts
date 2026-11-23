@@ -24,8 +24,9 @@ export const GOOGLE_DRIVE_LIST_FOLDER_TEXT_BUDGET_BYTES = 24 * 1024
 export const GOOGLE_DRIVE_WRITE_FOOTER = 'Besidka cannot delete files or '
   + 'change who can see them.'
 
-export const GOOGLE_DRIVE_WRITE_ACCESS_NOTE = 'Lets Besidka create files '
-  + 'and folders, and rename and move files you own, each time you approve.'
+export const GOOGLE_DRIVE_WRITE_ACCESS_NOTE = 'Lets Besidka create folders '
+  + 'in your Drive, each time you approve. Renaming, moving and creating '
+  + 'files will be added later.'
 
 export const GOOGLE_DRIVE_WRITE_SCOPE_NOTE = 'Google\'s permission for this '
   + 'also allows deleting and sharing; Besidka has no code that deletes or '

@@ -291,8 +291,9 @@ interface OwnClientNote {
 
 const INFO_TEXTS: Readonly<Record<GoogleEntryId, string>> = {
   'google-drive': 'Besidka can open only the Google Drive files you pick, '
-    + 'and copies them into your Besidka files. It never changes a Google '
-    + 'file. Saving a Besidka file to Google Drive creates a new Drive file '
+    + 'and copies them into your Besidka files. Without Change files access '
+    + 'it never changes a Google file. Saving a Besidka file to Google Drive '
+    + 'creates a new Drive file '
     + 'after you approve it. The copies are deleted when Google access '
     + 'ends.',
   'google-gmail': 'Besidka reads mail only when the model searches it or '
