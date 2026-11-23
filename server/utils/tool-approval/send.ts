@@ -494,6 +494,43 @@ export function buildGoogleApprovalEntry(input: {
   }
 }
 
+/**
+ * The entry-only record of a built-in Google tool the user set to Blocked.
+ * The tool is not offered to the model, so nothing registers it as a tool;
+ * the entry only lets the continuation of an approval given before the Block
+ * read the tool's family and mode and answer with the blocked denial instead
+ * of "no longer available". It carries no definition hash and no grant, and
+ * `permissionMode: 'blocked'` denies it in every rule.
+ */
+export function buildBlockedGoogleEntry(input: {
+  toolName: string
+  kind: GoogleToolKind
+}): SendToolEntry {
+  if (!isGoogleToolName(input.toolName)) {
+    throw createError({
+      message: 'Invalid Google tool name',
+      status: 500,
+      why: `A Google tool name must start with ${GOOGLE_TOOL_NAME_PREFIX}`,
+    })
+  }
+
+  const isRead = input.kind === 'read'
+
+  return {
+    descriptor: {
+      family: 'google',
+      access: isRead ? 'read' : 'write',
+      toolName: input.toolName,
+      destructiveHint: !isRead,
+    },
+    summary: clampSummary(`Besidka wants to run ${input.toolName} on Google`),
+    permissionMode: 'blocked',
+    taint: 'google',
+    readSource: TOOL_APPROVAL_GOOGLE_READ_SOURCE,
+    connector: null,
+  }
+}
+
 function exceededCallCap(
   entry: SendToolEntry,
   state: ApprovalState,

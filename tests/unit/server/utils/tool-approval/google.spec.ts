@@ -20,6 +20,7 @@ import type {
   ToolApprovalGrant,
 } from '~~/server/utils/tool-approval/policy'
 import {
+  buildBlockedGoogleEntry,
   buildConnectorApprovalEntry,
   buildGoogleApprovalEntry as buildStrictGoogleApprovalEntry,
   createSendToolApproval,
@@ -69,7 +70,9 @@ import {
   applyRememberGrants,
   buildResumedAssistantMessages,
   decideContinuation,
+  resolveReplayPermissionMode,
 } from '~~/server/utils/tool-approval/continuation'
+import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
 import type { ToolApprovalPendingRecord } from '~~/server/utils/tool-approval/kv'
 
 const storeMocks = vi.hoisted(() => ({
@@ -2231,5 +2234,277 @@ describe('readGoogleChatGrantHashes', () => {
       OWNER.chatPublicId,
       logger(),
     )).toEqual({})
+  })
+})
+
+describe('a Google tool the user set to Blocked', () => {
+  it('builds an entry-only record with no hash and no grant', () => {
+    const read = buildBlockedGoogleEntry({ toolName: GOOGLE_READ, kind: 'read' })
+    const write = buildBlockedGoogleEntry({
+      toolName: GOOGLE_WRITE,
+      kind: 'write',
+    })
+
+    expect(read).toMatchObject({
+      permissionMode: 'blocked',
+      descriptor: {
+        family: 'google',
+        access: 'read',
+        toolName: GOOGLE_READ,
+        destructiveHint: false,
+      },
+      taint: 'google',
+      connector: null,
+    })
+    expect(read.descriptor.definitionHash).toBeUndefined()
+    expect(read.userGrants).toBeUndefined()
+    expect(write.descriptor).toMatchObject({
+      access: 'write',
+      destructiveHint: true,
+    })
+  })
+
+  it('refuses a name that is not a google__ tool', () => {
+    expect(() => buildBlockedGoogleEntry({
+      toolName: 'list_files',
+      kind: 'read',
+    })).toThrow()
+    expect(() => buildBlockedGoogleEntry({
+      toolName: 'besidka__list_files',
+      kind: 'read',
+    })).toThrow()
+  })
+
+  it('is denied by rule 0, whatever grant the tool has', () => {
+    const decision = resolveToolApproval({
+      descriptor: googleDescriptor(),
+      state: createApprovalState(),
+      permissionMode: 'blocked',
+      chatGrant: grant(),
+    })
+
+    expect(decision.rule).toBe(0)
+    expect(decision.status.type).toBe('denied')
+  })
+
+  it('is denied for a write too', () => {
+    const decision = resolveToolApproval({
+      descriptor: googleDescriptor({
+        access: 'write',
+        toolName: GOOGLE_WRITE,
+        destructiveHint: true,
+      }),
+      state: createApprovalState(),
+      permissionMode: 'blocked',
+    })
+
+    expect(decision.rule).toBe(0)
+    expect(decision.status.type).toBe('denied')
+  })
+
+  it.each(['ask', 'allow'] as const)(
+    'never lets a read run without a chat grant under mode %s',
+    (permissionMode) => {
+      const decision = resolveToolApproval({
+        descriptor: googleDescriptor(),
+        state: createApprovalState(),
+        permissionMode,
+      })
+
+      expect(decision.rule).toBe(11)
+      expect(decision.status.type).toBe('user-approval')
+      expect(decision.rememberOptions).not.toContain('always')
+    },
+  )
+
+  it.each(['ask', 'allow'] as const)(
+    'never lets a write run, and never offers more than Allow once, under '
+    + 'mode %s',
+    (permissionMode) => {
+      const decision = resolveToolApproval({
+        descriptor: googleDescriptor({
+          access: 'write',
+          toolName: GOOGLE_WRITE,
+          destructiveHint: true,
+        }),
+        state: createApprovalState(),
+        permissionMode,
+        chatGrant: grant({ toolName: GOOGLE_WRITE }),
+      })
+
+      expect(decision.rule).toBe(11)
+      expect(decision.status.type).toBe('user-approval')
+      expect(decision.rememberOptions).toEqual(['once'])
+    },
+  )
+
+  it('reads Blocked on resume from the send\'s Google modes, and "ask" for a '
+    + 'tool with no stored mode', () => {
+    const modes = new Map<string, 'blocked' | 'ask'>([
+      [GOOGLE_READ, 'blocked'],
+    ])
+
+    expect(resolveReplayPermissionMode('google', GOOGLE_READ, undefined, modes))
+      .toBe('blocked')
+    expect(resolveReplayPermissionMode('google', GOOGLE_WRITE, undefined, modes))
+      .toBe('ask')
+    expect(resolveReplayPermissionMode('google', GOOGLE_READ)).toBe('ask')
+    expect(resolveReplayPermissionMode('besidka', GOOGLE_READ, undefined, modes))
+      .toBe('blocked')
+    expect(resolveReplayPermissionMode('connector', GOOGLE_READ, undefined, modes))
+      .toBe('ask')
+  })
+
+  describe('after an approval, when the approved call is replayed', () => {
+    function answer(toolName: string, access: 'read' | 'write') {
+      const record = {
+        version: 1,
+        userId: OWNER.userId,
+        chatPublicId: OWNER.chatPublicId,
+        messagePublicId: OWNER.messagePublicId,
+        toolCallId: 'call-g',
+        family: 'google',
+        access,
+        toolName,
+        connectorId: null,
+        definitionHash: HASH,
+        input: {},
+        signature: 'sig',
+        reason: 'default',
+        rememberOptions: ['once'],
+        summary: 'Search',
+        auditCallId: null,
+        snapshot: {
+          model: 'claude-haiku-4-5',
+          gateway: null,
+          reasoning: 'off',
+          connectorIds: [],
+        },
+      } as unknown as ToolApprovalPendingRecord
+
+      return {
+        response: {
+          approvalId: 'approval-aaaaaaaa',
+          approved: true,
+          remember: 'once' as const,
+        },
+        record,
+      }
+    }
+
+    const liveEntry = () => buildGoogleApprovalEntry({
+      toolName: GOOGLE_READ,
+      kind: 'read',
+      definitionHash: HASH,
+      summary: 'Search',
+    })
+
+    it('denies a call approved before the Block with the blocked text',
+      () => {
+        const [decision] = decideContinuation({
+          answers: [answer(GOOGLE_READ, 'read')],
+          entries: new Map([[
+            GOOGLE_READ,
+            buildBlockedGoogleEntry({ toolName: GOOGLE_READ, kind: 'read' }),
+          ]]),
+          state: createApprovalState(),
+          googlePermissionModes: new Map([[GOOGLE_READ, 'blocked']]),
+        })
+
+        expect(decision!.approved).toBe(false)
+        expect(decision!.denialReason).toBe('blocked')
+        expect(decision!.reason).toBe(TOOL_APPROVAL_DENIAL_TEXT.blocked)
+        expect(decision!.reason).not.toBe(TOOL_APPROVAL_DENIAL_TEXT['missing-tool'])
+      })
+
+    it('denies a Blocked write the same way', () => {
+      const [decision] = decideContinuation({
+        answers: [answer(GOOGLE_WRITE, 'write')],
+        entries: new Map([[
+          GOOGLE_WRITE,
+          buildBlockedGoogleEntry({ toolName: GOOGLE_WRITE, kind: 'write' }),
+        ]]),
+        state: createApprovalState(),
+        googlePermissionModes: new Map([[GOOGLE_WRITE, 'blocked']]),
+      })
+
+      expect(decision!.denialReason).toBe('blocked')
+    })
+
+    it('denies a tool blocked after approval even while its entry is live',
+      () => {
+        const [decision] = decideContinuation({
+          answers: [answer(GOOGLE_READ, 'read')],
+          entries: new Map([[GOOGLE_READ, liveEntry()]]),
+          state: createApprovalState(),
+          googlePermissionModes: new Map([[GOOGLE_READ, 'blocked']]),
+        })
+
+        expect(decision!.denialReason).toBe('blocked')
+      })
+
+    it('still runs a call whose tool was not blocked', () => {
+      const [decision] = decideContinuation({
+        answers: [answer(GOOGLE_READ, 'read')],
+        entries: new Map([[GOOGLE_READ, liveEntry()]]),
+        state: createApprovalState(),
+        googlePermissionModes: new Map([[GOOGLE_WRITE, 'blocked']]),
+      })
+
+      expect(decision!.approved).toBe(true)
+      expect(decision!.denialReason).toBeNull()
+    })
+
+    it('says the tool is missing when no entry exists at all', () => {
+      const [decision] = decideContinuation({
+        answers: [answer(GOOGLE_READ, 'read')],
+        entries: new Map(),
+        state: createApprovalState(),
+      })
+
+      expect(decision!.denialReason).toBe('missing-tool')
+    })
+
+    it('does not count a denied call against the built-in cap', () => {
+      const state = createApprovalState()
+
+      state.counters.builtInCalls = TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN - 1
+
+      const decisions = decideContinuation({
+        answers: [
+          answer(GOOGLE_READ, 'read'),
+          {
+            ...answer(GOOGLE_WRITE, 'write'),
+            response: {
+              approvalId: 'approval-bbbbbbbb',
+              approved: true,
+              remember: 'once' as const,
+            },
+          },
+        ],
+        entries: new Map([
+          [
+            GOOGLE_READ,
+            buildBlockedGoogleEntry({ toolName: GOOGLE_READ, kind: 'read' }),
+          ],
+          [
+            GOOGLE_WRITE,
+            buildGoogleApprovalEntry({
+              toolName: GOOGLE_WRITE,
+              kind: 'write',
+              definitionHash: HASH,
+              summary: 'Update',
+            }),
+          ],
+        ]),
+        state,
+        googlePermissionModes: new Map([[GOOGLE_READ, 'blocked']]),
+      })
+
+      expect(decisions.map(item => item.denialReason)).toEqual([
+        'blocked',
+        null,
+      ])
+    })
   })
 })

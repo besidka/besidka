@@ -3910,5 +3910,125 @@ Google G (`GOOGLE_G_ICON`).
 
 - Server messages that still say "API Keys page, Google tab"
   (`server/utils/google/*`, `picker-token.ts` links): the child is UI only.
-- Per-tool permissions, per-chat switches and the picker rows (children 2 and
-  3 of BES-454).
+  Fixed in child 2 (section 17.1).
+- Per-tool permissions (child 2, section 17), per-chat switches and the
+  picker rows (child 3 of BES-454).
+
+## 17. Per-tool permissions (BES-454, child 2)
+
+Each Google tool can be Blocked from the panel of its entry. No migration, no
+table and no column: the rows live in `besidka_tool_permissions` under the
+exposed `google__` name.
+
+### 17.1 Messages and links after the move
+
+Server text that sent users to "the API Keys page, Google tab" now says "in
+your Besidka settings" (the wording of `shared/utils/google-drive.ts`), so it
+is right with and without the `connectors` flag: the tool failure texts of
+Drive, Gmail, Calendar and Drive search, and the `fix` of the token errors.
+The Picker token errors keep a `link`: the Drive panel
+(`getGoogleDriveSettingsPath`, `/chats/connectors?panel=google-drive`) for a
+user with the `connectors` flag, `/profile/keys?tab=google` for one without
+(the route evaluates the flag and passes `isConnectorsActive`). "Save your
+client id and secret on the Google tab of API Keys" stays: the own client
+card is still there. The `disconnect_google` MCP description still names API
+Keys, because it is part of `config/mcp-surface.json` and an MCP change needs
+a version bump (not part of this child).
+
+### 17.2 Modes
+
+Only `blocked` and `ask` exist for a Google tool (`GOOGLE_TOOL_PERMISSION_MODES`
+in `shared/utils/google-tool-catalog.ts`), for reads and writes, in every
+chat. No row means Needs approval. A stored `allow` or any unknown value
+reads as `blocked` (`readGoogleToolPermissionMode`), so an unreadable
+setting never lets a tool run. "Allow in this chat" is still the approval
+card's chat grant (at most 5 granted runs per message); once-only reads
+(`google__gmail_read_thread`, `google__drive_read_found_file`) and the three
+writes ask every time whatever the user chose. Rule 11 of
+`resolveToolApproval` is untouched: rule 0 denies `blocked` first, and every
+other mode reaches rule 11, which never offers Always allow.
+
+The Besidka loader and `PUT /api/v1/besidka-tools/permissions` are
+unchanged. Besidka rows use bare registry names and Google rows start with
+`google__`, so the namespaces never meet; the Besidka `PUT` answers 400 to a
+`google__` name (not in its registry), and a `google__` row never changes a
+Besidka mode.
+
+### 17.3 Resolver and routes
+
+`server/utils/google/tool-permissions.ts`: `loadGoogleToolPermissionModes`
+reads the user's rows once and keeps only `google__` names;
+`setGoogleToolPermissions` upserts `blocked` rows in one batch and, for
+`ask`, deletes the rows (the default needs no storage).
+
+`GET` and `PUT /api/v1/google/tool-permissions` (directory form). Gate, in
+this order (`requireGoogleToolPermissionsAccess`): the same-origin guard (the
+write guard for a `PUT`), a session, then the tools the user may reach, then
+for a `PUT` the write limit.
+
+| Tool | Reachable when |
+| --- | --- |
+| Drive tools of Besidka's client | `google.drive` active |
+| Drive search and the read of a found file | the admin gate with `google.byo` (`checkGoogleByoAccess`) |
+| Gmail tools | the admin gate plus `google.gmail` |
+| Calendar tools | the admin gate plus `google.calendar` |
+
+A user who reaches none gets 404 on both routes. `GET` answers
+`{ tools: [{ name, service, mode }] }` for the reachable tools. `PUT` takes
+`{ tool, mode }`, `{ service, mode }` (every reachable tool of the service) or
+`{ service, kind, mode }` (its reachable read or write tools; the panel's
+Read and Write group selects send this, one request per group change, one
+slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode, an unknown or
+Besidka tool name, a body with both fields, or a body over 1 KiB (413 by
+`Content-Length`) is refused; a known tool the user cannot reach is 404. 60
+changes a minute per user in KV, failing closed (a KV error is a 429, never an
+allow). The log holds the action, the scope, the target and the mode, nothing
+else.
+
+### 17.4 Send path and replay
+
+`buildGoogleSendToolCandidates` runs its gates as before (approvals and
+flags, connection and scope, the own-client admin gate), reads the user's
+Google modes once (only when some tool survived; a D1 error fails closed and
+treats every tool as Blocked), then `dropBlockedGoogleTools` removes the
+Blocked tools. Each dropped tool keeps an entry-only record from
+`buildBlockedGoogleEntry` (`permissionMode: 'blocked'`, no hash, no grant),
+and the resolved modes ride on `GoogleSendTools.permissionModes`.
+`getGoogleSendTools` is unchanged except that a send whose candidates are all
+Blocked is not "withheld": no reason code, no note (a Blocked tool is the
+user's own setting), and the Blocked records still reach the continuation.
+
+The data guard, `chatHoldsGoogleData`, `google_data_at`, the gateway
+safeguards, the recipient check and the 403 depend on the chat only. Blocking
+never lifts them, and a chat that already holds Google data still answers 403
+for a refused model whatever the user blocked.
+
+`resolveReplayPermissionMode` has a Google branch fed by those modes
+(`decideContinuation({ googlePermissionModes })`): a call approved before the
+Block reads `blocked` and the model gets "This tool is blocked in the user's
+settings, so the action did not run." instead of "no longer available".
+A stashed body is removed when the continuation finishes, like for any
+answer (the 24-hour expiry is the fallback when the delete fails).
+
+### 17.5 The panel
+
+`ProfileConnectorsGoogleDetailPanel` replaces the read-only list with
+`UiToolPermissions` (Read and Write groups). Each tool has `modes: ['blocked',
+'ask']`, so Always allow shows disabled with a hint: "Google reads ask. Allow
+one for a chat from its approval." for reads, "Asks every time." for writes and
+once-only reads (`getGoogleToolAlwaysAllowHint`). `useGoogleToolPermissions`
+saves optimistically and rolls back on an error, and a polite live region
+names the saved change ("Search your Gmail: Blocked."). The tool list is the
+panel's catalog filter intersected with what `GET` returns. A user whose `GET`
+is 404 sees no tools section. The own-client hints ("Needs your own Google
+client", "Needs Drive read access") are unchanged.
+
+Nothing in this child adds an element inside a chat message or the composer,
+so `docs/chat-scroll-spacer.md` is not affected.
+
+### 17.6 Not done
+
+Per-chat service switches, the connector picker rows and the "not available
+with this model" state (child 3). Google tool permissions are not readable or
+writable over MCP (`docs/mcp-server.md`, "What MCP does not do", item 8). A
+restore: `docs/d1-restore-reconciliation.md`, "Tool approvals".

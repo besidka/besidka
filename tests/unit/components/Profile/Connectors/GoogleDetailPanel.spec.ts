@@ -9,6 +9,7 @@ import type {
   GoogleConnectionStatusResponse,
   GoogleConnectionSummary,
 } from '#shared/utils/google-connections'
+import { GOOGLE_TOOL_CATALOG } from '#shared/utils/google-tool-catalog'
 
 enableAutoUnmount(afterEach)
 
@@ -17,12 +18,51 @@ const mocks = vi.hoisted(() => ({
   disconnect: vi.fn(),
   addDriveSearchAccess: vi.fn(),
   refresh: vi.fn(),
+  refreshPermissions: vi.fn(),
+  savePermission: vi.fn(),
 }))
 
 const statusData = ref<GoogleConnectionStatusResponse | null>(null)
 const loadStatus = ref<string>('success')
 const announcement = ref<string>('')
 const isBusy = ref<boolean>(false)
+
+interface PermissionRow {
+  name: string
+  service: string
+  mode: 'blocked' | 'ask'
+}
+
+const permissionTools = ref<PermissionRow[]>([])
+const permissionStatus = ref<string>('success')
+const permissionError = ref<unknown>(null)
+const permissionUnavailable = ref<boolean>(false)
+const permissionAnnouncement = ref<string>('')
+
+mockNuxtImport('useGoogleToolPermissions', () => {
+  return () => ({
+    tools: computed(() => permissionTools.value),
+    status: permissionStatus,
+    error: permissionError,
+    refresh: mocks.refreshPermissions,
+    isSaving: ref(false),
+    isUnavailable: permissionUnavailable,
+    announcement: permissionAnnouncement,
+    save: mocks.savePermission,
+  })
+})
+
+function seedPermissions(
+  modes: Partial<Record<string, 'blocked' | 'ask'>> = {},
+) {
+  permissionTools.value = GOOGLE_TOOL_CATALOG.map((tool) => {
+    return {
+      name: tool.name,
+      service: tool.service,
+      mode: modes[tool.name] ?? 'ask',
+    }
+  })
+}
 
 mockNuxtImport('useGoogleEntries', () => {
   return () => ({
@@ -95,9 +135,27 @@ async function mountPanel(entryId: string) {
   return wrapper
 }
 
-function toolNames(wrapper: Awaited<ReturnType<typeof mountPanel>>) {
-  return wrapper.findAll('[data-testid="google-detail-tool"]')
+type PanelWrapper = Awaited<ReturnType<typeof mountPanel>>
+
+function toolNames(wrapper: PanelWrapper) {
+  return wrapper.findAll('[data-testid="tool-permissions-row"]')
     .map(tool => tool.attributes('data-tool-name'))
+}
+
+function toolRow(wrapper: PanelWrapper, name: string) {
+  return wrapper.get(
+    `[data-testid="tool-permissions-row"][data-tool-name="${name}"]`,
+  )
+}
+
+function option(wrapper: PanelWrapper, name: string, mode: string) {
+  return toolRow(wrapper, name)
+    .get(`[data-testid="tool-permission-option-${mode}"]`)
+}
+
+function hintOf(wrapper: PanelWrapper, name: string, mode: string) {
+  return option(wrapper, name, mode).element.parentElement
+    ?.getAttribute('data-tip')
 }
 
 describe('Profile/Connectors/GoogleDetailPanel', () => {
@@ -106,6 +164,12 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
     loadStatus.value = 'success'
     announcement.value = ''
     isBusy.value = false
+
+    permissionStatus.value = 'success'
+    permissionError.value = null
+    permissionUnavailable.value = false
+    permissionAnnouncement.value = ''
+    seedPermissions()
 
     for (const mock of Object.values(mocks)) {
       mock.mockReset()
@@ -197,8 +261,8 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       )
     })
 
-    it('lists the three picked-file tools read-only and nothing else for a '
-      + 'user without the own client', async () => {
+    it('lists the three picked-file tools and nothing else for a user '
+      + 'without the own client', async () => {
       setStatus()
 
       const wrapper = await mountPanel('google-drive')
@@ -208,17 +272,199 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         'google__drive_read_file',
         'google__drive_save_file',
       ])
-      expect(wrapper.findAll('[data-testid="google-detail-tool-approval"]')
-        .map(label => label.text())).toEqual([
-        'Needs approval',
-        'Needs approval',
-        'Asks every time',
-      ])
-      expect(wrapper.find('select').exists()).toBe(false)
-      expect(wrapper.find('input').exists()).toBe(false)
-      expect(wrapper.find('[role="radio"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="tool-permissions-group-read"]')
+        .text()).toContain('Read')
+      expect(wrapper.get('[data-testid="tool-permissions-group-write"]')
+        .text()).toContain('Write')
       expect(wrapper.find('[data-testid="google-detail-own-client"]').exists())
         .toBe(false)
+    })
+
+    it('gives each tool a radio group with Blocked and Needs approval '
+      + 'and Always allow off', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+      const groups = toolRow(wrapper, 'google__drive_list_picked')
+        .findAll('[role="radiogroup"]')
+
+      expect(groups).toHaveLength(1)
+      expect(groups[0]!.attributes('aria-label'))
+        .toBe('Permission for List the files you picked')
+      expect(option(wrapper, 'google__drive_list_picked', 'ask')
+        .attributes('aria-checked')).toBe('true')
+      expect(option(wrapper, 'google__drive_list_picked', 'blocked')
+        .attributes('aria-checked')).toBe('false')
+      expect(option(wrapper, 'google__drive_list_picked', 'allow')
+        .attributes('aria-disabled')).toBe('true')
+    })
+
+    it('says why Always allow is off: reads can be allowed for a chat from '
+      + 'the approval, writes ask every time', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(hintOf(wrapper, 'google__drive_list_picked', 'allow')).toBe(
+        'Always allow — Google reads ask. Allow one for a chat from its '
+        + 'approval.',
+      )
+      expect(hintOf(wrapper, 'google__drive_read_file', 'allow')).toBe(
+        'Always allow — Google reads ask. Allow one for a chat from its '
+        + 'approval.',
+      )
+      expect(hintOf(wrapper, 'google__drive_save_file', 'allow'))
+        .toBe('Always allow — Asks every time.')
+    })
+
+    it('says a once-only read asks every time', async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+
+      expect(hintOf(wrapper, 'google__gmail_read_thread', 'allow'))
+        .toBe('Always allow — Asks every time.')
+      expect(hintOf(wrapper, 'google__gmail_search', 'allow')).toContain(
+        'Google reads ask',
+      )
+    })
+
+    it('blocks a tool from its control and never saves Always allow',
+      async () => {
+        setStatus()
+
+        const wrapper = await mountPanel('google-drive')
+
+        await option(wrapper, 'google__drive_list_picked', 'blocked')
+          .trigger('click')
+        await option(wrapper, 'google__drive_list_picked', 'allow')
+          .trigger('click')
+
+        expect(mocks.savePermission).toHaveBeenCalledTimes(1)
+        expect(mocks.savePermission).toHaveBeenCalledWith(
+          { tool: 'google__drive_list_picked' },
+          'blocked',
+        )
+      })
+
+    it('shows a stored Block as checked', async () => {
+      seedPermissions({ google__drive_save_file: 'blocked' })
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(option(wrapper, 'google__drive_save_file', 'blocked')
+        .attributes('aria-checked')).toBe('true')
+      expect(option(wrapper, 'google__drive_save_file', 'ask')
+        .attributes('aria-checked')).toBe('false')
+    })
+
+    it('sets every tool of a group from its select and offers no Always '
+      + 'allow there', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+      const select = wrapper.get(
+        '[data-testid="tool-permissions-group-select-read"]',
+      )
+
+      expect(select.findAll('option').map(item => item.attributes('value')))
+        .toEqual(['blocked', 'ask'])
+
+      await select.setValue('blocked')
+      await flushPromises()
+
+      expect(mocks.savePermission.mock.calls).toEqual([
+        [{ service: 'drive', kind: 'read' }, 'blocked'],
+      ])
+    })
+
+    it('keeps one tab stop on the checked option of each control', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(option(wrapper, 'google__drive_list_picked', 'allow')
+        .attributes('tabindex')).toBe('-1')
+      expect(option(wrapper, 'google__drive_list_picked', 'ask')
+        .attributes('tabindex')).toBe('0')
+      expect(option(wrapper, 'google__drive_list_picked', 'blocked')
+        .attributes('tabindex')).toBe('-1')
+    })
+
+    it('shows only the tools the server lists for the account', async () => {
+      permissionTools.value = permissionTools.value.filter((tool) => {
+        return tool.name !== 'google__drive_save_file'
+      })
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(toolNames(wrapper)).toEqual([
+        'google__drive_list_picked',
+        'google__drive_read_file',
+      ])
+      expect(wrapper.find('[data-testid="tool-permissions-group-write"]')
+        .exists()).toBe(false)
+    })
+
+    it('shows a skeleton while the permissions load and a retry when they '
+      + 'fail', async () => {
+      setStatus()
+      permissionTools.value = []
+      permissionStatus.value = 'pending'
+
+      const loading = await mountPanel('google-drive')
+
+      expect(loading.find('[data-testid="google-detail-tools"] '
+        + '[data-testid="side-panel-skeleton"]').exists()).toBe(true)
+
+      permissionStatus.value = 'error'
+      permissionError.value = new Error('failed')
+
+      const failed = await mountPanel('google-drive')
+
+      await failed.get('[data-testid="google-detail-tools-retry"]')
+        .trigger('click')
+
+      expect(failed.get('[data-testid="google-detail-tools-error"]').text())
+        .toContain('did not load')
+      expect(mocks.refreshPermissions).toHaveBeenCalled()
+    })
+
+    it('hides the tools section when the server lists none of this '
+      + 'service\'s tools', async () => {
+      permissionTools.value = permissionTools.value.filter((tool) => {
+        return tool.service !== 'gmail'
+      })
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+
+      expect(wrapper.find('[data-testid="google-detail-tools"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).not.toContain('never offered to the model')
+    })
+
+    it('hides the tools when the account reaches none', async () => {
+      permissionUnavailable.value = true
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(wrapper.find('[data-testid="google-detail-tools"]').exists())
+        .toBe(false)
+    })
+
+    it('announces a saved change in a polite live region', async () => {
+      permissionAnnouncement.value = 'Search your Gmail: Blocked.'
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+      const live = wrapper.get('[data-testid="google-detail-permission-live"]')
+
+      expect(live.attributes('aria-live')).toBe('polite')
+      expect(live.text()).toBe('Search your Gmail: Blocked.')
     })
 
     it('adds the whole-Drive tools for the owner and asks for the access',
@@ -279,20 +525,23 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
 
       const wrapper = await mountPanel('google-gmail')
 
-      expect(wrapper.get('[data-testid="google-detail-tools-read"] h4').text())
-        .toBe('Read')
-      expect(wrapper.get('[data-testid="google-detail-tools-write"] h4').text())
-        .toBe('Write')
+      expect(wrapper.get('[data-testid="tool-permissions-group-read"]')
+        .text()).toContain('Read')
+      expect(wrapper.get('[data-testid="tool-permissions-group-write"]')
+        .text()).toContain('Write')
       expect(toolNames(wrapper)).toEqual([
         'google__gmail_search',
         'google__gmail_read_thread',
         'google__gmail_create_draft',
       ])
-      expect(wrapper.findAll('[data-testid="google-detail-tool-approval"]')
-        .map(label => label.text())).toEqual([
-        'Needs approval',
-        'Asks every time',
-        'Asks every time',
+      expect(['google__gmail_search', 'google__gmail_read_thread',
+        'google__gmail_create_draft'].map((name) => {
+        return hintOf(wrapper, name, 'allow')
+      })).toEqual([
+        'Always allow — Google reads ask. Allow one for a chat from its '
+        + 'approval.',
+        'Always allow — Asks every time.',
+        'Always allow — Asks every time.',
       ])
     })
 

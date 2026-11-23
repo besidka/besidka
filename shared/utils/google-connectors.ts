@@ -40,6 +40,18 @@ export function buildGoogleEntryPath(entryId: GoogleEntryId): string {
 }
 
 /**
+ * Where a user connects Google Drive: its panel on the Connectors page, or
+ * the Google tab of API Keys for an account without the `connectors` flag.
+ */
+export function getGoogleDriveSettingsPath(
+  isConnectorsActive: boolean,
+): string {
+  return isConnectorsActive
+    ? buildGoogleEntryPath('google-drive')
+    : GOOGLE_KEYS_TAB_PATH
+}
+
+/**
  * The entries a directory search shows above its results: every entry whose
  * keywords start with one of the words the user typed.
  */

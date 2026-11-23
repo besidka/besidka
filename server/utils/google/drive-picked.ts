@@ -36,7 +36,7 @@ export const GOOGLE_DRIVE_READ_FAILURE_TEXT: Readonly<
   storage_full: 'The user\'s Besidka storage is full, so a fresh copy of '
     + 'this file could not be made. Tell the user to free space.',
   reauthorize: 'Google no longer accepts the connection. Tell the user to '
-    + 'reconnect Google Drive on the API Keys page.',
+    + 'reconnect Google Drive in their Besidka settings.',
   no_access: 'Besidka has no access to this file any more. Tell the user to '
     + 'pick it again in Google Drive.',
   rate_limited: 'Google Drive asked Besidka to slow down. Try again later.',

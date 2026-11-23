@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
     tools: Record<string, unknown>
     entries: Map<string, unknown>
   },
+  googleBlockedNames: [] as string[],
 }))
 
 vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
@@ -42,7 +43,16 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
   return {
     ...actual,
     buildGoogleSendToolCandidates: async () => {
-      return mocks.googleCandidates ?? actual.noGoogleSendTools()
+      const built = mocks.googleCandidates ?? actual.noGoogleSendTools()
+
+      return mocks.googleBlockedNames.length
+        ? actual.dropBlockedGoogleTools(
+          built as never,
+          new Map(mocks.googleBlockedNames.map((toolName) => {
+            return [toolName, 'blocked' as const]
+          })),
+        )
+        : built
     },
   }
 })
@@ -86,6 +96,10 @@ vi.mock('~~/server/utils/features/send-features', () => ({
   resolveSendFeatures: async () => ({
     isFeatureActive: (flag: string) => mocks.flags.has(flag),
   }),
+}))
+
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -492,6 +506,7 @@ describe('chat send data guard', () => {
     )
     mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
     mocks.googleCandidates = null
+    mocks.googleBlockedNames = []
   })
 
   describe('connectors', () => {
@@ -535,6 +550,48 @@ describe('chat send data guard', () => {
       })
       expect(result.doStream).not.toHaveBeenCalled()
       expect(result.insertValues).not.toHaveBeenCalled()
+    })
+
+    it('keeps the 403 for a refused provider and the gateway safeguards when '
+      + 'every Google tool is Blocked', async () => {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+
+      mocks.flags.add('tool-approvals')
+      mocks.flags.add('google.drive')
+      mocks.googleCandidates = {
+        tools: { google__drive_list_picked: { execute: vi.fn() } },
+        entries: new Map([[
+          'google__drive_list_picked',
+          buildGoogleApprovalEntry({
+            toolName: 'google__drive_list_picked',
+            kind: 'read',
+            definitionHash: 'g'.repeat(64),
+            summary: 'List Google Drive files',
+            toolApprovalsActive: true,
+          }),
+        ]]),
+      }
+      mocks.googleBlockedNames = ['google__drive_list_picked']
+
+      const refused = await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
+        directModel: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+      })
+
+      expect(refused.error).toMatchObject({
+        status: 403,
+        why: 'This provider may train on your Google data.',
+      })
+      expect(refused.doStream).not.toHaveBeenCalled()
+
+      const gateway = await runSend({
+        googleDataAt: GOOGLE_DATA_AT,
+        gateway: { id: 'openrouter', modelId: 'openai/gpt-5' },
+      })
+
+      expect(gatewayOptionsOf(gateway)).toEqual({ googleDataSafeguards: true })
     })
 
     it('sends to the same provider in a chat without Google data',

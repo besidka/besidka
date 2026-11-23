@@ -57,13 +57,13 @@ export const CALENDAR_FAILURE_TEXT: Readonly<
   Record<CalendarFailureCode, string>
 > = {
   reauthorize: 'Google no longer accepts the connection to your own Google '
-    + 'client. Reconnect it on the API Keys page, Google tab.',
+    + 'client. Reconnect it in your Besidka settings.',
   api_disabled: 'The Google Calendar API is not turned on in the Google '
     + 'Cloud project of your own Google client. Turn it on there and try '
     + 'again.',
   no_access: 'Google Calendar refused the request. Reconnect your own Google '
-    + 'client on the API Keys page and allow the Google Calendar access this '
-    + 'tool needs.',
+    + 'client in your Besidka settings and allow the Google Calendar access '
+    + 'this tool needs.',
   not_found: 'Google Calendar has nothing for that request.',
   rate_limited: 'Google Calendar asked Besidka to slow down. Try again in a '
     + 'moment.',

@@ -1,0 +1,513 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  GOOGLE_DRIVE_LIST_TOOL_NAME,
+  GOOGLE_DRIVE_SEARCH_TOOL_NAME,
+} from '#shared/utils/google-drive-tools'
+import { GOOGLE_GMAIL_SEARCH_TOOL_NAME } from '#shared/utils/google-gmail-tools'
+import * as schema from '~~/server/db/schema'
+import {
+  createMemoryExtractionTestDb,
+  seedUser,
+} from '../../setup/helpers/memory-extraction-db'
+import type {
+  MemoryExtractionTestDb,
+} from '../../setup/helpers/memory-extraction-db'
+import { createSkillsRouteEvent } from '../../setup/helpers/skills-route'
+import type { SkillsRouteEvent } from '../../setup/helpers/skills-route'
+import { createFakeConnectorKv } from '../../setup/helpers/connectors-oauth'
+
+const ORIGIN = 'https://besidka.com'
+
+const mocks = vi.hoisted(() => ({
+  flags: new Set<string>(['google.drive']),
+  isAdmin: false,
+  logged: [] as unknown[],
+}))
+
+vi.mock('~~/server/utils/custom-db-types', async () => {
+  const { skillPublicIdMockFactory } = await import(
+    '../../setup/helpers/skills-public-id-mock'
+  )
+
+  return await skillPublicIdMockFactory()
+})
+
+vi.mock('nuxt/server', async () => {
+  const { connectorsNuxtServerMockFactory } = await import(
+    '../../setup/helpers/connectors-oauth'
+  )
+
+  return await connectorsNuxtServerMockFactory()
+})
+
+vi.mock('~~/server/utils/features/context', () => ({
+  evaluateFeatureForEvent: async (_event: unknown, flag: string) => {
+    const isOn = mocks.flags.has(flag)
+
+    return { value: isOn, active: isOn }
+  },
+}))
+
+vi.mock('~~/server/utils/google/byo-access', () => ({
+  checkGoogleByoAccess: async (input: { requiredFlags?: string[] }) => {
+    if (!mocks.isAdmin) {
+      return 'not-admin'
+    }
+
+    const flags = ['google.byo', ...input.requiredFlags ?? []]
+
+    return flags.every(flag => mocks.flags.has(flag))
+      ? 'allowed'
+      : 'flag-off'
+  },
+}))
+
+vi.mock('~~/server/utils/logging/request-logger', () => ({
+  useRequestLogger: () => ({
+    set: (values: unknown) => {
+      mocks.logged.push(values)
+    },
+  }),
+}))
+
+vi.mock('~~/server/utils/request-public-origin', () => ({
+  resolveRequestPublicOrigin: () => 'https://besidka.com',
+}))
+
+type Handler = (event: SkillsRouteEvent) => Promise<any>
+
+async function handler(path: string): Promise<Handler> {
+  return (await import(path)).default as Handler
+}
+
+async function failureOf(promise: Promise<unknown>) {
+  try {
+    await promise
+  } catch (exception) {
+    return exception as { status: number }
+  }
+
+  throw new Error('Expected a rejection')
+}
+
+const getPath = '~~/server/api/v1/google/tool-permissions/index.get'
+const putPath = '~~/server/api/v1/google/tool-permissions/index.put'
+
+describe('Google tool permission routes', () => {
+  let testDb: MemoryExtractionTestDb
+  let userId: number
+  let sessionUserId: number
+
+  function call(path: string, partial: Partial<SkillsRouteEvent> = {}) {
+    return handler(path).then((run) => {
+      return run(createSkillsRouteEvent({
+        ...partial,
+        headers: {
+          'origin': ORIGIN,
+          'sec-fetch-site': 'same-origin',
+          ...partial.headers,
+        },
+      }))
+    })
+  }
+
+  function put(body: unknown, partial: Partial<SkillsRouteEvent> = {}) {
+    return call(putPath, { body, ...partial })
+  }
+
+  function modeOf(result: { tools: Array<{ name: string, mode: string }> }) {
+    return Object.fromEntries(
+      result.tools.map(tool => [tool.name, tool.mode]),
+    )
+  }
+
+  async function rows() {
+    return await testDb.db.select().from(schema.besidkaToolPermissions)
+  }
+
+  beforeEach(async () => {
+    mocks.flags = new Set(['google.drive'])
+    mocks.isAdmin = false
+    mocks.logged = []
+    testDb = createMemoryExtractionTestDb()
+    userId = await seedUser(testDb.db, null)
+    sessionUserId = userId
+
+    const kv = createFakeConnectorKv()
+
+    vi.stubGlobal('useDb', () => testDb.db)
+    vi.stubGlobal('useKV', () => kv)
+    vi.stubGlobal('useUserSession', async () => {
+      return { user: { id: String(sessionUserId) } }
+    })
+    vi.stubGlobal('useUnauthorizedError', () => {
+      throw Object.assign(new Error('Unauthorized'), { status: 401 })
+    })
+  })
+
+  afterEach(() => {
+    testDb.close()
+    vi.unstubAllGlobals()
+  })
+
+  describe('GET', () => {
+    it('lists the Besidka-client Drive tools as "ask" for a Drive user',
+      async () => {
+        const result = await call(getPath)
+
+        expect(modeOf(result)).toEqual({
+          [GOOGLE_DRIVE_LIST_TOOL_NAME]: 'ask',
+          google__drive_read_file: 'ask',
+          google__drive_save_file: 'ask',
+        })
+        expect(result.tools[0]).toEqual({
+          name: GOOGLE_DRIVE_LIST_TOOL_NAME,
+          service: 'drive',
+          mode: 'ask',
+        })
+      })
+
+    it('adds the own-client tools for an admin with their flags',
+      async () => {
+        mocks.isAdmin = true
+        mocks.flags = new Set([
+          'google.drive',
+          'google.byo',
+          'google.gmail',
+          'google.calendar',
+        ])
+
+        const result = await call(getPath)
+
+        expect(result.tools).toHaveLength(11)
+        expect(modeOf(result)[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe('ask')
+      })
+
+    it('leaves out a service whose flag is off', async () => {
+      mocks.isAdmin = true
+      mocks.flags = new Set(['google.byo', 'google.gmail'])
+
+      const result = await call(getPath)
+      const names = result.tools.map((tool: { name: string }) => {
+        return tool.name
+      })
+
+      expect(names).toContain(GOOGLE_GMAIL_SEARCH_TOOL_NAME)
+      expect(names).toContain(GOOGLE_DRIVE_SEARCH_TOOL_NAME)
+      expect(names.some((name: string) => name.includes('calendar')))
+        .toBe(false)
+      expect(names).not.toContain(GOOGLE_DRIVE_LIST_TOOL_NAME)
+    })
+
+    it('reads a stored "allow" as "blocked"', async () => {
+      await testDb.db.insert(schema.besidkaToolPermissions).values({
+        userId,
+        toolName: GOOGLE_DRIVE_LIST_TOOL_NAME,
+        mode: 'allow',
+      })
+
+      expect(modeOf(await call(getPath))[GOOGLE_DRIVE_LIST_TOOL_NAME])
+        .toBe('blocked')
+    })
+
+    it('answers 404 without any reachable tool and 401 without a session',
+      async () => {
+        mocks.flags.clear()
+
+        expect((await failureOf(call(getPath))).status).toBe(404)
+
+        mocks.flags.add('google.drive')
+        vi.stubGlobal('useUserSession', async () => null)
+
+        expect((await failureOf(call(getPath))).status).toBe(401)
+      })
+
+    it('answers 404 to a non-admin when only own-client flags are on',
+      async () => {
+        mocks.flags = new Set(['google.byo', 'google.gmail'])
+
+        expect((await failureOf(call(getPath))).status).toBe(404)
+      })
+
+    it('refuses a cross-site read', async () => {
+      expect((await failureOf(call(getPath, {
+        headers: { 'sec-fetch-site': 'cross-site' },
+      }))).status).toBe(403)
+    })
+  })
+
+  describe('PUT', () => {
+    it('blocks one tool and answers with the stored list', async () => {
+      const result = await put({
+        tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+        mode: 'blocked',
+      })
+
+      expect(modeOf(result)[GOOGLE_DRIVE_LIST_TOOL_NAME]).toBe('blocked')
+      expect(modeOf(result).google__drive_read_file).toBe('ask')
+      expect(await rows()).toHaveLength(1)
+      expect(modeOf(await call(getPath))[GOOGLE_DRIVE_LIST_TOOL_NAME])
+        .toBe('blocked')
+    })
+
+    it('deletes the row when a tool is set back to "ask"', async () => {
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' })
+
+      const result = await put({
+        tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+        mode: 'ask',
+      })
+
+      expect(modeOf(result)[GOOGLE_DRIVE_LIST_TOOL_NAME]).toBe('ask')
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('stores nothing for "ask" on a tool with no row', async () => {
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'ask' })
+
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('blocks every reachable tool of a service', async () => {
+      const result = await put({ service: 'drive', mode: 'blocked' })
+
+      expect(Object.values(modeOf(result))).toEqual([
+        'blocked',
+        'blocked',
+        'blocked',
+      ])
+      expect((await rows()).map(row => row.toolName).sort()).toEqual([
+        'google__drive_list_picked',
+        'google__drive_read_file',
+        'google__drive_save_file',
+      ])
+    })
+
+    it('sets only the tools of one kind of a service in one request',
+      async () => {
+        const result = await put({
+          service: 'drive',
+          kind: 'read',
+          mode: 'blocked',
+        })
+
+        expect(modeOf(result)).toEqual({
+          google__drive_list_picked: 'blocked',
+          google__drive_read_file: 'blocked',
+          google__drive_save_file: 'ask',
+        })
+        expect((await rows()).map(row => row.toolName).sort()).toEqual([
+          'google__drive_list_picked',
+          'google__drive_read_file',
+        ])
+        expect(mocks.logged).toContainEqual({
+          attributes: {
+            google: {
+              toolPermission: {
+                action: 'set',
+                scope: 'kind',
+                target: 'drive:read',
+                mode: 'blocked',
+                changed: 2,
+              },
+            },
+          },
+        })
+      })
+
+    it('answers 404 for a kind whose service the user cannot reach and '
+      + '400 for an unknown kind or a kind with a tool', async () => {
+      expect((await failureOf(put({
+        service: 'gmail',
+        kind: 'read',
+        mode: 'blocked',
+      }))).status).toBe(404)
+
+      for (const body of [
+        { service: 'drive', kind: 'admin', mode: 'blocked' },
+        { service: 'drive', kind: 'read', mode: 'allow' },
+        {
+          tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+          service: 'drive',
+          kind: 'read',
+          mode: 'blocked',
+        },
+        { kind: 'read', mode: 'blocked' },
+      ]) {
+        expect((await failureOf(put(body))).status).toBe(400)
+      }
+
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('sets the own-client Drive tools of an admin with the service',
+      async () => {
+        mocks.isAdmin = true
+        mocks.flags = new Set(['google.drive', 'google.byo'])
+
+        await put({ service: 'drive', mode: 'blocked' })
+
+        expect(await rows()).toHaveLength(5)
+      })
+
+    it('answers 400 for "allow", an unknown mode and a missing mode',
+      async () => {
+        for (const body of [
+          { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'allow' },
+          { service: 'drive', mode: 'allow' },
+          { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'maybe' },
+          { tool: GOOGLE_DRIVE_LIST_TOOL_NAME },
+          { mode: 'ask' },
+          null,
+        ]) {
+          expect((await failureOf(put(body))).status).toBe(400)
+        }
+
+        expect(await rows()).toHaveLength(0)
+      })
+
+    it('answers 400 for an unknown tool or service, a Besidka tool name and '
+      + 'a body with both fields', async () => {
+      for (const body of [
+        { tool: 'nope', mode: 'ask' },
+        { tool: 'google__nope', mode: 'ask' },
+        { tool: 'list_files', mode: 'blocked' },
+        { tool: 'besidka__list_files', mode: 'blocked' },
+        { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, service: 'drive', mode: 'ask' },
+        { service: 'sheets', mode: 'ask' },
+        { tool: 'x'.repeat(65), mode: 'ask' },
+      ]) {
+        expect((await failureOf(put(body))).status).toBe(400)
+      }
+
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('answers 413 to a body over 1 KiB', async () => {
+      const failure = await failureOf(put(
+        { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'ask' },
+        { headers: { 'content-length': '2100' } },
+      ))
+
+      expect(failure.status).toBe(413)
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('answers 404 for a tool the user cannot reach', async () => {
+      expect((await failureOf(put({
+        tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+        mode: 'blocked',
+      }))).status).toBe(404)
+      expect((await failureOf(put({
+        service: 'gmail',
+        mode: 'blocked',
+      }))).status).toBe(404)
+
+      mocks.isAdmin = true
+      mocks.flags = new Set(['google.drive', 'google.byo'])
+
+      expect((await failureOf(put({
+        tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+        mode: 'blocked',
+      }))).status).toBe(404)
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('answers 404 when the feature is off for the user', async () => {
+      mocks.flags.clear()
+
+      expect((await failureOf(put({
+        tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+        mode: 'blocked',
+      }))).status).toBe(404)
+    })
+
+    it('answers 404 to a non-admin for an own-client tool even with flags on',
+      async () => {
+        mocks.flags = new Set(['google.drive', 'google.byo', 'google.gmail'])
+
+        expect((await failureOf(put({
+          tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+          mode: 'blocked',
+        }))).status).toBe(404)
+      })
+
+    it('needs a session and the same origin', async () => {
+      const body = { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' }
+
+      expect((await failureOf(put(
+        body,
+        { headers: { 'sec-fetch-site': 'cross-site' } },
+      ))).status).toBe(403)
+      expect((await failureOf(put(
+        body,
+        { headers: { origin: 'https://evil.example.com' } },
+      ))).status).toBe(403)
+
+      vi.stubGlobal('useUserSession', async () => null)
+
+      expect((await failureOf(put(body))).status).toBe(401)
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('runs the same-origin guard before the session check', async () => {
+      vi.stubGlobal('useUserSession', async () => null)
+
+      expect((await failureOf(put(
+        { tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' },
+        { headers: { 'sec-fetch-site': 'cross-site' } },
+      ))).status).toBe(403)
+    })
+
+    it('isolates users from each other', async () => {
+      const otherUserId = await seedUser(testDb.db, null)
+
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' })
+
+      sessionUserId = otherUserId
+
+      expect(modeOf(await call(getPath))[GOOGLE_DRIVE_LIST_TOOL_NAME])
+        .toBe('ask')
+
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'ask' })
+
+      sessionUserId = userId
+
+      expect(modeOf(await call(getPath))[GOOGLE_DRIVE_LIST_TOOL_NAME])
+        .toBe('blocked')
+    })
+
+    it('logs the action, target and mode only', async () => {
+      await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'blocked' })
+
+      const logged = JSON.stringify(mocks.logged)
+
+      expect(logged).toContain(GOOGLE_DRIVE_LIST_TOOL_NAME)
+      expect(logged).toContain('"mode":"blocked"')
+      expect(logged).not.toContain('@')
+    })
+
+    it('limits writes to 60 a minute', async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await put({ tool: GOOGLE_DRIVE_LIST_TOOL_NAME, mode: 'ask' })
+      }
+
+      expect((await failureOf(put({
+        tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+        mode: 'ask',
+      }))).status).toBe(429)
+    })
+
+    it('fails closed with a 429 when KV cannot count', async () => {
+      vi.stubGlobal('useKV', () => {
+        throw new Error('KV down')
+      })
+
+      expect((await failureOf(put({
+        tool: GOOGLE_DRIVE_LIST_TOOL_NAME,
+        mode: 'blocked',
+      }))).status).toBe(429)
+      expect(await rows()).toHaveLength(0)
+    })
+  })
+})

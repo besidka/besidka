@@ -3,6 +3,7 @@ import {
   GOOGLE_ENTRY_IDS,
   buildGoogleEntryPath,
   findGoogleEntriesForSearch,
+  getGoogleDriveSettingsPath,
   isGoogleEntryId,
 } from '#shared/utils/google-connectors'
 
@@ -57,6 +58,18 @@ describe('google-connectors', () => {
       ['mail'],
     ])('finds nothing for %j', (query) => {
       expect(findGoogleEntriesForSearch(query)).toEqual([])
+    })
+  })
+
+  describe('getGoogleDriveSettingsPath', () => {
+    it('leads a user with Connectors to the Drive panel', () => {
+      expect(getGoogleDriveSettingsPath(true))
+        .toBe('/chats/connectors?panel=google-drive')
+    })
+
+    it('leads a user without Connectors to the keys tab', () => {
+      expect(getGoogleDriveSettingsPath(false))
+        .toBe('/profile/keys?tab=google')
     })
   })
 })

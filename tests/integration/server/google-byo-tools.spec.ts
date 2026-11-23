@@ -1409,7 +1409,7 @@ describe('Gmail and Drive search tools on the owner\'s own client', () => {
           GOOGLE_GMAIL_SEARCH_TOOL_NAME,
           { query: 'x' },
           built,
-        ))).toContain('Reconnect it on the API Keys page')
+        ))).toContain('Reconnect it in your Besidka settings')
         expect(apis.fetch).not.toHaveBeenCalled()
       })
 

@@ -188,6 +188,7 @@ describe('Besidka tool permission routes', () => {
       for (const body of [
         { tool: 'nope', mode: 'ask' },
         { tool: 'set_feature_access', mode: 'ask' },
+        { tool: 'google__gmail_search', mode: 'blocked' },
         { tool: 'list_files', mode: 'maybe' },
         { tool: 'list_files', tier: 'read', mode: 'ask' },
         { tier: 'admin', mode: 'ask' },
