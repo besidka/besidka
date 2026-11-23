@@ -299,33 +299,55 @@ describe('ChatInput/ConnectorPickerGoogleRow', () => {
         .toBe(false)
     })
 
-    it('shows the keys link and the model button for a refused '
-      + 'non-Gemini model', async () => {
+    it('shows only the model button, with no keys link, for a provider '
+      + 'the allow-list refuses', async () => {
       const wrapper = await mountRow({
         subLine: 'Not available with this model',
-        reasonNote: REASON_NOTE,
-        reasonActions: [KEYS_ACTION, CHOOSE_MODEL_ACTION],
+        reasonNote: {
+          ...REASON_NOTE,
+          detail: 'DeepSeek may use API inputs for training, so Besidka does '
+            + 'not send Google data to it. Pick Anthropic, OpenAI, xAI or '
+            + 'Gemini on a paid key.',
+        },
+        reasonActions: [CHOOSE_MODEL_ACTION],
       })
-      const link = byId(wrapper, 'connector-picker-google-action-keys-gmail')
-      const button = byId(wrapper, 'connector-picker-google-action-model-gmail')
 
-      expect(link.text()).toBe('Open API Keys')
-      expect(link.html()).toContain('/profile/keys?provider=google')
-      expect(link.classes()).toEqual(expect.arrayContaining([
-        'btn',
-        'btn-sm',
-        'min-h-11',
-        'sm:min-h-8',
-      ]))
-      expect(button.text()).toBe('Choose another model')
-      expect(button.classes()).toEqual(expect.arrayContaining([
-        'btn',
-        'btn-sm',
-        'min-h-11',
-        'sm:min-h-8',
-      ]))
+      expect(byId(wrapper, 'connector-picker-google-note-text-gmail').text())
+        .toContain('DeepSeek may use API inputs for training')
+      expect(byId(wrapper, 'connector-picker-google-action-keys-gmail')
+        .exists()).toBe(false)
+      expect(byId(wrapper, 'connector-picker-google-action-model-gmail')
+        .text()).toBe('Choose another model')
       expect(byId(wrapper, 'gemini-paid-tier-stub').exists()).toBe(false)
     })
+
+    it('shows the keys link and the model button for a gateway model',
+      async () => {
+        const wrapper = await mountRow({
+          subLine: 'Not available with this model',
+          reasonNote: REASON_NOTE,
+          reasonActions: [KEYS_ACTION, CHOOSE_MODEL_ACTION],
+        })
+        const link = byId(wrapper, 'connector-picker-google-action-keys-gmail')
+        const button = byId(wrapper, 'connector-picker-google-action-model-gmail')
+
+        expect(link.text()).toBe('Open API Keys')
+        expect(link.html()).toContain('/profile/keys?provider=google')
+        expect(link.classes()).toEqual(expect.arrayContaining([
+          'btn',
+          'btn-sm',
+          'min-h-11',
+          'sm:min-h-8',
+        ]))
+        expect(button.text()).toBe('Choose another model')
+        expect(button.classes()).toEqual(expect.arrayContaining([
+          'btn',
+          'btn-sm',
+          'min-h-11',
+          'sm:min-h-8',
+        ]))
+        expect(byId(wrapper, 'gemini-paid-tier-stub').exists()).toBe(false)
+      })
 
     it('emits navigate from the keys link and choose-model from the '
       + 'model button', async () => {

@@ -41,9 +41,11 @@
 
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
+import { getMessageMetadata } from '#shared/utils/message-metadata'
+import { resolveProviderMetaByKeyProviderId } from '#shared/utils/provider-meta'
 import {
   GOOGLE_TOOLS_WITHHELD_KEYS_PATH,
-  GOOGLE_TOOLS_WITHHELD_NOTES,
+  getGoogleToolsWithheldNote,
   getGoogleToolsWithheldReason,
 } from '#shared/utils/google-tools-withheld'
 import type {
@@ -54,9 +56,25 @@ const props = defineProps<{
   message: UIMessage
 }>()
 
+const directProviderId = computed<string | null>(() => {
+  const usageProvider = getMessageMetadata(props.message).usage?.provider
+
+  if (!usageProvider) {
+    return null
+  }
+
+  const meta = resolveProviderMetaByKeyProviderId(usageProvider)
+
+  return meta?.kind === 'provider' ? meta.id : null
+})
+
 const note = computed<GoogleToolsWithheldNote | null>(() => {
   const reason = getGoogleToolsWithheldReason(props.message)
 
-  return reason ? GOOGLE_TOOLS_WITHHELD_NOTES[reason] : null
+  return reason
+    ? getGoogleToolsWithheldNote(reason, {
+      providerId: directProviderId.value,
+    })
+    : null
 })
 </script>
