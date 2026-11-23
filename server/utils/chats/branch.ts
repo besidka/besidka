@@ -5,6 +5,7 @@ import { createError } from 'evlog'
 import { TOOL_BUDGET_PART_TYPE } from '#shared/utils/tool-rounds'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
+import { GOOGLE_TOOLS_WITHHELD_PART_TYPE } from '#shared/utils/google-tools-withheld'
 import {
   buildConnectorUsedMarkerPart,
   CONNECTORS_NOTICE_PART_TYPE,
@@ -123,6 +124,7 @@ function isNonToolMessagePart(
     && type !== TOOL_APPROVAL_DATA_PART_TYPE
     && type !== TOOL_GRANT_DATA_PART_TYPE
     && type !== TOOL_BUDGET_PART_TYPE
+    && type !== GOOGLE_TOOLS_WITHHELD_PART_TYPE
     && !type.startsWith('tool-')
 }
 
