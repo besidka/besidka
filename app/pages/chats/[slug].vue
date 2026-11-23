@@ -87,6 +87,10 @@
             v-if="m.role === 'assistant'"
             :message="m"
           />
+          <ChatGoogleToolsWithheld
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
           <ChatDeepResearchMeta
             v-if="hasResearchMetaPart(m)"
             :message="m"

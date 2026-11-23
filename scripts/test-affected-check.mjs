@@ -1961,6 +1961,17 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/stop-retry.spec.ts',
   ]
 
+  const googleToolsWithheldTests = [
+    'tests/unit/utils/google-tools-withheld.spec.ts',
+    'tests/unit/components/Chat/GoogleToolsWithheld.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/files/assistant-files.spec.ts',
+    'tests/integration/api/chats-google-tools-withheld.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
   const connectorRuntimeTests = [
     'tests/unit/server/utils/ai/stream-stall.spec.ts',
     'tests/unit/server/utils/ai/tool-rounds.spec.ts',
@@ -4204,6 +4215,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/chats\/(generation-lease|generation-in-progress|stream-disconnect|stopped-replies|lifecycle)\.ts|server\/utils\/ai\/(generation-guard|stream-stall)\.ts|shared\/utils\/chat-reply-stopped\.ts|server\/api\/v1\/chats\/\[slug\]\/(stop|index)\.post\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/(Loader\.client|ReplyStopped)\.vue|app\/pages\/chats\/\[slug\]\.vue|tests\/setup\/helpers\/memory-extraction-db\.ts)$/,
       tests: generationStopTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-tools-withheld\.ts|server\/utils\/tool-approval\/google-send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/chats\/(share-public-parts|branch)\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/GoogleToolsWithheld\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: googleToolsWithheldTests,
     },
     {
       pattern:

@@ -3,6 +3,7 @@ import {
   canOfferGoogleTools,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
+import type { GoogleToolsWithheldReason } from '#shared/utils/google-tools-withheld'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { GoogleByoFeatureState } from '~~/server/utils/google/byo-access'
 import {
@@ -124,12 +125,30 @@ export function hasUnremovableProviderTool(input: {
 }
 
 /**
+ * What `getGoogleSendTools` decided: the tools to register and, when there
+ * were candidates but none is offered for a reason the user can act on, the
+ * reason code the chat shows. No reason for a user without candidates and
+ * none for a model without tool calling.
+ */
+export interface GoogleSendToolsDecision extends GoogleSendTools {
+  withheldReason: GoogleToolsWithheldReason | null
+}
+
+function withheld(
+  reason: GoogleToolsWithheldReason | null,
+): GoogleSendToolsDecision {
+  return { ...noGoogleSendTools(), withheldReason: reason }
+}
+
+/**
  * The Google tools the send registers: the plan's candidates, and none when
  * the send's model may not receive Google data (`mayReceiveGoogleData`, the
  * data guard, whose gateway condition is the plan's `gatewaySafeguards`),
  * because a Google result would reach that model in the next step of the
  * same send. The guard (and its keys read) runs only when there is a
- * candidate.
+ * candidate. When candidates exist and the send withholds them for the
+ * unremovable provider tool or the recipient, the decision carries the
+ * reason code (`withheldReason`) so the chat can say why.
  */
 export async function getGoogleSendTools(input: {
   plan: GoogleSendPlan
@@ -138,9 +157,9 @@ export async function getGoogleSendTools(input: {
   providerToolsStayCallable?: boolean
   toolCallingAllowed?: boolean
   logger: LoggerLike
-}): Promise<GoogleSendTools> {
+}): Promise<GoogleSendToolsDecision> {
   if (!hasGoogleSendTools(input.plan.candidates)) {
-    return noGoogleSendTools()
+    return withheld(null)
   }
 
   if (input.toolCallingAllowed === false) {
@@ -148,7 +167,7 @@ export async function getGoogleSendTools(input: {
       attributes: { googleDataGuard: { googleTools: 'tool-calling-off' } },
     })
 
-    return noGoogleSendTools()
+    return withheld(null)
   }
 
   if (input.providerToolsStayCallable && !input.holdsGoogleData) {
@@ -156,7 +175,7 @@ export async function getGoogleSendTools(input: {
       attributes: { googleDataGuard: { googleTools: 'provider-tools-declared' } },
     })
 
-    return noGoogleSendTools()
+    return withheld('provider_tool_not_removable')
   }
 
   if (!await input.mayReceiveGoogleData()) {
@@ -164,10 +183,10 @@ export async function getGoogleSendTools(input: {
       attributes: { googleDataGuard: { googleTools: 'recipient-refused' } },
     })
 
-    return noGoogleSendTools()
+    return withheld('model_may_not_receive_google_data')
   }
 
-  return input.plan.candidates
+  return { ...input.plan.candidates, withheldReason: null }
 }
 
 /**

@@ -54,6 +54,7 @@ import {
   CONNECTORS_NOTICE_PART_TYPE,
   getConnectorToolCall,
 } from '#shared/utils/connectors-parts'
+import { GOOGLE_TOOLS_WITHHELD_PART_TYPE } from '#shared/utils/google-tools-withheld'
 import {
   DOCUMENT_DATA_PART_TYPE,
   isDocumentToolPartType,
@@ -665,6 +666,7 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
 
     return part.type !== 'data-omitted-context-files'
       && part.type !== CONNECTORS_NOTICE_PART_TYPE
+      && part.type !== GOOGLE_TOOLS_WITHHELD_PART_TYPE
       && !isPastChatPreRetrievalPart(part)
   })
 }

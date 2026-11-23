@@ -228,6 +228,19 @@ describe('connector parts in shares and branches', () => {
     expect(JSON.stringify(branched)).not.toContain('linear')
   })
 
+  it('drops the Google tools withheld part from a branched message', () => {
+    const branched = stripToolPartsFromBranchedMessage([
+      {
+        type: 'data-google-tools-withheld',
+        data: { reason: 'model_may_not_receive_google_data' },
+      },
+      { type: 'text', text: 'Plain answer' },
+    ] as unknown as UIMessage['parts'])
+
+    expect(branched).toEqual([{ type: 'text', text: 'Plain answer' }])
+    expect(JSON.stringify(branched)).not.toContain('google-tools-withheld')
+  })
+
   it('keeps one marker when a branch is branched again', () => {
     const once = stripToolPartsFromBranchedMessage(connectorParts)
 
@@ -440,6 +453,28 @@ describe('connector image parts in shares and branches', () => {
     expect(JSON.stringify(message)).not.toContain('drive.google.com')
     expect(JSON.stringify(message)).not.toContain('1AbCdEfGhIjKlMnOpQrStUvWxYz')
   })
+
+  it('drops the Google tools withheld note from a share and a branch',
+    () => {
+      const message = {
+        id: 'assistant-withheld',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'data-google-tools-withheld',
+            data: { reason: 'model_may_not_receive_google_data' },
+          },
+          { type: 'text', text: 'I have no calendar access.' },
+        ],
+      } as unknown as UIMessage
+
+      expect(filterPublicParts([message])[0]!.parts).toEqual([
+        { type: 'text', text: 'I have no calendar access.' },
+      ])
+      expect(stripToolPartsFromBranchedMessage(message.parts)).toEqual([
+        { type: 'text', text: 'I have no calendar access.' },
+      ])
+    })
 
   it('drops the stopped marker from a share and keeps it in a branch',
     () => {

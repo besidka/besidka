@@ -1018,6 +1018,127 @@ describe('ChatInput/Files/Attached/Preview', () => {
         expect(placeholders[2]?.classes()).toContain('h-2.5')
       })
 
+    describe('with no file in the row', () => {
+      type MountedPreview = Awaited<ReturnType<typeof mountSuspended>>
+
+      function tileVariant(wrapper: MountedPreview) {
+        return wrapper
+          .get('[data-testid="chat-input-tile-search-body"]')
+          .attributes('data-variant')
+      }
+
+      it('renders in the pill form and keeps the tiles as pills',
+        async () => {
+          const wrapper = await mountSuspended(Preview, {
+            props: {
+              files: [],
+              tiles: [createTile({})],
+              checkingLinkCount: 1,
+            },
+          })
+          const skeleton = wrapper.get('[data-testid="google-link-skeleton"]')
+          const pill = skeleton.get('[data-testid="google-link-skeleton-pill"]')
+          const tileBody = wrapper.get(
+            '[data-testid="chat-input-tile-search-body"]',
+          )
+
+          expect(tileVariant(wrapper)).toBe('pill')
+          expect(pill.classes()).toEqual(
+            expect.arrayContaining(['h-10', 'rounded-box', 'border']),
+          )
+          expect(tileBody.classes()).toEqual(
+            expect.arrayContaining(['h-10', 'rounded-box', 'border']),
+          )
+          expect(skeleton.find('.size-14').exists()).toBe(false)
+          expect(skeleton.find('.size-16').exists()).toBe(false)
+          expect(skeleton.find(
+            '[data-testid="google-link-skeleton-preview"]',
+          ).exists()).toBe(false)
+          expect(skeleton.attributes('role')).toBe('status')
+          expect(skeleton.attributes('aria-label'))
+            .toBe('Checking Google link')
+          expect(skeleton.findAll('.skeleton').length).toBeGreaterThan(0)
+        })
+
+      it('does not change the tile variant before, during or after the '
+        + 'check', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: { files: [], tiles: [createTile({})] },
+        })
+        const before = tileVariant(wrapper)
+
+        await wrapper.setProps({ checkingLinkCount: 1 })
+
+        const during = tileVariant(wrapper)
+
+        await wrapper.setProps({ checkingLinkCount: 0 })
+
+        const after = tileVariant(wrapper)
+
+        expect([before, during, after]).toEqual(['pill', 'pill', 'pill'])
+      })
+
+      it('renders a row of the skeleton alone', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: { files: [], tiles: [], checkingLinkCount: 1 },
+        })
+
+        expect(wrapper.find('[role="region"]').exists()).toBe(true)
+        expect(wrapper.find('[data-testid="google-link-skeleton-pill"]')
+          .exists()).toBe(true)
+      })
+    })
+
+    describe('with a real item in the row', () => {
+      it('keeps the square form and the tiles square', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [documentFile],
+            tiles: [createTile({})],
+            checkingLinkCount: 1,
+          },
+        })
+        const skeleton = wrapper.get('[data-testid="google-link-skeleton"]')
+
+        expect(skeleton.find('[data-testid="google-link-skeleton-pill"]')
+          .exists()).toBe(false)
+        expect(skeleton.find('.size-14').exists()).toBe(true)
+        expect(
+          wrapper.get('[data-testid="chat-input-tile-search-body"]')
+            .attributes('data-variant'),
+        ).toBe('square')
+      })
+
+      it('uses the square form beside a pasted text chip', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [],
+            pastedTexts: [{ id: 'pasted-1', content: 'Body' }],
+            checkingLinkCount: 1,
+          },
+        })
+        const skeleton = wrapper.get('[data-testid="google-link-skeleton"]')
+        const pasted = wrapper.get('[data-testid="pasted-text-item"]')
+
+        expect(skeleton.classes().sort()).toEqual(pasted.classes().sort())
+        expect(skeleton.find('.size-14').exists()).toBe(true)
+      })
+
+      it('switches from the pill form to the square form when a file '
+        + 'arrives while it is checking', async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: { files: [], tiles: [], checkingLinkCount: 1 },
+        })
+
+        await wrapper.setProps({ files: [documentFile] })
+
+        expect(wrapper.find('[data-testid="google-link-skeleton-pill"]')
+          .exists()).toBe(false)
+        expect(wrapper.find('[data-testid="google-link-skeleton-preview"]')
+          .exists()).toBe(true)
+      })
+    })
+
     it('uses the same shell classes as an uploading chip', async () => {
       const uploadingFiles = new Map([
         ['up', {
