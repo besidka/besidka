@@ -468,7 +468,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     permissions:
       contents: read
     env:
@@ -555,10 +555,25 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ steps.playwright-cache.outputs.cache-primary-key }}
 
+      - name: Configure apt retries
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/99-ci-retries > /dev/null
+
       - name: Install Playwright system dependencies
         if: steps.changes.outputs.changed == 'true'
-        timeout-minutes: 10
-        run: timeout 480 pnpm exec playwright install-deps chromium webkit
+        timeout-minutes: 25
+        run: |
+          START=$(date +%s)
+          STATUS=0
+
+          timeout 1380 pnpm exec playwright install-deps chromium webkit || STATUS=$?
+
+          DURATION=$(($(date +%s) - START))
+          echo "::warning::Playwright system dependencies took ${DURATION}s (exit ${STATUS})."
+          echo "Playwright system dependencies took ${DURATION}s (exit ${STATUS})." >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$STATUS"
 
       - name: Run the runtime sandbox tests (Chromium and WebKit)
         if: steps.changes.outputs.changed == 'true'

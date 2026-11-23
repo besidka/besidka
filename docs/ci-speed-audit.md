@@ -199,6 +199,13 @@ each, step limit 25 minutes) and saves the cache right after a successful
 install. The apt packages are not cached, so `playwright install-deps` runs on
 every run (10-minute step limit). The job limit is 35 minutes, and a cold
 install writes its duration in seconds as a warning and to the step summary.
+In run 45245999157 the browser cache worked (install 7 s, cache saved), but
+`install-deps` timed out at 10 minutes: apt fetched about 140 packages from the
+runner's us-east-2 Ubuntu mirror at one package every few seconds with 5 to 15
+second stalls. The step now allows 1380 s inside a 25-minute step limit, the
+job limit is 45 minutes, and a step before it writes `Acquire::Retries "5"` and
+`Acquire::http::Timeout "30"` to `/etc/apt/apt.conf.d/99-ci-retries`; the step
+also reports its duration as a warning and in the step summary.
 
 ### F2. E2E is sequential (`workers: 1`)
 
