@@ -468,7 +468,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
     env:
@@ -511,12 +511,54 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Install Playwright browsers
+      - name: Resolve Playwright version
+        id: playwright-version
         if: steps.changes.outputs.changed == 'true'
-        timeout-minutes: 20
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browsers
+        id: playwright-cache
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium-headless-shell-webkit
+
+      - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 25
         run: |
-          for _ in 1 2; do timeout 900 pnpm exec playwright install --with-deps chromium webkit && exit 0; done
-          exit 1
+          START=$(date +%s)
+          INSTALLED=false
+
+          for ATTEMPT in 1 2; do
+            if timeout 600 pnpm exec playwright install --only-shell chromium webkit; then
+              INSTALLED=true
+              break
+            fi
+
+            echo "::warning::Playwright browser install attempt ${ATTEMPT} failed or timed out."
+          done
+
+          DURATION=$(($(date +%s) - START))
+          echo "::warning::Playwright browser download took ${DURATION}s (cache miss)."
+          echo "Playwright browser download took ${DURATION}s (cache miss, installed=${INSTALLED})." >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$INSTALLED" != "true" ]; then
+            exit 1
+          fi
+
+      - name: Save Playwright browsers
+        if: steps.changes.outputs.changed == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-cache.outputs.cache-primary-key }}
+
+      - name: Install Playwright system dependencies
+        if: steps.changes.outputs.changed == 'true'
+        timeout-minutes: 10
+        run: timeout 480 pnpm exec playwright install-deps chromium webkit
 
       - name: Run the runtime sandbox tests (Chromium and WebKit)
         if: steps.changes.outputs.changed == 'true'
