@@ -1939,9 +1939,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/files/assistant-files.spec.ts',
     'tests/integration/api/chats-google-tools-withheld.spec.ts',
     'tests/integration/api/chats-google-data-guard.spec.ts',
-    'tests/unit/composables/chat-scroll-spacer.spec.ts',
-    'tests/e2e/chat/scroll-spacer.spec.ts',
-    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+    ...SPACER_SUITES,
   ]
 
   const connectorRuntimeTests = [
