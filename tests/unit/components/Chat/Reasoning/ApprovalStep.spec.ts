@@ -305,6 +305,8 @@ describe('Chat/Reasoning/ApprovalStep', () => {
     'google__gmail_create_draft',
     'google__drive_save_file',
     'google__drive_create_folder',
+    'google__drive_rename',
+    'google__drive_move',
     'google__calendar_create_event',
   ])('never approves the Google write %s on Enter from the card', async (
     toolName,
@@ -665,6 +667,133 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       expect(useSidePanel().currentView.value?.props).toMatchObject({
         toolName: 'google__drive_create_folder',
         driveNames: { folder: { name: 'Projects', id: FOLDER_ID } },
+      })
+    })
+  })
+
+  describe('a Google Drive rename and move', () => {
+    const ITEM_ID = 'item-id-0123456789'
+    const FOLDER_ID = 'folder-id-0123456789'
+    const TARGET_ID = 'target-id-0123456789'
+
+    function renameModel(
+      overrides: Partial<ApprovalStepModel> = {},
+    ): ApprovalStepModel {
+      return createModel({
+        toolName: 'google__drive_rename',
+        connectorSlug: null,
+        tool: 'google__drive_rename',
+        input: { itemId: ITEM_ID, newName: 'Plan' },
+        driveNames: { item: { name: 'Draft', id: ITEM_ID, kind: 'file' } },
+        summary: 'Rename "Draft" to "Plan" in your Google Drive',
+        ...overrides,
+      })
+    }
+
+    function moveModel(
+      overrides: Partial<ApprovalStepModel> = {},
+    ): ApprovalStepModel {
+      return createModel({
+        toolName: 'google__drive_move',
+        connectorSlug: null,
+        tool: 'google__drive_move',
+        input: {
+          itemId: ITEM_ID,
+          fromFolderId: FOLDER_ID,
+          toFolderId: TARGET_ID,
+        },
+        driveNames: {
+          item: { name: 'Plan', id: ITEM_ID, kind: 'folder' },
+          from: { name: 'Projects', id: FOLDER_ID },
+          to: { name: 'Archive', id: TARGET_ID },
+        },
+        summary: 'Move "Plan" from "Projects" to "Archive"',
+        ...overrides,
+      })
+    }
+
+    it('shows the old and the new name of a rename with the item id',
+      async () => {
+        const { wrapper } = await mountStep({ model: renameModel() })
+        const card = wrapper.get(testId('drive-change'))
+
+        expect(card.get(testId('drive-change-old-name')).text())
+          .toContain('“Draft”')
+        expect(card.get(testId('drive-change-name')).text()).toBe('Plan')
+        expect(card.get(testId('drive-change-item-id')).text()).toBe(ITEM_ID)
+        expect(card.get(testId('drive-change-type')).text()).toBe('File')
+        expect(card.get(testId('drive-change-note')).text())
+          .toContain('cannot delete files')
+      })
+
+    it('shows the item, both folders and the folder note of a move',
+      async () => {
+        const { wrapper } = await mountStep({ model: moveModel() })
+        const card = wrapper.get(testId('drive-change'))
+
+        expect(card.get(testId('drive-change-name')).text())
+          .toContain('“Plan”')
+        expect(card.get(testId('drive-change-from')).text())
+          .toContain('“Projects”')
+        expect(card.get(testId('drive-change-to')).text())
+          .toContain('“Archive”')
+        expect(card.get(testId('drive-change-to-id')).text()).toBe(TARGET_ID)
+        expect(card.get(testId('drive-change-folder-note')).text())
+          .toBe('Everything inside moves with it.')
+      })
+
+    it('shows My Drive (top level) for the alias in a move', async () => {
+      const { wrapper } = await mountStep({
+        model: moveModel({
+          input: { itemId: ITEM_ID, fromFolderId: 'root', toFolderId: 'root' },
+          driveNames: undefined,
+        }),
+      })
+
+      expect(wrapper.get(testId('drive-change-from')).text())
+        .toBe('My Drive (top level)')
+      expect(wrapper.get(testId('drive-change-to')).text())
+        .toBe('My Drive (top level)')
+    })
+
+    it.each([
+      ['a rename with a hostile name', renameModel({
+        input: { itemId: ITEM_ID, newName: '../../x' },
+      })],
+      ['a move into the item itself', moveModel({
+        input: {
+          itemId: ITEM_ID,
+          fromFolderId: FOLDER_ID,
+          toFolderId: ITEM_ID,
+        },
+      })],
+    ])('shows no card for %s', async (_label, model) => {
+      const { wrapper } = await mountStep({ model })
+
+      expect(wrapper.find(testId('drive-change')).exists()).toBe(false)
+    })
+
+    it('names an item only for the id the server wrote it for', async () => {
+      const { wrapper } = await mountStep({
+        model: renameModel({
+          driveNames: {
+            item: { name: 'Other', id: 'other-id-0123456789', kind: 'file' },
+          },
+        }),
+      })
+
+      expect(wrapper.get(testId('drive-change-old-name')).text())
+        .not.toContain('Other')
+    })
+
+    it('hands the names to the details panel', async () => {
+      const { wrapper } = await mountStep({ model: moveModel() })
+
+      await wrapper.get(testId('details')).trigger('click')
+
+      expect(useSidePanel().currentView.value?.props).toMatchObject({
+        toolName: 'google__drive_move',
+        driveNames: { to: { name: 'Archive', id: TARGET_ID } },
       })
     })
   })

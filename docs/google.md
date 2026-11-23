@@ -1088,7 +1088,7 @@ the card), never `drive.file` or `userinfo.profile`.
 | Capability | Scope | Tool today |
 |---|---|---|
 | `drive-read` | `drive.readonly` (restricted) | `google__drive_search` (section 14) |
-| `drive-write` | `drive` (restricted; Google's scope for everything in Drive, which includes deleting and sharing, a limit of the permission, not of Besidka: it has no code that deletes or shares). Needs `drive-read` in the union of the requested and the already granted capabilities, or the start route answers 400 | `google__drive_list_folder`, `google__drive_create_folder` (section 19); not part of the Drive entry's capabilities on Connectors, so a read-only owner never shows as "partial" |
+| `drive-write` | `drive` (restricted; Google's scope for everything in Drive, which includes deleting and sharing, a limit of the permission, not of Besidka: it has no code that deletes or shares). Needs `drive-read` in the union of the requested and the already granted capabilities, or the start route answers 400 | `google__drive_list_folder`, `google__drive_create_folder`, `google__drive_rename`, `google__drive_move` (section 19); not part of the Drive entry's capabilities on Connectors, so a read-only owner never shows as "partial" |
 | `gmail-read` | `gmail.readonly` (restricted) | `google__gmail_search`, `google__gmail_read_thread` (section 14) |
 | `gmail-compose` | `gmail.compose` (restricted; Google's scope for managing drafts and sending mail) | `google__gmail_create_draft` (section 14); Besidka has no send tool and creates drafts only, a limit of the product, not of the permission |
 | `calendar` | `calendar.events.owned` and `calendar.events.freebusy` (both, or the capability is not granted; each tool needs only its own, section 15.2) | `google__calendar_list_events`, `google__calendar_free_busy`, `google__calendar_create_event` (section 15); offered on the card and accepted by the start route only while `google.calendar` is active for the owner |
@@ -3993,7 +3993,7 @@ for a `PUT` the write limit.
 | --- | --- |
 | Drive tools of Besidka's client | `google.drive` active |
 | Drive search and the read of a found file | the admin gate with `google.byo` (`checkGoogleByoAccess`) |
-| Drive folder tools (`google__drive_list_folder`, `google__drive_create_folder`, section 19) | the same: the admin gate with `google.byo`; the catalog entries name `neededCapability: 'drive-write'` and flag `google.byo`, so the routes, the panel rows, the per-chat Drive switch and the Blocked rows cover them through the existing mechanisms with no code of their own |
+| Drive tools of section 19 (`google__drive_list_folder`, `google__drive_create_folder`, `google__drive_rename`, `google__drive_move`) | the same: the admin gate with `google.byo`; the catalog entries name `neededCapability: 'drive-write'` and flag `google.byo`, so the routes, the panel rows, the per-chat Drive switch and the Blocked rows cover them through the existing mechanisms with no code of their own |
 | Gmail tools | the admin gate plus `google.gmail` |
 | Calendar tools | the admin gate plus `google.calendar` |
 
@@ -4272,15 +4272,16 @@ or writable there). No account-wide switch, no per-tool switch per chat (a
 tool is Blocked per user, section 17). A restore:
 `docs/d1-restore-reconciliation.md`, "Tool approvals".
 
-## 19. Drive writes on the own client: folders (BES-460, PR1)
+## 19. Drive writes on the own client: folders, rename and move (BES-460, PR1 and PR2)
 
-Status: PR1 of three on `feat/google-drive-write-1`. The approved design is
-the plan of 2026-11-23 (owner questions Q1 and Q2 decided "refuse in v1"; Q3,
-the legal rows, is the owner's). PR1 adds the scope, the checkbox, one read
-tool (`google__drive_list_folder`) and one write tool
-(`google__drive_create_folder`). Rename and move (PR2) and create file (PR3)
-are not built, `http.ts` has no `PATCH` yet and nothing here can delete,
-trash, copy or share.
+Status: PR1 and PR2 of three (PR2 on `feat/google-drive-write-2`). The
+approved design is the plan of 2026-11-23 (owner questions Q1 and Q2 decided
+"refuse in v1"; Q3, the legal rows, is the owner's). PR1 added the scope, the
+checkbox, one read tool (`google__drive_list_folder`) and one write tool
+(`google__drive_create_folder`). PR2 adds `google__drive_rename` and
+`google__drive_move` (sections 19.9 to 19.11): `PATCH` is in `http.ts`, used
+only by `drive-write-api.ts`. Create file (PR3) is not built, and nothing here
+can delete, trash, copy or share.
 
 ### 19.1 Scope, capability and the checkbox
 
@@ -4299,9 +4300,10 @@ The card shows "Change files in Google Drive" nested under "All your Google
 Drive files, read only": disabled with a hint until the read box is ticked or
 read access is already granted, and cleared again when the read box is
 unticked, so the client never sends the pair the route refuses. Its note says
-"Lets Besidka create folders in your Drive, each time you approve. Renaming,
-moving and creating files will be added later." and "Google's permission for this also allows deleting and
-sharing; Besidka has no code that deletes or shares." (the same shape as the
+"Lets Besidka create folders, and rename and move files and folders you own,
+each time you approve. Creating files will be added later." and "Google's
+permission for this also allows deleting and sharing; Besidka has no code that
+deletes or shares." (the same shape as the
 `gmail.compose` note; once granted the second sentence stays on the card).
 The missing-tools note lists "Changing files needs Change files access." like
 the other capabilities, but only for an owner who has Drive read access granted
@@ -4330,6 +4332,8 @@ shows "Change files access granted". The Drive entry itself never turns
 |---|---|---|---|
 | `google__drive_list_folder` | read | exactly one of `folderId` (`root` or a folder id this chat knows, section 19.3) and `query` (words a folder name contains, at most 100 characters) | `references` (the listed folder as `drive-folder`, or the root as `drive-root` with the fixed title "My Drive" from our code; each child as `drive-folder` or `drive-file` with `parentId`), `count`, `folder_id`, `items` (framed JSON lines: `item_id`, name, `kind`, `ownedByYou`, `shared`, `inSharedDrive`), `note` |
 | `google__drive_create_folder` | write | `name` (1 to 200 UTF-16 units, one line, no leading or trailing space, no `/` or `\`, not `.` or `..`, no control, invisible or bidi character), optional `parentFolderId` (`root` or a known folder id; missing and `root` both mean the top level of My Drive and send no `parents`) | `references` (the new folder with its name, link and `parentId`), `created`, `folder_id`, a fixed `message`; no Drive name is echoed to the model |
+| `google__drive_rename` | write | `itemId` (an item of `writableItems`), `newName` (the same name rule) | `references` (the item with its new name), `renamed`, `alreadyDone`, a fixed `message` (section 19.9) |
+| `google__drive_move` | write | `itemId` (an item of `writableItems`), `fromFolderId` and `toFolderId` (`root` or a folder of `folders`) | `references` (the item with its new `parentId`), `moved`, `alreadyDone`, a fixed `message` (section 19.10) |
 
 `list_folder` is a read with the Calendar-read grants: Allow once or "Allow
 listing folders in your Google Drive in this chat" (at most 5 granted calls per
@@ -4351,8 +4355,16 @@ or in the trash is not listed.
 
 | Map | Filled from | Used for |
 |---|---|---|
-| `folders` | `list_folder` and `create_folder` results (kinds `drive-folder` and `drive-root`), plus My Drive under the alias `root`, always | the parent of `create_folder`, and the folders `list_folder` opens |
-| `writableItems` | `drive_search` hits, `list_folder` items, `create_folder` results (not yet read by a tool in PR1; rename and move use it) | PR2 |
+| `folders` | `list_folder`, `create_folder`, `rename` and `move` results (kinds `drive-folder` and `drive-root`; only `list_folder` can name the root), plus My Drive under the alias `root`, always | the parent of `create_folder`, the source and target of `move`, and the folders `list_folder` opens |
+| `writableItems` | `drive_search` hits, `list_folder` items, `create_folder`, `rename` and `move` results (never a `drive-root`) | the item of `rename` and `move`; its title is also what the execute-time name check compares with |
+
+The stored parts are read in the order they were stored (`ORDER BY` the message
+id) and every part is applied to every source in turn, so a later result
+replaces an earlier one whichever tool it came from: after Besidka renames an
+item, the next message of the chat knows the new name (a stale search title
+would otherwise make the next rename or move say "renamed since it was found"),
+and a later search wins over an earlier rename. `loadChatSearchParts` also loads
+messages that mention `drive_rename` and `drive_move`.
 
 A file a folder listing returns is never a `foundFile`: only a
 `google__drive_search` result makes a file readable by
@@ -4387,8 +4399,9 @@ needs them is in scope for the stored grant.
 ### 19.4 Creating a folder: checks and retry protection
 
 `server/utils/google/drive-write-api.ts` holds the requests; only
-`drive-write-tools.ts` imports it (the boundary spec checks this). In PR1 it
-has GET reads and one POST. In order, `execute`:
+`drive-write-tools.ts` imports it (the boundary spec checks this). It has GET
+reads, one POST (the create) and, since PR2, one PATCH (section 19.9). In
+order, `execute` of a create:
 
 1. validates the input (`validateCreateFolderInput`, the same function the zod
    `superRefine` and the card use);
@@ -4406,19 +4419,28 @@ has GET reads and one POST. In order, `execute`:
 6. for a parent other than My Drive, reads it live (`files.get`) and refuses
    unless it is a folder, not in a shared drive (`driveId`), not in the trash,
    owned by the user (`ownedByMe`), not shared (`shared === false`) and the user
-   can add children (`capabilities.canAddChildren`). The checks run at execute,
+   can add children (`capabilities.canAddChildren`), then walks the parent's
+   ancestry up to the live root (at most 20 minimal reads, section 19.10 step
+   5a): an ancestor that is shared, in a shared drive, not owned or in the
+   trash refuses, and a depth limit, a failed read or a parentless folder that
+   is not the root is "not confirmed", so a folder cannot be created into a
+   tree whose visibility it would inherit. The checks run at execute,
    not from the index, because a folder may have been shared after it was
    listed; a missing field fails closed. This is owner question Q1 and Q2:
    shared folders, shared drives and items of other owners are refused in v1,
-   and a cross-drive move is always refused (PR2);
+   and a cross-drive move is always refused (section 19.10). A parent that
+   looks like My Drive (an owned folder with no parent outside a shared drive)
+   is My Drive only when its id equals the id `files.get('root')` answers with
+   (section 19.11);
 7. `POST /drive/v3/files?supportsAllDrives=true` with the metadata of
    `buildDriveCreateMetadata`: `id`, `name`, `mimeType`, at most one `parents`
    entry and `appProperties.besidkaApproval = <digest>`, copied field by field
    (nothing else can be in the body);
 8. a 409 is a success only after `files.get(id)` shows this digest in
    `appProperties` and the approved name, the folder type and exactly one
-   parent (the approved one, or, for My Drive, a known real root id when the
-   chat has seen one); Drive's wording of a 409 is not trusted. Anything else
+   parent (the approved one, or, for My Drive, the id `files.get('root')`
+   answers with: one more read, only on this path); Drive's wording of a 409
+   is not trusted. Anything else
    (no answer, a timeout, a 5xx, a 409 that is not ours) answers "Google Drive
    did not confirm the folder, so it may or may not have been created. Ask the
    user to check their Google Drive before trying again.".
@@ -4460,7 +4482,11 @@ or change who can see them." Persisted summaries: `Create the folder "<n>" in
 My Drive`, `Create the folder "<n>" inside "<folder>" in your Google Drive`
 (names cut to 120). Reloaded steps: "Created a folder in Google Drive" and
 "Listed folders in Google Drive", with "Open in Google Drive" on a reference
-that has a link.
+that has a link. Since PR2 the view has three variants (rename and move in
+sections 19.9 and 19.10), `DriveName` has an optional `kind` (`file` or
+`folder`, any other value makes the whole field null) so a card can say "Type"
+and "Everything inside moves with it", and the heading of the details panel
+follows the view kind (`getDriveChangeHeading`: Folder, Rename, Move).
 
 Scroll spacer: `DriveChange` mounts inside the existing approval bubble (a
 sibling after the last message) and in `ApprovalStep`, exactly where
@@ -4477,14 +4503,20 @@ that `files.generateIds` ids are accepted by a create (a hashed client id is
 likely refused with 400, so none is used); the shape of the 409 for a duplicate
 id (the code never reads its reason); `appProperties` being visible to the
 creating client; that `ownedByMe`, `shared`, `driveId` and
-`capabilities.canAddChildren` come back as expected with the `drive` scope
-(any missing field refuses the destination); that `shared` is true for a folder
+`capabilities.canAddChildren`, `canRename` and `canMoveItemWithinDrive` come
+back as expected with the `drive` scope (any missing field refuses); that
+`PATCH /drive/v3/files/<id>` with `addParents` and `removeParents` moves an
+item and answers the new `parents` (and that a folder moved into its own
+subtree answers 400); that `files.get('root')` answers an id that equals the
+`parents` entry of a My Drive item; that an orphaned folder really answers an
+empty `parents`; that the PATCH answer echoes the sent name unchanged (the
+rename check compares it exactly) and the reasons Drive gives for a refused
+PATCH (every 403 maps to the permission sentence); that `shared` is true for a folder
 that only inherits sharing from its parent; the alias `root` in a `files.get`
 path and in `'root' in parents`; that `corpora=user` lists a folder as
 expected; and the real root id that `files.get('root')` answers with.
 
-Not built: rename, move (PR2: `PATCH` in `http.ts`, the D5 and D9 checks, card
-variants), create file (PR3: the multipart upload, the kind map, the content
+Not built: create file (PR3: the multipart upload, the kind map, the content
 rules and caps, the Doc and Sheet preview). No migration, no change to
 `config/mcp-surface.json` (the MCP server imports neither module). A Workspace
 domain with default link sharing may make a new folder visible in the
@@ -4505,7 +4537,18 @@ section 19.8 (plan question Q3).
 4. Repeat the same approval after a forced failure (for example by editing
    the KV record) and confirm a single folder exists afterwards.
 5. Record what Google answers for the points in section 19.6 and update this
-   section.
+   section. Real-account items still open: whether an unshared subfolder of a
+   shared folder reports `shared` (the ancestry walk refuses it either way, but
+   the answer settles whether the `shared` flag alone would have been enough);
+   the answer to moving a folder into its own descendant (400 or 403, now
+   mapped to the cycle sentence); whether the echoed name keeps its Unicode
+   form (NFC compared on both sides); the shape of the 409 for a duplicate id;
+   whether `appProperties` can be read back by the creating client after a
+   409 retry.
+
+The live check of 2026-11-24 settled only these: a generated id is accepted on
+create, the alias `root` works for a list and a create, the creating client can
+read the item back, and a folder name search works. Nothing else was settled.
 
 ### 19.8 Legal and privacy
 
@@ -4527,16 +4570,164 @@ revision hash moved. Whether a notice is needed is the owner's decision.
 
 The legal rows record what is built (PR1: the permission, `list_folder`,
 `create_folder`, the boundary spec, the live check of the create-folder
-parent, the approval card) apart from what is planned (PR2: rename and move;
-PR3: create file). The go verdict of pre-check row 18 depends on the real
-account checklist in section 19.7, which is still open.
+parent, the approval card; PR2: rename and move of items the user owns,
+cross-drive moves and items of other owners refused) apart from what is
+planned (PR3: create file). The go verdict of pre-check row 18 depends on the
+real account checklist in section 19.7, which is still open. The copy was
+updated in PR2 (`GOOGLE_DRIVE_WRITE_ACCESS_NOTE`, `GOOGLE_DRIVE_WRITE_INFO_TEXT`
+in the Drive info text and `GOOGLE_DRIVE_WRITE_TOOLS_HINT` now name rename and
+move); PR3 must reword them again when it adds creating files.
 
-Copy to update when the later PRs land: after PR2, the exception text in
-`GoogleDetailPanel.vue` (`DRIVE_WRITE_INFO_TEXT`) and
-`GOOGLE_DRIVE_WRITE_TOOLS_HINT` must also mention rename and move; until PR2
-and PR3 ship, `GOOGLE_DRIVE_WRITE_ACCESS_NOTE` says only what is built
-("create folders ... Renaming, moving and creating files will be added
-later") and each of those PRs must reword it again.
+### 19.9 Renaming an item (PR2)
+
+`google__drive_rename` takes `{ itemId, newName }`. The id must be in
+`writableItems` (a search hit, a listed item or an earlier result of this chat;
+never a picked or saved Besidka-client file), else the call is refused without
+asking (`failsWithoutRunning` plus the refusal latch). The name goes through
+`validateDriveItemName`, like a folder name. In order, `execute`:
+
+1. validates the input (`validateRenameInput`, the function the zod
+   `superRefine` and the card also use) and the latch;
+2. takes a fresh token and reads the item live: `GET /drive/v3/files/<id>` with
+   `fields=id,name,mimeType,parents,ownedByMe,shared,driveId,trashed,appProperties,capabilities(canAddChildren,canRename,canMoveItemWithinDrive)`
+   and `supportsAllDrives=true`;
+3. refuses an item in a shared drive (`driveId`), in the trash, not owned by
+   the user (`ownedByMe !== true`, so a missing field fails closed), or My
+   Drive itself (the live root check of section 19.11);
+4. succeeds without a request when the live name already equals the new name:
+   `alreadyDone: true`. That is how a retry of the same approval ends;
+5. otherwise refuses when the cleaned live name is not the cleaned title the
+   chat found ("renamed since it was found in this chat; search again") and when
+   `capabilities.canRename` is not true;
+6. `PATCH /drive/v3/files/<id>?supportsAllDrives=true&fields=id,name,mimeType,parents`
+   with the body exactly `{ "name": <newName> }` (`buildDriveRenameRequest`
+   copies nothing else, whatever object it gets), and treats an answer for
+   another id or another name as "did not confirm". Names are compared after
+   NFC normalization on both sides, here and in the "already has that name"
+   check.
+
+`patchDriveItem` accepts only a request that is exactly a rename (a body of
+only a string `name`; the query keys `fields` and `supportsAllDrives`) or
+exactly a move (an empty body; the query keys `addParents`, `removeParents`,
+`fields` and `supportsAllDrives`), whatever object a caller builds by hand, and
+refuses anything else with `bad_request` before any request. It also checks
+the rename `name` with `validateDriveItemName`, refuses a move whose
+`addParents` equals `removeParents`, reads each value once into locals and
+builds the URL and body from that copy, so an object with getters cannot pass
+one value and send another. The boundary spec
+hands it hostile requests (a `trashed`, `permissions` or `writersCanShare` body
+key, an extra query key), checks that the tools call it only with the output of
+`buildDriveRenameRequest` or `buildDriveMoveRequest`, and scans the server, the
+app and the shared code for any other PATCH to a Google host. `execute` of
+rename and move refuses before any token or request unless the call has an
+approval id or an `executionId` (one option, `readExecutionId`; today the
+approval id), so a later change can pass an id for a run allowed without
+asking. `create_folder` is unchanged.
+
+The PATCH is on the metadata endpoint only; `/upload/drive/v3/files/<id>` would
+edit content and the boundary spec fails if it appears. Failures use fixed
+sentences per operation (`DRIVE_CHANGE_FAILURE_TEXT`) for the PATCH only: 403
+(no permission to rename it, or the Change files access is missing), 404, 400,
+429, and for a timeout or a 5xx "did not confirm the rename, so it may or may
+not have happened; check the name in your Google Drive". A failed live check
+before the PATCH (the item, the root or a folder read) uses the general
+sentence of section 19.4, which says nothing was changed, because nothing was
+sent. An item the user owns but has shared stays renamable and movable: the
+v1 rule checks `ownedByMe` and the absence of `driveId` for the item, and
+`shared` only for the folders of a move. Nothing here can trash, copy or
+share. The model gets a fixed message and `renamed` and `alreadyDone` flags and
+no name; the stored reference holds the id, kind, new title, link and parent
+id.
+
+Card: "Old name" (quoted, with "as found in this chat" and the exact id; the
+name is written by `describeNames` from the index and shown only when its id
+equals `itemId`), "New name" and "Type" (File, Folder, or File or folder when
+the chat did not record the kind). Summary: `Rename "<old>" to "<new>" in your
+Google Drive` (names cut to 120; `Rename an item to "<new>" ...` when the old
+name is unknown). The reloaded step reads "Renamed an item in Google Drive".
+
+### 19.10 Moving an item (PR2)
+
+`google__drive_move` takes `{ itemId, fromFolderId, toFolderId }`: the item is
+in `writableItems`, each folder is `root` or a folder of `folders` (the real
+root id is refused: use the alias, so the card and the request agree). The item
+cannot be either folder. An unknown id is refused without asking (every unknown
+id gets a latch mark, so a sibling listing cannot let the call through). In
+order, `execute`:
+
+1. validates (`validateMoveInput`) and the latch; takes a fresh token;
+2. reads the item live and applies the checks of 19.9 step 3;
+3. resolves `root` to the live id of My Drive (`files.get('root')`, once per
+   call) and succeeds without a PATCH when the item's `parents` is already
+   exactly the target (`alreadyDone: true`);
+4. otherwise refuses when the item was renamed since it was found, when
+   `parents` is not exactly `[fromFolderId]` ("no longer in that folder;
+   nothing was moved", which also covers an item with two parents), and when
+   `capabilities.canMoveItemWithinDrive` is not true;
+5. reads the source and the target live (My Drive needs no read beyond the
+   root) and refuses a folder that is not a folder, is in a shared drive, in
+   the trash, not owned by the user, shared (`shared !== false`) or that takes
+   no children (`canAddChildren`). A target in a shared drive is therefore
+   refused, which makes every cross-drive move impossible;
+5a. walks the ancestry of the source and of the target folder (not for My
+   Drive): their `parents` up to the real root, one `files.get` per level with
+   the mask `id,parents,shared,driveId,ownedByMe,trashed` (`readDriveAncestor`),
+   at most 20 levels. The item's own id above a folder is a cycle ("a folder
+   cannot be moved into itself or into one of its own subfolders"); any
+   ancestor that is shared (`shared !== false`), in a shared drive, not owned
+   by the user or in the trash is refused ("a folder above that folder is
+   ..."). The depth limit, an ancestor read that fails, and a folder with more
+   than one parent are "not confirmed" (nothing sent, "try again in a
+   moment"). The walk ends only at the live root: a folder without `parents`
+   that is not the id `files.get('root')` answers with is "not confirmed" too,
+   because Drive also omits `parents` for a folder inside a folder the user
+   cannot see (so an orphaned folder is refused as a move source or target).
+   This catches sharing that a folder only inherits, whichever way Drive
+   reports `shared` for it. The same walk (without the cycle check) runs on
+   the parent of `create_folder` (section 19.4, step 6), with "Nothing was
+   created." in its sentences;
+6. `PATCH /drive/v3/files/<id>?addParents=<to>&removeParents=<from>&supportsAllDrives=true&fields=id,name,mimeType,parents`
+   with an empty body `{}` (`buildDriveMoveRequest`: only those four query
+   keys), and treats an answer whose `parents` is not exactly the target as
+   "did not confirm". The cycle is already caught by the walk; should Drive
+   still answer 400 (NOT VERIFIED: 400 or 403) for a folder, it is mapped to
+   the cycle sentence, and for a plain file to "Google Drive refused the move.
+   Nothing was moved.".
+
+Requests per call: the item, the root (once), the source and the target, up to
+20 ancestor reads for each, and the PATCH, plus a token refresh; a typical
+move to a folder directly under My Drive is the item, the source, the root,
+the target and the PATCH. Logs: `attributes.googleByoTools.driveRename`
+and `driveMove` hold the kind (`file` or `folder`), `alreadyDone`, whether the
+target was `root`, and the code of a refusal; never a name, id or link. A rename
+and a move taint nothing and flag no chat (`returnsGoogleContent: false`).
+
+Card: "Name" (quoted, with its exact id), "From" and "To" (quoted names with the
+exact id under each; My Drive (top level) for the alias; a folder named "My
+Drive" stays a quoted name; two same-named folders differ by their ids) and,
+for a folder, "Everything inside moves with it." Summary: `Move "<n>" from
+"<a>" to "<b>" in your Google Drive` (My Drive unquoted for the alias; "an
+item" and "a folder" when a name is unknown). The reloaded step reads "Moved an
+item in Google Drive".
+
+### 19.11 A folder that has no parent is not necessarily My Drive
+
+An owned folder with no `parents` outside a shared drive looks like the top
+level of My Drive, but an orphaned folder (for example one whose parent another
+owner removed) has the same shape. PR1 took that shape for My Drive. Now, when
+an answer looks like a root (`isDriveRootMeta`), its id is compared with the id
+`files.get('root')` answers with before it is treated as My Drive: in
+`list_folder` (the header, and what its references say), in the create-folder
+parent check, in the 409 read-back of a top-level create (the created folder's
+parent must be that id) and in the item and folder checks of rename and move.
+The extra read happens once per call and only for an answer of that shape; the
+alias `root` itself needs none (its answer is the root). An orphan folder is
+listed under its own name and shown on a card by its name and id, never as "My
+Drive (top level)". Because Drive also omits `parents` for a folder inside a
+folder the user cannot see, an orphan is not used as a create parent or as a
+move source or target: the ancestry walk ends only at the live root and
+otherwise answers "not confirmed" (section 19.10, step 5a).
+
 
 ## 20. The setup guide on the own-client card (BES-458)
 

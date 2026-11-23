@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
+  GOOGLE_DRIVE_MOVE_TOOL_NAME,
+  GOOGLE_DRIVE_RENAME_TOOL_NAME,
   GOOGLE_DRIVE_WRITE_TOOL_NAMES,
   getGoogleDriveToolStepTitle,
   isGoogleDriveToolName,
@@ -167,6 +169,95 @@ describe('the Drive folder tools in the approval policy', () => {
         parentId: 'parent-id-0123456789',
       }])
     })
+
+  it.each([
+    GOOGLE_DRIVE_RENAME_TOOL_NAME,
+    GOOGLE_DRIVE_MOVE_TOOL_NAME,
+  ])('asks for %s with Allow once only, whatever grant, mode or taint',
+    (toolName) => {
+      for (const permissionMode of ['ask', 'allow'] as const) {
+        const decision = resolveToolApproval({
+          descriptor: descriptor(toolName, WRITE),
+          state: recordTaint(createApprovalState(), 'google'),
+          permissionMode,
+          alwaysGrant: grant(toolName),
+          chatGrant: grant(toolName),
+        })
+
+        expect(decision.reason).toBe('always-ask')
+        expect(decision.status.type).toBe('user-approval')
+        expect(decision.rememberOptions).toEqual(['once'])
+      }
+
+      expect(isGoogleWriteToolName(toolName)).toBe(true)
+      expect(GOOGLE_TOOL_PROPERTIES[toolName])
+        .toEqual({ returnsGoogleContent: false })
+      expect(GOOGLE_TOOL_CHAT_GRANT_LABELS[toolName]).toBeUndefined()
+      expect(googleToolResultHoldsContent(
+        toolName,
+        { references: [{ id: 'x' }] },
+      )).toBe(false)
+    })
+
+  it('does not flag a chat that only renamed or moved an item', () => {
+    for (const toolName of [
+      GOOGLE_DRIVE_RENAME_TOOL_NAME,
+      GOOGLE_DRIVE_MOVE_TOOL_NAME,
+    ]) {
+      expect(hasGoogleToolResult([{
+        type: `tool-${toolName}`,
+        state: 'output-available',
+        output: { references: [{ id: 'item-id-0123456789' }] },
+      }])).toBe(false)
+    }
+  })
+
+  it('stores a renamed item as a reference with no body', () => {
+    const [stored] = redactGoogleToolPartsForPersistence([{
+      type: `tool-${GOOGLE_DRIVE_RENAME_TOOL_NAME}`,
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { itemId: 'item-id-0123456789', newName: 'Plan' },
+      output: {
+        references: [{
+          id: 'item-id-0123456789',
+          kind: 'drive-file',
+          title: 'Plan',
+          link: 'https://drive.google.com/open?id=item-id-0123456789',
+          parentId: 'parent-id-0123456789',
+        }],
+        renamed: true,
+        alreadyDone: false,
+        message: 'The item was renamed.',
+      },
+    }] as never) as unknown as Array<{ output: Record<string, unknown> }>
+
+    expect(Object.keys(stored!.output).sort())
+      .toEqual(['bodyRemoved', 'note', 'references'])
+  })
+
+  it('names every Drive write tool in the Drive step titles', () => {
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_RENAME_TOOL_NAME,
+      false,
+      false,
+    )).toBe('Renamed an item in Google Drive')
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_MOVE_TOOL_NAME,
+      false,
+      false,
+    )).toBe('Moved an item in Google Drive')
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_MOVE_TOOL_NAME,
+      true,
+      false,
+    )).toBe('Moving an item in Google Drive')
+    expect(getGoogleDriveToolStepTitle(
+      GOOGLE_DRIVE_RENAME_TOOL_NAME,
+      false,
+      true,
+    )).toBe('Renaming an item in Google Drive failed')
+  })
 
   it('names both tools in the Drive step titles', () => {
     expect(GOOGLE_DRIVE_WRITE_TOOL_NAMES.every(isGoogleDriveToolName))

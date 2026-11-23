@@ -1,8 +1,16 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { buildDriveCreateMetadata } from '~~/server/utils/google/drive-write-api'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  buildDriveCreateMetadata,
+  buildDriveMoveRequest,
+  buildDriveRenameRequest,
+  patchDriveItem,
+} from '~~/server/utils/google/drive-write-api'
 
+const ITEM_ID = 'item-id-0123456789'
+const PARENT_ID = 'parent-id-0123456789'
+const TARGET_ID = 'target-id-0123456789'
 const ROOT = process.cwd()
 const API_PATH = 'server/utils/google/drive-write-api.ts'
 const TOOLS_PATH = 'server/utils/google/drive-write-tools.ts'
@@ -22,27 +30,438 @@ function read(path: string): string {
 }
 
 describe('the Drive write boundary', () => {
-  it('has a Drive write module that only reads, and creates with a POST',
-    () => {
-      const source = read(API_PATH)
+  it('has a Drive write module that reads, creates with one POST and '
+    + 'changes with one PATCH, and never deletes or replaces', () => {
+    const source = read(API_PATH)
 
-      expect(source).not.toMatch(
-        /method: 'DELETE'|method: 'PUT'|method: 'PATCH'/,
-      )
-      expect(source.match(/method: 'POST'/g)).toHaveLength(1)
-      expect(source.match(/method: 'GET'/g)?.length).toBeGreaterThan(0)
-    })
+    expect(source).not.toMatch(/method: 'DELETE'|method: 'PUT'/)
+    expect(source.match(/method: 'POST'/g)).toHaveLength(1)
+    expect(source.match(/method: 'PATCH'/g)).toHaveLength(1)
+    expect(source.match(/method: 'GET'/g)?.length).toBeGreaterThan(0)
+  })
 
-  it('pins the HTTP methods the Google client can send to GET and POST, so '
-    + 'adding PATCH in a later change must update this spec on purpose',
+  it('pins the HTTP methods the Google client can send to GET, POST and '
+    + 'PATCH, so adding another method must update this spec on purpose',
   () => {
     const source = read('server/utils/google/http.ts')
     const declarations = source.match(/^\s*method: '.+$/gm) ?? []
 
     expect(declarations.map(line => line.trim())).toEqual([
-      'method: \'GET\' | \'POST\'',
+      'method: \'GET\' | \'POST\' | \'PATCH\'',
     ])
-    expect(source).not.toMatch(/'DELETE'|'PUT'|'PATCH'/)
+    expect(source).not.toMatch(/'DELETE'|'PUT'/)
+  })
+
+  it('sends PATCH from the Drive write module only, and no DELETE or PUT '
+    + 'from anywhere in the server', () => {
+    const serverFiles = sourceFilesUnder('server')
+    const patchers = serverFiles
+      .filter((path) => {
+        const source = read(path)
+
+        return /\bPATCH\b/.test(source)
+          && /googleFetchJson|google\/http|GoogleFetchRequest/.test(source)
+      })
+      .sort()
+
+    expect(patchers).toEqual([
+      'server/utils/google/drive-write-api.ts',
+      'server/utils/google/http.ts',
+    ])
+
+    for (const path of sourceFilesUnder('server/utils/google')) {
+      expect(read(path), path).not.toMatch(
+        /method: 'DELETE'|method: 'PUT'|method: "DELETE"|method: "PUT"/,
+      )
+    }
+
+    for (const path of sourceFilesUnder('server/api/v1/google')) {
+      expect(read(path), path).not.toMatch(
+        /method: 'DELETE'|method: 'PUT'|method: 'PATCH'/,
+      )
+    }
+  })
+
+  it('finds no PATCH to a Google host, raw fetch included, outside the '
+    + 'Drive write module and the client type', () => {
+    const files = [
+      ...sourceFilesUnder('server'),
+      ...sourceFilesUnder('app'),
+      ...sourceFilesUnder('shared'),
+    ]
+    const patchersToGoogle = files
+      .filter((path) => {
+        const source = read(path)
+
+        return /['"]PATCH['"]|method:\s*`?PATCH/.test(source)
+          && /googleapis\.com|GOOGLE_FETCH_HOSTS|googleFetchJson/.test(source)
+      })
+      .sort()
+
+    expect(patchersToGoogle).toEqual([
+      'server/utils/google/drive-write-api.ts',
+      'server/utils/google/http.ts',
+    ])
+
+    for (const path of files) {
+      const source = read(path)
+
+      if (path === API_PATH || !/\bfetch\(/.test(source)) {
+        continue
+      }
+
+      expect(source, path).not.toMatch(
+        /fetch\([^)]*googleapis\.com[\s\S]{0,400}PATCH/,
+      )
+    }
+  })
+
+  it.each([
+    ['a trashed flag in a rename body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'Plan', trashed: true },
+    }],
+    ['permissions in a rename body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'Plan', permissions: [{ type: 'anyone' }] },
+    }],
+    ['writersCanShare in a body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { writersCanShare: true },
+    }],
+    ['a body with a non-string name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 4 },
+    }],
+    ['an extra query key on a rename', {
+      itemId: ITEM_ID,
+      query: {
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+        alt: 'media',
+      },
+      body: { name: 'Plan' },
+    }],
+    ['a transferOwnership query on a rename', {
+      itemId: ITEM_ID,
+      query: {
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+        transferOwnership: 'true',
+      },
+      body: { name: 'Plan' },
+    }],
+    ['an empty body with the rename query', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: {},
+    }],
+    ['a name in a move body', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: { name: 'Plan' },
+    }],
+    ['parents in a move body', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: { parents: [TARGET_ID] },
+    }],
+    ['a move without removeParents', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: {},
+    }],
+    ['an extra query key on a move', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+        sendNotificationEmail: 'true',
+      },
+      body: {},
+    }],
+    ['supportsAllDrives off', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'false' },
+      body: { name: 'Plan' },
+    }],
+    ['another field mask', {
+      itemId: ITEM_ID,
+      query: { fields: '*', supportsAllDrives: 'true' },
+      body: { name: 'Plan' },
+    }],
+    ['an upper-case AddParents key', {
+      itemId: ITEM_ID,
+      query: {
+        AddParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: {},
+    }],
+    ['an own __proto__ key in the body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: JSON.parse('{"name":"Plan","__proto__":{"trashed":true}}'),
+    }],
+    ['a body that is only an own __proto__ key', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: JSON.parse('{"__proto__":{"name":"x"}}'),
+    }],
+    ['an own __proto__ key in the query', {
+      itemId: ITEM_ID,
+      query: JSON.parse(
+        '{"fields":"id,name,mimeType,parents","supportsAllDrives":"true",'
+        + '"__proto__":{"alt":"media"}}',
+      ),
+      body: { name: 'Plan' },
+    }],
+    ['an object as the name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: { toString: () => 'Plan' } },
+    }],
+    ['an array as the name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: ['Plan'] },
+    }],
+    ['an empty name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: '' },
+    }],
+    ['a name of 201 characters', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'a'.repeat(201) },
+    }],
+    ['a name with a slash', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: '../../x' },
+    }],
+    ['a name with a control character', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'a\u0000b' },
+    }],
+    ['a name with a right-to-left override', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'abc‮def' },
+    }],
+    ['the same folder to add and to remove', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: PARENT_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: {},
+    }],
+    ['a null body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: null,
+    }],
+    ['an array as the query', {
+      itemId: ITEM_ID,
+      query: [],
+      body: { name: 'Plan' },
+    }],
+  ] as never[][])('refuses a hand-built request with %s before any request', async (
+    _label,
+    request,
+  ) => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response('{}', { status: 200 })
+    })
+
+    expect(await patchDriveItem(request, {
+      accessToken: 'token',
+      fetchImpl,
+    })).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('sends the values it validated when an object answers differently the '
+    + 'second time it is read', async () => {
+    const sent: Array<{ url: string, body: string }> = []
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      sent.push({
+        url,
+        body: new TextDecoder().decode(init.body as Uint8Array),
+      })
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+    const answers = (first: string, later: string) => {
+      let reads = 0
+
+      return () => {
+        reads += 1
+
+        return reads === 1 ? first : later
+      }
+    }
+    const renameRequest = {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: Object.defineProperty({}, 'name', {
+        enumerable: true,
+        get: answers('Plan', '../../x'),
+      }),
+    }
+    const moveRequest = {
+      itemId: ITEM_ID,
+      query: Object.defineProperties({
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      }, {
+        addParents: {
+          enumerable: true,
+          get: answers(TARGET_ID, 'other-id-0123456789'),
+        },
+      }),
+      body: {},
+    }
+
+    await patchDriveItem(renameRequest, {
+      accessToken: 'token',
+      fetchImpl,
+    })
+    await patchDriveItem(moveRequest, { accessToken: 'token', fetchImpl })
+
+    expect(sent[0]!.body).toBe('{"name":"Plan"}')
+    expect(new URL(sent[1]!.url).searchParams.get('addParents'))
+      .toBe(TARGET_ID)
+  })
+
+  it('calls patchDriveItem from the tools only with the output of a '
+    + 'request builder', () => {
+    const source = read(TOOLS_PATH)
+
+    expect(source.match(/patchDriveItem\(/g)).toHaveLength(2)
+    expect(source.match(
+      /patchDriveItem\(\s*build(?:DriveRenameRequest|DriveMoveRequest)\(/g,
+    )).toHaveLength(2)
+  })
+
+  it('patches only /drive/v3/files/<id>, never the upload endpoint that '
+    + 'would edit content', async () => {
+    const calls: string[] = []
+    const fetchImpl = vi.fn(async (url: string) => {
+      calls.push(url)
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+
+    await patchDriveItem(
+      buildDriveRenameRequest({ itemId: ITEM_ID, name: 'Plan' }),
+      { accessToken: 'token', fetchImpl },
+    )
+    await patchDriveItem(
+      buildDriveMoveRequest({
+        itemId: ITEM_ID,
+        fromParentId: PARENT_ID,
+        toParentId: TARGET_ID,
+      }),
+      { accessToken: 'token', fetchImpl },
+    )
+
+    expect(calls).toHaveLength(2)
+
+    for (const call of calls) {
+      const url = new URL(call)
+
+      expect(url.origin).toBe('https://www.googleapis.com')
+      expect(url.pathname).toBe(`/drive/v3/files/${ITEM_ID}`)
+      expect(call).not.toContain('/upload/')
+      expect(call).not.toContain('uploadType')
+    }
+
+    expect(read(API_PATH)).not.toMatch(/\/upload\/drive/)
+  })
+
+  it('sends a rename body of exactly the name and a move with only the '
+    + 'four query keys and an empty body', async () => {
+    const sent: Array<{ url: URL, body: string }> = []
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      sent.push({
+        url: new URL(url),
+        body: new TextDecoder().decode(init.body as Uint8Array),
+      })
+
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+
+    await patchDriveItem(
+      buildDriveRenameRequest({
+        itemId: ITEM_ID,
+        name: 'Plan',
+        permissions: [{ type: 'anyone' }],
+        trashed: true,
+      } as Parameters<typeof buildDriveRenameRequest>[0]),
+      { accessToken: 'token', fetchImpl },
+    )
+    await patchDriveItem(
+      buildDriveMoveRequest({
+        itemId: ITEM_ID,
+        fromParentId: PARENT_ID,
+        toParentId: TARGET_ID,
+        writersCanShare: true,
+      } as Parameters<typeof buildDriveMoveRequest>[0]),
+      { accessToken: 'token', fetchImpl },
+    )
+
+    expect(sent[0]!.body).toBe('{"name":"Plan"}')
+    expect([...sent[0]!.url.searchParams.keys()].sort()).toEqual([
+      'fields',
+      'supportsAllDrives',
+    ])
+    expect(sent[1]!.body).toBe('{}')
+    expect([...sent[1]!.url.searchParams.keys()].sort()).toEqual([
+      'addParents',
+      'fields',
+      'removeParents',
+      'supportsAllDrives',
+    ])
+
+    for (const request of sent) {
+      expect(`${request.url.search}${request.body}`).not.toMatch(
+        /permissions|trashed|writersCanShare|shortcutDetails|description/,
+      )
+    }
   })
 
   it('checks the id shape in the one function that puts an id in a URL '
@@ -69,7 +488,7 @@ describe('the Drive write boundary', () => {
   it('sends supportsAllDrives on every file request it builds', () => {
     const source = read(API_PATH)
 
-    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(3)
+    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(5)
   })
 
   it('copies only the five allowed keys, even from an object that carries '
@@ -144,12 +563,16 @@ describe('the Drive write boundary', () => {
       const source = read(path)
 
       expect(source, path).not.toMatch(/drive-write-api|drive-write-tools/)
-      expect(source, path).not.toMatch(/google__drive_(create|list_folder)/)
+      expect(source, path).not.toMatch(
+        /google__drive_(create|list_folder|rename|move)/,
+      )
     }
 
     const surface = read('config/mcp-surface.json')
 
-    expect(surface).not.toMatch(/drive_create_folder|drive_list_folder/)
+    expect(surface).not.toMatch(
+      /drive_create_folder|drive_list_folder|drive_rename|drive_move/,
+    )
   })
 
   it('has no delete, trash or share code path in the Google utilities', () => {

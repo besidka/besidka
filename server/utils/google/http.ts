@@ -30,7 +30,7 @@ export type GoogleFetchImplementation = (
 ) => Promise<Response>
 
 export interface GoogleFetchRequest {
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST' | 'PATCH'
   headers?: Record<string, string>
   form?: Record<string, string>
   rawBody?: { contentType: string, data: Uint8Array<ArrayBuffer> }

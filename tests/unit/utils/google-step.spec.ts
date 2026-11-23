@@ -133,6 +133,26 @@ describe('describeGoogleStepReference for Drive folders', () => {
       .toBe('Created a folder in Google Drive')
     expect(getToolStepTitle('google__drive_list_folder', false, false))
       .toBe('Listed folders in Google Drive')
+    expect(getToolStepTitle('google__drive_rename', false, false))
+      .toBe('Renamed an item in Google Drive')
+    expect(getToolStepTitle('google__drive_move', false, false))
+      .toBe('Moved an item in Google Drive')
+    expect(getToolStepTitle('google__drive_move', true, false))
+      .toBe('Moving an item in Google Drive')
+  })
+
+  it('opens a renamed or moved item in Google Drive from its reference', () => {
+    const item = {
+      id: 'item-id-0123456789',
+      kind: 'drive-file',
+      title: 'Plan',
+      link: 'https://drive.google.com/open?id=item-id-0123456789',
+    }
+
+    expect(describeGoogleStepReference(item)).toMatchObject({
+      text: 'Plan',
+      linkText: 'Open in Google Drive',
+    })
   })
 })
 

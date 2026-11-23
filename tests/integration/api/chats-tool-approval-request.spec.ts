@@ -1725,6 +1725,8 @@ describe('tool approval requests in the chat send', () => {
     const FOLDER_TOOLS = [
       'google__drive_list_folder',
       'google__drive_create_folder',
+      'google__drive_rename',
+      'google__drive_move',
     ]
 
     async function offerFolderTools() {
@@ -1743,7 +1745,7 @@ describe('tool approval requests in the chat send', () => {
         entries: new Map(FOLDER_TOOLS.map((name) => {
           return [name, buildGoogleApprovalEntry({
             toolName: name,
-            kind: name.endsWith('create_folder') ? 'write' : 'read',
+            kind: name.endsWith('list_folder') ? 'read' : 'write',
             definitionHash: 'g'.repeat(64),
             summary: 'A Drive folder tool',
             toolApprovalsActive: true,
@@ -1797,6 +1799,23 @@ describe('tool approval requests in the chat send', () => {
 
       expect(offered).not.toContain('google__drive_create_folder')
       expect(offered).toContain('google__drive_list_folder')
+    })
+
+    it.each([
+      'google__drive_rename',
+      'google__drive_move',
+    ])('does not offer a Blocked %s and keeps the others', async (blocked) => {
+      await offerFolderTools()
+
+      mocks.googleBlockedNames = [blocked]
+
+      const offered = await offeredNames()
+
+      expect(offered).not.toContain(blocked)
+
+      for (const name of FOLDER_TOOLS.filter(other => other !== blocked)) {
+        expect(offered).toContain(name)
+      }
     })
   })
 

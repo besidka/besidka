@@ -113,6 +113,82 @@ describe('Chat/Reasoning/ApprovalDetails', () => {
     expect(wrapper.find('button').exists()).toBe(false)
   })
 
+  it.each([
+    [
+      'google__drive_rename',
+      { itemId: 'item-id-0123456789', newName: 'Plan' },
+      { item: { name: 'Draft', id: 'item-id-0123456789', kind: 'file' } },
+      'Rename',
+      'drive-change-old-name',
+    ],
+    [
+      'google__drive_move',
+      {
+        itemId: 'item-id-0123456789',
+        fromFolderId: 'root',
+        toFolderId: 'target-id-0123456789',
+      },
+      {
+        item: { name: 'Plan', id: 'item-id-0123456789', kind: 'folder' },
+        to: { name: 'Archive', id: 'target-id-0123456789' },
+      },
+      'Move',
+      'drive-change-to',
+    ],
+    [
+      'google__drive_create_folder',
+      { name: 'Reports' },
+      undefined,
+      'Folder',
+      'drive-change-parent',
+    ],
+  ] as const)('headlines the %s details by the kind of change and shows the '
+    + 'same card with no way to allow it', async (
+    toolName,
+    input,
+    driveNames,
+    heading,
+    cardTestId,
+  ) => {
+    const wrapper = await mountSuspended(ApprovalDetails, {
+      props: {
+        title: 'Approval',
+        toolName,
+        summaryLine: '',
+        reasonText: 'Changes data',
+        input,
+        isShortened: false,
+        driveNames: driveNames as never,
+      },
+    })
+
+    expect(wrapper.get('[data-testid="approval-details-drive-heading"]').text())
+      .toBe(heading)
+    expect(wrapper.get(testId(cardTestId)).exists()).toBe(true)
+    expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('shows no change card for a rename or move the server would refuse',
+    async () => {
+      for (const [toolName, input] of [
+        ['google__drive_rename', { itemId: 'item-id-0123456789', newName: '' }],
+        ['google__drive_move', { itemId: 'short', fromFolderId: 'root' }],
+      ] as const) {
+        const wrapper = await mountSuspended(ApprovalDetails, {
+          props: {
+            title: 'Approval',
+            toolName,
+            summaryLine: '',
+            reasonText: 'Changes data',
+            input,
+            isShortened: false,
+          },
+        })
+
+        expect(wrapper.find(testId('drive-change')).exists()).toBe(false)
+      }
+    })
+
   it('names no parent for names of the wrong shape', async () => {
     const folderId = 'folder-id-0123456789'
     const wrapper = await mountSuspended(ApprovalDetails, {

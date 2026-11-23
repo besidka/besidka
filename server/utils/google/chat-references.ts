@@ -1,11 +1,13 @@
-import { and, eq, like, or } from 'drizzle-orm'
+import { and, asc, eq, like, or } from 'drizzle-orm'
 import { GOOGLE_DRIVE_FILE_ID_PATTERN } from '#shared/utils/google-drive'
 import {
   GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME,
   GOOGLE_DRIVE_FILE_REFERENCE_KIND,
   GOOGLE_DRIVE_FOLDER_REFERENCE_KIND,
   GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
+  GOOGLE_DRIVE_MOVE_TOOL_NAME,
   GOOGLE_DRIVE_READ_FOUND_TOOL_NAME,
+  GOOGLE_DRIVE_RENAME_TOOL_NAME,
   GOOGLE_DRIVE_ROOT_REFERENCE_KIND,
   GOOGLE_DRIVE_SEARCH_TOOL_NAME,
 } from '#shared/utils/google-drive-tools'
@@ -72,6 +74,28 @@ const WRITABLE_KINDS: readonly string[] = [
   GOOGLE_DRIVE_FOLDER_REFERENCE_KIND,
 ]
 
+const CHANGED_FOLDER_SOURCES: readonly ReferenceSource[] = [
+  GOOGLE_DRIVE_RENAME_TOOL_NAME,
+  GOOGLE_DRIVE_MOVE_TOOL_NAME,
+].map((toolName) => {
+  return {
+    toolName,
+    kinds: [GOOGLE_DRIVE_FOLDER_REFERENCE_KIND],
+    idShape: GOOGLE_DRIVE_FILE_ID_PATTERN,
+  }
+})
+
+const CHANGED_ITEM_SOURCES: readonly ReferenceSource[] = [
+  GOOGLE_DRIVE_RENAME_TOOL_NAME,
+  GOOGLE_DRIVE_MOVE_TOOL_NAME,
+].map((toolName) => {
+  return {
+    toolName,
+    kinds: WRITABLE_KINDS,
+    idShape: GOOGLE_DRIVE_FILE_ID_PATTERN,
+  }
+})
+
 const FOLDER_SOURCES: readonly ReferenceSource[] = [
   {
     toolName: GOOGLE_DRIVE_LIST_FOLDER_TOOL_NAME,
@@ -83,6 +107,7 @@ const FOLDER_SOURCES: readonly ReferenceSource[] = [
     kinds: [GOOGLE_DRIVE_FOLDER_REFERENCE_KIND],
     idShape: GOOGLE_DRIVE_FILE_ID_PATTERN,
   },
+  ...CHANGED_FOLDER_SOURCES,
 ]
 
 const WRITABLE_SOURCES: readonly ReferenceSource[] = [
@@ -97,6 +122,7 @@ const WRITABLE_SOURCES: readonly ReferenceSource[] = [
     kinds: [GOOGLE_DRIVE_FOLDER_REFERENCE_KIND],
     idShape: GOOGLE_DRIVE_FILE_ID_PATTERN,
   },
+  ...CHANGED_ITEM_SOURCES,
 ]
 
 const OUTPUT_FOLDER_SOURCE: ReferenceSource = {
@@ -198,14 +224,16 @@ function itemsOfParts(
  * only from a `google__gmail_search` result and a found file only from a
  * `google__drive_search` result (never from a picked, read, saved or listed
  * file, which share the `drive-file` kind). `folders` holds the folders a
- * `google__drive_list_folder` or `google__drive_create_folder` result
- * named, plus My Drive itself under the alias `root`; `writableItems` holds
- * the files and folders a search, a folder listing or a create result named
+ * `google__drive_list_folder`, `google__drive_create_folder`,
+ * `google__drive_rename` or `google__drive_move` result named, plus My Drive
+ * itself under the alias `root`; `writableItems` holds the files and folders
+ * a search, a folder listing, a create, a rename or a move result named
  * (never a file Besidka's own Drive client picked or saved). The index
- * starts from the chat's stored parts and the parts of the reply being
- * resumed, and grows with every call of this send, whose results are not in
- * D1 yet. It holds ids, dates, kinds, parent ids and the cleaned names only,
- * never mail text.
+ * starts from the chat's stored parts, read in the order they were stored so
+ * a later result (a rename's new title, a move's new parent) replaces an
+ * earlier one, and the parts of the reply being resumed, and grows with every
+ * call of this send, whose results are not in D1 yet. It holds ids, dates,
+ * kinds, parent ids and the cleaned names only, never mail text.
  */
 export interface GoogleReferenceIndex {
   threads: ReadonlyMap<string, KnownGoogleItem>
@@ -243,15 +271,17 @@ export function createGoogleReferenceIndex(
   }
 
   for (const parts of partLists) {
-    add(threads, itemsOfParts(parts, THREAD_SOURCE))
-    add(foundFiles, itemsOfParts(parts, FOUND_FILE_SOURCE))
+    for (const part of Array.isArray(parts) ? parts : []) {
+      add(threads, itemsOfParts([part], THREAD_SOURCE))
+      add(foundFiles, itemsOfParts([part], FOUND_FILE_SOURCE))
 
-    for (const source of FOLDER_SOURCES) {
-      add(folders, itemsOfParts(parts, source))
-    }
+      for (const source of FOLDER_SOURCES) {
+        add(folders, itemsOfParts([part], source))
+      }
 
-    for (const source of WRITABLE_SOURCES) {
-      add(writableItems, itemsOfParts(parts, source))
+      for (const source of WRITABLE_SOURCES) {
+        add(writableItems, itemsOfParts([part], source))
+      }
     }
   }
 
@@ -371,8 +401,11 @@ export async function loadChatSearchParts(input: {
             schema.messages.parts,
             `%${GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME}%`,
           ),
+          like(schema.messages.parts, `%${GOOGLE_DRIVE_RENAME_TOOL_NAME}%`),
+          like(schema.messages.parts, `%${GOOGLE_DRIVE_MOVE_TOOL_NAME}%`),
         ),
       ))
+      .orderBy(asc(schema.messages.id))
 
     return rows.map(row => row.parts)
   } catch (exception) {

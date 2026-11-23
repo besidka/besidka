@@ -163,6 +163,82 @@ describe('the Drive folder reference index', () => {
   })
 })
 
+describe('the index after a rename or a move', () => {
+  it('takes the item and its new name from a rename result', () => {
+    const index = createGoogleReferenceIndex([[
+      part('google__drive_search', [
+        { id: FOUND_ID, kind: 'drive-file', title: 'Plan', parentId: PARENT_ID },
+      ]),
+      part('google__drive_rename', [
+        { id: FOUND_ID, kind: 'drive-file', title: 'Final', parentId: PARENT_ID },
+      ]),
+    ]])
+
+    expect(index.writableItems.get(FOUND_ID)?.title).toBe('Final')
+    expect(index.foundFiles.get(FOUND_ID)?.title).toBe('Plan')
+  })
+
+  it('takes the new parent of a moved item and learns a renamed or moved '
+    + 'folder', () => {
+    const index = createGoogleReferenceIndex([[
+      part('google__drive_move', [
+        {
+          id: FOLDER_ID,
+          kind: 'drive-folder',
+          title: 'Projects',
+          parentId: PARENT_ID,
+        },
+        {
+          id: FOUND_ID,
+          kind: 'drive-file',
+          title: 'Plan',
+          parentId: FOLDER_ID,
+        },
+      ]),
+      part('google__drive_rename', [
+        { id: 'renamed-id-0123456789', kind: 'drive-folder', title: 'New' },
+      ]),
+    ]])
+
+    expect(index.writableItems.get(FOUND_ID)?.parentId).toBe(FOLDER_ID)
+    expect(index.folders.get(FOLDER_ID)?.title).toBe('Projects')
+    expect(index.folders.has('renamed-id-0123456789')).toBe(true)
+    expect(index.folders.has(FOUND_ID)).toBe(false)
+  })
+
+  it('lets the later result win whichever tool it came from', () => {
+    const rename = part('google__drive_rename', [
+      { id: FOUND_ID, kind: 'drive-file', title: 'Renamed' },
+    ])
+    const search = part('google__drive_search', [
+      { id: FOUND_ID, kind: 'drive-file', title: 'Searched again' },
+    ])
+
+    expect(createGoogleReferenceIndex([[rename, search]])
+      .writableItems.get(FOUND_ID)?.title).toBe('Searched again')
+    expect(createGoogleReferenceIndex([[search, rename]])
+      .writableItems.get(FOUND_ID)?.title).toBe('Renamed')
+    expect(createGoogleReferenceIndex([[search], [rename]])
+      .writableItems.get(FOUND_ID)?.title).toBe('Renamed')
+  })
+
+  it('never takes My Drive or a picked kind from a rename or move result',
+    () => {
+      const index = createGoogleReferenceIndex([[
+        part('google__drive_move', [
+          { id: ROOT_ID, kind: 'drive-root', title: 'Forged' },
+        ]),
+        part('google__drive_rename', [
+          { id: PICKED_ID, kind: 'gmail-thread', title: 'Mail' },
+        ]),
+      ]])
+
+      expect(index.writableItems.has(ROOT_ID)).toBe(false)
+      expect(index.folders.has(ROOT_ID)).toBe(false)
+      expect(index.writableItems.has(PICKED_ID)).toBe(false)
+    })
+})
+
 describe('the parent id in a stored reference', () => {
   const output = {
     references: [{

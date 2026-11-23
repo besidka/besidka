@@ -30,9 +30,12 @@ const AWAITING_APPROVAL_STATES = new Set<string>([
   'approval-responded',
 ])
 
+export type DriveNameKind = 'file' | 'folder'
+
 export interface DriveName {
   name: string
   id: string
+  kind?: DriveNameKind
 }
 
 export interface DriveNames {
@@ -72,7 +75,7 @@ function readDriveName(value: unknown): DriveName | null {
     return null
   }
 
-  const { name, id, ...rest } = value as Record<string, unknown>
+  const { name, id, kind, ...rest } = value as Record<string, unknown>
 
   if (
     Object.keys(rest).length > 0
@@ -81,11 +84,12 @@ function readDriveName(value: unknown): DriveName | null {
     || name.length > DRIVE_NAME_MAX_LENGTH
     || typeof id !== 'string'
     || !DRIVE_NAME_ID_PATTERN.test(id)
+    || (kind !== undefined && kind !== 'file' && kind !== 'folder')
   ) {
     return null
   }
 
-  return { name, id }
+  return kind === undefined ? { name, id } : { name, id, kind }
 }
 
 /**
@@ -93,9 +97,9 @@ function readDriveName(value: unknown): DriveName | null {
  * folder a call names, the item it renames or moves), as the server wrote
  * them from the chat's own Drive results. Any shape other than an object of
  * the four known keys, each a name of 1 to 200 characters with the id it
- * stands for, is null, on the server before it is stored and in the browser
- * before it is shown, so a name is never shown beside an id it was not
- * written for.
+ * stands for (and, optionally, whether it is a file or a folder), is null,
+ * on the server before it is stored and in the browser before it is shown,
+ * so a name is never shown beside an id it was not written for.
  */
 export function readApprovalDriveNames(value: unknown): DriveNames | null {
   if (
