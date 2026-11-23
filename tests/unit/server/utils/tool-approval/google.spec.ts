@@ -1071,8 +1071,9 @@ describe('the chat-level Google flag', () => {
     await markChatGoogleData(db as never, 'chat-google', log)
 
     expect(log.set).toHaveBeenCalledWith({
-      attributes: { googleTools: { chatFlag: 'failed', error: 'D1 down' } },
+      attributes: { googleTools: { chatFlag: 'failed', errorName: 'Error' } },
     })
+    expect(JSON.stringify(log.set.mock.calls)).not.toContain('D1 down')
   })
 
   it('throws a failed flag write when asked to fail closed', async () => {
@@ -1662,10 +1663,11 @@ describe('the KV stash of a paused turn', () => {
           stashCalls: 2,
           stashLoaded: 0,
           stashFailed: 1,
-          stashError: 'KV down',
+          errorName: 'Error',
         },
       },
     })
+    expect(JSON.stringify(log.set.mock.calls)).not.toContain('KV down')
   })
 
   it('keeps the references and a too-large note for an output over the cap',
@@ -1771,6 +1773,28 @@ describe('the KV stash of a paused turn', () => {
 
     expect(kv.values.has(toolApprovalResultKey(resultId))).toBe(false)
   })
+
+  it('logs a failed delete with counts and a summary, not the message',
+    async () => {
+      const kv = createFakeKv()
+      const log = logger()
+
+      kv.delete.mockRejectedValue(new Error('KV down for user@example.com'))
+
+      await deleteGoogleToolResults({
+        kv: kv as never,
+        messagePublicId: OWNER.messagePublicId,
+        parts: [googleToolPart()],
+        logger: log,
+      })
+
+      expect(log.set).toHaveBeenCalledWith({
+        attributes: {
+          googleTools: { stashDelete: 'failed', failed: 1, errorName: 'Error' },
+        },
+      })
+      expect(JSON.stringify(log.set.mock.calls)).not.toContain('example.com')
+    })
 
   it('is removed with the chat records (new message, chat delete, purge)',
     async () => {

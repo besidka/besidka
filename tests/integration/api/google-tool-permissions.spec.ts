@@ -422,10 +422,67 @@ describe('Google tool permission routes', () => {
         'google.calendar',
       ]
 
-      beforeEach(() => {
+      async function seedByoConnection(
+        status: 'active' | 'needs_reauth' = 'active',
+        clientMode: 'byo' | 'besidka' = 'byo',
+      ) {
+        await testDb.db.insert(schema.googleConnections).values({
+          userId,
+          clientMode,
+          grantedScopes: [],
+          status,
+        })
+      }
+
+      beforeEach(async () => {
         mocks.isAdmin = true
         mocks.flags = new Set(ownClientFlags)
+        await seedByoConnection()
       })
+
+      it.each([
+        ['no connection', null],
+        ['a connection that needs sign-in again', 'needs_reauth'],
+        ['only a connection of Besidka\'s client', 'besidka'],
+      ] as const)('answers 409 for "allow" with %s and stores nothing', async (
+        _label,
+        connection,
+      ) => {
+        await testDb.db.delete(schema.googleConnections)
+
+        if (connection === 'needs_reauth') {
+          await seedByoConnection('needs_reauth')
+        }
+
+        if (connection === 'besidka') {
+          await seedByoConnection('active', 'besidka')
+        }
+
+        for (const body of [
+          { tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME, mode: 'allow' },
+          { service: 'gmail', mode: 'allow' },
+          { service: 'drive', kind: 'write', mode: 'allow' },
+        ]) {
+          expect((await failureOf(put(body))).status).toBe(409)
+        }
+
+        expect(await rows()).toHaveLength(0)
+        expect(kv.put).not.toHaveBeenCalled()
+      })
+
+      it('still lets "ask" and "blocked" through without a connection',
+        async () => {
+          await testDb.db.delete(schema.googleConnections)
+
+          expect(modeOf(await put({
+            tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+            mode: 'blocked',
+          }))[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe('blocked')
+          expect(modeOf(await put({
+            tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME,
+            mode: 'ask',
+          }))[GOOGLE_GMAIL_SEARCH_TOOL_NAME]).toBe('ask')
+        })
 
       it('stores "allow" for one own-client tool and reads it back',
         async () => {

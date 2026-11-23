@@ -29,7 +29,7 @@ const GENERATE_IDS_URL = `${DRIVE_FILES_URL}/generateIds`
 const APPROVAL_DIGEST_PATTERN = /^[A-Za-z0-9_-]{43}$/
 const BOUNDARY_ATTEMPTS = 3
 const CREATED_FIELDS = 'id,name,mimeType,parents'
-const ITEM_META_FIELDS = 'id,name,mimeType,parents,ownedByMe,shared,driveId,'
+export const ITEM_META_FIELDS = 'id,name,mimeType,parents,ownedByMe,shared,driveId,'
   + 'trashed,appProperties,'
   + 'capabilities(canAddChildren,canRename,canMoveItemWithinDrive)'
 const LIST_FIELDS = 'nextPageToken,files(id,name,mimeType,parents,ownedByMe,'
@@ -512,7 +512,7 @@ export async function readDriveItemMeta(
   return meta ? { ok: true, value: meta } : { ok: false, code: 'failed' }
 }
 
-const ANCESTOR_FIELDS = 'id,parents,shared,driveId,ownedByMe,trashed'
+export const ANCESTOR_FIELDS = 'id,parents,shared,driveId,ownedByMe,trashed'
 
 /**
  * `files.get` of one ancestor folder with the smallest field mask the

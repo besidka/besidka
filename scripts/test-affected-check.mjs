@@ -5648,7 +5648,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
     },
     {
-      pattern: /^server\/(utils\/google\/[^/]+|plugins\/google-access-sweep)\.ts$/,
+      pattern: /^server\/(utils\/google\/.+|plugins\/google-access-sweep|utils\/tool-approval\/google[^/]*|api\/v1\/google\/.+|utils\/account\/purge-google-connections|mcp\/tools\/[^/]*google[^/]*)\.ts$/,
       tests: ['tests/unit/server/utils/google/log-boundary.spec.ts'],
     },
     {

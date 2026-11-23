@@ -149,6 +149,28 @@ async function deleteGoogleAlwaysAllowRows(
   return cleared.length
 }
 
+/**
+ * Whether the user has an active connection of the owner's own client, the
+ * only one Always allow can ever apply to. The permission route refuses
+ * "allow" without it, so a stored grant cannot appear between the clear that
+ * a connect runs and the connection it saves.
+ */
+export async function hasActiveGoogleByoConnection(
+  userId: number,
+  db: DbClient = useDb(),
+): Promise<boolean> {
+  const rows = await db.select({ id: schema.googleConnections.id })
+    .from(schema.googleConnections)
+    .where(and(
+      eq(schema.googleConnections.userId, userId),
+      eq(schema.googleConnections.clientMode, 'byo'),
+      eq(schema.googleConnections.status, 'active'),
+    ))
+    .limit(1)
+
+  return rows.length > 0
+}
+
 function invalidPermission(why: string) {
   return createError({
     message: 'Invalid permission',
