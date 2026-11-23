@@ -82,6 +82,159 @@ describe('the Drive write boundary', () => {
     }
   })
 
+  it('finds no PATCH to a Google host, raw fetch included, outside the '
+    + 'Drive write module and the client type', () => {
+    const files = [
+      ...sourceFilesUnder('server'),
+      ...sourceFilesUnder('app'),
+      ...sourceFilesUnder('shared'),
+    ]
+    const patchersToGoogle = files
+      .filter((path) => {
+        const source = read(path)
+
+        return /['"]PATCH['"]|method:\s*`?PATCH/.test(source)
+          && /googleapis\.com|GOOGLE_FETCH_HOSTS|googleFetchJson/.test(source)
+      })
+      .sort()
+
+    expect(patchersToGoogle).toEqual([
+      'server/utils/google/drive-write-api.ts',
+      'server/utils/google/http.ts',
+    ])
+
+    for (const path of files) {
+      const source = read(path)
+
+      if (path === API_PATH || !/\bfetch\(/.test(source)) {
+        continue
+      }
+
+      expect(source, path).not.toMatch(
+        /fetch\([^)]*googleapis\.com[\s\S]{0,400}PATCH/,
+      )
+    }
+  })
+
+  it.each([
+    ['a trashed flag in a rename body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'Plan', trashed: true },
+    }],
+    ['permissions in a rename body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 'Plan', permissions: [{ type: 'anyone' }] },
+    }],
+    ['writersCanShare in a body', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { writersCanShare: true },
+    }],
+    ['a body with a non-string name', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: { name: 4 },
+    }],
+    ['an extra query key on a rename', {
+      itemId: ITEM_ID,
+      query: {
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+        alt: 'media',
+      },
+      body: { name: 'Plan' },
+    }],
+    ['a transferOwnership query on a rename', {
+      itemId: ITEM_ID,
+      query: {
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+        transferOwnership: 'true',
+      },
+      body: { name: 'Plan' },
+    }],
+    ['an empty body with the rename query', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'true' },
+      body: {},
+    }],
+    ['a name in a move body', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: { name: 'Plan' },
+    }],
+    ['parents in a move body', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: { parents: [TARGET_ID] },
+    }],
+    ['a move without removeParents', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+      },
+      body: {},
+    }],
+    ['an extra query key on a move', {
+      itemId: ITEM_ID,
+      query: {
+        addParents: TARGET_ID,
+        removeParents: PARENT_ID,
+        fields: 'id,name,mimeType,parents',
+        supportsAllDrives: 'true',
+        sendNotificationEmail: 'true',
+      },
+      body: {},
+    }],
+    ['supportsAllDrives off', {
+      itemId: ITEM_ID,
+      query: { fields: 'id,name,mimeType,parents', supportsAllDrives: 'false' },
+      body: { name: 'Plan' },
+    }],
+    ['another field mask', {
+      itemId: ITEM_ID,
+      query: { fields: '*', supportsAllDrives: 'true' },
+      body: { name: 'Plan' },
+    }],
+  ])('refuses a hand-built request with %s before any request', async (
+    _label,
+    request,
+  ) => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response('{}', { status: 200 })
+    })
+
+    expect(await patchDriveItem(request, {
+      accessToken: 'token',
+      fetchImpl,
+    })).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('calls patchDriveItem from the tools only with the output of a '
+    + 'request builder', () => {
+    const source = read(TOOLS_PATH)
+
+    expect(source.match(/patchDriveItem\(/g)).toHaveLength(2)
+    expect(source.match(
+      /patchDriveItem\(\s*build(?:DriveRenameRequest|DriveMoveRequest)\(/g,
+    )).toHaveLength(2)
+  })
+
   it('patches only /drive/v3/files/<id>, never the upload endpoint that '
     + 'would edit content', async () => {
     const calls: string[] = []
@@ -193,7 +346,7 @@ describe('the Drive write boundary', () => {
   it('sends supportsAllDrives on every file request it builds', () => {
     const source = read(API_PATH)
 
-    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(4)
+    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(5)
   })
 
   it('copies only the five allowed keys, even from an object that carries '

@@ -4301,7 +4301,7 @@ Drive files, read only": disabled with a hint until the read box is ticked or
 read access is already granted, and cleared again when the read box is
 unticked, so the client never sends the pair the route refuses. Its note says
 "Lets Besidka create folders, and rename and move files and folders you own,
-each time you approve. Creating files comes in the next change." and "Google's
+each time you approve. Creating files will be added later." and "Google's
 permission for this also allows deleting and sharing; Besidka has no code that
 deletes or shares." (the same shape as the
 `gmail.compose` note; once granted the second sentence stays on the card).
@@ -4516,7 +4516,18 @@ section 19.8 (plan question Q3).
 4. Repeat the same approval after a forced failure (for example by editing
    the KV record) and confirm a single folder exists afterwards.
 5. Record what Google answers for the points in section 19.6 and update this
-   section.
+   section. Real-account items still open: whether an unshared subfolder of a
+   shared folder reports `shared` (the ancestry walk refuses it either way, but
+   the answer settles whether the `shared` flag alone would have been enough);
+   the answer to moving a folder into its own descendant (400 or 403, now
+   mapped to the cycle sentence); whether the echoed name keeps its Unicode
+   form (NFC compared on both sides); the shape of the 409 for a duplicate id;
+   whether `appProperties` can be read back by the creating client after a
+   409 retry.
+
+The live check of 2026-11-24 settled only these: a generated id is accepted on
+create, the alias `root` works for a list and a create, the creating client can
+read the item back, and a folder name search works. Nothing else was settled.
 
 ### 19.8 Legal and privacy
 
@@ -4570,7 +4581,23 @@ asking (`failsWithoutRunning` plus the refusal latch). The name goes through
 6. `PATCH /drive/v3/files/<id>?supportsAllDrives=true&fields=id,name,mimeType,parents`
    with the body exactly `{ "name": <newName> }` (`buildDriveRenameRequest`
    copies nothing else, whatever object it gets), and treats an answer for
-   another id or another name as "did not confirm".
+   another id or another name as "did not confirm". Names are compared after
+   NFC normalization on both sides, here and in the "already has that name"
+   check.
+
+`patchDriveItem` accepts only a request that is exactly a rename (a body of
+only a string `name`; the query keys `fields` and `supportsAllDrives`) or
+exactly a move (an empty body; the query keys `addParents`, `removeParents`,
+`fields` and `supportsAllDrives`), whatever object a caller builds by hand, and
+refuses anything else with `bad_request` before any request. The boundary spec
+hands it hostile requests (a `trashed`, `permissions` or `writersCanShare` body
+key, an extra query key), checks that the tools call it only with the output of
+`buildDriveRenameRequest` or `buildDriveMoveRequest`, and scans the server, the
+app and the shared code for any other PATCH to a Google host. `execute` of
+rename and move refuses before any token or request unless the call has an
+approval id or an `executionId` (one option, `readExecutionId`; today the
+approval id), so a later change can pass an id for a run allowed without
+asking. `create_folder` is unchanged.
 
 The PATCH is on the metadata endpoint only; `/upload/drive/v3/files/<id>` would
 edit content and the boundary spec fails if it appears. Failures use fixed
@@ -4617,15 +4644,29 @@ order, `execute`:
    the trash, not owned by the user, shared (`shared !== false`) or that takes
    no children (`canAddChildren`). A target in a shared drive is therefore
    refused, which makes every cross-drive move impossible;
+5a. walks the ancestry of the source and of the target folder (not for My
+   Drive): their `parents` up to the real root, one `files.get` per level with
+   the mask `id,parents,shared,driveId,ownedByMe,trashed` (`readDriveAncestor`),
+   at most 20 levels. The item's own id above a folder is a cycle ("a folder
+   cannot be moved into itself or into one of its own subfolders"); any
+   ancestor that is shared (`shared !== false`), in a shared drive, not owned
+   by the user or in the trash is refused ("a folder above that folder is
+   ..."). The depth limit, an ancestor read that fails, and a folder with more
+   than one parent are "not confirmed" (nothing sent, "try again in a
+   moment"). A folder without a parent ends the walk. This catches sharing
+   that a folder only inherits, whichever way Drive reports `shared` for it;
 6. `PATCH /drive/v3/files/<id>?addParents=<to>&removeParents=<from>&supportsAllDrives=true&fields=id,name,mimeType,parents`
    with an empty body `{}` (`buildDriveMoveRequest`: only those four query
    keys), and treats an answer whose `parents` is not exactly the target as
-   "did not confirm". A folder moved into its own subtree is answered with a
-   400 by Drive (NOT VERIFIED) and mapped to "a folder cannot be moved into
-   itself or into one of its own subfolders; nothing was moved".
+   "did not confirm". The cycle is already caught by the walk; should Drive
+   still answer 400 (NOT VERIFIED: 400 or 403) for a folder, it is mapped to
+   the cycle sentence, and for a plain file to "Google Drive refused the move.
+   Nothing was moved.".
 
-Requests per call: at most five plus a token refresh (the item, the root, the
-source, the target, the PATCH). Logs: `attributes.googleByoTools.driveRename`
+Requests per call: the item, the root (once), the source and the target, up to
+20 ancestor reads for each, and the PATCH, plus a token refresh; a typical
+move to a folder directly under My Drive is the item, the source, the root,
+the target and the PATCH. Logs: `attributes.googleByoTools.driveRename`
 and `driveMove` hold the kind (`file` or `folder`), `alreadyDone`, whether the
 target was `root`, and the code of a refusal; never a name, id or link. A rename
 and a move taint nothing and flag no chat (`returnsGoogleContent: false`).

@@ -12,6 +12,7 @@ import {
   isDriveRootMeta,
   listDriveFolderChildren,
   patchDriveItem,
+  readDriveAncestor,
   readDriveItemMeta,
   searchDriveFolders,
 } from '~~/server/utils/google/drive-write-api'
@@ -346,6 +347,43 @@ describe('the Drive requests', () => {
     })
 })
 
+describe('readDriveAncestor', () => {
+  const context = { accessToken: 'token' }
+
+  it('reads an ancestor with the smallest field mask', async () => {
+    const fetchImpl = respond(200, {
+      id: FOLDER_ID,
+      parents: [PARENT_ID],
+      shared: false,
+      ownedByMe: true,
+      trashed: false,
+      permissions: [{ emailAddress: 'someone@example.test' }],
+    })
+    const result = await readDriveAncestor(FOLDER_ID, {
+      ...context,
+      fetchImpl,
+    })
+    const url = new URL(String(fetchImpl.mock.calls[0]![0]))
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { id: FOLDER_ID, parents: [PARENT_ID], shared: false },
+    })
+    expect(url.searchParams.get('fields'))
+      .toBe('id,parents,shared,driveId,ownedByMe,trashed')
+    expect(url.searchParams.get('supportsAllDrives')).toBe('true')
+  })
+
+  it.each(['root', '../x', 'short', ''])('sends no request for %j',
+    async (folderId) => {
+      const fetchImpl = respond(200, {})
+
+      expect(await readDriveAncestor(folderId, { ...context, fetchImpl }))
+        .toEqual({ ok: false, code: 'bad_request' })
+      expect(fetchImpl).not.toHaveBeenCalled()
+    })
+})
+
 describe('the rename and move requests', () => {
   const context = { accessToken: 'token' }
 
@@ -511,7 +549,7 @@ describe('the rename and move requests', () => {
         fetchImpl: respond(429, {}),
       })).toEqual({ ok: false, code: 'rate_limited' })
       expect(DRIVE_CHANGE_FAILURE_TEXT.move.bad_request)
-        .toContain('into itself')
+        .toBe('Google Drive refused the move. Nothing was moved.')
       expect(DRIVE_CHANGE_FAILURE_TEXT.rename.no_access)
         .toContain('Nothing was renamed')
     })

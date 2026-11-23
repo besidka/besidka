@@ -632,7 +632,7 @@ describe('Profile/Google/OwnClient', () => {
         expect(text).toContain('Change files in Google Drive')
         expect(text).toContain('Lets Besidka create folders, and rename and '
           + 'move files and folders you own, each time you approve. Creating '
-          + 'files comes in the next change.')
+          + 'files will be added later.')
         expect(text).toContain('Google\'s permission for this also allows '
           + 'deleting and sharing; Besidka has no code that deletes or '
           + 'shares.')
@@ -733,8 +733,8 @@ describe('Profile/Google/OwnClient', () => {
 
       expect(hint).toContain('list your folders, create a folder in your '
         + 'own My Drive, and rename or move files and folders you own, '
-        + 'after you approve each one. Creating files comes in the next '
-        + 'change.')
+        + 'after you approve each one. Creating files will be added '
+        + 'later.')
       expect(hint).toContain('It never deletes anything and never changes '
         + 'who can see a file.')
     })

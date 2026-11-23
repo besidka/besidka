@@ -80,6 +80,9 @@ export const DRIVE_CREATE_UNCONFIRMED_TEXT = 'Google Drive did not confirm '
 export const DRIVE_CREATE_NO_APPROVAL_TEXT = 'Nothing was created in Google '
   + 'Drive.'
 
+export const DRIVE_CHANGE_NO_APPROVAL_TEXT = 'Nothing was changed in Google '
+  + 'Drive.'
+
 export type DriveWriteResult<Value>
   = | { ok: true, value: Value }
     | { ok: false, code: DriveWriteFailureCode }
@@ -409,6 +412,40 @@ export async function readDriveItemMeta(
   return meta ? { ok: true, value: meta } : { ok: false, code: 'failed' }
 }
 
+const ANCESTOR_FIELDS = 'id,parents,shared,driveId,ownedByMe,trashed'
+
+/**
+ * `files.get` of one ancestor folder with the smallest field mask the
+ * ancestry walk needs: its id and parents, whether it is shared, in a shared
+ * drive, owned by the user and in the trash. A missing field stays unknown
+ * and the caller refuses on it.
+ */
+export async function readDriveAncestor(
+  folderId: string,
+  context: DriveWriteContext,
+): Promise<DriveWriteResult<DriveItemMeta>> {
+  if (!isDriveWriteId(folderId)) {
+    return { ok: false, code: 'bad_request' }
+  }
+
+  const result = await requestJson(
+    driveItemUrl(folderId, {
+      supportsAllDrives: 'true',
+      fields: ANCESTOR_FIELDS,
+    }),
+    { method: 'GET', headers: headersOf(context) },
+    toFetchOptions(context, {}),
+  )
+
+  if (!result.ok) {
+    return result
+  }
+
+  const meta = readItemMeta(result.value)
+
+  return meta ? { ok: true, value: meta } : { ok: false, code: 'failed' }
+}
+
 export interface CreatedDriveItem {
   id: string
   name: string
@@ -486,8 +523,7 @@ export const DRIVE_CHANGE_FAILURE_TEXT: Readonly<
       + 'moved.',
     not_found: 'Google Drive could not find the item or one of the folders, '
       + 'or the user has no access to them. Nothing was moved.',
-    bad_request: 'Google Drive refused the move. A folder cannot be moved '
-      + 'into itself or into one of its own subfolders. Nothing was moved.',
+    bad_request: 'Google Drive refused the move. Nothing was moved.',
     failed: 'Google Drive did not confirm the move, so it may or may not have '
       + 'happened. Ask the user to check the folder in their Google Drive '
       + 'before trying again.',
@@ -541,11 +577,49 @@ export function buildDriveMoveRequest(input: {
   }
 }
 
+const RENAME_QUERY_KEYS: readonly string[] = ['fields', 'supportsAllDrives']
+const MOVE_QUERY_KEYS: readonly string[] = [
+  'addParents',
+  'fields',
+  'removeParents',
+  'supportsAllDrives',
+]
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value).sort()
+
+  return keys.length === expected.length
+    && keys.every((key, index) => key === expected[index])
+}
+
+function isRenameShapeValid(request: DrivePatchRequest): boolean {
+  return hasExactKeys(request.body, ['name'])
+    && typeof request.body.name === 'string'
+    && hasExactKeys(request.query, RENAME_QUERY_KEYS)
+}
+
+function isMoveShapeValid(request: DrivePatchRequest): boolean {
+  return hasExactKeys(request.body, [])
+    && hasExactKeys(request.query, MOVE_QUERY_KEYS)
+    && isDriveWriteId(request.query.addParents)
+    && isDriveWriteId(request.query.removeParents)
+}
+
+/**
+ * Whether a request is exactly a rename (a body of only a string `name`,
+ * and the query keys `fields` and `supportsAllDrives`) or exactly a move
+ * (an empty body, and the query keys `addParents`, `removeParents`,
+ * `fields` and `supportsAllDrives`), whatever object the caller built by
+ * hand: no other body key and no other query key reaches Drive.
+ */
 function isPatchRequestShapeValid(request: DrivePatchRequest): boolean {
   return isDriveWriteId(request.itemId)
-    && [request.query.addParents, request.query.removeParents].every(
-      parent => parent === undefined || isDriveWriteId(parent),
-    )
+    && request.query.supportsAllDrives === 'true'
+    && request.query.fields === CREATED_FIELDS
+    && (isRenameShapeValid(request) || isMoveShapeValid(request))
 }
 
 /**

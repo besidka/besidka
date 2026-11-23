@@ -59,6 +59,7 @@ import type {
 } from '~~/server/utils/google/chat-references'
 import {
   DRIVE_CHANGE_FAILURE_TEXT,
+  DRIVE_CHANGE_NO_APPROVAL_TEXT,
   DRIVE_CREATE_NO_APPROVAL_TEXT,
   DRIVE_CREATE_UNCONFIRMED_TEXT,
   DRIVE_WRITE_FAILURE_TEXT,
@@ -71,6 +72,7 @@ import {
   isDriveRootMeta,
   listDriveFolderChildren,
   patchDriveItem,
+  readDriveAncestor,
   readDriveItemMeta,
   searchDriveFolders,
 } from '~~/server/utils/google/drive-write-api'
@@ -206,6 +208,27 @@ const UNKNOWN_MOVE_FOLDER_TEXT = 'A folder id was not returned by '
 const MOVE_ROOT_ALIAS_TEXT = 'To move an item to or from the top level of My '
   + `Drive, use "${GOOGLE_DRIVE_ROOT_ALIAS}" as the folder id. Nothing was `
   + 'moved.'
+
+const ANCESTRY_MAX_DEPTH = 20
+
+const ANCESTOR_REFUSAL_TEXT = {
+  trashed: 'A folder above that folder is in the trash. Nothing was moved.',
+  sharedDrive: 'A folder above that folder is in a shared drive. Besidka '
+    + 'works only in the user\'s own My Drive and never moves items between '
+    + 'drives. Nothing was moved.',
+  notOwned: 'A folder above that folder belongs to someone else. Besidka '
+    + 'only moves items between folders the user owns. Nothing was moved.',
+  shared: 'A folder above that folder is shared with other people, and moving '
+    + 'items into or out of it would change who can see them, so Besidka does '
+    + 'not do it. Nothing was moved.',
+} as const
+
+const MOVE_CYCLE_TEXT = 'A folder cannot be moved into itself or into one of '
+  + 'its own subfolders. Nothing was moved.'
+
+const ANCESTRY_UNCONFIRMED_TEXT = 'Besidka could not confirm which folders '
+  + 'contain that folder, because it is nested too deeply or Google Drive did '
+  + 'not answer, so nothing was moved. Try again in a moment.'
 
 type FolderOperation = 'create' | 'move'
 
@@ -407,6 +430,28 @@ function asRawText(value: unknown, key: string): string | null {
   const text = (value as Record<string, unknown> | null)?.[key]
 
   return typeof text === 'string' && text ? text : null
+}
+
+function isSameName(first: string, second: string): boolean {
+  return first.normalize('NFC') === second.normalize('NFC')
+}
+
+/**
+ * The identity of one run of a change: the approval id today (the option
+ * `wrapApprovedExecutions` passes), or an `executionId` a later change can
+ * pass for a run that was allowed without asking and so has no approval. A
+ * call with neither is refused before any token or request.
+ */
+function readExecutionId(options: unknown): string | null {
+  const { approvalId, executionId } = (options ?? {}) as {
+    approvalId?: unknown
+    executionId?: unknown
+  }
+  const id = typeof approvalId === 'string' && approvalId
+    ? approvalId
+    : executionId
+
+  return typeof id === 'string' && id ? id : null
 }
 
 function isFoundName(liveName: string, foundTitle: string | null): boolean {
@@ -818,8 +863,102 @@ export async function buildGoogleDriveWriteTools(
     return meta
   }
 
+  function refuseAncestry(
+    code: keyof typeof ANCESTOR_REFUSAL_TEXT | 'cycle' | 'unconfirmed',
+    status: number,
+  ): never {
+    logger.set({
+      attributes: {
+        googleByoTools: { driveMove: { refusal: `ancestry-${code}` } },
+      },
+    })
+
+    throw toolFailure(
+      code === 'cycle'
+        ? MOVE_CYCLE_TEXT
+        : code === 'unconfirmed'
+          ? ANCESTRY_UNCONFIRMED_TEXT
+          : ANCESTOR_REFUSAL_TEXT[code],
+      status,
+    )
+  }
+
+  function assertSafeAncestor(ancestor: DriveItemMeta): void {
+    if (ancestor.driveId !== null) {
+      refuseAncestry('sharedDrive', 403)
+    }
+
+    if (ancestor.trashed !== false) {
+      refuseAncestry('trashed', 400)
+    }
+
+    if (ancestor.ownedByMe !== true) {
+      refuseAncestry('notOwned', 403)
+    }
+
+    if (ancestor.shared !== false) {
+      refuseAncestry('shared', 403)
+    }
+  }
+
+  /**
+   * Walks the parents of a folder up to the real root, one `files.get` per
+   * level (at most `ANCESTRY_MAX_DEPTH`), so a folder the user owns inside a
+   * shared tree is found: the item's own id above the folder is a cycle, and
+   * any ancestor that is shared, in a shared drive, not owned or in the trash
+   * is refused. A depth limit, an ancestor read that fails, or a folder with
+   * more than one parent is "not confirmed": nothing is sent.
+   */
+  async function assertAncestry(input: {
+    folder: DriveItemMeta
+    itemId: string
+    context: DriveWriteContext
+    root: RootResolver
+  }): Promise<void> {
+    let current = input.folder
+    let rootId: string | null = null
+
+    for (let reads = 0; reads <= ANCESTRY_MAX_DEPTH; reads += 1) {
+      if (current.parents.length === 0) {
+        return
+      }
+
+      const [parentId] = current.parents
+
+      if (current.parents.length > 1 || parentId === undefined) {
+        refuseAncestry('unconfirmed', 409)
+      }
+
+      if (parentId === input.itemId) {
+        refuseAncestry('cycle', 400)
+      }
+
+      rootId ??= (await input.root.resolve()).id
+
+      if (parentId === rootId) {
+        return
+      }
+
+      if (reads === ANCESTRY_MAX_DEPTH) {
+        break
+      }
+
+      const ancestor = await readDriveAncestor(parentId, input.context)
+
+      if (!ancestor.ok) {
+        refuseAncestry('unconfirmed', 409)
+      }
+
+      assertSafeAncestor(ancestor.value)
+      current = ancestor.value
+    }
+
+    refuseAncestry('unconfirmed', 409)
+  }
+
   async function readFolderForMove(
     folderId: string,
+    itemId: string,
     context: DriveWriteContext,
     root: RootResolver,
   ): Promise<string> {
@@ -838,6 +977,7 @@ export async function buildGoogleDriveWriteTools(
     }
 
     assertWritableFolder(answer.value, 'move')
+    await assertAncestry({ folder: answer.value, itemId, context, root })
 
     return answer.value.id
   }
@@ -1259,13 +1399,17 @@ export async function buildGoogleDriveWriteTools(
     description: RENAME_DESCRIPTION,
     inputSchema: renameInputSchema,
     toModelOutput: googleToolModelOutput,
-    execute: callInput => serialized(async () => {
+    execute: (callInput, options) => serialized(async () => {
       consumeCall()
 
       const request = validateRenameInput(callInput)
 
       if (!request.ok) {
         throw toolFailure(request.message, 400)
+      }
+
+      if (readExecutionId(options) === null) {
+        throw toolFailure(DRIVE_CHANGE_NO_APPROVAL_TEXT, 400)
       }
 
       const { itemId, newName } = request.value
@@ -1283,7 +1427,7 @@ export async function buildGoogleDriveWriteTools(
         context,
         createRootResolver(context),
       )
-      const alreadyDone = item.name === newName
+      const alreadyDone = isSameName(item.name, newName)
 
       if (!alreadyDone) {
         if (!isFoundName(item.name, known.title)) {
@@ -1303,7 +1447,10 @@ export async function buildGoogleDriveWriteTools(
           throw failureOf(patched.code, 'rename')
         }
 
-        if (patched.value.id !== itemId || patched.value.name !== newName) {
+        if (
+          patched.value.id !== itemId
+          || !isSameName(patched.value.name, newName)
+        ) {
           throw failureOf('failed', 'rename')
         }
       }
@@ -1338,13 +1485,17 @@ export async function buildGoogleDriveWriteTools(
     description: MOVE_DESCRIPTION,
     inputSchema: moveInputSchema,
     toModelOutput: googleToolModelOutput,
-    execute: callInput => serialized(async () => {
+    execute: (callInput, options) => serialized(async () => {
       consumeCall()
 
       const request = validateMoveInput(callInput)
 
       if (!request.ok) {
         throw toolFailure(request.message, 400)
+      }
+
+      if (readExecutionId(options) === null) {
+        throw toolFailure(DRIVE_CHANGE_NO_APPROVAL_TEXT, 400)
       }
 
       const { itemId, fromFolderId, toFolderId } = request.value
@@ -1394,8 +1545,8 @@ export async function buildGoogleDriveWriteTools(
           refuseItem('move', 'cannotMove', 403)
         }
 
-        await readFolderForMove(fromFolderId, context, root)
-        await readFolderForMove(toFolderId, context, root)
+        await readFolderForMove(fromFolderId, itemId, context, root)
+        await readFolderForMove(toFolderId, itemId, context, root)
 
         const patched = await patchDriveItem(
           buildDriveMoveRequest({
@@ -1407,6 +1558,13 @@ export async function buildGoogleDriveWriteTools(
         )
 
         if (!patched.ok) {
+          if (
+            patched.code === 'bad_request'
+            && item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE
+          ) {
+            throw toolFailure(MOVE_CYCLE_TEXT, FAILURE_STATUS.bad_request)
+          }
+
           throw failureOf(patched.code, 'move')
         }
 

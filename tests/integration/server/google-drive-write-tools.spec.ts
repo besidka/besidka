@@ -239,7 +239,11 @@ type ToolMap = Record<string, {
   description: string
   execute: (
     input: unknown,
-    options: { toolCallId: string, approvalId?: string },
+    options: {
+      toolCallId: string
+      approvalId?: string
+      executionId?: string
+    },
   ) => Promise<any>
   inputSchema: { safeParse: (value: unknown) => { success: boolean } }
   toModelOutput: (options: { output: unknown }) => { value: string }
@@ -1238,17 +1242,27 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
       }
     }
 
-    async function rename(toolMap: ToolMap, input: unknown) {
+    type RunIds = { approvalId?: string, executionId?: string }
+
+    async function rename(
+      toolMap: ToolMap,
+      input: unknown,
+      ids: RunIds = { approvalId: APPROVAL_ID },
+    ) {
       return await toolMap[GOOGLE_DRIVE_RENAME_TOOL_NAME]!.execute(
         input,
-        { toolCallId: 'call-3', approvalId: APPROVAL_ID },
+        { toolCallId: 'call-3', ...ids },
       )
     }
 
-    async function move(toolMap: ToolMap, input: unknown) {
+    async function move(
+      toolMap: ToolMap,
+      input: unknown,
+      ids: RunIds = { approvalId: APPROVAL_ID },
+    ) {
       return await toolMap[GOOGLE_DRIVE_MOVE_TOOL_NAME]!.execute(
         input,
-        { toolCallId: 'call-4', approvalId: APPROVAL_ID },
+        { toolCallId: 'call-4', ...ids },
       )
     }
 
@@ -1554,6 +1568,7 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         expect(paths()).toEqual([
           `GET /drive/v3/files/${FILE_ID}`,
           `GET /drive/v3/files/${CHILD_ID}`,
+          'GET /drive/v3/files/root',
           `GET /drive/v3/files/${ARCHIVE_ID}`,
           `PATCH /drive/v3/files/${FILE_ID}`,
         ])
@@ -1757,6 +1772,18 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
         expect(message).toContain('cannot be moved into itself')
         expect(message).not.toContain(HOSTILE_NAME)
+      })
+
+      it('does not blame a folder cycle when a plain file is refused with '
+        + 'a 400', async () => {
+        const { toolMap } = await known()
+
+        drive.patchStatus = 400
+
+        const message = await rejectionOf(move(toolMap, input))
+
+        expect(message).toBe('Google Drive refused the move. Nothing was moved.')
+        expect(message).not.toContain('itself')
       })
 
       it.each([
@@ -2218,6 +2245,355 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
           itemId: FILE_ID,
           newName: 'plan.txt',
         })).renamed).toBe(true)
+      })
+    })
+
+    describe('the run identity of a change', () => {
+      const renameInput = { itemId: FILE_ID, newName: 'plan.txt' }
+      const moveInput = {
+        itemId: FILE_ID,
+        fromFolderId: CHILD_ID,
+        toFolderId: ARCHIVE_ID,
+      }
+
+      it.each([
+        ['neither id', {}],
+        ['an empty approval id', { approvalId: '' }],
+        ['an empty execution id', { executionId: '' }],
+      ])('refuses a rename and a move with %s before any request',
+        async (_label, ids) => {
+          const { toolMap } = await known()
+
+          expect(await rejectionOf(rename(toolMap, renameInput, ids)))
+            .toBe('Nothing was changed in Google Drive.')
+          expect(await rejectionOf(move(toolMap, moveInput, ids)))
+            .toBe('Nothing was changed in Google Drive.')
+          expect(drive.fetch).not.toHaveBeenCalled()
+        })
+
+      it('accepts an execution id when there is no approval id', async () => {
+        const { toolMap } = await known()
+
+        expect((await rename(toolMap, renameInput, { executionId: 'run-1' }))
+          .renamed).toBe(true)
+        expect((await move(toolMap, {
+          ...moveInput,
+          itemId: ARCHIVE_ID,
+          fromFolderId: 'root',
+          toFolderId: CHILD_ID,
+        }, { executionId: 'run-2' })).moved).toBe(true)
+      })
+    })
+
+    describe('name normalization', () => {
+      it('accepts a rename whose answer echoes the same name in another '
+        + 'Unicode form', async () => {
+        const { toolMap } = await known()
+
+        drive.patchBody = fileMeta(FILE_ID, { name: 'café.txt' })
+
+        expect((await rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'café.txt',
+        })).renamed).toBe(true)
+      })
+
+      it('treats a live name that differs only in Unicode form as already '
+        + 'done', async () => {
+        const { toolMap } = await known()
+
+        const first = await rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'café.txt',
+        })
+
+        expect(first.alreadyDone).toBe(false)
+        expect(patches()).toHaveLength(1)
+
+        drive.items[FILE_ID] = fileMeta(FILE_ID, {
+          name: 'café.txt',
+          parents: [CHILD_ID],
+        })
+
+        const again = await rename(toolMap, {
+          itemId: FILE_ID,
+          newName: 'café.txt',
+        })
+
+        expect(again.alreadyDone).toBe(true)
+        expect(patches()).toHaveLength(1)
+      })
+    })
+
+    describe('the ancestry of the folders of a move', () => {
+      const TOP_ID = 'top-folder-id-012345'
+      const MID_ID = 'mid-folder-id-0123456'
+      const LEAF_ID = 'leaf-folder-id-012345'
+      const ANCESTOR_FIELDS = 'id,parents,shared,driveId,ownedByMe,trashed'
+      const moveToLeaf = {
+        itemId: FILE_ID,
+        fromFolderId: CHILD_ID,
+        toFolderId: LEAF_ID,
+      }
+
+      function leafParts() {
+        return [
+          ...knownParts(),
+          {
+            type: 'tool-google__drive_list_folder',
+            state: 'output-available',
+            output: {
+              references: [{
+                id: LEAF_ID,
+                kind: 'drive-folder',
+                title: 'Leaf',
+                parentId: MID_ID,
+              }],
+            },
+          },
+        ]
+      }
+
+      function chainId(position: number): string {
+        return `chain-id-${String(position).padStart(3, '0')}`
+      }
+
+      beforeEach(() => {
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: [ROOT_ID],
+        })
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+        })
+        drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+          name: 'Leaf',
+          parents: [MID_ID],
+        })
+      })
+
+      function ancestorReads() {
+        return drive.requests.filter((request) => {
+          return new URL(request.url).searchParams.get('fields')
+            === ANCESTOR_FIELDS
+        })
+      }
+
+      it('walks the destination up to the root with one minimal read per '
+        + 'level and then moves', async () => {
+        const { toolMap } = await known(leafParts())
+        const output = await move(toolMap, moveToLeaf)
+
+        expect(output).toMatchObject({ moved: true })
+        expect(paths()).toEqual([
+          `GET /drive/v3/files/${FILE_ID}`,
+          `GET /drive/v3/files/${CHILD_ID}`,
+          'GET /drive/v3/files/root',
+          `GET /drive/v3/files/${LEAF_ID}`,
+          `GET /drive/v3/files/${MID_ID}`,
+          `GET /drive/v3/files/${TOP_ID}`,
+          `PATCH /drive/v3/files/${FILE_ID}`,
+        ])
+        expect(ancestorReads()).toHaveLength(2)
+      })
+
+      it('allows a chain of exactly the depth limit that reaches the root',
+        async () => {
+          for (let position = 0; position < 20; position += 1) {
+            drive.items[chainId(position)] = folderMeta(chainId(position), {
+              name: `Level ${position}`,
+              parents: [position === 19 ? ROOT_ID : chainId(position + 1)],
+            })
+          }
+
+          drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+            name: 'Leaf',
+            parents: [chainId(0)],
+          })
+
+          const { toolMap } = await known(leafParts())
+
+          expect((await move(toolMap, moveToLeaf)).moved).toBe(true)
+          expect(ancestorReads()).toHaveLength(20)
+        })
+
+      it('refuses past the depth limit as not confirmed, with nothing sent',
+        async () => {
+          for (let position = 0; position < 25; position += 1) {
+            drive.items[chainId(position)] = folderMeta(chainId(position), {
+              name: `Level ${position}`,
+              parents: [position === 24 ? ROOT_ID : chainId(position + 1)],
+            })
+          }
+
+          drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+            name: 'Leaf',
+            parents: [chainId(0)],
+          })
+
+          const { toolMap } = await known(leafParts())
+          const message = await rejectionOf(move(toolMap, moveToLeaf))
+
+          expect(message).toContain('could not confirm')
+          expect(ancestorReads()).toHaveLength(20)
+          expect(patches()).toHaveLength(0)
+        })
+
+      it.each([
+        ['a parent that is the item itself', { parents: [ARCHIVE_ID] }, false],
+        ['a grandparent that is the item itself', {}, true],
+      ])('refuses a cycle through %s', async (_label, leafChange, deep) => {
+        drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+          name: 'Leaf',
+          parents: [MID_ID],
+          ...leafChange,
+        })
+
+        if (deep) {
+          drive.items[MID_ID] = folderMeta(MID_ID, {
+            name: 'Mid',
+            parents: [ARCHIVE_ID],
+          })
+        }
+
+        const { toolMap } = await known(leafParts())
+        const message = await rejectionOf(move(toolMap, {
+          itemId: ARCHIVE_ID,
+          fromFolderId: 'root',
+          toFolderId: LEAF_ID,
+        }))
+
+        expect(message).toContain('cannot be moved into itself')
+        expect(patches()).toHaveLength(0)
+        expect(JSON.stringify(mocks.logged)).toContain('ancestry-cycle')
+      })
+
+      it.each([
+        ['a shared ancestor', { shared: true }, 'shared with other people'],
+        ['an ancestor with an unknown sharing state', { shared: undefined },
+          'shared with other people'],
+        ['a shared-drive ancestor', { driveId: 'd1' }, 'shared drive'],
+        ['an ancestor someone else owns', { ownedByMe: false }, 'someone else'],
+        ['a trashed ancestor', { trashed: true }, 'in the trash'],
+      ])('refuses a destination below %s with nothing sent', async (
+        _label,
+        change,
+        sentence,
+      ) => {
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+          ...change,
+        })
+
+        const { toolMap } = await known(leafParts())
+        const message = await rejectionOf(move(toolMap, moveToLeaf))
+
+        expect(message).toContain('A folder above that folder')
+        expect(message).toContain(sentence)
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('refuses a farther ancestor too, not only the first', async () => {
+        drive.items[TOP_ID] = folderMeta(TOP_ID, {
+          name: 'Top',
+          parents: [ROOT_ID],
+          shared: true,
+        })
+
+        const { toolMap } = await known(leafParts())
+
+        expect(await rejectionOf(move(toolMap, moveToLeaf)))
+          .toContain('shared with other people')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('refuses a source folder that sits inside a shared tree, so '
+        + 'sharing inherited from above is found', async () => {
+        drive.items[CHILD_ID] = folderMeta(CHILD_ID, {
+          name: 'Projects',
+          parents: [MID_ID],
+        })
+        drive.items[MID_ID] = folderMeta(MID_ID, {
+          name: 'Mid',
+          parents: [TOP_ID],
+          shared: true,
+        })
+
+        const { toolMap } = await known(leafParts())
+
+        expect(await rejectionOf(move(toolMap, {
+          ...moveToLeaf,
+          toFolderId: ARCHIVE_ID,
+        }))).toContain('A folder above that folder is shared')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('refuses as not confirmed when an ancestor cannot be read, with '
+        + 'nothing sent', async () => {
+        Reflect.deleteProperty(drive.items, MID_ID)
+
+        const { toolMap } = await known(leafParts())
+        const message = await rejectionOf(move(toolMap, moveToLeaf))
+
+        expect(message).toContain('could not confirm')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('refuses as not confirmed when an ancestor read answers 500',
+        async () => {
+          const original = drive.fetch.getMockImplementation()!
+
+          drive.fetch.mockImplementation(async (
+            input: string,
+            init?: RequestInit,
+          ) => {
+            return input.includes(`/files/${MID_ID}`)
+              ? new Response('{}', { status: 500 })
+              : await original(input, init)
+          })
+
+          const { toolMap } = await known(leafParts())
+
+          expect(await rejectionOf(move(toolMap, moveToLeaf)))
+            .toContain('could not confirm')
+          expect(patches()).toHaveLength(0)
+        })
+
+      it('refuses a folder with two parents as not confirmed', async () => {
+        drive.items[LEAF_ID] = folderMeta(LEAF_ID, {
+          name: 'Leaf',
+          parents: [MID_ID, TOP_ID],
+        })
+
+        const { toolMap } = await known(leafParts())
+
+        expect(await rejectionOf(move(toolMap, moveToLeaf)))
+          .toContain('could not confirm')
+        expect(patches()).toHaveLength(0)
+      })
+
+      it('needs no ancestor read for the top level and keeps the card equal '
+        + 'to the request', async () => {
+        const { toolMap, entryOf } = await known()
+        const rootMove = { ...moveToLeaf, toFolderId: 'root' }
+        const entry = entryOf(GOOGLE_DRIVE_MOVE_TOOL_NAME)
+        const view = readDriveWriteApprovalView(
+          GOOGLE_DRIVE_MOVE_TOOL_NAME,
+          rootMove,
+          await entry.describeNames?.(rootMove),
+        )
+
+        await move(toolMap, rootMove)
+
+        expect(ancestorReads()).toHaveLength(0)
+        expect(view).toMatchObject({
+          kind: 'move',
+          to: { isRoot: true },
+        })
+        expect(new URL(patches()[0]!.url).searchParams.get('addParents'))
+          .toBe(ROOT_ID)
       })
     })
 
