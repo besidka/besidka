@@ -1677,6 +1677,7 @@ export function getAffectedTests(changedFiles) {
 
   const googleByoClientTests = [
     'tests/unit/utils/google-byo.spec.ts',
+    'tests/unit/utils/google-byo-guide.spec.ts',
     'tests/unit/server/utils/google/oauth.spec.ts',
     'tests/unit/server/utils/google/token-boundary.spec.ts',
     'tests/integration/api/google-byo.spec.ts',
@@ -4228,7 +4229,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(google-byo|google-connections|google-scopes|features\/registry)\.ts|server\/utils\/google\/(byo-access|byo-client|byo-sweep|callback|client|connection|oauth-state|route|tokens|access-ended)\.ts|server\/api\/v1\/google\/.*\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google-oauth-client\/.*)\.ts|server\/api\/v1\/profiles\/features\/index\.get\.ts|server\/db\/schemas\/keys\.ts|server\/utils\/features\/(evaluate|guards)\.ts|server\/plugins\/(evlog-request-observability|google-access-sweep)\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|tests\/setup\/helpers\/google-connections\.ts)$/,
+        /^(shared\/utils\/(google-byo|google-byo-guide|google-connections|google-scopes|features\/registry)\.ts|server\/utils\/google\/(byo-access|byo-client|byo-sweep|callback|client|connection|oauth-state|route|tokens|access-ended)\.ts|server\/api\/v1\/google\/.*\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google-oauth-client\/.*)\.ts|server\/api\/v1\/profiles\/features\/index\.get\.ts|server\/db\/schemas\/keys\.ts|server\/utils\/features\/(evaluate|guards)\.ts|server\/plugins\/(evlog-request-observability|google-access-sweep)\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|tests\/setup\/helpers\/google-connections\.ts)$/,
       tests: googleByoClientTests,
     },
     {
