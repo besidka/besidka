@@ -13,6 +13,10 @@ vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
 })
 
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
+}))
+
 /**
  * Drives the real send route for a user with an active Google connection
  * whose model may not receive Google data, to prove the chat says why no
