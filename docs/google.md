@@ -3980,12 +3980,15 @@ A user who reaches none gets 404 on both routes. `GET` answers
 `{ tool, mode }`, `{ service, mode }` (every reachable tool of the service) or
 `{ service, kind, mode }` (its reachable read or write tools; the panel's
 Read and Write group selects send this, one request per group change, one
-slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode, an unknown or
-Besidka tool name, a body with both fields, or a body over 1 KiB (413 by
-`Content-Length`) is refused; a known tool the user cannot reach is 404. 60
-changes a minute per user in KV, failing closed (a KV error is a 429, never an
-allow). The log holds the action, the scope, the target and the mode, nothing
-else.
+slot of the budget) with `mode` `blocked` or `ask`: `allow`, an unknown mode,
+an unknown or Besidka tool name, a body with both fields, or a body over 1 KiB
+(413 by `Content-Length`) is refused; a known tool the user cannot reach is
+404. The limit is 60 changes a minute per user and target (the tool, the
+service or the service and kind), in KV on the key `<user id>:tool:<name>`,
+`:service:<service>` or `:kind:<service>:<kind>`, counted after the target is
+resolved against the catalog and failing closed (a KV error is a 429, never an
+allow); section 18.5 says why the key carries the target. The log holds the
+action, the scope, the target and the mode, nothing else.
 
 ### 17.4 Send path and replay
 
