@@ -1063,6 +1063,51 @@ describe('Google bring-your-own client routes', () => {
       expect(await permissionRows()).toEqual(ALL_PERMISSION_ROWS)
     })
 
+    it('clears them at the next fresh connect when the clear failed at '
+      + 'disconnect, and keeps them for the same account while active',
+    async () => {
+      await seedPermissionRows()
+
+      const failingDb = new Proxy(testDb.db, {
+        get(target, property) {
+          const value = Reflect.get(target, property) as unknown
+
+          if (property === 'delete') {
+            return (table: unknown) => {
+              if (table === schema.besidkaToolPermissions) {
+                throw new Error('D1 down')
+              }
+
+              return (target.delete as (table: unknown) => unknown)(table)
+            }
+          }
+
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+
+      vi.stubGlobal('useDb', () => failingDb)
+      await call('disconnect', { body: { clientMode: 'byo' } })
+      vi.stubGlobal('useDb', () => testDb.db)
+
+      expect(await connectionRow('byo')).toBeNull()
+      expect(await permissionRows()).toEqual(ALL_PERMISSION_ROWS)
+
+      byoSubject = 'third-subject'
+      await connectByo()
+
+      expect(await permissionRows()).toEqual(WITHOUT_OWN_CLIENT_ALLOW)
+
+      await testDb.db.insert(schema.besidkaToolPermissions).values({
+        userId,
+        toolName: 'google__gmail_search',
+        mode: 'allow',
+      })
+      await connectByo()
+
+      expect(await permissionRows()).toContain('google__gmail_search:allow')
+    })
+
     it('turns them back to ask when the own client is deleted', async () => {
       await seedPermissionRows()
 

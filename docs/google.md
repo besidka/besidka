@@ -4152,7 +4152,11 @@ delete, the MCP `disconnect_google` and the own-client sweep all call), on
 account replaces it (`replaceDifferentAccount`). Blocked rows and every row of
 another user or of a Besidka tool stay; Besidka's own client ending changes
 nothing here. A failure is logged and never stops the connection from ending.
-A reconnect of the same account keeps the settings.
+It also runs at every own-client connect that is not an update of an active
+connection of the same Google account (a new row, a revoked or `needs_reauth`
+row, or another account), so a clear that failed at the disconnect is made up
+for at the next fresh connect. A reconnect of the same account while the
+connection is still active keeps the settings.
 
 **The chat panel.** The Approvals list of the chat panel
 (`listChatToolApprovalGrants`) shows each Google tool set to Always allow

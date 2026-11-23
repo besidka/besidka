@@ -292,6 +292,14 @@ export async function completeGoogleConnection(input: {
     await replaceDifferentAccount(input, existing.id, tokens, now)
   }
 
+  const isActiveSameAccount = !!existing
+    && isSameAccount
+    && existing.status === 'active'
+
+  if (oauthState.clientMode === 'byo' && !isActiveSameAccount) {
+    await clearGoogleAlwaysAllow(oauthState.userId, logger, db)
+  }
+
   const connectionId = await saveGoogleConnection(db, {
     userId: oauthState.userId,
     clientMode: oauthState.clientMode,
