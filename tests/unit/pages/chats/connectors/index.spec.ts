@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
 
 const googleEntries = ref<GoogleEntry[]>([])
 const googleAnnouncement = ref<string>('')
+const googleStatus = ref<string>('success')
 
 const queryRef = ref<Record<string, unknown>>({})
 const connectorsActive = ref<boolean>(true)
@@ -114,7 +115,7 @@ mockNuxtImport('useGoogleEntries', () => {
   return () => ({
     entries: googleEntries,
     refresh: mocks.refreshGoogle,
-    status: ref('success'),
+    status: googleStatus,
     data: ref(null),
     isCalendarActive: ref(false),
   })
@@ -207,6 +208,7 @@ describe('chats connectors page', () => {
     viewKey.value = null
     googleEntries.value = []
     googleAnnouncement.value = ''
+    googleStatus.value = 'success'
     mocks.query = {}
     for (const mock of Object.values(mocks)) {
       if (typeof mock === 'function') {
@@ -510,6 +512,44 @@ describe('chats connectors page', () => {
       replace: true,
     })
   })
+
+  it.each([
+    ['google', { google: 'connected' }],
+    ['google-byo', { 'google-byo': 'partial' }],
+  ])('sends a user without the flag to the Google keys tab with ?%s',
+    async (_key, query) => {
+      connectorsActive.value = false
+      mocks.query = { ...query, panel: 'google-drive', other: '1' }
+      await mountPage()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith({
+        path: '/profile/keys',
+        query: { tab: 'google', ...query },
+      }, { replace: true })
+    })
+
+  it('keeps both Google result keys when a user without the flag has them',
+    async () => {
+      connectorsActive.value = false
+      mocks.query = { 'google': 'connected', 'google-byo': 'error' }
+      await mountPage()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith({
+        path: '/profile/keys',
+        query: { 'tab': 'google', 'google': 'connected', 'google-byo': 'error' },
+      }, { replace: true })
+    })
+
+  it('sends a user without the flag to history for any other query',
+    async () => {
+      connectorsActive.value = false
+      mocks.query = { panel: 'google-drive' }
+      await mountPage()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/history', {
+        replace: true,
+      })
+    })
 
   it('renders inside the history shell with the Connectors tab active', async () => {
     const wrapper = await mountPage()
@@ -925,6 +965,47 @@ describe('chats connectors page', () => {
       expect(wrapper.find('[data-testid="connectors-google-group"]')
         .exists()).toBe(false)
     })
+
+    it('shows one row with Try again when the Google status failed to load',
+      async () => {
+        googleStatus.value = 'error'
+
+        const wrapper = await mountPage()
+        const group = wrapper.get('[data-testid="connectors-google-group"]')
+        const retry = group.get('[data-testid="connectors-google-retry"]')
+
+        expect(group.findAll('[data-testid="connectors-google-error"]'))
+          .toHaveLength(1)
+        expect(group.get('[data-testid="connectors-google-error"]').text())
+          .toContain('Google services could not be loaded')
+        expect(retry.element.tagName).toBe('BUTTON')
+        expect(retry.text()).toBe('Try again')
+        expect(retry.classes()).toContain('min-h-11')
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('Google services could not be loaded')
+        expect(wrapper.get('[data-testid="connectors-live"]')
+          .attributes('aria-live')).toBe('polite')
+
+        await retry.trigger('click')
+
+        expect(mocks.refreshGoogle).toHaveBeenCalledTimes(1)
+      })
+
+    it('shows no failure row when the Google status loaded or entries exist',
+      async () => {
+        const loaded = await mountPage()
+
+        expect(loaded.find('[data-testid="connectors-google-error"]')
+          .exists()).toBe(false)
+
+        googleStatus.value = 'error'
+        setGoogleEntries({ byo: null })
+
+        const stale = await mountPage()
+
+        expect(stale.find('[data-testid="connectors-google-error"]')
+          .exists()).toBe(false)
+      })
 
     it('never gives a connector titled Gmail the Built in badge',
       async () => {

@@ -89,6 +89,7 @@
       v-if="
         isBesidkaRowVisible
           || googleEntries.length
+          || isGoogleLoadFailed
           || (hasLoaded && connectors.length)
       "
       class="list"
@@ -103,7 +104,7 @@
         @toggle="toggleBesidka"
       />
       <li
-        v-if="googleEntries.length"
+        v-if="googleEntries.length || isGoogleLoadFailed"
         data-testid="connectors-google-group"
       >
         <h3
@@ -116,6 +117,30 @@
           aria-labelledby="connectors-google-heading"
           data-testid="connectors-google-list"
         >
+          <li
+            v-if="isGoogleLoadFailed"
+            class="list-row items-center gap-3 py-3"
+            data-testid="connectors-google-error"
+          >
+            <Icon
+              name="lucide:circle-alert"
+              size="18"
+              class="shrink-0 text-error"
+              aria-hidden="true"
+            />
+            <p class="list-col-grow min-w-0 text-sm">
+              {{ GOOGLE_LOAD_FAILED_MESSAGE }}
+            </p>
+            <button
+              type="button"
+              class="btn btn-sm min-h-11 shrink-0 sm:min-h-8"
+              :disabled="googleStatus === 'pending'"
+              data-testid="connectors-google-retry"
+              @click="refreshGoogle()"
+            >
+              Try again
+            </button>
+          </li>
           <ProfileConnectorsGoogleRow
             v-for="entry in googleEntries"
             :key="entry.id"
@@ -293,12 +318,19 @@ const HANDLED_QUERY_KEYS = new Set([
   GOOGLE_BYO_RESULT_QUERY_KEY,
 ])
 
+const GOOGLE_RESULT_QUERY_KEYS = [
+  GOOGLE_CONNECT_RESULT_QUERY_KEY,
+  GOOGLE_BYO_RESULT_QUERY_KEY,
+]
+
 const GOOGLE_RESULT_FALLBACK_PANELS: Readonly<
   Record<GoogleClientMode, GoogleEntryId>
 > = {
   besidka: 'google-drive',
   byo: 'google-gmail',
 }
+
+const GOOGLE_LOAD_FAILED_MESSAGE = 'Google services could not be loaded'
 
 const BESIDKA_TOOLS_FEATURE_KEY = 'besidka-tools'
 const BESIDKA_PERMISSIONS_TITLE = 'Tool permissions'
@@ -310,11 +342,23 @@ const connectorsFeature = useFeature('connectors')
 const registryFeature = useFeature('connectors.registry')
 const besidkaToolsFeature = useFeature(BESIDKA_TOOLS_FEATURE_KEY)
 
+const route = useRoute()
+
 if (!connectorsFeature.value.active) {
-  await navigateTo('/chats/history', { replace: true })
+  const googleResultQuery = Object.fromEntries(
+    GOOGLE_RESULT_QUERY_KEYS
+      .filter(key => route.query[key] !== undefined)
+      .map(key => [key, route.query[key]]),
+  )
+
+  await navigateTo(
+    Object.keys(googleResultQuery).length
+      ? { path: '/profile/keys', query: { tab: 'google', ...googleResultQuery } }
+      : '/chats/history',
+    { replace: true },
+  )
 }
 
-const route = useRoute()
 const router = useRouter()
 const sidePanel = useSidePanel()
 const connect = useConnectorConnect()
@@ -323,6 +367,7 @@ const detailPanel = useConnectorDetailPanel()
 const { connectors, hasLoaded, error, refresh } = useConnectorsPage()
 const {
   entries: googleEntries,
+  status: googleStatus,
   refresh: refreshGoogle,
 } = useGoogleEntries()
 const googlePanel = useGoogleEntryPanel()
@@ -357,6 +402,10 @@ const selectedGoogleId = computed<string | null>(() => {
   return viewKey?.startsWith(GOOGLE_ENTRY_VIEW_KEY_PREFIX)
     ? viewKey.slice(GOOGLE_ENTRY_VIEW_KEY_PREFIX.length)
     : null
+})
+
+const isGoogleLoadFailed = computed<boolean>(() => {
+  return googleStatus.value === 'error' && !googleEntries.value.length
 })
 
 const isBesidkaRowVisible = computed<boolean>(() => {
@@ -561,6 +610,10 @@ async function handleGoogleRouteQuery(
 }
 
 async function handleRouteQuery() {
+  if (!connectorsFeature.value.active) {
+    return
+  }
+
   const query = route.query
   const callback = readConnectorCallback(query)
   const requestedId = typeof query.connector === 'string'
@@ -633,6 +686,12 @@ async function handleRouteQuery() {
     },
   })
 }
+
+watch(isGoogleLoadFailed, (isFailed) => {
+  if (isFailed) {
+    liveMessage.value = GOOGLE_LOAD_FAILED_MESSAGE
+  }
+}, { immediate: true })
 
 watch(
   [hasLoaded, pendingOpenId, connectors],
