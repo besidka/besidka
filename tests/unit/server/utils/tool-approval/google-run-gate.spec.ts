@@ -179,6 +179,20 @@ describe('the run gate of a Google write that runs without asking', () => {
         expect(sleep.mock.calls[0]![0]).toBeGreaterThan(1000)
       })
 
+    it('counts two writes started at the same moment one after the other',
+      async () => {
+        const kv = createFakeKv()
+        const gate = gateWith(kv)
+
+        await Promise.all([gate.begin('call-1'), gate.begin('call-2')])
+
+        const hour = Math.floor(NOW / (60 * 60 * 1000))
+
+        expect(kv.values.get(`google-always-allow-writes:${userId}:${hour}`))
+          .toBe('2')
+        expect(kv.put).toHaveBeenCalledTimes(2)
+      })
+
     it('refuses once the hourly budget is spent and fails the claim',
       async () => {
         const hour = Math.floor(NOW / (60 * 60 * 1000))

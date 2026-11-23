@@ -100,8 +100,9 @@ function createHourlyWriteBudget(input: {
   sleep: (milliseconds: number) => Promise<void>
 }): () => Promise<'granted' | 'exhausted' | 'unavailable'> {
   let lastWriteAt = 0
+  let chain: Promise<unknown> = Promise.resolve()
 
-  return async () => {
+  async function take(): Promise<'granted' | 'exhausted' | 'unavailable'> {
     const hour = Math.floor(input.now() / HOUR_MS)
     const key = `${KV_KEY_PREFIX}:${input.userId}:${hour}`
 
@@ -128,6 +129,14 @@ function createHourlyWriteBudget(input: {
     } catch {
       return 'unavailable'
     }
+  }
+
+  return () => {
+    const next = chain.then(take, take)
+
+    chain = next
+
+    return next
   }
 }
 
