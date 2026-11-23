@@ -358,7 +358,7 @@ export const GOOGLE_DRIVE_FAILURE_REASONS: Readonly<
   empty: 'This file is empty.',
   storage_full: 'Your storage is full. Free space on the Storage page.',
   reauthorize: 'Google no longer accepts the connection. Reconnect Google '
-    + 'Drive on the API Keys page.',
+    + 'Drive in your Besidka settings.',
   failed: 'This file could not be copied. Try again in a moment.',
 }
 
@@ -414,7 +414,7 @@ const PICK_AGAIN_CODES: ReadonlySet<DriveImportFailureCode> = new Set([
  * Whether opening the Picker on the file again can fix the failure. A file
  * that is too large, empty, a folder or of a kind that cannot be attached
  * fails the same way however often it is picked, and a lost connection is
- * fixed on the API Keys page.
+ * fixed in the Besidka settings.
  */
 export function canPickDriveFileAgain(
   code: DriveImportFailureCode | undefined,

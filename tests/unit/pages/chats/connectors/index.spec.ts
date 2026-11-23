@@ -9,6 +9,9 @@ import { computed, ref } from 'vue'
 import ConnectorsPage from '../../../../../app/pages/chats/connectors/index.vue'
 import { CONNECTOR_CALLBACK_FALLBACK_MESSAGE } from '#shared/utils/connectors-messages'
 import { createConnectorItem } from '../../../../setup/helpers/connectors-ui'
+import { resolveGoogleEntries } from '../../../../../app/utils/google-entries'
+import type { GoogleEntry } from '../../../../../app/utils/google-entries'
+import type { GoogleConnectionStatusResponse } from '#shared/utils/google-connections'
 
 enableAutoUnmount(afterEach)
 
@@ -23,8 +26,16 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   sidePanelOpen: vi.fn(),
   sidePanelClose: vi.fn(),
+  refreshGoogle: vi.fn(),
+  googlePanelOpen: vi.fn(),
+  googleRun: vi.fn(),
+  reportGoogleResult: vi.fn(),
   query: {} as Record<string, unknown>,
 }))
+
+const googleEntries = ref<GoogleEntry[]>([])
+const googleAnnouncement = ref<string>('')
+const googleStatus = ref<string>('success')
 
 const queryRef = ref<Record<string, unknown>>({})
 const connectorsActive = ref<boolean>(true)
@@ -100,6 +111,26 @@ mockNuxtImport('useSidePanel', () => {
     viewKey,
   })
 })
+mockNuxtImport('useGoogleEntries', () => {
+  return () => ({
+    entries: googleEntries,
+    refresh: mocks.refreshGoogle,
+    status: googleStatus,
+    data: ref(null),
+    isCalendarActive: ref(false),
+  })
+})
+mockNuxtImport('useGoogleEntryPanel', () => {
+  return () => ({ open: mocks.googlePanelOpen })
+})
+mockNuxtImport('useGoogleEntryActions', () => {
+  return () => ({
+    isBusy: ref(false),
+    announcement: googleAnnouncement,
+    run: mocks.googleRun,
+  })
+})
+mockNuxtImport('reportGoogleConnectResult', () => mocks.reportGoogleResult)
 mockNuxtImport('refreshConnectors', () => mocks.refreshConnectors)
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useSuccessMessage', () => mocks.success)
@@ -175,6 +206,9 @@ describe('chats connectors page', () => {
     connectTarget.value = null
     connectDraft.value = null
     viewKey.value = null
+    googleEntries.value = []
+    googleAnnouncement.value = ''
+    googleStatus.value = 'success'
     mocks.query = {}
     for (const mock of Object.values(mocks)) {
       if (typeof mock === 'function') {
@@ -478,6 +512,44 @@ describe('chats connectors page', () => {
       replace: true,
     })
   })
+
+  it.each([
+    ['google', { google: 'connected' }],
+    ['google-byo', { 'google-byo': 'partial' }],
+  ])('sends a user without the flag to the Google keys tab with ?%s',
+    async (_key, query) => {
+      connectorsActive.value = false
+      mocks.query = { ...query, panel: 'google-drive', other: '1' }
+      await mountPage()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith({
+        path: '/profile/keys',
+        query: { tab: 'google', ...query },
+      }, { replace: true })
+    })
+
+  it('keeps both Google result keys when a user without the flag has them',
+    async () => {
+      connectorsActive.value = false
+      mocks.query = { 'google': 'connected', 'google-byo': 'error' }
+      await mountPage()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith({
+        path: '/profile/keys',
+        query: { 'tab': 'google', 'google': 'connected', 'google-byo': 'error' },
+      }, { replace: true })
+    })
+
+  it('sends a user without the flag to history for any other query',
+    async () => {
+      connectorsActive.value = false
+      mocks.query = { panel: 'google-drive' }
+      await mountPage()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/history', {
+        replace: true,
+      })
+    })
 
   it('renders inside the history shell with the Connectors tab active', async () => {
     const wrapper = await mountPage()
@@ -805,6 +877,276 @@ describe('chats connectors page', () => {
       const wrapper = await mountPage()
 
       expect(wrapper.get('[data-testid="add-dialog-stub"]').text()).toBe('url')
+    })
+  })
+
+  describe('Google entries', () => {
+    const rowSelector = '[data-testid="besidka-connector-row"]'
+
+    function setGoogleEntries(
+      status: Partial<GoogleConnectionStatusResponse> = {},
+      isGmailActive = true,
+    ) {
+      googleEntries.value = resolveGoogleEntries({
+        status: {
+          connection: null,
+          canConnect: true,
+          dedicatedClient: true,
+          byo: {
+            canManage: true,
+            redirectUri: 'https://besidka.com/api/v1/google/byo/callback',
+            hasClient: true,
+            connection: null,
+          },
+          ...status,
+        },
+        driveFeature: { enabled: true, active: true },
+        isGmailActive,
+        isCalendarActive: true,
+      })
+    }
+
+    it('lists the Google group under Besidka and above the connectors',
+      async () => {
+        besidkaEnabled.value = true
+        besidkaActive.value = true
+        setGoogleEntries()
+        data.value = { connectors: [createConnectorItem()] }
+
+        const wrapper = await mountPage()
+        const items = wrapper.findAll('[data-testid="connectors-list"] > li')
+        const group = wrapper.get('[data-testid="connectors-google-group"]')
+
+        expect(items.map(item => item.attributes('data-testid'))).toEqual([
+          'besidka-connector-row',
+          'connectors-google-group',
+          'connector-row',
+        ])
+        expect(group.get('h3').classes()).toContain('sr-only')
+        expect(group.get('h3').text()).toBe('Google')
+        expect(group.findAll('[data-testid^="google-entry-row-"][class*="list-row"]')
+          .map(row => row.attributes('data-testid'))).toEqual([
+          'google-entry-row-google-drive',
+          'google-entry-row-google-gmail',
+          'google-entry-row-google-calendar',
+        ])
+        expect(wrapper.find(rowSelector).exists()).toBe(true)
+        expect(wrapper.get('[data-testid="connectors-count"]').text())
+          .toBe('1 of 20 connectors')
+      })
+
+    it('shows only Google Drive for a user without the own client',
+      async () => {
+        setGoogleEntries({ byo: null })
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.findAll('[data-testid="google-entry-row-open"]')
+          .map(button => button.text())).toEqual(['Google Drive'])
+      })
+
+    it('shows the group above the empty state and without connectors',
+      async () => {
+        setGoogleEntries({ byo: null })
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.find('[data-testid="connectors-google-group"]')
+          .exists()).toBe(true)
+        expect(wrapper.find('[data-testid="connectors-empty"]').exists())
+          .toBe(true)
+      })
+
+    it('has no Google group while nothing is listed', async () => {
+      data.value = { connectors: [createConnectorItem()] }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.find('[data-testid="connectors-google-group"]')
+        .exists()).toBe(false)
+    })
+
+    it('shows one row with Try again when the Google status failed to load',
+      async () => {
+        googleStatus.value = 'error'
+
+        const wrapper = await mountPage()
+        const group = wrapper.get('[data-testid="connectors-google-group"]')
+        const retry = group.get('[data-testid="connectors-google-retry"]')
+
+        expect(group.findAll('[data-testid="connectors-google-error"]'))
+          .toHaveLength(1)
+        expect(group.get('[data-testid="connectors-google-error"]').text())
+          .toContain('Google services could not be loaded')
+        expect(retry.element.tagName).toBe('BUTTON')
+        expect(retry.text()).toBe('Try again')
+        expect(retry.classes()).toContain('min-h-11')
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('Google services could not be loaded')
+        expect(wrapper.get('[data-testid="connectors-live"]')
+          .attributes('aria-live')).toBe('polite')
+
+        await retry.trigger('click')
+
+        expect(mocks.refreshGoogle).toHaveBeenCalledTimes(1)
+      })
+
+    it('shows no failure row when the Google status loaded or entries exist',
+      async () => {
+        const loaded = await mountPage()
+
+        expect(loaded.find('[data-testid="connectors-google-error"]')
+          .exists()).toBe(false)
+
+        googleStatus.value = 'error'
+        setGoogleEntries({ byo: null })
+
+        const stale = await mountPage()
+
+        expect(stale.find('[data-testid="connectors-google-error"]')
+          .exists()).toBe(false)
+      })
+
+    it('never gives a connector titled Gmail the Built in badge',
+      async () => {
+        data.value = {
+          connectors: [createConnectorItem({ title: 'Gmail' })],
+        }
+
+        const wrapper = await mountPage()
+        const row = wrapper.get('[data-testid="connector-row"]')
+
+        expect(row.text()).toContain('Gmail')
+        expect(row.text()).not.toContain('Built in')
+        expect(wrapper.find('[data-testid="google-entry-row-badge"]').exists())
+          .toBe(false)
+      })
+
+    it('opens the panel from a row and runs its action', async () => {
+      setGoogleEntries()
+      googleAnnouncement.value = 'Google Drive disconnected.'
+
+      const wrapper = await mountPage()
+      const gmailRow = wrapper.get(
+        '[data-testid="google-entry-row-google-gmail"]',
+      )
+
+      await gmailRow.get('[data-testid="google-entry-row-open"]')
+        .trigger('click')
+
+      expect(mocks.googlePanelOpen).toHaveBeenCalledWith('google-gmail')
+
+      await gmailRow.get('[data-testid="google-entry-row-action"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(mocks.googleRun).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'google-gmail', action: 'connect' }),
+      )
+      expect(wrapper.get('[data-testid="connectors-live"]').text())
+        .toBe('Google Drive disconnected.')
+    })
+
+    it('marks the row whose panel is open', async () => {
+      setGoogleEntries()
+      viewKey.value = 'google-entry:google-gmail'
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.get('[data-testid="google-entry-row-google-gmail"]')
+        .classes()).toContain('bg-base-200')
+      expect(wrapper.get('[data-testid="google-entry-row-google-drive"]')
+        .classes()).not.toContain('bg-base-200')
+    })
+
+    it.each([
+      ['google-drive'],
+      ['google-gmail'],
+      ['google-calendar'],
+    ])('opens the %s panel for the panel query and cleans the URL',
+      async (panel) => {
+        mocks.query = { panel, keep: '1' }
+
+        await mountPage()
+
+        expect(mocks.googlePanelOpen).toHaveBeenCalledWith(panel)
+        expect(mocks.replace).toHaveBeenCalledWith({
+          path: '/chats/connectors',
+          query: { keep: '1' },
+        })
+      })
+
+    it('ignores an unknown panel value', async () => {
+      mocks.query = { panel: 'google-evil' }
+
+      await mountPage()
+
+      expect(mocks.googlePanelOpen).not.toHaveBeenCalled()
+    })
+
+    it('reports a Google Drive result, refreshes and opens the Drive panel',
+      async () => {
+        mocks.query = { google: 'connected', keep: '1' }
+
+        const wrapper = await mountPage()
+
+        expect(mocks.reportGoogleResult)
+          .toHaveBeenCalledWith('besidka', 'connected')
+        expect(mocks.refreshGoogle).toHaveBeenCalled()
+        expect(mocks.googlePanelOpen).toHaveBeenCalledWith('google-drive')
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('Google Drive connected')
+        expect(mocks.replace).toHaveBeenCalledWith({
+          path: '/chats/connectors',
+          query: { keep: '1' },
+        })
+      })
+
+    it('reports an own-client result and opens the panel it came from',
+      async () => {
+        mocks.query = { 'google-byo': 'partial', 'panel': 'google-calendar' }
+
+        const wrapper = await mountPage()
+
+        expect(mocks.reportGoogleResult)
+          .toHaveBeenCalledWith('byo', 'partial')
+        expect(mocks.refreshGoogle).toHaveBeenCalled()
+        expect(mocks.googlePanelOpen).toHaveBeenCalledWith('google-calendar')
+        expect(wrapper.get('[data-testid="connectors-live"]').text())
+          .toBe('Google granted only part of the access')
+        expect(mocks.replace).toHaveBeenCalledWith({
+          path: '/chats/connectors',
+          query: {},
+        })
+      })
+
+    it('opens the Gmail panel for an own-client result without a panel',
+      async () => {
+        mocks.query = { 'google-byo': 'denied' }
+
+        await mountPage()
+
+        expect(mocks.googlePanelOpen).toHaveBeenCalledWith('google-gmail')
+        expect(mocks.refreshGoogle).not.toHaveBeenCalled()
+      })
+
+    it('ignores a result value it does not know', async () => {
+      mocks.query = { google: 'bogus' }
+
+      await mountPage()
+
+      expect(mocks.reportGoogleResult).not.toHaveBeenCalled()
+      expect(mocks.googlePanelOpen).not.toHaveBeenCalled()
+    })
+
+    it('closes its panel when the page unmounts', async () => {
+      viewKey.value = 'google-entry:google-drive'
+
+      const wrapper = await mountPage()
+
+      wrapper.unmount()
+
+      expect(mocks.sidePanelClose).toHaveBeenCalled()
     })
   })
 })

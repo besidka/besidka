@@ -135,14 +135,15 @@ export const GOOGLE_DRIVE_SAVE_FAILURE_MESSAGES: Readonly<
     + 'Google Drive in one step. Download it and upload it in Google Drive.',
   empty: 'This file is empty, so there is nothing to save.',
   content_missing: 'The stored content of this file is missing.',
-  not_connected: 'Google Drive is not connected. Connect it on the API Keys '
-    + 'page first.',
+  not_connected: 'Google Drive is not connected. Connect it in your '
+    + 'Besidka settings first.',
   reauthorize: 'Google no longer accepts the connection. Reconnect Google '
-    + 'Drive on the API Keys page.',
+    + 'Drive in your Besidka settings.',
   rate_limited: 'Google Drive asked Besidka to slow down. Try again in a '
     + 'moment.',
   no_access: 'Google Drive refused to save the file. Reconnect Google Drive '
-    + 'on the API Keys page and allow access to the files Besidka creates.',
+    + 'in your Besidka settings and allow access to the files Besidka '
+    + 'creates.',
   drive_full: 'Your Google Drive storage is full, so the file was not saved.',
   busy: 'This file is already being saved to Google Drive. Wait a moment.',
   unconfirmed: 'The save did not finish, so it is not known whether the '

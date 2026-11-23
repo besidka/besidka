@@ -51,6 +51,19 @@
       responsibility.
     </p>
     <template v-if="byo.canManage">
+      <p
+        v-if="reduced"
+        class="text-sm"
+        data-testid="google-byo-connectors-line"
+      >
+        Connect Gmail, Google Calendar and whole-Drive search on the
+        <NuxtLink
+          :to="GOOGLE_CONNECTORS_PATH"
+          class="link"
+          data-testid="google-byo-connectors-link"
+        >
+          Connectors page</NuxtLink>.
+      </p>
       <div class="grid gap-2">
         <p class="text-sm font-semibold">
           Redirect URI to register on your client
@@ -185,7 +198,12 @@
       </div>
     </template>
     <fieldset
-      v-if="byo.canManage && byo.hasClient && offeredOptions.length > 0"
+      v-if="
+        byo.canManage
+          && !reduced
+          && byo.hasClient
+          && offeredOptions.length > 0
+      "
       class="grid gap-2"
       data-testid="google-byo-capabilities-form"
     >
@@ -249,7 +267,7 @@
         </button>
       </div>
     </fieldset>
-    <template v-if="connection">
+    <template v-if="connection && showsConnectionControls">
       <div
         v-if="connectionState === 'needs_reauth'"
         role="alert"
@@ -354,18 +372,19 @@ import type { GoogleByoCapability } from '#shared/utils/google-byo'
 import { GOOGLE_CALENDAR_ICON } from '#shared/utils/google-brand-icons'
 import { GOOGLE_CALENDAR_ACCESS_NOTE } from '#shared/utils/google-calendar-tools'
 import { getGoogleByoToolsHint } from '#shared/utils/google-gmail-tools'
+import { GOOGLE_CONNECTORS_PATH } from '#shared/utils/google-connectors'
 import {
-  GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
+  GOOGLE_CONNECT_KEYS_RETURN_PATH,
   GOOGLE_THIRD_PARTY_ACCESS_URL,
   isGoogleConnectResult,
 } from '#shared/utils/google-connections'
 import type {
   GoogleByoConnectionStatus,
-  GoogleConnectResult,
   GoogleConnectionSummary,
   GooglePartialCalendarAccess,
 } from '#shared/utils/google-connections'
 import type { GoogleCapability } from '#shared/utils/google-scopes'
+import { reportGoogleConnectResult } from '~/utils/google-connect-results'
 
 type ConnectionState = 'none' | 'connected' | 'needs_reauth'
 
@@ -440,38 +459,11 @@ const GRANTED_LABELS: ReadonlyMap<GoogleCapability, string> = new Map(
   }),
 )
 
-const RESULT_MESSAGES: Record<
-  GoogleConnectResult,
-  { type: 'success' | 'info' | 'error', title: string, description?: string }
-> = {
-  connected: { type: 'success', title: 'Google connected with your client' },
-  partial: {
-    type: 'info',
-    title: 'Google granted only part of the access',
-    description: 'Only what Google granted is listed on this card.',
-  },
-  denied: {
-    type: 'info',
-    title: 'Google was not connected',
-    description: 'You canceled on the Google page.',
-  },
-  missing_scope: {
-    type: 'error',
-    title: 'Google was not connected',
-    description: 'Google granted none of the access you ticked.',
-  },
-  expired: {
-    type: 'error',
-    title: 'The connection timed out',
-    description: 'Start again from this page.',
-  },
-  error: {
-    type: 'error',
-    title: 'Google could not be connected',
-    description: 'Check the client id, secret and redirect URI, then try '
-      + 'again.',
-  },
-}
+const props = withDefaults(defineProps<{
+  reduced?: boolean
+}>(), {
+  reduced: false,
+})
 
 const route = useRoute()
 const isBusy = shallowRef<boolean>(false)
@@ -591,23 +583,9 @@ const canSaveClient = computed<boolean>(() => {
     && isGoogleOAuthClientSecret(clientSecret.value.trim())
 })
 
-function showResultMessage(result: GoogleConnectResult) {
-  const message = RESULT_MESSAGES[result]
-
-  if (message.type === 'success') {
-    useSuccessMessage(message.title, message.description)
-
-    return
-  }
-
-  if (message.type === 'info') {
-    useInfoMessage(message.title, message.description)
-
-    return
-  }
-
-  useErrorMessage(message.title, message.description)
-}
+const showsConnectionControls = computed<boolean>(() => {
+  return !props.reduced || byo.value?.canManage !== true
+})
 
 async function handleConnectResult() {
   const result = route.query[GOOGLE_BYO_RESULT_QUERY_KEY]
@@ -616,7 +594,7 @@ async function handleConnectResult() {
     return
   }
 
-  showResultMessage(result)
+  reportGoogleConnectResult('byo', result)
 
   if (result === 'connected' || result === 'partial') {
     await refresh()
@@ -744,7 +722,7 @@ async function connect() {
       method: 'POST',
       body: {
         capabilities: requestedCapabilities.value,
-        returnTo: GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
+        returnTo: GOOGLE_CONNECT_KEYS_RETURN_PATH,
       },
     })
 

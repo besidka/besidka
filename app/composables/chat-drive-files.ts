@@ -26,9 +26,6 @@ import type { AttachedFile } from '~/types/file-manager'
 import { GOOGLE_CONNECTION_FETCH_KEY } from '~/composables/google-connection'
 import type { PickedDriveItem } from '~/composables/google-picker'
 
-export const GOOGLE_DRIVE_CONNECT_PATH = '/profile/keys?tab=google'
-export const GOOGLE_DRIVE_CONNECT_SENTENCE
-  = 'Connect Google Drive on the API Keys page to attach files from it.'
 export const GOOGLE_DRIVE_BUSY_REASON
   = 'Google Drive files are still being copied. Wait a moment, then send.'
 
@@ -111,6 +108,7 @@ export function useChatDriveFiles(
   const { routeSlug } = useChatRoute()
   const { rememberChatGoogleData } = useChatGoogleData()
   const googleDriveFeature = useFeature('google.drive')
+  const connectorsFeature = useFeature('connectors')
   const driveImports = ref<DriveImportProgress[]>([])
   const linkSuggestions = ref<DriveLinkSuggestion[]>([])
   const checkingLinkIds = ref<string[]>([])
@@ -158,14 +156,16 @@ export function useChatDriveFiles(
   }
 
   async function offerConnection() {
+    const target = getGoogleDriveConnectTarget(connectorsFeature.value.active)
     const result = await useConfirm({
-      text: GOOGLE_DRIVE_CONNECT_SENTENCE,
-      actions: ['Open API Keys'],
+      text: `Connect Google Drive on the ${target.pageName} to attach files `
+        + 'from it.',
+      actions: [target.openLabel],
       labelDecline: 'Not now',
     })
 
     if (result) {
-      await navigateTo(GOOGLE_DRIVE_CONNECT_PATH)
+      await navigateTo(target.path)
     }
   }
 

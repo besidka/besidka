@@ -338,7 +338,7 @@ describe('Google bring-your-own client routes', () => {
       sessionUserId = 0
 
       expect(await callbackLocation())
-        .toBe('/profile/keys?tab=google&google-byo=error')
+        .toBe('/chats/connectors?google-byo=error')
     })
 
     it('refuses a signed-out delete', async () => {
@@ -386,7 +386,7 @@ describe('Google bring-your-own client routes', () => {
         })
 
         expect(await callbackLocation())
-          .toBe('/profile/keys?tab=google&google-byo=error')
+          .toBe('/chats/connectors?google-byo=error')
         expect(google.tokenRequests()).toHaveLength(0)
       })
 
@@ -458,7 +458,7 @@ describe('Google bring-your-own client routes', () => {
         .where(eq(schema.userRoles.userId, userId))
 
       expect(await finish('callback', url))
-        .toBe('/profile/keys?tab=google&google-byo=error')
+        .toBe('/chats/connectors?google-byo=error')
       expect(google.tokenRequests()).toHaveLength(0)
       expect(await connectionRow('byo')).toBeNull()
     })
@@ -752,7 +752,7 @@ describe('Google bring-your-own client routes', () => {
         const row = await connectionRow('byo')
         const [exchange] = google.tokenRequests()
 
-        expect(location).toBe('/profile/keys?tab=google&google-byo=connected')
+        expect(location).toBe('/chats/connectors?google-byo=connected')
         expect(exchange!.form.get('client_id')).toBe(BYO_CLIENT_ID)
         expect(exchange!.form.get('client_secret')).toBe(BYO_CLIENT_SECRET)
         expect(exchange!.form.get('redirect_uri'))
@@ -783,7 +783,7 @@ describe('Google bring-your-own client routes', () => {
         const row = await connectionRow('byo')
         const { result } = await call('status')
 
-        expect(location).toBe('/profile/keys?tab=google&google-byo=partial')
+        expect(location).toBe('/chats/connectors?google-byo=partial')
         expect(row!.grantedScopes).toContain(GMAIL_READONLY)
         expect(row!.grantedScopes).not.toContain(GMAIL_COMPOSE)
         expect(result.byo.connection.capabilities).toContain('gmail-read')
@@ -803,7 +803,7 @@ describe('Google bring-your-own client routes', () => {
         + `${AUTH}calendar.events.freebusy`
 
       expect(await connectByo(['calendar']))
-        .toBe('/profile/keys?tab=google&google-byo=connected')
+        .toBe('/chats/connectors?google-byo=connected')
       expect((await call('status')).result.byo.connection.capabilities)
         .toContain('calendar')
 
@@ -811,7 +811,7 @@ describe('Google bring-your-own client routes', () => {
       grantedScope = `openid ${EMAIL_SCOPE} ${AUTH}calendar.events.owned`
 
       expect(await connectByo(['calendar']))
-        .toBe('/profile/keys?tab=google&google-byo=partial')
+        .toBe('/chats/connectors?google-byo=partial')
 
       const row = await connectionRow('byo')
 
@@ -884,7 +884,7 @@ describe('Google bring-your-own client routes', () => {
         const location = await finish('callback', url)
         const row = await connectionRow('byo')
 
-        expect(location).toBe('/profile/keys?tab=google&google-byo=connected')
+        expect(location).toBe('/chats/connectors?google-byo=connected')
         expect(row!.grantedScopes)
           .toEqual(expect.arrayContaining([DRIVE_READONLY, GMAIL_READONLY]))
       })
@@ -897,7 +897,7 @@ describe('Google bring-your-own client routes', () => {
         const location = await connectByo(['drive-read'])
 
         expect(location)
-          .toBe('/profile/keys?tab=google&google-byo=missing_scope')
+          .toBe('/chats/connectors?google-byo=missing_scope')
         expect(revokedTokens()).toEqual([`refresh-${BYO_CLIENT_ID}`])
         expect(await connectionRow('byo')).toBeNull()
       })
@@ -908,7 +908,7 @@ describe('Google bring-your-own client routes', () => {
       const url = await startBesidka()
       const location = await finish('callback', url)
 
-      expect(location).toBe('/profile/keys?tab=google&google-byo=error')
+      expect(location).toBe('/chats/connectors?google-byo=error')
       expect(google.tokenRequests()).toHaveLength(0)
     })
 
@@ -918,7 +918,7 @@ describe('Google bring-your-own client routes', () => {
       const url = await startByo()
       const location = await finish('besidkaCallback', url)
 
-      expect(location).toBe('/profile/keys?tab=google&google=error')
+      expect(location).toBe('/chats/connectors?google=error')
       expect(google.tokenRequests()).toHaveLength(0)
       expect(await connectionRow('byo')).toBeNull()
       expect(await connectionRow('besidka')).toBeNull()

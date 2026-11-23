@@ -97,6 +97,36 @@ describe('resolveSafeNextPath', () => {
     expect(resolveSafeNextPath(input)).toBeNull()
   })
 
+  it.each([
+    ['google-drive'],
+    ['google-gmail'],
+    ['google-calendar'],
+  ])('keeps the %s panel on the connectors page', (panel) => {
+    expect(resolveSafeNextPath(`/chats/connectors?panel=${panel}`))
+      .toBe(`/chats/connectors?panel=${panel}`)
+  })
+
+  it('keeps only the connectors page when the panel is unknown', () => {
+    expect(resolveSafeNextPath('/chats/connectors?panel=evil'))
+      .toBe('/chats/connectors')
+    expect(resolveSafeNextPath('/chats/connectors')).toBe('/chats/connectors')
+  })
+
+  it('drops every other connectors query key and the hash', () => {
+    expect(resolveSafeNextPath(
+      '/chats/connectors?panel=google-gmail&connector=abc&tab=discover#x',
+    )).toBe('/chats/connectors?panel=google-gmail')
+  })
+
+  it.each([
+    ['/chats/connectors/extra'],
+    ['/chats/connectors/'],
+    ['/chats/Connectors'],
+    ['/chats/connectors%2f..%2fhistory'],
+  ])('rejects %j next to the connectors page', (input) => {
+    expect(resolveSafeNextPath(input)).toBeNull()
+  })
+
   it('drops the query and hash from /chats/new', () => {
     expect(resolveSafeNextPath('/chats/new?q=1#top')).toBe('/chats/new')
   })

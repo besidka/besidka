@@ -3838,3 +3838,77 @@ VERIFIED, to check once with the owner's own project:
    NOT VERIFIED.
 9. Open a create-event card on an iPhone (Safari and the installed PWA): the
    long description scrolls inside the card and the buttons stay reachable.
+
+## 16. Google entries on Connectors (BES-454, child 1)
+
+The UI half of moving Google from the API Keys tab to the Connectors page.
+No server route, no migration and no change to the oauth, byo, connections or
+disconnect routes. Google is still not a row in `connectors`: it is a fixed
+group, like the Besidka row.
+
+### 16.1 What the user sees
+
+- **Yours.** A "Google" group (visually hidden heading) right under the pinned
+  Besidka row and above the user's own connectors: Google Drive, Gmail and
+  Google Calendar as `list-row` entries with the official logos
+  (`shared/utils/google-brand-icons.ts`), a "Built in" badge, one state line
+  and one action (`min-h-11` on a phone). The badge belongs to
+  `ProfileConnectorsGoogleRow` only; a user-added connector titled "Gmail"
+  never gets it.
+- **Discover.** "Built into Besidka" is the first section with the same
+  entries and visibility rules. A search for google, gmail, calendar, drive,
+  docs, sheets or slides (`findGoogleEntriesForSearch`) puts the matching
+  cards above the results. The cards are their own component and never enter
+  the directory items, so the total, the live text and the "Added" state do
+  not count them.
+- **Panel.** `ProfileConnectorsGoogleDetailPanel` in `UiSidePanel` (a bottom
+  sheet below `md`): header, state, Connect or Reconnect or Add access,
+  Disconnect, one click-to-open info note and a read-only tool list from
+  `shared/utils/google-tool-catalog.ts` (Read and Write, each tool "Needs
+  approval" or "Asks every time"; no permission control yet). A spec checks the
+  catalog against the three tool builders.
+- **Query.** `?panel=google-drive|google-gmail|google-calendar` opens a panel.
+  The page also handles `?google=` and `?google-byo=` (toast, polite live
+  region, refresh, open the panel; both keys are in `HANDLED_QUERY_KEYS`).
+
+### 16.2 Who sees what
+
+`resolveGoogleEntries` (`app/utils/google-entries.ts`) is the one place:
+
+| Entry | Listed when | States |
+| --- | --- | --- |
+| Google Drive | `google.drive` is available to the user (`enabled`), or a connection is left over | Not connected, connected (email), needs reconnect, Off in Labs |
+| Gmail, Google Calendar | `byo.canManage` (the server's admin, 2FA and `google.byo` gate), or a leftover own-client connection that holds that service | Needs your own Google client, Off in Labs, not connected, connected, partial ("Drafts access not granted", "Event access not granted" ...), needs reconnect, "Not available for this account" with Disconnect only |
+
+Disconnect on Gmail or Calendar ends the one own-client grant that Gmail,
+Calendar and whole-Drive search share, because Google cannot revoke one
+service alone; the confirmation names all three. Connect and Add access send
+what the connection already holds plus the new capabilities
+(`getGoogleByoRequestedCapabilities`), and never `calendar` while Google
+Calendar is off in Labs. The Drive panel offers "Add access" for Drive read
+access to the owner.
+
+### 16.3 Return path and the keys fallback
+
+The entries send `returnTo=/chats/connectors?panel=<entry>`.
+`resolveSafeNextPath` (`shared/utils/auth-redirect.ts`, also the sign-in
+`next` guard) now allows that exact pathname and keeps only a `panel` value of
+the three entry ids. `GOOGLE_CONNECT_DEFAULT_RETURN_PATH` is the Connectors
+page, so the server's fallback when the state holds no valid return path
+lands there too.
+
+A user without the `connectors` flag has no such page, so the Drive card keeps
+its place on the API Keys tab (and passes `/profile/keys?tab=google`). The
+Google tab shows when the status carries the own-client part, or in that
+fallback (`isGoogleTabVisible`). With the Connectors page the tab holds only
+"Your own Google OAuth client" (`reduced`), the line "Connect Gmail, Google
+Calendar and whole-Drive search on the Connectors page." and, for a former
+owner, Delete client and Disconnect for a leftover connection. Its mark is the
+Google G (`GOOGLE_G_ICON`).
+
+### 16.4 Not done in this child
+
+- Server messages that still say "API Keys page, Google tab"
+  (`server/utils/google/*`, `picker-token.ts` links): the child is UI only.
+- Per-tool permissions, per-chat switches and the picker rows (children 2 and
+  3 of BES-454).

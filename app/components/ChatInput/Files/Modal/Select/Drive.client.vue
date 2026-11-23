@@ -40,7 +40,7 @@
         {{
           connectionState === 'reauthorize'
             ? GOOGLE_DRIVE_TAB_RECONNECT_LABEL
-            : GOOGLE_DRIVE_TAB_CONNECT_LABEL
+            : connectTarget.openLabel
         }}
       </button>
     </div>
@@ -211,6 +211,7 @@ import type {
   FileDeliveryResolver,
   FileRejection,
 } from '~/utils/file-delivery-hints'
+import type { GoogleDriveConnectTarget } from '~/utils/google-drive-tab'
 
 type ConnectionState = 'loading' | 'error' | 'not-connected' | 'reauthorize'
   | 'connected'
@@ -243,6 +244,12 @@ const {
   status: connectionFetchStatus,
   refresh: refreshConnection,
 } = useGoogleConnection()
+
+const connectorsFeature = useFeature('connectors')
+
+const connectTarget = computed<GoogleDriveConnectTarget>(() => {
+  return getGoogleDriveConnectTarget(connectorsFeature.value.active)
+})
 
 const {
   files,
@@ -315,14 +322,14 @@ const connectionState = computed<ConnectionState>(() => {
 
 const statusSentence = computed<string>(() => {
   if (connectionState.value === 'reauthorize') {
-    return GOOGLE_DRIVE_TAB_REAUTHORIZE
+    return getGoogleDriveTabReauthorize(connectTarget.value)
   }
 
   if (connectionState.value === 'error') {
     return GOOGLE_DRIVE_TAB_STATUS_FAILED
   }
 
-  return GOOGLE_DRIVE_TAB_NOT_CONNECTED
+  return getGoogleDriveTabNotConnected(connectTarget.value)
 })
 
 const isInitialLoading = computed<boolean>(() => {
@@ -441,7 +448,7 @@ const pickLabel = computed<string>(() => {
 async function openConnectionSettings() {
   dialog.close()
 
-  await navigateTo(GOOGLE_DRIVE_CONNECT_PATH)
+  await navigateTo(connectTarget.value.path)
 }
 
 function onFileClick(event: MouseEvent, file: FileManagerFile, index: number) {

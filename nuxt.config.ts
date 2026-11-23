@@ -811,6 +811,7 @@ export default defineNuxtConfig({
         'logos:google-drive',
         'logos:google-gmail',
         'logos:google-calendar',
+        'logos:google-icon',
         'streamline-logos:github-logo-2-solid',
         'streamline-logos:linkedin-logo-block',
         'streamline-logos:twitter-logo-1-solid',

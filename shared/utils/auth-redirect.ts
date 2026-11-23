@@ -3,6 +3,12 @@ import {
   ARTIFACT_SHARE_RETURN_SEGMENT,
 } from '#shared/utils/artifacts'
 import {
+  GOOGLE_CONNECTORS_PATH,
+  GOOGLE_ENTRY_PANEL_QUERY_KEY,
+  buildGoogleEntryPath,
+  isGoogleEntryId,
+} from '#shared/utils/google-connectors'
+import {
   enabledGateways,
   enabledMemoryCheckProviders,
   enabledSearchProviders,
@@ -137,6 +143,14 @@ export function resolveSafeNextPath(value: unknown): string | null {
 
   if (parsedUrl.pathname === ARTIFACT_SHARE_RETURN_PATHNAME) {
     return ARTIFACT_SHARE_RETURN_PATHNAME
+  }
+
+  if (parsedUrl.pathname === GOOGLE_CONNECTORS_PATH) {
+    const panel = parsedUrl.searchParams.get(GOOGLE_ENTRY_PANEL_QUERY_KEY)
+
+    return isGoogleEntryId(panel)
+      ? buildGoogleEntryPath(panel)
+      : GOOGLE_CONNECTORS_PATH
   }
 
   if (parsedUrl.pathname !== KEYS_PAGE_PATHNAME) {

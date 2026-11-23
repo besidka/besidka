@@ -169,25 +169,17 @@
 import { parseError } from 'evlog'
 import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
-  GOOGLE_CONNECT_DEFAULT_RETURN_PATH,
+  GOOGLE_CONNECT_KEYS_RETURN_PATH,
   GOOGLE_CONNECT_RESULT_QUERY_KEY,
   GOOGLE_THIRD_PARTY_ACCESS_URL,
   isGoogleConnectResult,
 } from '#shared/utils/google-connections'
-import type {
-  GoogleConnectResult,
-  GoogleConnectionSummary,
-} from '#shared/utils/google-connections'
+import type { GoogleConnectionSummary } from '#shared/utils/google-connections'
 import type { GoogleCapability } from '#shared/utils/google-scopes'
+import { reportGoogleConnectResult } from '~/utils/google-connect-results'
 
 type ViewState
   = 'loading' | 'error' | 'disconnected' | 'connected' | 'needs_reauth'
-
-interface ResultMessage {
-  type: 'success' | 'info' | 'error'
-  title: string
-  description?: string
-}
 
 const CAPABILITY_LABELS: Partial<Record<GoogleCapability, string>> = {
   'drive-picked': 'Only the Google Drive files you pick',
@@ -195,35 +187,6 @@ const CAPABILITY_LABELS: Partial<Record<GoogleCapability, string>> = {
   'gmail-read': 'Your Gmail, read only',
   'gmail-compose': 'Gmail drafts',
   'calendar': 'Your Google Calendar events',
-}
-
-const RESULT_MESSAGES: Record<GoogleConnectResult, ResultMessage> = {
-  connected: { type: 'success', title: 'Google Drive connected' },
-  partial: {
-    type: 'info',
-    title: 'Google Drive connected with less access',
-    description: 'Only what Google granted is listed on this card.',
-  },
-  denied: {
-    type: 'info',
-    title: 'Google Drive was not connected',
-    description: 'You canceled on the Google page.',
-  },
-  missing_scope: {
-    type: 'error',
-    title: 'Google Drive was not connected',
-    description: 'Allow access to the files you pick, then try again.',
-  },
-  expired: {
-    type: 'error',
-    title: 'The connection timed out',
-    description: 'Start again from this page.',
-  },
-  error: {
-    type: 'error',
-    title: 'Google Drive could not be connected',
-    description: 'Try again in a moment.',
-  },
 }
 
 const route = useRoute()
@@ -262,24 +225,6 @@ const capabilityLabels = computed<string[]>(() => {
   })
 })
 
-function showResultMessage(result: GoogleConnectResult) {
-  const message = RESULT_MESSAGES[result]
-
-  if (message.type === 'success') {
-    useSuccessMessage(message.title, message.description)
-
-    return
-  }
-
-  if (message.type === 'info') {
-    useInfoMessage(message.title, message.description)
-
-    return
-  }
-
-  useErrorMessage(message.title, message.description)
-}
-
 async function handleConnectResult() {
   const result = route.query[GOOGLE_CONNECT_RESULT_QUERY_KEY]
 
@@ -287,7 +232,7 @@ async function handleConnectResult() {
     return
   }
 
-  showResultMessage(result)
+  reportGoogleConnectResult('besidka', result)
 
   if (result === 'connected') {
     await refresh()
@@ -312,7 +257,7 @@ async function connect() {
   try {
     const { authorizationUrl } = await $fetch('/api/v1/google/oauth/start', {
       method: 'POST',
-      body: { returnTo: GOOGLE_CONNECT_DEFAULT_RETURN_PATH },
+      body: { returnTo: GOOGLE_CONNECT_KEYS_RETURN_PATH },
     })
 
     await navigateTo(authorizationUrl, { external: true })
