@@ -981,6 +981,71 @@ describe('Profile/Google/OwnClient', () => {
         .toContain('use the Connectors page')
     })
 
+    describe('narrow screens', () => {
+      const WRAP_CLASS = '[overflow-wrap:anywhere]'
+
+      async function expectNarrowClasses(
+        wrapper: Awaited<ReturnType<typeof mountOwnClient>>,
+      ) {
+        const guide = wrapper.get('[data-testid="google-byo-guide"]')
+        const content = guide.get('[data-testid="google-byo-guide-content"]')
+
+        expect(guide.classes()).toContain('min-w-0')
+        expect(guide.classes()).toContain('max-w-full')
+        expect(content.classes()).toContain('min-w-0')
+        expect(content.classes()).toContain('max-w-full')
+        expect(content.classes()).toContain(WRAP_CLASS)
+        expect(content.element.parentElement?.classList.contains('min-w-0'))
+          .toBe(true)
+
+        const scopeList = guide.get('[data-testid="google-byo-guide-scopes"]')
+        const scopeItems = scopeList.findAll('li')
+
+        expect(scopeItems.length).toBeGreaterThan(0)
+
+        for (const item of scopeItems) {
+          expect(item.classes()).toContain(WRAP_CLASS)
+        }
+
+        const codeElements = guide.findAll('code')
+
+        expect(codeElements.length).toBeGreaterThan(0)
+
+        for (const code of codeElements) {
+          expect(code.classes()).toContain(WRAP_CLASS)
+        }
+
+        expect(wrapper.get('[data-testid="google-byo"]').classes())
+          .toContain('min-w-0')
+      }
+
+      it('lets the full card shrink and wrap long strings', async () => {
+        setByo({ hasClient: true })
+
+        const wrapper = await mountOwnClient()
+
+        await expectNarrowClasses(wrapper)
+        expect(wrapper.get('[data-testid="google-byo-capabilities-form"]')
+          .classes()).toContain('min-w-0')
+      })
+
+      it('lets the reduced card shrink and wrap long strings', async () => {
+        const wrapper = await mountReduced()
+
+        await expectNarrowClasses(wrapper)
+      })
+
+      it('keeps the redirect address box wrappable', async () => {
+        const wrapper = await mountOwnClient()
+        const address = wrapper.get('[data-testid="google-byo-redirect-uri"]')
+
+        expect(address.classes()).toContain('min-w-0')
+        expect(address.classes()).toContain('break-all')
+        expect(address.element.parentElement?.parentElement?.classList
+          .contains('min-w-0')).toBe(true)
+      })
+    })
+
     it('is hidden for a user who cannot manage an own client', async () => {
       setByo({ canManage: false, redirectUri: null, hasClient: true })
 
