@@ -64,7 +64,7 @@ function decide(
   return resolveToolApproval({
     descriptor: descriptor(toolName, overrides),
     state: recordTaint(createApprovalState(), 'google'),
-    permissionMode: 'allow',
+    permissionMode: 'ask',
     alwaysGrant: grant(toolName),
     chatGrant: grant(toolName),
     isAlwaysGrantDefault: false,
@@ -96,26 +96,23 @@ describe('the Calendar tools in the approval policy', () => {
     expect(isGoogleOnceOnlyReadTool(toolName)).toBe(false)
   })
 
-  it('asks for an event with Allow once only, whatever grant, mode or taint',
+  it('asks for an event with Allow once only, whatever grant or taint',
     () => {
-      for (const permissionMode of ['ask', 'allow'] as const) {
-        const decision = decide(
-          GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
-          WRITE,
-          { permissionMode },
-        )
+      const decision = decide(
+        GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
+        WRITE,
+      )
 
-        expect(decision.reason).toBe('always-ask')
-        expect(decision.status.type).toBe('user-approval')
-        expect(decision.rememberOptions).toEqual(['once'])
-      }
+      expect(decision.reason).toBe('always-ask')
+      expect(decision.status.type).toBe('user-approval')
+      expect(decision.rememberOptions).toEqual(['once'])
     })
 
-  it('never lets a chat grant or Always allow cover the write', () => {
+  it('never lets a chat grant or a connector grant cover the write', () => {
     const withGrants = resolveToolApproval({
       descriptor: descriptor(GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME, WRITE),
       state: createApprovalState(),
-      permissionMode: 'allow',
+      permissionMode: 'ask',
       alwaysGrant: grant(GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME),
       chatGrant: grant(GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME),
       isAlwaysGrantDefault: false,
@@ -126,17 +123,14 @@ describe('the Calendar tools in the approval policy', () => {
     expect(withGrants.rememberOptions).not.toContain('always')
   })
 
-  it('never offers Always allow for any Calendar tool', () => {
+  it('never offers Always allow on the card of any Calendar tool', () => {
     for (const toolName of GOOGLE_CALENDAR_TOOL_NAMES) {
-      for (const permissionMode of ['ask', 'allow'] as const) {
-        const decision = decide(
-          toolName,
-          toolName === GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME ? WRITE : {},
-          { permissionMode },
-        )
+      const decision = decide(
+        toolName,
+        toolName === GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME ? WRITE : {},
+      )
 
-        expect(decision.rememberOptions, toolName).not.toContain('always')
-      }
+      expect(decision.rememberOptions, toolName).not.toContain('always')
     }
   })
 

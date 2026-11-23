@@ -25,6 +25,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 
 const {
   loadGoogleToolPermissionModes,
+  partitionGoogleToolsForMode,
   pickGoogleToolPermissionMode,
   resolveGoogleTargetTools,
   setGoogleToolPermissions,
@@ -89,16 +90,45 @@ describe('Google tool permissions', () => {
     ])
   })
 
-  it('reads a stored "allow" as "blocked"', async () => {
+  it('reads a stored "allow" as "allow" for an allowable tool', async () => {
     await insertRow(GOOGLE_GMAIL_SEARCH_TOOL_NAME, 'allow')
+    await insertRow(GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME, 'allow')
 
     const modes = await loadGoogleToolPermissionModes(userId, testDb.db)
 
     expect(pickGoogleToolPermissionMode(
       GOOGLE_GMAIL_SEARCH_TOOL_NAME,
       modes,
-    )).toBe('blocked')
+    )).toBe('allow')
+    expect(pickGoogleToolPermissionMode(
+      GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME,
+      modes,
+    )).toBe('allow')
   })
+
+  it('reads a stored "allow" as "ask" for a tool of Besidka\'s client',
+    async () => {
+      await insertRow('google__drive_read_file', 'allow')
+      await insertRow('google__drive_save_file', 'allow')
+      await insertRow('google__drive_list_picked', 'allow')
+
+      const modes = await loadGoogleToolPermissionModes(userId, testDb.db)
+
+      expect([...modes.entries()].sort()).toEqual([
+        ['google__drive_list_picked', 'ask'],
+        ['google__drive_read_file', 'ask'],
+        ['google__drive_save_file', 'ask'],
+      ])
+    })
+
+  it('reads a stored "allow" as "ask" for a name outside the catalog',
+    async () => {
+      await insertRow('google__list_files', 'allow')
+
+      const modes = await loadGoogleToolPermissionModes(userId, testDb.db)
+
+      expect(modes.get('google__list_files')).toBe('ask')
+    })
 
   it('reads an unknown stored mode as "blocked"', async () => {
     await insertRow(GOOGLE_GMAIL_SEARCH_TOOL_NAME, 'whatever')
@@ -156,6 +186,70 @@ describe('Google tool permissions', () => {
         expect([...modes.values()].every(mode => mode === 'blocked'))
           .toBe(true)
       })
+
+    it('stores "allow" for an allowable tool and reads it back', async () => {
+      const changed = await setGoogleToolPermissions(
+        userId,
+        resolveGoogleTargetTools({ tool: GOOGLE_GMAIL_SEARCH_TOOL_NAME }),
+        'allow',
+        testDb.db,
+      )
+      const modes = await loadGoogleToolPermissionModes(userId, testDb.db)
+
+      expect(changed).toBe(1)
+      expect(modes.get(GOOGLE_GMAIL_SEARCH_TOOL_NAME)).toBe('allow')
+    })
+
+    it('stores "allow" only for the allowable tools of a group', async () => {
+      const tools = resolveGoogleTargetTools({ service: 'drive' })
+      const changed = await setGoogleToolPermissions(
+        userId,
+        tools,
+        'allow',
+        testDb.db,
+      )
+      const rows = await testDb.db.select()
+        .from(schema.besidkaToolPermissions)
+
+      expect(changed).toBe(6)
+      expect(rows.map(row => row.toolName).sort()).toEqual([
+        'google__drive_create_folder',
+        'google__drive_list_folder',
+        'google__drive_move',
+        'google__drive_read_found_file',
+        'google__drive_rename',
+        'google__drive_search',
+      ])
+      expect(rows.every(row => row.mode === 'allow')).toBe(true)
+    })
+
+    it('never stores "allow" for a tool of Besidka\'s client', async () => {
+      const changed = await setGoogleToolPermissions(
+        userId,
+        resolveGoogleTargetTools({ tool: 'google__drive_read_file' }),
+        'allow',
+        testDb.db,
+      )
+
+      expect(changed).toBe(0)
+      expect(await testDb.db.select().from(schema.besidkaToolPermissions))
+        .toHaveLength(0)
+    })
+
+    it('splits a request into the tools that take "allow" and the rest', () => {
+      const tools = resolveGoogleTargetTools({ service: 'drive' })
+      const allowed = partitionGoogleToolsForMode(tools, 'allow')
+      const blocked = partitionGoogleToolsForMode(tools, 'blocked')
+
+      expect(allowed.applied).toHaveLength(6)
+      expect(allowed.unchanged.map(tool => tool.name).sort()).toEqual([
+        'google__drive_list_picked',
+        'google__drive_read_file',
+        'google__drive_save_file',
+      ])
+      expect(blocked.applied).toHaveLength(tools.length)
+      expect(blocked.unchanged).toHaveLength(0)
+    })
 
     it('deletes the row on "ask", because the default needs no storage',
       async () => {

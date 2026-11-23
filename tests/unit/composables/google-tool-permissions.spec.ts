@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 interface Row {
   name: string
   service: 'drive' | 'gmail' | 'calendar'
-  mode: 'blocked' | 'ask'
+  mode: 'blocked' | 'ask' | 'allow'
 }
 
 const data = ref<{ tools: Row[] } | null>(null)
@@ -353,6 +353,79 @@ describe('useGoogleToolPermissions', () => {
 
       expect(announcement.value).toBe('Gmail read tools: Blocked.')
     })
+
+  it('sets Always allow at once for a tool of the own client and sends it',
+    async () => {
+      const pending = deferred<{ tools: Row[], unchanged: string[] }>()
+
+      mocks.fetch.mockReturnValueOnce(pending.promise)
+
+      const { tools, save, announcement } = useGoogleToolPermissions()
+      const saving = save({ tool: SEARCH }, 'allow')
+
+      expect(modesOf(tools.value)[SEARCH]).toBe('allow')
+
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/google/tool-permissions',
+        { method: 'PUT', body: { tool: SEARCH, mode: 'allow' } },
+      )
+
+      pending.resolve({
+        tools: [
+          { name: SEARCH, service: 'gmail', mode: 'allow' },
+          { name: READ_THREAD, service: 'gmail', mode: 'ask' },
+          { name: LIST_EVENTS, service: 'calendar', mode: 'ask' },
+        ],
+        unchanged: [],
+      })
+      await saving
+
+      expect(modesOf(tools.value)[SEARCH]).toBe('allow')
+      expect(announcement.value)
+        .toBe('Search your Gmail: Always allow.')
+    })
+
+  it('shows Always allow at once only for the tools of a group that can '
+    + 'take it, and says how many stayed as they were', async () => {
+    data.value = {
+      tools: [
+        { name: 'google__drive_list_picked', service: 'drive', mode: 'ask' },
+        { name: 'google__drive_read_file', service: 'drive', mode: 'ask' },
+        { name: 'google__drive_search', service: 'drive', mode: 'ask' },
+        { name: 'google__drive_list_folder', service: 'drive', mode: 'ask' },
+      ],
+    }
+
+    const pending = deferred<{ tools: Row[], unchanged: string[] }>()
+
+    mocks.fetch.mockReturnValueOnce(pending.promise)
+
+    const { tools, save, announcement } = useGoogleToolPermissions()
+    const saving = save({ service: 'drive', kind: 'read' }, 'allow')
+
+    expect(modesOf(tools.value)).toEqual({
+      google__drive_list_picked: 'ask',
+      google__drive_read_file: 'ask',
+      google__drive_search: 'allow',
+      google__drive_list_folder: 'allow',
+    })
+
+    pending.resolve({
+      tools: [
+        { name: 'google__drive_list_picked', service: 'drive', mode: 'ask' },
+        { name: 'google__drive_read_file', service: 'drive', mode: 'ask' },
+        { name: 'google__drive_search', service: 'drive', mode: 'allow' },
+        { name: 'google__drive_list_folder', service: 'drive', mode: 'allow' },
+      ],
+      unchanged: ['google__drive_list_picked', 'google__drive_read_file'],
+    })
+    await saving
+
+    expect(announcement.value)
+      .toBe('Drive read tools: Always allow. 2 stayed as they were.')
+  })
 
   it('rolls every tool of a failed group back together', async () => {
     mocks.fetch.mockRejectedValueOnce(new Error('Nope'))

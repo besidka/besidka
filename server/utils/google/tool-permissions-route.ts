@@ -1,6 +1,9 @@
 import type { RequestEvent } from 'nuxt/server'
 import { GOOGLE_BYO_FEATURE_FLAG } from '#shared/utils/google-byo'
-import { GOOGLE_TOOL_CATALOG } from '#shared/utils/google-tool-catalog'
+import {
+  GOOGLE_TOOL_CATALOG,
+  isGoogleToolAlwaysAllowable,
+} from '#shared/utils/google-tool-catalog'
 import type {
   GoogleService,
   GoogleToolCatalogEntry,
@@ -21,6 +24,7 @@ export interface GoogleToolPermissionEntry {
   name: string
   service: GoogleService
   mode: GoogleToolPermissionMode
+  alwaysAllowable: boolean
 }
 
 /**
@@ -83,6 +87,7 @@ export function toGoogleToolPermissionEntries(
       name: tool.name,
       service: tool.service,
       mode: pickGoogleToolPermissionMode(tool.name, modes),
+      alwaysAllowable: isGoogleToolAlwaysAllowable(tool),
     }
   })
 }

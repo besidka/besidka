@@ -89,6 +89,39 @@ describe('Chat/Reasoning Google Drive step', () => {
       .toBe(true)
   })
 
+  it.each([
+    ['always', 'Ran without asking (Always allowed)'],
+    ['chat', 'Ran without asking (Allowed in this chat)'],
+  ] as const)('marks a Google call that ran under a %s grant, under the '
+    + 'tool\'s own step', async (scope, text) => {
+    const wrapper = await mountMessage([
+      drivePart({ type: 'tool-google__gmail_search' }),
+      {
+        type: 'data-tool-grant',
+        id: 'grant-call-1',
+        data: {
+          toolCallId: 'call-1',
+          toolName: 'google__gmail_search',
+          scope,
+        },
+      },
+    ])
+
+    expect(wrapper.get('[data-testid="reasoning-grant-marker"]').text())
+      .toContain(text)
+    expect(wrapper.findAll('[data-testid="reasoning-grant-marker"]'))
+      .toHaveLength(1)
+  })
+
+  it('marks no Google call that asked and was approved', async () => {
+    const wrapper = await mountMessage([drivePart({
+      type: 'tool-google__drive_create_folder',
+    })])
+
+    expect(wrapper.find('[data-testid="reasoning-grant-marker"]').exists())
+      .toBe(false)
+  })
+
   it('shows a failed call as a title without an empty box', async () => {
     const wrapper = await mountMessage([drivePart({
       state: 'output-error',

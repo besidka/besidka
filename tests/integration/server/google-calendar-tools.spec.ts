@@ -206,7 +206,7 @@ type ToolMap = Record<string, {
   description: string
   execute: (
     input: unknown,
-    options: { toolCallId: string, approvalId?: string },
+    options: { toolCallId: string, approvalId?: string, executionId?: string },
   ) => Promise<any>
   inputSchema: { safeParse: (value: unknown) => { success: boolean } }
   toModelOutput: (options: { output: unknown }) => { value: string }
@@ -1413,6 +1413,65 @@ describe('Google Calendar tools on the owner\'s own client', () => {
       expect(other).not.toBe(first)
       expect(other).toMatch(CLIENT_EVENT_ID)
     })
+
+    it('sends the same client id for the same execution id, so a run that '
+      + 'was allowed without asking creates one event', async () => {
+      const built = await tools()
+      const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
+      const sendWith = async (executionId: string, toolCallId = 'call-1') => {
+        apis.requests.length = 0
+        await create.execute(NEW_EVENT, { toolCallId, executionId })
+
+        return lastBody().id as string
+      }
+      const first = await sendWith('exec_run_1')
+      const again = await sendWith('exec_run_1')
+      const otherCall = await sendWith('exec_run_1', 'call-9')
+      const other = await sendWith('exec_run_2')
+
+      expect(first).toMatch(CLIENT_EVENT_ID)
+      expect(again).toBe(first)
+      expect(otherCall).toBe(first)
+      expect(other).not.toBe(first)
+    })
+
+    it('treats an execution id and an approval id of the same text alike',
+      async () => {
+        const built = await tools()
+        const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
+
+        apis.requests.length = 0
+        await create.execute(NEW_EVENT, {
+          toolCallId: 'call-1',
+          approvalId: 'same-id',
+        })
+
+        const viaApproval = lastBody().id as string
+
+        apis.requests.length = 0
+        await create.execute(NEW_EVENT, {
+          toolCallId: 'call-1',
+          executionId: 'same-id',
+        })
+
+        expect(lastBody().id).toBe(viaApproval)
+      })
+
+    it('refuses an empty execution id and sends nothing to Google',
+      async () => {
+        const built = await tools()
+        const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
+
+        apis.requests.length = 0
+
+        const message = await rejectionOf(create.execute(
+          NEW_EVENT,
+          { toolCallId: 'call-1', executionId: '' },
+        ))
+
+        expect(message).toBe(CALENDAR_CREATE_NO_APPROVAL_TEXT)
+        expect(apis.requests).toHaveLength(0)
+      })
 
     it('never reuses an id for the same tool call id of another approval',
       async () => {

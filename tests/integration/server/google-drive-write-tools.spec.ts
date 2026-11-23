@@ -691,6 +691,83 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
       expect(JSON.stringify(mocks.logged)).not.toContain(GENERATED_ID)
     })
 
+    it('creates a folder for a run without an approval from its execution '
+      + 'id, with the same retry marker rules', async () => {
+      const built = await tools()
+      const digest = await buildDriveCreateDigest(userId, 'exec_run_1')
+      const output = await built[GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME]!
+        .execute(
+          { name: 'Reports' },
+          { toolCallId: 'call-1', executionId: 'exec_run_1' },
+        )
+
+      expect(posts()).toHaveLength(1)
+      expect(JSON.parse(posts()[0]!.body)).toEqual({
+        id: GENERATED_ID,
+        name: 'Reports',
+        mimeType: FOLDER_MIME,
+        appProperties: { besidkaApproval: digest },
+      })
+      expect(kv.values.get(`google-drive-create:${digest}`))
+        .toBe(GENERATED_ID)
+      expect(output).toMatchObject({ created: true, folder_id: GENERATED_ID })
+    })
+
+    it('makes one folder when the same execution id runs twice, even for '
+      + 'another tool call id', async () => {
+      const built = await tools()
+      const run = (toolCallId: string) => {
+        return built[GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME]!.execute(
+          { name: 'Reports' },
+          { toolCallId, executionId: 'exec_run_1' },
+        )
+      }
+
+      await run('call-1')
+      drive.createStatus = 409
+      drive.items[GENERATED_ID] = folderMeta(GENERATED_ID, {
+        name: 'Reports',
+        appProperties: {
+          besidkaApproval: await buildDriveCreateDigest(userId, 'exec_run_1'),
+        },
+      })
+
+      const output = await run('call-9')
+      const generateCalls = drive.requests.filter((request) => {
+        return request.url.includes('generateIds')
+      })
+
+      expect(generateCalls).toHaveLength(1)
+      expect(JSON.parse(posts()[1]!.body).id).toBe(GENERATED_ID)
+      expect(output.message).toContain('no second folder')
+    })
+
+    it('gives another execution id another retry marker', async () => {
+      const built = await tools()
+
+      await built[GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME]!.execute(
+        { name: 'Reports' },
+        { toolCallId: 'call-1', executionId: 'exec_run_1' },
+      )
+
+      expect(JSON.parse(posts()[0]!.body).appProperties.besidkaApproval)
+        .not.toBe(await buildDriveCreateDigest(userId, 'exec_run_2'))
+    })
+
+    it('refuses a run with an empty execution id and no approval id',
+      async () => {
+        const toolMap = await tools()
+        const message = await rejectionOf(
+          toolMap[GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME]!.execute(
+            { name: 'Reports' },
+            { toolCallId: 'call-1', executionId: '' },
+          ),
+        )
+
+        expect(message).toBe(DRIVE_CREATE_NO_APPROVAL_TEXT)
+        expect(drive.requests).toHaveLength(0)
+      })
+
     it('reuses the stored id when the same approval runs again', async () => {
       const built = await tools()
 

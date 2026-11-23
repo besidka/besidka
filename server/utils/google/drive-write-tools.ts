@@ -58,6 +58,7 @@ import type {
   GoogleReferenceIndex,
   KnownGoogleItem,
 } from '~~/server/utils/google/chat-references'
+import { readExecutionId } from '~~/server/utils/google/execution-id'
 import {
   DRIVE_CHANGE_FAILURE_TEXT,
   DRIVE_CHANGE_NO_APPROVAL_TEXT,
@@ -438,24 +439,6 @@ function asRawText(value: unknown, key: string): string | null {
 
 function isSameName(first: string, second: string): boolean {
   return first.normalize('NFC') === second.normalize('NFC')
-}
-
-/**
- * The identity of one run of a change: the approval id today (the option
- * `wrapApprovedExecutions` passes), or an `executionId` a later change can
- * pass for a run that was allowed without asking and so has no approval. A
- * call with neither is refused before any token or request.
- */
-function readExecutionId(options: unknown): string | null {
-  const { approvalId, executionId } = (options ?? {}) as {
-    approvalId?: unknown
-    executionId?: unknown
-  }
-  const id = typeof approvalId === 'string' && approvalId
-    ? approvalId
-    : executionId
-
-  return typeof id === 'string' && id ? id : null
 }
 
 function isFoundName(liveName: string, foundTitle: string | null): boolean {
@@ -1257,10 +1240,9 @@ export async function buildGoogleDriveWriteTools(
       }
 
       const { name, parentFolderId } = request.value
-      const approvalId = (options as { approvalId?: unknown } | undefined)
-        ?.approvalId
+      const executionId = readExecutionId(options)
 
-      if (typeof approvalId !== 'string' || !approvalId) {
+      if (executionId === null) {
         throw toolFailure(DRIVE_CREATE_NO_APPROVAL_TEXT, 400)
       }
 
@@ -1283,7 +1265,7 @@ export async function buildGoogleDriveWriteTools(
       const parentId = parentFolderId
       const context = await readContext()
       const root = createRootResolver(context)
-      const digest = await buildDriveCreateDigest(userId, approvalId)
+      const digest = await buildDriveCreateDigest(userId, executionId)
       const folderId = await readCreateId(digest, context)
 
       if (parentId !== null) {

@@ -59,6 +59,7 @@ import {
   cleanMailField,
   htmlToPlainText,
 } from '~~/server/utils/google/gmail-text'
+import { readExecutionId } from '~~/server/utils/google/execution-id'
 import { createGoogleSendGuard } from '~~/server/utils/google/send-guard'
 import type { GoogleSendGuard } from '~~/server/utils/google/send-guard'
 import {
@@ -837,17 +838,16 @@ export async function buildGoogleCalendarTools(
         throw toolFailure(event.message, 400)
       }
 
-      const approvalId = (options as { approvalId?: unknown } | undefined)
-        ?.approvalId
+      const executionId = readExecutionId(options)
 
-      if (typeof approvalId !== 'string' || !approvalId) {
+      if (executionId === null) {
         throw toolFailure(CALENDAR_CREATE_NO_APPROVAL_TEXT, 400)
       }
 
       const context = await readContext(
         GOOGLE_CALENDAR_TOOL_SCOPES[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!,
       )
-      const eventId = await buildCalendarEventId(`${userId}:${approvalId}`)
+      const eventId = await buildCalendarEventId(`${userId}:${executionId}`)
       const created = await createCalendarEvent(event.body, eventId, context)
 
       if (!created.ok) {

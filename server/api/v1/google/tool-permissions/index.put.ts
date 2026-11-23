@@ -10,6 +10,7 @@ import { GOOGLE_TOOL_KINDS } from '#shared/utils/google-tool-approvals'
 import { enforceGoogleRateLimit } from '~~/server/utils/google/route'
 import {
   loadGoogleToolPermissionModes,
+  partitionGoogleToolsForMode,
   resolveGoogleTargetTools,
   setGoogleToolPermissions,
 } from '~~/server/utils/google/tool-permissions'
@@ -62,9 +63,13 @@ function describeTarget(
  * Sets the signed-in user's mode for one Google tool (`{ tool, mode }`) or
  * for every tool of a service they may reach (`{ service, mode }`), or for
  * the read or write tools of a service (`{ service, kind, mode }`), and
- * answers with the full list. The mode is "blocked" or "ask" only: "allow"
- * is a 400, as is a name outside the catalog; a tool the user may not reach
- * is a 404. "ask" is the default and deletes the row.
+ * answers with the full list and `unchanged`, the names a group request left
+ * as they were. "allow" (Always allow) applies only to a tool that can be
+ * always allowed (`isGoogleToolAlwaysAllowable`): for one other tool it is a
+ * 400, and a group request applies it to the members that take it and
+ * leaves the rest unchanged (a 400 when none takes it). A name outside the
+ * catalog is a 400; a tool the user may not reach is a 404. "ask" is the
+ * default and deletes the row.
  */
 export default defineEventHandler(async (event) => {
   const { userId, reachable } = await requireGoogleToolPermissionsAccess(
@@ -81,7 +86,7 @@ export default defineEventHandler(async (event) => {
       message: 'Invalid request',
       status: 400,
       why: 'The request body does not match the expected fields',
-      fix: 'Send a Google tool or service and Blocked or Needs approval',
+      fix: 'Send a Google tool or service and a mode',
     })
   }
 
@@ -104,6 +109,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const { applied, unchanged } = partitionGoogleToolsForMode(
+    targetTools,
+    body.data.mode,
+  )
+
+  if (!applied.length) {
+    throw createError({
+      message: 'Invalid permission',
+      status: 400,
+      why: 'Always allow is not available for this Google tool',
+      fix: 'Pick Needs approval or Blocked',
+    })
+  }
+
   await enforceGoogleRateLimit(
     event,
     userId,
@@ -113,7 +132,7 @@ export default defineEventHandler(async (event) => {
 
   const changed = await setGoogleToolPermissions(
     userId,
-    targetTools,
+    applied,
     body.data.mode,
   )
 
@@ -126,6 +145,7 @@ export default defineEventHandler(async (event) => {
           target: described.name,
           mode: body.data.mode,
           changed,
+          unchanged: unchanged.length,
         },
       },
     },
@@ -136,5 +156,6 @@ export default defineEventHandler(async (event) => {
       reachable,
       await loadGoogleToolPermissionModes(userId),
     ),
+    unchanged: unchanged.map(tool => tool.name),
   }
 })

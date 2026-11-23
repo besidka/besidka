@@ -70,7 +70,7 @@ function decide(
   return resolveToolApproval({
     descriptor: descriptor(toolName, overrides),
     state: recordTaint(createApprovalState(), 'google'),
-    permissionMode: 'allow',
+    permissionMode: 'ask',
     alwaysGrant: grant(toolName),
     chatGrant: grant(toolName),
     isAlwaysGrantDefault: false,
@@ -105,7 +105,7 @@ describe('the Gmail and Drive search tools in the approval policy', () => {
       expect(decision.rememberOptions).toEqual(['once'])
     })
 
-  it('asks for a draft with Allow once only, whatever grant, mode or taint',
+  it('asks for a draft with Allow once only, whatever grant or taint',
     () => {
       const decision = decide(GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME, {
         access: 'write',
@@ -117,13 +117,11 @@ describe('the Gmail and Drive search tools in the approval policy', () => {
       expect(decision.rememberOptions).toEqual(['once'])
     })
 
-  it('never offers Always allow for any of the four tools', () => {
+  it('never offers Always allow on the card of any of the five tools', () => {
     for (const toolName of GOOGLE_BYO_TOOL_NAMES) {
-      for (const permissionMode of ['ask', 'allow'] as const) {
-        const decision = decide(toolName, {}, { permissionMode })
+      const decision = decide(toolName)
 
-        expect(decision.rememberOptions, toolName).not.toContain('always')
-      }
+      expect(decision.rememberOptions, toolName).not.toContain('always')
     }
   })
 

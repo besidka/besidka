@@ -35,7 +35,7 @@ const isBusy = ref<boolean>(false)
 interface PermissionRow {
   name: string
   service: string
-  mode: 'blocked' | 'ask'
+  mode: 'blocked' | 'ask' | 'allow'
 }
 
 const permissionTools = ref<PermissionRow[]>([])
@@ -58,7 +58,7 @@ mockNuxtImport('useGoogleToolPermissions', () => {
 })
 
 function seedPermissions(
-  modes: Partial<Record<string, 'blocked' | 'ask'>> = {},
+  modes: Partial<Record<string, 'blocked' | 'ask' | 'allow'>> = {},
 ) {
   permissionTools.value = GOOGLE_TOOL_CATALOG.map((tool) => {
     return {
@@ -286,8 +286,8 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         .toBe(false)
     })
 
-    it('gives each tool a radio group with Blocked and Needs approval '
-      + 'and Always allow off', async () => {
+    it('gives each picked-file tool a radio group with Blocked and Needs '
+      + 'approval and Always allow off', async () => {
       setStatus()
 
       const wrapper = await mountPanel('google-drive')
@@ -305,53 +305,220 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         .attributes('aria-disabled')).toBe('true')
     })
 
-    it('says why Always allow is off: reads can be allowed for a chat from '
-      + 'the approval, writes ask every time', async () => {
-      setStatus()
-
-      const wrapper = await mountPanel('google-drive')
-
-      expect(hintOf(wrapper, 'google__drive_list_picked', 'allow')).toBe(
-        'Always allow — Google reads ask. Allow one for a chat from its '
-        + 'approval.',
-      )
-      expect(hintOf(wrapper, 'google__drive_read_file', 'allow')).toBe(
-        'Always allow — Google reads ask. Allow one for a chat from its '
-        + 'approval.',
-      )
-      expect(hintOf(wrapper, 'google__drive_save_file', 'allow'))
-        .toBe('Always allow — Asks every time.')
-    })
-
-    it('says a once-only read asks every time', async () => {
-      setStatus({}, {})
-
-      const wrapper = await mountPanel('google-gmail')
-
-      expect(hintOf(wrapper, 'google__gmail_read_thread', 'allow'))
-        .toBe('Always allow — Asks every time.')
-      expect(hintOf(wrapper, 'google__gmail_search', 'allow')).toContain(
-        'Google reads ask',
-      )
-    })
-
-    it('blocks a tool from its control and never saves Always allow',
+    it('says why Always allow is off for the tools of Besidka\'s client',
       async () => {
         setStatus()
 
         const wrapper = await mountPanel('google-drive')
+        const reason = 'Always allow — Needs approval: this connection goes '
+          + 'through Google\'s app review.'
 
-        await option(wrapper, 'google__drive_list_picked', 'blocked')
-          .trigger('click')
-        await option(wrapper, 'google__drive_list_picked', 'allow')
+        expect(hintOf(wrapper, 'google__drive_list_picked', 'allow'))
+          .toBe(reason)
+        expect(hintOf(wrapper, 'google__drive_read_file', 'allow'))
+          .toBe(reason)
+        expect(hintOf(wrapper, 'google__drive_save_file', 'allow'))
+          .toBe(reason)
+      })
+
+    it('makes Always allow selectable for the tools of the own client',
+      async () => {
+        setStatus({}, {})
+
+        const wrapper = await mountPanel('google-gmail')
+
+        for (const name of [
+          'google__gmail_search',
+          'google__gmail_read_thread',
+          'google__gmail_create_draft',
+        ]) {
+          expect(option(wrapper, name, 'allow').attributes('aria-disabled'))
+            .toBe('false')
+          expect(hintOf(wrapper, name, 'allow'))
+            .toBe('Always allow — runs without asking')
+        }
+      })
+
+    it('keeps Always allow disabled on the Besidka tools next to own-client '
+      + 'tools in the same group', async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(option(wrapper, 'google__drive_search', 'allow')
+        .attributes('aria-disabled')).toBe('false')
+      expect(option(wrapper, 'google__drive_create_folder', 'allow')
+        .attributes('aria-disabled')).toBe('false')
+      expect(option(wrapper, 'google__drive_read_file', 'allow')
+        .attributes('aria-disabled')).toBe('true')
+      expect(option(wrapper, 'google__drive_save_file', 'allow')
+        .attributes('aria-disabled')).toBe('true')
+    })
+
+    it('saves Always allow from the control of an own-client tool',
+      async () => {
+        setStatus({}, {})
+
+        const wrapper = await mountPanel('google-gmail')
+
+        await option(wrapper, 'google__gmail_search', 'allow')
           .trigger('click')
 
-        expect(mocks.savePermission).toHaveBeenCalledTimes(1)
         expect(mocks.savePermission).toHaveBeenCalledWith(
-          { tool: 'google__drive_list_picked' },
-          'blocked',
+          { tool: 'google__gmail_search' },
+          'allow',
         )
       })
+
+    it('shows a stored Always allow as checked', async () => {
+      seedPermissions({ google__calendar_create_event: 'allow' })
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-calendar')
+
+      expect(option(wrapper, 'google__calendar_create_event', 'allow')
+        .attributes('aria-checked')).toBe('true')
+      expect(option(wrapper, 'google__calendar_create_event', 'ask')
+        .attributes('aria-checked')).toBe('false')
+    })
+
+    it('warns under the read group of Gmail that results hold text written '
+      + 'by other people, and under the once-only read what it opens',
+    async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+      const warning = wrapper.get(
+        '[data-testid="tool-permissions-group-warning-read"]',
+      ).text()
+
+      expect(warning).toContain(
+        'Always allow lets the model read this without asking, including '
+        + 'text written by other people.',
+      )
+      expect(warning).toContain(
+        'Always allow lets the model open whole email threads without '
+        + 'asking, including everything other people wrote in them.',
+      )
+    })
+
+    it('warns under the Gmail write group that drafts are created without '
+      + 'asking and that Besidka never sends mail', async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+
+      expect(wrapper.get(
+        '[data-testid="tool-permissions-group-warning-write"]',
+      ).text()).toBe(
+        'Always allow lets the model create drafts without asking. '
+        + 'Google\'s permission for drafts also allows sending mail; '
+        + 'Besidka has no code that sends mail.',
+      )
+    })
+
+    it('warns under the Calendar write group that events are created '
+      + 'without asking', async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-calendar')
+
+      expect(wrapper.get(
+        '[data-testid="tool-permissions-group-warning-write"]',
+      ).text()).toBe(
+        'Always allow lets the model create events without asking.',
+      )
+    })
+
+    it('warns under the Drive write group about creating, renaming and '
+      + 'moving, and says Besidka has no code that deletes or shares',
+    async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(wrapper.get(
+        '[data-testid="tool-permissions-group-warning-write"]',
+      ).text()).toBe(
+        'Always allow lets the model create, rename and move Drive items '
+        + 'without asking. Google\'s permission for Drive also allows '
+        + 'deleting and sharing; Besidka has no code that deletes or '
+        + 'shares.',
+      )
+    })
+
+    it('shows no warning for a user without the own client', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      expect(wrapper.find(
+        '[data-testid="tool-permissions-group-warning-read"]',
+      ).exists()).toBe(false)
+      expect(wrapper.find(
+        '[data-testid="tool-permissions-group-warning-write"]',
+      ).exists()).toBe(false)
+    })
+
+    it('shows Custom on a group whose tools differ and offers Always allow '
+      + 'in its select', async () => {
+      seedPermissions({ google__gmail_search: 'allow' })
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+      const select = wrapper.get(
+        '[data-testid="tool-permissions-group-select-read"]',
+      )
+
+      expect((select.element as HTMLSelectElement).value).toBe('custom')
+      expect(select.findAll('option').map(item => item.attributes('value')))
+        .toEqual(['custom', 'blocked', 'ask', 'allow'])
+    })
+
+    it('sets Always allow for a whole group from its select', async () => {
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-calendar')
+
+      await wrapper.get('[data-testid="tool-permissions-group-select-read"]')
+        .setValue('allow')
+      await flushPromises()
+
+      expect(mocks.savePermission.mock.calls).toEqual([
+        [{ service: 'calendar', kind: 'read' }, 'allow'],
+      ])
+    })
+
+    it('offers Always allow in a Drive group select only for the own client '
+      + 'tools it holds', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+      const select = wrapper.get(
+        '[data-testid="tool-permissions-group-select-read"]',
+      )
+
+      expect(select.findAll('option').map(item => item.attributes('value')))
+        .toEqual(['blocked', 'ask'])
+    })
+
+    it('blocks a tool from its control and never saves Always allow on a '
+      + 'tool of Besidka\'s client', async () => {
+      setStatus()
+
+      const wrapper = await mountPanel('google-drive')
+
+      await option(wrapper, 'google__drive_list_picked', 'blocked')
+        .trigger('click')
+      await option(wrapper, 'google__drive_list_picked', 'allow')
+        .trigger('click')
+
+      expect(mocks.savePermission).toHaveBeenCalledTimes(1)
+      expect(mocks.savePermission).toHaveBeenCalledWith(
+        { tool: 'google__drive_list_picked' },
+        'blocked',
+      )
+    })
 
     it('shows a stored Block as checked', async () => {
       seedPermissions({ google__drive_save_file: 'blocked' })
@@ -366,7 +533,7 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
     })
 
     it('sets every tool of a group from its select and offers no Always '
-      + 'allow there', async () => {
+      + 'allow there when none of its tools can take it', async () => {
       setStatus()
 
       const wrapper = await mountPanel('google-drive')
@@ -706,10 +873,9 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         'google__gmail_create_draft'].map((name) => {
         return hintOf(wrapper, name, 'allow')
       })).toEqual([
-        'Always allow — Google reads ask. Allow one for a chat from its '
-        + 'approval.',
-        'Always allow — Asks every time.',
-        'Always allow — Asks every time.',
+        'Always allow — runs without asking',
+        'Always allow — runs without asking',
+        'Always allow — runs without asking',
       ])
     })
 
@@ -818,30 +984,36 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       return wrapper.get('[data-testid="google-detail-tools-intro"]').text()
     }
 
-    it('names only writes for Drive without the own client', async () => {
+    const APP_REVIEW_SENTENCE = 'Tools that use Besidka\'s own Google app '
+      + 'always ask: a read can be allowed for one chat from its approval, '
+      + 'and saving a file asks every time.'
+
+    it('says Besidka\'s own Google app always asks for Drive without the '
+      + 'own client', async () => {
       expect(await introOf('google-drive', null)).toBe(
-        'Besidka asks before a Google tool runs. Writes ask every time.',
+        `Besidka asks before a Google tool runs. ${APP_REVIEW_SENTENCE}`,
       )
     })
 
-    it('adds found files for the owner of the own client on Drive',
-      async () => {
-        expect(await introOf('google-drive', {})).toBe(
-          'Besidka asks before a Google tool runs. Writes and reads of '
-          + 'found files ask every time.',
-        )
-      })
+    it('adds the Always allow option for the owner of the own client on '
+      + 'Drive', async () => {
+      expect(await introOf('google-drive', {})).toBe(
+        'Besidka asks before a Google tool runs, unless you set it to '
+        + `Always allow. ${APP_REVIEW_SENTENCE}`,
+      )
+    })
 
-    it('adds mail on Gmail', async () => {
+    it('names the Always allow option on Gmail and no app review', async () => {
       expect(await introOf('google-gmail', {})).toBe(
-        'Besidka asks before a Google tool runs. Writes and reads of mail '
-        + 'ask every time.',
+        'Besidka asks before a Google tool runs, unless you set it to '
+        + 'Always allow.',
       )
     })
 
-    it('names only writes on Google Calendar', async () => {
+    it('names the Always allow option on Google Calendar', async () => {
       expect(await introOf('google-calendar', {})).toBe(
-        'Besidka asks before a Google tool runs. Writes ask every time.',
+        'Besidka asks before a Google tool runs, unless you set it to '
+        + 'Always allow.',
       )
     })
   })

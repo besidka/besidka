@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => ({
     entries: Map<string, unknown>
   }>),
   googleBlockedNames: [] as string[],
+  googleAllowedNames: [] as string[],
   googleServicesOff: [] as string[],
   candidateServicesOff: [] as Array<readonly string[] | undefined>,
   requestedServicesOff: [] as Array<readonly string[] | undefined>,
@@ -273,13 +274,20 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
           : mocks.googleSend ?? actual.noGoogleSendTools()
       ) as never
 
-      return mocks.googleBlockedNames.length || mocks.googleServicesOff.length
+      return mocks.googleBlockedNames.length
+        || mocks.googleAllowedNames.length
+        || mocks.googleServicesOff.length
         ? actual.dropBlockedGoogleTools(
           built,
           actual.withGoogleServicesOffBlocked(
-            new Map(mocks.googleBlockedNames.map((toolName) => {
-              return [toolName, 'blocked' as const]
-            })),
+            new Map([
+              ...mocks.googleAllowedNames.map((toolName) => {
+                return [toolName, 'allow' as const]
+              }),
+              ...mocks.googleBlockedNames.map((toolName) => {
+                return [toolName, 'blocked' as const]
+              }),
+            ]),
             mocks.googleServicesOff as never,
             built.entries.keys(),
           ),
@@ -942,6 +950,7 @@ describe('tool approval continuation', () => {
     mocks.googleSend = null
     mocks.googleSendFactory = null
     mocks.googleBlockedNames = []
+    mocks.googleAllowedNames = []
     mocks.googleServicesOff = []
     mocks.candidateServicesOff = []
     mocks.requestedServicesOff = []
@@ -2312,6 +2321,40 @@ describe('tool approval continuation', () => {
       expect(update.parts.length)
         .toBeGreaterThanOrEqual(paused.assistantParts.length)
       expect(mocks.kv.has(key)).toBe(false)
+    })
+
+    it('runs the always-allowed read of a paused step once, marks it, and '
+      + 'gives the approved write its approval id and no execution id',
+    async () => {
+      mocks.googleAllowedNames = ['google__drive_search']
+
+      const paused = await pauseAfterGoogleRead()
+      const [approvalId] = paused.approvalIds
+
+      expect(paused.approvalIds).toHaveLength(1)
+      expect(readExecute).toHaveBeenCalledTimes(1)
+      expect(writeExecute).not.toHaveBeenCalled()
+      expect(findPart(paused.assistantParts, 'data-tool-grant')).toMatchObject({
+        data: {
+          toolCallId: 'call-g',
+          toolName: 'google__drive_search',
+          scope: 'always',
+        },
+      })
+
+      await answer(paused, [
+        { approvalId, approved: true },
+      ], [textChunks('Scheduled the review.')])
+
+      const options = writeExecute.mock.calls[0]![1] as {
+        approvalId?: string
+        executionId?: string
+      }
+
+      expect(readExecute).toHaveBeenCalledTimes(1)
+      expect(writeExecute).toHaveBeenCalledTimes(1)
+      expect(options.approvalId).toBe(approvalId)
+      expect(options.executionId).toBeUndefined()
     })
 
     it('tells the model the content is unavailable when the stash is gone',

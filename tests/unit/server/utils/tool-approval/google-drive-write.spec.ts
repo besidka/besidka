@@ -80,21 +80,18 @@ describe('the Drive folder tools in the approval policy', () => {
         .toBe('Allow listing folders in your Google Drive in this chat')
     })
 
-  it('asks for a folder with Allow once only, whatever grant, mode or '
-    + 'taint', () => {
-    for (const permissionMode of ['ask', 'allow'] as const) {
-      const decision = resolveToolApproval({
-        descriptor: descriptor(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME, WRITE),
-        state: recordTaint(createApprovalState(), 'google'),
-        permissionMode,
-        alwaysGrant: grant(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME),
-        chatGrant: grant(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME),
-      })
+  it('asks for a folder with Allow once only, whatever grant or taint', () => {
+    const decision = resolveToolApproval({
+      descriptor: descriptor(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME, WRITE),
+      state: recordTaint(createApprovalState(), 'google'),
+      permissionMode: 'ask',
+      alwaysGrant: grant(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME),
+      chatGrant: grant(GOOGLE_DRIVE_CREATE_FOLDER_TOOL_NAME),
+    })
 
-      expect(decision.reason).toBe('always-ask')
-      expect(decision.status.type).toBe('user-approval')
-      expect(decision.rememberOptions).toEqual(['once'])
-    }
+    expect(decision.reason).toBe('always-ask')
+    expect(decision.status.type).toBe('user-approval')
+    expect(decision.rememberOptions).toEqual(['once'])
   })
 
   it('counts the create as a write that Enter on its card never approves',
@@ -173,21 +170,19 @@ describe('the Drive folder tools in the approval policy', () => {
   it.each([
     GOOGLE_DRIVE_RENAME_TOOL_NAME,
     GOOGLE_DRIVE_MOVE_TOOL_NAME,
-  ])('asks for %s with Allow once only, whatever grant, mode or taint',
+  ])('asks for %s with Allow once only, whatever grant or taint',
     (toolName) => {
-      for (const permissionMode of ['ask', 'allow'] as const) {
-        const decision = resolveToolApproval({
-          descriptor: descriptor(toolName, WRITE),
-          state: recordTaint(createApprovalState(), 'google'),
-          permissionMode,
-          alwaysGrant: grant(toolName),
-          chatGrant: grant(toolName),
-        })
+      const decision = resolveToolApproval({
+        descriptor: descriptor(toolName, WRITE),
+        state: recordTaint(createApprovalState(), 'google'),
+        permissionMode: 'ask',
+        alwaysGrant: grant(toolName),
+        chatGrant: grant(toolName),
+      })
 
-        expect(decision.reason).toBe('always-ask')
-        expect(decision.status.type).toBe('user-approval')
-        expect(decision.rememberOptions).toEqual(['once'])
-      }
+      expect(decision.reason).toBe('always-ask')
+      expect(decision.status.type).toBe('user-approval')
+      expect(decision.rememberOptions).toEqual(['once'])
 
       expect(isGoogleWriteToolName(toolName)).toBe(true)
       expect(GOOGLE_TOOL_PROPERTIES[toolName])

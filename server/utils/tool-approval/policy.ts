@@ -1,4 +1,5 @@
 import { isGoogleOnceOnlyReadTool } from '#shared/utils/google-gmail-tools'
+import { isGoogleToolAlwaysAllowable } from '#shared/utils/google-tool-catalog'
 import {
   TOOL_ACCESS_LEVELS,
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
@@ -164,6 +165,7 @@ export interface ToolApprovalDecision {
   reason: ToolApprovalReason | null
   rememberOptions: ToolApprovalRemember[]
   rule: ToolApprovalRule
+  grant?: 'always'
 }
 
 export interface ReplayPendingTool {
@@ -413,18 +415,32 @@ export function isGoogleRead(descriptor: ToolApprovalDescriptor): boolean {
 
 /**
  * Rule 11, the whole decision for a built-in Google tool (Drive, Calendar,
- * Gmail). A read runs under an "Allow in this chat" grant whose tool name
- * and definition hash match; otherwise it asks with Allow once and Allow in
- * this chat, except a once-only read (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`,
- * the Gmail thread read), which asks every time with Allow once only,
- * whatever grant exists. A write always asks with Allow once only, whatever
- * grant, permission mode or taint the send holds. Nothing here ever offers
- * Always allow (docs/legal/prechecks/google.md).
+ * Gmail). A tool the user set to Always allow runs without asking when it
+ * exists only on the owner-only own client (`isGoogleToolAlwaysAllowable`,
+ * checked here again by name, so a mode on any other tool never counts): the
+ * user's grant wins over once-only reads, taint and the always-ask tier, and
+ * the decision carries `grant: 'always'` for the "Ran without asking"
+ * marker. Otherwise a read runs under an "Allow in this chat" grant whose
+ * tool name and definition hash match; else it asks with Allow once and
+ * Allow in this chat, except a once-only read
+ * (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`, the Gmail thread read), which asks
+ * every time with Allow once only, whatever chat grant exists. A write asks
+ * with Allow once only, whatever chat grant or taint the send holds. A
+ * prompt never offers Always allow: the user sets it on the Connectors
+ * page (docs/legal/prechecks/google.md).
  */
 function resolveGoogleApproval(
   descriptor: ToolApprovalDescriptor,
   chatGrant: ToolApprovalGrant | null | undefined,
+  permissionMode: ToolPermissionMode,
 ): ToolApprovalDecision {
+  if (
+    permissionMode === 'allow'
+    && isGoogleToolAlwaysAllowable(descriptor.toolName)
+  ) {
+    return { ...allowed(11), grant: 'always' }
+  }
+
   if (!isGoogleRead(descriptor)) {
     return ask(11, 'always-ask', GOOGLE_WRITE_REMEMBER_OPTIONS)
   }
@@ -544,9 +560,10 @@ function resolveNativeApproval(
  * Google tools and content from Google (docs/google.md, "Google tools"):
  *
  * 11. A Google tool is decided right after rule 0 (`resolveGoogleApproval`):
- *    a read with a matching chat grant runs, any other read asks `default`
- *    (`once` or `chat`), a write asks `always-ask` (`once` only), ignoring
- *    Always allow, the permission mode and taint.
+ *    a tool on the own client the user set to Always allow runs (the user's
+ *    grant wins over once-only reads), a read with a matching chat grant
+ *    runs, any other read asks `default` (`once` or `chat`), a write asks
+ *    `always-ask` (`once` only), ignoring taint.
  * 12. A connector call while the send holds `google` taint asks
  *    `google-egress` (`once` or `chat`) before rules 6 and 7, unless the
  *    tool has a Google egress grant in this chat; with that grant the call
@@ -574,7 +591,11 @@ export function resolveToolApproval(
   }
 
   if (descriptor.family === 'google') {
-    return resolveGoogleApproval(descriptor, input.chatGrant)
+    return resolveGoogleApproval(
+      descriptor,
+      input.chatGrant,
+      input.permissionMode,
+    )
   }
 
   if (descriptor.consentGate === true) {
