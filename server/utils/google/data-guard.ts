@@ -38,7 +38,7 @@ import { decodeArtifactId } from '~~/server/utils/artifacts/store'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import { getOwnedFilesByStorageKeys } from '~~/server/utils/files/file-governance'
 import { isGoogleToolPart } from '~~/server/utils/tool-approval/google'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import { unwrapRetryError } from '~~/server/utils/chats/provider-error-summary'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
@@ -77,7 +77,7 @@ export async function readGeminiPaidTierConfirmed(
       attributes: {
         googleDataGuard: {
           paidTierRead: 'failed',
-          error: exceptionMessage(exception),
+          ...exceptionSummary(exception),
         },
       },
     })

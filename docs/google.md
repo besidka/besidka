@@ -453,7 +453,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Flag write with the reply | The assistant message that brings the first Google result and the flag (with the share opt-in cleared) are one `db.batch` (`buildGoogleContentPersistStatements`); if the batch fails the reply is not persisted | The usual save error |
 | Flag repair | A send that finds a Google result in the stored parts while `google_data_at` is null sets the flag | Nothing |
 | What sets the sticky flag | A Google tool result that returned data (a static `tool-google__*` part with an output, for a tool that returns Google content), a marked write, or a marked file or code run at the persist step (`holdsStickyGoogleFlagTrigger`). A Google call that only failed (an approved read of a bogus id, a Drive error) or an empty Drive list (`emptyListHoldsNoContent`, 13.2) keeps the transient taint for the rest of the send, so the send stays guarded, but never sets the flag by itself; a later tool of the same send that flags after it ran (an artifact or document write) still does, because the send is tainted. A Google tool that returns no Google content (`GOOGLE_TOOL_PROPERTIES`, today the Drive save) taints nothing and flags nothing unless the file it saves carries the derived mark (`google_derived_at`; a Drive copy is refused by the save) | Nothing |
-| Memory | Flagged chats leave the extraction sweep, the backfill queue, project memory refresh and settle, the extract-now path (checked before and after the model call), the guarded entry insert, and the `search_chats` and `read_chat` tools of other chats; `memory_write` and `memory_forget` are not offered inside a flagged chat | Memory stays as it was; the chat is never cited |
+| Memory | Flagged chats leave the extraction sweep, the backfill queue, project memory refresh and settle, the extract-now path (checked before and after the model call), the guarded entry insert, and the `search_chats` and `read_chat` tools of other chats; `memory_write` and `memory_forget` are not offered inside a flagged chat, and a send that was not flagged when its tools were registered re-checks at call time (`allowsWrite` is a function that reads the flag and the send's `google` taint again, BES-467), so Google data that arrives mid-send refuses a later write or forget with a fixed 403 sentence | Memory stays as it was; the chat is never cited |
 | Shares | `POST /share` needs `includeGoogleContent: true` for a flagged chat (409 otherwise) and stores it as `chat_shares.google_opt_in_at`, recorded in the wide event as `googleDataGuard.shareOptIn`; a share of a flagged chat is visible only while that column is set (`isShareVisibleForGoogleData`, read with the share in one query in `resolveActiveShareBySlug`, and by the tokened file route). Every write that brings new Google content clears it in the same batch, so the link pauses until the owner opts in again. `indexable` is forced off for a flagged chat (on the stored row, the owner and shared reads, and the dialog). Google copies get no `chat_share_files` grant | The share dialog names the Google items (reference titles and Google or marked file names, at most 20), asks "Share the Google content in this chat", says when a link is paused, disables the indexing toggle, and Generate waits for the box |
 | MCP and Besidka tools | `get_chat` replaces every message text with a fixed notice when `chatHoldsGoogleData` (flag, or a Google result in the loaded messages); `list_chats` treats a content match in a flagged chat as no match (only a title match lists it); `list_files`, `read_file` and the `get_chat` context files never include a Google copy or a marked file (`fileHoldsNoGoogleContent`); `list_artifacts` and `get_artifact` hide marked artifacts. The tool descriptions say so (MCP 5.4.1) | The withheld notice in place of the text; the items are not found |
 | Project knowledge | Linking a Google copy or a marked file answers 400; knowledge screening and the sweep only ever see linked files, so neither reaches TypeSafe AI with one | "A file with Google content cannot be added to project knowledge" |
@@ -908,7 +908,12 @@ counts of granted scopes, whether the dedicated client is in use),
 `lock-busy`, `lock-unavailable`, `failed` with Google's error code),
 `attributes.googleAccessEnded` and `attributes.googleAccessSweep` (counts,
 including the stale-connection check), and `attributes.googlePurge`. Never a
-token, a code, a state value, an email or a file name.
+token, a code, a state value, an email or a file name. A caught exception is
+logged as its error name and the code and name of its cause
+(`exceptionSummary`) next to a fixed code such as `failed`, never as its
+message: a message can carry a file name, a Drive title or a bound parameter
+(BES-467). `tests/unit/server/utils/google/log-boundary.spec.ts` fails when
+`server/utils/google` or the sweep plugin calls `exceptionMessage`.
 
 ### 9.9 UI
 
@@ -1580,6 +1585,26 @@ path of a chat page is NOT VERIFIED. When the render left no state on the
 event, the answer falls back to the key alone, which is the earlier
 behavior. Shared chats, `/artifacts/<token>` and the admin pages never get
 the Google source.
+
+The fallback stays `true` on purpose (BES-467, audit item G). Reading Nitro
+2.13 and h3 1.15 (not run on a preview): the SSR plugin calls
+`/api/v1/features` through `useRequestFetch()`, which hands the page's
+`event.context` to the inner request as `req.__unenv__`, but Nitro's
+`onRequest` builds a new context object for the inner event from
+`_platform` only (`event.context = { _platform, ...fetchContext._platform,
+...event.context }`). The feature state that the inner request memoizes is
+therefore most likely on the inner event, not on the page's event, so the
+page's `render:response` hook usually finds no state and the fallback is the
+normal case. Making the no-state answer `false` would then remove the Picker
+frame source for every user, flagged or not. What the fallback allows is only
+a `frame-src` entry for `docs.google.com/picker` in the HTML of `/chats/...`
+for a user without the flag, when the public key is set; that user cannot open
+the Picker, because its token route, the `+` menu entry and the tools all
+need the flag and a connection. The alternatives, each an owner decision:
+load the state in the hook with `useFeatureContext(event)` (one more D1 batch
+and KV read per chat page render, which also repeats the work of the SSR
+plugin), or have the SSR plugin's request share the page's context. Neither
+was built.
 
 The same sources are added by the meta tag the artifact frame inserts on a
 client-side navigation into a chat (`ensureArtifactFramePolicy`, which can
@@ -3623,6 +3648,17 @@ repairing:
   4,000 of plain text with line breaks and tabs allowed (the body rules of the
   Gmail draft: no lone CR, no invisible or bidi character, no lone
   surrogate). An empty description or location is left out of the body.
+- Markup (BES-467, the final audit): Google Calendar renders HTML in a
+  description (an `<a href>` becomes a live link on an event other people can
+  see), so a description that holds a `<` followed by a letter, `/`, `!` or
+  `?` is refused, never stripped or escaped. The sentence is fixed: "The
+  description must be plain text: Google Calendar shows HTML in a
+  description, so it cannot contain a "<" followed by a letter, a slash, "!"
+  or "?". Nothing was created." A lone `<` (`a < b`, `<3`, `<10`), `&lt;` and
+  `>` stay allowed. The same function runs in the input schema, in `execute`
+  and in the card, so a description with markup never reaches an approval
+  card or Google. The title and the location are not checked for markup (how
+  Google renders them is not verified against a real account).
 
 Only after all of that does it return the request body. `CalendarInsertBody`
 has the keys `summary`, `description`, `location`, `start` and `end` and no
@@ -4175,14 +4211,24 @@ runs against another. It runs when the own (`byo`) connection is disconnected
 (`disconnectGoogleConnection`, which the Disconnect route, the own-client
 delete, the MCP `disconnect_google` and the own-client sweep all call), on
 `invalid_grant` (`endAccessAfterInvalidGrant`) and when a different Google
-account replaces it (`replaceDifferentAccount`). Blocked rows and every row of
-another user or of a Besidka tool stay; Besidka's own client ending changes
-nothing here. A failure is logged and never stops the connection from ending.
-It also runs at every own-client connect that is not an update of an active
-connection of the same Google account (a new row, a revoked or `needs_reauth`
-row, or another account), so a clear that failed at the disconnect is made up
-for at the next fresh connect. A reconnect of the same account while the
-connection is still active keeps the settings.
+account replaces it. Blocked rows and every row of another user or of a
+Besidka tool stay; Besidka's own client ending changes nothing here. At
+disconnect and on `invalid_grant` a failure is logged and never stops the
+connection from ending (those paths must finish). At every own-client connect
+that is not an update of an active connection of the same Google account (a
+new row, a revoked or `needs_reauth` row, or another account, including a
+different account that replaces the old one) the clear is fail-closed
+(`clearGoogleAlwaysAllowOrThrow`, BES-467): it runs before the old connection
+is touched or the new one is saved, and when the delete fails the connect is
+refused with the retryable code `GOOGLE_PERMISSION_RESET_FAILED`, the fresh
+grant is revoked at Google, nothing is saved, and the log holds the error name
+only. A clear that failed at the disconnect is therefore always made up for
+before any new connection exists. A reconnect of the same account while the
+connection is still active keeps the settings. A D1 restore brings deleted
+`allow` rows back and does not reset them by itself: only the manual step 2b of
+`docs/d1-restore-reconciliation.md` turns them to ask, and until it runs a
+restored `allow` on a tool of Besidka's own client still reads as `ask`
+(`readGoogleToolPermissionMode`) while one on an own-client tool applies.
 
 **The chat panel.** The Approvals list of the chat panel
 (`listChatToolApprovalGrants`) shows each Google tool set to Always allow
@@ -4927,10 +4973,18 @@ sentences per operation (`DRIVE_CHANGE_FAILURE_TEXT`) for the PATCH only: 403
 not have happened; check the name in your Google Drive". A failed live check
 before the PATCH (the item, the root or a folder read) uses the general
 sentence of section 19.4, which says nothing was changed, because nothing was
-sent. An item the user owns but has shared stays renamable and movable: the
-v1 rule checks `ownedByMe` and the absence of `driveId` for the item, and
-`shared` only for the folders of a move. Nothing here can trash, copy or
-share. The model gets a fixed message and `renamed` and `alreadyDone` flags and
+sent. An item the user owns but has shared is refused (BES-467, the final
+audit of the Google phase; the PR2 text said it stayed renamable and movable):
+the live check requires `ownedByMe`, no `driveId`, not trashed and
+`shared === false`, so an unknown `shared` also refuses. Under Always allow a
+rename is a silent write channel: the new name, which the model may have taken
+from text another person wrote, is visible to everyone the item is shared
+with, and a move changes the place they find it. The fixed sentence is "That
+item is shared with other people, so Besidka will not rename or move it.
+Nothing was changed.", the log code is `refusal: shared`, and no PATCH is sent.
+`shared` was already in the live `files.get` field mask. Folders keep their
+stricter rule for a move (source and target folders unshared). Nothing here
+can trash, copy or share. The model gets a fixed message and `renamed` and `alreadyDone` flags and
 no name; the stored reference holds the id, kind, new title, link and parent
 id.
 
@@ -5302,3 +5356,58 @@ unchanged.
   (unlike `break-words`, it also lowers the min-content width). Keep both on
   any new string of that kind. The 390 px result was not measured in a browser
   for this change; check it on the preview.
+
+## 21. Quotas and cost, and the audit items left as they are (BES-467)
+
+### 21.1 Quotas and cost
+
+Besidka pays nothing to Google for any of the Google features, and the
+quotas below are counted against the Google Cloud project that owns the
+OAuth client, never against a Besidka account.
+
+- **Sheets API.** Free within its quota: 300 read requests a minute per
+  project and 60 a minute per user, and Google answers 429 above them
+  (section 13 maps it to `sheets_quota`; the 429 behavior itself is NOT
+  VERIFIED against a real project). Besidka adds its own per-user and
+  app-wide limits below Google's (`sheets-rate-limit.ts`).
+- **Drive, Gmail and Calendar APIs.** Each has quotas per Google Cloud
+  project (and per user inside it). The project that owns the OAuth client is
+  the one limited, and billed if Google ever bills it; Google publishes no
+  prices for these three APIs, so there is no cost to record and Besidka has
+  no cost line for them (unlike the provider-native web search of
+  `docs/web-search-cost-accounting.md`).
+- **Whose project that is.** With Besidka's client (`drive.file`, the Picker)
+  the quota is Besidka's own Cloud project. With the owner-only own client
+  (section 10) the project is the owner's, so the limits and any future
+  charge sit with the owner. A user who is not the owner has no own client
+  today.
+- **When a quota is hit.** The user sees the fixed "slow down, try again in a
+  minute" sentences of each service; nothing is retried in the background.
+
+### 21.2 Audit items left as they are
+
+The final audit of the Google phase (BES-467) left these on purpose. Each
+is a known limit, not an unknown:
+
+- **No Calendar visibility.** Besidka reads and creates events on the
+  primary calendar only and cannot see what other calendars, guests or
+  permissions the user has; free and busy answers for the primary calendar.
+- **The hourly write cap is not exact across Workers.** The cap of 30
+  writes an hour is a KV counter per clock hour, and KV has no atomic
+  increment, so two Workers racing at the limit can let one extra write
+  through. The claim row of a write still stops a replay.
+- **A D1 restore brings back older values of `google_data_at`,
+  `paid_tier_confirmed_at` and the Always allow rows.** A chat flagged in the
+  restore window reads as clean again, a cleared paid-tier confirmation
+  returns, and a deleted `allow` row returns. The runbook in
+  `docs/d1-restore-reconciliation.md` names a step for each (the paid-tier
+  confirmations are wiped, the flag is set again from the Axiom ledger, and
+  step 2b resets Always allow to ask). Nothing resets them automatically.
+- **The app CSP has no `connect-src`.** That predates the Google phase and
+  adding one would restrict every request of the app, so none was added
+  (section 12, the CSP paragraph before "Who gets it").
+- **Not reviewed in depth.** The `?authuser=` link form of a Gmail thread
+  (section 14) and the limits of the Sheets reader (section 13) were read
+  during the audit but not tested against real accounts.
+- **The Picker frame fallback** stays on the key alone when the render left
+  no feature state (section 12, "Who gets it").

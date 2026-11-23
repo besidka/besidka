@@ -1055,7 +1055,7 @@ describe('Chat/Reasoning/ApprovalStep', () => {
           input: {
             ...eventInput,
             title: '<img src=x onerror=alert(1)>',
-            description: '<b>bold</b> [link](https://evil.example)',
+            description: '**bold** [link](https://evil.example)',
           },
         }),
       })
@@ -1063,8 +1063,22 @@ describe('Chat/Reasoning/ApprovalStep', () => {
 
       expect(card.find('img').exists()).toBe(false)
       expect(card.find('b').exists()).toBe(false)
+      expect(card.find('a').exists()).toBe(false)
       expect(card.get(testId('calendar-event-description')).text())
-        .toBe('<b>bold</b> [link](https://evil.example)')
+        .toBe('**bold** [link](https://evil.example)')
+    })
+
+    it('shows no event card for a description with HTML markup', async () => {
+      const { wrapper } = await mountStep({
+        model: eventModel({
+          input: {
+            ...eventInput,
+            description: '<a href="https://evil.example">x</a>',
+          },
+        }),
+      })
+
+      expect(wrapper.find(testId('calendar-event')).exists()).toBe(false)
     })
 
     it('shows no event card for another tool or an input that cannot run',

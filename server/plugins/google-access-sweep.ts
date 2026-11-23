@@ -2,11 +2,8 @@ import { createRequestLogger } from 'evlog'
 import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types'
 import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { sweepGoogleAccessEnded } from '~~/server/utils/google/access-ended'
-import { endUngatedGoogleByoConnections } from '~~/server/utils/google/byo-sweep'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { GoogleFetchOptions } from '~~/server/utils/google/http'
-import { validateStaleGoogleConnections } from '~~/server/utils/google/tokens'
 
 const GOOGLE_ACCESS_SWEEP_CRON = '0 * * * *'
 
@@ -64,6 +61,15 @@ export async function runGoogleAccessSweepJob(
   let status = 200
 
   try {
+    const [
+      { sweepGoogleAccessEnded },
+      { endUngatedGoogleByoConnections },
+      { validateStaleGoogleConnections },
+    ] = await Promise.all([
+      import('~~/server/utils/google/access-ended'),
+      import('~~/server/utils/google/byo-sweep'),
+      import('~~/server/utils/google/tokens'),
+    ])
     const db = input.db || useDb()
     const kv = input.kv || useKV()
     const now = () => Date.now()
@@ -108,7 +114,10 @@ export async function runGoogleAccessSweepJob(
     status = 500
     logger.set({
       attributes: {
-        googleAccessSweep: { error: exceptionMessage(exception) },
+        googleAccessSweep: {
+          error: 'failed',
+          ...exceptionSummary(exception),
+        },
       },
     })
   }

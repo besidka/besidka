@@ -5,7 +5,7 @@ import {
   isGoogleOAuthClientSecret,
 } from '#shared/utils/google-byo'
 import * as schema from '~~/server/db/schema'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
@@ -26,7 +26,8 @@ function logUnreadable(logger: LoggerLike | undefined, exception: unknown) {
   logger?.set({
     attributes: {
       google: {
-        byoClientUnreadable: exceptionMessage(exception).slice(0, 80),
+        byoClientUnreadable: 'failed',
+        ...exceptionSummary(exception),
       },
     },
   })

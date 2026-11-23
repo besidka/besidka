@@ -1473,6 +1473,22 @@ describe('Google Calendar tools on the owner\'s own client', () => {
         expect(apis.requests).toHaveLength(0)
       })
 
+    it('refuses a description with HTML markup and sends nothing to Google',
+      async () => {
+        const built = await tools()
+        const create = built[GOOGLE_CALENDAR_CREATE_EVENT_TOOL_NAME]!
+
+        apis.requests.length = 0
+
+        const message = await rejectionOf(create.execute(
+          { ...NEW_EVENT, description: 'See <a href="https://x.test">x</a>' },
+          { toolCallId: 'call-1', approvalId: 'approval-1' },
+        ))
+
+        expect(message).toContain('description must be plain text')
+        expect(apis.requests).toHaveLength(0)
+      })
+
     it('never reuses an id for the same tool call id of another approval',
       async () => {
         const built = await tools()

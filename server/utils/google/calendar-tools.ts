@@ -228,7 +228,7 @@ const createEventInputSchema = z.object({
     .string()
     .max(GOOGLE_CALENDAR_DESCRIPTION_MAX_CHARACTERS)
     .optional()
-    .describe('Plain text, at most '
+    .describe('Plain text without HTML tags, at most '
       + `${GOOGLE_CALENDAR_DESCRIPTION_MAX_CHARACTERS} characters`),
   location: z
     .string()

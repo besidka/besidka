@@ -350,6 +350,33 @@ describe('validateCalendarEvent: text', () => {
     }).ok).toBe(true)
   })
 
+  it.each([
+    ['a link', '<a href="https://example.test">x</a>'],
+    ['a tag', '<b>bold</b>'],
+    ['a closing tag', 'text</p>'],
+    ['a comment', '<!-- note -->'],
+    ['a processing instruction', '<?php x ?>'],
+    ['a tag on a later line', 'line one\n<img src=x>'],
+    ['an upper case tag', '<SCRIPT>x</SCRIPT>'],
+  ])('refuses a description with %s and never repairs it', (_name, text) => {
+    expect(refusalOf({ ...TIMED, description: text }))
+      .toContain('plain text')
+    expect(readCalendarEventApprovalView({ ...TIMED, description: text }))
+      .toBeNull()
+  })
+
+  it.each([
+    'a < b and 3 < 4',
+    'I <3 this',
+    'price <10',
+    'a<\nb',
+    'x &lt;b&gt; y',
+    'a > b',
+  ])('keeps a description with a lone "<" that opens no markup: %s', (text) => {
+    expect(validateCalendarEvent({ ...TIMED, description: text }).ok)
+      .toBe(true)
+  })
+
   it('refuses a location with a line break, padding or over 300 characters',
     () => {
       refusalOf({ ...TIMED, location: 'Room\n4' })

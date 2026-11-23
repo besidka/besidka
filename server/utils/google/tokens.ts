@@ -4,6 +4,7 @@ import { createError } from 'evlog'
 import { hasScopes } from '#shared/utils/google-scopes'
 import type { GoogleClientMode } from '#shared/utils/google-scopes'
 import * as schema from '~~/server/db/schema'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
 import { assertGoogleByoAllowed } from '~~/server/utils/google/byo-access'
@@ -234,7 +235,7 @@ async function endAccessAfterInvalidGrant(
     logToken(logger, {
       connectionId: row.id,
       cleanup: 'failed',
-      error: exception instanceof Error ? exception.message : 'unknown',
+      ...exceptionSummary(exception),
     })
   }
 

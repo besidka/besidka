@@ -446,8 +446,8 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         'Always allow lets the model create files and folders, and rename '
         + 'and move Drive items, without asking. The model writes the '
         + 'content of a new file, and it may carry text from other content '
-        + '(such as an email) into your Drive. A rename of a file that is '
-        + 'shared with others shows the new name to them. Google\'s '
+        + '(such as an email) into your Drive. Besidka does not rename or '
+        + 'move an item that is shared with other people. Google\'s '
         + 'permission for Drive also allows deleting and sharing; Besidka '
         + 'has no code that deletes or shares.',
       )

@@ -27,7 +27,7 @@ import {
 } from '#shared/utils/google-gmail-tools'
 import { hasScopes } from '#shared/utils/google-scopes'
 import * as schema from '~~/server/db/schema'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
@@ -424,7 +424,7 @@ export async function loadChatSearchParts(input: {
       attributes: {
         googleByoTools: {
           chatReferencesRead: 'failed',
-          error: exceptionMessage(exception),
+          ...exceptionSummary(exception),
         },
       },
     })

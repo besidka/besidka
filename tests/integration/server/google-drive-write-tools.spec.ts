@@ -1477,6 +1477,8 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
       it.each([
         ['an item someone else owns', { ownedByMe: false }, 'someone else'],
         ['an unknown owner', { ownedByMe: undefined }, 'someone else'],
+        ['an item shared with other people', { shared: true }, 'shared with'],
+        ['an unknown sharing state', { shared: undefined }, 'shared with'],
         ['an item in a shared drive', { driveId: 'd1' }, 'shared drive'],
         ['a trashed item', { trashed: true }, 'in the trash'],
         ['an item renamed since it was found', { name: 'moved.txt' }, 'renamed'],
@@ -1774,6 +1776,8 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
 
       it.each([
         ['an item someone else owns', FILE_ID, { ownedByMe: false }, 'someone else'],
+        ['an item shared with other people', FILE_ID, { shared: true }, 'shared with other people, so Besidka will not'],
+        ['an unknown sharing state on the item', FILE_ID, { shared: undefined }, 'shared with other people, so Besidka will not'],
         ['an item in a shared drive', FILE_ID, { driveId: 'd1' }, 'shared drive'],
         ['a trashed item', FILE_ID, { trashed: true }, 'in the trash'],
         ['an item renamed since it was found', FILE_ID, { name: 'x.txt' }, 'renamed'],
@@ -2262,9 +2266,14 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
         expect(patches()).toHaveLength(0)
       })
 
-      it('treats an item the user owns as changeable even when it is '
-        + 'shared, because the rule checks ownership and the drive only',
-      async () => {
+      it.each([
+        ['rename', { itemId: FILE_ID, newName: 'plan.txt' }],
+        [
+          'move',
+          { itemId: FILE_ID, fromFolderId: CHILD_ID, toFolderId: ARCHIVE_ID },
+        ],
+      ])('refuses an owned item that is shared for a %s with the fixed '
+        + 'sentence, a log code and no PATCH', async (operation, callInput) => {
         const { toolMap } = await known()
 
         drive.items[FILE_ID] = fileMeta(FILE_ID, {
@@ -2272,11 +2281,32 @@ describe('Google Drive folder tools on the owner\'s own client', () => {
           shared: true,
         })
 
-        expect((await rename(toolMap, {
-          itemId: FILE_ID,
-          newName: 'plan.txt',
-        })).renamed).toBe(true)
+        const message = await rejectionOf(operation === 'rename'
+          ? rename(toolMap, callInput)
+          : move(toolMap, callInput))
+
+        expect(message).toBe(
+          'That item is shared with other people, so Besidka will not rename '
+          + 'or move it. Nothing was changed.',
+        )
+        expect(patches()).toHaveLength(0)
+        expect(JSON.stringify(mocks.logged)).toContain('"refusal":"shared"')
       })
+
+      it('still renames and moves an owned item that is not shared',
+        async () => {
+          const { toolMap } = await known()
+
+          drive.items[FILE_ID] = fileMeta(FILE_ID, {
+            parents: [CHILD_ID],
+            shared: false,
+          })
+
+          expect((await rename(toolMap, {
+            itemId: FILE_ID,
+            newName: 'plan.txt',
+          })).renamed).toBe(true)
+        })
 
       it.each([
         ['rename', { itemId: FILE_ID, newName: 'plan.txt' }],

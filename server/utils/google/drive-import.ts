@@ -41,7 +41,7 @@ import {
 import type { OfficeFormat } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import {
   getEffectiveUserFilePolicy,
   getUserStorageUsageBytes,
@@ -740,7 +740,8 @@ function classifyItemException(
   context.input.logger.set({
     attributes: {
       googleDrive: {
-        itemError: exceptionMessage(exception),
+        itemError: 'failed',
+        ...exceptionSummary(exception),
       },
     },
   })
@@ -785,7 +786,10 @@ async function readItemToken(
   } catch (exception) {
     input.logger.set({
       attributes: {
-        googleDrive: { tokenError: exceptionMessage(exception) },
+        googleDrive: {
+          tokenError: 'failed',
+          ...exceptionSummary(exception),
+        },
       },
     })
 

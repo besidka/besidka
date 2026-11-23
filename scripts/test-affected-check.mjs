@@ -5643,6 +5643,18 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/plugins\/evlog-request-observability\.ts$/,
       tests: ['tests/unit/server/plugins/evlog-request-observability.spec.ts'],
     },
+    {
+      pattern: /^server\/(plugins|middleware)\/[^/]+\.ts$/,
+      tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
+    },
+    {
+      pattern: /^server\/(utils\/google\/[^/]+|plugins\/google-access-sweep)\.ts$/,
+      tests: ['tests/unit/server/utils/google/log-boundary.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/(auth|files\/convert-files-for-ai)\.ts$/,
+      tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
+    },
   ]
 
   for (const file of changedFiles) {

@@ -6,10 +6,13 @@ import {
   createOAuthState,
   createPkcePair,
 } from '~~/server/utils/connectors/oauth-client'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { deleteGoogleDerivedFiles } from '~~/server/utils/google/access-ended'
-import { clearGoogleAlwaysAllow } from '~~/server/utils/google/tool-permissions'
+import {
+  clearGoogleAlwaysAllow,
+  clearGoogleAlwaysAllowOrThrow,
+} from '~~/server/utils/google/tool-permissions'
 import {
   buildGoogleRedirectUri,
   filterByoCapabilityScopes,
@@ -182,6 +185,36 @@ async function revokeFreshTokens(
 }
 
 /**
+ * Deletes the user's Google Always allow rows before a bring-your-own
+ * connection is saved or a different account replaces the old one. A failed
+ * delete refuses the connect with a retryable code and revokes the fresh
+ * grant: nothing is saved while an `allow` given for another connection could
+ * still apply to the new one. Disconnect and `invalid_grant` keep the
+ * non-blocking `clearGoogleAlwaysAllow`, because they must always finish.
+ */
+async function clearAlwaysAllowBeforeSaving(
+  input: {
+    db: DbClient
+    oauthState: GoogleOAuthState
+    logger: LoggerLike
+    fetchOptions?: GoogleFetchOptions
+  },
+  freshTokens: GoogleTokenSet,
+): Promise<void> {
+  try {
+    await clearGoogleAlwaysAllowOrThrow(
+      input.oauthState.userId,
+      input.logger,
+      input.db,
+    )
+  } catch {
+    await revokeFreshTokens(freshTokens, input.fetchOptions)
+
+    throw new GoogleConnectionError('GOOGLE_PERMISSION_RESET_FAILED')
+  }
+}
+
+/**
  * Finishes a connection after the callback checked the state: exchanges
  * the code with the PKCE verifier and the stored redirect URI, refuses a
  * grant without `drive.file` on Besidka's client, or without any of the
@@ -288,16 +321,16 @@ export async function completeGoogleConnection(input: {
     return { kind: 'restart-with-consent' }
   }
 
-  if (existing && !isSameAccount) {
-    await replaceDifferentAccount(input, existing.id, tokens, now)
-  }
-
   const isActiveSameAccount = !!existing
     && isSameAccount
     && existing.status === 'active'
 
   if (oauthState.clientMode === 'byo' && !isActiveSameAccount) {
-    await clearGoogleAlwaysAllow(oauthState.userId, logger, db)
+    await clearAlwaysAllowBeforeSaving(input, tokens)
+  }
+
+  if (existing && !isSameAccount) {
+    await replaceDifferentAccount(input, existing.id, tokens, now)
   }
 
   const connectionId = await saveGoogleConnection(db, {
@@ -349,10 +382,6 @@ async function replaceDifferentAccount(
   )
   await markGoogleConnectionRevoked(db, connectionId)
 
-  if (oauthState.clientMode === 'byo') {
-    await clearGoogleAlwaysAllow(oauthState.userId, logger, db)
-  }
-
   let complete = false
 
   try {
@@ -369,7 +398,7 @@ async function replaceDifferentAccount(
     logConnection(logger, {
       step: 'replace-cleanup',
       connectionId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
   }
 
@@ -448,7 +477,7 @@ export async function disconnectGoogleConnection(input: {
     logConnection(logger, {
       step: 'disconnect-cleanup',
       connectionId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
   }
 

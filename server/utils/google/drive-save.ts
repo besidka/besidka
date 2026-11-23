@@ -18,7 +18,7 @@ import {
 } from '#shared/utils/google-drive'
 import { GOOGLE_SCOPES } from '#shared/utils/google-scopes'
 import * as schema from '~~/server/db/schema'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { classifyDriveFailure } from '~~/server/utils/google/drive'
 import { createDriveFile } from '~~/server/utils/google/drive-upload'
@@ -149,7 +149,10 @@ async function readAccessToken(
   } catch (exception) {
     input.logger.set({
       attributes: {
-        googleDriveSave: { tokenError: exceptionMessage(exception) },
+        googleDriveSave: {
+          tokenError: 'failed',
+          ...exceptionSummary(exception),
+        },
       },
     })
 
@@ -258,7 +261,10 @@ async function releaseClaim(
   } catch (exception) {
     input.logger.set({
       attributes: {
-        googleDriveSave: { releaseError: exceptionMessage(exception) },
+        googleDriveSave: {
+          releaseError: 'failed',
+          ...exceptionSummary(exception),
+        },
       },
     })
   }
@@ -408,7 +414,8 @@ export async function saveFileToGoogleDrive(
     input.logger.set({
       attributes: {
         googleDriveSave: {
-          error: exceptionMessage(exception),
+          error: 'failed',
+          ...exceptionSummary(exception),
           afterUploadStarted: keepsClaim,
         },
       },

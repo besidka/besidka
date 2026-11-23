@@ -125,7 +125,9 @@ describe('Google access sweep plugin', () => {
     })
 
     expect(set).toHaveBeenCalledWith({
-      attributes: { googleAccessSweep: { error: 'd1 down' } },
+      attributes: {
+        googleAccessSweep: { error: 'failed', errorName: 'Error' },
+      },
     })
     expect(emit).toHaveBeenCalledWith({ status: 500 })
   })

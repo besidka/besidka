@@ -19,7 +19,7 @@ import { withDerivedKeys } from '#shared/utils/office-files'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { cleanupDocumentsForDeletedFiles } from '~~/server/utils/documents/cleanup'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
@@ -113,7 +113,7 @@ async function collectKnowledgeTargets(
     logCleanup(logger, {
       phase: 'knowledge-collect',
       userId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
 
     return { projectIds: [], targets: [] }
@@ -145,7 +145,7 @@ async function deleteKnowledgeTargets(
     logCleanup(logger, {
       phase: 'knowledge-delete',
       userId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
   }
 }
@@ -219,7 +219,7 @@ export async function clearSavedDriveCopyIds(
     logCleanup(logger, {
       phase: 'drive-copy-ids',
       userId,
-      error: exceptionMessage(exception),
+      ...exceptionSummary(exception),
     })
   }
 }
@@ -276,7 +276,7 @@ export async function deleteGoogleDerivedFiles(
         phase: 'storage-delete',
         userId,
         fileCount: rows.length,
-        error: exceptionMessage(exception),
+        ...exceptionSummary(exception),
       })
 
       break

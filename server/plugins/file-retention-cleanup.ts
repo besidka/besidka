@@ -3,9 +3,9 @@ import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import {
+import type {
   cleanupExpiredFiles,
-  type CleanupExpiredFilesResult,
+  CleanupExpiredFilesResult,
 } from '~~/server/utils/files/cleanup-expired-files'
 
 const ERROR_STACK_MAX_LENGTH = 2000
@@ -30,6 +30,12 @@ interface RunFileRetentionCleanupJobInput {
 }
 
 const FILE_RETENTION_CLEANUP_CRON = '0 * * * *'
+
+async function loadCleanupExpiredFiles(): Promise<typeof cleanupExpiredFiles> {
+  const module = await import('~~/server/utils/files/cleanup-expired-files')
+
+  return module.cleanupExpiredFiles
+}
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('cloudflare:scheduled', async ({ controller }) => {
@@ -69,7 +75,7 @@ export async function runFileRetentionCleanupJob(
     1000,
   )
   const createLogger = input.createLogger || createRequestLogger
-  const runCleanup = input.runCleanup || cleanupExpiredFiles
+  const runCleanup = input.runCleanup || await loadCleanupExpiredFiles()
   const logger = createLogger({
     method: 'CRON',
     path: '/internal/jobs/file-retention-cleanup',

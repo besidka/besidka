@@ -40,6 +40,10 @@ const MONTH_NAMES = [
   'Dec',
 ]
 
+const HTML_MARKUP_PATTERN = /<[A-Za-z/!?]/
+const DESCRIPTION_MARKUP_REFUSAL = 'The description must be plain text: '
+  + 'Google Calendar shows HTML in a description, so it cannot contain a '
+  + '"<" followed by a letter, a slash, "!" or "?". Nothing was created.'
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const DATE_TIME_PATTERN
   = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/
@@ -496,6 +500,10 @@ export function validateCalendarEvent(
         GOOGLE_CALENDAR_DESCRIPTION_MAX_CHARACTERS} characters of plain text `
         + 'without control or invisible characters.',
     )
+  }
+
+  if (description !== undefined && HTML_MARKUP_PATTERN.test(description)) {
+    return refuse(DESCRIPTION_MARKUP_REFUSAL)
   }
 
   if (

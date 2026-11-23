@@ -50,7 +50,7 @@ describe('memory tools', () => {
     projectDisabled?: boolean
     useAccountMemory?: boolean | null
     userMessageText?: string | null
-    allowsWrite?: boolean
+    allowsWrite?: boolean | (() => boolean)
     budget?: ReturnType<typeof createChatSearchBudget>
     db?: typeof testDb.db
     isApprovedByUser?: (call: {
@@ -157,6 +157,50 @@ describe('memory tools', () => {
     it('registers only the read tools in a chat that holds Google data',
       () => {
         const { tools } = build({ allowsWrite: false })
+
+        expect(Object.keys(tools).sort()).toEqual([
+          'memory_list',
+          'memory_read',
+        ])
+      })
+
+    it('refuses a write and a forget once Google data entered the chat '
+      + 'after the tools were registered', async () => {
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        slug: 'cooking',
+        title: 'Cooking',
+      })
+
+      let holdsGoogleData = false
+      const { tools } = build({
+        userMessageText: 'Please remember cooking and forget the old note.',
+        allowsWrite: () => !holdsGoogleData,
+      })
+
+      expect(Object.keys(tools)).toContain('memory_write')
+
+      holdsGoogleData = true
+
+      await expect(tools.memory_write!.execute(
+        writeInput({ userRequestQuote: 'remember cooking' }),
+        toolOptions,
+      )).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining('data from the user\'s Google'),
+      })
+      await expect(tools.memory_forget!.execute(
+        { id: encodePublicId(1), userRequestQuote: 'forget the old note' },
+        toolOptions,
+      )).rejects.toMatchObject({ status: 403 })
+      expect(readRow(1)).toBeDefined()
+      expect(readRowBySlug('cooking', OWNER)?.title).toBe('Cooking')
+    })
+
+    it('registers only the read tools when the check already says no',
+      () => {
+        const { tools } = build({ allowsWrite: () => false })
 
         expect(Object.keys(tools).sort()).toEqual([
           'memory_list',
