@@ -153,7 +153,7 @@
       </div>
 
       <section
-        v-if="toolGroups.length && !permissions.isUnavailable.value"
+        v-if="isToolsSectionShown"
         class="grid gap-3"
         aria-labelledby="google-detail-tools-heading"
         data-testid="google-detail-tools"
@@ -374,6 +374,19 @@ const permissionGroups = computed<ToolPermissionGroup[]>(() => {
         }),
     }
   })
+})
+
+const isToolsSectionShown = computed<boolean>(() => {
+  if (!toolGroups.value.length || permissions.isUnavailable.value) {
+    return false
+  }
+
+  if (!hasPermissionData.value) {
+    return permissions.status.value === 'pending'
+      || permissions.error.value !== null
+  }
+
+  return permissionGroups.value.some(group => group.tools.length > 0)
 })
 
 async function saveChanges(changes: ToolPermissionChange[]) {

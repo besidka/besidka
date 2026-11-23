@@ -433,6 +433,20 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
       expect(mocks.refreshPermissions).toHaveBeenCalled()
     })
 
+    it('hides the tools section when the server lists none of this '
+      + 'service\'s tools', async () => {
+      permissionTools.value = permissionTools.value.filter((tool) => {
+        return tool.service !== 'gmail'
+      })
+      setStatus({}, {})
+
+      const wrapper = await mountPanel('google-gmail')
+
+      expect(wrapper.find('[data-testid="google-detail-tools"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).not.toContain('never offered to the model')
+    })
+
     it('hides the tools when the account reaches none', async () => {
       permissionUnavailable.value = true
       setStatus()
