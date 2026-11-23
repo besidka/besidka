@@ -182,6 +182,7 @@
               :choice-state="googleChoiceState"
               @toggle="emit('toggle-google', $event)"
               @navigate="close"
+              @choose-model="emit('choose-model')"
             />
             <p
               class="sr-only"
@@ -422,6 +423,7 @@ const emit = defineEmits<{
   'toggle-besidka': []
   'toggle-google': [service: GoogleService]
   'retry-google': []
+  'choose-model': []
 }>()
 
 const isOpen = defineModel<boolean>('open', { default: false })

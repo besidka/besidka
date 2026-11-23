@@ -36,6 +36,7 @@ const modelSelection = ref<Record<string, string>>({
 })
 const holdsBySlug = ref<Record<string, boolean>>({})
 const paidTier = ref<boolean>(false)
+const hasGeminiKey = ref<boolean>(true)
 
 mockNuxtImport('useFeature', () => {
   return (flag: string) => computed(() => ({
@@ -57,7 +58,10 @@ mockNuxtImport('useChatGoogleData', () => {
   })
 })
 mockNuxtImport('useUserKeys', () => {
-  return () => ({ isGeminiPaidTierConfirmed: computed(() => paidTier.value) })
+  return () => ({
+    isGeminiPaidTierConfirmed: computed(() => paidTier.value),
+    hasKeyForProvider: () => hasGeminiKey.value,
+  })
 })
 
 const SLUG = '01HZXBBBBBBBBBBBBBBBBBBBBB'
@@ -170,6 +174,7 @@ describe('buildComposerGoogleRows', () => {
         isOn: true,
         subLine: 'person@example.test',
         reasonNote: null,
+        reasonActions: [],
         link: null,
         title: 'Google Drive',
       })
@@ -350,6 +355,7 @@ describe('useComposerGoogleTools', () => {
     modelSelection.value = { source: 'provider', modelId: 'claude-sonnet-5-5' }
     holdsBySlug.value = {}
     paidTier.value = false
+    hasGeminiKey.value = true
     mocks.fetch.mockReset()
     mocks.errorMessage.mockReset()
     googleServicePutQueue.reset()
@@ -888,6 +894,62 @@ describe('useComposerGoogleTools', () => {
         paidTier.value = true
 
         expect(composable.unavailableReason.value).toBeNull()
+      })
+
+    it('offers the keys link and a way to another model for a refused '
+      + 'non-Gemini model', async () => {
+      modelSelection.value = { source: 'provider', modelId: 'deepseek-flash' }
+
+      const { composable } = await rowsFor()
+
+      expect(composable.rows.value[0]?.reasonActions).toEqual([
+        {
+          kind: 'open-api-keys',
+          label: 'Open API Keys',
+          path: '/profile/keys?provider=google',
+        },
+        { kind: 'choose-model', label: 'Choose another model' },
+      ])
+    })
+
+    it('offers the inline paid-tier confirmation for Gemini with a saved '
+      + 'key and drops every action once it is confirmed', async () => {
+      modelSelection.value = { source: 'provider', modelId: 'gemini-3.8-flash' }
+
+      const { composable } = await rowsFor()
+
+      expect(composable.rows.value[0]?.reasonActions.map((action) => {
+        return action.kind
+      })).toEqual(['open-api-keys', 'confirm-paid-tier'])
+
+      paidTier.value = true
+
+      expect(composable.rows.value[0]?.reasonActions).toEqual([])
+    })
+
+    it('leaves out the inline confirmation for Gemini without a saved key',
+      async () => {
+        modelSelection.value = {
+          source: 'provider',
+          modelId: 'gemini-3.8-flash',
+        }
+        hasGeminiKey.value = false
+
+        const { composable } = await rowsFor()
+
+        expect(composable.rows.value[0]?.reasonActions.map((action) => {
+          return action.kind
+        })).toEqual(['open-api-keys'])
+      })
+
+    it('has no action for a provider tool that cannot be removed',
+      async () => {
+        const { composable, tools } = await rowsFor()
+
+        tools.value = ['web_search']
+
+        expect(composable.rows.value[0]?.reasonNote).not.toBeNull()
+        expect(composable.rows.value[0]?.reasonActions).toEqual([])
       })
 
     it('says a provider tool stays callable for Anthropic web search or '

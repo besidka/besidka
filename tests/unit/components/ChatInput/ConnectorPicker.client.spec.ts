@@ -295,6 +295,7 @@ describe('ChatInput/ConnectorPicker', () => {
         isOn: true,
         subLine: 'person@example.test',
         reasonNote: null,
+        reasonActions: [],
         link: null,
         ...overrides,
       }
@@ -438,6 +439,28 @@ describe('ChatInput/ConnectorPicker', () => {
       expect((get('connector-picker-google-toggle-gmail') as HTMLInputElement)
         .checked).toBe(false)
       expect(wrapper.emitted('set-all')).toHaveLength(2)
+    })
+
+    it('re-emits choose-model from a row action', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow({
+          subLine: 'Not available with this model',
+          reasonNote: {
+            summary: 'Google tools were not offered to this model.',
+            detail: 'A reason.',
+            linkLabel: null,
+          },
+          reasonActions: [{
+            kind: 'choose-model',
+            label: 'Choose another model',
+          }],
+        })],
+      })
+
+      get('connector-picker-google-action-model-gmail').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('choose-model')).toHaveLength(1)
     })
 
     it('does not count the rows in the connector limit hint', async () => {

@@ -68,9 +68,9 @@
         :id="inputId"
         type="checkbox"
         class="toggle toggle-sm toggle-accent shrink-0"
-        :class="{ 'opacity-60': isBlocked }"
+        :class="{ 'opacity-60': isBlocked && !row.reasonNote }"
         role="switch"
-        :checked="row.isOn"
+        :checked="row.isOn && !row.reasonNote"
         :disabled="isDisabled"
         :aria-disabled="isBlocked || undefined"
         :aria-label="`Use ${row.title} in this chat`"
@@ -88,15 +88,52 @@
         {{ row.link.label }}
       </NuxtLink>
     </div>
-    <ChatInputToolsMenuInfoNote
+    <div
       v-if="row.reasonNote"
       v-show="isNoteOpen"
       :id="noteId"
-      class="mx-3 mt-1 mb-2"
+      class="mx-3 mt-1 mb-2 grid gap-2"
       :data-testid="`connector-picker-google-note-${row.service}`"
     >
-      {{ row.reasonNote.detail }}
-    </ChatInputToolsMenuInfoNote>
+      <ChatInputToolsMenuInfoNote
+        :data-testid="`connector-picker-google-note-text-${row.service}`"
+      >
+        {{ row.reasonNote.detail }}
+      </ChatInputToolsMenuInfoNote>
+      <div
+        v-if="row.reasonActions.length"
+        class="flex flex-wrap items-center gap-2"
+        :data-testid="`connector-picker-google-actions-${row.service}`"
+      >
+        <template
+          v-for="action in row.reasonActions"
+          :key="action.kind"
+        >
+          <NuxtLink
+            v-if="action.kind === 'open-api-keys'"
+            :to="action.path"
+            class="btn btn-sm min-h-11 sm:min-h-8"
+            :data-testid="`connector-picker-google-action-keys-${row.service}`"
+            @click="emit('navigate')"
+          >
+            {{ action.label }}
+          </NuxtLink>
+          <button
+            v-else-if="action.kind === 'choose-model'"
+            type="button"
+            class="btn btn-sm min-h-11 sm:min-h-8"
+            :data-testid="`connector-picker-google-action-model-${row.service}`"
+            @click="emit('choose-model')"
+          >
+            {{ action.label }}
+          </button>
+          <ProfileKeysGeminiPaidTier
+            v-else
+            class="w-full"
+          />
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -116,8 +153,9 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  toggle: [service: GoogleService]
-  navigate: []
+  'toggle': [service: GoogleService]
+  'navigate': []
+  'choose-model': []
 }>()
 
 const inputId = useId()

@@ -584,6 +584,54 @@ describe('chat send: Google tools withheld note', { timeout: 20_000 }, () => {
     expect(withheldParts(direct.storedAssistantParts[0]!)).toHaveLength(0)
   })
 
+  describe('the model-refused sentence in the system prompt', () => {
+    const SENTENCE = 'The user has Google services connected in Besidka '
+      + '(Drive, Gmail, Calendar), but they are not available to this '
+      + 'model. If the request needs them, say so and suggest switching to '
+      + 'another model; do not suggest connecting a service.'
+
+    function systemTextOf(result: { modelCalls: unknown[] }): string {
+      const [call] = result.modelCalls as Array<[{
+        prompt: Array<{ role: string, content: unknown }>
+      }]>
+
+      return call![0].prompt
+        .filter(message => message.role === 'system')
+        .map(message => String(message.content))
+        .join('\n\n')
+    }
+
+    it('reaches the model exactly once when the recipient was refused',
+      async () => {
+        const systemText = systemTextOf(await runSend({}))
+
+        expect(systemText.split(SENTENCE)).toHaveLength(2)
+      })
+
+    it('is absent for the provider tool reason', async () => {
+      const result = await runSend({
+        directModel: ANTHROPIC_MODEL,
+        declaresProviderTool: true,
+      })
+
+      expect(systemTextOf(result)).not.toContain('Google services connected')
+    })
+
+    it('is absent when the model may receive Google data', async () => {
+      const result = await runSend({ paidTierConfirmedAt: new Date(1_000) })
+
+      expect(systemTextOf(result)).not.toContain('Google services connected')
+    })
+
+    it('is absent for a user without Google candidates', async () => {
+      mocks.googleCandidates = null
+
+      const result = await runSend({})
+
+      expect(systemTextOf(result)).not.toContain('Google services connected')
+    })
+  })
+
   it('writes no part for a user without Google candidates', async () => {
     mocks.googleCandidates = null
 

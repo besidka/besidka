@@ -1,6 +1,8 @@
 import { decideGoogleDataRecipient } from '#shared/utils/google-data-recipient'
 import type { GoogleDataRecipient } from '#shared/utils/google-data-recipient'
 import {
+  GOOGLE_TOOLS_OPEN_KEYS_LABEL,
+  GOOGLE_TOOLS_WITHHELD_KEYS_PATH,
   GOOGLE_TOOLS_WITHHELD_NOTES,
   isGoogleToolsWithheldReason,
 } from '#shared/utils/google-tools-withheld'
@@ -103,4 +105,60 @@ export function getGoogleToolsUnavailableNote(
   return isGoogleToolsWithheldReason(reason)
     ? GOOGLE_TOOLS_WITHHELD_NOTES[reason]
     : null
+}
+
+export const GOOGLE_TOOLS_CHOOSE_MODEL_LABEL = 'Choose another model'
+
+export const GEMINI_PROVIDER_ID = 'google'
+
+/**
+ * What the picker offers under a reason note. `open-api-keys` and
+ * `choose-model` are buttons; `confirm-paid-tier` renders the API Keys
+ * page's own paid-tier confirmation, so the wording and the route stay the
+ * ones the user sees there.
+ */
+export type GoogleToolsNoteAction
+  = | { kind: 'open-api-keys', label: string, path: string }
+    | { kind: 'confirm-paid-tier' }
+    | { kind: 'choose-model', label: string }
+
+export interface GoogleToolsNoteActionContext {
+  recipientProviderId: string | null
+  hasGeminiKey: boolean
+}
+
+/**
+ * The actions under the note of a reason. Only a recipient the allow-list
+ * refuses has any: the API Keys link always, the inline paid-tier
+ * confirmation for a direct Gemini model with a saved key, and a way to
+ * another model for every other recipient.
+ */
+export function getGoogleToolsUnavailableActions(
+  reason: GoogleToolsUnavailableReason,
+  context: GoogleToolsNoteActionContext,
+): GoogleToolsNoteAction[] {
+  if (reason !== 'model_may_not_receive_google_data') {
+    return []
+  }
+
+  const actions: GoogleToolsNoteAction[] = [{
+    kind: 'open-api-keys',
+    label: GOOGLE_TOOLS_OPEN_KEYS_LABEL,
+    path: GOOGLE_TOOLS_WITHHELD_KEYS_PATH,
+  }]
+
+  if (context.recipientProviderId === GEMINI_PROVIDER_ID) {
+    if (context.hasGeminiKey) {
+      actions.push({ kind: 'confirm-paid-tier' })
+    }
+
+    return actions
+  }
+
+  actions.push({
+    kind: 'choose-model',
+    label: GOOGLE_TOOLS_CHOOSE_MODEL_LABEL,
+  })
+
+  return actions
 }

@@ -1,5 +1,7 @@
 import type { ModelTool } from '#shared/types/providers.d'
 import type { GatewayId } from '#shared/types/gateways.d'
+import { GOOGLE_TOOLS_MODEL_REFUSED_INSTRUCTION } from '#shared/utils/google-tools-withheld'
+import type { GoogleToolsWithheldReason } from '#shared/utils/google-tools-withheld'
 import { CHAT_SEARCH_INSTRUCTION } from '~~/server/utils/ai/chat-search-tools'
 import { CURRENT_DATE_SEARCH_HINT } from '~~/server/utils/ai/current-date-instruction'
 import { buildNativeSearchInstruction } from '~~/server/utils/ai/native-search-instruction'
@@ -20,6 +22,7 @@ export interface ChatInstructionsInput {
   documentsContextLine?: string | null
   skillsInstructionBlock?: string | null
   connectorsInstructionBlock?: string | null
+  googleToolsWithheldReason?: GoogleToolsWithheldReason | null
   toolIndexBlock?: string | null
   codeExecutionInputNames?: string[]
   currentDateInstruction: string
@@ -60,6 +63,7 @@ export function buildChatInstructions(
     documentsContextLine,
     skillsInstructionBlock,
     connectorsInstructionBlock,
+    googleToolsWithheldReason,
     toolIndexBlock,
     codeExecutionInputNames,
     currentDateInstruction,
@@ -93,6 +97,10 @@ export function buildChatInstructions(
 
   if (connectorsInstructionBlock) {
     instructions.push(connectorsInstructionBlock)
+  }
+
+  if (googleToolsWithheldReason === 'model_may_not_receive_google_data') {
+    instructions.push(GOOGLE_TOOLS_MODEL_REFUSED_INSTRUCTION)
   }
 
   if (requestedTools.includes('code_execution')) {
