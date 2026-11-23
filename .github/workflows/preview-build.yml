@@ -429,7 +429,10 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.changes.outputs.changed == 'true'
-        run: timeout 300 pnpm exec playwright install --with-deps chromium webkit
+        timeout-minutes: 20
+        run: |
+          for attempt in 1 2; do timeout 900 pnpm exec playwright install --with-deps chromium webkit && exit 0; done
+          exit 1
 
       - name: Run the runtime sandbox tests (Chromium and WebKit)
         if: steps.changes.outputs.changed == 'true'
