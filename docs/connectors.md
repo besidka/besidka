@@ -4642,3 +4642,12 @@ term forbids third-party MCP clients or the preset text.
 | 6 | Whether OpenAI native requests should send `store: false` | C-11 spike, then owner | Path stays off |
 | 7 | Whether CIMD on preview hosts is accepted by Notion and Linear | C-4 | DCR fallback on previews |
 | 8 | Whether the GitHub remote server accepts fine-grained PATs | C-4 | Suggest fine-grained, fall back to classic with the fewest scopes |
+
+### 10.4 Google entries (BES-454, child 1)
+
+The Google services are a fixed "Google" group under the Besidka row, not
+connector rows: they never count toward "N of 20", never appear in
+`GET /api/v1/connectors` and a connector titled "Gmail" never gets their "Built
+in" badge. The same entries lead Discover as "Built into Besidka" and open a
+panel with state, Connect and Disconnect and a read-only tool list. See
+`docs/google.md`, section 16.

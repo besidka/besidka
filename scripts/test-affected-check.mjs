@@ -1825,6 +1825,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/connector-directory.spec.ts',
     'tests/unit/components/Profile/Connectors/Avatar.spec.ts',
     'tests/unit/components/Profile/Connectors/BesidkaRow.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleRow.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleCards.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    'tests/unit/composables/google-entries.spec.ts',
+    'tests/unit/utils/google-entries.spec.ts',
     'tests/unit/composables/feature-opt-in.spec.ts',
     'tests/unit/components/Profile/Connectors/PresetCard.spec.ts',
     'tests/unit/utils/connector-brand-icons.spec.ts',
@@ -1833,6 +1838,31 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
+  ]
+
+  const googleEntriesTests = [
+    'tests/unit/utils/google-tool-catalog.spec.ts',
+    'tests/unit/utils/google-connectors.spec.ts',
+    'tests/unit/utils/google-entries.spec.ts',
+    'tests/unit/utils/google-keys-tab.spec.ts',
+    'tests/unit/utils/google-connect-results.spec.ts',
+    'tests/unit/utils/google-drive-tab.spec.ts',
+    'tests/unit/utils/google-brand-icons.spec.ts',
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/composables/google-entries.spec.ts',
+    'tests/unit/composables/chat-drive-files.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleRow.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleCards.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    'tests/unit/components/Profile/Connectors/Directory.client.spec.ts',
+    'tests/unit/components/Profile/Google/Connection.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Drive.client.spec.ts',
+    'tests/unit/pages/chats/connectors/index.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/config/client-icons.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-connections.spec.ts',
   ]
 
   const toolPermissionsUiTests = [
@@ -4259,6 +4289,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy|connectors-connected|connectors-auth)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body|header-auth)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory|feature-opt-in)\.ts|app\/utils\/(connector-brand-icons|besidka-tool-permissions)\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
       tests: connectorsPageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tool-catalog|google-connectors|google-brand-icons|google-connections|google-drive|google-drive-tools|auth-redirect)\.ts|app\/utils\/(google-entries|google-keys-tab|google-connect-results|google-drive-tab)\.ts|app\/composables\/(google-entries|chat-drive-files|google-connection)\.ts|app\/components\/Profile\/Connectors\/(GoogleRow|GoogleCards|GoogleDetailPanel|Directory\.client)\.vue|app\/components\/Profile\/Google\/.*\.vue|app\/components\/ChatInput\/Files\/Modal\/Select\/Drive\.client\.vue|app\/pages\/(chats\/connectors\/index|profile\/keys)\.vue|nuxt\.config\.ts)$/,
+      tests: googleEntriesTests,
     },
     {
       pattern:
