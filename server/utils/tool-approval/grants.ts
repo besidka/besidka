@@ -14,7 +14,12 @@ import {
   googleEgressGrantKey,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
+import {
+  GOOGLE_TOOL_CATALOG,
+} from '#shared/utils/google-tool-catalog'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
+import { loadGoogleToolPermissionModes } from '~~/server/utils/google/tool-permissions'
 import { buildExposedToolName } from '~~/server/utils/connectors/tool-definitions'
 import {
   getConnector,
@@ -216,7 +221,40 @@ async function listBesidkaGrantItems(
     })
   }
 
-  return [...items, ...googleGrantItems(settings.alwaysAllowTools)]
+  return [
+    ...items,
+    ...googleGrantItems(settings.alwaysAllowTools),
+    ...await googleAlwaysGrantItems(db, userId, settings.googleServicesOff),
+  ]
+}
+
+/**
+ * The Google tools the user set to Always allow (`google__` rows of
+ * `besidka_tool_permissions` that read as `allow`), except those of a service
+ * switched off in this chat, which never run here. The panel links each to
+ * its Google entry on Connectors, where the setting lives.
+ */
+async function googleAlwaysGrantItems(
+  db: DbClient,
+  userId: number,
+  servicesOff: readonly GoogleService[],
+): Promise<ToolApprovalGrantItem[]> {
+  const modes = await loadGoogleToolPermissionModes(userId, db)
+
+  return GOOGLE_TOOL_CATALOG
+    .filter((tool) => {
+      return modes.get(tool.name) === 'allow'
+        && !servicesOff.includes(tool.service)
+    })
+    .map((tool) => {
+      return {
+        scope: 'always',
+        connectorId: '',
+        connectorTitle: GOOGLE_READ_GRANT_TITLE,
+        toolName: tool.name,
+        source: 'google',
+      }
+    })
 }
 
 /**

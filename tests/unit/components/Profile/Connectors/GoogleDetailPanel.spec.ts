@@ -716,7 +716,8 @@ describe('Profile/Connectors/GoogleDetailPanel', () => {
         + 'a Google file.')
       expect(text).toContain('One exception')
       expect(text).toContain('create a folder, and rename or move files and '
-        + 'folders you own, in your own My Drive after you approve each one. '
+        + 'folders you own, in your own My Drive after you approve each one, '
+        + 'unless you set the tool to Always allow. '
         + 'It cannot delete anything or change who can see a file.')
     })
 

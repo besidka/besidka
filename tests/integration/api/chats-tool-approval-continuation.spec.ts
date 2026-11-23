@@ -57,6 +57,7 @@ const mocks = vi.hoisted(() => ({
   }>),
   googleBlockedNames: [] as string[],
   googleAllowedNames: [] as string[],
+  googleClaims: new Set<string>(),
   googleServicesOff: [] as string[],
   candidateServicesOff: [] as Array<readonly string[] | undefined>,
   requestedServicesOff: [] as Array<readonly string[] | undefined>,
@@ -294,6 +295,36 @@ vi.mock('~~/server/utils/tool-approval/google-send-candidates', async (
         )
         : built
     },
+  }
+})
+
+vi.mock('~~/server/utils/tool-approval/google-run-gate', async (
+  importOriginal,
+) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/tool-approval/google-run-gate')
+  >()
+
+  return {
+    ...actual,
+    createGoogleRunGate: (input: {
+      owner: { userId: number, chatPublicId: string, messagePublicId: string }
+    }) => ({
+      begin: async (toolCallId: string) => {
+        const executionId = await actual.buildGoogleExecutionId(
+          input.owner,
+          toolCallId,
+        )
+
+        if (mocks.googleClaims.has(executionId)) {
+          throw new Error(actual.GOOGLE_RUN_ALREADY_CLAIMED_TEXT)
+        }
+
+        mocks.googleClaims.add(executionId)
+
+        return { executionId, settle: async () => undefined }
+      },
+    }),
   }
 })
 
@@ -951,6 +982,7 @@ describe('tool approval continuation', () => {
     mocks.googleSendFactory = null
     mocks.googleBlockedNames = []
     mocks.googleAllowedNames = []
+    mocks.googleClaims = new Set()
     mocks.googleServicesOff = []
     mocks.candidateServicesOff = []
     mocks.requestedServicesOff = []
@@ -2355,6 +2387,84 @@ describe('tool approval continuation', () => {
       expect(writeExecute).toHaveBeenCalledTimes(1)
       expect(options.approvalId).toBe(approvalId)
       expect(options.executionId).toBeUndefined()
+    })
+
+    it('runs an always-allowed write once in a step that also pauses for a '
+      + 'read, keeps its part and marker, and does not run it again on the '
+      + 'answer', async () => {
+      const { buildGoogleApprovalEntry } = await import(
+        '~~/server/utils/tool-approval/send'
+      )
+
+      mocks.googleSend = {
+        tools: mocks.googleSend!.tools,
+        entries: new Map([
+          ['google__drive_search', buildGoogleApprovalEntry({
+            toolName: 'google__drive_search',
+            kind: 'read',
+            definitionHash: GOOGLE_HASH,
+            summary: 'Search Google Drive',
+            toolApprovalsActive: true,
+          })],
+          ['google__calendar_create_event', buildGoogleApprovalEntry({
+            toolName: 'google__calendar_create_event',
+            kind: 'write',
+            definitionHash: GOOGLE_HASH,
+            summary: 'Create a calendar event',
+            toolApprovalsActive: true,
+          })],
+        ]),
+      }
+      mocks.googleAllowedNames = ['google__calendar_create_event']
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        connectorIds: [],
+        steps: [
+          toolCallChunks('call-w', 'google__calendar_create_event', {
+            title: 'Budget review',
+          }),
+          toolCallChunks('call-g', 'google__drive_search', {
+            query: 'budget',
+          }),
+        ],
+      })
+      const [approvalId] = paused.approvalIds
+      const writeOptions = writeExecute.mock.calls[0]![1] as {
+        approvalId?: string
+        executionId?: string
+      }
+
+      expect(paused.approvalIds).toHaveLength(1)
+      expect(readExecute).not.toHaveBeenCalled()
+      expect(writeExecute).toHaveBeenCalledTimes(1)
+      expect(writeOptions.executionId).toMatch(/^exec_[A-Za-z0-9_-]{43}$/)
+      expect(writeOptions.approvalId).toBeUndefined()
+      expect(findPart(
+        paused.assistantParts,
+        'tool-google__calendar_create_event',
+      )).toMatchObject({ state: 'output-available' })
+      expect(findPart(paused.assistantParts, 'data-tool-grant')).toMatchObject({
+        data: {
+          toolCallId: 'call-w',
+          toolName: 'google__calendar_create_event',
+          scope: 'always',
+        },
+      })
+
+      await answer(paused, [
+        { approvalId, approved: true },
+      ], [textChunks('Looked it up.')])
+
+      const update = mocks.updates.at(-1)!
+
+      expect(readExecute).toHaveBeenCalledTimes(1)
+      expect(writeExecute).toHaveBeenCalledTimes(1)
+      expect(findPart(update.parts, 'tool-google__calendar_create_event'))
+        .toMatchObject({ state: 'output-available' })
+      expect(findPart(update.parts, 'data-tool-grant')).toMatchObject({
+        data: { toolCallId: 'call-w', scope: 'always' },
+      })
     })
 
     it('tells the model the content is unavailable when the stash is gone',

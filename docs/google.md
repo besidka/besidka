@@ -4117,7 +4117,16 @@ with `blocked` before that, so an off service still wins. A card for a tool
 set to Needs approval is unchanged: Allow once, plus Allow in this chat for
 reads, never Always allow.
 
-**Caps.** Past a cap the call asks again with its usual options.
+**The chat panel.** The Approvals list of the chat panel
+(`listChatToolApprovalGrants`) shows each Google tool set to Always allow
+(except those of a service switched off in that chat) as "Always allowed, in
+every chat" with a Manage link to that service's panel on Connectors, as it
+does for Besidka tools set to Allow. It has no Remove button, and the Reset
+button never touches it: the setting lives on Connectors.
+
+**Caps.** Past a cap the call asks again with its usual options, and a chat
+grant on the same tool does not stretch the cap (the capped call is decided
+as Needs approval without it).
 
 | What | Cap | Where |
 | --- | --- | --- |

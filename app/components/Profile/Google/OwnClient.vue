@@ -245,12 +245,14 @@
       <p class="text-sm text-base-content/70">
         Nothing is ticked for you. Gmail read access lets the model search
         and read your mail when you allow it, Gmail drafts let it write
-        drafts you approve (Gmail tools need Gmail turned on in Labs), and
+        drafts you approve, or without asking if you set that tool to Always
+        allow (Gmail tools need Gmail turned on in Labs), and
         Google Drive read access lets it search your files and read the
         ones it finds.
         <template v-if="isCalendarActive">
           Google Calendar access lets it list events, check when you are
-          busy and create one event you approve.
+          busy and create one event you approve, or without asking if you
+          set that tool to Always allow.
         </template>
         <template v-else>
           Google Calendar tools need Google Calendar turned on in Labs.

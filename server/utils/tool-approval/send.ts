@@ -877,21 +877,22 @@ export function createSendToolApproval(input: {
     return writeRuns < GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE
   }
 
+  function isAlwaysAllowCapped(
+    toolName: string,
+    entry: SendToolEntry,
+  ): boolean {
+    return entry.permissionMode === 'allow'
+      && entry.descriptor.family === 'google'
+      && !alwaysAllowHasRoom(toolName, entry)
+  }
+
   function permissionModeOf(
     toolName: string,
     entry: SendToolEntry,
   ): ToolPermissionMode {
-    const mode = entry.permissionMode ?? 'ask'
-
-    if (
-      mode === 'allow'
-      && entry.descriptor.family === 'google'
-      && !alwaysAllowHasRoom(toolName, entry)
-    ) {
-      return 'ask'
-    }
-
-    return mode
+    return isAlwaysAllowCapped(toolName, entry)
+      ? 'ask'
+      : entry.permissionMode ?? 'ask'
   }
 
   function chatGrantOf(
@@ -1042,7 +1043,9 @@ export function createSendToolApproval(input: {
       state: decisionState,
       permissionMode: permissionModeOf(toolCall.toolName, entry),
       alwaysGrant: entry.userGrants?.always ?? null,
-      chatGrant: chatGrantOf(toolCall.toolName, entry),
+      chatGrant: isAlwaysAllowCapped(toolCall.toolName, entry)
+        ? null
+        : chatGrantOf(toolCall.toolName, entry),
       isAlwaysGrantDefault: entry.userGrants?.isAlwaysDefault === true,
       googleEgressGrant: entry.userGrants?.googleEgress ?? null,
     })

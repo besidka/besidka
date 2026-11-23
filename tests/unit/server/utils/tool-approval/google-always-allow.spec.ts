@@ -34,6 +34,8 @@ const HASH = 'a'.repeat(64)
 
 const READ_CAP = GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE
 
+const WRITE_CAP = GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE
+
 const ALLOWABLE = GOOGLE_TOOL_CATALOG.filter((tool) => {
   return isGoogleToolAlwaysAllowable(tool)
 })
@@ -309,6 +311,35 @@ describe('Always allow in a send', () => {
     expect(approval.getPendingDecision('over')?.decision.rememberOptions)
       .toEqual(['once', 'chat'])
     expect(approval.getGrantScope('over')).toBeNull()
+  })
+
+  it('asks again past the read cap even when the tool also has a chat '
+    + 'grant, so the cap is the cap', () => {
+    const approval = createApproval([entryOf(SEARCH, 'read', 'allow', true)])
+
+    for (let index = 0; index < READ_CAP; index++) {
+      expect(approval.toolApproval(call(`c${index}`, SEARCH)))
+        .toBe('not-applicable')
+      expect(approval.getGrantScope(`c${index}`)).toBe('always')
+    }
+
+    expect(approval.toolApproval(call('over', SEARCH)))
+      .toEqual({ type: 'user-approval', reason: 'default' })
+    expect(approval.getPendingDecision('over')?.decision.rememberOptions)
+      .toEqual(['once', 'chat'])
+    expect(approval.getGrantScope('over')).toBeNull()
+  })
+
+  it('asks again past the write cap even with a chat grant on the tool', () => {
+    const approval = createApproval([entryOf(FOLDER, 'write', 'allow', true)])
+
+    for (let index = 0; index < WRITE_CAP; index++) {
+      expect(approval.toolApproval(call(`f${index}`, FOLDER)))
+        .toBe('not-applicable')
+    }
+
+    expect(approval.toolApproval(call('over', FOLDER)))
+      .toEqual({ type: 'user-approval', reason: 'always-ask' })
   })
 
   it('counts the reads of each tool on its own', () => {
