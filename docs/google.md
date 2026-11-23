@@ -4551,9 +4551,11 @@ button, open and analytics logic), and a document under `content/key-guides`
 is a public page. No shared component changed, so `docs/key-guides.md` is
 unchanged.
 
-- **Where it shows.** Inside the `canManage` branch of the card, above the
-  redirect address and the client form, in the full card and in the reduced
-  card shown with the `connectors` flag. A user who cannot manage an own client
+- **Where it shows.** At the bottom of the card, below the Delete and Save
+  buttons (and below the connection controls when a client is saved), like the
+  key guides on the provider cards; the buttons, input fields and badge use the
+  provider key card's markup. It shows in the full card and in the reduced card
+  shown with the `connectors` flag. A user who cannot manage an own client
   sees none of it. Step 7 and the 7-day note name the card's Connect button in
   the full card and the Connectors page in the reduced one.
 - **What it says.** Seven steps: a project, the Gmail, Google Calendar and
