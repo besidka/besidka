@@ -3854,6 +3854,7 @@ describe('tool approval continuation', () => {
       const ROOT_ID = 'real-root-id-0123456789'
       const FOLDER_ID = 'listed-folder-id-0123456'
       const GENERATED_ID = 'generated-id-0123456789'
+      const ASSIGNED_ID = 'drive-assigned-id-01234'
       const FRAME = /<untrusted_tool_result[\s\S]*?<\/untrusted_tool_result>/g
       const NEW_FOLDER = { name: 'Reports', parentFolderId: FOLDER_ID }
       const SECOND_FOLDER_ID = 'second-folder-id-01234'
@@ -3886,6 +3887,13 @@ describe('tool approval continuation', () => {
           mediaType: mediaHead!.trim().replace('Content-Type: ', ''),
           media: mediaRest.join('\r\n\r\n').replace(/\r\n$/, ''),
         }
+      }
+
+      function lookupCalls() {
+        return driveFetch.mock.calls.filter((call) => {
+          return (new URL(call[0] as string).searchParams.get('q') ?? '')
+            .includes('appProperties has')
+        })
       }
 
       function uploadCalls() {
@@ -3962,11 +3970,18 @@ describe('tool approval continuation', () => {
             const { metadata } = readUpload(init)
 
             return Response.json({
-              id: metadata.id,
+              id: metadata.id ?? ASSIGNED_ID,
               name: metadata.name,
               mimeType: metadata.mimeType,
               parents: metadata.parents ?? [ROOT_ID],
             })
+          }
+
+          if (
+            url.pathname === '/drive/v3/files'
+            && (url.searchParams.get('q') ?? '').includes('appProperties has')
+          ) {
+            return Response.json({ files: [] })
           }
 
           if (url.pathname === '/drive/v3/files' && init?.method === 'POST') {
@@ -4301,6 +4316,8 @@ describe('tool approval continuation', () => {
           summary: 'Create the Google Doc "Plan" (1 KB) in My Drive',
           mimeType: 'application/vnd.google-apps.document',
           mediaType: 'text/markdown; charset=UTF-8',
+          createdId: ASSIGNED_ID,
+          sendsId: false,
         },
         {
           label: 'a Google Sheet from CSV',
@@ -4308,6 +4325,8 @@ describe('tool approval continuation', () => {
           summary: 'Create the Google Sheet "Totals" (1 KB) in My Drive',
           mimeType: 'application/vnd.google-apps.spreadsheet',
           mediaType: 'text/csv; charset=UTF-8',
+          createdId: ASSIGNED_ID,
+          sendsId: false,
         },
         {
           label: 'a plain text file',
@@ -4315,6 +4334,8 @@ describe('tool approval continuation', () => {
           summary: 'Create the text file "Notes" (1 KB) in My Drive',
           mimeType: 'text/plain',
           mediaType: 'text/plain; charset=UTF-8',
+          createdId: GENERATED_ID,
+          sendsId: true,
         },
       ])('creates $label once approved: the card input is the whole file, '
         + 'one upload carries it, and only a reference is stored', async (
@@ -4362,26 +4383,25 @@ describe('tool approval continuation', () => {
 
         expect(uploadCalls()).toHaveLength(1)
         expect(sent.metadata).toMatchObject({
-          id: GENERATED_ID,
           name: scenario.input.name,
           mimeType: scenario.mimeType,
         })
-        expect(Object.keys(sent.metadata).sort()).toEqual([
-          'appProperties',
-          'id',
-          'mimeType',
-          'name',
-        ])
+        expect(Object.keys(sent.metadata).sort()).toEqual(
+          scenario.sendsId
+            ? ['appProperties', 'id', 'mimeType', 'name']
+            : ['appProperties', 'mimeType', 'name'],
+        )
+        expect(lookupCalls()).toHaveLength(scenario.sendsId ? 0 : 1)
         expect(sent.mediaType).toBe(scenario.mediaType)
         expect(sent.media).toBe(scenario.input.content)
-        expect(prompt).toContain(GENERATED_ID)
+        expect(prompt).toContain(scenario.createdId)
         expect(prompt).not.toContain('drive.google.com')
         expect(findPart(update.parts, 'tool-google__drive_create_file'))
           .toMatchObject({
             output: {
               bodyRemoved: true,
               references: [{
-                id: GENERATED_ID,
+                id: scenario.createdId,
                 kind: 'drive-file',
                 title: scenario.input.name,
                 parentId: ROOT_ID,

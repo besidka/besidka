@@ -15,6 +15,7 @@ import {
   createDriveFileWithContent,
   createDriveItem,
   driveFailureSuffix,
+  findDriveItemsByApprovalDigest,
   generateDriveId,
   isDriveRootMeta,
   listDriveFolderChildren,
@@ -674,7 +675,7 @@ describe('the file create request', () => {
   const FILE_ID = 'file-id-0123456789'
   const DIGEST = 'D'.repeat(43)
   const baseInput = {
-    id: FILE_ID,
+    id: null as string | null,
     name: 'Plan',
     kind: 'document' as const,
     content: '# Plan\n\nOne line.',
@@ -766,12 +767,12 @@ describe('the file create request', () => {
     )
 
     expect(parts.metadata).toEqual({
-      id: FILE_ID,
       name: 'Plan',
       mimeType: 'application/vnd.google-apps.document',
       parents: [PARENT_ID],
       appProperties: { besidkaApproval: DIGEST },
     })
+    expect(parts.metadata).not.toHaveProperty('id')
     expect(parts.mediaHeader).toBe(
       `Content-Type: ${GOOGLE_DRIVE_MARKDOWN_UPLOAD_MIME_TYPE}; `
       + 'charset=UTF-8',
@@ -791,7 +792,7 @@ describe('the file create request', () => {
       { ...context, fetchImpl },
     )
     await createDriveFileWithContent(
-      { ...baseInput, kind: 'text', content: 'plain' },
+      { ...baseInput, id: FILE_ID, kind: 'text', content: 'plain' },
       { ...context, fetchImpl },
     )
 
@@ -807,8 +808,10 @@ describe('the file create request', () => {
     expect(sheet.mediaHeader).toBe('Content-Type: text/csv; charset=UTF-8')
     expect(sheet.media).toBe('a,b\n1,2\n')
     expect(text.metadata.mimeType).toBe('text/plain')
+    expect(text.metadata.id).toBe(FILE_ID)
     expect(text.mediaHeader).toBe('Content-Type: text/plain; charset=UTF-8')
     expect(Object.keys(sheet.metadata)).not.toContain('parents')
+    expect(sheet.metadata).not.toHaveProperty('id')
   })
 
   it('pins the Markdown upload type in one constant', () => {
@@ -821,7 +824,7 @@ describe('the file create request', () => {
     const fetchImpl = respond(200, { id: FILE_ID })
 
     await createDriveFileWithContent(
-      { ...baseInput, kind: 'text', content: 'Привіт 日本語 😀' },
+      { ...baseInput, id: FILE_ID, kind: 'text', content: 'Привіт 日本語 😀' },
       { ...context, fetchImpl },
     )
 
@@ -833,7 +836,14 @@ describe('the file create request', () => {
   })
 
   it.each([
-    ['an id that is not a Drive id', { id: '../x' }],
+    ['an id that is not a Drive id', { id: '../x', kind: 'text' }],
+    ['an id for a document', { id: FILE_ID }],
+    ['an id for a spreadsheet', {
+      id: FILE_ID,
+      kind: 'spreadsheet',
+      content: 'a,b\n',
+    }],
+    ['no id for a text file', { kind: 'text', content: 'plain' }],
     ['a parent that is not a Drive id', { parentId: 'a b' }],
     ['a digest of the wrong shape', { approvalDigest: 'digest' }],
     ['a name with a slash', { name: 'a/b' }],
@@ -926,5 +936,127 @@ describe('the file create request', () => {
       ...context,
       fetchImpl: respond(200, { name: 'Plan' }),
     })).toEqual({ ok: false, code: 'failed' })
+  })
+})
+
+describe('the metadata of a converted create', () => {
+  it('has no id when none is given and keeps everything else', () => {
+    const metadata = buildDriveCreateMetadata({
+      id: null,
+      name: 'Plan',
+      mimeType: 'application/vnd.google-apps.document',
+      parentId: PARENT_ID,
+      approvalDigest: 'digest',
+    })
+
+    expect(metadata).toEqual({
+      name: 'Plan',
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [PARENT_ID],
+      appProperties: { besidkaApproval: 'digest' },
+    })
+    expect(Object.keys(metadata)).not.toContain('id')
+  })
+})
+
+describe('findDriveItemsByApprovalDigest', () => {
+  const context = { accessToken: 'token' }
+  const DIGEST = 'D'.repeat(43)
+  const hit = {
+    id: 'file-id-0123456789',
+    name: 'Plan',
+    mimeType: 'application/vnd.google-apps.document',
+    parents: [PARENT_ID],
+    appProperties: { besidkaApproval: DIGEST },
+  }
+
+  it('looks the marker up with one GET and reads the hits', async () => {
+    const fetchImpl = respond(200, { files: [hit] })
+    const result = await findDriveItemsByApprovalDigest(DIGEST, {
+      ...context,
+      fetchImpl,
+    })
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ]
+    const parsed = new URL(url)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(init.method).toBe('GET')
+    expect(`${parsed.origin}${parsed.pathname}`)
+      .toBe('https://www.googleapis.com/drive/v3/files')
+    expect(parsed.searchParams.get('q')).toBe(
+      `appProperties has { key='besidkaApproval' and value='${DIGEST}' } `
+      + 'and trashed=false',
+    )
+    expect(parsed.searchParams.get('spaces')).toBe('drive')
+    expect(parsed.searchParams.get('supportsAllDrives')).toBe('true')
+    expect(parsed.searchParams.get('includeItemsFromAllDrives')).toBe('true')
+    expect(parsed.searchParams.get('pageSize')).toBe('2')
+    expect(parsed.searchParams.get('fields'))
+      .toBe('files(id,name,mimeType,parents,appProperties)')
+    expect(result).toMatchObject({
+      ok: true,
+      value: [{ id: hit.id, approvalDigest: DIGEST, parents: [PARENT_ID] }],
+    })
+  })
+
+  it('reads no hit as an empty list and two hits as two', async () => {
+    expect(await findDriveItemsByApprovalDigest(DIGEST, {
+      ...context,
+      fetchImpl: respond(200, { files: [] }),
+    })).toEqual({ ok: true, value: [] })
+
+    const two = await findDriveItemsByApprovalDigest(DIGEST, {
+      ...context,
+      fetchImpl: respond(200, {
+        files: [hit, { ...hit, id: 'file-id-9876543210' }],
+      }),
+    })
+
+    expect(two.ok && two.value).toHaveLength(2)
+  })
+
+  it.each([
+    ['a quote', `${DIGEST}' or name contains 'x`],
+    ['a space', 'a b c d e f g h i j k l'],
+    ['too short', 'abc'],
+    ['too long', 'x'.repeat(65)],
+    ['an empty digest', ''],
+    ['a slash', `${'a'.repeat(20)}/x`],
+  ])('refuses a digest with %s before any request', async (_label, digest) => {
+    const fetchImpl = respond(200, { files: [] })
+
+    expect(await findDriveItemsByApprovalDigest(digest, {
+      ...context,
+      fetchImpl,
+    })).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('fails on an answer without a list and on a hit without a Drive id',
+    async () => {
+      expect(await findDriveItemsByApprovalDigest(DIGEST, {
+        ...context,
+        fetchImpl: respond(200, { nope: true }),
+      })).toEqual({ ok: false, code: 'failed' })
+      expect(await findDriveItemsByApprovalDigest(DIGEST, {
+        ...context,
+        fetchImpl: respond(200, { files: [{ id: 'short' }] }),
+      })).toEqual({ ok: false, code: 'failed' })
+    })
+
+  it('passes a Drive error on with its code', async () => {
+    expect(await findDriveItemsByApprovalDigest(DIGEST, {
+      ...context,
+      fetchImpl: respond(403, {
+        error: { errors: [{ reason: 'insufficientPermissions' }] },
+      }),
+    })).toMatchObject({ ok: false, code: 'no_access', status: 403 })
+    expect(await findDriveItemsByApprovalDigest(DIGEST, {
+      ...context,
+      fetchImpl: respond(500, {}),
+    })).toMatchObject({ ok: false, code: 'failed', status: 500 })
   })
 })

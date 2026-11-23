@@ -6,6 +6,7 @@ import {
   buildDriveMoveRequest,
   buildDriveRenameRequest,
   createDriveFileWithContent,
+  findDriveItemsByApprovalDigest,
   patchDriveItem,
 } from '~~/server/utils/google/drive-write-api'
 
@@ -482,11 +483,68 @@ describe('the Drive write boundary', () => {
     ])
   })
 
-  it('calls the multipart create once, from the create-file tool only, and '
-    + 'passes no media type', () => {
+  it('looks a retry marker up with one GET on the files endpoint, never a '
+    + 'POST, and the tools call that lookup once', async () => {
+    const source = read(API_PATH)
+    const lookupSource = source.slice(
+      source.indexOf('async function findDriveItemsByApprovalDigest'),
+      source.indexOf('export interface CreatedDriveItem'),
+    )
+
+    expect(source.match(/appProperties has/g)).toHaveLength(1)
+    expect(lookupSource).toContain('DRIVE_FILES_URL')
+    expect(lookupSource).toContain('method: \'GET\'')
+    expect(lookupSource).not.toMatch(
+      /method: 'POST'|method: 'PATCH'|DRIVE_UPLOAD_URL|\/upload\//,
+    )
+    expect(read(TOOLS_PATH).match(/findDriveItemsByApprovalDigest\(/g))
+      .toHaveLength(1)
+
+    const calls: Array<{ url: string, method: string | undefined }> = []
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method })
+
+      return new Response(JSON.stringify({ files: [] }), { status: 200 })
+    })
+
+    await findDriveItemsByApprovalDigest('D'.repeat(43), {
+      accessToken: 'token',
+      fetchImpl,
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.method).toBe('GET')
+    expect(new URL(calls[0]!.url).pathname).toBe('/drive/v3/files')
+  })
+
+  it('sends no id in a converted create and refuses one, and sends an id '
+    + 'only for a plain text file', async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(JSON.stringify({ id: ITEM_ID }), { status: 200 })
+    })
+    const base = {
+      name: 'Plan',
+      content: 'a,b\n',
+      parentId: null,
+      approvalDigest: 'D'.repeat(43),
+    }
+
+    expect(await createDriveFileWithContent(
+      { ...base, id: ITEM_ID, kind: 'spreadsheet' },
+      { accessToken: 'token', fetchImpl },
+    )).toEqual({ ok: false, code: 'bad_request' })
+    expect(await createDriveFileWithContent(
+      { ...base, id: null, kind: 'text' },
+      { accessToken: 'token', fetchImpl },
+    )).toEqual({ ok: false, code: 'bad_request' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('calls the multipart create from the two create-file paths (a '
+    + 'generated id, a converted kind) only, and passes no media type', () => {
     const source = read(TOOLS_PATH)
 
-    expect(source.match(/createDriveFileWithContent\(/g)).toHaveLength(1)
+    expect(source.match(/createDriveFileWithContent\(/g)).toHaveLength(2)
     expect(source).not.toMatch(/uploadMimeType|targetMimeType: |mimeType: '/)
   })
 
@@ -568,7 +626,7 @@ describe('the Drive write boundary', () => {
   it('sends supportsAllDrives on every file request it builds', () => {
     const source = read(API_PATH)
 
-    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(6)
+    expect(source.match(/supportsAllDrives: 'true'/g)).toHaveLength(7)
   })
 
   it('copies only the five allowed keys, even from an object that carries '

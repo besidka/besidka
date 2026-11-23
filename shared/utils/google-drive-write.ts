@@ -311,6 +311,18 @@ export const GOOGLE_DRIVE_FILE_KIND_SPECS: Readonly<
   },
 }
 
+/**
+ * Whether Drive converts the upload of this kind to a Google Workspace type.
+ * Drive refuses a client-generated file id for such an upload
+ * (`generatedIdNotSupported`, live result of 2026-11-25), so a converted
+ * create sends no id and is protected by a lookup of its retry marker.
+ */
+export function isDriveConvertedKind(kind: DriveFileKind): boolean {
+  const spec = GOOGLE_DRIVE_FILE_KIND_SPECS[kind]
+
+  return spec.targetMimeType !== spec.uploadMimeType
+}
+
 export const GOOGLE_DRIVE_FILE_CONTENT_MAX_UNITS = 12_000
 export const GOOGLE_DRIVE_FILE_INPUT_MAX_BYTES = 48 * 1024
 export const GOOGLE_DRIVE_CSV_MAX_ROWS = 500
