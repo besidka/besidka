@@ -214,6 +214,28 @@ export function buildMemoryWriteDescriptions(
   }
 }
 
+/**
+ * The sentence the read tools carry when the user turned off saving or
+ * removing in their memory settings. A Blocked write tool is not offered, so
+ * it has no description of its own to say so. Empty when neither is Blocked.
+ */
+export function buildBlockedMemoryToolsSentence(
+  modes: MemoryWritePermissionModes = {},
+): string {
+  const blocked = [
+    modes.memory_write === 'blocked' ? 'Saving to memory' : null,
+    modes.memory_forget === 'blocked' ? 'Removing from memory' : null,
+  ].filter(Boolean)
+
+  if (blocked.length === 0) {
+    return ''
+  }
+
+  return ` ${blocked.join(' and ')} ${blocked.length > 1 ? 'are' : 'is'} `
+    + 'turned off in the user\'s settings: if the user asks for it, tell '
+    + 'them to change it in their memory settings, and do not try again.'
+}
+
 export function buildMemoryHandle(
   entry: Pick<MemoryEntry, 'projectId' | 'category' | 'slug'>,
 ): string {
@@ -806,9 +828,12 @@ export function getMemoryTools(input: {
   }
   const userMessageText = input.userMessageText
 
+  const blockedSentence = buildBlockedMemoryToolsSentence(
+    input.permissionModes,
+  )
   const readTools = {
     [MEMORY_LIST_TOOL_NAME]: withFollowUpTurn(tool({
-      description: MEMORY_LIST_DESCRIPTION,
+      description: MEMORY_LIST_DESCRIPTION + blockedSentence,
       inputSchema: z.object({
         category: z.enum(memoryCategories).optional(),
       }),
@@ -835,7 +860,7 @@ export function getMemoryTools(input: {
       },
     })),
     [MEMORY_READ_TOOL_NAME]: withFollowUpTurn(tool({
-      description: MEMORY_READ_DESCRIPTION,
+      description: MEMORY_READ_DESCRIPTION + blockedSentence,
       inputSchema: z.object({
         id: z.string().min(1).max(MEMORY_TOOL_ID_MAX_LENGTH),
       }),

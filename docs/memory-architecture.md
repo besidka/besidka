@@ -3693,13 +3693,18 @@ policy text are unchanged; see "Open owner questions" below.
   the user must have asked in the current message), the compliance gate (the
   sensitive-topic classifier and the never-store detectors) and the call
   budget. Always allow removes the prompt, not these.
-- **Blocked.** A Blocked memory tool is not offered to the model at all (it
-  has no description to carry a sentence) and no approval entry is built for
-  it. The memory instructions block never names `memory_write`, so nothing
-  else changes.
+- **Blocked.** A Blocked memory tool is not offered to the model at all and no
+  approval entry is built for it. An absent tool has no description, so the
+  `memory_list` and `memory_read` descriptions carry one sentence instead
+  (`buildBlockedMemoryToolsSentence`): saving to or removing from memory is
+  turned off in the user's settings, tell them to change it in their memory
+  settings, and do not try again. The memory instructions block never names
+  `memory_write`, so nothing else changes. On resume, a Blocked tool has no
+  entry, so the replay denies it as a missing tool.
 - **Replay.** `resolveReplayPermissionMode` returns the user's current stored
   mode for the two names, so a tool set to Blocked after the user approved a
-  call is denied on resume. With a modes map given, a missing name fails
+  call is denied on resume (as `blocked` when its entry still exists, as
+  `missing-tool` once the send no longer offers it). With a modes map given, a missing name fails
   closed as blocked; without a map the mode stays `ask`.
 - **Prompt buttons.** The default prompt for the two memory tools now offers
   Allow once and Always allow (it offered once only). Other native writes

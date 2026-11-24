@@ -324,47 +324,51 @@ vi.mock('~~/server/utils/memory/tools/memory-tools', async () => {
     getMemoryTools: (input: Record<string, any>) => {
       return {
         tools: {
-          memory_write: withFollowUpTurn(tool({
-            description: 'Stub memory_write.',
-            inputSchema: z.object({ body: z.string() }),
-            async execute(
-              writeInput: { body: string },
-              options: { toolCallId?: string },
-            ) {
-              const call = {
-                toolCallId: options.toolCallId,
-                toolName: 'memory_write',
-                input: writeInput,
-              }
-              const isApproved = input.isApprovedByUser?.(call) === true
-              const isClearedBySetting
-                = input.consumeUserSettingCall?.(call) === true
+          ...(input.permissionModes?.memory_write === 'blocked'
+            ? {}
+            : {
+              memory_write: withFollowUpTurn(tool({
+                description: 'Stub memory_write.',
+                inputSchema: z.object({ body: z.string() }),
+                async execute(
+                  writeInput: { body: string },
+                  options: { toolCallId?: string },
+                ) {
+                  const call = {
+                    toolCallId: options.toolCallId,
+                    toolName: 'memory_write',
+                    input: writeInput,
+                  }
+                  const isApproved = input.isApprovedByUser?.(call) === true
+                  const isClearedBySetting
+                    = input.consumeUserSettingCall?.(call) === true
 
-              if (
-                input.budget?.untrustedResultSeen
-                && !isApproved
-                && !isClearedBySetting
-              ) {
-                throw Object.assign(new Error('Memory is locked.'), {
-                  status: 403,
-                })
-              }
+                  if (
+                    input.budget?.untrustedResultSeen
+                    && !isApproved
+                    && !isClearedBySetting
+                  ) {
+                    throw Object.assign(new Error('Memory is locked.'), {
+                      status: 403,
+                    })
+                  }
 
-              if (/\d{4} \d{4} \d{4} \d{4}/.test(writeInput.body)) {
-                throw Object.assign(new Error('Never stored.'), {
-                  status: 422,
-                })
-              }
+                  if (/\d{4} \d{4} \d{4} \d{4}/.test(writeInput.body)) {
+                    throw Object.assign(new Error('Never stored.'), {
+                      status: 422,
+                    })
+                  }
 
-              mocks.memoryWrites.push({
-                ...writeInput,
-                isApproved,
-                ...(isClearedBySetting ? { isClearedBySetting } : {}),
-              })
+                  mocks.memoryWrites.push({
+                    ...writeInput,
+                    isApproved,
+                    ...(isClearedBySetting ? { isClearedBySetting } : {}),
+                  })
 
-              return { action: 'created' }
-            },
-          })),
+                  return { action: 'created' }
+                },
+              })),
+            }),
         },
       }
     },
@@ -1857,36 +1861,36 @@ describe('tool approval continuation', () => {
       expect(mocks.memoryPermissionWrites).toEqual([])
     })
 
-    it('denies an approved memory write the user has since blocked',
-      async () => {
-        mocks.memoryToolsEnabled = true
+    it('denies an approved memory write the user has since blocked, which the '
+      + 'send no longer offers',
+    async () => {
+      mocks.memoryToolsEnabled = true
 
-        const paused = await pauseTurn({
-          servers: [linear],
-          tools: ['web_search'],
-          steps: [toolCallChunks('call-m', 'memory_write', {
-            body: 'Likes green tea',
-          })],
-        })
-
-        mocks.memoryModes = { memory_write: 'blocked', memory_forget: 'ask' }
-
-        const { doStream } = await request({
-          servers: [linear],
-          steps: [textChunks('Not saved.')],
-          body: answerBody(paused.messagePublicId, [{
-            approvalId: paused.approvalIds[0],
-            approved: true,
-          }]),
-        })
-
-        expect(mocks.memoryWrites).toEqual([])
-        expect(lastToolMessage(doStream).content[0].output).toEqual({
-          type: 'execution-denied',
-          reason: 'This tool is blocked in the user\'s settings, so the '
-            + 'action did not run.',
-        })
+      const paused = await pauseTurn({
+        servers: [linear],
+        tools: ['web_search'],
+        steps: [toolCallChunks('call-m', 'memory_write', {
+          body: 'Likes green tea',
+        })],
       })
+
+      mocks.memoryModes = { memory_write: 'blocked', memory_forget: 'ask' }
+
+      const { doStream } = await request({
+        servers: [linear],
+        steps: [textChunks('Not saved.')],
+        body: answerBody(paused.messagePublicId, [{
+          approvalId: paused.approvalIds[0],
+          approved: true,
+        }]),
+      })
+
+      expect(mocks.memoryWrites).toEqual([])
+      expect(lastToolMessage(doStream).content[0].output).toEqual({
+        type: 'execution-denied',
+        reason: TOOL_APPROVAL_DENIAL_TEXT['missing-tool'],
+      })
+    })
   })
 
   it('answers 404 when the stored call names another tool', async () => {

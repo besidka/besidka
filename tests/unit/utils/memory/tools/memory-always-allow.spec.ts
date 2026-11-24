@@ -244,6 +244,34 @@ describe('memory tools with Always allow', () => {
     ])
   })
 
+  it('tells the model through the read tools that saving or removing is '
+    + 'turned off, once, with no retry', () => {
+    const blockedWrite = createSend({ memory_write: 'blocked' })
+    const blockedBoth = createSend({
+      memory_write: 'blocked',
+      memory_forget: 'blocked',
+    })
+    const open = createSend({ memory_write: 'allow', memory_forget: 'ask' })
+    const descriptionOf = (
+      send: ReturnType<typeof createSend>,
+      toolName: string,
+    ) => (send.tools[toolName] as unknown as { description: string })
+      .description
+
+    for (const toolName of ['memory_list', 'memory_read']) {
+      expect(descriptionOf(blockedWrite, toolName)).toContain(
+        'Saving to memory is turned off in the user\'s settings',
+      )
+      expect(descriptionOf(blockedWrite, toolName)).toContain(
+        'do not try again',
+      )
+      expect(descriptionOf(blockedBoth, toolName)).toContain(
+        'Saving to memory and Removing from memory are turned off',
+      )
+      expect(descriptionOf(open, toolName)).not.toContain('turned off')
+    }
+  })
+
   it('offers all four tools without modes', () => {
     const send = createSend({})
 
