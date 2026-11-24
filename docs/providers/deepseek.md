@@ -216,8 +216,9 @@ Both `deepseek-flash` and `deepseek-v4-pro` now carry
   `{ provider: 'deepseek', query, billable, results: [{ title, url, snippet,
   summary, siteName?, date? }] }` — no dollar amount, since rates come only
   from config. `rerank_score`, `authority`, `site_icon` and `content` are
-  dropped. The per-turn call cap (`createExternalSearchBudget`, 8 calls) is
-  shared with Brave/Exa's pattern and also keeps parallel calls inside the
+  dropped. The per-turn call cap (`createExternalSearchBudget`, 8 calls through
+  `DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN`, unchanged when Brave and Exa moved to
+  12) follows Brave/Exa's pattern and also keeps parallel calls inside the
   5 QPS account limit; a non-2xx response or network failure throws, which
   becomes a `tool-error` part.
 - **Billing rule and rate.** $0.75 per 1,000 *successful* requests, where

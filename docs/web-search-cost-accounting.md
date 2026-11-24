@@ -810,8 +810,9 @@ same shape as `auto`.
 - **Timeout.** `lite` and `auto` keep the 15s request timeout; `deep` uses
   55s (`EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS`) because it is slower (9.25s
   observed, 4-15s documented); 55s stays under the tool loop's 60s
-  `TOOL_LOOP_TOOL_TIMEOUT_MS`, so the request timeout always fires first. Up to 3 calls per turn are covered by the
-  120s generation lease plus heartbeat.
+  `TOOL_LOOP_TOOL_TIMEOUT_MS`, so the request timeout always fires first. A
+  turn's calls (up to 12 over 8 tool steps, see "Searching over several
+  rounds") are covered by the 120s generation lease plus heartbeat.
 - **Telemetry.** `attributes.exaWebSearch.searchLevel` is logged; the tool
   output does not carry it (nothing consumes it, and it would bloat persisted
   parts and model context).
@@ -871,13 +872,14 @@ search call, so three guards sit next to it:
 
 - **Per-turn call cap.** A per-request `ExternalSearchBudget`
   (`server/utils/search/search-budget.ts`) is shared by the Brave and Exa
-  tool `execute`s. Past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8` the call
-  throws before any provider request, which the AI SDK turns into a
-  `tool-error` part. `getExternalSearchUsage` counts `tool-result` parts
-  only, so the rejected call adds neither a fetch nor a billed unit; a
-  turn that hits the cap records exactly 8 search units. The cap is needed
-  because one step can fan out parallel calls and Anthropic keeps tools
-  declared on the forced final step.
+  tool `execute`s. Past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 12` (8 until
+  BES-473) the call throws before any provider request, which the AI SDK
+  turns into a `tool-error` part. `getExternalSearchUsage` counts
+  `tool-result` parts only, so the rejected call adds neither a fetch nor a
+  billed unit; a turn that hits the cap records exactly 12 search units. The
+  cap is needed because one step can fan out parallel calls and Anthropic
+  keeps tools declared on the forced final step. The step budget that goes
+  with it is described next.
 - **Tag neutralization.** The continuation wraps results in
   `<untrusted_web_search_results>` and replaces every `<` and `>` in the
   wrapped text with `‹`/`›`. Stripping the tag name instead is bypassable
@@ -889,6 +891,115 @@ search call, so three guards sit next to it:
 
 A 400/422 from either provider maps to a non-transient "rejected the search
 request as invalid" error instead of "temporarily unavailable".
+
+### Searching over several rounds (BES-473)
+
+The owner asked for Brave and Exa to behave like the providers' built-in
+search: search, search, think, search again. Two separate caps decide how far
+one reply can go, and they were easy to mix up because the old numbers were
+close (3 and 8):
+
+| Cap | Constant | Value | What it bounds |
+| --- | --- | --- | --- |
+| Tool steps | `EXTERNAL_SEARCH_MAX_TOOL_STEPS` (`search-budget.ts`), applied by `resolveToolLoop()` through `ToolLoopBudget.externalSearchSteps` | 8 | Model round-trips that may call a tool. The loop adds one forced final step that answers (`maxSteps = 9`). |
+| Search calls | `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN` (`search-budget.ts`) | 12 | Provider requests in one reply, parallel calls included. The 13th call is a 429 `tool-error` before any request. |
+
+Before BES-473 the "3" the owner saw was the step budget
+(`TOOL_LOOP_MAX_TOOL_STEPS = 3`), not the call budget (8): Brave and Exa are
+function tools marked `withFollowUpTurn()`, and every web follow-up tool got 3
+steps. `TOOL_LOOP_MAX_TOOL_STEPS` is unchanged and still the budget of every
+other web follow-up tool (DeepSeek and Moonshot search). `resolveToolLoop()`
+gives the web family `externalSearchSteps` instead of 3 only when
+`web_search_brave` or `web_search_exa` is registered (names from
+`external-search-cost.ts`, `isExternalSearchToolName`); a send that also has
+chat-search, knowledge, skill, connector, Besidka or tool-index tools still adds
+their own steps on top. The chat route reads the same `maxSteps` for
+`forcedStepIndex`, so the forced answer step and the search-answer
+continuation follow the new cap. The continuation fallback stays bounded
+(24 results, 32,000 characters) however many rounds ran.
+
+The call cap sits above the step cap so a step can fan out a few parallel
+queries; it stays the guard against one step emitting dozens of calls. Both
+are ceilings, not targets, and there is no user setting in v1: the caps guard
+the user's own Brave or Exa key against a model that loops, a per-user
+override would be one more setting for a limit nobody hits on purpose. If it
+is ever wanted, it belongs next to `exaSearchLevel` in the web search menu,
+validated server-side against a hard maximum.
+
+The tool descriptions (`EXTERNAL_SEARCH_TOOL_GUIDANCE`) now tell the model to
+start with one broad query, search again when the results leave a gap, stop
+as soon as it can answer, and that a reply allows up to 12 searches. The
+Brave and Exa terms notes (no keeping results past a run) are unchanged: only
+the number of rounds in one reply grew, nothing is stored longer.
+
+**How each provider's search is limited**
+
+| Provider path | How it searches | Step budget | Call or query limit in code |
+| --- | --- | --- | --- |
+| Brave, Exa | Client function tools, `auto` tool choice | 8 tool steps + 1 final | 12 calls per message, `ExternalSearchBudget` |
+| DeepSeek | Client function tool `web_search` | 3 tool steps + 1 final | 8 calls per message (`DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN`, kept at 8 on purpose: a real turn used 7 and the Search API has a 5 QPS account limit) |
+| Moonshot AI | Client function tool for the Formula-API search | 3 tool steps + 1 final | none |
+| Anthropic | Provider-executed `webSearch_20250305({})`, `auto` tool choice | Runs inside one model step | No `maxUses` is set; only Anthropic's own server-side limits apply |
+| OpenAI | Provider-executed `webSearch({})` with a forced tool choice (unless code execution is also requested) | One step | No `maxToolCalls` provider option is set; OpenAI's own limits apply |
+| Google | Provider-executed `googleSearch({})`, exclusive on the send | One step | None set; Gemini decides how many queries one grounded step runs |
+| xAI | Provider-executed `webSearch({})`, exclusive when reasoning is off; otherwise `auto` | One step | The `maxTurns` provider option is not set |
+| Qwen | Request parameters `enable_search` with `search_strategy: 'agent'` | One step | Decided by DashScope |
+
+The provider-executed paths run inside one model step, so the step budget
+never limits how often they search within that step. Their searches are
+counted from provider output (`getWebSearchUsage`, Google grounding) and
+priced per search, not capped by Besidka. Raising Brave and Exa to 8 steps
+brings them closer to that behavior, not past it.
+
+**The real cost of extra steps is model tokens, not the search fee.** Every
+step re-sends the whole prompt plus every earlier tool result. With `H` the
+tokens sent on every step before any tool output (system prompt, history,
+tool declarations), `R` the tokens of one search result as the model reads it
+and `N` the number of requests (at most 9):
+
+- one call per step: input tokens = `9 x H + R x (0 + 1 + ... + 8)` =
+  `9 x H + 36 x R`;
+- worst case, all 12 calls in the first tool step and 8 more requests after
+  it: input tokens = `9 x H + 96 x R`.
+
+`R` is bounded by the result caps in the tools: Brave asks for at most 3,072
+content tokens per call (`BRAVE_SEARCH_MAX_TOKENS`, 1,024 per URL, 8 results),
+so about 3,400 with titles and URLs; Exa returns up to 10 results with 1,500
+characters of text each (`EXA_SEARCH_TEXT_MAX_CHARACTERS`), 15,000 characters,
+about 3,800 tokens for Latin text and 6,000 to 7,500 for Cyrillic (2 to 2.5
+characters per token). Taking `R = 4,000`, the results alone add 144,000 input
+tokens over the loop with one call per step and 384,000 in the worst case,
+against 24,000 and 96,000 with the old 3 steps and 8 calls (`4 x H + 6 x R`
+and `4 x H + 24 x R`). At $3 per million input tokens that is $0.43 and
+$1.15 uncached; at $10 per million, $1.44 and $3.84. Prompt caching lowers the
+re-sent part where the provider supports it (see `docs/providers/general.md`),
+but this document does not rely on it. The search fee itself is small by
+comparison: 12 searches are $0.06 on Brave ($5 per 1,000), $0.084 on Exa
+`auto` and $0.144 on Exa `deep`. Brave and Exa run on the user's own key, so
+all of this is billed to the user by the provider; the caps are a ceiling
+guard against a looping model, not a spending promise, and a typical reply
+uses one to three searches.
+
+**Time.** The loop's `TOOL_LOOP_TOTAL_TIMEOUT_MS` is 540 seconds for the whole
+send and `TOOL_LOOP_TOOL_TIMEOUT_MS` is 60 seconds per tool call; Brave's own
+request timeout is 10 seconds and Exa's is 15 seconds (`deep` 55 seconds). Nine
+requests fit in 540 seconds at 60 seconds each, so a reply that alternates a
+model step of up to about 45 seconds with a Brave or Exa `lite` or `auto` search
+fits. It does not fit when every step is a slow reasoning step plus an Exa
+`deep` search of 55 seconds (8 x (30 + 55) + 30 = 710 seconds). The timeouts
+were not changed. When the total limit fires, the stream ends with the visible
+`generation-time-limit` error and the partial reply is stored
+(`docs/chats/stuck-generation-guard.md`); the searches that already ran stay
+counted and billed, because their `tool-result` parts are in the stored steps,
+and the forced final answer step is not reached. The 120-second generation
+lease with its heartbeat keeps the run alive for the whole time.
+
+**What did not change.** Every call still passes `consumeExternalSearchCall`
+before the provider request, so a refused or failed call is a `tool-error`
+part, never a billed or counted search. The memory write lock
+(`presetMemoryWriteLock`) and the egress guard that refuses a web search after
+a private read are untouched; `untrustedResultSeen` is set by the preset for
+any requested web search, so more steps do not change when it is true.
 
 ### Candidates
 

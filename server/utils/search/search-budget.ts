@@ -1,9 +1,17 @@
 import { createError } from 'evlog'
 
-export const EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8
+export const EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 12
+export const EXTERNAL_SEARCH_MAX_TOOL_STEPS = 8
+export const DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN = 8
 
 export const EXTERNAL_SEARCH_LIMIT_MESSAGE = 'Search limit for this message '
   + 'reached; answer from the results already gathered.'
+
+export const EXTERNAL_SEARCH_TOOL_GUIDANCE = 'Start with one broad query '
+  + 'that covers the whole question. Search again to follow up, refine or '
+  + 'cover a separate part of the question when the results leave a gap, '
+  + 'and stop as soon as you can answer. A reply allows up to '
+  + `${EXTERNAL_SEARCH_MAX_CALLS_PER_TURN} searches.`
 
 export interface ExternalSearchBudget {
   maxCalls: number
@@ -15,7 +23,10 @@ export interface ExternalSearchBudget {
  * `execute`, so a single model step that fans out many parallel search calls
  * cannot multiply the provider requests the user is billed for. Create it
  * per request, never at module scope: a module-level counter would leak
- * across requests on a reused Worker isolate.
+ * across requests on a reused Worker isolate. The call cap
+ * (`EXTERNAL_SEARCH_MAX_CALLS_PER_TURN`) sits above the step cap
+ * (`EXTERNAL_SEARCH_MAX_TOOL_STEPS`, applied by `resolveToolLoop`) so a reply
+ * can search over several rounds and still fan out a few parallel queries.
  */
 export function createExternalSearchBudget(
   maxCalls: number = EXTERNAL_SEARCH_MAX_CALLS_PER_TURN,

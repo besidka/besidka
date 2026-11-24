@@ -411,7 +411,7 @@ searches (that accounting is name-based).
 **Loop cap.** Both tools carry `withFollowUpTurn()`, so a send that registers
 them runs the multi-step loop. `resolveToolLoop(tools, { chatSearchSteps })`
 computes the cap as `toolSteps + 1`, where `toolSteps` is
-`TOOL_LOOP_MAX_TOOL_STEPS` (3) if any non-chat follow-up tool is registered,
+`TOOL_LOOP_MAX_TOOL_STEPS` (3, or 8 when the web tool is Brave or Exa) if any non-chat follow-up tool is registered,
 plus 3 if chat tools are registered. Web only is 4 (unchanged), web plus chat
 is 7, chat only is 4. The forced answer step is `cap - 1`, and the route reads
 the same value for `forcedStepIndex`, so the forced answer step and the

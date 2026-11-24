@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
+import { EXTERNAL_SEARCH_MAX_TOOL_STEPS } from '~~/server/utils/search/search-budget'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -514,14 +515,14 @@ describe('Cloudflare gpt-oss search answer', () => {
   })
 
   it('sends a context-sized catalog max_tokens on every step so the continuation '
-    + 'answers after three searches', async () => {
+    + 'answers after the full search step budget', async () => {
     const {
       chatRequests,
       toolLoop,
       persistedText,
     } = await runCloudflareSearchSend(CONTEXT_LENGTH)
 
-    expect(chatRequests).toHaveLength(5)
+    expect(chatRequests).toHaveLength(EXTERNAL_SEARCH_MAX_TOOL_STEPS + 2)
     chatRequests.forEach((request) => {
       expect(request.max_tokens).toBeLessThanOrEqual(
         CONTEXT_LENGTH - CONTEXT_SAFETY_MARGIN_TOKENS,

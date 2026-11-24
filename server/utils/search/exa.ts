@@ -22,6 +22,7 @@ import {
 import {
   consumeExternalSearchCall,
   createExternalSearchBudget,
+  EXTERNAL_SEARCH_TOOL_GUIDANCE,
 } from '~~/server/utils/search/search-budget'
 import type {
   ExternalSearchBudget,
@@ -215,11 +216,9 @@ export async function getExaWebSearchTools(
       web_search_exa: withFollowUpTurn(tool({
         description: 'Search the web using Exa. Call this when '
           + 'the question depends on current information, recent events, '
-          + 'or anything you are not confident about. Start with one '
-          + 'broad query that covers the whole question; search again '
-          + 'only if the results are insufficient or the question has '
-          + 'clearly separate parts. Set freshness for news and recent '
-          + 'events.',
+          + `or anything you are not confident about. ${
+            EXTERNAL_SEARCH_TOOL_GUIDANCE
+          } Set freshness for news and recent events.`,
         inputSchema: z.object({
           query: z.string().min(1).max(EXA_SEARCH_QUERY_MAX_LENGTH),
           freshness: searchFreshnessSchema,

@@ -15,6 +15,7 @@ import {
 import {
   consumeExternalSearchCall,
   createExternalSearchBudget,
+  DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN,
 } from '~~/server/utils/search/search-budget'
 import type {
   ExternalSearchBudget,
@@ -263,12 +264,14 @@ async function executeDeepSeekSearch(
  * `server/utils/ai/tool-loop.ts`'s doc comment on why that would loop the
  * tool forever instead of answering. Every `execute` spends one call from
  * the per-request `searchBudget` before any provider request, so parallel
- * calls in one step cannot exceed `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN`
+ * calls in one step cannot exceed `DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN`
  * billable requests against DeepSeek's 5 QPS account limit.
  */
 export function getDeepSeekWebSearchTools(
   apiKey: string,
-  searchBudget: ExternalSearchBudget = createExternalSearchBudget(),
+  searchBudget: ExternalSearchBudget = createExternalSearchBudget(
+    DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN,
+  ),
   logger?: LoggerLike,
 ): FormattedTools {
   return {
