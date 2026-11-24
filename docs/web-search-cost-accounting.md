@@ -915,8 +915,21 @@ gives the web family `externalSearchSteps` instead of 3 only when
 chat-search, knowledge, skill, connector, Besidka or tool-index tools still adds
 their own steps on top. The chat route reads the same `maxSteps` for
 `forcedStepIndex`, so the forced answer step and the search-answer
-continuation follow the new cap. The continuation fallback stays bounded
-(24 results, 32,000 characters) however many rounds ran.
+continuation follow the new cap.
+
+**Open item: the continuation fallback keeps the oldest results.**
+`SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24` and
+`SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32,000` were sized for 3 searches of 8
+results. The fallback (Anthropic and Cloudflare paths, when the forced step
+still calls a tool) renders results in chronological order and stops at the
+first limit with "(Further search results omitted.)", so after a long run it
+answers from roughly the first three searches (24 results is 3 Exa calls of
+10 or 3 Brave calls of 8) and drops the later "search again" rounds. The
+normal path is unaffected: the model answers on the forced final step with
+every result in context. The constants are shared with chat, memory and
+knowledge results and were not changed here; the recommendation is a
+follow-up that keeps the newest results first or raises the limits for
+Brave and Exa runs.
 
 The call cap sits above the step cap so a step can fan out a few parallel
 queries; it stays the guard against one step emitting dozens of calls. Both
@@ -980,6 +993,12 @@ all of this is billed to the user by the provider; the caps are a ceiling
 guard against a looping model, not a spending promise, and a typical reply
 uses one to three searches.
 
+**Context window.** Twelve Exa results of 6,000 to 7,500 tokens each (Cyrillic)
+are about 90,000 tokens in one prompt, up from about 60,000 with 8 calls, so a
+gateway model with a small context window can overflow mid-loop. Nothing
+trims earlier results between steps; the send then ends with the provider's
+context error. This is an open question, not handled here.
+
 **Time.** The loop's `TOOL_LOOP_TOTAL_TIMEOUT_MS` is 540 seconds for the whole
 send and `TOOL_LOOP_TOOL_TIMEOUT_MS` is 60 seconds per tool call; Brave's own
 request timeout is 10 seconds and Exa's is 15 seconds (`deep` 55 seconds). Nine
@@ -989,9 +1008,10 @@ fits. It does not fit when every step is a slow reasoning step plus an Exa
 `deep` search of 55 seconds (8 x (30 + 55) + 30 = 710 seconds). The timeouts
 were not changed. When the total limit fires, the stream ends with the visible
 `generation-time-limit` error and the partial reply is stored
-(`docs/chats/stuck-generation-guard.md`); the searches that already ran stay
-counted and billed, because their `tool-result` parts are in the stored steps,
-and the forced final answer step is not reached. The 120-second generation
+(`docs/chats/stuck-generation-guard.md`); the searches that already ran are
+billed by Brave or Exa on the user's key, the forced final answer step is not
+reached, and whether Besidka's own usage record includes those searches on
+this path was not verified. The 120-second generation
 lease with its heartbeat keeps the run alive for the whole time.
 
 **What did not change.** Every call still passes `consumeExternalSearchCall`
