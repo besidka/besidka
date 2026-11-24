@@ -1,6 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
-import { defineComponent, h, shallowRef } from 'vue'
+import { computed, defineComponent, h, shallowRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AboutMeNotMigratedReason,
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   patchRequests: [] as Array<Record<string, unknown>>,
   patchError: null as null | Record<string, unknown>,
   patchResponse: {} as Record<string, unknown>,
+  activeFeatures: new Set<string>(),
 }))
 
 mockNuxtImport('useConfirm', () => mocks.confirm)
@@ -26,6 +27,17 @@ mockNuxtImport('useFetch', () => mocks.useFetch)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('refreshNuxtData', () => mocks.refreshNuxtData)
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useFeature', () => {
+  return (key: string) => {
+    return computed(() => {
+      return {
+        enabled: true,
+        active: mocks.activeFeatures.has(key),
+        variant: null,
+      }
+    })
+  }
+})
 
 enableAutoUnmount(afterEach)
 
@@ -58,6 +70,12 @@ const ExtraChecksStub = defineComponent({
   },
 })
 
+const ToolPermissionsStub = defineComponent({
+  setup() {
+    return () => h('div', { 'data-testid': 'memory-tool-permissions-stub' })
+  },
+})
+
 const CacheInfoStub = defineComponent({
   setup() {
     return () => h('div', { 'data-testid': 'memory-cache-info-stub' })
@@ -77,6 +95,7 @@ async function mountPage(
         ChatInputModelsTriggerPanel: PanelStub,
         ProfileMemoryCacheInfo: CacheInfoStub,
         ProfileMemoryExtraChecks: ExtraChecksStub,
+        ProfileMemoryToolPermissions: ToolPermissionsStub,
       },
     },
   })
@@ -111,6 +130,7 @@ describe('profile memory page', () => {
     mocks.patchRequests.length = 0
     mocks.patchError = null
     mocks.patchResponse = {}
+    mocks.activeFeatures = new Set()
 
     mocks.refreshNuxtData.mockReset()
     mocks.settingsRefresh.mockReset()
@@ -266,6 +286,31 @@ describe('profile memory page', () => {
       'memory-extra-checks-stub',
       'memory-cache-info-stub',
     ])
+  })
+
+  it('hides the saving-to-memory card without the tool-approvals flag',
+    async () => {
+      const wrapper = await mountPage()
+
+      expect(wrapper.find('[data-testid="memory-tool-permissions-stub"]')
+        .exists()).toBe(false)
+    })
+
+  it('shows the saving-to-memory card with the tool-approvals flag, before '
+    + 'the never-kept list', async () => {
+    mocks.activeFeatures = new Set(['tool-approvals'])
+
+    const wrapper = await mountPage()
+    const sections = wrapper.findAll(
+      '[data-testid="memory-tool-permissions-stub"], '
+      + '[data-testid="memory-never-kept-note"]',
+    )
+
+    expect(sections.map(section => section.attributes('data-testid')))
+      .toEqual([
+        'memory-tool-permissions-stub',
+        'memory-never-kept-note',
+      ])
   })
 
   it('passes the settings to the entries list', async () => {

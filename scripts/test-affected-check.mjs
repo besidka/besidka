@@ -1757,6 +1757,26 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
   ]
 
+  const memoryToolPermissionsTests = [
+    'tests/integration/api/memory-tool-permissions.spec.ts',
+    'tests/unit/components/Profile/Memory/ToolPermissions.spec.ts',
+    'tests/unit/composables/memory-tool-permissions.spec.ts',
+    'tests/unit/utils/memory/tools/memory-always-allow.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/integration/api/chats-memory.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/besidka-tools/permissions.spec.ts',
+    'tests/unit/pages/profile/memory.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+  ]
+
   const toolApprovalPolicyTests = [
     'tests/unit/utils/tool-approval-policy.spec.ts',
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
@@ -3821,6 +3841,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
       tests: toolPermissionsUiTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(memory-tool-permissions|tool-approval-policy)\.ts|server\/utils\/memory\/tools\/(permissions|permissions-route|memory-tools)\.ts|server\/utils\/tool-approval\/(policy|send|continuation)\.ts|server\/utils\/besidka-tools\/permissions\.ts|server\/api\/v1\/memory\/tool-permissions\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/memory-tool-permissions\.ts|app\/components\/Profile\/Memory\/ToolPermissions\.vue|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/utils\/tool-approval-step\.ts|app\/pages\/profile\/memory\.vue)$/,
+      tests: memoryToolPermissionsTests,
     },
     {
       pattern:

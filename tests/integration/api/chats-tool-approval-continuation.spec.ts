@@ -48,6 +48,11 @@ const mocks = vi.hoisted(() => ({
   failRateLimitRead: false,
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
+  memoryModes: { memory_write: 'ask', memory_forget: 'ask' } as Record<
+    string,
+    string
+  >,
+  memoryPermissionWrites: [] as Array<unknown[]>,
   claims: new Map<string, Record<string, any>>(),
   expiredClaimIds: [] as string[][],
   stopMarkerSet: false,
@@ -66,6 +71,13 @@ const mocks = vi.hoisted(() => ({
     chatSettings: [] as Array<Record<string, any>>,
     audit: [] as Array<Record<string, any>>,
     settlements: [] as Array<Record<string, any>>,
+  },
+}))
+
+vi.mock('~~/server/utils/memory/tools/permissions', () => ({
+  loadMemoryToolPermissionModes: async () => ({ ...mocks.memoryModes }),
+  setMemoryToolPermission: async (...args: unknown[]) => {
+    mocks.memoryPermissionWrites.push(args.slice(1, 3))
   },
 }))
 
@@ -319,13 +331,20 @@ vi.mock('~~/server/utils/memory/tools/memory-tools', async () => {
               writeInput: { body: string },
               options: { toolCallId?: string },
             ) {
-              const isApproved = input.isApprovedByUser?.({
+              const call = {
                 toolCallId: options.toolCallId,
                 toolName: 'memory_write',
                 input: writeInput,
-              }) === true
+              }
+              const isApproved = input.isApprovedByUser?.(call) === true
+              const isClearedBySetting
+                = input.consumeUserSettingCall?.(call) === true
 
-              if (input.budget?.untrustedResultSeen && !isApproved) {
+              if (
+                input.budget?.untrustedResultSeen
+                && !isApproved
+                && !isClearedBySetting
+              ) {
                 throw Object.assign(new Error('Memory is locked.'), {
                   status: 403,
                 })
@@ -337,7 +356,11 @@ vi.mock('~~/server/utils/memory/tools/memory-tools', async () => {
                 })
               }
 
-              mocks.memoryWrites.push({ ...writeInput, isApproved })
+              mocks.memoryWrites.push({
+                ...writeInput,
+                isApproved,
+                ...(isClearedBySetting ? { isClearedBySetting } : {}),
+              })
 
               return { action: 'created' }
             },
@@ -830,6 +853,8 @@ describe('tool approval continuation', () => {
     mocks.providerTools = {}
     mocks.failRateLimitRead = false
     mocks.memoryWrites = []
+    mocks.memoryModes = { memory_write: 'ask', memory_forget: 'ask' }
+    mocks.memoryPermissionWrites = []
     mocks.claims = new Map()
     mocks.updates = []
     mocks.expiredClaimIds = []
@@ -1700,6 +1725,169 @@ describe('tool approval continuation', () => {
         return part.toolCallId === 'call-card'
       })).toMatchObject({ state: 'output-error' })
     })
+
+  describe('Always allow for memory writes', () => {
+    it('saves after a requested web search with no approval card when the '
+      + 'tool is set to Always allow', async () => {
+      mocks.memoryToolsEnabled = true
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        tools: ['web_search'],
+        steps: [
+          toolCallChunks('call-m', 'memory_write', { body: 'Likes green tea' }),
+          textChunks('Saved.'),
+        ],
+      })
+
+      expect(paused.approvalIds).toEqual([])
+      expect(mocks.memoryWrites).toEqual([
+        {
+          body: 'Likes green tea',
+          isApproved: false,
+          isClearedBySetting: true,
+        },
+      ])
+      expect(paused.assistantParts.find((part: any) => {
+        return part.toolCallId === 'call-m'
+      })).toMatchObject({ state: 'output-available' })
+      expect(paused.assistantParts).toContainEqual(expect.objectContaining({
+        type: 'data-tool-grant',
+        data: expect.objectContaining({ toolCallId: 'call-m', scope: 'always' }),
+      }))
+    })
+
+    it('still asks on the default mode after a requested web search',
+      async () => {
+        mocks.memoryToolsEnabled = true
+
+        const paused = await pauseTurn({
+          servers: [linear],
+          tools: ['web_search'],
+          steps: [toolCallChunks('call-m', 'memory_write', {
+            body: 'Likes green tea',
+          })],
+        })
+
+        expect(paused.approvalIds).toHaveLength(1)
+        expect(paused.assistantParts).toContainEqual(expect.objectContaining({
+          type: 'data-tool-approval',
+          data: expect.objectContaining({
+            toolName: 'memory_write',
+            rememberOptions: ['once', 'always'],
+          }),
+        }))
+        expect(mocks.memoryWrites).toEqual([])
+      })
+
+    it('keeps the never-store gate on an Always allow write', async () => {
+      mocks.memoryToolsEnabled = true
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        tools: ['web_search'],
+        steps: [
+          toolCallChunks('call-card', 'memory_write', {
+            body: 'Card 4111 1111 1111 1111',
+          }),
+          textChunks('Not saved.'),
+        ],
+      })
+
+      expect(paused.approvalIds).toEqual([])
+      expect(mocks.memoryWrites).toEqual([])
+      expect(paused.assistantParts.find((part: any) => {
+        return part.toolCallId === 'call-card'
+      })).toMatchObject({ state: 'output-error' })
+    })
+
+    it('stores Always allow when the user answers Always allow on the card',
+      async () => {
+        mocks.memoryToolsEnabled = true
+
+        const paused = await pauseTurn({
+          servers: [linear],
+          tools: ['web_search'],
+          steps: [toolCallChunks('call-m', 'memory_write', {
+            body: 'Likes green tea',
+          })],
+        })
+
+        await request({
+          servers: [linear],
+          steps: [textChunks('Saved.')],
+          body: answerBody(paused.messagePublicId, [{
+            approvalId: paused.approvalIds[0],
+            approved: true,
+            remember: 'always',
+          }]),
+        })
+
+        expect(mocks.memoryWrites).toEqual([
+          { body: 'Likes green tea', isApproved: true },
+        ])
+        expect(mocks.memoryPermissionWrites).toEqual([
+          ['memory_write', 'allow'],
+        ])
+      })
+
+    it('stores nothing when the user answers once', async () => {
+      mocks.memoryToolsEnabled = true
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        tools: ['web_search'],
+        steps: [toolCallChunks('call-m', 'memory_write', {
+          body: 'Likes green tea',
+        })],
+      })
+
+      await request({
+        servers: [linear],
+        steps: [textChunks('Saved.')],
+        body: answerBody(paused.messagePublicId, [{
+          approvalId: paused.approvalIds[0],
+          approved: true,
+          remember: 'once',
+        }]),
+      })
+
+      expect(mocks.memoryPermissionWrites).toEqual([])
+    })
+
+    it('denies an approved memory write the user has since blocked',
+      async () => {
+        mocks.memoryToolsEnabled = true
+
+        const paused = await pauseTurn({
+          servers: [linear],
+          tools: ['web_search'],
+          steps: [toolCallChunks('call-m', 'memory_write', {
+            body: 'Likes green tea',
+          })],
+        })
+
+        mocks.memoryModes = { memory_write: 'blocked', memory_forget: 'ask' }
+
+        const { doStream } = await request({
+          servers: [linear],
+          steps: [textChunks('Not saved.')],
+          body: answerBody(paused.messagePublicId, [{
+            approvalId: paused.approvalIds[0],
+            approved: true,
+          }]),
+        })
+
+        expect(mocks.memoryWrites).toEqual([])
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: 'This tool is blocked in the user\'s settings, so the '
+            + 'action did not run.',
+        })
+      })
+  })
 
   it('answers 404 when the stored call names another tool', async () => {
     const paused = await pauseCreateIssue()

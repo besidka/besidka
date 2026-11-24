@@ -39,6 +39,20 @@ const mocks = vi.hoisted(() => ({
   memoryToolsInputs: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
   activeFlags: new Set<string>(),
+  memoryModes: { memory_write: 'ask', memory_forget: 'ask' } as Record<
+    string,
+    string
+  >,
+  loadMemoryModes: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/memory/tools/permissions', () => ({
+  loadMemoryToolPermissionModes: async (...args: unknown[]) => {
+    mocks.loadMemoryModes(...args)
+
+    return { ...mocks.memoryModes }
+  },
+  setMemoryToolPermission: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/features/send-features', () => ({
@@ -554,6 +568,7 @@ describe('memory send-path wiring', () => {
     mocks.chatSearchToolsInputs = []
     mocks.memoryToolsInputs = []
     mocks.activeFlags = new Set()
+    mocks.memoryModes = { memory_write: 'ask', memory_forget: 'ask' }
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('getRequestURL', () => {
@@ -1339,6 +1354,28 @@ describe('memory send-path wiring', () => {
     })
   })
 
+  describe('with the tool-approvals flag off', () => {
+    it('reads no stored memory modes and ignores a stored Always allow',
+      async () => {
+        mocks.memoryModes = { memory_write: 'allow', memory_forget: 'allow' }
+
+        await runSend({
+          tools: ['web_search_brave'],
+          scenario: { settings: MEMORY_ON },
+          steps: [createTextChunks('Hi.')],
+        })
+
+        expect(mocks.loadMemoryModes).not.toHaveBeenCalled()
+        expect(mocks.memoryToolsInputs[0]).not.toHaveProperty('permissionModes')
+        expect(mocks.memoryToolsInputs[0]).not.toHaveProperty(
+          'consumeUserSettingCall',
+        )
+        expect(mocks.memoryToolsInputs[0]).not.toHaveProperty(
+          'asksForApproval',
+        )
+      })
+  })
+
   describe('with the tool-approvals flag on', () => {
     beforeEach(() => {
       mocks.activeFlags = new Set(['tool-approvals'])
@@ -1382,6 +1419,67 @@ describe('memory send-path wiring', () => {
           reason: 'untrusted-output',
         }),
       }))
+    })
+
+    it('hands the memory tools the stored modes and the single-use '
+      + 'setting check', async () => {
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'blocked' }
+
+      await runSend({
+        scenario: { settings: MEMORY_ON },
+        steps: [createTextChunks('Hi.')],
+      })
+
+      expect(mocks.memoryToolsInputs).toHaveLength(1)
+      expect(mocks.memoryToolsInputs[0]).toEqual(expect.objectContaining({
+        asksForApproval: true,
+        permissionModes: { memory_write: 'allow', memory_forget: 'blocked' },
+        consumeUserSettingCall: expect.any(Function),
+        isApprovedByUser: expect.any(Function),
+      }))
+    })
+
+    it('runs a memory_write with no approval card after a requested web '
+      + 'search when it is set to Always allow', async () => {
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
+
+      const { doStream, assistantInsert } = await runSend({
+        tools: ['web_search_brave'],
+        scenario: { settings: MEMORY_ON },
+        steps: [
+          createToolCallChunks('call-1', 'memory_write', { title: 'Pasta' }),
+          createTextChunks('Saved.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(parts.find((part: any) => part.toolCallId === 'call-1'))
+        .toEqual(expect.objectContaining({
+          type: 'tool-memory_write',
+          state: 'output-available',
+        }))
+      expect(parts.some((part: any) => {
+        return part.type === 'data-tool-approval'
+      })).toBe(false)
+    })
+
+    it('still asks for memory_forget after a requested web search when only '
+      + 'memory_write is set to Always allow', async () => {
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
+
+      const { assistantInsert } = await runSend({
+        tools: ['web_search_brave'],
+        scenario: { settings: MEMORY_ON },
+        steps: [
+          createToolCallChunks('call-1', 'memory_forget', { id: 'topics/a' }),
+          createTextChunks('Never reached.'),
+        ],
+      })
+
+      expect((assistantInsert?.parts ?? []).find((part: any) => {
+        return part.toolCallId === 'call-1'
+      })).toEqual(expect.objectContaining({ state: 'approval-requested' }))
     })
 
     it('asks before a memory_write when the send requested web search',

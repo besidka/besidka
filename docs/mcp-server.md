@@ -1554,6 +1554,16 @@ and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
    only lower access (set Blocked or Needs approval, never Always allow) and
    a user names a workflow that needs it.
 
+   The same holds for the memory write permissions (BES-470, BES-472): the
+   Blocked, Needs approval and Always allow mode of `memory_write` and
+   `memory_forget`, stored as two rows in `besidka_tool_permissions` and set
+   on `/profile/memory`. They are not exposed either: not in `get_settings` or
+   `update_settings`, not in the Besidka tools registry and not as a tool, and
+   `config/mcp-surface.json` is unchanged (a spec asserts that no
+   memory-permission text appears in it). An agent that could set Always allow
+   could lift the approval that stops web or file content from steering what
+   is saved to memory. See `docs/memory-architecture.md`, section 3.21.
+
 9. **Enabling a connector, starting its sign-in, entering secrets and
    "Always allow" on tools** (C-9, 4.0.0). The connector tools can list,
    add (switched off), turn tools off or back to ask, and delete. They

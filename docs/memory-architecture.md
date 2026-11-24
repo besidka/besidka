@@ -5,6 +5,7 @@ Status: **proposal**, 2026-10-24, **implemented on `feat/memory-p3`** as of
 notes in 3.3 and 3.10 to 3.16 and section 5 record W1-W6c, 3.17 records the
 2026-10-26 security audit of the memory feature, 3.18 the "tell Besidka what to
 remember" editor, 3.19 the TypeSafe AI (Jev) checks and their delta audit, and
+3.21 the Always allow setting for the memory write tools, and
 the decision log (section 7) records the owner decisions after W6. Project
 knowledge (3.6) is documented in `docs/project-knowledge-design.md`.
 Decisions marked **(owner)** are
@@ -3642,6 +3643,111 @@ for past.dev.
 - **Expectation gap.** The setting governs memory entries only; chat search
   across projects already works. The copy and the guide have to say so.
 
+### 3.21 Always allow for memory writes (BES-470, BES-472, 2026-11-24)
+
+The owner wanted the same Blocked, Needs approval and Always allow choice for
+memory that connectors and Besidka tools have, and did not want the approval
+card "Because this message read content from the web" to block a memory save
+after a web search. Engineer-drafted, not lawyer-reviewed. The consent and
+policy text are unchanged; see "Open owner questions" below.
+
+- **Two rows, per tool.** `memory_write` and `memory_forget`, modes `blocked`,
+  `ask` and `allow`, default `ask` (no row). Reading memory (`memory_list`,
+  `memory_read`) has no setting and never asks. One mode covers account and
+  project memory, because the scope is an argument of the call, not a
+  separate tool. This is a v1 decision for the owner to confirm.
+- **Storage and gate.** The rows live in `besidka_tool_permissions` with
+  `tool_name` set to `memory_write` or `memory_forget`: no migration and no
+  schema change. The Besidka tool loader, resolver and panel resolve registry
+  names only, so they never list these names and read them as unknown
+  (Blocked); `/api/v1/besidka-tools/permissions` still answers 400 for them.
+  The setting is tied to the `tool-approvals` flag, not to `besidka-tools`.
+  Routes: `GET` and `PUT /api/v1/memory/tool-permissions` (PUT body
+  `{ tool, mode }`, strict object, same-origin write guard, session, 404
+  without the flag, 60 writes per minute per user, fail closed without KV,
+  1 KiB body cap). The chat route reads the stored modes only when tool
+  approvals are active and the memory write tools are offered (the user
+  message has text). The account purge deletes the rows with the user's
+  others (`purgeUserToolApprovals`), and the post-restore reset of `allow` to
+  `ask` already covers them (`docs/d1-restore-reconciliation.md`, "Tool
+  approvals").
+- **Policy rule 12.** In `resolveNativeApproval`, a memory write tool set to
+  `allow` returns allowed (rule 12) before the taint check of rule 2, so web,
+  file, knowledge and shared-branch taint no longer ask. This applies the
+  owner rule of 2026-11-20 that the user's grant wins over taint
+  (`docs/connectors.md`, section 7.12) to the two native memory tools. `blocked`
+  is denied by rule 0. Without the setting nothing changes: rule 2 asks
+  `untrusted-output` after any taint. The number 12 was chosen so it never
+  collides with the rule 11 the Google umbrella branch adds.
+- **The second lock and how it is lifted.** `assertNoUntrustedContentSeen` in
+  `memory-tools.ts` still throws unless the call is `approvedByUser`, and the
+  chat route still presets `untrustedResultSeen` through
+  `presetMemoryWriteLock` for a send that requests web search. A rule-12
+  decision records a single-use per-call signal (`consumeUserSettingCall`,
+  keyed by tool call id, tool name and canonical input, consumed by the first
+  check) that lifts the lock for that one call only. `untrustedResultSeen` is
+  never flipped globally, so a second call with another id or input is still
+  locked. `writesLocked` in the chat route is telemetry only (an Axiom
+  attribute).
+- **What stays on every call.** The quote check (`assertUserRequestQuote`:
+  the user must have asked in the current message), the compliance gate (the
+  sensitive-topic classifier and the never-store detectors) and the call
+  budget. Always allow removes the prompt, not these.
+- **Blocked.** A Blocked memory tool is not offered to the model at all (it
+  has no description to carry a sentence) and no approval entry is built for
+  it. The memory instructions block never names `memory_write`, so nothing
+  else changes.
+- **Replay.** `resolveReplayPermissionMode` returns the user's current stored
+  mode for the two names, so a tool set to Blocked after the user approved a
+  call is denied on resume. With a modes map given, a missing name fails
+  closed as blocked; without a map the mode stays `ask`.
+- **Prompt buttons.** The default prompt for the two memory tools now offers
+  Allow once and Always allow (it offered once only). Other native writes
+  (artifacts, documents) stay once only. Answering Always allow on the card
+  sets the stored mode to `allow`, the same as a Besidka tool's Always allow
+  (`applyMemoryRememberGrant`). The card tooltip reads "Runs without asking in
+  every chat, also after web search or files. Change it in Memory settings."
+- **Tool description.** A third variant for Always allow: the call runs
+  without asking, also after web search or files, and the model should still
+  call it only when the user asked in the current message.
+- **UI.** The card "Saving to memory" on `/profile/memory`, visible only with
+  the `tool-approvals` flag: one three-icon radio group per tool, the line
+  "Reading memory never asks." and, for Always allow, the warning that the
+  model can save and remove without asking, also after the web or files, that
+  text from those sources can shape what gets saved when the user asks for a
+  save, and that saved memory is sent to the model in later chats. No new
+  profile page, so no tab and no search-popup row.
+- **Not done in v1.** The chat panel Approvals section does not list the
+  memory Always allow rows. There is no MCP exposure: the permissions are not
+  in `get_settings` or `update_settings`, not in the Besidka tools registry
+  and not a new tool, `config/mcp-surface.json` is unchanged and a spec
+  asserts no memory-permission text appears in it
+  (`docs/mcp-server.md`, "What MCP does not do", item 8).
+- **Legal impact.** With Always allow, text from web results or files can
+  influence what the model saves when the user asks for a save, and saved
+  memory is later sent to the model provider. No new purpose and no new
+  recipient. Mitigations that stay: the quote gate, the sensitive-topic check
+  and never-store list on every save, a per-tool opt-in that is off by
+  default, and the warning in the UI. Records: `docs/legal/dpia.md` risk row 75,
+  `docs/legal/art30-record.md` row 7 and `docs/legal-memory-sensitive-data.md`
+  (2026-11-24). Whether the Privacy Policy needs a notice is the owner's
+  decision. None was drafted or scheduled.
+
+**Open owner questions (nothing was relaxed).**
+
+1. **Egress guard after a memory read.** `memory_list` and `memory_read` are
+   classified `readsPrivateData` and record the `besidka` read source. After
+   any private read the egress guard (`listWithheldProviderTools`,
+   `guardWebSearch` and `WEB_SEARCH_AFTER_PRIVATE_READ_TEXT` in
+   `server/utils/tool-approval/send.ts`) withholds web search from later
+   steps of that message and refuses Brave and Exa calls, so a memory read
+   followed by a search in the same message stops searching. This is separate
+   from the write approval, is intended egress protection and was left
+   unchanged. Whether to relax it (for example by not counting a memory read
+   as private for Brave and Exa) is for the owner.
+2. **One mode for account and project memory.** Splitting it needs a
+   per-scope row name and a second control; v1 keeps one.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
@@ -3669,6 +3775,11 @@ and the workstream names did not map one to one onto them:
 | P1 | W1 #500, W2 #501 | Project-memory fixes and `search_chats` / `read_chat` |
 | P2 | umbrella `feat/memory-p2`: W3 #508, W5 part 1 #509, W6 #510, W4 #511, W5 part 2 #514; then #515 to #521 and #523, #524 | Contract and gate, backend, extraction sweep, the Memory tab, removal of the sensitive opt-in (#515, #516), project memory as entries (#517, #518), About me as a profile entry (#519), rich entries with backfill and import (W6c, #520, #521), opt-in extraction (#523, #524) |
 | P3 | umbrella `feat/memory-p3`: K0 #522, K1 #525, K2 #526, K3 #527, then #532 to #560 | Project knowledge (W7), Claude-parity and client-only extraction (#532), the two 2026-10-26 audits (#533, #534, #535, #536), per-chat exclusion (#542), "tell Besidka what to remember" (#543), open backend items (#544), the consent gate (#545, #547), the TypeSafe AI key and memory checks (#549), the `/memory` guide (#550), and the Jev roles J0 to J6 with their delta audit (#552 to #555, #557 to #560) |
+
+Later addition (2026-11-24, BES-470 and BES-472): the per-tool
+Blocked, Needs approval and Always allow setting for `memory_write` and
+`memory_forget` (3.21), built on the tool approval policy, with no schema
+change.
 
 W5 (the Memory tab) landed inside P2, not P3; W8 (data rights) was spread over
 W4, W6c, the audits and #542 rather than built as one workstream. The
@@ -4263,3 +4374,31 @@ migration `20261030194122_project_memory_auto_update`, only `ALTER TABLE ...
 ADD`), and a partial index for the override arm (second migration
 `20261030202204_black_elektra`, `CREATE INDEX idx_projects_auto_update_on ON
 projects (user_id) WHERE memory_auto_update = 'on'`).
+
+### Always allow for memory writes (engineering, 2026-11-24)
+
+**Decision.** `memory_write` and `memory_forget` each get a stored mode
+(`blocked`, `ask`, `allow`, default `ask`) in `besidka_tool_permissions`, and
+a tool set to `allow` runs without the "untrusted-output" prompt after web,
+file, knowledge or shared-branch content (policy rule 12). Design and
+mechanics are in 3.21.
+
+**Why.** The owner rule of 2026-11-20 (`docs/connectors.md`, section 7.12) is
+that the user's own grant wins over taint, and the same screen of choices
+exists for connectors and Besidka tools. The prompt after a web search made
+"remember this" unusable in a chat that searched.
+
+**What does not change.** The default stays ask. The quote gate, the
+sensitive-topic gate, the never-store list and the call budget run on every
+call. The write lock is lifted per call by a single-use signal, never
+globally. Nothing is exposed over MCP.
+
+**Residual risk.** With Always allow, text from the web or a file can shape
+what gets saved when the user asks for a save, and saved memory is sent to
+the model provider in later chats. Accepted for users who opt in per tool.
+`docs/legal/dpia.md` risk row 75.
+
+**Open for the owner.** Confirm one mode for account and project memory.
+Decide whether to relax the egress guard that withholds web search after a
+memory read (3.21, "Open owner questions"). Decide whether the Privacy Policy
+needs a notice: none was drafted or scheduled.

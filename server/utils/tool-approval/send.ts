@@ -106,8 +106,9 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * hash it was given for, so a changed tool no longer matches; since the
  * owner decision of 2026-11-20 they run the call before any rule about
  * outside content, a source switch or the always-ask tier.
- * `permissionMode` is the user's mode for a Besidka tool (Blocked, Needs
- * approval, Always allow); every other tool is decided as `ask`.
+ * `permissionMode` is the user's mode for a Besidka tool or for
+ * `memory_write` and `memory_forget` (Blocked, Needs approval, Always
+ * allow); every other tool is decided as `ask`.
  * `summarize` writes the summary of one call from its input (a Besidka
  * tool's registry summarizer); without it every call shows `summary`.
  * `describe` writes a fuller summary with one lookup (the titles of the
@@ -195,6 +196,7 @@ export interface SendToolApproval {
   guardNativeWrites: (tools: ToolSet | undefined) => ToolSet | undefined
   canAsk: () => boolean
   consumeClearedCall: (call: ClearedCallCheck) => boolean
+  consumeUserSettingCall: (call: ClearedCallCheck) => boolean
   markApprovedByUser: (call: ApprovedCall) => void
   isApprovedByUser: (call: ClearedCallCheck) => boolean
   consumeApprovedCall: (toolCallId: string) => void
@@ -491,9 +493,38 @@ export function buildConnectorApprovalEntry(input: {
 }
 
 /**
+ * The entry of `memory_write` or `memory_forget` with the user's stored mode
+ * for it, so rule 12 can let a call the user set to Always allow run.
+ */
+export function buildMemoryApprovalEntry(
+  toolName: string,
+  permissionMode: ToolPermissionMode,
+): SendToolEntry {
+  return { ...buildNativeApprovalEntry(toolName), permissionMode }
+}
+
+/**
+ * The extra approval entries for the memory write tools the send offers,
+ * each with the user's stored mode. A Blocked tool is not offered, so it gets
+ * no entry.
+ */
+export function buildMemoryApprovalEntries(
+  modes: Partial<Record<string, ToolPermissionMode>> | undefined,
+): Array<[string, SendToolEntry]> {
+  return Object.entries(modes ?? {}).flatMap(([toolName, mode]) => {
+    if (!mode || mode === 'blocked') {
+      return []
+    }
+
+    return [[toolName, buildMemoryApprovalEntry(toolName, mode)]]
+  })
+}
+
+/**
  * Which of the user's own grants let a call run without asking: `chat` for
  * rule 7, `always` for rule 6 (a connector "always" grant or a Besidka tool
- * set to Always allow). Null when no grant decided it.
+ * set to Always allow) and rule 12 (a memory tool set to Always allow). Null
+ * when no grant decided it.
  */
 function userGrantScopeOf(
   decision: ToolApprovalDecision,
@@ -502,7 +533,7 @@ function userGrantScopeOf(
     return 'chat'
   }
 
-  return decision.rule === 6 ? 'always' : null
+  return decision.rule === 6 || decision.rule === 12 ? 'always' : null
 }
 
 function policyDenialKind(
@@ -582,6 +613,7 @@ export function createSendToolApproval(input: {
   const entries = new Map<string, SendToolEntry>()
   const clearedCalls = new Map<string, ClearedCall>()
   const approvedCalls = new Map<string, ClearedCall>()
+  const userSettingCalls = new Map<string, ClearedCall>()
 
   function matchesApprovedCall(call: ClearedCallCheck): boolean {
     if (typeof call.toolCallId !== 'string') {
@@ -736,6 +768,13 @@ export function createSendToolApproval(input: {
         grantedCalls.set(toolCall.toolCallId, grantScope)
       }
 
+      if (decision.rule === 12) {
+        userSettingCalls.set(toolCall.toolCallId, {
+          toolName: toolCall.toolName,
+          inputJson: toInputJson(toolCall.input),
+        })
+      }
+
       recordRun(entry)
 
       return 'not-applicable'
@@ -800,6 +839,32 @@ export function createSendToolApproval(input: {
     }
 
     clearedCalls.delete(call.toolCallId)
+
+    return true
+  }
+
+  /**
+   * Whether the call was cleared by the user's own setting (rule 12: a
+   * memory tool set to Always allow), with the same tool call id, name and
+   * input. Single use: the first check that matches uses it up, so it lifts
+   * the memory write lock for that one call and no other.
+   */
+  function consumeUserSettingCall(call: ClearedCallCheck): boolean {
+    if (typeof call.toolCallId !== 'string') {
+      return false
+    }
+
+    const cleared = userSettingCalls.get(call.toolCallId)
+
+    if (
+      !cleared
+      || cleared.toolName !== call.toolName
+      || cleared.inputJson !== toInputJson(call.input)
+    ) {
+      return false
+    }
+
+    userSettingCalls.delete(call.toolCallId)
 
     return true
   }
@@ -943,6 +1008,7 @@ export function createSendToolApproval(input: {
     guardNativeWrites,
     canAsk,
     consumeClearedCall,
+    consumeUserSettingCall,
     markApprovedByUser: (call) => {
       const approved = {
         toolName: call.toolName,

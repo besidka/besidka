@@ -309,7 +309,19 @@ describe('approval copy', () => {
       'Runs without asking in every chat. Change it in Tool permissions.',
     )
     expect(getAlwaysAllowHint(false)).toContain('until the tool changes')
+    expect(getAlwaysAllowHint(false, 'create_artifact'))
+      .toContain('until the tool changes')
   })
+
+  it('points the Always allow tooltip of a memory tool at Memory settings',
+    () => {
+      for (const toolName of ['memory_write', 'memory_forget']) {
+        expect(getAlwaysAllowHint(false, toolName)).toBe(
+          'Runs without asking in every chat, also after web search or '
+          + 'files. Change it in Memory settings.',
+        )
+      }
+    })
 
   it('names the user\'s Besidka data as the source after a Besidka read',
     () => {

@@ -266,7 +266,7 @@ function getButtonHint(remember: ToolApprovalRemember): string | undefined {
   }
 
   return remember === 'always'
-    ? getAlwaysAllowHint(props.model.isBesidka)
+    ? getAlwaysAllowHint(props.model.isBesidka, props.model.tool)
     : undefined
 }
 

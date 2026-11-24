@@ -18,6 +18,7 @@ import {
   BESIDKA_TOOL_NAME_PREFIX,
   isBesidkaChatToolName,
 } from '#shared/utils/besidka-tool-permissions'
+import { isMemoryPermissionToolName } from '#shared/utils/memory-tool-permissions'
 import { formatConnectorArguments } from '~/utils/connector-step'
 
 export type ApprovalStepState
@@ -306,7 +307,15 @@ export function humanizeBesidkaToolName(tool: string): string {
  * The tooltip of the "Always allow" button. One click answers; there is no
  * second confirmation (owner decision of 2026-11-20).
  */
-export function getAlwaysAllowHint(isBesidka: boolean): string {
+export function getAlwaysAllowHint(
+  isBesidka: boolean,
+  toolName = '',
+): string {
+  if (isMemoryPermissionToolName(toolName)) {
+    return 'Runs without asking in every chat, also after web search or '
+      + 'files. Change it in Memory settings.'
+  }
+
   return isBesidka
     ? 'Runs without asking in every chat. Change it in Tool permissions.'
     : 'Runs without asking in every chat until the tool changes. '

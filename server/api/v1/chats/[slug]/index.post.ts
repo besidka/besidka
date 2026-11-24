@@ -245,6 +245,8 @@ import {
   presetMemoryWriteLock,
 } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
+import { isMemoryPermissionToolName } from '#shared/utils/memory-tool-permissions'
+import { loadMemoryToolPermissionModes } from '~~/server/utils/memory/tools/permissions'
 import {
   buildPastChatChipPart,
   resolvePastChatPreRetrieval,
@@ -467,6 +469,7 @@ import {
 } from '~~/server/utils/tool-approval/kv'
 import { useToolApprovalSecret } from '~~/server/utils/tool-approval/secret'
 import {
+  buildMemoryApprovalEntries,
   chatHasAwaitingApproval,
   createSendToolApproval,
   createToolApprovalStreamCollector,
@@ -1977,6 +1980,13 @@ export default defineEventHandler(async (event) => {
       ? chat.project.memoryStatus === 'disabled'
       : null
 
+  const memoryPermissionModes = toolApprovalsActive
+    && chatSearchBudget
+    && memoryToolsRegistered
+    && userMessageText !== null
+    ? await loadMemoryToolPermissionModes(userId, db)
+    : undefined
+
   if (chatSearchBudget && memoryToolsRegistered) {
     const { tools: memoryTools } = getMemoryTools({
       db,
@@ -1991,7 +2001,9 @@ export default defineEventHandler(async (event) => {
       ...(toolApprovalsActive
         ? {
           isApprovedByUser: toolApprovalSend.isApprovedByUser,
+          consumeUserSettingCall: toolApprovalSend.consumeUserSettingCall,
           asksForApproval: true,
+          permissionModes: memoryPermissionModes,
         }
         : {}),
       logger: aiLogger,
@@ -2534,6 +2546,7 @@ export default defineEventHandler(async (event) => {
           ...besidkaToolsRun?.approvalEntries ?? [],
           ...connectorsRun?.approvalEntries ?? [],
           ...skillScriptsRun.gate.approvalEntries,
+          ...buildMemoryApprovalEntries(memoryPermissionModes),
         ]),
       )
       parsedTools = {
@@ -2570,11 +2583,22 @@ export default defineEventHandler(async (event) => {
           .resolveBesidkaPermissionModes(userId, besidkaToolNames, db)
         : undefined
 
+      const hasMemoryAnswers = resume.loaded.answers.some((answer) => {
+        return isMemoryPermissionToolName(answer.record.toolName)
+      })
+      const memoryReplayModes = hasMemoryAnswers
+        ? memoryPermissionModes ?? await loadMemoryToolPermissionModes(
+          userId,
+          db,
+        )
+        : undefined
+
       resumeDecisions = decideContinuation({
         answers: resume.loaded.answers,
         entries: toolApprovalSend.entries,
         state: resume.loaded.state,
         besidkaPermissionModes,
+        memoryPermissionModes: memoryReplayModes,
       })
 
       const resumedMessages = buildResumedAssistantMessages({

@@ -3135,6 +3135,18 @@ section 7.11 for connector and Besidka tools:
   tool the user always allowed, and it runs without a prompt. Every such run
   shows "Ran without asking" with Manage, and the chat panel lists the
   grants. Legal documents and notices are not changed here.
+- **Native memory tools (BES-470, BES-472, 2026-11-24).** The two native
+  memory write tools, `memory_write` and `memory_forget`, got the same user
+  grant rule: set to Always allow on `/profile/memory`, they run before the
+  untrusted-output check (policy rule 12), so a web search or a file in the
+  message no longer makes the card ask. This is the one exception to "native
+  prompts still offer Allow once only": their prompt also offers Always
+  allow. The accepted-risk framing is the same as above: content from the web
+  or a file can steer what the model saves when the user asks for a save, and
+  it saves without a prompt. What remains enforced on every call: the Blocked
+  state, the user-request quote check, the sensitive-topic and never-store
+  gates and the call budget; the memory write lock is lifted for that single
+  call only. Details: `docs/memory-architecture.md`, section 3.21.
 - **Tests.** `policy.spec.ts` ("is lifted by Allow, an always grant or a
   chat grant", "never lifts the always-ask tier with a default grant"),
   `send.spec.ts`, `continuation.spec.ts` ("grants a destructive tool bound to

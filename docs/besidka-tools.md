@@ -53,6 +53,16 @@ no foreign key. `purgeUserToolApprovals` deletes it with the account, and a
 whole-database restore resets every `allow` to `ask`
 (`docs/d1-restore-reconciliation.md`).
 
+The same table also holds two rows that are not Besidka tools:
+`memory_write` and `memory_forget` (BES-470, BES-472), the user's mode for the
+native memory write tools. They never appear in this registry, in the Labs
+panel or behind the `besidka-tools` opt-in: the loader, resolver and panel
+resolve registry names only, so they read these names as unknown (Blocked) and
+never list them, and the routes below still answer 400 for them. They are set
+on `/profile/memory`, through `GET` and `PUT /api/v1/memory/tool-permissions`,
+and are tied to the `tool-approvals` flag. Design, policy rule 12 and the open
+questions are in `docs/memory-architecture.md`, section 3.21.
+
 ## Routes
 
 Both are owner-only (the session user; there is no user id in the request),
