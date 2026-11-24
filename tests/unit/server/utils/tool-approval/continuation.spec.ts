@@ -897,7 +897,9 @@ describe('memory tool permissions on replay and Always allow', () => {
         toolName,
         connectorId: null,
         definitionHash: null,
-        rememberOptions: ['once', 'always'],
+        rememberOptions: toolName === 'memory_write'
+          ? ['once', 'always']
+          : ['once'],
       }),
     }
   }
@@ -941,6 +943,16 @@ describe('memory tool permissions on replay and Always allow', () => {
   })
 
   describe('decideContinuation', () => {
+    it('clamps Always allow on memory_forget to once', () => {
+      const [decision] = decideContinuation({
+        answers: [memoryAnswer('memory_forget', 'always')],
+        entries: memoryEntries(),
+        state: createApprovalState(),
+      })
+
+      expect(decision).toMatchObject({ approved: true, remember: 'once' })
+    })
+
     it('denies an approved memory call the user has since blocked', () => {
       const [decision] = decideContinuation({
         answers: [memoryAnswer('memory_write')],
@@ -963,7 +975,7 @@ describe('memory tool permissions on replay and Always allow', () => {
       + 'Always allow', () => {
       for (const mode of ['ask', 'allow'] as const) {
         const [decision] = decideContinuation({
-          answers: [memoryAnswer('memory_forget', 'always')],
+          answers: [memoryAnswer('memory_write', 'always')],
           entries: memoryEntries(),
           state: createApprovalState(),
           memoryPermissionModes: { memory_write: mode, memory_forget: mode },
@@ -1014,17 +1026,50 @@ describe('memory tool permissions on replay and Always allow', () => {
       })
     }
 
-    it.each(['memory_write', 'memory_forget'])(
-      'sets %s to Always allow when the user answers Always allow',
-      async (toolName) => {
+    it('sets memory_write to Always allow when the user answers Always allow, '
+      + 'and logs it', async () => {
+      memoryPermissionMocks.setMemoryToolPermission.mockClear()
+
+      const logger = { set: vi.fn() }
+
+      await applyRememberGrants({
+        db: {} as never,
+        userId: 7,
+        chatPublicId: 'chat-1',
+        decisions: [{
+          approvalId: 'approval-1',
+          toolCallId: 'call-1',
+          toolName: 'memory_write',
+          approved: true,
+          remember: 'always',
+        } as never],
+        entries: memoryEntries(),
+        logger: logger as never,
+      })
+
+      expect(memoryPermissionMocks.setMemoryToolPermission)
+        .toHaveBeenCalledWith(7, 'memory_write', 'allow', {})
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          memoryToolPermissions: {
+            action: 'permission-set',
+            tool: 'memory_write',
+            mode: 'allow',
+            source: 'card',
+          },
+        },
+      })
+    })
+
+    it('never sets memory_forget to Always allow, whatever the answer says',
+      async () => {
         memoryPermissionMocks.setMemoryToolPermission.mockClear()
 
-        await apply(toolName, 'always')
+        await apply('memory_forget', 'always')
 
         expect(memoryPermissionMocks.setMemoryToolPermission)
-          .toHaveBeenCalledWith(7, toolName, 'allow', {})
-      },
-    )
+          .not.toHaveBeenCalled()
+      })
 
     it('writes nothing for a once answer, a denial or another native tool',
       async () => {

@@ -5,7 +5,8 @@ Status: **proposal**, 2026-10-24, **implemented on `feat/memory-p3`** as of
 notes in 3.3 and 3.10 to 3.16 and section 5 record W1-W6c, 3.17 records the
 2026-10-26 security audit of the memory feature, 3.18 the "tell Besidka what to
 remember" editor, 3.19 the TypeSafe AI (Jev) checks and their delta audit, and
-3.21 the Always allow setting for the memory write tools, and
+3.21 the Always allow setting for `memory_write` (`memory_forget` has none) and
+the Blocked state of both write tools, and
 the decision log (section 7) records the owner decisions after W6. Project
 knowledge (3.6) is documented in `docs/project-knowledge-design.md`.
 Decisions marked **(owner)** are
@@ -932,13 +933,16 @@ hidden. Anything else is a 404 tool error.
   retry; the tool descriptions say the same up front, and the wide event logs
   `memoryTools.writesLocked`. This is what stops content read from a web
   page, a file or another chat from steering the model into writing or
-  deleting memory. Limits: without web search or knowledge, two calls in the
+  deleting memory. Since 2026-11-24 a user can set `memory_write` to Always
+  allow, which lifts this lock for a single call (3.21); `memory_forget` has no
+  such setting, so for forgets the lock stays unconditional. Limits: without
+  web search or knowledge, two calls in the
   same model step (a chat search plus a write issued in parallel) are still
   not ordered by it; files attached to the user's own message, earlier turns
   and the injected index are inputs, not tool results. The description says to use them only when
   the user's current message explicitly asks, never because of web, file,
   search or chat content, and never to store instructions for the model.
-  **Code-enforced request gate:** `userRequestQuote` (at most 300 characters,
+  **Quote check:** `userRequestQuote` (at most 300 characters,
   at least `min(12, length of the normalized message)` and never below 4, so a
   short message such as "forget it" must be quoted whole) must occur in the
   user's current message after NFKC, lowercase and stripping whitespace,
@@ -3649,10 +3653,14 @@ The owner wanted the same Blocked, Needs approval and Always allow choice for
 memory that connectors and Besidka tools have, and did not want the approval
 card "Because this message read content from the web" to block a memory save
 after a web search. Engineer-drafted, not lawyer-reviewed. The consent and
-policy text are unchanged; see "Open owner questions" below.
+policy text are unchanged; see "Open owner questions" below. A fix round of
+the same day narrowed the design: only `memory_write` has Always allow, and
+Blocked holds without the `tool-approvals` flag.
 
-- **Two rows, per tool.** `memory_write` and `memory_forget`, modes `blocked`,
-  `ask` and `allow`, default `ask` (no row). Reading memory (`memory_list`,
+- **Two rows, per tool.** `memory_write` takes `blocked`, `ask` and `allow`;
+  `memory_forget` takes `blocked` and `ask` only. Default `ask` (no row).
+  `memory_forget` is an irreversible hard delete with no undo, so it has no
+  Always allow (owner decision). Reading memory (`memory_list`,
   `memory_read`) has no setting and never asks. One mode covers account and
   project memory, because the scope is an argument of the call, not a
   separate tool. This is a v1 decision for the owner to confirm.
@@ -3661,82 +3669,141 @@ policy text are unchanged; see "Open owner questions" below.
   schema change. The Besidka tool loader, resolver and panel resolve registry
   names only, so they never list these names and read them as unknown
   (Blocked); `/api/v1/besidka-tools/permissions` still answers 400 for them.
-  The setting is tied to the `tool-approvals` flag, not to `besidka-tools`.
-  Routes: `GET` and `PUT /api/v1/memory/tool-permissions` (PUT body
-  `{ tool, mode }`, strict object, same-origin write guard, session, 404
-  without the flag, 60 writes per minute per user, fail closed without KV,
-  1 KiB body cap). The chat route reads the stored modes only when tool
-  approvals are active and the memory write tools are offered (the user
-  message has text). The account purge deletes the rows with the user's
-  others (`purgeUserToolApprovals`), and the post-restore reset of `allow` to
-  `ask` already covers them (`docs/d1-restore-reconciliation.md`, "Tool
-  approvals").
-- **Policy rule 12.** In `resolveNativeApproval`, a memory write tool set to
+  The routes and the Memory page card are tied to the `tool-approvals` flag,
+  not to `besidka-tools`. Routes: `GET` and `PUT /api/v1/memory/tool-permissions`
+  (PUT body `{ tool, mode }`, strict object, same-origin write guard, session,
+  404 without the flag, 60 writes per minute per user, fail closed without KV,
+  1 KiB body cap). The PUT answers 400 for `{ tool: 'memory_forget', mode:
+  'allow' }`; a stored `allow` on `memory_forget` (it should not exist) reads
+  as `ask` (`loadMemoryToolPermissionModes`, `buildMemoryApprovalEntry`).
+  The account purge deletes the rows with the user's others
+  (`purgeUserToolApprovals`), and the post-restore reset of `allow` to `ask`
+  already covers the `memory_write` row (`docs/d1-restore-reconciliation.md`,
+  "Tool approvals").
+- **When the chat route reads the modes.** Whenever the memory write tools are
+  offered (the user message has text), whether or not the `tool-approvals`
+  flag is active. `blocked` is honored always: the tool is not offered. A
+  stored `allow` on `memory_write` counts only while tool approvals are
+  active; with the flag off the route reads it as `ask`, so the old refusal
+  after untrusted content stays. The routes and the card stay behind the flag.
+- **Policy rule 12.** In `resolveNativeApproval`, a `memory_write` set to
   `allow` returns allowed (rule 12) before the taint check of rule 2, so web,
   file, knowledge and shared-branch taint no longer ask. This applies the
   owner rule of 2026-11-20 that the user's grant wins over taint
-  (`docs/connectors.md`, section 7.12) to the two native memory tools. `blocked`
-  is denied by rule 0. Without the setting nothing changes: rule 2 asks
-  `untrusted-output` after any taint. The number 12 was chosen so it never
-  collides with the rule 11 the Google umbrella branch adds.
+  (`docs/connectors.md`, section 7.12) to `memory_write` only.
+  `memory_forget` keeps rule 2: after taint it still asks `untrusted-output`,
+  and its card offers `once` only; untainted forget behavior is as before.
+  `blocked` is denied by rule 0. Without the setting nothing changes: rule 2
+  asks `untrusted-output` after any taint. The number 12 was chosen so it
+  never collides with the rule 11 the Google umbrella branch adds.
 - **The second lock and how it is lifted.** `assertNoUntrustedContentSeen` in
   `memory-tools.ts` still throws unless the call is `approvedByUser`, and the
   chat route still presets `untrustedResultSeen` through
   `presetMemoryWriteLock` for a send that requests web search. A rule-12
-  decision records a single-use per-call signal (`consumeUserSettingCall`,
-  keyed by tool call id, tool name and canonical input, consumed by the first
-  check) that lifts the lock for that one call only. `untrustedResultSeen` is
-  never flipped globally, so a second call with another id or input is still
-  locked. `writesLocked` in the chat route is telemetry only (an Axiom
-  attribute).
-- **What stays on every call.** The quote check (`assertUserRequestQuote`:
-  the user must have asked in the current message), the compliance gate (the
-  sensitive-topic classifier and the never-store detectors) and the call
-  budget. Always allow removes the prompt, not these.
+  decision (`memory_write` only) records a single-use per-call signal
+  (`consumeUserSettingCall`, keyed by tool call id, tool name and canonical
+  input, consumed by the first check) that lifts the lock for that one call
+  only. `untrustedResultSeen` is never flipped globally, so a second call with
+  another id or input is still locked. `writesLocked` in the chat route is
+  telemetry only (an Axiom attribute).
+- **What stays on every call.** The quote check (`assertUserRequestQuote`,
+  see "Accepted risk, owner decision" below for what it proves), the
+  compliance gate (the sensitive-topic classifier and the never-store
+  detectors) and the call budget. Always allow removes the prompt, not these.
 - **Blocked.** A Blocked memory tool is not offered to the model at all and no
   approval entry is built for it. An absent tool has no description, so the
   `memory_list` and `memory_read` descriptions carry one sentence instead
   (`buildBlockedMemoryToolsSentence`): saving to or removing from memory is
   turned off in the user's settings, tell them to change it in their memory
   settings, and do not try again. The memory instructions block never names
-  `memory_write`, so nothing else changes. On resume, a Blocked tool has no
-  entry, so the replay denies it as a missing tool.
+  `memory_write`, so nothing else changes. A Blocked tool has no approval
+  entry, so on resume a call to it is denied as `missing-tool`.
 - **Replay.** `resolveReplayPermissionMode` returns the user's current stored
   mode for the two names, so a tool set to Blocked after the user approved a
   call is denied on resume (as `blocked` when its entry still exists, as
-  `missing-tool` once the send no longer offers it). With a modes map given, a missing name fails
-  closed as blocked; without a map the mode stays `ask`.
-- **Prompt buttons.** The default prompt for the two memory tools now offers
-  Allow once and Always allow (it offered once only). Other native writes
-  (artifacts, documents) stay once only. Answering Always allow on the card
-  sets the stored mode to `allow`, the same as a Besidka tool's Always allow
-  (`applyMemoryRememberGrant`). The card tooltip reads "Runs without asking in
-  every chat, also after web search or files. Change it in Memory settings."
-- **Tool description.** A third variant for Always allow: the call runs
-  without asking, also after web search or files, and the model should still
-  call it only when the user asked in the current message.
+  `missing-tool` once the send no longer offers it, which is the usual case
+  because a Blocked tool has no entry). With a modes map given, a missing name
+  fails closed as blocked; without a map the mode stays `ask`.
+- **Prompt buttons.** The prompt for `memory_write` now offers Allow once and
+  Always allow (it offered once only). `memory_forget` and the other native
+  writes (artifacts, documents) stay once only. Answering Always allow on the
+  `memory_write` card sets the stored mode to `allow`, the same as a Besidka
+  tool's Always allow (`applyMemoryRememberGrant`), and logs the
+  `memoryToolPermissions` attribute (`action: permission-set`, `tool`, `mode`,
+  `source: card`); the settings route logs the same attribute without
+  `source`. The card tooltip reads "Runs without asking in every chat, also
+  after web search or files. Change it in Memory settings." The warning below
+  is shown visibly under the Always allow button on the approval card for a
+  memory write.
+- **"Ran without asking".** The step for a memory save that ran under Always
+  allow links Manage to `/profile/memory` (not to the chat panel grants, which
+  do not list memory).
+- **Tool description.** A third variant of the `memory_write` description for
+  Always allow: the call runs without asking, also after web search or files,
+  and the model should still call it only when the user asked in the current
+  message. `memory_forget` has no Always allow, so its mode never changes its
+  description.
 - **UI.** The card "Saving to memory" on `/profile/memory`, visible only with
-  the `tool-approvals` flag: one three-icon radio group per tool, the line
-  "Reading memory never asks." and, for Always allow, the warning that the
-  model can save and remove without asking, also after the web or files, that
-  text from those sources can shape what gets saved when the user asks for a
-  save, and that saved memory is sent to the model in later chats. No new
-  profile page, so no tab and no search-popup row.
+  the `tool-approvals` flag: one three-icon radio group for `memory_write`
+  and a two-mode group for `memory_forget`, the line "Reading memory never
+  asks." and, for `memory_forget`, the line "Forgetting always asks after web
+  or file content, because it cannot be undone." Under the `memory_write`
+  control a static warning line is shown at all times, not only after it is
+  on. Its exact text is the constant `MEMORY_TOOL_ALWAYS_ALLOW_WARNING` in
+  `shared/utils/memory-tool-permissions.ts`: "Always allow lets the model
+  save, overwrite and merge into your memory without asking, also when it has
+  just read the web or a file, even if you did not ask for a save. Saved
+  memory is sent to the model in later chats. The sensitive-topic check and
+  the never-store list still run on every save." No new profile page, so no
+  tab and no search-popup row.
+- **Telemetry.** `memoryTools.writesEnabled` reflects the tools actually
+  offered: false when the message has no text or both write tools are
+  Blocked. `memoryToolPermissions` is described above.
 - **Not done in v1.** The chat panel Approvals section does not list the
-  memory Always allow rows. There is no MCP exposure: the permissions are not
+  memory Always allow row. There is no MCP exposure: the permissions are not
   in `get_settings` or `update_settings`, not in the Besidka tools registry
   and not a new tool, `config/mcp-surface.json` is unchanged and a spec
   asserts no memory-permission text appears in it
   (`docs/mcp-server.md`, "What MCP does not do", item 8).
-- **Legal impact.** With Always allow, text from web results or files can
-  influence what the model saves when the user asks for a save, and saved
-  memory is later sent to the model provider. No new purpose and no new
-  recipient. Mitigations that stay: the quote gate, the sensitive-topic check
-  and never-store list on every save, a per-tool opt-in that is off by
-  default, and the warning in the UI. Records: `docs/legal/dpia.md` risk row 75,
+- **Legal impact.** With Always allow on `memory_write`, text from web results
+  or files can influence what the model saves, and saved memory is later sent
+  to the model provider. No new purpose and no new recipient. Mitigations that
+  stay: the sensitive-topic check and never-store list on every save, a
+  per-tool opt-in that is off by default, the warning in the UI, and the
+  Undo chip for writes. Records: `docs/legal/dpia.md` risk row 75,
   `docs/legal/art30-record.md` row 7 and `docs/legal-memory-sensitive-data.md`
   (2026-11-24). Whether the Privacy Policy needs a notice is the owner's
   decision. None was drafted or scheduled.
+
+**Accepted risk, owner decision.** What the quote check proves, and what it
+does not. `assertUserRequestQuote` proves only that `userRequestQuote` is a
+substring of the user's current message after normalization (NFKC, lowercase,
+no whitespace, punctuation or symbols). The quote is at most 300 characters
+and, once normalized, at least 12 characters, or the whole normalized message
+if that is shorter (never below 4). It does not prove that the user asked to
+save anything, and it does not bind what is written: the body, title and scope
+are the model's. With `memory_write` set to Always allow, the consequences
+are:
+
+- A hijacked model (steered by web or file content) can copy a real substring
+  of the user's message as the quote, and the write then runs without a prompt.
+- A write in a singleton category (`profile` and `preferences`, see
+  `alwaysInjectedMemoryCategories`) without an `id` appends its body lines to
+  the always-injected entry, so steered text reaches every later message.
+- A write with an `id` overwrites that entry's title, description and body.
+- The call budget (3 memory and chat-search calls) is created per request, so
+  a message continued in more requests (an approval resume, or long-task
+  rounds, `TOOL_ROUNDS_PER_MESSAGE`, 10) can write more than three entries.
+  Whether the write tools are offered again in each such request was not
+  traced end to end.
+- The Undo chip exists for writes only (a created entry, or an update that has
+  a previous version), not for forgets. This is one more reason `memory_forget`
+  has no Always allow.
+
+What still limits it: the setting is per tool and off by default, the
+sensitive-topic classifier and the never-store detectors run on every save,
+the entry is visible and editable on the Memory page, and nothing is exposed
+over MCP. The owner accepted this for users who opt in.
 
 **Open owner questions (nothing was relaxed).**
 
@@ -3782,9 +3849,9 @@ and the workstream names did not map one to one onto them:
 | P3 | umbrella `feat/memory-p3`: K0 #522, K1 #525, K2 #526, K3 #527, then #532 to #560 | Project knowledge (W7), Claude-parity and client-only extraction (#532), the two 2026-10-26 audits (#533, #534, #535, #536), per-chat exclusion (#542), "tell Besidka what to remember" (#543), open backend items (#544), the consent gate (#545, #547), the TypeSafe AI key and memory checks (#549), the `/memory` guide (#550), and the Jev roles J0 to J6 with their delta audit (#552 to #555, #557 to #560) |
 
 Later addition (2026-11-24, BES-470 and BES-472): the per-tool
-Blocked, Needs approval and Always allow setting for `memory_write` and
-`memory_forget` (3.21), built on the tool approval policy, with no schema
-change.
+Blocked and Needs approval setting for `memory_write` and `memory_forget`,
+plus Always allow for `memory_write` only (3.21), built on the tool approval
+policy, with no schema change.
 
 W5 (the Memory tab) landed inside P2, not P3; W8 (data rights) was spread over
 W4, W6c, the audits and #542 rather than built as one workstream. The
@@ -4382,28 +4449,34 @@ projects (user_id) WHERE memory_auto_update = 'on'`).
 
 ### Always allow for memory writes (engineering, 2026-11-24)
 
-**Decision.** `memory_write` and `memory_forget` each get a stored mode
-(`blocked`, `ask`, `allow`, default `ask`) in `besidka_tool_permissions`, and
-a tool set to `allow` runs without the "untrusted-output" prompt after web,
-file, knowledge or shared-branch content (policy rule 12). Design and
-mechanics are in 3.21.
+**Decision.** `memory_write` and `memory_forget` each get a stored mode in
+`besidka_tool_permissions` (default `ask`). `memory_write` takes `blocked`,
+`ask` and `allow`; `memory_forget` takes `blocked` and `ask` only, because a
+forget is an irreversible hard delete with no undo. A `memory_write` set to
+`allow` runs without the "untrusted-output" prompt after web, file, knowledge
+or shared-branch content (policy rule 12); a forget still asks after such
+content. Blocked holds without the `tool-approvals` flag; a stored `allow`
+counts only while tool approvals are active. Design and mechanics are in 3.21.
 
 **Why.** The owner rule of 2026-11-20 (`docs/connectors.md`, section 7.12) is
 that the user's own grant wins over taint, and the same screen of choices
 exists for connectors and Besidka tools. The prompt after a web search made
 "remember this" unusable in a chat that searched.
 
-**What does not change.** The default stays ask. The quote gate, the
+**What does not change.** The default stays ask. The quote check, the
 sensitive-topic gate, the never-store list and the call budget run on every
 call. The write lock is lifted per call by a single-use signal, never
 globally. Nothing is exposed over MCP.
 
-**Residual risk.** With Always allow, text from the web or a file can shape
-what gets saved when the user asks for a save, and saved memory is sent to
-the model provider in later chats. Accepted for users who opt in per tool.
-`docs/legal/dpia.md` risk row 75.
+**Residual risk.** With Always allow on `memory_write`, text from the web or a
+file can shape what gets saved, and saved memory is sent to the model provider
+in later chats. The quote check proves only that the quote is a substring of
+the user's message; it does not prove the user asked to save and does not bind
+what is written (3.21, "Accepted risk, owner decision"). Accepted for users
+who opt in. `docs/legal/dpia.md` risk row 75.
 
-**Open for the owner.** Confirm one mode for account and project memory.
+**Open for the owner.** Confirm one mode per tool for account and project
+memory.
 Decide whether to relax the egress guard that withholds web search after a
 memory read (3.21, "Open owner questions"). Decide whether the Privacy Policy
 needs a notice: none was drafted or scheduled.

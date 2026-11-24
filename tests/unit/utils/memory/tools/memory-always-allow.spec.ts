@@ -156,19 +156,23 @@ describe('memory tools with Always allow', () => {
     expect(testDb.countEntries(OWNER)).toBe(1)
   })
 
-  it('removes an entry with Always allow on memory_forget after web search',
-    async () => {
-      testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
+  it('still asks for memory_forget after web search and keeps the entry, '
+    + 'even with a stored Always allow', async () => {
+    testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
 
-      const send = createSend({ memory_forget: 'allow' })
-      const { result } = await decideAndRun(send, 'memory_forget', {
-        id: 'topics/cooking',
-        userRequestQuote: QUOTE,
-      })
-
-      expect(result.removed).toMatchObject({ handle: 'topics/cooking' })
-      expect(testDb.countEntries(OWNER)).toBe(0)
+    const send = createSend({ memory_forget: 'allow' })
+    const { status } = await decideAndRun(send, 'memory_forget', {
+      id: 'topics/cooking',
+      userRequestQuote: QUOTE,
     })
+
+    expect(status).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    await expect(send.tools.memory_forget!.execute(
+      { id: 'topics/cooking', userRequestQuote: QUOTE },
+      { toolCallId: 'call-1' },
+    )).rejects.toMatchObject({ status: 403 })
+    expect(testDb.countEntries(OWNER)).toBe(1)
+  })
 
   it('does not let Always allow on one tool open the other', async () => {
     testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
@@ -295,6 +299,15 @@ describe('buildMemoryWriteDescriptions with Always allow', () => {
       expect(forget).toContain('needs the user\'s approval in this turn')
       expect(forget).not.toContain('Always allow')
     })
+
+  it('never gives memory_forget the Always allow sentence', () => {
+    const { forget } = buildMemoryWriteDescriptions(true, {
+      memory_forget: 'allow',
+    })
+
+    expect(forget).toContain('needs the user\'s approval in this turn')
+    expect(forget).not.toContain('Always allow')
+  })
 
   it('ignores a stored mode while tool approvals are off', () => {
     const { write } = buildMemoryWriteDescriptions(false, {

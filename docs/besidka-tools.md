@@ -55,13 +55,19 @@ whole-database restore resets every `allow` to `ask`
 
 The same table also holds two rows that are not Besidka tools:
 `memory_write` and `memory_forget` (BES-470, BES-472), the user's mode for the
-native memory write tools. They never appear in this registry, in the Labs
-panel or behind the `besidka-tools` opt-in: the loader, resolver and panel
-resolve registry names only, so they read these names as unknown (Blocked) and
-never list them, and the routes below still answer 400 for them. They are set
-on `/profile/memory`, through `GET` and `PUT /api/v1/memory/tool-permissions`,
-and are tied to the `tool-approvals` flag. Design, policy rule 12 and the open
-questions are in `docs/memory-architecture.md`, section 3.21.
+native memory write tools. `memory_write` takes Blocked, Needs approval and
+Always allow; `memory_forget` takes Blocked and Needs approval only, because a
+forget is an irreversible delete with no undo. They never appear in this
+registry, in the Labs panel or behind the `besidka-tools` opt-in: the loader,
+resolver and panel resolve registry names only, so they read these names as
+unknown (Blocked) and never list them, and the routes below still answer 400
+for them. They are set on `/profile/memory`, through `GET` and `PUT
+/api/v1/memory/tool-permissions` (400 for `memory_forget` set to Always allow),
+and the routes and the card are tied to the `tool-approvals` flag. The chat
+route reads the stored modes whenever the memory write tools are offered:
+Blocked is honored without the flag, and a stored Always allow counts only
+while tool approvals are active. Design, policy rule 12 and the open questions
+are in `docs/memory-architecture.md`, section 3.21.
 
 ## Routes
 

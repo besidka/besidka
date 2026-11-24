@@ -1355,9 +1355,9 @@ describe('memory send-path wiring', () => {
   })
 
   describe('with the tool-approvals flag off', () => {
-    it('reads no stored memory modes and ignores a stored Always allow',
+    it('ignores a stored Always allow and passes it down as Needs approval',
       async () => {
-        mocks.memoryModes = { memory_write: 'allow', memory_forget: 'allow' }
+        mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
 
         await runSend({
           tools: ['web_search_brave'],
@@ -1365,8 +1365,10 @@ describe('memory send-path wiring', () => {
           steps: [createTextChunks('Hi.')],
         })
 
-        expect(mocks.loadMemoryModes).not.toHaveBeenCalled()
-        expect(mocks.memoryToolsInputs[0]).not.toHaveProperty('permissionModes')
+        expect(mocks.loadMemoryModes).toHaveBeenCalledTimes(1)
+        expect(mocks.memoryToolsInputs[0]).toEqual(expect.objectContaining({
+          permissionModes: { memory_write: 'ask', memory_forget: 'ask' },
+        }))
         expect(mocks.memoryToolsInputs[0]).not.toHaveProperty(
           'consumeUserSettingCall',
         )
@@ -1374,6 +1376,32 @@ describe('memory send-path wiring', () => {
           'asksForApproval',
         )
       })
+
+    it('still honors Blocked, so the tools are told to leave the tool out',
+      async () => {
+        mocks.memoryModes = { memory_write: 'blocked', memory_forget: 'ask' }
+
+        await runSend({
+          scenario: { settings: MEMORY_ON },
+          steps: [createTextChunks('Hi.')],
+        })
+
+        expect(mocks.memoryToolsInputs[0]).toEqual(expect.objectContaining({
+          permissionModes: { memory_write: 'blocked', memory_forget: 'ask' },
+        }))
+        expect(mocks.memoryToolsInputs[0]).not.toHaveProperty(
+          'asksForApproval',
+        )
+      })
+
+    it('reads no modes when memory is off', async () => {
+      await runSend({
+        scenario: { settings: { memoryEnabled: false } },
+        steps: [createTextChunks('Hi.')],
+      })
+
+      expect(mocks.loadMemoryModes).not.toHaveBeenCalled()
+    })
   })
 
   describe('with the tool-approvals flag on', () => {
@@ -1464,9 +1492,9 @@ describe('memory send-path wiring', () => {
       })).toBe(false)
     })
 
-    it('still asks for memory_forget after a requested web search when only '
-      + 'memory_write is set to Always allow', async () => {
-      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
+    it('still asks for memory_forget after a requested web search, even with '
+      + 'a stored Always allow on it', async () => {
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'allow' }
 
       const { assistantInsert } = await runSend({
         tools: ['web_search_brave'],

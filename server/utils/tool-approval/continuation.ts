@@ -860,6 +860,16 @@ async function applyMemoryRememberGrant(input: {
 
   try {
     await setMemoryToolPermission(input.userId, toolName, 'allow', input.db)
+    input.logger.set({
+      attributes: {
+        memoryToolPermissions: {
+          action: 'permission-set',
+          tool: toolName,
+          mode: 'allow',
+          source: 'card',
+        },
+      },
+    })
   } catch (exception) {
     input.logger.set({
       attributes: {
@@ -880,8 +890,8 @@ async function applyMemoryRememberGrant(input: {
  * choice was already clamped to what the request offered: every connector
  * and Besidka prompt offers all three (the always-ask tier included since
  * the owner decision of 2026-11-20), a native tool never gets a grant even
- * if a choice slipped through, except `memory_write` and `memory_forget`,
- * whose "always" sets the stored memory permission to Always allow. The
+ * if a choice slipped through, except `memory_write`, whose "always" sets the
+ * stored memory permission to Always allow (`memory_forget` has none). The
  * send and the replay
  * read back exactly these two values (`getConnectorTools`). For a Besidka
  * tool, "in this chat" stores the registry hash in the chat's
@@ -905,7 +915,7 @@ export async function applyRememberGrants(input: {
       decision.approved
       && decision.remember === 'always'
       && entry?.descriptor.family === 'native'
-      && isMemoryPermissionToolName(decision.toolName)
+      && decision.toolName === 'memory_write'
     ) {
       await applyMemoryRememberGrant({
         db: input.db,

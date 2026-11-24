@@ -494,13 +494,19 @@ export function buildConnectorApprovalEntry(input: {
 
 /**
  * The entry of `memory_write` or `memory_forget` with the user's stored mode
- * for it, so rule 12 can let a call the user set to Always allow run.
+ * for it, so rule 12 can let a `memory_write` the user set to Always allow
+ * run. `memory_forget` has no Always allow, so a stored `allow` on it counts
+ * as `ask`.
  */
 export function buildMemoryApprovalEntry(
   toolName: string,
   permissionMode: ToolPermissionMode,
 ): SendToolEntry {
-  return { ...buildNativeApprovalEntry(toolName), permissionMode }
+  const mode = toolName === 'memory_forget' && permissionMode === 'allow'
+    ? 'ask'
+    : permissionMode
+
+  return { ...buildNativeApprovalEntry(toolName), permissionMode: mode }
 }
 
 /**

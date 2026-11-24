@@ -190,10 +190,11 @@ function pickUntrustedSentence(
 /**
  * The `memory_write` and `memory_forget` descriptions. With tool approvals
  * on, a write after untrusted content asks the user instead of being
- * refused, so the description says so; with the tool set to Always allow it
+ * refused, so the description says so; `memory_write` set to Always allow
  * runs without asking; otherwise it keeps the refusal sentence, because the
- * model would skip a tool it believes is refused. Stored modes count only
- * while tool approvals are on.
+ * model would skip a tool it believes is refused. `memory_forget` has no
+ * Always allow, so its mode never changes its description. Stored modes
+ * count only while tool approvals are on.
  */
 export function buildMemoryWriteDescriptions(
   asksForApproval: boolean,
@@ -209,7 +210,7 @@ export function buildMemoryWriteDescriptions(
     )} ${MEMORY_WRITE_DESCRIPTION_TAIL}`,
     forget: `${MEMORY_FORGET_DESCRIPTION_LEAD}${pickUntrustedSentence(
       asksForApproval,
-      modes.memory_forget,
+      undefined,
     )} ${MEMORY_FORGET_DESCRIPTION_TAIL}`,
   }
 }

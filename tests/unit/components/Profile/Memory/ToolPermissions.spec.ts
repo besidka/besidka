@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import ToolPermissions from '../../../../../app/components/Profile/Memory/ToolPermissions.vue'
 
+import { MEMORY_TOOL_ALWAYS_ALLOW_WARNING } from '../../../../../shared/utils/memory-tool-permissions'
+
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   error: vi.fn(),
@@ -97,28 +99,62 @@ describe('Profile/Memory/ToolPermissions', () => {
         .findAll('[role="radio"]')
         .map(option => option.attributes('data-mode')).sort())
         .toEqual(['allow', 'ask', 'blocked'])
+      expect(toolRow(wrapper, 'memory_forget')
+        .findAll('[role="radio"]')
+        .map(option => option.attributes('data-mode')).sort())
+        .toEqual(['ask', 'blocked'])
       expect(checkedMode(wrapper, 'memory_write')).toBe('ask')
       expect(wrapper.get('[data-testid="memory-tool-permissions-read-note"]')
         .text()).toBe('Reading memory never asks.')
     })
 
-  it('shows the warning only while a tool is set to Always allow',
+  it('always shows the warning under the memory_write control, whatever the '
+    + 'mode', async () => {
+    const wrapper = await mountSuspended(ToolPermissions)
+    const warning = toolRow(wrapper, 'memory_write')
+      .get('[data-testid="memory-tool-permissions-warning"]')
+
+    expect(warning.text()).toBe(MEMORY_TOOL_ALWAYS_ALLOW_WARNING)
+    expect(warning.text()).toContain('save, overwrite and merge into your '
+      + 'memory without asking')
+    expect(warning.text()).toContain('even if you did not ask for a save')
+    expect(warning.text()).toContain('The sensitive-topic check and the '
+      + 'never-store list still run on every save.')
+    expect(wrapper.findAll('[data-testid="memory-tool-permissions-warning"]'))
+      .toHaveLength(1)
+
+    seedTools({ memory_write: 'allow' })
+    await flushPromises()
+
+    expect(toolRow(wrapper, 'memory_write')
+      .find('[data-testid="memory-tool-permissions-warning"]').exists())
+      .toBe(true)
+  })
+
+  it('says forgetting always asks after web or file content', async () => {
+    const wrapper = await mountSuspended(ToolPermissions)
+
+    expect(toolRow(wrapper, 'memory_forget')
+      .get('[data-testid="memory-tool-permissions-forget-note"]').text())
+      .toBe('Forgetting always asks after web or file content, because it '
+        + 'cannot be undone.')
+    expect(toolRow(wrapper, 'memory_write')
+      .find('[data-testid="memory-tool-permissions-forget-note"]').exists())
+      .toBe(false)
+  })
+
+  it('announces when saving runs without asking, in a status region',
     async () => {
       const wrapper = await mountSuspended(ToolPermissions)
+      const status = wrapper.get('[data-testid="memory-tool-permissions-status"]')
 
-      expect(wrapper.find('[data-testid="memory-tool-permissions-warning"]')
-        .exists()).toBe(false)
+      expect(status.attributes('role')).toBe('status')
+      expect(status.text()).toBe('')
 
-      seedTools({ memory_forget: 'allow' })
+      seedTools({ memory_write: 'allow' })
       await flushPromises()
 
-      const warning = wrapper
-        .get('[data-testid="memory-tool-permissions-warning"]').text()
-
-      expect(warning).toContain('also in a message that searched the web or '
-        + 'read files')
-      expect(warning).toContain('The sensitive-topic check and the '
-        + 'never-store list still run on every save.')
+      expect(status.text()).toBe('Saving to memory now runs without asking.')
     })
 
   it('saves one tool and takes the stored list', async () => {

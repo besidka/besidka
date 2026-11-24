@@ -71,6 +71,17 @@ describe('Ui/ToolPermissions/ModeControl', () => {
       expect(wrapper.emitted('select')).toBeUndefined()
     })
 
+  it('can hide the modes a tool does not take', async () => {
+    const wrapper = await mountControl({
+      modes: ['blocked', 'ask'],
+      isUnavailableHidden: true,
+    })
+
+    expect(wrapper.findAll('[role="radio"]')
+      .map(radio => radio.attributes('data-mode')))
+      .toEqual(['ask', 'blocked'])
+  })
+
   it('ignores clicks while busy', async () => {
     const wrapper = await mountControl({ isBusy: true })
 

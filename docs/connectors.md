@@ -2093,8 +2093,9 @@ after the L3 audit (2026-11-15):
   routes), stop after a connector or Besidka read, and a connector call
   after it asks `cross-source`.
 - **Memory writes count every taint.** Native memory writes (`memory_write`,
-  `memory_forget`) ask after any taint kind, web included; native artifact
-  and document writes still count only connector and skill taint.
+  `memory_forget`) ask after any taint kind, web included, unless the user
+  set `memory_write` to Always allow (section 7.12); native artifact and
+  document writes still count only connector and skill taint.
 - **State fails loudly.** Recording an unknown taint kind or an invalid read
   source throws. Past 64 read sources the set collapses to one `overflow`
   value that makes every connector call ask `cross-source`. A state that
@@ -3135,18 +3136,21 @@ section 7.11 for connector and Besidka tools:
   tool the user always allowed, and it runs without a prompt. Every such run
   shows "Ran without asking" with Manage, and the chat panel lists the
   grants. Legal documents and notices are not changed here.
-- **Native memory tools (BES-470, BES-472, 2026-11-24).** The two native
-  memory write tools, `memory_write` and `memory_forget`, got the same user
-  grant rule: set to Always allow on `/profile/memory`, they run before the
-  untrusted-output check (policy rule 12), so a web search or a file in the
-  message no longer makes the card ask. This is the one exception to "native
-  prompts still offer Allow once only": their prompt also offers Always
-  allow. The accepted-risk framing is the same as above: content from the web
-  or a file can steer what the model saves when the user asks for a save, and
-  it saves without a prompt. What remains enforced on every call: the Blocked
-  state, the user-request quote check, the sensitive-topic and never-store
-  gates and the call budget; the memory write lock is lifted for that single
-  call only. Details: `docs/memory-architecture.md`, section 3.21.
+- **Native memory tools (BES-470, BES-472, 2026-11-24).** The native
+  `memory_write` tool got the same user grant rule: set to Always allow on
+  `/profile/memory`, it runs before the untrusted-output check (policy rule
+  12), so a web search or a file in the message no longer makes the card ask.
+  This is the one exception to "native prompts still offer Allow once only":
+  the `memory_write` prompt also offers Always allow. `memory_forget` has no
+  Always allow: it is an irreversible delete with no undo, so after web or
+  file content it still asks `untrusted-output` and offers Allow once only.
+  The accepted-risk framing is the same as above: content from the web or a
+  file can steer what the model saves, and it saves without a prompt. What
+  remains enforced on every call: the Blocked state, the quote check (it
+  proves only that the quote is a substring of the user's message), the
+  sensitive-topic and never-store gates and the call budget; the memory write
+  lock is lifted for that single call only. Details:
+  `docs/memory-architecture.md`, section 3.21.
 - **Tests.** `policy.spec.ts` ("is lifted by Allow, an always grant or a
   chat grant", "never lifts the always-ask tier with a default grant"),
   `send.spec.ts`, `continuation.spec.ts` ("grants a destructive tool bound to

@@ -167,6 +167,23 @@ describe('memory tool permission routes', () => {
       })
     })
 
+    it('answers 400 for Always allow on memory_forget, which cannot be '
+      + 'undone, and stores nothing', async () => {
+      expect((await failureOf(put({ tool: 'memory_forget', mode: 'allow' })))
+        .status).toBe(400)
+      expect(modeOf(await call(getPath)).memory_forget).toBe('ask')
+      expect(testDb.sqlite
+        .prepare('select count(*) as total from besidka_tool_permissions')
+        .get()).toEqual({ total: 0 })
+    })
+
+    it('keeps Blocked and Needs approval on memory_forget', async () => {
+      expect(modeOf(await put({ tool: 'memory_forget', mode: 'blocked' }))
+        .memory_forget).toBe('blocked')
+      expect(modeOf(await put({ tool: 'memory_forget', mode: 'ask' }))
+        .memory_forget).toBe('ask')
+    })
+
     it('upserts, so a second write changes the same row', async () => {
       await put({ tool: 'memory_forget', mode: 'blocked' })
       await put({ tool: 'memory_forget', mode: 'ask' })
@@ -275,6 +292,16 @@ describe('memory tool permission routes', () => {
         memory_forget: 'ask',
       })
     })
+
+    it('reads a stored Always allow on memory_forget as Needs approval',
+      async () => {
+        insertRaw('memory_forget', 'allow')
+        insertRaw('memory_write', 'allow')
+
+        expect(await loadMemoryToolPermissionModes(userId, testDb.db))
+          .toEqual({ memory_write: 'allow', memory_forget: 'ask' })
+        expect(modeOf(await call(getPath)).memory_forget).toBe('ask')
+      })
 
     it('ignores rows of other tools', async () => {
       insertRaw('list_files', 'allow')

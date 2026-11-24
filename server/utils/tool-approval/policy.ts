@@ -275,14 +275,17 @@ function isMemoryWrite(descriptor: ToolApprovalDescriptor): boolean {
     || isOneOf(TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES, descriptor.toolName)
 }
 
-function isMemoryPermissionTool(descriptor: ToolApprovalDescriptor): boolean {
-  return isOneOf(TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES, descriptor.toolName)
+const MEMORY_ALWAYS_ALLOW_TOOL_NAME = 'memory_write'
+
+function isAlwaysAllowMemoryTool(descriptor: ToolApprovalDescriptor): boolean {
+  return descriptor.family === 'native'
+    && descriptor.toolName === MEMORY_ALWAYS_ALLOW_TOOL_NAME
 }
 
 function nativeRememberOptionsOf(
   descriptor: ToolApprovalDescriptor,
 ): ToolApprovalRemember[] {
-  return isMemoryPermissionTool(descriptor)
+  return isAlwaysAllowMemoryTool(descriptor)
     ? MEMORY_REMEMBER_OPTIONS
     : NATIVE_REMEMBER_OPTIONS
 }
@@ -411,7 +414,7 @@ function resolveNativeApproval(
     return allowed(1)
   }
 
-  if (isMemoryPermissionTool(descriptor) && permissionMode === 'allow') {
+  if (isAlwaysAllowMemoryTool(descriptor) && permissionMode === 'allow') {
     return allowed(12)
   }
 
@@ -444,12 +447,13 @@ function resolveNativeApproval(
  *    and skill taint; every other native write, memory writes and
  *    unclassified tools included, counts every taint kind.
  * 8. Otherwise a native write runs.
- * 12. Always allow for memory: `memory_write` or `memory_forget` that the
- *    user set to Allow runs before the taint check of rule 2, also after web
- *    search, files or other chats (the owner rule of 2026-11-20: the user's
- *    grant wins over taint). Without that setting both still ask, and the
- *    prompt offers `once` and `always`. The quote and sensitive-topic gates
- *    of the tools still run on every call.
+ * 12. Always allow for memory: `memory_write` that the user set to Allow
+ *    runs before the taint check of rule 2, also after web search, files or
+ *    other chats (the owner rule of 2026-11-20: the user's grant wins over
+ *    taint). Without that setting it still asks, and its prompt offers
+ *    `once` and `always`. `memory_forget` has no Always allow: it is an
+ *    irreversible delete, so it keeps rule 2 and offers `once` only. The
+ *    quote and sensitive-topic gates of the tools still run on every call.
  *
  * Connector and Besidka tools (owner decision of 2026-11-20, which replaces
  * the order of 2026-11-15; modeled on Claude's connector settings):
@@ -477,7 +481,7 @@ function resolveNativeApproval(
  *
  * Every prompt of a connector or Besidka tool offers Allow once, Allow in
  * this chat and Always allow; native prompts offer Allow once only, except
- * the two memory tools, which also offer Always allow.
+ * `memory_write`, which also offers Always allow.
  *
  * 10. A consent gate (`consentGate`) is decided right after rule 0, before
  *    every other rule: a chat grant that matches its definition hash lets it

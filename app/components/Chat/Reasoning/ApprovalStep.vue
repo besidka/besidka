@@ -128,6 +128,13 @@
         </button>
       </div>
       <p
+        v-if="hasButtons && showsMemoryAlwaysAllowWarning"
+        class="mt-1.5 min-w-0 break-words text-xs text-base-content/70"
+        data-testid="reasoning-approval-step-always-allow-warning"
+      >
+        {{ MEMORY_TOOL_ALWAYS_ALLOW_WARNING }}
+      </p>
+      <p
         v-if="state === 'sending'"
         class="mt-2 flex items-center gap-1.5 text-xs text-base-content/70"
         data-testid="reasoning-approval-step-sending"
@@ -216,7 +223,9 @@ import {
   getApprovalButtons,
   getAlwaysAllowHint,
   isApprovalInputShortened,
+  isMemoryAlwaysAllowToolName,
 } from '~/utils/tool-approval-step'
+import { MEMORY_TOOL_ALWAYS_ALLOW_WARNING } from '#shared/utils/memory-tool-permissions'
 
 const props = withDefaults(defineProps<{
   model: ApprovalStepModel
@@ -266,9 +275,15 @@ function getButtonHint(remember: ToolApprovalRemember): string | undefined {
   }
 
   return remember === 'always'
-    ? getAlwaysAllowHint(props.model.isBesidka, props.model.tool)
+    ? getAlwaysAllowHint(props.model.isBesidka, props.model.toolName)
     : undefined
 }
+
+const showsMemoryAlwaysAllowWarning = computed<boolean>(() => {
+  return !props.model.isBesidka
+    && isMemoryAlwaysAllowToolName(props.model.toolName)
+    && props.model.rememberOptions.includes('always')
+})
 
 const isBubble = computed<boolean>(() => {
   return props.variant === 'bubble'

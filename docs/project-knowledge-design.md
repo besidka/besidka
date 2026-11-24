@@ -919,8 +919,10 @@ D1 storage 5 GB included then $0.75 / GB-month, 10 GB hard cap per database
   not a guarantee.
 - **`memory_write`/`memory_forget`**: system-prompt knowledge does not trip
   the non-memory-tool lock. The protection is the `userRequestQuote` gate:
-  the write must quote the **current user message** verbatim. Knowledge
-  tool results do trip the lock.
+  the write must quote a substring of the **current user message**
+  (a substring check, not proof that the user asked to save). Knowledge
+  tool results do trip the lock, unless the user set `memory_write` to
+  Always allow (`docs/memory-architecture.md`, section 3.21).
 - **Knowledge is outside the memory compliance gate.** A user's medical PDF
   is user-supplied material, like a chat attachment. It is not model-inferred
   profile data, so the Art. 9 classifier and the never-store list do **not**

@@ -1555,8 +1555,9 @@ and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
    a user names a workflow that needs it.
 
    The same holds for the memory write permissions (BES-470, BES-472): the
-   Blocked, Needs approval and Always allow mode of `memory_write` and
-   `memory_forget`, stored as two rows in `besidka_tool_permissions` and set
+   Blocked, Needs approval and Always allow mode of `memory_write` (and the
+   Blocked and Needs approval mode of `memory_forget`, which has no Always
+   allow), stored as two rows in `besidka_tool_permissions` and set
    on `/profile/memory`. They are not exposed either: not in `get_settings` or
    `update_settings`, not in the Besidka tools registry and not as a tool, and
    `config/mcp-surface.json` is unchanged (a spec asserts that no

@@ -1,9 +1,12 @@
 import { eq } from 'drizzle-orm'
+import { createError } from 'evlog'
 import {
   MEMORY_PERMISSION_TOOL_NAMES,
   MEMORY_TOOL_DEFAULT_MODE,
   MEMORY_TOOL_PERMISSION_TITLES,
+  getAllowedMemoryToolModes,
   isMemoryPermissionToolName,
+  isMemoryToolModeAllowed,
 } from '#shared/utils/memory-tool-permissions'
 import type { MemoryPermissionToolName } from '#shared/utils/memory-tool-permissions'
 import { TOOL_PERMISSION_MODES } from '#shared/utils/tool-approval-policy'
@@ -25,13 +28,28 @@ function isPermissionMode(value: string): value is ToolPermissionMode {
   return (TOOL_PERMISSION_MODES as readonly string[]).includes(value)
 }
 
+function readStoredMode(
+  toolName: MemoryPermissionToolName,
+  stored: string,
+): ToolPermissionMode {
+  if (!isPermissionMode(stored)) {
+    return 'blocked'
+  }
+
+  return isMemoryToolModeAllowed(toolName, stored)
+    ? stored
+    : MEMORY_TOOL_DEFAULT_MODE
+}
+
 /**
  * The user's mode for `memory_write` and `memory_forget`, read from the
  * `besidka_tool_permissions` rows of exactly these two tool names. No row
  * means the default, "ask". A row whose mode is not a known value reads as
  * Blocked, never as the default: an unreadable setting must not let a memory
- * tool run or even be offered. The Besidka tool loader and panel never see
- * these names, because they resolve registry names only.
+ * tool run or even be offered. A mode the tool does not take (Always allow on
+ * `memory_forget`, which cannot be undone) reads as "ask". The Besidka tool
+ * loader and panel never see these names, because they resolve registry
+ * names only.
  */
 export async function loadMemoryToolPermissionModes(
   userId: number,
@@ -50,7 +68,7 @@ export async function loadMemoryToolPermissionModes(
 
   for (const row of rows) {
     if (isMemoryPermissionToolName(row.toolName)) {
-      modes[row.toolName] = isPermissionMode(row.mode) ? row.mode : 'blocked'
+      modes[row.toolName] = readStoredMode(row.toolName, row.mode)
     }
   }
 
@@ -73,7 +91,8 @@ export async function listMemoryToolPermissions(
 }
 
 /**
- * Stores one mode for one memory tool, upserting its row. The row lives in
+ * Stores one mode for one memory tool, upserting its row. A mode the tool
+ * does not take is a 400. The row lives in
  * `besidka_tool_permissions` under the native tool name, so no migration is
  * needed and the account purge and the restore reset of "allow" to "ask"
  * already cover it.
@@ -84,6 +103,16 @@ export async function setMemoryToolPermission(
   mode: ToolPermissionMode,
   db: DbClient = useDb(),
 ): Promise<void> {
+  if (!isMemoryToolModeAllowed(tool, mode)) {
+    throw createError({
+      message: 'Invalid permission',
+      status: 400,
+      why: `${MEMORY_TOOL_PERMISSION_TITLES[tool]} can only be set to `
+        + getAllowedMemoryToolModes(tool).join(' or '),
+      fix: 'Pick an allowed mode',
+    })
+  }
+
   await db.insert(schema.besidkaToolPermissions)
     .values({ userId, toolName: tool, mode })
     .onConflictDoUpdate({

@@ -870,24 +870,24 @@ describe('resolveToolApproval rules', () => {
   })
 
   describe('rule 12, Always allow for memory writes', () => {
-    const memoryToolNames = [MEMORY_WRITE_TOOL_NAME, MEMORY_FORGET_TOOL_NAME]
     const memoryWriteTool = () => {
       return nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME })
     }
+    const memoryForgetTool = () => {
+      return nativeTool({ toolName: MEMORY_FORGET_TOOL_NAME })
+    }
 
     it.each(TOOL_APPROVAL_TAINT_KINDS)(
-      'runs a memory tool set to Always allow after %s taint',
+      'runs memory_write set to Always allow after %s taint',
       (kind) => {
-        for (const toolName of memoryToolNames) {
-          const decision = decide(nativeTool({ toolName }), {
-            state: stateWith([kind]),
-            permissionMode: 'allow',
-          })
+        const decision = decide(memoryWriteTool(), {
+          state: stateWith([kind]),
+          permissionMode: 'allow',
+        })
 
-          expect(decision.rule, toolName).toBe(12)
-          expect(decision.status, toolName).toEqual({ type: 'not-applicable' })
-          expect(decision.rememberOptions, toolName).toEqual([])
-        }
+        expect(decision.rule).toBe(12)
+        expect(decision.status).toEqual({ type: 'not-applicable' })
+        expect(decision.rememberOptions).toEqual([])
       },
     )
 
@@ -900,33 +900,51 @@ describe('resolveToolApproval rules', () => {
       expect(decision.rule).toBe(12)
     })
 
-    it('denies a memory tool set to Blocked before anything else', () => {
-      const decision = decide(memoryWriteTool(), {
-        permissionMode: 'blocked',
-      })
+    it.each(TOOL_APPROVAL_TAINT_KINDS)(
+      'keeps asking for memory_forget after %s taint, even if a stored '
+      + 'Always allow reached the policy',
+      (kind) => {
+        for (const permissionMode of ['ask', 'allow'] as const) {
+          const decision = decide(memoryForgetTool(), {
+            state: stateWith([kind]),
+            permissionMode,
+          })
 
-      expect(decision.rule).toBe(0)
-      expect(decision.status).toEqual({ type: 'denied', reason: 'blocked' })
+          expect(decision.rule, permissionMode).toBe(2)
+          expect(decision.reason, permissionMode).toBe('untrusted-output')
+          expect(decision.rememberOptions, permissionMode).toEqual(['once'])
+        }
+      },
+    )
+
+    it('keeps the untainted behavior of memory_forget as on main', () => {
+      expect(decide(memoryForgetTool()).rule).toBe(8)
     })
 
-    it('keeps asking after taint by default and offers Always allow', () => {
-      for (const toolName of memoryToolNames) {
-        const decision = decide(nativeTool({ toolName }), {
-          state: stateWith(['web']),
-        })
+    it('denies a memory tool set to Blocked before anything else', () => {
+      for (const tool of [memoryWriteTool(), memoryForgetTool()]) {
+        const decision = decide(tool, { permissionMode: 'blocked' })
 
-        expect(decision.rule, toolName).toBe(2)
-        expect(decision.reason, toolName).toBe('untrusted-output')
-        expect(decision.rememberOptions, toolName).toEqual(['once', 'always'])
+        expect(decision.rule).toBe(0)
+        expect(decision.status).toEqual({ type: 'denied', reason: 'blocked' })
       }
     })
 
-    it('lets a memory tool through on a clean send under both modes', () => {
-      expect(decide(nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME })).rule)
-        .toBe(8)
-      expect(decide(nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME }), {
-        permissionMode: 'allow',
-      }).rule).toBe(12)
+    it('keeps asking memory_write after taint by default and offers Always '
+      + 'allow', () => {
+      const decision = decide(memoryWriteTool(), {
+        state: stateWith(['web']),
+      })
+
+      expect(decision.rule).toBe(2)
+      expect(decision.reason).toBe('untrusted-output')
+      expect(decision.rememberOptions).toEqual(['once', 'always'])
+    })
+
+    it('lets memory_write through on a clean send under both modes', () => {
+      expect(decide(memoryWriteTool()).rule).toBe(8)
+      expect(decide(memoryWriteTool(), { permissionMode: 'allow' }).rule)
+        .toBe(12)
     })
 
     it('does not lift the taint rule for any other native write', () => {
@@ -957,22 +975,26 @@ describe('resolveToolApproval rules', () => {
 
     it('does not change the rule for connector or Besidka tools of the '
       + 'same name', () => {
-      const decision = decide(
+      expect(decide(
         connectorTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
         { permissionMode: 'allow' },
-      )
-
-      expect(decision.rule).toBe(9)
+      ).rule).toBe(9)
+      expect(decide(
+        besidkaTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
+        { permissionMode: 'allow' },
+      ).rule).toBe(6)
     })
 
-    it('clamps Always allow for a memory prompt but not Allow in this chat', () => {
-      const decision = decide(memoryWriteTool(), {
-        state: stateWith(['web']),
-      })
+    it('clamps Always allow for a memory_write prompt but not Allow in this '
+      + 'chat, and offers neither for memory_forget', () => {
+      const write = decide(memoryWriteTool(), { state: stateWith(['web']) })
+      const forget = decide(memoryForgetTool(), { state: stateWith(['web']) })
 
-      expect(isRememberAllowed(decision, 'always')).toBe(true)
-      expect(clampRemember(decision, 'always')).toBe('always')
-      expect(clampRemember(decision, 'chat')).toBe('once')
+      expect(isRememberAllowed(write, 'always')).toBe(true)
+      expect(clampRemember(write, 'always')).toBe('always')
+      expect(clampRemember(write, 'chat')).toBe('once')
+      expect(isRememberAllowed(forget, 'always')).toBe(false)
+      expect(clampRemember(forget, 'always')).toBe('once')
     })
   })
 

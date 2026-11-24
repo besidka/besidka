@@ -1749,6 +1749,8 @@ describe('memory tool Always allow in the send approval', () => {
       expect(buildMemoryApprovalEntries(undefined)).toEqual([])
       expect(buildMemoryApprovalEntry('memory_forget', 'ask').permissionMode)
         .toBe('ask')
+      expect(buildMemoryApprovalEntry('memory_forget', 'allow').permissionMode)
+        .toBe('ask')
     })
 
   it('clears a memory call after every taint kind and marks it as an Always '
@@ -1774,6 +1776,22 @@ describe('memory tool Always allow in the send approval', () => {
       .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
     expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
       .toEqual(['once', 'always'])
+  })
+
+  it('never clears memory_forget, even with a stored Always allow', () => {
+    const approval = createMemoryApproval({
+      memory_write: 'allow',
+      memory_forget: 'allow',
+    })
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'memory_forget', {
+      id: 'x',
+      userRequestQuote: 'forget it',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once'])
   })
 
   it('keeps the other tool asking when only one is set to Always allow', () => {

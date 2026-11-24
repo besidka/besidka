@@ -1773,6 +1773,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/besidka-tools/permissions.spec.ts',
     'tests/unit/pages/profile/memory.spec.ts',
     'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/Step.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/unit/config/mcp-surface.spec.ts',
   ]
@@ -3844,7 +3847,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(memory-tool-permissions|tool-approval-policy)\.ts|server\/utils\/memory\/tools\/(permissions|permissions-route|memory-tools)\.ts|server\/utils\/tool-approval\/(policy|send|continuation)\.ts|server\/utils\/besidka-tools\/permissions\.ts|server\/api\/v1\/memory\/tool-permissions\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/memory-tool-permissions\.ts|app\/components\/Profile\/Memory\/ToolPermissions\.vue|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/utils\/tool-approval-step\.ts|app\/pages\/profile\/memory\.vue)$/,
+        /^(shared\/utils\/(memory-tool-permissions|tool-approval-policy)\.ts|server\/utils\/memory\/tools\/(permissions|permissions-route|memory-tools)\.ts|server\/utils\/tool-approval\/(policy|send|continuation)\.ts|server\/utils\/besidka-tools\/permissions\.ts|server\/api\/v1\/memory\/tool-permissions\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/memory-tool-permissions\.ts|app\/components\/Profile\/Memory\/ToolPermissions\.vue|app\/components\/Chat\/Reasoning\/(ApprovalStep|Step)\.vue|app\/components\/Ui\/ToolPermissions\/ModeControl\.vue|app\/utils\/tool-approval-step\.ts|app\/pages\/profile\/memory\.vue)$/,
       tests: memoryToolPermissionsTests,
     },
     {

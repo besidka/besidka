@@ -8,6 +8,7 @@ import type {
 } from '~/utils/tool-approval-step'
 import { TOOL_APPROVAL_CONTROLLER_KEY } from '~/composables/tool-approvals'
 import { useSidePanel } from '~/composables/side-panel'
+import { MEMORY_TOOL_ALWAYS_ALLOW_WARNING } from '#shared/utils/memory-tool-permissions'
 import ApprovalStep from '../../../../../app/components/Chat/Reasoning/ApprovalStep.vue'
 
 function createModel(
@@ -198,6 +199,55 @@ describe('Chat/Reasoning/ApprovalStep', () => {
         remember: 'always',
       })
       expect(wrapper.find(testId('always-confirm')).exists()).toBe(false)
+    })
+
+  it('shows the Always allow warning under the buttons of memory_write only',
+    async () => {
+      const warningTestId = '[data-testid="reasoning-approval-step-'
+        + 'always-allow-warning"]'
+      const { wrapper } = await mountStep({
+        model: createModel({
+          toolName: 'memory_write',
+          connectorSlug: null,
+          tool: 'memory_write',
+          reason: 'untrusted-output',
+          rememberOptions: ['once', 'always'],
+        }),
+      })
+      const hint = wrapper.get(testId('allow-always')).attributes('title')
+
+      expect(wrapper.get(warningTestId).text())
+        .toBe(MEMORY_TOOL_ALWAYS_ALLOW_WARNING)
+      expect(hint).toBe(
+        'Runs without asking in every chat, also after web search or '
+        + 'files. Change it in Memory settings.',
+      )
+
+      const connector = await mountStep({
+        model: createModel({
+          toolName: 'mcp__notes__memory_write',
+          tool: 'memory_write',
+          reason: 'untrusted-output',
+          rememberOptions: ['once', 'chat', 'always'],
+        }),
+      })
+
+      expect(connector.wrapper.find(warningTestId).exists()).toBe(false)
+      expect(connector.wrapper.get(testId('allow-always')).attributes('title'))
+        .toContain('until the tool changes')
+
+      const forget = await mountStep({
+        model: createModel({
+          toolName: 'memory_forget',
+          connectorSlug: null,
+          tool: 'memory_forget',
+          reason: 'untrusted-output',
+          rememberOptions: ['once'],
+        }),
+      })
+
+      expect(forget.wrapper.find(warningTestId).exists()).toBe(false)
+      expect(forget.wrapper.find(testId('allow-always')).exists()).toBe(false)
     })
 
   it('sends a denial', async () => {

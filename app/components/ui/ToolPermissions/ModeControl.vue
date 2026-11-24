@@ -73,9 +73,11 @@ const props = withDefaults(defineProps<{
   modes: readonly ToolPermissionMode[]
   unavailableHint?: string
   isBusy?: boolean
+  isUnavailableHidden?: boolean
 }>(), {
   unavailableHint: '',
   isBusy: false,
+  isUnavailableHidden: false,
 })
 
 const emit = defineEmits<{
@@ -85,7 +87,9 @@ const emit = defineEmits<{
 const buttons = useTemplateRef<HTMLButtonElement[]>('buttons')
 
 const options = computed<ModeOption[]>(() => {
-  return TOOL_PERMISSION_CONTROL_ORDER.map((mode) => {
+  return TOOL_PERMISSION_CONTROL_ORDER.filter((mode) => {
+    return !props.isUnavailableHidden || props.modes.includes(mode)
+  }).map((mode) => {
     const isAvailable = props.modes.includes(mode)
 
     return {

@@ -98,7 +98,8 @@ describe('useMemoryToolPermissions', () => {
       )
     })
 
-  it('keeps a newer optimistic mode when an older save settles', async () => {
+  it('runs saves one after another, so an older answer never replaces a '
+    + 'newer one', async () => {
     const finishers: Array<(value: unknown) => void> = []
 
     mocks.fetch.mockImplementation(() => {
@@ -107,9 +108,17 @@ describe('useMemoryToolPermissions', () => {
       })
     })
 
-    const { tools, save } = useMemoryToolPermissions()
+    const { tools, isSaving, save } = useMemoryToolPermissions()
     const first = save('memory_write', 'allow')
     const second = save('memory_write', 'blocked')
+
+    expect(tools.value[0]!.mode).toBe('blocked')
+
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    expect(isSaving.value).toBe(true)
 
     finishers[0]!({
       tools: [
@@ -118,7 +127,12 @@ describe('useMemoryToolPermissions', () => {
       ],
     })
     await first
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2))
 
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/memory/tool-permissions',
+      { method: 'PUT', body: { tool: 'memory_write', mode: 'blocked' } },
+    )
     expect(tools.value[0]!.mode).toBe('blocked')
 
     finishers[1]!({
@@ -130,5 +144,27 @@ describe('useMemoryToolPermissions', () => {
     await second
 
     expect(tools.value[0]!.mode).toBe('blocked')
+    expect(isSaving.value).toBe(false)
+  })
+
+  it('keeps going after a failed save', async () => {
+    mocks.fetch
+      .mockRejectedValueOnce(new Error('nope'))
+      .mockResolvedValueOnce({
+        tools: [
+          { name: 'memory_write', title: 'Save to memory', mode: 'ask' },
+          { name: 'memory_forget', title: 'Forget from memory', mode: 'blocked' },
+        ],
+      })
+
+    const { tools, save } = useMemoryToolPermissions()
+
+    await Promise.all([
+      save('memory_write', 'allow'),
+      save('memory_forget', 'blocked'),
+    ])
+
+    expect(mocks.error).toHaveBeenCalledTimes(1)
+    expect(tools.value.map(tool => tool.mode)).toEqual(['ask', 'blocked'])
   })
 })

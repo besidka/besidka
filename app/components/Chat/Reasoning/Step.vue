@@ -173,8 +173,17 @@
       data-testid="reasoning-grant-marker"
     >
       <span>{{ step.grantMarker }}</span>
+      <NuxtLink
+        v-if="managesInMemorySettings"
+        to="/profile/memory"
+        class="btn btn-link btn-xs min-h-6 px-0 text-base-content/70"
+        aria-label="Manage memory permissions in Memory settings"
+        data-testid="reasoning-grant-manage-memory"
+      >
+        Manage
+      </NuxtLink>
       <button
-        v-if="canManageGrants"
+        v-else-if="canManageGrants"
         type="button"
         class="btn btn-link btn-xs min-h-6 px-0 text-base-content/70"
         aria-label="Manage remembered approvals in the chat panel"
@@ -206,6 +215,10 @@ const emit = defineEmits<{
   'toggle': [step: ReasoningStep]
   'manage-grants': []
 }>()
+
+const managesInMemorySettings = computed<boolean>(() => {
+  return props.step.memory?.toolName === 'memory_write'
+})
 
 const REASONING_PARSER_OPTIONS: MDCParseOptions = { highlight: false }
 

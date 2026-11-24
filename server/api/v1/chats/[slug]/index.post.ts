@@ -1980,12 +1980,19 @@ export default defineEventHandler(async (event) => {
       ? chat.project.memoryStatus === 'disabled'
       : null
 
-  const memoryPermissionModes = toolApprovalsActive
-    && chatSearchBudget
+  const storedMemoryModes = chatSearchBudget
     && memoryToolsRegistered
     && userMessageText !== null
     ? await loadMemoryToolPermissionModes(userId, db)
     : undefined
+  const memoryPermissionModes = storedMemoryModes && !toolApprovalsActive
+    ? {
+      memory_write: storedMemoryModes.memory_write === 'allow'
+        ? 'ask' as const
+        : storedMemoryModes.memory_write,
+      memory_forget: storedMemoryModes.memory_forget,
+    }
+    : storedMemoryModes
 
   if (chatSearchBudget && memoryToolsRegistered) {
     const { tools: memoryTools } = getMemoryTools({
@@ -1998,12 +2005,14 @@ export default defineEventHandler(async (event) => {
       sourceMessageId: newMessage.id,
       userMessageText,
       budget: chatSearchBudget,
+      ...(memoryPermissionModes
+        ? { permissionModes: memoryPermissionModes }
+        : {}),
       ...(toolApprovalsActive
         ? {
           isApprovedByUser: toolApprovalSend.isApprovedByUser,
           consumeUserSettingCall: toolApprovalSend.consumeUserSettingCall,
           asksForApproval: true,
-          permissionModes: memoryPermissionModes,
         }
         : {}),
       logger: aiLogger,
@@ -3861,7 +3870,11 @@ export default defineEventHandler(async (event) => {
             attributes: {
               memoryTools: {
                 registered: true,
-                writesEnabled: userMessageText !== null,
+                writesEnabled: userMessageText !== null
+                  && !(
+                    memoryPermissionModes?.memory_write === 'blocked'
+                    && memoryPermissionModes.memory_forget === 'blocked'
+                  ),
                 writesLocked: chatSearchBudget.untrustedResultSeen,
                 usedCalls: chatSearchBudget.usedCalls,
               },
