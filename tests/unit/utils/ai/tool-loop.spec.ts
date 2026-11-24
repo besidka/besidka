@@ -927,6 +927,7 @@ describe('untrusted tool results', () => {
       expect(guard.untrustedResultSeen).toBe(true)
     })
   })
+
   describe('separate Brave and Exa step budget', () => {
     const CHAT_SEARCH_STEPS = 3
     const CONNECTOR_STEPS = 4

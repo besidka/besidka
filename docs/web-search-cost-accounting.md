@@ -902,7 +902,22 @@ close (3 and 8):
 | Cap | Constant | Value | What it bounds |
 | --- | --- | --- | --- |
 | Tool steps | `EXTERNAL_SEARCH_MAX_TOOL_STEPS` (`search-budget.ts`), applied by `resolveToolLoop()` through `ToolLoopBudget.externalSearchSteps` | 8 | Model round-trips that may call a tool. The loop adds one forced final step that answers (`maxSteps = 9`). |
-| Search calls | `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN` (`search-budget.ts`) | 12 | Provider requests in one reply, parallel calls included. The 13th call is a 429 `tool-error` before any request. |
+| Search calls | `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN` (`search-budget.ts`) | 12 | Provider requests in one request, parallel calls included. The 13th call is a 429 `tool-error` before any request. |
+
+Both caps are per request, not per user message. `ExternalSearchBudget` is
+created once per chat request (`createExternalSearchBudget()` in the send
+route) and the step budget is resolved per send. A long task with connector or
+Besidka tools continues the same reply in further requests ("rounds", see
+`docs/connectors.md` section 6.6), and each round starts with a fresh budget of
+12 calls and 8 steps. The real ceiling for one user message is therefore
+`TOOL_ROUNDS_PER_MESSAGE` (10 rounds, `shared/utils/tool-rounds.ts`) times 12,
+which is 120 Brave or Exa calls, and 80 search steps. That is not a regression
+of this design: the budget was always created per request, and rounds already
+restarted the old 3-step and 8-call budgets the same way. A reply that only
+searches never continues into another round (rounds exist for connector and
+Besidka tool tasks), so a search-only message stays at 12 calls. The ceilings
+guard the user's own key against a looping model in one request, and each
+round is a full send the user started or allowed on their own key.
 
 Before BES-473 the "3" the owner saw was the step budget
 (`TOOL_LOOP_MAX_TOOL_STEPS = 3`), not the call budget (8): Brave and Exa are
@@ -917,19 +932,25 @@ their own steps on top. The chat route reads the same `maxSteps` for
 `forcedStepIndex`, so the forced answer step and the search-answer
 continuation follow the new cap.
 
-**Open item: the continuation fallback keeps the oldest results.**
+**The continuation fallback keeps the newest results.**
 `SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24` and
 `SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32,000` were sized for 3 searches of 8
 results. The fallback (Anthropic and Cloudflare paths, when the forced step
-still calls a tool) renders results in chronological order and stops at the
-first limit with "(Further search results omitted.)", so after a long run it
-answers from roughly the first three searches (24 results is 3 Exa calls of
-10 or 3 Brave calls of 8) and drops the later "search again" rounds. The
-normal path is unaffected: the model answers on the forced final step with
-every result in context. The constants are shared with chat, memory and
-knowledge results and were not changed here; the recommendation is a
-follow-up that keeps the newest results first or raises the limits for
-Brave and Exa runs.
+still calls a tool) flattens the results through `buildSearchResultsContext()`.
+When the result or character limit would cut the run, it drops the oldest
+searches whole, one at a time, until the rest fits, so after a long Brave or
+Exa run (24 results is 3 Exa calls of 10 or 3 Brave calls of 8) it answers
+from the latest "search again" rounds, not the first three. What it keeps stays
+in chronological order and keeps its original `Search N` numbers, and an
+"(Earlier search results omitted.)" line leads the list when searches were
+dropped. If even the newest search alone exceeds the limits, only that search
+is rendered and cut after its first results with "(Further search results
+omitted.)". The limits, the untrusted-content framing and what is billed or
+recorded are unchanged: the cut only decides which already-paid results the
+continuation reads. The normal path is unaffected: the model answers on the
+forced final step with every result in context. The constants are shared with
+chat, memory and knowledge results, so they were not raised for Brave and Exa
+runs.
 
 The call cap sits above the step cap so a step can fan out a few parallel
 queries; it stays the guard against one step emitting dozens of calls. Both
@@ -941,7 +962,8 @@ validated server-side against a hard maximum.
 
 The tool descriptions (`EXTERNAL_SEARCH_TOOL_GUIDANCE`) now tell the model to
 start with one broad query, search again when the results leave a gap, stop
-as soon as it can answer, and that a reply allows up to 12 searches. The
+as soon as it can answer, and that a reply allows up to 12 searches (per
+request, as above). The
 Brave and Exa terms notes (no keeping results past a run) are unchanged: only
 the number of rounds in one reply grew, nothing is stored longer.
 
@@ -949,7 +971,7 @@ the number of rounds in one reply grew, nothing is stored longer.
 
 | Provider path | How it searches | Step budget | Call or query limit in code |
 | --- | --- | --- | --- |
-| Brave, Exa | Client function tools, `auto` tool choice | 8 tool steps + 1 final | 12 calls per message, `ExternalSearchBudget` |
+| Brave, Exa | Client function tools, `auto` tool choice | 8 tool steps + 1 final per request | 12 calls per request, `ExternalSearchBudget` |
 | DeepSeek | Client function tool `web_search` | 3 tool steps + 1 final | 8 calls per message (`DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN`, kept at 8 on purpose: a real turn used 7 and the Search API has a 5 QPS account limit) |
 | Moonshot AI | Client function tool for the Formula-API search | 3 tool steps + 1 final | none |
 | Anthropic | Provider-executed `webSearch_20250305({})`, `auto` tool choice | Runs inside one model step | No `maxUses` is set; only Anthropic's own server-side limits apply |
