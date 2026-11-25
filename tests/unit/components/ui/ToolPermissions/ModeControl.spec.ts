@@ -71,6 +71,16 @@ describe('Ui/ToolPermissions/ModeControl', () => {
       expect(wrapper.emitted('select')).toBeUndefined()
     })
 
+  it('hides the icon tooltips on devices without hover, so a tap leaves '
+    + 'nothing over the row', async () => {
+    const wrapper = await mountControl()
+    const tooltip = wrapper.get('[role="radio"]').element.parentElement!
+
+    expect(tooltip.className).toContain('tooltip')
+    expect(tooltip.className).toContain('[@media(hover:none)]:before:hidden')
+    expect(tooltip.className).toContain('[@media(hover:none)]:after:hidden')
+  })
+
   it('can hide the modes a tool does not take', async () => {
     const wrapper = await mountControl({
       modes: ['blocked', 'ask'],

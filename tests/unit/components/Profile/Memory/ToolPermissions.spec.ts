@@ -108,12 +108,35 @@ describe('Profile/Memory/ToolPermissions', () => {
         .text()).toBe('Reading memory never asks.')
     })
 
-  it('always shows the warning under the memory_write control, whatever the '
-    + 'mode', async () => {
-    const wrapper = await mountSuspended(ToolPermissions)
-    const warning = toolRow(wrapper, 'memory_write')
-      .get('[data-testid="memory-tool-permissions-warning"]')
+  it('shows no warning while memory_write is not on Always allow',
+    async () => {
+      for (const mode of ['ask', 'blocked'] as const) {
+        seedTools({ memory_write: mode })
 
+        const wrapper = await mountSuspended(ToolPermissions)
+
+        expect(wrapper.find('[data-testid="memory-tool-permissions-warning"]')
+          .exists(), mode).toBe(false)
+        expect(wrapper.find('[data-testid="memory-tool-permissions-status"]')
+          .exists(), mode).toBe(false)
+      }
+    })
+
+  it('shows the warning as a soft warning alert under the memory_write row '
+    + 'only while it is on Always allow', async () => {
+    seedTools({ memory_write: 'allow' })
+
+    const wrapper = await mountSuspended(ToolPermissions)
+    const row = toolRow(wrapper, 'memory_write')
+    const warning = row.get('[data-testid="memory-tool-permissions-warning"]')
+
+    expect(warning.classes()).toEqual(expect.arrayContaining([
+      'alert',
+      'alert-warning',
+      'alert-soft',
+      'w-full',
+    ]))
+    expect(warning.attributes('role')).toBe('status')
     expect(warning.text()).toBe(MEMORY_TOOL_ALWAYS_ALLOW_WARNING)
     expect(warning.text()).toContain('save, overwrite and merge into your '
       + 'memory without asking')
@@ -122,13 +145,26 @@ describe('Profile/Memory/ToolPermissions', () => {
       + 'never-store list still run on every save.')
     expect(wrapper.findAll('[data-testid="memory-tool-permissions-warning"]'))
       .toHaveLength(1)
+    expect(toolRow(wrapper, 'memory_forget')
+      .find('[data-testid="memory-tool-permissions-warning"]').exists())
+      .toBe(false)
+  })
+
+  it('shows and hides the warning as the mode changes', async () => {
+    const wrapper = await mountSuspended(ToolPermissions)
+    const warningTestId = '[data-testid="memory-tool-permissions-warning"]'
+
+    expect(wrapper.find(warningTestId).exists()).toBe(false)
 
     seedTools({ memory_write: 'allow' })
     await flushPromises()
 
-    expect(toolRow(wrapper, 'memory_write')
-      .find('[data-testid="memory-tool-permissions-warning"]').exists())
-      .toBe(true)
+    expect(wrapper.find(warningTestId).exists()).toBe(true)
+
+    seedTools({ memory_write: 'ask' })
+    await flushPromises()
+
+    expect(wrapper.find(warningTestId).exists()).toBe(false)
   })
 
   it('says forgetting always asks after web or file content', async () => {
@@ -142,20 +178,6 @@ describe('Profile/Memory/ToolPermissions', () => {
       .find('[data-testid="memory-tool-permissions-forget-note"]').exists())
       .toBe(false)
   })
-
-  it('announces when saving runs without asking, in a status region',
-    async () => {
-      const wrapper = await mountSuspended(ToolPermissions)
-      const status = wrapper.get('[data-testid="memory-tool-permissions-status"]')
-
-      expect(status.attributes('role')).toBe('status')
-      expect(status.text()).toBe('')
-
-      seedTools({ memory_write: 'allow' })
-      await flushPromises()
-
-      expect(status.text()).toBe('Saving to memory now runs without asking.')
-    })
 
   it('saves one tool and takes the stored list', async () => {
     mocks.fetch.mockResolvedValue({

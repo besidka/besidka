@@ -3747,9 +3747,11 @@ Blocked holds without the `tool-approvals` flag.
   the `tool-approvals` flag: one three-icon radio group for `memory_write`
   and a two-mode group for `memory_forget`, the line "Reading memory never
   asks." and, for `memory_forget`, the line "Forgetting always asks after web
-  or file content, because it cannot be undone." Under the `memory_write`
-  control a static warning line is shown at all times, not only after it is
-  on. Its exact text is the constant `MEMORY_TOOL_ALWAYS_ALLOW_WARNING` in
+  or file content, because it cannot be undone." While `memory_write` is set
+  to Always allow, a soft warning alert (`alert alert-warning alert-soft`,
+  `role="status"`, full row width under the `memory_write` row) shows the
+  warning; it is not shown in the other modes. The alert is its own live
+  region, so there is no separate status text. Its exact text is the constant `MEMORY_TOOL_ALWAYS_ALLOW_WARNING` in
   `shared/utils/memory-tool-permissions.ts`: "Always allow lets the model
   save, overwrite and merge into your memory without asking, also when it has
   just read the web or a file, even if you did not ask for a save. Saved

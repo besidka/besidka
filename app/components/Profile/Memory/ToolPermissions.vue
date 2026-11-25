@@ -60,29 +60,25 @@
                 @select="save(tool.name, $event)"
               />
             </div>
-            <p
-              v-if="tool.name === MEMORY_ALWAYS_ALLOW_TOOL_NAME"
-              class="mt-2 flex items-start gap-1.5 text-xs text-base-content/80"
+            <div
+              v-if="tool.name === MEMORY_ALWAYS_ALLOW_TOOL_NAME
+                && tool.mode === 'allow'"
+              class="alert alert-warning alert-soft mt-3 w-full items-start gap-2 text-xs"
+              role="status"
               data-testid="memory-tool-permissions-warning"
             >
               <Icon
                 name="lucide:triangle-alert"
-                size="14"
-                class="mt-px shrink-0 text-warning"
+                size="16"
+                class="mt-px shrink-0"
                 aria-hidden="true"
               />
-              <span>{{ MEMORY_TOOL_ALWAYS_ALLOW_WARNING }}</span>
-            </p>
+              <span class="min-w-0 break-words">
+                {{ MEMORY_TOOL_ALWAYS_ALLOW_WARNING }}
+              </span>
+            </div>
             <p
-              v-if="tool.name === MEMORY_ALWAYS_ALLOW_TOOL_NAME"
-              class="sr-only"
-              role="status"
-              data-testid="memory-tool-permissions-status"
-            >
-              {{ statusText }}
-            </p>
-            <p
-              v-else
+              v-else-if="tool.name !== MEMORY_ALWAYS_ALLOW_TOOL_NAME"
               class="mt-2 text-xs text-base-content/60"
               data-testid="memory-tool-permissions-forget-note"
             >
@@ -118,16 +114,6 @@ const SECTION_DESCRIPTION = 'Choose what the model may do with your memory '
 
 const { tools, status, error, refresh, isSaving, save }
   = useMemoryToolPermissions()
-
-const statusText = computed<string>(() => {
-  const isAlwaysAllowed = tools.value.some((tool) => {
-    return tool.name === MEMORY_ALWAYS_ALLOW_TOOL_NAME && tool.mode === 'allow'
-  })
-
-  return isAlwaysAllowed
-    ? 'Saving to memory now runs without asking.'
-    : ''
-})
 
 const errorMessage = computed<string>(() => {
   return error.value

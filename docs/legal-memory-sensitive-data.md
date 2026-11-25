@@ -610,8 +610,8 @@ only after the user's transfer consent as before. (3) The call budget is per
 request, so a message continued in more requests or long-task rounds can write
 more entries. (4) The Undo chip exists for writes only, not for forgets.
 Measures that stay: the per-tool opt-in that is off by default, the warning in
-the settings card (always visible under the save control) and under the Always
-allow button on the approval card, the single-call lifting of the write lock,
+the settings card (a warning alert shown while Always allow is on) and under
+the Always allow button on the approval card, the single-call lifting of the write lock,
 the call budget, and no exposure over MCP. Recorded as `docs/legal/dpia.md`
 risk row 75 and in `docs/legal/art30-record.md` (row 7 and the review log).
 
