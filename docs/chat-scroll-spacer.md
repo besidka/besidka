@@ -1,6 +1,6 @@
 # Chat scroll and spacer behavior
 
-Last updated: November 20, 2026
+Last updated: November 25, 2026
 Scope: `app/composables/chat-scroll-spacer.ts`,
 `app/composables/chat-image-ui.ts`, and `app/components/ChatInput.client.vue`
 
@@ -15,6 +15,167 @@ incorrect "scroll to bottom" button visibility, and wrong final placement.
 
 This document captures the current behavior, known edge cases, and the exact
 reasons behind the safeguards that were added.
+
+## Elements that appear, disappear or resize: the rule
+
+Read this before you add a card, note, skeleton, chip or overlay to the chat
+message list or to the composer.
+
+### The failure, in order of events
+
+1. The spacer measures the page and sets its height and the scroll target.
+2. Later, an element inside or above the last message leaves or shrinks. An
+   approval card unmounts when its tool finishes, a reasoning box collapses, a
+   skeleton is replaced by a smaller card.
+3. The content is now shorter. The page is shorter by the same amount.
+4. The browser clamps `scrollTop` by itself, because the old value is past the
+   new maximum.
+5. The user's message slides down the screen.
+6. Nothing fixes it until the next spacer event.
+
+The spacer does not watch the page. It is recomputed only on a fixed list of
+events. Anything that changes the layout between two of them is invisible to
+it. These are all the events in `app/composables/chat-scroll-spacer.ts` today:
+
+| Event | Function | What it does |
+| --- | --- | --- |
+| A user message renders (`onMounted`, `onUpdated`) | `captureMessageDimensions()` then `pushUserMessageToTop()` after 150 ms | Pins the user message |
+| The assistant message is the last one and the status is `ready` | `captureMessageDimensions()` then `adjustSpacerAfterResponse()` after a 150 ms debounce | The final adjust. Runs once per message id |
+| Regenerate (`chat:regenerate`) | `pushUserMessageToTop()` | Pins the user message again |
+| Continuation (`chat:continue`) | `pinUserMessageForContinuation()` | Pins and stores the scroll target |
+| The messages container resizes, only while a continuation target is stored | `keepContinuationPinned()` (a `ResizeObserver` through `useResizeObserver`) | Grows the spacer and returns to the target |
+| Composer height report (`chat-input:height`) | `scheduleFitSpacerToInputHeight()` then `fitSpacerToInputHeight()` | Updates `inputHeight`. Fits the spacer only while no push has run and no user message exists |
+| Scroll button, focus or typing in the composer (`chat:scroll-to-bottom`) | the hook handler, `resetSpacer()` for a tall last pair | Scrolls to the end |
+| The keyboard inset changes | the `keyboardInset` watcher | Scrolls by the growth and re-fits |
+| A research turn or a pending image skeleton starts | `reservePinnedSpace()`, called from `app/pages/chats/[slug].vue` | Reserves the pinned space |
+
+`chat:submit` only resets flags. The `status` and `slug` watchers only clear
+the stored continuation target. No other code recomputes the spacer, and the
+final adjust runs once, at `ready`.
+
+### The rule
+
+A change of height that happens after a measurement needs a trigger. The
+trigger does not come by itself: whoever adds the element must make something
+wait for the layout change and then run the spacer. There are two accepted
+mechanisms.
+
+1. **An event that fires when the layout really changed. Prefer this.**
+   - The `ResizeObserver` on the messages container
+     (`messagesContentElement`, `useResizeObserver(..., keepContinuationPinned)`)
+     fires after every content resize, whatever caused it. It is right when
+     the element lives in the message list. Today it acts only while a
+     continuation target is stored; if your element leaves outside a
+     continuation, extend what that callback does, do not add a second
+     observer.
+   - A hook the component emits after its leave transition has ended, or after
+     `await nextTick()` when it unmounts without a transition. The hooks that
+     exist are `chat-input:height` (the composer, emitted by
+     `app/components/ChatInput.client.vue`) and `chat-spacer:changed` (the
+     spacer to the composer). Declare a new hook in
+     `app/types/runtime-hooks.d.ts` under `RuntimeNuxtHooks`, call it with
+     `nuxtApp.callHook(...)` in the component, and register the handler in
+     `chat-scroll-spacer.ts` next to `nuxtApp.hook('chat:continue', ...)`.
+2. **A timer, only when there is no observable event.** For example a CSS
+   transition with no `transitionend` you can rely on (`display: none` swaps,
+   an element removed by a library you do not control). The delay must be a
+   named constant that the CSS also uses (a shared constant or a CSS variable
+   set from it), never a guessed number such as `300`. The doc, the commit
+   message or the PR must say why an event was not possible. There is no such
+   constant in the code today. The 150 ms `DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS`
+   is a debounce for the DOM to settle after a render; it is not tied to any
+   CSS duration and must not be reused for this.
+
+Prefer the event. A timer is wrong whenever the duration changes, the device
+is slow, the tab is in the background or the user has reduced motion. An event
+fires when the layout changed and not before.
+
+### What does not work
+
+- **Calling `scrollTo` from the component that disappears.** The component is
+  being unmounted, so the layout it leaves has not happened yet, and it does
+  not know the spacer or the pin target.
+- **Recomputing in the same tick as the state change.** The DOM has not
+  shrunk yet. `await nextTick()` is the minimum, and for a transition the wait
+  is until it ends.
+- **Relying on the final adjust at `ready`.** It runs once, at the end. The
+  user sees the message slide for the whole turn, as in the 343 px case in
+  "Approval pauses and continuations" and the July 2026 image case.
+- **Widening a test timeout.** The e2e specs poll the layout with
+  `expect.poll`, so a longer timeout lets a late recovery pass, such as the
+  final adjust at `ready`, and hides a slide the user saw for the whole turn.
+  Assert the position during the turn, before the next content arrives.
+
+### Checklist for every new element
+
+Answer these in the PR before you merge a card inside a message, a note above
+an answer, or a chip, skeleton or overlay in the composer.
+
+1. Where does it mount, and when does it leave? Write the leave condition
+   (state, status, timer, user action).
+2. Is its height part of what the spacer measured? Inside the message list,
+   after the last user message: yes. In the composer root: yes, through
+   `chat-input:height`. In `chat-input-overlays`: no, by design.
+3. Which trigger covers its leave? Name the event from the table above or the
+   new one you added. "The final adjust" is not an answer.
+4. Is there a unit test in `tests/unit/composables/chat-scroll-spacer.spec.ts`
+   that moves the geometry (shrinks `messagesEnd.offsetTop` or the
+   container) and fires the trigger?
+5. Is there an end-to-end case with a delay between the element leaving and
+   the next content arriving? The mock in the earlier bug sent both in one
+   burst, which hid it. `tests/e2e/chat/approval-scroll.spec.ts` has the
+   `delayed-text` mode (`CONTINUATION_DELAY_MS`) for this.
+6. Did you look at it on a deployed preview at phone width (390x844) and
+   desktop width (1280x800)?
+7. Is every new source file mapped to the spacer suites in
+   `scripts/test-affected-check.mjs`? A directory pattern already covers
+   `app/components/Chat/` and `app/components/ChatInput/`; check with
+   `getAffectedTests([file])`.
+
+### Elements that exist today
+
+"Covered" names the trigger. "NOT covered" means no trigger of its own; the
+open items are listed after the table.
+
+| Element | Where | Covered by |
+| --- | --- | --- |
+| Approval bubble (`Chat/ToolApprovalBubble.vue`) | Sibling after the last message; leaves when the tool settles | The pause: `revealApprovalBubble()` in the final adjust. The leave during a continuation: the pin spacer is sized as if the bubble had left already (`getLeavingApprovalBubbleHeight()`), so nothing is clamped; `keepContinuationPinned()` covers the rest |
+| Approval step inside the reasoning box (`Reasoning/ApprovalStep.vue`) | In the message | The final adjust at `ready`. Its user-opened `details` (Arguments, Text to save): NOT covered |
+| Reasoning box auto-collapse when the text starts (`Reasoning.vue`, `isMainExpanded`) | Top of the last assistant message, mid-stream | NOT covered by a trigger. The pin was sized from the user message, so it only clamps if the reply falls below that; the final adjust corrects the rest |
+| Reasoning box opened or closed by the user after `ready` | Same | NOT covered |
+| Pending image skeleton (phantom, then real) | Standalone message or inline | `reservePinnedSpace('instant')` on the rising edge; the swap is height neutral because turns are gated on `isTurnActive` |
+| Generic loader (`Chat/Loader.client.vue`) | After the last message | Nothing to cover: it is `h-0` with an absolutely placed bubble and only fades (`opacity-0`), so showing and hiding it never changes the page height |
+| Research clarify and pending blocks | Siblings of the message list | `reservePinnedSpace()` from the `[slug].vue` watcher |
+| Artifact card (`Chat/Artifact/Card.vue`), document card (`Chat/Document.vue`) | Message parts; streaming, ready and failed states differ in height | The final adjust at `ready`. A state change mid-turn: NOT covered |
+| Code run card (`Chat/CodeExecution.vue`), "Show more lines" and the details opened inline by the user (`isExpanded`) | In the message | The final adjust at `ready` for the card itself. A user toggle after `ready`: NOT covered. The detail view in the side panel (`CodeExecution/Detail.vue`) is out of flow |
+| Generated image (`Chat/GeneratedImage.vue`) | In the message | By design: the box reserves its height with `aspectRatio` and a same-size skeleton, so the image loading does not resize it |
+| Images in Markdown text | In the message | NOT covered. The app has no `ProseImg` override and no reserved size, so a lazy image that loads after the measurement grows the message |
+| Error card (`Chat/ErrorCard.vue`) | Replaces the reply text when a turn fails | NOT covered: the turn ends in `error`, and the final adjust runs only at `ready` |
+| Files, omitted-context note, connectors notice, URL sources, auto web search chip, tool rounds, reply stopped | In the message, mostly at the end of a turn | The final adjust at `ready` (they appear before or with it) |
+| Composer attachments row: file chips, upload skeleton, link skeleton, pasted-text chips, setting tiles (`SettingTile.vue`, 150 ms height transition) | In the composer root, counted on purpose | `chat-input:height` from the `useElementSize` watcher (every change while the textarea is empty, only the first one with a draft typed), from the tiles watcher (tiles appearing or leaving, draft typed), from `chat:attach-file`, with `chat:scroll-to-bottom` on attach. With a draft typed, removing a chip or finishing an upload is NOT reported; it only refreshes at the next report |
+| Composer overlays: command picker, approval chip, connector suggestion | `chat-input-overlays`, `absolute bottom-full` | Not measured by design; they never change the reported height. `composer-overlays-spacer.spec.ts` |
+| Keyboard | Visual viewport | The `keyboardInset` watcher |
+| "+" tools menu, model picker, file manager modal | Popover, sheet or dialog above the page | Out of flow; they do not change message or composer height |
+
+### Open items
+
+Not fixed here. Each needs a trigger and the tests from the checklist.
+
+- The composer attachments row with a draft typed: a removed chip, a finished
+  upload or a dismissed note changes the composer height without a
+  `chat-input:height` report.
+- A reasoning box or an approval step `details` opened or closed by the user
+  after `ready`, and the reasoning auto-collapse mid-stream outside a
+  continuation: the content changes height with no trigger.
+- An artifact or document card whose state changes height in the middle of a
+  turn (streaming to failed or unavailable).
+- The code run card opened or closed by the user after `ready`.
+- Images in Markdown text: no reserved height, so a late load grows the
+  message after the measurement.
+- A turn that ends in `error`: the error card replaces the text, and the final
+  adjust runs only at `ready`, so nothing recomputes the spacer.
+- `chat-input:height` does not recompute the spacer after a push, so a
+  composer that grows or shrinks after a pin changes only `inputHeight`.
 
 ## Main files and ownership
 
@@ -250,14 +411,90 @@ Now:
   covers the reply; it shows only when the bubble is scrolled away, as a
   way back to it.
 
+The pin is kept while the continuation runs (BES-462). The pin sizes the
+spacer from the layout at the moment the request starts, when the approval
+bubble is still under the reply in its `sending` state. The bubble leaves as
+soon as the tool part settles, which can be seconds before any text arrives,
+because the server runs the tool first. `messagesEnd.offsetTop` then drops by
+the bubble's height, `scrollHeight` shrinks, the browser clamps `scrollTop`,
+and the pinned user message slid down by that height (343px on a 390x844
+viewport with a short reply, measured with a per-frame sampler) until
+`adjustSpacerAfterResponse()` placed the finished reply. Nothing recomputed
+the spacer in between: it ran only on submit, continue, regenerate, input
+height changes and once per reply at `ready`.
+
+Sizing the spacer for a layout that is about to change beats correcting it
+after the fact. `getLeavingApprovalBubbleHeight()` measures the approval
+bubble message that is still on the page (its distance to `messagesEnd` plus
+its top margin) and `getSpacerHeightForScrollTarget()` sizes the pin spacer
+as if it had left already. When the tool settles, the page keeps its height,
+`scrollTop` is never clamped and the pinned user message does not move, not
+even for the one layout that sits between the removal and the first resize
+notification (a per-frame sampler that reads before the next layout saw that
+layout, 350px away on a 390x844 viewport, even with `keepContinuationPinned()`
+in place). The extra blank space under the reply, about the bubble's height
+and whatever the reply grows by while the tool settles, is the same kind of
+slack a plain send has and is replaced by `adjustSpacerAfterResponse()` when
+the reply finishes. A reader who had scrolled the bubble into view before the
+click (the user message partly above the container's top) is still moved to
+the pin by the continuation, a smooth scroll that the leaving bubble no longer
+interrupts with an instant jump.
+
+`keepContinuationPinned()` closes the rest. `pinUserMessageForContinuation()`
+stores its scroll target; a `ResizeObserver` on the messages container
+(`messagesEnd`'s parent) then recomputes the spacer the pin needs after every
+content resize. When it needs more than the current spacer, it grows the
+spacer, waits a tick and scrolls instantly back to the stored target. Content
+growth never shrinks the spacer.
+
+What counts as a user takeover (the spacer still grows, but the view is left
+where the user put it; the flag is reset by every new pin):
+
+- a `wheel` event on the scroll container, except one whose `timeStamp` is
+  within 250 ms of the moment the pin was set
+  (`CONTINUATION_WHEEL_MOMENTUM_MS`, compared with `performance.now()` at the
+  pin, no timer): that is the tail of a trackpad scroll that started before
+  the pin, which keeps sending events for a while;
+- a `touchmove` on the scroll container;
+- a `keydown` of PageUp, PageDown, Home, End, ArrowUp, ArrowDown or Space
+  (listened on `window`) unless its target is an input, textarea, select or
+  `contenteditable` element, so typing in the composer never releases the pin
+  (focusing the composer already releases it through `chat:scroll-to-bottom`);
+- a `pointerdown` whose target is the scroll container itself, which is how a
+  scrollbar drag arrives (a press on a message or any other child is not one).
+
+The stored target is cleared by `adjustSpacerAfterResponse()`,
+`pushUserMessageToTop()`, `reservePinnedSpace()`, `chat:submit`,
+`chat:scroll-to-bottom` (the scroll
+button, or focusing or typing in the composer: the user asked for the bottom,
+so the pin must not pull the view back), the chat status becoming `ready` or
+`error` (through the status watcher, so a continuation that ends without a
+measured reply, such as a stopped one, cannot leave a stale target behind) and
+a change of the `slug` route param (the composable instance can outlive the
+chat it pinned), so a settled layout is never touched. Anything that
+shrinks the page for another reason (a reasoning box that collapses) still
+shows one frame at the displaced position, because the resize notification
+arrives after the layout that clamped. Do not replace this with a falling-edge
+`scrollIntoView()` (see the image-generation section for why). This is the
+first case of a general rule, written down in
+[Elements that appear, disappear or resize: the rule](#elements-that-appear-disappear-or-resize-the-rule)
+near the top: an element that leaves after a
+measurement needs a trigger of its own, and `keepContinuationPinned()` is
+the one that exists for continuations, together with the pre-sized spacer
+for the leaving bubble.
+
 Covered by `tests/unit/composables/chat-scroll-spacer.spec.ts`
 ("continuations and approval pauses") and
 `tests/e2e/chat/approval-scroll.spec.ts` (mobile 390x844 and desktop
 1280x800: the bubble is fully visible and the pill hidden after the pause,
 the pill appears when scrolled away and leads back, the continuation pins
 the user message, and the final layout matches a plain send of the same
-reply within 2px). The spec reuses `tests/e2e/helpers/composer-metrics.ts`
-with `composer-overlays-spacer.spec.ts`.
+reply within 2px). A short reply, with only a reasoning row and the bubble
+above the composer, is checked with a per-frame sampler that reads before
+each layout: from the click until the final text, and through the end, the
+user message top and the scroll position stay within 2px of where they were
+before the click, and the final layout equals a plain send. The spec reuses
+`tests/e2e/helpers/composer-metrics.ts` with `composer-overlays-spacer.spec.ts`.
 
 ## Runtime hook contract (event bus)
 

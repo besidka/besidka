@@ -20,6 +20,13 @@ import { fileURLToPath } from 'node:url'
 
 export const COOKIE_CONSENT_MODULE_TEST_DIR = 'modules/cookie-consent/test/'
 
+export const SPACER_SUITES = [
+  'tests/unit/composables/chat-scroll-spacer.spec.ts',
+  'tests/e2e/chat/scroll-spacer.spec.ts',
+  'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  'tests/e2e/chat/approval-scroll.spec.ts',
+]
+
 export function getChangedFiles(base = 'HEAD') {
   try {
     let gitCommand
@@ -967,7 +974,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     ...modelsTriggerTests,
-    'tests/e2e/chat/scroll-spacer.spec.ts',
+    ...SPACER_SUITES,
   ]
   const providerReasoningWiringTests = [
     'tests/unit/utils/providers/deepseek.spec.ts',
@@ -1902,11 +1909,8 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const approvalScrollTests = [
-    'tests/unit/composables/chat-scroll-spacer.spec.ts',
-    'tests/e2e/chat/scroll-spacer.spec.ts',
-    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+    ...SPACER_SUITES,
     'tests/e2e/chat/tool-approval.spec.ts',
-    'tests/e2e/chat/approval-scroll.spec.ts',
     'tests/unit/components/Chat/ToolApprovalBubble.spec.ts',
     'tests/unit/composables/message-approvals.spec.ts',
     'tests/unit/components/ChatInput/ToolApprovalChip.spec.ts',
@@ -2202,8 +2206,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/model-turns.spec.ts',
     'tests/e2e/chat/builtin-commands.spec.ts',
     'tests/e2e/chat/skills.spec.ts',
-    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
-    'tests/e2e/chat/scroll-spacer.spec.ts',
+    ...SPACER_SUITES,
   ]
 
   const usageReportsTests = [
@@ -2946,6 +2949,10 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^(scripts\/test-affected-check\.mjs|tests\/unit\/scripts\/test-affected-check\.spec\.ts)$/,
+      tests: ['tests/unit/scripts/test-affected-check.spec.ts'],
+    },
+    {
       pattern: /^(scripts\/mcp-version-guard\.mjs|config\/mcp-surface\.json|server\.json|config\/mcp-server\.ts)$/,
       tests: ['tests/unit/scripts/mcp-version-guard.spec.ts'],
     },
@@ -3484,23 +3491,37 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/ThemeSwitcher.spec.ts',
         'tests/e2e/settings/theme.spec.ts',
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
       ],
     },
     {
       pattern: /^app\/composables\/chat-scroll-spacer\.ts$/,
       tests: [
-        'tests/unit/composables/chat-scroll-spacer.spec.ts',
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/e2e/chat/chat-input-collapse-on-attach.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(app\/components\/ChatInput\.client\.vue|app\/composables\/(chat|chat-scroll-spacer|visual-viewport-inset)\.ts|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: SPACER_SUITES,
+    },
+    {
+      pattern:
+        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
+      tests: SPACER_SUITES,
+    },
+    {
+      pattern:
+        /^app\/components\/ChatInput\/(?!(Files\/Modal|Files\/DropZone\.client\.vue|ModelsTrigger\/|ToolsMenu\/|(Artifact|Connector|Project|Skill)Picker\.client\.vue)).+\.vue$/,
+      tests: SPACER_SUITES,
     },
     {
       pattern:
         /^(app\/composables\/visual-viewport-inset\.ts|app\/composables\/keyboard-inset-root\.ts)$/,
       tests: [
         'tests/unit/composables/visual-viewport-inset.spec.ts',
-        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/unit/composables/keyboard-inset-root.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/components/Chat/TextFileModal.client.spec.ts',
@@ -3512,14 +3533,7 @@ export function getAffectedTests(changedFiles) {
         /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
       tests: [
         'tests/e2e/search/keyboard-inset.spec.ts',
-        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
-      ],
-    },
-    {
-      pattern:
-        /^app\/components\/ChatInput\/(CommandPicker|ConnectorSuggestion|ToolApprovalChip)\.vue$/,
-      tests: [
-        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+        ...SPACER_SUITES,
       ],
     },
     {
@@ -3532,7 +3546,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
       tests: [
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/e2e/chat/gateway-image-generation.spec.ts',
         'tests/e2e/chat/image-generation-single-message.spec.ts',
       ],
@@ -3541,7 +3555,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/composables\/chat-image-ui\.ts$/,
       tests: [
         'tests/unit/composables/chat-image-ui.spec.ts',
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/e2e/chat/gateway-image-generation.spec.ts',
         'tests/e2e/chat/image-generation-single-message.spec.ts',
       ],
