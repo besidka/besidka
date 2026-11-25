@@ -425,20 +425,50 @@ height changes and once per reply at `ready`.
 
 Sizing the spacer for a layout that is about to change beats correcting it
 after the fact. `getLeavingApprovalBubbleHeight()` measures the approval
-bubble message that is still on the page (its distance to `messagesEnd` plus
-its top margin) and `getSpacerHeightForScrollTarget()` sizes the pin spacer
-as if it had left already. When the tool settles, the page keeps its height,
-`scrollTop` is never clamped and the pinned user message does not move, not
-even for the one layout that sits between the removal and the first resize
-notification (a per-frame sampler that reads before the next layout saw that
-layout, 350px away on a 390x844 viewport, even with `keepContinuationPinned()`
-in place). The extra blank space under the reply, about the bubble's height
-and whatever the reply grows by while the tool settles, is the same kind of
-slack a plain send has and is replaced by `adjustSpacerAfterResponse()` when
-the reply finishes. A reader who had scrolled the bubble into view before the
-click (the user message partly above the container's top) is still moved to
-the pin by the continuation, a smooth scroll that the leaving bubble no longer
-interrupts with an instant jump.
+bubble message that is still on the page (`.js-tool-approval-message`, the
+root of `Chat/ToolApprovalBubble.vue`, not the per-message wrapper in
+`[slug].vue` that also holds the reply above it: its distance to
+`messagesEnd` plus its top margin) and `getSpacerHeightForScrollTarget()`
+sizes the pin spacer as if it had left already. When the tool settles, the
+page keeps its height, `scrollTop` is never clamped and the pinned user
+message does not move, not even for the one layout that sits between the
+removal and the first resize notification (a per-frame sampler that reads
+before the next layout saw that layout, 350px away on a 390x844 viewport,
+even with `keepContinuationPinned()` in place). The extra blank space under
+the reply, whatever the reply grows by while the tool settles, is the same
+kind of slack a plain send has and is replaced when the reply finishes.
+
+A reader who had scrolled away from the pin before the click (the card in
+view with the user message partly above the container's top, or scrolled
+up) is moved to the pin in one instant frame while a leaving bubble is
+present and the view is more than 2px from the target
+(`CONTINUATION_PIN_MOVE_THRESHOLD`); otherwise the pin scroll is smooth. A
+smooth scroll would be cut short by the next layout when the bubble leaves,
+which is a visible jump of its own.
+
+The pin leaves a view that is already at the pin alone. The formula the pause
+scrolls to is not what the reader sees (the default spacer clamps it 12px
+lower), and the pin's own formula (`userTop + tallOffset - 12`) sits about 12px
+away from the real position for a tall user message. So when `scrollTop` is
+within `CONTINUATION_PIN_SETTLED_DISTANCE` (24px) of the formula, the pin keeps
+the current `scrollTop` as its target and the click moves the view by 0px.
+Farther away (the reader scrolled, or the pause revealed the bubble), the pin
+moves to the formula.
+
+The reply is placed where the pin put it. `adjustSpacerAfterResponse()` takes
+the pin's scroll target (`finalContinuationScrollTarget`, kept after the
+status watcher clears the live one) when the user did not take over the
+scroll, recomputes only the spacer height so the target stays reachable, and
+scrolls to that target instead of the one a plain send would compute for the
+finished reply. The two can differ when the finished reply is taller than the
+paused one: a plain send then ends 12px lower, and for a user message about
+as tall as the viewport (22 sentences at 430x932) the plain send's own final
+adjust jumps the pinned message from -536 to +12, because its spacer lacks the
+room for the tall-message offset. A continuation keeps what the reader already
+sees. This is the one documented difference from a plain send, and it only
+shows for a long user message. The pin is dropped by a takeover,
+`pushUserMessageToTop()`, `reservePinnedSpace()`, `chat:submit`,
+`chat:scroll-to-bottom`, an `error` status and a slug change.
 
 `keepContinuationPinned()` closes the rest. `pinUserMessageForContinuation()`
 stores its scroll target; a `ResizeObserver` on the messages container
@@ -491,9 +521,13 @@ the pill appears when scrolled away and leads back, the continuation pins
 the user message, and the final layout matches a plain send of the same
 reply within 2px). A short reply, with only a reasoning row and the bubble
 above the composer, is checked with a per-frame sampler that reads before
-each layout: from the click until the final text, and through the end, the
-user message top and the scroll position stay within 2px of where they were
-before the click, and the final layout equals a plain send. The spec reuses
+each layout, at 390x844, 430x932 and 1280x800, for a short user message, a
+long one (22 sentences) with and without a second approval, and with the view
+scrolled 60px away from the pin first. From just before the click until 2 s
+after the reply finished, no frame moves the user message top or `scrollTop`
+by more than 2px, except one instant frame where the view is moved to the pin;
+the final layout equals a plain send, except for the long user message
+described above. The spec reuses
 `tests/e2e/helpers/composer-metrics.ts` with `composer-overlays-spacer.spec.ts`.
 
 ## Runtime hook contract (event bus)

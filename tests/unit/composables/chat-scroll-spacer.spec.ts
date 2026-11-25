@@ -200,7 +200,12 @@ describe('useChatScrollSpacer chat-input:height', () => {
 
 function defineBox(
   element: HTMLElement,
-  box: { offsetTop?: number, offsetHeight?: number, clientHeight?: number },
+  box: {
+    offsetTop?: number
+    offsetHeight?: number
+    clientHeight?: number
+    scrollHeight?: number
+  },
 ) {
   for (const [key, value] of Object.entries(box)) {
     Object.defineProperty(element, key, { configurable: true, value })
@@ -253,7 +258,7 @@ function createContinuationHarness(initialEndOffsetTop: number = 1100) {
           return
         }
 
-        defineBox(element, { clientHeight: 800 })
+        defineBox(element, { clientHeight: 800, scrollHeight: 2000 })
         element.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
         element.scrollTo = vi.fn((options: ScrollToOptions) => {
           scrollTos.push(options)
@@ -314,10 +319,12 @@ function createContinuationHarness(initialEndOffsetTop: number = 1100) {
           'data-role': 'assistant',
           'data-message-id': 'assistant-1',
         }, [
-          h('section', {
-            ref: setBubble,
-            class: 'js-tool-approval-bubble',
-          }),
+          h('div', { class: 'js-tool-approval-message' }, [
+            h('section', {
+              ref: setBubble,
+              class: 'js-tool-approval-bubble',
+            }),
+          ]),
         ]),
         h('div', { ref: setEnd }),
       ])
@@ -360,15 +367,18 @@ function dispatchWheelAt(target: HTMLElement, timeStamp: number) {
 }
 
 const BUBBLE_MARGIN_TOP = 12
+const REPLY_WRAPPER_TOP = 172
 
 function placeApprovalBubble(
   layout: ReturnType<typeof createContinuationHarness>['layout'],
   bubbleMessageTop: number,
 ) {
-  const bubbleMessage = layout.container!.querySelector<HTMLElement>(
+  const replyWrapper = layout.container!.querySelector<HTMLElement>(
     '[data-role="assistant"]',
   )!
-
+  const bubbleMessage = layout.container!.querySelector<HTMLElement>(
+    '.js-tool-approval-message',
+  )!
   const readComputedStyle = window.getComputedStyle.bind(window)
 
   vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
@@ -378,6 +388,9 @@ function placeApprovalBubble(
 
     return readComputedStyle(element)
   })
+  replyWrapper.getBoundingClientRect = () => {
+    return { top: REPLY_WRAPPER_TOP } as DOMRect
+  }
   bubbleMessage.getBoundingClientRect = () => {
     return { top: bubbleMessageTop } as DOMRect
   }
@@ -389,7 +402,7 @@ function placeApprovalBubble(
 function removeApprovalBubble(
   layout: ReturnType<typeof createContinuationHarness>['layout'],
 ) {
-  layout.container!.querySelector('.js-tool-approval-bubble')?.remove()
+  layout.container!.querySelector('.js-tool-approval-message')?.remove()
 }
 
 describe('useChatScrollSpacer continuations and approval pauses', () => {
@@ -874,8 +887,8 @@ describe('useChatScrollSpacer continuations and approval pauses', () => {
     expect(scrollTos).toEqual([])
   })
 
-  it('still returns to the pin when the bubble was shorter than measured '
-    + 'and the page gets shorter than the pin needs', async () => {
+  it('still returns to the pin when the content ends up above what the '
+    + 'pre-sized spacer covers', async () => {
     const {
       Harness,
       chatSdk,
@@ -902,21 +915,210 @@ describe('useChatScrollSpacer continuations and approval pauses', () => {
     expect(scrollTos).toEqual([{ top: 88, behavior: 'instant' }])
   })
 
-  it('adds nothing to the pin spacer when no approval bubble is on the '
-    + 'page', async () => {
-    const { Harness, chatSdk, spacerHeights, layout } = (
+  it('measures the bubble message, not the reply wrapper it sits in',
+    async () => {
+      const { Harness, chatSdk, spacerHeights, layout } = (
+        createContinuationHarness(1100)
+      )
+
+      await mountSuspended(Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+      placeApprovalBubble(layout, 700)
+
+      chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+
+      expect(spacerHeights.at(-1)).not.toBe(728)
+      expect(spacerHeights.at(-1)).toBe(200)
+    })
+
+  it('moves to the pin in one instant frame when the bubble is about to '
+    + 'leave and the view is away from the pin', async () => {
+    const { Harness, chatSdk, scrollTos, layout } = (
       createContinuationHarness(1100)
     )
 
     await mountSuspended(Harness)
     await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
-    removeApprovalBubble(layout)
     placeApprovalBubble(layout, 700)
+    layout.container!.scrollTop = 300
+    scrollTos.length = 0
 
     chatSdk.status = 'submitted'
     await useNuxtApp().callHook('chat:continue')
     await nextTick()
 
-    expect(spacerHeights.at(-1)).toBe(12)
+    expect(scrollTos).toEqual([{ top: 88, behavior: 'instant' }])
+  })
+
+  it('keeps the smooth pin when the view is already at the pin target',
+    async () => {
+      const { Harness, chatSdk, scrollTos, layout } = (
+        createContinuationHarness(1100)
+      )
+
+      await mountSuspended(Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+      placeApprovalBubble(layout, 700)
+      layout.container!.scrollTop = 89
+      scrollTos.length = 0
+
+      chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+
+      expect(scrollTos).toEqual([{ top: 89, behavior: 'smooth' }])
+    })
+
+  it('keeps the smooth pin when no approval bubble is about to leave',
+    async () => {
+      const { Harness, chatSdk, scrollTos, layout } = (
+        createContinuationHarness(1100)
+      )
+
+      await mountSuspended(Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+      removeApprovalBubble(layout)
+      layout.container!.scrollTop = 300
+      scrollTos.length = 0
+
+      chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+
+      expect(scrollTos).toEqual([{ top: 88, behavior: 'smooth' }])
+    })
+
+  async function startContinuationWithTallUserMessage(
+    harness: ReturnType<typeof createContinuationHarness>,
+  ) {
+    const { Harness, chatSdk, layout } = harness
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    defineBox(
+      layout.container!.querySelector<HTMLElement>('[data-role="user"]')!,
+      { offsetHeight: 300 },
+    )
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+  }
+
+  async function finishContinuation(
+    harness: ReturnType<typeof createContinuationHarness>,
+  ) {
+    const { chatSdk, tick } = harness
+
+    chatSdk.status = 'ready'
+    tick.value += 1
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    await nextTick()
+  }
+
+  function lastInstantScrollTop(scrollTos: ScrollToOptions[]) {
+    return scrollTos.filter((options) => {
+      return options.behavior === 'instant'
+    }).at(-1)
+  }
+
+  it('keeps the pin target when the finished reply is placed and the user '
+    + 'did not scroll', async () => {
+    const harness = createContinuationHarness(400)
+
+    await startContinuationWithTallUserMessage(harness)
+
+    expect(harness.scrollTos.at(-1)).toEqual({ top: 304, behavior: 'smooth' })
+
+    await finishContinuation(harness)
+
+    expect(lastInstantScrollTop(harness.scrollTos))
+      .toEqual({ top: 304, behavior: 'instant' })
+  })
+
+  it('places the finished reply like a plain send after the user took over '
+    + 'the scroll', async () => {
+    const harness = createContinuationHarness(400)
+
+    await startContinuationWithTallUserMessage(harness)
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'End',
+      bubbles: true,
+    }))
+    harness.scrollTos.length = 0
+    await finishContinuation(harness)
+
+    expect(lastInstantScrollTop(harness.scrollTos))
+      .toEqual({ top: 292, behavior: 'instant' })
+  })
+
+  it('does not keep a stale pin for the next reply after an error',
+    async () => {
+      const harness = createContinuationHarness(400)
+
+      await startContinuationWithTallUserMessage(harness)
+      harness.chatSdk.status = 'error'
+      await nextTick()
+      harness.scrollTos.length = 0
+      await finishContinuation(harness)
+
+      expect(lastInstantScrollTop(harness.scrollTos))
+        .toEqual({ top: 292, behavior: 'instant' })
+    })
+
+  it('keeps the view where it is when it is already within reach of the '
+    + 'pin target', async () => {
+    const { Harness, chatSdk, scrollTos, layout } = createContinuationHarness(
+      400,
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    layout.container!.scrollTop = 100
+    scrollTos.length = 0
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+
+    expect(scrollTos.at(-1)).toEqual({ top: 100, behavior: 'smooth' })
+  })
+
+  it('keeps the final placement at the position the view already had',
+    async () => {
+      const harness = createContinuationHarness(400)
+
+      await mountSuspended(harness.Harness)
+      await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+      harness.layout.container!.scrollTop = 100
+      harness.chatSdk.status = 'submitted'
+      await useNuxtApp().callHook('chat:continue')
+      await nextTick()
+      harness.scrollTos.length = 0
+      await finishContinuation(harness)
+
+      expect(lastInstantScrollTop(harness.scrollTos))
+        .toEqual({ top: 100, behavior: 'instant' })
+    })
+
+  it('moves to the pin target when the view is farther from it than the '
+    + 'settled distance', async () => {
+    const { Harness, chatSdk, scrollTos, layout } = createContinuationHarness(
+      400,
+    )
+
+    await mountSuspended(Harness)
+    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
+    layout.container!.scrollTop = 130
+    scrollTos.length = 0
+
+    chatSdk.status = 'submitted'
+    await useNuxtApp().callHook('chat:continue')
+    await nextTick()
+
+    expect(scrollTos.at(-1)).toEqual({ top: 88, behavior: 'smooth' })
   })
 })

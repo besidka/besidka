@@ -30,6 +30,11 @@ const VIEWPORTS = [
   { name: 'desktop', size: { width: 1280, height: 800 } },
 ] as const
 
+const SHORT_REPLY_VIEWPORTS = [
+  ...VIEWPORTS,
+  { name: 'large-phone', size: { width: 430, height: 932 } },
+] as const
+
 function paragraphs(sentence: string, count: number, end: string): string {
   return [
     ...Array.from({ length: count }, (_item, index) => {
@@ -43,7 +48,17 @@ function paragraphs(sentence: string, count: number, end: string): string {
 const BEFORE_TEXT = paragraphs('First I connect to the canvas.', 10, BEFORE_END)
 const AFTER_TEXT = paragraphs('The change is done.', 10, AFTER_END)
 const SHORT_REASONING = 'The rail edit needs the canvas tool.'
+const SECOND_REASONING = 'The rail also needs a second edit.'
 const SHORT_AFTER_END = 'Done, the rail is updated.'
+const LONG_PROMPT = Array.from({ length: 22 }, (_item, index) => {
+  return `Change rail number ${index + 1} on the canvas.`
+}).join(' ')
+const SECOND_CALL_ID = 'approval-scroll-call-2'
+const SECOND_APPROVAL_ID = 'approval-scroll-0002'
+const MAX_FRAME_MOVE = 2
+const SETTLED_PIN_DISTANCE = 24
+const SCROLL_AWAY_FROM_PIN_BY = 60
+const POST_REPLY_OBSERVATION_MS = 2_000
 
 function textChunks(id: string, text: string) {
   return [
@@ -109,6 +124,46 @@ function pausedChunks(variant: 'tall' | 'short' = 'tall') {
   ]
 }
 
+/**
+ * A second reasoning row and a second approval, which is how a continuation
+ * ends when the model needs another tool.
+ */
+function secondApprovalChunks() {
+  return [
+    { type: 'reasoning-start', id: 'reasoning-2' },
+    { type: 'reasoning-delta', id: 'reasoning-2', delta: SECOND_REASONING },
+    { type: 'reasoning-end', id: 'reasoning-2' },
+    { ...TOOL_INPUT_CHUNK, toolCallId: SECOND_CALL_ID },
+    {
+      type: 'tool-approval-request',
+      approvalId: SECOND_APPROVAL_ID,
+      toolCallId: SECOND_CALL_ID,
+    },
+    {
+      type: 'data-tool-approval',
+      id: SECOND_CALL_ID,
+      data: {
+        approvalId: SECOND_APPROVAL_ID,
+        toolCallId: SECOND_CALL_ID,
+        toolName: TOOL_NAME,
+        reason: 'always-ask',
+        summary: `doop wants to run ${TOOL_NAME}`,
+        rememberOptions: ['once', 'chat', 'always'],
+      },
+    },
+  ]
+}
+
+function shortFinalChunks(secondCard: boolean) {
+  return [
+    ...(secondCard
+      ? secondApprovalChunks()
+      : textChunks('text-2', SHORT_AFTER_END)),
+    { type: 'finish-step' },
+    { type: 'finish' },
+  ]
+}
+
 function continuationChunks() {
   return [
     { type: 'start', messageId: MESSAGE_ID },
@@ -125,7 +180,10 @@ function continuationChunks() {
 /**
  * The same final reply, sent in one go without an approval.
  */
-function plainChunks(variant: 'tall' | 'short' = 'tall') {
+function plainChunks(
+  variant: 'tall' | 'short' = 'tall',
+  secondCard: boolean = false,
+) {
   return [
     { type: 'start', messageId: MESSAGE_ID },
     { type: 'start-step' },
@@ -136,12 +194,13 @@ function plainChunks(variant: 'tall' | 'short' = 'tall') {
     TOOL_OUTPUT_CHUNK,
     { type: 'finish-step' },
     { type: 'start-step' },
-    ...textChunks(
-      'text-2',
-      variant === 'short' ? SHORT_AFTER_END : AFTER_TEXT,
-    ),
-    { type: 'finish-step' },
-    { type: 'finish' },
+    ...(variant === 'short'
+      ? shortFinalChunks(secondCard)
+      : [
+        ...textChunks('text-2', AFTER_TEXT),
+        { type: 'finish-step' },
+        { type: 'finish' },
+      ]),
   ]
 }
 
@@ -167,7 +226,11 @@ async function fulfillStream(route: Route, chunks: unknown[]) {
  */
 async function streamContinuationFromPage(
   page: Page,
-  finalText: string = AFTER_TEXT,
+  finalChunks: unknown[] = [
+    ...textChunks('text-2', AFTER_TEXT),
+    { type: 'finish-step' },
+    { type: 'finish' },
+  ],
 ) {
   await page.addInitScript((stream) => {
     const originalFetch = window.fetch.bind(window)
@@ -227,11 +290,7 @@ async function streamContinuationFromPage(
       { type: 'finish-step' },
       { type: 'start-step' },
     ],
-    textChunks: [
-      ...textChunks('text-2', finalText),
-      { type: 'finish-step' },
-      { type: 'finish' },
-    ],
+    textChunks: finalChunks,
   })
 }
 
@@ -240,6 +299,7 @@ async function openMember(
   prefix: string,
   size: { width: number, height: number },
   mode: 'approval' | 'plain' | 'delayed-text' | 'short-delayed' | 'short-plain',
+  secondCard: boolean = false,
 ): Promise<Page> {
   const page = await openGrantedMember(browser, prefix, ['tool-approvals'])
   const variant = mode.startsWith('short') ? 'short' : 'tall'
@@ -249,7 +309,7 @@ async function openMember(
   }
 
   if (mode === 'short-delayed') {
-    await streamContinuationFromPage(page, SHORT_AFTER_END)
+    await streamContinuationFromPage(page, shortFinalChunks(secondCard))
   }
 
   await page.setViewportSize(size)
@@ -266,7 +326,7 @@ async function openMember(
     }
 
     if (mode === 'plain' || mode === 'short-plain') {
-      await fulfillStream(route, plainChunks(variant))
+      await fulfillStream(route, plainChunks(variant, secondCard))
 
       return
     }
@@ -288,8 +348,8 @@ async function openMember(
   return page
 }
 
-async function send(page: Page) {
-  await page.getByTestId('chat-input-textarea').fill(PROMPT)
+async function send(page: Page, prompt: string = PROMPT) {
+  await page.getByTestId('chat-input-textarea').fill(prompt)
   await page.getByTestId('send-message').click()
 }
 
@@ -333,79 +393,6 @@ async function readBubbleClearance(page: Page) {
   })
 }
 
-interface LayoutSample {
-  userTop: number
-  scrollTop: number
-  hasBubble: boolean
-  hasText: boolean
-}
-
-/**
- * Reads the pinned user message and the scroll position on every animation
- * frame, before the frame is laid out again, so a layout that the browser
- * clamps and the app only corrects afterwards is recorded too.
- */
-async function startLayoutSampler(page: Page, finalText: string) {
-  await page.evaluate((text) => {
-    const messagesRoot = document.querySelector(
-      '[data-testid="chat-messages-container"]',
-    ) as HTMLElement
-    const scrollContainer = messagesRoot.parentElement as HTMLElement
-    const samples: LayoutSample[] = []
-    const sampler = { isSampling: true, samples }
-
-    ;(window as unknown as { __layoutSampler: typeof sampler })
-      .__layoutSampler = sampler
-
-    function sample() {
-      const lastUser = Array.from(
-        document.querySelectorAll('[data-role="user"] .chat-bubble'),
-      ).at(-1) as HTMLElement
-      const lastAssistant = Array.from(
-        document.querySelectorAll('[data-role="assistant"]'),
-      ).at(-1) as HTMLElement | undefined
-
-      samples.push({
-        userTop: lastUser.getBoundingClientRect().top
-          - scrollContainer.getBoundingClientRect().top,
-        scrollTop: scrollContainer.scrollTop,
-        hasBubble: !!document.querySelector(
-          '[data-testid="tool-approval-bubble"]',
-        ),
-        hasText: !!lastAssistant?.innerText.includes(text),
-      })
-
-      if (sampler.isSampling) {
-        requestAnimationFrame(sample)
-      }
-    }
-
-    requestAnimationFrame(sample)
-  }, finalText)
-}
-
-async function stopLayoutSampler(page: Page): Promise<LayoutSample[]> {
-  return page.evaluate(() => {
-    const sampler = (window as unknown as {
-      __layoutSampler: { isSampling: boolean, samples: LayoutSample[] }
-    }).__layoutSampler
-
-    sampler.isSampling = false
-
-    return sampler.samples
-  })
-}
-
-async function hasSampledText(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
-    const sampler = (window as unknown as {
-      __layoutSampler: { samples: LayoutSample[] }
-    }).__layoutSampler
-
-    return sampler.samples.some(sample => sample.hasText)
-  })
-}
-
 for (const { name, size } of VIEWPORTS) {
   test(`${name}: an approval pause shows its bubble, and the continuation is placed like a plain send`, async ({
     browser,
@@ -430,7 +417,6 @@ for (const { name, size } of VIEWPORTS) {
       size,
       'approval',
     )
-
     await openChatCase(page, CASE_URL)
     await settleLayout(page)
 
@@ -543,74 +529,260 @@ for (const { name, size } of VIEWPORTS) {
       return top < 0 || top > TOP_ALIGNMENT_MAX
     })).toEqual([])
   })
+}
 
-  test(`${name}: a short reply with a reasoning row keeps its position from the click until the final text and ends like a plain send`, async ({
-    browser,
-  }) => {
-    const plainPage = await openMember(
-      browser,
-      `e2e-approval-scroll-short-plain-${name}`,
-      size,
-      'short-plain',
-    )
+interface LayoutSample {
+  userTop: number
+  scrollTop: number
+  hasFinal: boolean
+}
 
-    await openChatCase(plainPage, CASE_URL)
-    await settleLayout(plainPage)
-    await send(plainPage)
-    await waitUntilReady(plainPage, SHORT_AFTER_END)
+interface ShortScenario {
+  label: string
+  prompt: string
+  secondCard: boolean
+  scrollCardIntoView: boolean
+  scrollBy: number
+  instantPinFrames: number
+  matchesPlainSend: boolean
+}
 
-    const plain = await readComposerMetrics(plainPage)
+const SHORT_SCENARIOS: ShortScenario[] = [
+  {
+    label: 'a short message',
+    prompt: PROMPT,
+    secondCard: false,
+    scrollBy: 0,
+    instantPinFrames: 0,
+    matchesPlainSend: true,
+  },
+  {
+    label: 'a long message',
+    prompt: LONG_PROMPT,
+    secondCard: false,
+    scrollBy: 0,
+    instantPinFrames: 0,
+    matchesPlainSend: false,
+  },
+  {
+    label: 'a long message and a second approval',
+    prompt: LONG_PROMPT,
+    secondCard: true,
+    scrollBy: 0,
+    instantPinFrames: 0,
+    matchesPlainSend: true,
+  },
+  {
+    label: 'a short message with the view scrolled away from the pin',
+    prompt: PROMPT,
+    secondCard: false,
+    scrollBy: -SCROLL_AWAY_FROM_PIN_BY,
+    instantPinFrames: 1,
+    matchesPlainSend: true,
+  },
+  {
+    label: 'a long message with the view scrolled away from the pin',
+    prompt: LONG_PROMPT,
+    secondCard: false,
+    scrollBy: -SCROLL_AWAY_FROM_PIN_BY,
+    instantPinFrames: 1,
+    matchesPlainSend: false,
+  },
+]
 
-    const page = await openMember(
-      browser,
-      `e2e-approval-scroll-short-${name}`,
-      size,
-      'short-delayed',
-    )
+/**
+ * Reads the pinned user message and the scroll position on every animation
+ * frame, before the frame is laid out again, so a layout that the browser
+ * clamps and the app only corrects afterwards is recorded too.
+ */
+async function startLayoutSampler(
+  page: Page,
+  finalText: string,
+  secondCard: boolean,
+) {
+  await page.evaluate(({ text, expectsBubble }) => {
+    const messagesRoot = document.querySelector(
+      '[data-testid="chat-messages-container"]',
+    ) as HTMLElement
+    const scrollContainer = messagesRoot.parentElement as HTMLElement
+    const samples: LayoutSample[] = []
+    const sampler = { isSampling: true, samples }
+    let hasBubbleLeft = false
 
-    await openChatCase(page, CASE_URL)
-    await settleLayout(page)
-    await send(page)
-    await waitUntilReady(page, 'Waiting for your approval')
+    ;(window as unknown as { __layoutSampler: typeof sampler })
+      .__layoutSampler = sampler
 
-    const bubble = page.getByTestId('tool-approval-bubble')
+    function sample() {
+      const lastUser = Array.from(
+        document.querySelectorAll('[data-role="user"] .chat-bubble'),
+      ).at(-1) as HTMLElement
+      const lastAssistant = Array.from(
+        document.querySelectorAll('[data-role="assistant"]'),
+      ).at(-1) as HTMLElement | undefined
+      const hasBubble = !!document.querySelector(
+        '[data-testid="tool-approval-bubble"]',
+      )
 
-    await expect(bubble).toBeVisible()
-    await expect.poll(async () => {
-      return (await readBubbleClearance(page)).below
-    }).toBeGreaterThanOrEqual(0)
+      hasBubbleLeft = hasBubbleLeft || !hasBubble
 
-    const before = await readComposerMetrics(page)
+      samples.push({
+        userTop: lastUser.getBoundingClientRect().top
+          - scrollContainer.getBoundingClientRect().top,
+        scrollTop: scrollContainer.scrollTop,
+        hasFinal: expectsBubble
+          ? hasBubbleLeft && hasBubble
+          : !!lastAssistant?.innerText.includes(text),
+      })
 
-    expect(before.lastUserTop).toBeGreaterThanOrEqual(0)
-    expect(before.lastUserTop).toBeLessThanOrEqual(TOP_ALIGNMENT_MAX)
+      if (sampler.isSampling) {
+        requestAnimationFrame(sample)
+      }
+    }
 
-    await startLayoutSampler(page, SHORT_AFTER_END)
-    await bubble.getByTestId('reasoning-approval-step-allow-once').click()
-    await expect.poll(() => hasSampledText(page), {
-      timeout: TEXT_WAIT_MAX_MS,
-    }).toBe(true)
-    await waitUntilReady(page, SHORT_AFTER_END)
+    requestAnimationFrame(sample)
+  }, { text: finalText, expectsBubble: secondCard })
+}
 
-    const samples = await stopLayoutSampler(page)
-    const firstTextIndex = samples.findIndex(sample => sample.hasText)
-    const beforeText = samples.slice(0, firstTextIndex)
+async function stopLayoutSampler(page: Page): Promise<LayoutSample[]> {
+  return page.evaluate(() => {
+    const sampler = (window as unknown as {
+      __layoutSampler: { isSampling: boolean, samples: LayoutSample[] }
+    }).__layoutSampler
 
-    expect(beforeText.some(sample => !sample.hasBubble)).toBe(true)
-    expect(beforeText.length).toBeGreaterThan(0)
-    expect(samples.filter((sample) => {
-      return Math.abs(sample.userTop - before.lastUserTop) > LAYOUT_TOLERANCE
-        || Math.abs(sample.scrollTop - before.scrollTop) > LAYOUT_TOLERANCE
-    })).toEqual([])
-    await expect(bubble).toHaveCount(0)
+    sampler.isSampling = false
 
-    const final = await readComposerMetrics(page)
-
-    expect(Math.abs(final.lastUserTop - plain.lastUserTop))
-      .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
-    expect(Math.abs(final.spacerHeight - plain.spacerHeight))
-      .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
-    expect(Math.abs(final.composerHeight - plain.composerHeight))
-      .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
+    return sampler.samples
   })
+}
+
+async function hasSampledFinal(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const sampler = (window as unknown as {
+      __layoutSampler: { samples: LayoutSample[] }
+    }).__layoutSampler
+
+    return sampler.samples.some(sample => sample.hasFinal)
+  })
+}
+
+function findLargeFrameMoves(samples: LayoutSample[]) {
+  return samples.flatMap((sample, index) => {
+    const previous = samples[index - 1]
+
+    if (!previous) {
+      return []
+    }
+
+    const userMove = sample.userTop - previous.userTop
+    const scrollMove = sample.scrollTop - previous.scrollTop
+
+    if (
+      Math.abs(userMove) <= MAX_FRAME_MOVE
+      && Math.abs(scrollMove) <= MAX_FRAME_MOVE
+    ) {
+      return []
+    }
+
+    return [{ index, userMove, scrollMove, userTop: sample.userTop }]
+  })
+}
+
+for (const { name, size } of SHORT_REPLY_VIEWPORTS) {
+  for (const scenario of SHORT_SCENARIOS) {
+    test(`${name}: ${scenario.label} keeps its position frame by frame from the click to the end of the reply and ends like a plain send`, async ({
+      browser,
+    }) => {
+      const finalText = scenario.secondCard
+        ? 'Waiting for your approval'
+        : SHORT_AFTER_END
+      const plainPage = await openMember(
+        browser,
+        `e2e-approval-scroll-short-plain-${name}`,
+        size,
+        'short-plain',
+        scenario.secondCard,
+      )
+
+      await openChatCase(plainPage, CASE_URL)
+      await settleLayout(plainPage)
+      await send(plainPage, scenario.prompt)
+      await waitUntilReady(plainPage, finalText)
+
+      const plain = await readComposerMetrics(plainPage)
+
+      const page = await openMember(
+        browser,
+        `e2e-approval-scroll-short-${name}`,
+        size,
+        'short-delayed',
+        scenario.secondCard,
+      )
+      await openChatCase(page, CASE_URL)
+      await settleLayout(page)
+      await send(page, scenario.prompt)
+      await waitUntilReady(page, 'Waiting for your approval')
+
+      const bubble = page.getByTestId('tool-approval-bubble')
+
+      await expect(bubble).toBeVisible()
+      await expect.poll(async () => {
+        return (await readBubbleClearance(page)).below
+      }).toBeGreaterThanOrEqual(0)
+
+      if (scenario.scrollBy !== 0) {
+        await page.evaluate((distance) => {
+          const messagesRoot = document.querySelector(
+            '[data-testid="chat-messages-container"]',
+          ) as HTMLElement
+
+          messagesRoot.parentElement!.scrollTop += distance
+        }, scenario.scrollBy)
+        await settleLayout(page)
+      }
+
+      await startLayoutSampler(page, finalText, scenario.secondCard)
+      await page.waitForTimeout(SAMPLE_INTERVAL_MS * 3)
+      await bubble.getByTestId('reasoning-approval-step-allow-once').click()
+      await expect.poll(() => hasSampledFinal(page), {
+        timeout: TEXT_WAIT_MAX_MS,
+      }).toBe(true)
+      await waitUntilReady(page, finalText)
+      await page.waitForTimeout(POST_REPLY_OBSERVATION_MS)
+
+      const samples = await stopLayoutSampler(page)
+      const largeMoves = findLargeFrameMoves(samples)
+      const landedTop = samples.at(-1)!.userTop
+      const startedAwayFromPin = Math.abs(samples[0].userTop - landedTop)
+        > SETTLED_PIN_DISTANCE
+      const allowedLargeMoves = scenario.instantPinFrames
+        || Number(startedAwayFromPin)
+
+      expect(
+        largeMoves.length,
+        JSON.stringify(largeMoves),
+      ).toBeLessThanOrEqual(allowedLargeMoves)
+
+      const lastMove = largeMoves.at(-1)
+
+      if (lastMove) {
+        expect(Math.abs(lastMove.userTop - landedTop))
+          .toBeLessThanOrEqual(MAX_FRAME_MOVE)
+      }
+
+      const final = await readComposerMetrics(page)
+
+      if (scenario.matchesPlainSend) {
+        expect(Math.abs(final.lastUserTop - plain.lastUserTop))
+          .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
+
+        if (!scenario.secondCard) {
+          expect(Math.abs(final.spacerHeight - plain.spacerHeight))
+            .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
+        }
+      }
+
+      expect(Math.abs(final.composerHeight - plain.composerHeight))
+        .toBeLessThanOrEqual(LAYOUT_TOLERANCE)
+    })
+  }
 }
