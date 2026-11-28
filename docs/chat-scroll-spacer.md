@@ -176,6 +176,11 @@ Not fixed here. Each needs a trigger and the tests from the checklist.
   adjust runs only at `ready`, so nothing recomputes the spacer.
 - `chat-input:height` does not recompute the spacer after a push, so a
   composer that grows or shrinks after a pin changes only `inputHeight`.
+- A long, multi-line user message on a slow device: while a reply streams,
+  the pin still uses the height measured at capture, so the view can move
+  once when the reply ends (the final adjust measures the message again). A
+  guarded observer that respects a user takeover and the continuation pin is a
+  possible follow-up.
 
 ## Main files and ownership
 
@@ -478,12 +483,10 @@ renders asynchronously: 36px instead of 296px at 1280x800 with the CPU slowed
 height was wrong for the rest of the turn: the spacer, the tall-message offset
 and the scroll target, so the same plain send ended 12 to 212px away from where
 a fast device ends it, and a pause that used the stale height passed its
-position on to the continuation pin. Two guards close it:
-`pinAgainWhenUserMessageResized()` (a `ResizeObserver` on the measured user
-message) pins again while the reply is on its way, so the view is not moved
-for the first time when the reply ends, and `adjustSpacerAfterResponse()` reads
-the last user message again (`measureUserMessageAgain()`, only when the element
-still belongs to the measured message id) before it computes anything.
+position on to the continuation pin. `adjustSpacerAfterResponse()` closes it
+for the end of the turn: it reads the last user message again
+(`measureUserMessageAgain()`, only when the element still belongs to the
+measured message id) before it computes anything.
 
 `keepContinuationPinned()` closes the rest. `pinUserMessageForContinuation()`
 stores its scroll target; a `ResizeObserver` on the messages container

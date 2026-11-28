@@ -353,24 +353,31 @@ async function send(page: Page, prompt: string = PROMPT) {
   await page.getByTestId('send-message').click()
 }
 
+const SETTLE_GAP_MS = 300
+const SETTLE_TIMEOUT_MS = 10_000
+
 /**
  * The final adjust runs 150 ms after the reply is ready, which a busy
- * machine can stretch, so the metrics are read once two reads 300 ms apart
- * agree.
+ * machine can stretch, so the metrics are read once two reads at least
+ * 300 ms apart agree.
  */
 async function readSettledMetrics(page: Page) {
+  const deadline = Date.now() + SETTLE_TIMEOUT_MS
   let previous = await readComposerMetrics(page)
 
-  await expect.poll(async () => {
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(SETTLE_GAP_MS)
+
     const current = await readComposerMetrics(page)
-    const isSettled = JSON.stringify(current) === JSON.stringify(previous)
+
+    if (JSON.stringify(current) === JSON.stringify(previous)) {
+      return current
+    }
 
     previous = current
+  }
 
-    return isSettled
-  }, { intervals: [300], timeout: 10_000 }).toBe(true)
-
-  return previous
+  throw new Error('The composer metrics did not settle')
 }
 
 async function waitUntilReady(page: Page, text: string) {
