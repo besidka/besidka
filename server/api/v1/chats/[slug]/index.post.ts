@@ -245,6 +245,8 @@ import {
   presetMemoryWriteLock,
 } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
+import { isMemoryPermissionToolName } from '#shared/utils/memory-tool-permissions'
+import { loadMemoryToolPermissionModes } from '~~/server/utils/memory/tools/permissions'
 import {
   buildPastChatChipPart,
   resolvePastChatPreRetrieval,
@@ -470,6 +472,7 @@ import {
 } from '~~/server/utils/tool-approval/kv'
 import { useToolApprovalSecret } from '~~/server/utils/tool-approval/secret'
 import {
+  buildMemoryApprovalEntries,
   chatHasAwaitingApproval,
   createSendToolApproval,
   createToolApprovalStreamCollector,
@@ -1980,6 +1983,20 @@ export default defineEventHandler(async (event) => {
       ? chat.project.memoryStatus === 'disabled'
       : null
 
+  const storedMemoryModes = chatSearchBudget
+    && memoryToolsRegistered
+    && userMessageText !== null
+    ? await loadMemoryToolPermissionModes(userId, db)
+    : undefined
+  const memoryPermissionModes = storedMemoryModes && !toolApprovalsActive
+    ? {
+      memory_write: storedMemoryModes.memory_write === 'allow'
+        ? 'ask' as const
+        : storedMemoryModes.memory_write,
+      memory_forget: storedMemoryModes.memory_forget,
+    }
+    : storedMemoryModes
+
   if (chatSearchBudget && memoryToolsRegistered) {
     const { tools: memoryTools } = getMemoryTools({
       db,
@@ -1991,9 +2008,13 @@ export default defineEventHandler(async (event) => {
       sourceMessageId: newMessage.id,
       userMessageText,
       budget: chatSearchBudget,
+      ...(memoryPermissionModes
+        ? { permissionModes: memoryPermissionModes }
+        : {}),
       ...(toolApprovalsActive
         ? {
           isApprovedByUser: toolApprovalSend.isApprovedByUser,
+          consumeUserSettingCall: toolApprovalSend.consumeUserSettingCall,
           asksForApproval: true,
         }
         : {}),
@@ -2537,6 +2558,7 @@ export default defineEventHandler(async (event) => {
           ...besidkaToolsRun?.approvalEntries ?? [],
           ...connectorsRun?.approvalEntries ?? [],
           ...skillScriptsRun.gate.approvalEntries,
+          ...buildMemoryApprovalEntries(memoryPermissionModes),
         ]),
       )
       parsedTools = {
@@ -2573,11 +2595,22 @@ export default defineEventHandler(async (event) => {
           .resolveBesidkaPermissionModes(userId, besidkaToolNames, db)
         : undefined
 
+      const hasMemoryAnswers = resume.loaded.answers.some((answer) => {
+        return isMemoryPermissionToolName(answer.record.toolName)
+      })
+      const memoryReplayModes = hasMemoryAnswers
+        ? memoryPermissionModes ?? await loadMemoryToolPermissionModes(
+          userId,
+          db,
+        )
+        : undefined
+
       resumeDecisions = decideContinuation({
         answers: resume.loaded.answers,
         entries: toolApprovalSend.entries,
         state: resume.loaded.state,
         besidkaPermissionModes,
+        memoryPermissionModes: memoryReplayModes,
       })
 
       const resumedMessages = buildResumedAssistantMessages({
@@ -3843,7 +3876,11 @@ export default defineEventHandler(async (event) => {
             attributes: {
               memoryTools: {
                 registered: true,
-                writesEnabled: userMessageText !== null,
+                writesEnabled: userMessageText !== null
+                  && !(
+                    memoryPermissionModes?.memory_write === 'blocked'
+                    && memoryPermissionModes.memory_forget === 'blocked'
+                  ),
                 writesLocked: chatSearchBudget.untrustedResultSeen,
                 usedCalls: chatSearchBudget.usedCalls,
               },

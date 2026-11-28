@@ -58,7 +58,7 @@ command below is for the operator, preview first.
 | Connector credentials revoked in the window (`connector_credentials`) | Encrypted access and refresh tokens and header values return, usable again; the provider may or may not have revoked them | **High (a revoked credential works again)** | No |
 | `connector_tool_calls` audit rows | Rolled back, so the window's calls vanish from the audit trail; rows older than the retention that the sweep deleted return | Medium | Yes (the 90-day sweep) |
 | `mcp_registry_servers` | Rolled back to B | None | Yes (the next sync) |
-| Tool permissions set to Blocked in the window, or "Allow" set in the window to a Besidka tool (`besidka_tool_permissions`) | Rolled back: a Blocked tool is callable again, and rows are gone or back as they were at B | High (a switched-off or ask-first tool runs without a prompt) | No |
+| Tool permissions set to Blocked in the window, or "Allow" set in the window to a Besidka tool or to `memory_write` (`besidka_tool_permissions`) | Rolled back: a Blocked tool is callable again (a Blocked memory tool is offered to the model again, with or without the `tool-approvals` flag), and rows are gone or back as they were at B | High (a switched-off or ask-first tool runs without a prompt) | No |
 | "Always allow" grants (`connector_tool_settings.approval`, `approved_definition_hash`) and "Allow in this chat" grants (`connector_chat_settings.always_allow_tools`, `besidka_chat_settings.always_allow_tools`) revoked in the window | Return, with the hash they were given for | High (a revoked grant runs a tool without asking) | No |
 | `tool_approval_claims` and the `tool-approval:` KV records | Claims are rolled back while KV keeps its state, so a claim can be missing for a record that still exists, and an old approval can execute a second time | Medium | Yes (KV expires in 24 hours, claims are swept after 48) |
 | Legal notice approvals withdrawn in the window (`legal_notice_approvals`) | Active again, so the sweep can email a notice the owner stopped | **High (mass email to every user)** | No |
@@ -482,6 +482,18 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
 - **Blocked rows come back too, but only as they were at B.** A Blocked
   setting made in the window is lost with the restore. The reset in step 2b
   does not touch `blocked`, so a tool Blocked before B stays Blocked.
+- **Memory write permissions are in the same table.** `besidka_tool_permissions`
+  also holds the rows `memory_write` and `memory_forget` (the user's mode for
+  the native memory write tools, set on `/profile/memory`; see
+  `docs/memory-architecture.md`, section 3.21). Only `memory_write` can be
+  Always allow; a stored `allow` on `memory_forget` cannot be set and reads as
+  `ask`. A restore can bring back an Always allow the user revoked on
+  `memory_write`, or lift a Block the user set in the window, for memory too.
+  Step 2b already resets it: its first statement,
+  `UPDATE besidka_tool_permissions SET mode = 'ask' WHERE mode = 'allow'`, has
+  no `tool_name` filter, so it covers the `memory_write` row. A `blocked`
+  memory row stays Blocked, like any other. The account purge deletes them
+  with the user's other rows (`purgeUserToolApprovals`).
 - **`tool-approval:` keys older than the restore point.** The pending
   records (`tool-approval:<approvalId>`), the turn records
   (`tool-approval:turn:<messagePublicId>`) and the result records

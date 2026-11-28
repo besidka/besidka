@@ -175,6 +175,14 @@ vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
+vi.mock('~~/server/utils/memory/tools/permissions', () => ({
+  loadMemoryToolPermissionModes: async () => ({
+    memory_write: 'ask',
+    memory_forget: 'ask',
+  }),
+  setMemoryToolPermission: vi.fn(),
+}))
+
 vi.mock('~~/server/utils/memory/tools/enabled', () => ({
   isChatSearchToolEnabled: () => mocks.isChatSearchToolEnabled,
   isMemoryToolsEnabled: () => mocks.isMemoryToolsEnabled,

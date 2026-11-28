@@ -8,7 +8,7 @@
     <div
       v-for="(option, index) in options"
       :key="option.mode"
-      class="tooltip tooltip-left before:max-w-44 before:text-xs"
+      class="tooltip tooltip-left before:max-w-44 before:text-xs [@media(hover:none)]:before:hidden [@media(hover:none)]:after:hidden"
       :data-tip="option.hint"
     >
       <button
@@ -73,9 +73,11 @@ const props = withDefaults(defineProps<{
   modes: readonly ToolPermissionMode[]
   unavailableHint?: string
   isBusy?: boolean
+  isUnavailableHidden?: boolean
 }>(), {
   unavailableHint: '',
   isBusy: false,
+  isUnavailableHidden: false,
 })
 
 const emit = defineEmits<{
@@ -85,7 +87,9 @@ const emit = defineEmits<{
 const buttons = useTemplateRef<HTMLButtonElement[]>('buttons')
 
 const options = computed<ModeOption[]>(() => {
-  return TOOL_PERMISSION_CONTROL_ORDER.map((mode) => {
+  return TOOL_PERMISSION_CONTROL_ORDER.filter((mode) => {
+    return !props.isUnavailableHidden || props.modes.includes(mode)
+  }).map((mode) => {
     const isAvailable = props.modes.includes(mode)
 
     return {
