@@ -1010,6 +1010,173 @@ re-prompted.
 - **Not changed.** The consent gate, `CURRENT_CONSENT_VERSION`, the consent
   modal, the cookie banner categories.
 
+## 2026-11-15 connectors (C-10, BES-257): decisions
+
+Engineer-drafted, not lawyer-reviewed. The Privacy Policy gained the section
+"Connectors you add" and a few edits elsewhere, and the Terms gained a
+"Connectors" section and four small edits, from the input list of
+`docs/legal/prechecks/connectors.md`. The records are Art. 30 rows 10b and 10c
+(`docs/legal/art30-record.md`), DPIA section 3.15, risk rows 73 to 87 and
+residual items 28 to 33 (`docs/legal/dpia.md`), and two rows each in the
+breach runbook (`docs/legal/breach-runbook.md`, sections 2.2, 2.5 and 3).
+
+- **Materiality: material, not announced.** Under the checklist above the
+  change is a new purpose (the model calls tools on third-party services), a
+  new recipient category (any remote MCP server the user names, in a country
+  Besidka cannot know), a new transfer (Art. 49(1)(a), per connector) and, in
+  the Terms, new duties (own the account you give a connector, a call you
+  approve is your action) and a longer list of what Besidka is not liable for.
+  The tool-call log (90 days) and the registry copy are new retention and a
+  new store. Both documents are `material`.
+- **No notice was added, on purpose.** An agent never adds or schedules a
+  `LEGAL_NOTICES` entry (`CLAUDE.md`, "Legal notices and consent versions:
+  owner only"), so no notice id, date or summary for connectors exists
+  anywhere in the repository. The revision record in
+  `shared/utils/legal-document-revisions.ts` cannot say "material, notice
+  pending", so the two records moved to the new hash and kept their existing
+  `material` classification and `noticeId` (`2026-12-code-and-documents`), with
+  a note that says the connectors text is **not** described by that notice. Read
+  the note, not the id. `/admin/legal` shows notices, not this record, so the
+  reused id approves nothing about connectors. Since the merge of `main` on
+  2026-11-22 both records carry `2026-11-support-requests`, the notice for
+  support requests, which describes neither connectors nor skills; the same
+  rule applies.
+- **Merging publishes the text.** The pages go live with the next deploy and
+  content import, before any notice. Policy "Changes to this policy" promises a
+  notice at least 30 days before a material change takes effect, so the owner
+  should decide on the notice before merging the `content/legal/` files, or
+  accept that the text is published first and the notice follows (the features
+  stay at `internal`, so nothing it describes reaches users first). As of
+  2026-11-22 both facts stand: the owner decided on 2026-11-16 to update the
+  texts without notice emails, and the `connectors` flag is `internal` in
+  `shared/utils/features/registry.ts`.
+- **What the owner decides.** Whether and when to announce connectors, in
+  `/admin/legal`. The pre-check suggests the id `2026-12-connectors`, 30 days
+  between `publishedAt` and `effectiveAt`, and five summary bullets (the new
+  feature, what is sent where, the consent per connector, the 90-day log, the
+  registry copy). Do not publish it while `2026-11-legal-notices` is still the
+  active banner (until 2026-12-18) unless the last-write-wins dismissal limit
+  above is accepted. Check the verified-user count against the daily email
+  cap first. The `connectors` flag stays at `internal` until the notice takes
+  effect, because anyone who signs up after a notice is published agrees to
+  the new text and everyone before it has the 30 days the policy promises.
+- **`CURRENT_CONSENT_VERSION` is unchanged (`2026-11-a`).** The two sign-up
+  boxes keep their wording. The connect-time consent is a separate record with
+  its own version (`CONNECTOR_CONSENT_VERSION`), the same pattern as the
+  connected-apps approval. Revisit only if the sign-up wording is ever
+  extended to name connectors, which would re-prompt everyone.
+- **The consent step is a per-connector consent, not "user initiation".** The
+  ticket asked whether a user's own choice of server is enough for the transfer
+  rules. It is not: Besidka's server sends the call, so Besidka is the exporter,
+  and a user choosing the recipient does not move that role (EDPB 05/2021,
+  footnote 15 and Example 4; pre-check, "The user's-own-act alternative").
+  The consent is Art. 49(1)(a), one tick with the Art. 9(2)(a) consent, naming
+  the host, asked again on a changed origin or issuer. The weakness (the
+  country is unknown, the transfers repeat, EDPB 2/2018) is disclosed in the
+  policy and left to the owner and counsel (DPIA section 6, item 28). The screen
+  itself is C-7, which already carries these criteria, so no new note for C-7
+  was needed.
+- **Third parties in tool results: Art. 14(5)(b), not the household
+  exemption.** Besidka does not read results and cannot know whose data they
+  hold. The Privacy Policy section is the notice. The household exemption
+  (Recital 18) covers the user, not the operator.
+- **Two sentences describe things that are not merged.** The connected-app
+  scopes `connectors:read` and `connectors:write` belong to C-9 (PR #920), which
+  edits the same policy list and the same revision record, so whichever of the
+  two merges second must rerun `pnpm run legal:hash` and combine the notes. The
+  sentence on Besidka's own tools belongs to BES-394 (PR #919, chat exposure).
+  Neither needs a policy change if it is delayed, because both sentences say
+  the same recipients apply.
+- **Registry erasure runbook.** A maintainer's removal request is handled by
+  adding the SHA-256 of the registry name to the KV key
+  `connectors:registry:erasures` (a JSON list of hashes, `docs/connectors.md`
+  section 8.7) and deleting the row in `mcp_registry_servers` by name. The next
+  sync keeps the entry out. Answer within a month (Art. 12(3)).
+- **No change to the Cookie Policy.** No cookie or browser storage was added.
+  The icon is a same-origin image and the connect flow uses a full-page
+  redirect. If C-7 stores any UI state in the browser, check it.
+
+## 2026-11-16 Phase 4 legal batch, connectors and skills: decisions
+
+Engineer-drafted, not lawyer-reviewed. This batch extends the connectors text
+of 2026-11-15 to what was built since on the umbrella `feat/connectors-page`
+(PR #923: C-6 tool modes, C-7 page, C-14 directory, C-15 modes and Auto
+connectors) and writes the skills baseline that S-7 (BES-294) never landed,
+plus the skills work merged on `main`: TypeSafe AI skill screening (SS-8,
+SS-9), the eighth TypeSafe AI role `skillSelection` (S-14), scripts in the
+user's Anthropic workspace (S-5) and project skills (S-15). Records: Art. 30
+rows 4, 10b, 10c, 10d (new) and 11a, section 6.1; DPIA sections 3.7a, 3.15
+(i) and 3.16 (new), data-flow rows 5a and 25 to 29, risk rows 88 to 96,
+residual items 33 to 36.
+
+- **Owner decision, 2026-11-16: no notice emails.** The legal texts are
+  updated without notice emails. No `LEGAL_NOTICES` entry is added or changed,
+  `CURRENT_CONSENT_VERSION` and `CONNECTOR_CONSENT_VERSION` are unchanged,
+  `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is untouched and no approval is recorded.
+  Only the texts and the hashes in `shared/utils/legal-document-revisions.ts`
+  change.
+- **WP260 result: material, recorded and not acted on.** Against the
+  checklist above:
+  - *New purpose:* yes. S-5 copies skill files to the user's Anthropic
+    workspace to run scripts; `skillSelection` picks a skill from the message;
+    skills as a whole (store and follow user-imported instructions) were never
+    described before.
+  - *New recipient or transfer:* yes. GitHub (United States) receives the
+    address of a skill import; the user's Anthropic workspace holds a copy of
+    a skill; TypeSafe AI receives two new data sets (skill text, and the
+    message with skill names and descriptions). Auto connectors widen the
+    chats a connector can reach and send server-written tool text to the
+    chat's provider (the same recipient, so not a new one on its own).
+  - *Longer retention:* yes, new stores: skills with up to 20 versions, the
+    30-day connector tool snapshot, the 30-day TypeSafe AI chunk score cache
+    and per-version marks, the 45-day GitHub update-check state.
+  - *Change of basis, rights, controller:* no.
+  - *Terms:* yes, new obligations on users (the skills section, see below).
+  Minor on their own: the per-tool modes (they describe approvals the policy
+  already covered), project skills (the same text to the same provider) and
+  the anonymous directory requests (no user data). When unsure the checklist
+  says material, and several items are clearly met.
+- **Revision record.** The Privacy Policy record moves to the new hash and
+  keeps its `material` classification and its existing `noticeId`, with a note
+  that the Phase 4 text is not described by that notice. The Cookie Policy is
+  unchanged, so its hash stays; the Terms record moves as described below.
+- **Terms of Use: written, material.** A new "Skills" section (the
+  right-to-use promise for "create, paste or import", no review by Besidka,
+  scripts under the provider's terms like any code run there, private skills
+  and no marketplace, the power to disable a skill with a statement of
+  reasons, reporting), a "What you may not do" item for skills built to harm
+  or to get around safeguards, skills and the Anthropic copy in the "Your
+  content" license, and a skill check under "Content moderation". These are
+  new obligations on users, so the Terms change is material under the
+  checklist; its revision record moves to the new hash with the same note
+  pattern as the Privacy Policy.
+- **Third parties in skills: Art. 6(1)(f) with Art. 14(5)(b).** Authors of
+  imported skills and people named in skill files get a paragraph in the
+  Privacy Policy ("Other people in a skill"), on the same reading as people in
+  connector results and registry maintainers. Recorded in
+  `docs/legal/prechecks/skills.md` (addendum 2026-11-16).
+- **Daily GitHub check: Art. 6(1)(f).** It runs only for skills on a branch or
+  release tag (commit-pinned skills are skipped) and is not a request the user
+  makes each time, so the basis is legitimate interests (telling the user the
+  source changed), with the right to object, not the contract.
+- **Connector consent wording.** The consent screen text (pinned by
+  `CONNECTOR_CONSENT_TEXT_SHA256` on `feat/connectors-page`) does not mention
+  the modes. It stays accurate (it names the host, what is sent and the
+  transfer), and the mode buttons sit on the same step, but a sentence such as
+  "In Auto, the model may use this connector in any chat when it decides it
+  is needed" would close DPIA residual item 34. Changing the text needs a
+  `CONNECTOR_CONSENT_VERSION` bump, which re-asks every connector, so it is the
+  owner's call.
+- **Public copy that read wrong** (not legal pages):
+  `content/key-guides/typesafe-ai-api-key.md` and `content/guides/memory.md`
+  said every TypeSafe AI check is on once the key is saved; Skill selection is
+  off by default. Both pages were corrected in this PR.
+- **No change to the Cookie Policy.** No browser storage was added by the
+  connectors page, directory, modes or the skills screens (checked by grep
+  across `app/` on `main` and on `feat/connectors-page` for `localStorage`,
+  `sessionStorage`, the VueUse storage helpers and `usePreferenceStorage`
+  keys).
+
 ## Not legal advice
 
 The whole legal package is engineer-drafted and has not been reviewed by a

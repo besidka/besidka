@@ -613,7 +613,7 @@ Measures that stay: the per-tool opt-in that is off by default, the warning in
 the settings card (a warning alert shown while Always allow is on) and under
 the Always allow button on the approval card, the single-call lifting of the write lock,
 the call budget, and no exposure over MCP. Recorded as `docs/legal/dpia.md`
-risk row 75 and in `docs/legal/art30-record.md` (row 7 and the review log).
+risk row 100 and in `docs/legal/art30-record.md` (row 7 and the review log).
 
 **Owner decides whether a Privacy Policy notice is needed; none was drafted or
 scheduled.** Nothing was added to `LEGAL_NOTICES` and `CURRENT_CONSENT_VERSION`

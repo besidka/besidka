@@ -340,3 +340,38 @@ the registry search.
   `docs/legal-memory-sensitive-data.md` say they could not do on 2026-10-26;
   C-10 should replace those "could not be re-read" notes with the pages cited
   above (pp. 4, 7, 8).
+
+## Addendum 2026-11-16: modes, Auto connectors and the directory
+
+> Engineer-drafted, not lawyer-reviewed. Records the Phase 4 legal batch
+> (PR #922) for what was built on `feat/connectors-page` after C-10. It does
+> not re-run the sources.
+
+- **Connector modes (C-15).** Manual, Auto (the default, also for connectors
+  added before modes) and Always on. An Auto connector can be used in any
+  chat: the provider of every chat receives one catalog line per Auto
+  connector (key, title, host, tool count; no server-written text after the
+  #943 security review), and the server-written tool names and descriptions
+  once the model opens it with `use_connector`. Same recipient as the chat, so
+  no new recipient, but a wider scope than "the chats where you switched it
+  on", which the policy said before. The policy, Art. 30 row 10b and DPIA
+  section 3.15 (i) now describe it.
+- **Tool snapshot.** The last live `tools/list` is kept in KV for 30 days
+  (`connectors:catalog:<id>`), no chat content, deleted with the connector,
+  on disconnect and by the account purge.
+- **Per-tool modes (C-6).** Always allow, Needs approval, Blocked, with
+  defaults by kind; F2 asks for every connector call after content from
+  another source, unless the user granted the tool (owner amendment
+  2026-11-20, row 13 measure 5; tools grouped Read-only, Write, and Delete
+  and share, Always allow possible on every group). No new data; the
+  policy's approval paragraph was rewritten.
+- **Directory (C-14).** Anonymous icon fetches and MCP probes to third-party
+  servers, with no user data, cached for all users (icons 7 days, probes 1
+  day). Recorded in Art. 30 row 10c and DPIA data-flow row 26 and risk row 89;
+  this was the open question in #938 and #942.
+- **The consent wording predates modes** and does not name them. It is still
+  accurate; a sentence about Auto would need a `CONNECTOR_CONSENT_VERSION`
+  bump, so it is left to the owner (DPIA section 6, item 34).
+- **Notice.** Owner decision of 2026-11-16: no notice emails, no
+  `LEGAL_NOTICES` entry, no consent version bump. The "Owner items" timing
+  advice above is the owner's to revisit.

@@ -415,7 +415,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   AI recipient, and the residual risk), and the remaining open owner/counsel questions
 - `docs/legal/dpia.md` - DPIA for chats, memory and the consent gate
   (engineer-drafted, not lawyer-reviewed): UODO and WP248 criteria, systematic
-  description including the seven TypeSafe AI roles (3.7a), 27-row risk table
+  description including the eight TypeSafe AI roles (3.7a), 27-row risk table
   with built/planned status, residual risks, and
   the DPF list check of 2026-10-26; read before changing a purpose, provider,
   consent text or retention rule

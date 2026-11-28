@@ -3772,7 +3772,7 @@ Blocked holds without the `tool-approvals` flag.
   to the model provider. No new purpose and no new recipient. Mitigations that
   stay: the sensitive-topic check and never-store list on every save, a
   per-tool opt-in that is off by default, the warning in the UI, and the
-  Undo chip for writes. Records: `docs/legal/dpia.md` risk row 75,
+  Undo chip for writes. Records: `docs/legal/dpia.md` risk row 100,
   `docs/legal/art30-record.md` row 7 and `docs/legal-memory-sensitive-data.md`
   (2026-11-24). Whether the Privacy Policy needs a notice is the owner's
   decision. None was drafted or scheduled.
@@ -4475,7 +4475,7 @@ file can shape what gets saved, and saved memory is sent to the model provider
 in later chats. The quote check proves only that the quote is a substring of
 the user's message; it does not prove the user asked to save and does not bind
 what is written (3.21, "Accepted risk, owner decision"). Accepted for users
-who opt in. `docs/legal/dpia.md` risk row 75.
+who opt in. `docs/legal/dpia.md` risk row 100.
 
 **Open for the owner.** Confirm one mode per tool for account and project
 memory.
