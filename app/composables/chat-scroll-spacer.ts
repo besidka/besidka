@@ -77,6 +77,7 @@ export function useChatScrollSpacer(
   let lastAssistantMessageId: string | null = null
   const inputHeightTimer = shallowRef<NodeJS.Timeout | null>(null)
   const spacerComputedByPush = shallowRef<boolean>(false)
+  const observedUserElement = shallowRef<HTMLElement | null>(null)
   const isInitialPageLoad = shallowRef<boolean>(true)
   let continuationScrollTarget: number | null = null
   let finalContinuationScrollTarget: number | null = null
@@ -133,6 +134,7 @@ export function useChatScrollSpacer(
             height: last.offsetHeight,
             offsetTop: last.offsetTop,
           }
+          observedUserElement.value = last
 
           if (!['submitted', 'streaming'].includes(chatSdk.status)) {
             pushUserMessageToTop('instant')
@@ -203,6 +205,60 @@ export function useChatScrollSpacer(
     })
   }
 
+  /**
+   * The user message is measured once, a fixed delay after it rendered, and
+   * a long one may still be laid out as a single short row by then on a slow
+   * device. The final adjust runs after the whole reply, so it reads the
+   * message again and the reply is placed for the real height.
+   */
+  function measureUserMessageAgain(): MessageData | null {
+    const measured = userMessageData.value
+    const userElement = getLastUserMessageElement()
+
+    if (!measured || userElement?.dataset.messageId !== measured.id) {
+      return measured
+    }
+
+    userMessageData.value = {
+      id: measured.id,
+      height: userElement.offsetHeight,
+      offsetTop: userElement.offsetTop,
+    }
+
+    return userMessageData.value
+  }
+
+  /**
+   * A long user message can still be a single short row when it is measured,
+   * because its markdown renders asynchronously. While the reply is on its
+   * way, the pin is computed again for the height it grows to, so the user
+   * message is not moved for the first time when the reply ends.
+   */
+  function pinAgainWhenUserMessageResized() {
+    const element = observedUserElement.value
+    const measured = userMessageData.value
+
+    if (
+      !element
+      || !measured
+      || element.dataset.messageId !== measured.id
+      || !['submitted', 'streaming'].includes(chatSdk.status)
+      || Math.abs(element.offsetHeight - measured.height) < 1
+    ) {
+      return
+    }
+
+    userMessageData.value = {
+      id: measured.id,
+      height: element.offsetHeight,
+      offsetTop: element.offsetTop,
+    }
+
+    pushUserMessageToTop('instant')
+  }
+
+  useResizeObserver(observedUserElement, pinAgainWhenUserMessageResized)
+
   async function adjustSpacerAfterResponse() {
     const pinnedScrollTarget = hasUserTakenOverContinuationScroll
       ? null
@@ -217,7 +273,7 @@ export function useChatScrollSpacer(
 
     const container = scrollContainerRef.value
     const messagesEnd = messagesEndRef.value
-    const userMessage = userMessageData.value
+    const userMessage = measureUserMessageAgain()
     const assistantMessage = assistantMessageData.value
 
     if (

@@ -353,6 +353,26 @@ async function send(page: Page, prompt: string = PROMPT) {
   await page.getByTestId('send-message').click()
 }
 
+/**
+ * The final adjust runs 150 ms after the reply is ready, which a busy
+ * machine can stretch, so the metrics are read once two reads 300 ms apart
+ * agree.
+ */
+async function readSettledMetrics(page: Page) {
+  let previous = await readComposerMetrics(page)
+
+  await expect.poll(async () => {
+    const current = await readComposerMetrics(page)
+    const isSettled = JSON.stringify(current) === JSON.stringify(previous)
+
+    previous = current
+
+    return isSettled
+  }, { intervals: [300], timeout: 10_000 }).toBe(true)
+
+  return previous
+}
+
 async function waitUntilReady(page: Page, text: string) {
   await expect(
     page.locator('button[data-testid="stop-generation"]').first(),
@@ -708,7 +728,7 @@ for (const { name, size } of SHORT_REPLY_VIEWPORTS) {
       await send(plainPage, scenario.prompt)
       await waitUntilReady(plainPage, finalText)
 
-      const plain = await readComposerMetrics(plainPage)
+      const plain = await readSettledMetrics(plainPage)
 
       const page = await openMember(
         browser,
@@ -769,7 +789,7 @@ for (const { name, size } of SHORT_REPLY_VIEWPORTS) {
           .toBeLessThanOrEqual(MAX_FRAME_MOVE)
       }
 
-      const final = await readComposerMetrics(page)
+      const final = await readSettledMetrics(page)
 
       if (scenario.matchesPlainSend) {
         expect(Math.abs(final.lastUserTop - plain.lastUserTop))

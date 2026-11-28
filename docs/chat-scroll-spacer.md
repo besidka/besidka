@@ -40,7 +40,7 @@ it. These are all the events in `app/composables/chat-scroll-spacer.ts` today:
 | Event | Function | What it does |
 | --- | --- | --- |
 | A user message renders (`onMounted`, `onUpdated`) | `captureMessageDimensions()` then `pushUserMessageToTop()` after 150 ms | Pins the user message |
-| The assistant message is the last one and the status is `ready` | `captureMessageDimensions()` then `adjustSpacerAfterResponse()` after a 150 ms debounce | The final adjust. Runs once per message id |
+| The assistant message is the last one and the status is `ready` | `captureMessageDimensions()` then `adjustSpacerAfterResponse()` after a 150 ms debounce | The final adjust. Runs once per message id, and measures the last user message again first |
 | Regenerate (`chat:regenerate`) | `pushUserMessageToTop()` | Pins the user message again |
 | Continuation (`chat:continue`) | `pinUserMessageForContinuation()` | Pins and stores the scroll target |
 | The messages container resizes, only while a continuation target is stored | `keepContinuationPinned()` (a `ResizeObserver` through `useResizeObserver`) | Grows the spacer and returns to the target |
@@ -469,6 +469,21 @@ sees. This is the one documented difference from a plain send, and it only
 shows for a long user message. The pin is dropped by a takeover,
 `pushUserMessageToTop()`, `reservePinnedSpace()`, `chat:submit`,
 `chat:scroll-to-bottom`, an `error` status and a slug change.
+
+The user message is measured once, 150 ms after it rendered, and a long one
+can still be a single short row then, because its markdown (`MDCCached`)
+renders asynchronously: 36px instead of 296px at 1280x800 with the CPU slowed
+4x (a CDP throttle that reproduces the CI numbers of the BES-471 e2e spec, 25,
+212 and 129px, where busy loops alone did not). Everything sized from that
+height was wrong for the rest of the turn: the spacer, the tall-message offset
+and the scroll target, so the same plain send ended 12 to 212px away from where
+a fast device ends it, and a pause that used the stale height passed its
+position on to the continuation pin. Two guards close it:
+`pinAgainWhenUserMessageResized()` (a `ResizeObserver` on the measured user
+message) pins again while the reply is on its way, so the view is not moved
+for the first time when the reply ends, and `adjustSpacerAfterResponse()` reads
+the last user message again (`measureUserMessageAgain()`, only when the element
+still belongs to the measured message id) before it computes anything.
 
 `keepContinuationPinned()` closes the rest. `pinUserMessageForContinuation()`
 stores its scroll target; a `ResizeObserver` on the messages container
