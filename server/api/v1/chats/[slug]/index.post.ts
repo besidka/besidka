@@ -2806,7 +2806,10 @@ export default defineEventHandler(async (event) => {
           ...connectorsRun?.approvalEntries ?? [],
           ...skillScriptsRun.gate.approvalEntries,
           ...googleSend.entries,
-          ...buildMemoryApprovalEntries(memoryPermissionModes),
+          ...buildMemoryApprovalEntries(memoryPermissionModes)
+            .filter(([toolName]) => {
+              return Object.hasOwn(parsedTools.tools ?? {}, toolName)
+            }),
         ]),
       )
       parsedTools = {

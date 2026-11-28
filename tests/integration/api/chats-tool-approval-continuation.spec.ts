@@ -452,6 +452,7 @@ vi.mock('~~/server/utils/memory/tools/memory-tools', async () => {
       return {
         tools: {
           ...(input.permissionModes?.memory_write === 'blocked'
+            || (typeof input.allowsWrite === 'function' && !input.allowsWrite())
             ? {}
             : {
               memory_write: withFollowUpTurn(tool({
@@ -2034,6 +2035,38 @@ describe('tool approval continuation', () => {
       })
 
       mocks.memoryModes = { memory_write: 'blocked', memory_forget: 'ask' }
+
+      const { doStream } = await request({
+        servers: [linear],
+        steps: [textChunks('Not saved.')],
+        body: answerBody(paused.messagePublicId, [{
+          approvalId: paused.approvalIds[0],
+          approved: true,
+        }]),
+      })
+
+      expect(mocks.memoryWrites).toEqual([])
+      expect(lastToolMessage(doStream).content[0].output).toEqual({
+        type: 'execution-denied',
+        reason: TOOL_APPROVAL_DENIAL_TEXT['missing-tool'],
+      })
+    })
+
+    it('denies an approved memory write in a chat that came to hold Google '
+      + 'data while paused, which the send no longer offers',
+    async () => {
+      mocks.memoryToolsEnabled = true
+
+      const paused = await pauseTurn({
+        servers: [linear],
+        tools: ['web_search'],
+        steps: [toolCallChunks('call-m', 'memory_write', {
+          body: 'Likes green tea',
+        })],
+      })
+
+      mocks.memoryModes = { memory_write: 'allow', memory_forget: 'ask' }
+      mocks.chatGoogleDataAt = new Date('2026-11-22T10:00:00Z')
 
       const { doStream } = await request({
         servers: [linear],
