@@ -351,10 +351,11 @@ export async function readChat(input: {
       title: true,
       projectId: true,
       memoryExcluded: true,
+      googleDataAt: true,
     },
   })
 
-  if (!chat || chat.memoryExcluded) {
+  if (!chat || chat.memoryExcluded || chat.googleDataAt) {
     throw buildChatNotFoundError()
   }
 

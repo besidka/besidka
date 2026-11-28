@@ -1232,6 +1232,35 @@ describe('ui/SidePanel', () => {
         .not.toContain('translateY')
     })
 
+    it('ignores a swipe that starts on a header summary', async () => {
+      const setPointerCapture = vi.fn()
+
+      HTMLElement.prototype.setPointerCapture = setPointerCapture
+
+      const SummaryActions = defineComponent({
+        render: () => h('details', [
+          h('summary', { 'data-testid': 'header-summary' }, 'Menu'),
+        ]),
+      })
+      const wrapper = await mountPanel()
+
+      useSidePanel().open({
+        ...createView(),
+        headerActions: SummaryActions,
+      })
+      await flushPromises()
+
+      const summary = wrapper.get('[data-testid="header-summary"]').element
+
+      dispatchPointer(summary, 'pointerdown', 100)
+      dispatchPointer(summary, 'pointermove', 400)
+      await flushPromises()
+
+      expect(setPointerCapture).not.toHaveBeenCalled()
+      expect(wrapper.get(PANEL).attributes('style') ?? '')
+        .not.toContain('translateY')
+    })
+
     it('keeps the dialog closed in the docked layout', async () => {
       stubViewport(1440)
 

@@ -53,6 +53,16 @@
       >
         {{ summaryLine }}
       </p>
+      <a
+        v-if="model.link"
+        :href="model.link"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="link mt-0.5 inline-block text-xs text-base-content/80"
+        data-testid="reasoning-approval-step-link"
+      >
+        {{ approvalLinkLabel }}
+      </a>
       <p
         :id="reasonId"
         class="mt-0.5 min-w-0 break-words text-xs text-base-content/60"
@@ -60,6 +70,21 @@
       >
         {{ reasonText }}
       </p>
+      <ChatReasoningGmailDraft
+        v-if="gmailDraft"
+        :view="gmailDraft"
+        class="mt-1.5"
+      />
+      <ChatReasoningCalendarEvent
+        v-if="calendarEvent"
+        :view="calendarEvent"
+        class="mt-1.5"
+      />
+      <ChatReasoningDriveChange
+        v-if="driveChange"
+        :view="driveChange"
+        class="mt-1.5"
+      />
       <details
         v-if="clippedPreview.text"
         class="mt-1 text-xs"
@@ -109,8 +134,9 @@
           :key="button.remember"
           type="button"
           class="btn btn-sm max-md:w-full"
-          :class="button.remember === 'once' ? 'btn-primary' : 'btn-soft'"
-          :title="getButtonHint(button.remember)"
+          :class="button.remember === 'always' ? 'btn-soft' : 'btn-primary'"
+          :title="button.ariaLabel ?? getButtonHint(button.remember)"
+          :aria-label="button.ariaLabel"
           :disabled="isBusy"
           :data-testid="`reasoning-approval-step-allow-${button.remember}`"
           @click="onAllow(button.remember)"
@@ -213,6 +239,14 @@
 import { LazyChatReasoningApprovalDetails } from '#components'
 import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
+import { readCreateEventApprovalView } from '#shared/utils/google-calendar-event'
+import type { CalendarEventApprovalView } from '#shared/utils/google-calendar-event'
+import { readGmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import type { GmailDraftApprovalView } from '#shared/utils/google-gmail-draft-view'
+import { GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME } from '#shared/utils/google-gmail-tools'
+import { readDriveWriteApprovalView } from '#shared/utils/google-drive-write'
+import type { DriveWriteApprovalView } from '#shared/utils/google-drive-write'
+import { isGoogleWriteToolName } from '#shared/utils/google-tool-approvals'
 import type {
   ApprovalStepModel,
   ApprovalStepState,
@@ -310,7 +344,7 @@ const compactText = computed<string>(() => {
 })
 
 const buttons = computed(() => {
-  return getApprovalButtons(props.model.rememberOptions)
+  return getApprovalButtons(props.model.rememberOptions, props.model.toolName)
 })
 
 const hasButtons = computed<boolean>(() => {
@@ -329,6 +363,38 @@ const isFocusable = computed<boolean>(() => {
 
 const argumentsText = computed<string>(() => {
   return formatApprovalArguments(props.model.input)
+})
+
+const gmailDraft = computed<GmailDraftApprovalView | null>(() => {
+  const toolName = props.model.toolName.toLowerCase()
+
+  return toolName === GOOGLE_GMAIL_CREATE_DRAFT_TOOL_NAME
+    ? readGmailDraftApprovalView(props.model.input)
+    : null
+})
+
+const calendarEvent = computed<CalendarEventApprovalView | null>(() => {
+  return readCreateEventApprovalView(props.model.toolName, props.model.input)
+})
+
+const driveChange = computed<DriveWriteApprovalView | null>(() => {
+  return readDriveWriteApprovalView(
+    props.model.toolName,
+    props.model.input,
+    props.model.driveNames,
+  )
+})
+
+const approvalLinkLabel = computed<string>(() => {
+  const link = props.model.link ?? ''
+
+  return link.startsWith('https://mail.google.com/')
+    ? 'Open in Gmail'
+    : 'Open in Google Drive'
+})
+
+const isEnterApprovalBlocked = computed<boolean>(() => {
+  return isGoogleWriteToolName(props.model.toolName)
 })
 
 const clippedPreview = computed(() => {
@@ -404,6 +470,10 @@ function onEnter(event: KeyboardEvent) {
     return
   }
 
+  if (isEnterApprovalBlocked.value) {
+    return
+  }
+
   if (!props.model.rememberOptions.includes('once')) {
     return
   }
@@ -434,6 +504,7 @@ function openDetails() {
       input: props.model.input,
       isShortened: isShortened.value,
       preview: props.model.preview,
+      driveNames: props.model.driveNames,
     },
   })
 }

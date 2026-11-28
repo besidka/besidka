@@ -95,13 +95,15 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'days, you can revoke it, and the app can create only a few a day.',
   },
   'connectors:write': {
-    title: 'Add, change and delete connectors. New ones start switched off; '
-      + 'you switch them on in Besidka',
+    title: 'Add, change and delete connectors, and disconnect Google. New '
+      + 'ones start switched off; you switch them on in Besidka',
     description: 'Add a connector, switched off, turn its tools off or end '
       + 'their Always allow setting, and permanently delete connectors with '
-      + 'their stored sign-in and settings. It cannot '
-      + 'switch a connector on, sign in, enter keys or allow a tool without '
-      + 'asking. You do that in Besidka.',
+      + 'their stored sign-in and settings. It can also disconnect your '
+      + 'Google account, which revokes the grant and deletes the copies of '
+      + 'Google Drive files that Besidka made. It cannot '
+      + 'switch a connector on, sign in, connect Google, enter keys or '
+      + 'allow a tool without asking. You do that in Besidka.',
   },
   'skills:write': {
     title: 'Add, change and delete skills. Changes are saved switched off '

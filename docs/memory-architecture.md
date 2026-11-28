@@ -168,7 +168,8 @@ project entry on first read; the column is left in place and writes stop
 ### 3.2 Injection and prompt caching
 
 - The memory index goes **first** in `buildChatInstructions`, before the
-  daily-date lines, so it sits in the stable cached prefix. It changes only
+  daily-date line (the last line of the system text), so it sits in the
+  stable cached prefix. It changes only
   when entries change, not every turn.
 - Inject **last-known-good** memory regardless of extraction status (fixes
   G1). Status only drives UI.
@@ -3694,8 +3695,13 @@ Blocked holds without the `tool-approvals` flag.
   `memory_forget` keeps rule 2: after taint it still asks `untrusted-output`,
   and its card offers `once` only; untainted forget behavior is as before.
   `blocked` is denied by rule 0. Without the setting nothing changes: rule 2
-  asks `untrusted-output` after any taint. The number 12 was chosen so it
-  never collides with the rule 11 the Google umbrella branch adds.
+  asks `untrusted-output` after any taint. Exception on the Google umbrella
+  branch: while the send holds `google` taint, rule 15 denies `memory_write`
+  and `memory_forget` (reason `google-data`) before rule 12 and rule 2, in
+  every mode (`docs/google.md`, section 5.2). The number 12 was chosen so it
+  never collides with the rule 11 the Google umbrella branch adds; that
+  branch's later Google rules were renumbered to 13 (Google egress) and 14
+  (Besidka writes after Google content) when it merged `main`.
 - **The second lock and how it is lifted.** `assertNoUntrustedContentSeen` in
   `memory-tools.ts` still throws unless the call is `approvedByUser`, and the
   chat route still presets `untrustedResultSeen` through

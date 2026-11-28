@@ -80,10 +80,13 @@ export type { ExtractFormat, ExtractResult }
 export interface ExtractRequest {
   format: ExtractFormat
   bytes: Uint8Array
+  version?: number
+  maxTextBytes?: number
 }
 
 export interface ExtractCapabilities {
   version: number
+  versions?: number[]
   formats: ExtractFormat[]
   maxInputBytes: number
   maxTextBytes: number

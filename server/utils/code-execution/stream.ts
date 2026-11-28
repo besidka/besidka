@@ -42,6 +42,7 @@ export interface CreateCodeExecutionStreamInput {
   logger: LoggerLike
   persistFiles?: typeof persistContainerFiles
   fetcher?: typeof fetch
+  isGoogleDerived?: () => boolean
 }
 
 export interface CodeExecutionStream {
@@ -120,6 +121,7 @@ export function createCodeExecutionStream(
         tracker: input.tracker,
         logger: input.logger,
         fetcher: input.fetcher,
+        googleDerived: input.isGoogleDerived?.() === true,
       })
     } catch (exception) {
       input.logger.set({

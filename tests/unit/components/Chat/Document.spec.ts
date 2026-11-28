@@ -220,6 +220,19 @@ describe('ChatDocument', () => {
       expect(wrapper.get(testId('document-card-status')).text()).toBe('Ready')
     })
 
+    it('offers Save to Google Drive beside Download, with the file key',
+      async () => {
+        const wrapper = await mountCard({ part: OWNER_PART })
+        const action = wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' })
+
+        expect(action.exists()).toBe(true)
+        expect(action.props()).toMatchObject({
+          storageKey: 'key',
+          variant: 'button',
+          fileName: 'Quarterly plan',
+        })
+      })
+
     it('counts slides for a presentation', async () => {
       flowDocument.value = {
         ...READY_DOCUMENT,
@@ -473,6 +486,9 @@ describe('ChatDocument', () => {
 
     it('shows a title-only card with the format badge', async () => {
       const wrapper = await mountCard({ part: SHARED_PART })
+
+      expect(wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' }).exists())
+        .toBe(false)
 
       expect(wrapper.get(testId('document-card')).attributes('data-state'))
         .toBe('shared')

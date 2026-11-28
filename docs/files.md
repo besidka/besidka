@@ -88,7 +88,25 @@ Rules, applied newest first:
    `text_bytes` (the extracted text, passed in as
    `officeTextBytesByStorageKey`) replace its file size in rule 2, rule 3 and
    this cap, and an Office file without ready text is omitted as
-   `unsupported-by-model` instead of being carried.
+   `unsupported-by-model` instead of being carried. A spreadsheet is the
+   exception (BES-448): an estimate's workbook map is often 90 KB, and
+   dropping it would leave the model with neither formulas nor values on
+   the next turn. A spreadsheet with ready text (`text_version` passed as
+   `spreadsheetTextVersionsByStorageKey`) whose text is a workbook map of
+   at most `OFFICE_TEXT_INLINE_MAX_BYTES` (200 KB), or a version 1 text of
+   at most 64 KB that the send may upgrade to a map, is carried
+   "structure only": it is charged a fixed 64 KB in rules 2 and 3 whenever
+   its text is over 64 KB or still version 1 (so the estimate is never
+   lower than what is sent), and `buildModelContextMessages()` returns it in
+   `structureOnlyFiles` as `{ messageId, storageKey }`.
+   `convertFilesForAI()` then fits that message's map with `fitWorkbookMap()`
+   to 64 KB: every sheet's formulas, rules, formats, merged cells and notes
+   stay, whole Values blocks are kept smallest first while they fit (so
+   lists and parameter tabs survive), and each dropped block says how many
+   rows it had. The wrapper adds that values were shortened in this earlier
+   attachment and that the user can attach the file again for the full
+   values. The same file attached to the newest message is sent whole. A
+   map over 200 KB, or a version 1 text over 64 KB, is still `over-limit`.
 5. Modality gate: carried files are checked against the selected model, which
    only the request's own attachments were checked against before.
    `createCarriedMediaTypePredicate()`
@@ -350,15 +368,51 @@ decision list are in BES-370.
   Known over-count: `ppt/media` also holds images from slide masters and
   layouts. A generated document with no image shows nothing.
 - **Lazy fallback.** A file with a null status (stored before extraction, or
-  while the renderer was down) or an older `text_version` is read once on its
+  while the renderer was down) or a `text_version` below 1 is read once on its
   first send (`ensureOfficeTextState()`) and cached the same way. Only the
   newest message's files are read lazily; an earlier file with no text is
   omitted from the carry-over instead. A `ready` file whose omitted counts are
   both NULL (stored before they existed) gets a count-only backfill on its
-  first use: one R2 read of the file, no renderer call, no rewrite of the text,
-  and `OFFICE_TEXT_VERSION` stays at 1 so no stored file is re-extracted.
+  first use: one R2 read of the file, no renderer call, no rewrite of the text.
   `getOwnedFilesByStorageKeys()` selects both columns, or the backfill would
   run on every send.
+- **Spreadsheets as a workbook map (BES-448).** The target text version is per
+  format (`OFFICE_TEXT_VERSIONS`, `getOfficeTextVersion()` in
+  `shared/utils/office-files.ts`): `.xlsx` is 2 (the workbook map, see
+  `docs/chats/documents-renderer-worker.md`, "Workbook map"), `.docx` and
+  `.pptx` stay at 1 (`OFFICE_TEXT_VERSION`), so no document or presentation is
+  read again. When a spreadsheet is stored, `extractAndStoreOfficeText()` asks
+  the renderer for extract version 2 with `maxTextBytes` 200 KB (the inline
+  cap, so the model sees the whole map) only when the cached capabilities list
+  it (`rendererOffersWorkbookMap()`); otherwise it sends the version 1
+  request. The stored `text_version` follows the result, not the request: 2
+  when the result carries `workbookMap`, 2 for a failure of a version 2 read
+  (so it is not read again on every send), 1 otherwise. That failure rule
+  applies to a fresh upload only. A stored version 1 spreadsheet
+  (`isOfficeTextUpgradable()`) is still usable: on a send,
+  `ensureOfficeTextState()` reads it again only while the bound renderer
+  offers version 2, and the upgrade stores only a ready map (sidecar first,
+  then the row). Any other answer leaves the row and the version 1 sidecar
+  untouched and the send uses the version 1 text: a renderer failure for
+  the file (`failed` such as `extract_crashed` or `extract_error`,
+  `too_large`, `empty`, or a map too large to store) is remembered in KV as
+  `office-text-upgrade-failed:<storageKey>` for 7 days, and while that key
+  exists the upgrade is skipped; a renderer that is down, a thrown call or
+  an answer without a map is not remembered, so it is tried again on the
+  next send. The key is deleted with the file by `invalidateFileCache()`,
+  which every file delete path calls. A row update that fails after the new
+  sidecar is written keeps that sidecar, because the version 1 text is
+  already overwritten. `loadOfficeText()` returns the effective text
+  version, and `convertFilesForAI()` picks the workbook map note from the
+  format and that version, never from the text, so a document whose first
+  heading is "Workbook map" gets the plain note. So after this change reaches production, each
+  `.xlsx` that a send touches (the newest message through
+  `assertFilesDeliverable()`, and the earlier files carried into the context
+  through `convertFilesForAI()`) is read again once, and nothing else is.
+  Files uploaded while a preview binds an older renderer stay at version 1
+  and are upgraded on a later send against a newer one. No schema change: the
+  extraction summary (sheets, formulas, rules, cuts) is returned on the upload
+  response as `workbookSummary` and never stored.
 - **Deleting.** `withDerivedKeys(keys)` returns the keys plus their sidecar
   keys. All four paths that delete file objects use it in their batched R2
   delete: `delete-files.ts`, `cleanup-expired-files.ts`,
@@ -387,8 +441,14 @@ decision list are in BES-370.
   400 with the file name, the reason and a fix. `convertFilesForAI()` then
   turns a ready Office file into a `text` part: the file name and format
   ("Word document", "Excel spreadsheet", "PowerPoint presentation"), the line
-  "Extracted text. Images, charts and formatting are not included.", then the
-  Markdown in a fence, cut at 200 KB per file and 512 KB per message on a UTF-8
+  "Extracted text. Images, charts and formatting are not included." (for a
+  workbook map, a text that starts with `# Workbook map`, instead: "Workbook
+  map. Included: values, formulas, number formats, dropdown and validation
+  rules, conditional formatting rules, merged cells and notes. Not included:
+  colors, charts and images. Values are the results last calculated and saved
+  in the file; they are not recalculated."), then the
+  Markdown in a fence one backtick longer than the longest run inside, cut at
+  200 KB per file and 512 KB per message on a UTF-8
   boundary with a "[Truncated ...]" marker. Gateways get the same text. A file
   it cannot send becomes a "[File not included: ...]" note and an
   `unsupportedFiles` entry, never a dropped part. `assertOnlyDeliverableFileParts()`
@@ -416,9 +476,10 @@ decision list are in BES-370.
   instead of the file size, and an earlier file without ready text is omitted
   as `unsupported-by-model` instead of failing the send.
 - **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes`,
-  `textTruncated` (true when `textBytes` is over the 200 KB inline cap, so only
-  the start is sent), `textOmittedMedia` and `textOmittedCharts`. The upload
-  response carries the same columns.
+  `textVersion`, `textTruncated` (true when `textBytes` is over the 200 KB
+  inline cap, so only the start is sent), `textOmittedMedia` and
+  `textOmittedCharts`. The upload response carries the same columns plus
+  `workbookSummary` for a spreadsheet read as a workbook map.
 - **The text note (owner decision, 2026-11-12).** Normal files show nothing.
   Earlier every Office file showed "Sent as text"; that label is gone. A quiet
   `badge-soft badge-xs` appears only when something is lost, on the attached
@@ -432,6 +493,36 @@ decision list are in BES-370.
   nothing. Unsupported-file reasons ("No readable text", "Old Office format",
   "Needs Run code") are unchanged, and on a disabled row the reason replaces
   the note.
+- **The spreadsheet note on the attach chip (BES-448).** On the attached chip
+  only (`getFileDeliveryHint(..., { spreadsheetNote: true })`), a spreadsheet
+  read as a workbook map always shows a note, also when nothing is cut: with
+  the upload's `workbookSummary` it reads "4 sheets · formulas" (plus
+  "· shortened" when the map cut anything); without it (a file picked in the
+  file manager, whose list has `textVersion` but no summary) it reads "Values
+  and formulas". The hint is a button: it opens a `ChatInputToolsMenuInfoNote`
+  under the chip row (`files-delivery-hint-note`, `aria-expanded` and
+  `aria-controls` on the button) with what the model gets, which sheets had
+  values cut after which row, the row and sheet limits, whether formulas or
+  rules were left out, and how many charts and images are not sent. A
+  spreadsheet still at version 1, or whose version is unknown (Drive copies,
+  whose columns come from `server/utils/google/drive-import.ts`), keeps the
+  loss-only note above, so no "Sent as text" label comes back. File manager
+  rows and tiles keep the loss-only note for every Office file.
+- **A Google Sheet is the same map from another source (BES-448).** A Sheet
+  picked from Google Drive is read through the Sheets API into the same
+  `WorkbookModel` and stored as Markdown (`text/markdown`, `external_source`
+  `google`, `text_status` `ready`, `text_version` 2), not as an Office file:
+  there is no `.xlsx`, no `.text.md` sidecar and no renderer call
+  (`docs/google.md`, section 12.16). `isGoogleWorkbookMapFile` tells such a
+  row from a Google Doc copy and from the older first-tab CSV copy, from the
+  columns only. `convertFilesForAI` gives it the Google Sheet wrapper and,
+  for a map carried into a later turn, `fitWorkbookMap` to
+  `CARRIED_TEXT_FILE_MAX_BYTES` (the send route puts it in
+  `spreadsheetTextVersionsByStorageKey`, so `carriedCharge` treats it like a
+  workbook), the attach chip says "5 tabs · formulas" (tabs, not sheets, for a
+  Google Sheet), and the CSV fallback copy gets the chip "First tab only"
+  with the fixed reason and the technical code. `persistFile` takes an
+  optional `workbookMap` that writes the three text columns on insert.
 
 ### Legacy `.xls` conversion in the browser
 
@@ -499,6 +590,12 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
     column; `connector` is an image a connector returned in a chat, kept with
     that chat and hidden from every file list, see `docs/connectors.md`
     section 6.5).
+  - `externalSource`, `externalId`, `externalModifiedAt`: set only on a copy
+    of a Google Drive file (`'google'`, the Drive file id, Drive's
+    `modifiedTime` in whole seconds). Written in the same insert as the row by
+    `persistFile`, so a copy is never a plain upload. The copy has
+    `source = 'upload'`, counts in the `googleDrive` storage category and is
+    deleted when Google access ends. See `docs/google.md`, section 12.
   - `originMessageId`: nullable FK to `messages` for provenance.
   - `originProvider`: nullable provider id for provenance.
   - `textStatus`, `textBytes`, `textVersion`: nullable. The state of the text
@@ -553,13 +650,19 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
 ## API Surface
 
 - `GET /api/v1/files` list files with pagination and search. `source` is
-  `all | upload | assistant | project | library`; with `source=project`, an
-  optional `projectId` (public id) narrows the page to one project. No source
-  returns `source = 'connector'` rows (`getFilesSourceCondition`).
+  `all | upload | assistant | project | library | google`; with
+  `source=project`, an optional `projectId` (public id) narrows the page to one
+  project, and `source=google` lists the user's Google Drive copies (the Drive
+  tab). No source returns `source = 'connector'` rows
+  (`getFilesSourceCondition`).
 - `POST /api/v1/storage/connector-images/delete` deletes the user's connector
   images (Storage page "Delete all"), batch by batch, with `hasMore`.
 - `GET /api/v1/files/projects` the Projects tab groups (see below).
 - `PUT /api/v1/files/upload` upload one file.
+- `POST /api/v1/google/drive/files` copy up to 5 picked Google Drive files into
+  storage through `persistFile` (per-file results; `docs/google.md`,
+  section 12). A sent copy adds a `data-drive-file` reference part after its
+  `file` part, rebuilt on the server from the stored row.
 - `PATCH /api/v1/files/[id]/name` rename one file.
 - `DELETE /api/v1/files/[id]` delete one file.
 - `POST /api/v1/files/delete/bulk` bulk delete files.
@@ -591,8 +694,9 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
 
 ## Source Tabs
 
-The file manager has three source tabs: Uploaded (the default), Generated by AI
-(hidden when the model has no image input) and Projects. There is no "All"
+The file manager has three built-in source tabs: Uploaded (the default),
+Generated by AI (hidden when the model has no image input) and Projects, and a
+Google Drive tab after them for users with `google.drive`. There is no "All"
 tab on the client: project files are already excluded from Uploaded and
 Generated, so All would only repeat the first two. The server still accepts
 `source=all`, which the MCP `list_files` tool uses. When the Generated tab is
@@ -607,7 +711,9 @@ The tabs come from a typed list in `app/utils/file-manager-sources.ts`
   `data-testid` values (`files-source-upload`, `files-source-assistant`,
   `files-source-project`) are used by unit and e2e tests and must not change.
 - `getFileManagerExtraSourceTabs()` is the registry for other sources (Google
-  Drive in G-6, documents in D-4). It returns no entries today.
+  Drive, documents in D-4). It returns the Google Drive tab (`id:
+  'google-drive'`, `files-source-google-drive`, shown while `google.drive` is
+  active for the user); see `docs/google.md`, section 12.12.
 - `resolveFileManagerSourceTabs()` returns the built-in tabs followed by every
   extra tab whose `isEnabled()` is true (a missing `isEnabled` means always
   shown).
@@ -617,24 +723,38 @@ To add a source tab, add one entry to `getFileManagerExtraSourceTabs()`:
 ```ts
 {
   kind: 'extra',
-  id: 'drive',
-  label: 'Google Drive',
-  testId: 'files-source-drive',
-  component: ChatInputFilesModalSelectDrive,
-  isEnabled: () => useFeature('google.drive').value.enabled,
+  id: GOOGLE_DRIVE_TAB_ID,
+  label: GOOGLE_DRIVE_TAB_LABEL,
+  testId: GOOGLE_DRIVE_TAB_TEST_ID,
+  component: LazyChatInputFilesModalSelectDrive,
+  isEnabled: () => googleDrive.value.active,
 }
 ```
 
-`useFeature` arrives with the feature access work (P0-4); read its real
-signature then. `isEnabled` runs inside a `computed`, so reactive feature
-state shows or hides the tab live. Selecting an extra tab does not change the
-`useFileManager()` source (its watcher would request `source=<id>` and get a
-400); `Select.client.vue` keeps the extra tab id locally and renders
-`component` in the scroll area instead of the built-in grid, list or project
-groups. The component receives `attachedIds`, `search` and `viewMode` and may
-emit `attach` with `FileManagerFile[]`, which the modal forwards like a normal
-selection. The bulk actions toolbar of the built-in sources is hidden while an
-extra tab is open, so it never acts on files the user cannot see. Picking a
+The registry function runs once while `Select.client.vue` sets up, so resolve
+`useFeature` there and read it inside `isEnabled`, which runs inside a
+`computed`: reactive feature state shows or hides the tab live. Selecting an
+extra tab does not change the `useFileManager()` source of the Select tab (its
+watcher would request `source=<id>` and get a 400); `Select.client.vue` keeps
+the extra tab id locally and renders `component` in the scroll area instead of
+the built-in grid, list or project groups. A tab that lists files uses its own
+`useFileManager()` instance. The component receives `attachedIds`, `search`,
+`viewMode`, `canAttachMediaType` and `resolveDelivery` (the composer's rules for
+what the model can read) and may emit `attach` with `FileManagerFile[]`
+(forwarded like a normal selection), `detach` with file ids (forwarded) and
+`changed` (it added, removed or renamed files: the modal refreshes the storage
+bar, and the Select tab reloads its own list the next time a built-in tab is
+picked). The bulk actions toolbar of the built-in sources is hidden while an
+extra tab is open, so it never acts on files the user cannot see; a tab that
+needs a footer renders `ActionsToolbar` itself (sticky at the bottom of the
+scroll area; its optional `refreshable` prop adds a Refresh action, as the
+List and Grid views and the grid actions menu take `refreshable` for a row
+action). A tab that opens something Google or another provider appends to
+`body` (a `showModal()` dialog covers anything outside it) injects
+`FILE_MANAGER_DIALOG_KEY` (`app/utils/file-manager-dialog.ts`) and calls
+`suspend()` before and `resume()` after: the dialog closes without resetting
+the open tab and shows again. `GET /api/v1/files` also accepts `source=google`,
+the signed-in user's Google Drive copies. Picking a
 built-in tab, opening the modal on a source, closing it, or the extra tab's
 `isEnabled()` turning false leaves the extra tab. An extra entry whose `id`
 matches a built-in id is dropped. The tab row scrolls horizontally (`flex-nowrap

@@ -12,6 +12,7 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { createGoogleDataShareOptInError } from '~~/server/utils/google/data-guard'
 
 const paramsRules = z.object({
   slug: z.ulid(),
@@ -24,6 +25,7 @@ const bodyRules = z.object({
   showMetadata: z.boolean(),
   showAuthorAvatar: z.boolean(),
   allowBranch: z.boolean(),
+  includeGoogleContent: z.boolean().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -71,6 +73,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      googleDataAt: true,
     },
   })
 
@@ -81,6 +84,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (chat.googleDataAt) {
+    if (body.data.includeGoogleContent !== true) {
+      throw createGoogleDataShareOptInError()
+    }
+
+    logger.set({
+      chatId: chat.id,
+      attributes: { googleDataGuard: { shareOptIn: true } },
+    })
+  }
+
+  const holdsGoogleData = !!chat.googleDataAt
+  const indexable = body.data.indexable && !holdsGoogleData
+  const googleOptInAt = holdsGoogleData ? new Date() : null
   const expiresAt = durationToExpiresAt(body.data.duration)
   const freshSlug = ulid()
   const nowInSeconds = Math.floor(Date.now() / 1000)
@@ -95,11 +112,12 @@ export default defineEventHandler(async (event) => {
     .insert(schema.chatShares)
     .values({
       chatId: chat.id,
-      indexable: body.data.indexable,
+      indexable,
       showFiles: body.data.showFiles,
       showMetadata: body.data.showMetadata,
       showAuthorAvatar: body.data.showAuthorAvatar,
       allowBranch: body.data.allowBranch,
+      googleOptInAt,
       expiresAt,
     })
     .onConflictDoUpdate({
@@ -107,11 +125,12 @@ export default defineEventHandler(async (event) => {
       set: {
         slug: slugAfterReshare,
         revoked: false,
-        indexable: body.data.indexable,
+        indexable,
         showFiles: body.data.showFiles,
         showMetadata: body.data.showMetadata,
         showAuthorAvatar: body.data.showAuthorAvatar,
         allowBranch: body.data.allowBranch,
+        googleOptInAt,
         expiresAt,
         updatedAt: new Date(),
       },
@@ -151,7 +170,7 @@ export default defineEventHandler(async (event) => {
     slug,
     url: `${baseUrl}/shared/${slug}`,
     expiresAt,
-    indexable: body.data.indexable,
+    indexable,
     showFiles: body.data.showFiles,
     showMetadata: body.data.showMetadata,
     showAuthorAvatar: body.data.showAuthorAvatar,

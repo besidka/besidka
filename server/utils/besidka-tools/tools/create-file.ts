@@ -52,6 +52,7 @@ export const createFileBesidkaTool = defineBesidkaTool({
       context.userId,
       input,
       context.logger,
+      context.isGoogleDerived?.() === true,
     )
 
     context.log({ file_id: file.id, file_size: file.size })

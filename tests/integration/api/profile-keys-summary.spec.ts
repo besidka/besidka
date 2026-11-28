@@ -48,7 +48,10 @@ function createFakeKv() {
   }
 }
 
-function createDbMock(rows: Array<{ provider: string }>) {
+function createDbMock(rows: Array<{
+  provider: string
+  paidTierConfirmedAt?: Date | null
+}>) {
   const findMany = vi.fn().mockImplementation(async () => rows)
 
   return {
@@ -167,27 +170,54 @@ describe('keys summary API', () => {
       const response = await handler({} as any)
 
       for (const entry of response.keys) {
-        expect(Object.keys(entry).sort()).toEqual(['hasKey', 'provider'])
+        const expectedKeys = entry.provider === 'google'
+          ? ['hasKey', 'paidTierConfirmed', 'provider']
+          : ['hasKey', 'provider']
+
+        expect(Object.keys(entry).sort()).toEqual(expectedKeys)
       }
 
       expect(JSON.stringify(response)).not.toMatch(/apiKey|secret-value/i)
     })
 
-  it('only selects the provider column, never apiKey', async () => {
-    const dbMock = createDbMock([])
+  it('selects only the provider and paid-tier columns, never apiKey',
+    async () => {
+      const dbMock = createDbMock([])
 
-    vi.stubGlobal('useDb', () => dbMock.db)
+      vi.stubGlobal('useDb', () => dbMock.db)
 
-    const handler = await getHandler()
+      const handler = await getHandler()
 
-    await handler({} as any)
+      await handler({} as any)
 
-    expect(dbMock.spies.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        columns: { provider: true },
-      }),
-    )
-  })
+      expect(dbMock.spies.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: { provider: true, paidTierConfirmedAt: true },
+        }),
+      )
+    })
+
+  it('reports the Gemini paid-tier confirmation on the google row only',
+    async () => {
+      const dbMock = createDbMock([
+        { provider: 'google', paidTierConfirmedAt: new Date(1_000) },
+        { provider: 'openai', paidTierConfirmedAt: null },
+      ])
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+
+      const handler = await getHandler()
+      const response = await handler({} as any)
+      const google = response.keys.find((entry: { provider: string }) => {
+        return entry.provider === 'google'
+      })
+
+      expect(google).toEqual({
+        provider: 'google',
+        hasKey: true,
+        paidTierConfirmed: true,
+      })
+    })
 
   it('returns 429 once the rate limit is exceeded', async () => {
     const dbMock = createDbMock([])

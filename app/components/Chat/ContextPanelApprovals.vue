@@ -42,7 +42,16 @@
           </span>
         </span>
         <NuxtLink
-          v-if="grant.scope === 'always' && grant.source === 'besidka'"
+          v-if="grant.scope === 'always' && grant.source === 'google'"
+          :to="googleManagePath(grant)"
+          class="btn btn-ghost btn-xs min-h-6 shrink-0"
+          :aria-label="`Change the permission of ${grant.toolName}`"
+          data-testid="chat-context-approval-manage-google"
+        >
+          Manage
+        </NuxtLink>
+        <NuxtLink
+          v-else-if="grant.scope === 'always' && grant.source === 'besidka'"
           :to="besidkaPermissionsPath"
           class="btn btn-ghost btn-xs min-h-6 shrink-0"
           :aria-label="`Change the permission of ${grant.toolName}`"
@@ -86,6 +95,9 @@
 
 <script setup lang="ts">
 import { getBesidkaToolPermissionsPath } from '~/utils/besidka-tool-permissions'
+import { GOOGLE_EGRESS_GRANT_LABEL } from '#shared/utils/google-tool-approvals'
+import { buildGoogleEntryPath } from '#shared/utils/google-connectors'
+import { findGoogleCatalogTool } from '#shared/utils/google-tool-catalog'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
@@ -122,7 +134,17 @@ onBeforeUnmount(() => {
   })
 })
 
+function googleManagePath(grant: ToolApprovalGrantItem): string {
+  const service = findGoogleCatalogTool(grant.toolName)?.service ?? 'drive'
+
+  return buildGoogleEntryPath(`google-${service}`)
+}
+
 function scopeLabel(grant: ToolApprovalGrantItem): string {
+  if (grant.source === 'google-egress') {
+    return GOOGLE_EGRESS_GRANT_LABEL
+  }
+
   return grant.scope === 'always'
     ? 'Always allowed, in every chat'
     : 'Allowed in this chat'

@@ -112,6 +112,57 @@ describe('feature registry', () => {
     expect(FEATURE_REGISTRY['documents.mcp'].available).toBe(true)
   })
 
+  it('requires an opt-in on every Google flag and keeps it internal', () => {
+    for (const key of [
+      'google.drive',
+      'google.calendar',
+      'google.byo',
+      'google.gmail',
+    ] as const) {
+      expect(FEATURE_REGISTRY[key]).toEqual(expect.objectContaining({
+        stage: 'internal',
+        default: false,
+        allowRoles: ['admin'],
+        spend: 'none',
+        optIn: 'required',
+        exposeToClient: true,
+      }))
+    }
+  })
+
+  it('ships every Google flag', () => {
+    expect(FEATURE_REGISTRY['google.drive'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.byo'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.gmail'].available).toBe(true)
+    expect(FEATURE_REGISTRY['google.calendar'].available).toBe(true)
+  })
+
+  it('lists the own-client, Gmail and Calendar flags in Labs for admins only',
+    () => {
+      expect(FEATURE_REGISTRY['google.byo'].adminOnly).toBe(true)
+      expect(FEATURE_REGISTRY['google.gmail'].adminOnly).toBe(true)
+      expect(FEATURE_REGISTRY['google.calendar'].adminOnly).toBe(true)
+      expect(FEATURE_REGISTRY['google.drive'].adminOnly).toBeUndefined()
+    })
+
+  it('declares the Google flags after their parents', () => {
+    const keys = Object.keys(FEATURE_REGISTRY)
+
+    expect(keys.indexOf('google.drive'))
+      .toBeLessThan(keys.indexOf('google.byo'))
+    expect(keys.indexOf('google.byo'))
+      .toBeLessThan(keys.indexOf('google.gmail'))
+    expect(keys.indexOf('google.byo'))
+      .toBeLessThan(keys.indexOf('google.calendar'))
+  })
+
+  it('nests Gmail and Calendar under the bring-your-own Google client', () => {
+    expect(FEATURE_REGISTRY['google.drive'].parent).toBeUndefined()
+    expect(FEATURE_REGISTRY['google.calendar'].parent).toBe('google.byo')
+    expect(FEATURE_REGISTRY['google.byo'].parent).toBe('google.drive')
+    expect(FEATURE_REGISTRY['google.gmail'].parent).toBe('google.byo')
+  })
+
   it('treats prototype keys as unknown', () => {
     expect(isFeatureKey('constructor')).toBe(false)
     expect(getFeatureDefinition('toString')).toBeUndefined()

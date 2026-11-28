@@ -26,9 +26,11 @@ export const keys = snakeCase.table(
         'cloudflare-gateway',
         'openrouter',
         'typesafe',
+        'google-oauth-client',
       ],
     }).notNull(),
     apiKey: text().notNull(),
+    paidTierConfirmedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_key_user').on(table.id, table.userId),

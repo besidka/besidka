@@ -434,6 +434,24 @@ describe('auth hardening for the OAuth authorization server', () => {
     ]))
   })
 
+  it('never hands a stored provider token to the browser', async () => {
+    const options = await importAuthOptions()
+
+    expect(options.disabledPaths).toEqual(expect.arrayContaining([
+      '/get-access-token',
+      '/refresh-token',
+    ]))
+  })
+
+  it('asks Google sign-in for its own scopes only', async () => {
+    const options = await importAuthOptions()
+    const google = options.socialProviders?.google as {
+      includeGrantedScopes?: boolean
+    }
+
+    expect(google.includeGrantedScopes).toBe(false)
+  })
+
   it('keeps the endpoints the consent and token flows need', async () => {
     const options = await importAuthOptions()
 

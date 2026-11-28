@@ -77,6 +77,9 @@ export interface OwnedFile {
   textVersion?: number | null
   textOmittedMedia?: number | null
   textOmittedCharts?: number | null
+  externalSource?: string | null
+  externalId?: string | null
+  googleDerivedAt?: Date | null
 }
 
 export interface OwnedGeneratedImageFile {
@@ -550,6 +553,9 @@ export async function getOwnedFilesByStorageKeys(
         textVersion: true,
         textOmittedMedia: true,
         textOmittedCharts: true,
+        externalSource: true,
+        externalId: true,
+        googleDerivedAt: true,
       },
     })
 

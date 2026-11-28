@@ -10,11 +10,26 @@ import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import {
+  GOOGLE_TOOL_NAME_PREFIX,
+  canOfferGoogleTools,
+  googleToolReturnsContent,
+  isGoogleToolName,
+} from '#shared/utils/google-tool-approvals'
+import type { GoogleToolKind } from '#shared/utils/google-tool-approvals'
+import {
+  GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE,
+  GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE,
+} from '#shared/utils/google-tool-catalog'
+import {
   TOOL_APPROVAL_DATA_PART_TYPE,
   TOOL_GRANT_DATA_PART_TYPE,
   hasAwaitingApprovalToolPart,
+  isToolGrantDataPart,
+  readApprovalDriveNames,
+  readApprovalLink,
 } from '#shared/utils/tool-approval-parts'
 import type {
+  DriveNames,
   ToolApprovalPartData,
   ToolGrantPartData,
   ToolGrantScope,
@@ -23,6 +38,7 @@ import {
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
   TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
   TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
+  TOOL_APPROVAL_GOOGLE_READ_SOURCE,
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
   TOOL_APPROVAL_PENDING_PER_MESSAGE,
@@ -48,10 +64,23 @@ import { canonicalJson } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
+  GOOGLE_RUN_NO_GATE_TEXT,
+} from '~~/server/utils/tool-approval/google-run-gate'
+import type {
+  GoogleRun,
+  GoogleRunGate,
+} from '~~/server/utils/tool-approval/google-run-gate'
+import {
+  indexToolApprovalChatRecords,
+  isWellFormedToolApprovalId,
   putToolApproval,
+  putToolApprovalResults,
   putToolApprovalTurn,
 } from '~~/server/utils/tool-approval/kv'
-import type { ToolApprovalPendingSnapshot } from '~~/server/utils/tool-approval/kv'
+import type {
+  ToolApprovalPendingSnapshot,
+  ToolApprovalResultRecord,
+} from '~~/server/utils/tool-approval/kv'
 import {
   connectorDestructiveHint,
   hasAlwaysAskToolName,
@@ -118,12 +147,28 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * `failsWithoutRunning` marks a call `execute` always refuses with a plain
  * error (a Besidka delete or move of the current chat): it is cleared
  * without a prompt, so the user is never asked for a call that cannot run.
+ * `taintsRun` is for a Google tool that returns no Google content
+ * (`taint` and `readSource` null): one lookup before `execute` says the
+ * call names Google-derived data after all (a marked file), and the call
+ * then taints the send like any Google call.
+ * `describeLink` gives the card one link to look at what the call names
+ * before answering (the Gmail thread a read or a reply names); only links
+ * `readApprovalLink` accepts are shown. `describeNames` gives the card the
+ * names of the Drive items a call names by id (the folder to create in), read
+ * from the chat's own Drive results and never from a new Google call; only
+ * names `readApprovalDriveNames` accepts are shown. `chatGrantRunsMax` caps
+ * how many calls of the tool one message runs under "Allow in this chat";
+ * past it each call asks again.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
   summary: string
   summarize?: (input: unknown) => string
   describe?: (input: unknown) => Promise<string | null>
+  describeLink?: (input: unknown) => Promise<string | null>
+  describeNames?: (input: unknown) => Promise<DriveNames | null>
+  chatGrantRunsMax?: number
+  taintsRun?: (input: unknown) => Promise<boolean>
   preview?: (input: unknown) => string | null
   failsWithoutRunning?: (input: unknown) => boolean
   permissionMode?: ToolPermissionMode
@@ -147,17 +192,20 @@ export interface SendToolUserGrants {
   always: ToolApprovalGrant | null
   chat: ToolApprovalGrant | null
   isAlwaysDefault?: boolean
+  googleEgress?: ToolApprovalGrant | null
 }
 
 /**
  * The stored definition hashes of the user's grants for one connector tool:
  * `always` from `connector_tool_settings.approvedDefinitionHash` when that
  * row is set to `always`, `chat` from this chat's
- * `connector_chat_settings.alwaysAllowTools[exposedName]`.
+ * `connector_chat_settings.alwaysAllowTools[exposedName]`, `googleEgress`
+ * from the same map under `googleEgressGrantKey(exposedName)`.
  */
 export interface ConnectorGrantHashes {
   always: string | null
   chat: string | null
+  googleEgress?: string | null
 }
 
 export interface PendingToolApprovalDecision {
@@ -166,6 +214,8 @@ export interface PendingToolApprovalDecision {
   decision: ToolApprovalDecision
   summary: string
   preview: string | null
+  link?: string | null
+  driveNames?: DriveNames | null
 }
 
 export interface ToolApprovalCall {
@@ -193,7 +243,10 @@ export interface SendToolApproval {
     tools: ToolSet | undefined,
     extraEntries?: ReadonlyMap<string, SendToolEntry>,
   ) => void
-  guardNativeWrites: (tools: ToolSet | undefined) => ToolSet | undefined
+  guardNativeWrites: (
+    tools: ToolSet | undefined,
+    runGate?: GoogleRunGate,
+  ) => ToolSet | undefined
   canAsk: () => boolean
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   consumeUserSettingCall: (call: ClearedCallCheck) => boolean
@@ -292,6 +345,9 @@ async function describeCall(
   pending: PendingToolApprovalDecision,
   input: unknown,
 ): Promise<void> {
+  await describeCallLink(pending, input)
+  await describeCallNames(pending, input)
+
   if (!pending.entry.describe) {
     return
   }
@@ -305,6 +361,77 @@ async function describeCall(
   } catch {
     return
   }
+}
+
+async function describeCallLink(
+  pending: PendingToolApprovalDecision,
+  input: unknown,
+): Promise<void> {
+  if (!pending.entry.describeLink) {
+    return
+  }
+
+  try {
+    pending.link = readApprovalLink(await pending.entry.describeLink(input))
+  } catch {
+    pending.link = null
+  }
+}
+
+async function describeCallNames(
+  pending: PendingToolApprovalDecision,
+  input: unknown,
+): Promise<void> {
+  if (!pending.entry.describeNames) {
+    return
+  }
+
+  try {
+    pending.driveNames = readApprovalDriveNames(
+      await pending.entry.describeNames(input),
+    )
+  } catch {
+    pending.driveNames = null
+  }
+}
+
+/**
+ * How many calls of each tool the stored reply already ran under "Allow
+ * in this chat" (its `data-tool-grant` markers with the `chat` scope), so
+ * a pause or a "Continue" round keeps counting toward `chatGrantRunsMax`.
+ */
+export function countChatGrantRuns(
+  parts: readonly unknown[],
+): Map<string, number> {
+  return countGrantRuns(parts, 'chat')
+}
+
+/**
+ * How many calls of each tool the stored reply already ran under one grant
+ * scope (its `data-tool-grant` markers), so a pause or a "Continue" round
+ * keeps counting toward the per-message caps of Always allow on a Google
+ * tool (`GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE` and
+ * `GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE`).
+ */
+export function countGrantRuns(
+  parts: readonly unknown[],
+  scope: ToolGrantScope,
+): Map<string, number> {
+  const counts = new Map<string, number>()
+
+  for (const part of parts) {
+    if (!isToolGrantDataPart(part)) {
+      continue
+    }
+
+    const data = part.data as Partial<ToolGrantPartData>
+
+    if (data.scope === scope && typeof data.toolName === 'string') {
+      counts.set(data.toolName, (counts.get(data.toolName) ?? 0) + 1)
+    }
+  }
+
+  return counts
 }
 
 /**
@@ -328,6 +455,137 @@ function buildUndescribedBesidkaEntry(toolName: string): SendToolEntry {
   }
 }
 
+/**
+ * The entry of a `google__` tool the send did not describe: a Google write
+ * that asks with Allow once only, so a Google tool can never fall back to
+ * the native-write entry, which runs without asking.
+ */
+function buildUndescribedGoogleEntry(toolName: string): SendToolEntry {
+  return {
+    descriptor: {
+      family: 'google',
+      access: 'write',
+      toolName,
+      destructiveHint: true,
+    },
+    summary: clampSummary(`Besidka wants to run ${toolName} on Google`),
+    taint: 'google',
+    readSource: TOOL_APPROVAL_GOOGLE_READ_SOURCE,
+    connector: null,
+  }
+}
+
+/**
+ * The entry of one built-in Google tool (Drive, Calendar, Gmail), the only
+ * way a Google tool joins a send. The exposed name must start with
+ * `google__` (`GOOGLE_TOOL_NAME_PREFIX`), or registration is refused; a kind
+ * other than `read` is a write. A read asks until the user allows it in
+ * this chat (`chatGrantHash` from `readGoogleChatGrantHashes`), a write asks
+ * every time with Allow once only (rule 11). Every call that runs records
+ * `google` taint and the Google read source, which withholds web search for
+ * the rest of the turn, makes native writes and connector calls ask and
+ * locks memory writes. No `preview`: the approval part is stored in D1.
+ */
+export function buildGoogleApprovalEntry(input: {
+  toolName: string
+  kind: GoogleToolKind
+  definitionHash: string
+  summary: string
+  toolApprovalsActive: boolean
+  summarize?: (input: unknown) => string
+  chatGrantHash?: string | null
+  chatGrantRunsMax?: number
+  taintsRun?: (input: unknown) => Promise<boolean>
+}): SendToolEntry {
+  if (!canOfferGoogleTools(input)) {
+    throw createError({
+      message: 'Google tools need tool approvals',
+      status: 500,
+      why: 'A Google tool was registered in a send without tool approvals',
+      fix: 'Offer Google tools only when canOfferGoogleTools is true',
+    })
+  }
+
+  if (!isGoogleToolName(input.toolName)) {
+    throw createError({
+      message: 'Invalid Google tool name',
+      status: 500,
+      why: `A Google tool name must start with ${GOOGLE_TOOL_NAME_PREFIX}`,
+    })
+  }
+
+  const isRead = input.kind === 'read'
+  const returnsContent = googleToolReturnsContent(input.toolName)
+
+  return {
+    descriptor: {
+      family: 'google',
+      access: isRead ? 'read' : 'write',
+      toolName: input.toolName,
+      definitionHash: input.definitionHash,
+      destructiveHint: !isRead,
+    },
+    summary: clampSummary(input.summary),
+    ...(input.summarize ? { summarize: input.summarize } : {}),
+    ...(input.chatGrantRunsMax !== undefined
+      ? { chatGrantRunsMax: input.chatGrantRunsMax }
+      : {}),
+    ...(!returnsContent && input.taintsRun
+      ? { taintsRun: input.taintsRun }
+      : {}),
+    taint: returnsContent ? 'google' : null,
+    readSource: returnsContent ? TOOL_APPROVAL_GOOGLE_READ_SOURCE : null,
+    userGrants: {
+      always: null,
+      chat: isRead && input.chatGrantHash
+        ? {
+          definitionHash: input.chatGrantHash,
+          connectorId: null,
+          toolName: input.toolName,
+        }
+        : null,
+    },
+    connector: null,
+  }
+}
+
+/**
+ * The entry-only record of a built-in Google tool the user set to Blocked.
+ * The tool is not offered to the model, so nothing registers it as a tool;
+ * the entry only lets the continuation of an approval given before the Block
+ * read the tool's family and mode and answer with the blocked denial instead
+ * of "no longer available". It carries no definition hash and no grant, and
+ * `permissionMode: 'blocked'` denies it in every rule.
+ */
+export function buildBlockedGoogleEntry(input: {
+  toolName: string
+  kind: GoogleToolKind
+}): SendToolEntry {
+  if (!isGoogleToolName(input.toolName)) {
+    throw createError({
+      message: 'Invalid Google tool name',
+      status: 500,
+      why: `A Google tool name must start with ${GOOGLE_TOOL_NAME_PREFIX}`,
+    })
+  }
+
+  const isRead = input.kind === 'read'
+
+  return {
+    descriptor: {
+      family: 'google',
+      access: isRead ? 'read' : 'write',
+      toolName: input.toolName,
+      destructiveHint: !isRead,
+    },
+    summary: clampSummary(`Besidka wants to run ${input.toolName} on Google`),
+    permissionMode: 'blocked',
+    taint: 'google',
+    readSource: TOOL_APPROVAL_GOOGLE_READ_SOURCE,
+    connector: null,
+  }
+}
+
 function exceededCallCap(
   entry: SendToolEntry,
   state: ApprovalState,
@@ -340,13 +598,18 @@ function exceededCallCap(
   }
 
   if (
-    entry.descriptor.family === 'besidka'
+    countsAsBuiltInCall(entry)
     && state.counters.builtInCalls >= TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN
   ) {
     return 'built-in-calls'
   }
 
   return null
+}
+
+function countsAsBuiltInCall(entry: SendToolEntry): boolean {
+  return entry.descriptor.family === 'besidka'
+    || entry.descriptor.family === 'google'
 }
 
 /**
@@ -483,6 +746,9 @@ export function buildConnectorApprovalEntry(input: {
       always: toGrant(input.grantHashes?.always),
       chat: toGrant(input.grantHashes?.chat),
       ...(input.isAlwaysDefault ? { isAlwaysDefault: true } : {}),
+      ...(input.grantHashes?.googleEgress
+        ? { googleEgress: toGrant(input.grantHashes.googleEgress) }
+        : {}),
     },
     connector: {
       id: input.connectorId,
@@ -528,14 +794,20 @@ export function buildMemoryApprovalEntries(
 
 /**
  * Which of the user's own grants let a call run without asking: `chat` for
- * rule 7, `always` for rule 6 (a connector "always" grant or a Besidka tool
- * set to Always allow) and rule 12 (a memory tool set to Always allow). Null
+ * rule 7 and for a Google read that rule 11 let run, `always` for rule 6 (a
+ * connector "always" grant or a Besidka tool set to Always allow), for a
+ * Google tool that rule 11 let run under Always allow and for rule 12 (a
+ * memory tool set to Always allow). Null
  * when no grant decided it.
  */
 function userGrantScopeOf(
   decision: ToolApprovalDecision,
 ): ToolGrantScope | null {
-  if (decision.rule === 7) {
+  if (decision.rule === 11 && decision.grant === 'always') {
+    return 'always'
+  }
+
+  if (decision.rule === 7 || decision.rule === 11) {
     return 'chat'
   }
 
@@ -614,9 +886,67 @@ function toInputJson(input: unknown): string {
  */
 export function createSendToolApproval(input: {
   state: ApprovalState
+  priorChatGrantRuns?: ReadonlyMap<string, number>
+  priorAlwaysGrantRuns?: ReadonlyMap<string, number>
 }): SendToolApproval {
   const { state } = input
+  const chatGrantRuns = new Map(input.priorChatGrantRuns ?? [])
+  const alwaysGrantRuns = new Map(input.priorAlwaysGrantRuns ?? [])
   const entries = new Map<string, SendToolEntry>()
+
+  function isGoogleWriteEntry(entry: SendToolEntry | undefined): boolean {
+    return entry?.descriptor.family === 'google'
+      && (entry.descriptor.access !== 'read' || entry.descriptor.destructiveHint)
+  }
+
+  function alwaysAllowHasRoom(
+    toolName: string,
+    entry: SendToolEntry,
+  ): boolean {
+    if (!isGoogleWriteEntry(entry)) {
+      return (alwaysGrantRuns.get(toolName) ?? 0)
+        < GOOGLE_ALWAYS_ALLOW_READS_PER_MESSAGE
+    }
+
+    const writeRuns = [...alwaysGrantRuns].reduce((total, [name, runs]) => {
+      return isGoogleWriteEntry(entries.get(name)) ? total + runs : total
+    }, 0)
+
+    return writeRuns < GOOGLE_ALWAYS_ALLOW_WRITES_PER_MESSAGE
+  }
+
+  function isAlwaysAllowCapped(
+    toolName: string,
+    entry: SendToolEntry,
+  ): boolean {
+    return entry.permissionMode === 'allow'
+      && entry.descriptor.family === 'google'
+      && !alwaysAllowHasRoom(toolName, entry)
+  }
+
+  function permissionModeOf(
+    toolName: string,
+    entry: SendToolEntry,
+  ): ToolPermissionMode {
+    return isAlwaysAllowCapped(toolName, entry)
+      ? 'ask'
+      : entry.permissionMode ?? 'ask'
+  }
+
+  function chatGrantOf(
+    toolName: string,
+    entry: SendToolEntry,
+  ): ToolApprovalGrant | null {
+    const grant = entry.userGrants?.chat ?? null
+
+    if (!grant || entry.chatGrantRunsMax === undefined) {
+      return grant
+    }
+
+    return (chatGrantRuns.get(toolName) ?? 0) < entry.chatGrantRunsMax
+      ? grant
+      : null
+  }
   const clearedCalls = new Map<string, ClearedCall>()
   const approvedCalls = new Map<string, ClearedCall>()
   const userSettingCalls = new Map<string, ClearedCall>()
@@ -704,7 +1034,7 @@ export function createSendToolApproval(input: {
       incrementCounter(state, 'connectorCalls')
     }
 
-    if (entry.descriptor.family === 'besidka') {
+    if (countsAsBuiltInCall(entry)) {
       incrementCounter(state, 'builtInCalls')
     }
   }
@@ -750,10 +1080,13 @@ export function createSendToolApproval(input: {
     const decision = resolveToolApproval({
       descriptor: entry.descriptor,
       state: decisionState,
-      permissionMode: entry.permissionMode ?? 'ask',
+      permissionMode: permissionModeOf(toolCall.toolName, entry),
       alwaysGrant: entry.userGrants?.always ?? null,
-      chatGrant: entry.userGrants?.chat ?? null,
+      chatGrant: isAlwaysAllowCapped(toolCall.toolName, entry)
+        ? null
+        : chatGrantOf(toolCall.toolName, entry),
       isAlwaysGrantDefault: entry.userGrants?.isAlwaysDefault === true,
+      googleEgressGrant: entry.userGrants?.googleEgress ?? null,
     })
     const grantScope = decision.rule === 6
       && entry.userGrants?.isAlwaysDefault
@@ -772,6 +1105,23 @@ export function createSendToolApproval(input: {
 
       if (grantScope) {
         grantedCalls.set(toolCall.toolCallId, grantScope)
+      }
+
+      if (grantScope === 'chat') {
+        chatGrantRuns.set(
+          toolCall.toolName,
+          (chatGrantRuns.get(toolCall.toolName) ?? 0) + 1,
+        )
+      }
+
+      if (
+        grantScope === 'always'
+        && entry.descriptor.family === 'google'
+      ) {
+        alwaysGrantRuns.set(
+          toolCall.toolName,
+          (alwaysGrantRuns.get(toolCall.toolName) ?? 0) + 1,
+        )
       }
 
       if (decision.rule === 12) {
@@ -820,13 +1170,18 @@ export function createSendToolApproval(input: {
         continue
       }
 
-      entries.set(
-        toolName,
-        isBesidkaChatToolName(toolName)
-          ? buildUndescribedBesidkaEntry(toolName)
-          : buildNativeApprovalEntry(toolName),
-      )
+      entries.set(toolName, buildFallbackEntry(toolName))
     }
+  }
+
+  function buildFallbackEntry(toolName: string): SendToolEntry {
+    if (isBesidkaChatToolName(toolName)) {
+      return buildUndescribedBesidkaEntry(toolName)
+    }
+
+    return isGoogleToolName(toolName)
+      ? buildUndescribedGoogleEntry(toolName)
+      : buildNativeApprovalEntry(toolName)
   }
 
   function consumeClearedCall(call: ClearedCallCheck): boolean {
@@ -847,6 +1202,48 @@ export function createSendToolApproval(input: {
     clearedCalls.delete(call.toolCallId)
 
     return true
+  }
+
+  function needsClearedCall(entry: SendToolEntry | undefined): boolean {
+    if (!entry) {
+      return false
+    }
+
+    if (entry.descriptor.family === 'google') {
+      return true
+    }
+
+    return entry.descriptor.family === 'native'
+      && entry.descriptor.access !== 'read'
+      && entry.descriptor.writesMemory !== true
+  }
+
+  /**
+   * Takes the claim and the hourly write slot of a Google write that runs
+   * under Always allow. Any refusal (no gate, a lost claim, a spent budget)
+   * also drops the call's "Ran without asking" marker, because the write
+   * did not run.
+   */
+  async function beginAlwaysAllowedRun(
+    toolCallId: string,
+    runGate: GoogleRunGate | undefined,
+  ): Promise<GoogleRun> {
+    try {
+      if (!runGate) {
+        throw createError({
+          message: GOOGLE_RUN_NO_GATE_TEXT,
+          status: 500,
+          why: 'An always-allowed Google write ran without a run gate.',
+          fix: 'Tell the user the action did not happen.',
+        })
+      }
+
+      return await runGate.begin(toolCallId)
+    } catch (exception) {
+      grantedCalls.delete(toolCallId)
+
+      throw exception
+    }
   }
 
   /**
@@ -877,12 +1274,15 @@ export function createSendToolApproval(input: {
 
   /**
    * Wraps the `execute` of every native write except the memory tools
-   * (which keep their own lock) so it only runs a call the policy cleared,
-   * with the same name and input, once. A second line behind the SDK, which
-   * never calls `execute` for a call that waits for approval.
+   * (which keep their own lock and only lose the marker of a call that
+   * throws), and of every Google tool, reads included,
+   * so it only runs a call the policy cleared, with the same name and
+   * input, once. A second line behind the SDK, which never calls `execute`
+   * for a call that waits for approval.
    */
   function guardNativeWrites(
     tools: ToolSet | undefined,
+    runGate?: GoogleRunGate,
   ): ToolSet | undefined {
     if (!tools) {
       return tools
@@ -896,10 +1296,15 @@ export function createSendToolApproval(input: {
       }
 
       if (
-        !entry
-        || entry.descriptor.family !== 'native'
-        || entry.descriptor.access === 'read'
-        || entry.descriptor.writesMemory === true
+        entry?.descriptor.writesMemory === true
+        && !isProviderTool(tool)
+        && hasExecute(tool)
+      ) {
+        return [toolName, dropGrantWhenRefused(tool)]
+      }
+
+      if (
+        !needsClearedCall(entry)
         || isProviderTool(tool)
         || !hasExecute(tool)
       ) {
@@ -910,7 +1315,10 @@ export function createSendToolApproval(input: {
 
       return [toolName, {
         ...tool,
-        execute: (input: unknown, options?: { toolCallId?: string }) => {
+        execute: async (
+          input: unknown,
+          options?: { toolCallId?: string },
+        ) => {
           if (!consumeClearedCall({
             toolCallId: options?.toolCallId,
             toolName,
@@ -924,10 +1332,70 @@ export function createSendToolApproval(input: {
             })
           }
 
-          return execute(input, options)
+          if (entry?.taintsRun && await entry.taintsRun(input)) {
+            recordTaint(state, 'google')
+            recordToolRead(state, TOOL_APPROVAL_GOOGLE_READ_SOURCE)
+          }
+
+          const toolCallId = options?.toolCallId
+
+          if (
+            !isGoogleWriteEntry(entry)
+            || !toolCallId
+            || grantedCalls.get(toolCallId) !== 'always'
+          ) {
+            return await execute(input, options)
+          }
+
+          const run = await beginAlwaysAllowedRun(toolCallId, runGate)
+
+          try {
+            const runOptions: { toolCallId?: string, executionId: string } = {
+              ...options,
+              executionId: run.executionId,
+            }
+            const output = await execute(input, runOptions)
+
+            await run.settle(false)
+
+            return output
+          } catch (exception) {
+            await run.settle(true)
+
+            throw exception
+          }
         },
       } as ToolSet[string]]
     }))
+  }
+
+  /**
+   * Keeps the memory tools' own locks and gates, and drops the "Ran without
+   * asking" marker of a call whose `execute` throws, because a refused
+   * write did not run (the same rule as `beginAlwaysAllowedRun`).
+   */
+  function dropGrantWhenRefused(tool: {
+    execute: (input: unknown, options?: { toolCallId?: string }) => unknown
+  }): ToolSet[string] {
+    const execute = tool.execute.bind(tool)
+
+    return {
+      ...tool,
+      execute: async (
+        input: unknown,
+        options?: { toolCallId?: string },
+      ) => {
+        try {
+          return await execute(input, options)
+        } catch (exception) {
+          if (options?.toolCallId) {
+            grantedCalls.delete(options.toolCallId)
+          }
+
+          throw exception
+        }
+      },
+    } as unknown as ToolSet[string]
   }
 
   /**
@@ -969,7 +1437,7 @@ export function createSendToolApproval(input: {
 
   function shouldWithhold(entry: SendToolEntry): boolean {
     if (entry.descriptor.toolName === CODE_EXECUTION_TOOL_NAME) {
-      return false
+      return state.taint.has('google')
     }
 
     if (entry.descriptor.access !== 'read') {
@@ -1045,7 +1513,9 @@ type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
 /**
  * Keeps a provider-executed tool that is not a read (web fetch or any
  * unclassified provider tool; code execution is exempt because its sandbox
- * has no network access, so it cannot carry data out) out of
+ * has no network access, so it cannot carry data out, until the send holds
+ * `google` taint, because its code, output and files are stored without a
+ * Google marking) out of
  * every step in which the policy would ask for it, and the provider's own
  * web search, grounding and URL context, and the web searches Besidka runs
  * itself (Brave, Exa), out of every step once a tool call of the turn read
@@ -1118,8 +1588,12 @@ export function hasGuardedProviderTool(
  * already puts in front of the model, with the same triggers as the memory
  * write lock (`presetMemoryWriteLock`) plus a chat branched from a public
  * share, files the user attached to this message (`file`, so no
- * remembered approval runs a tool in a send that holds a document) and an
- * earlier Besidka tool result in the chat (`besidka`).
+ * remembered approval runs a tool in a send that holds a document), an
+ * earlier Besidka tool result in the chat (`besidka`) and content from
+ * Google already in the chat (`google`, `chatHoldsGoogleData`), which makes
+ * every connector call ask for the Google egress grant and also counts as
+ * a tool read, so the provider's web search and URL tools and Brave and
+ * Exa stay withheld for the whole send.
  */
 export function presetApprovalTaint(
   state: ApprovalState,
@@ -1132,6 +1606,7 @@ export function presetApprovalTaint(
     isBranchedFromShare: boolean
     holdsUserAttachments?: boolean
     holdsBesidkaToolHistory?: boolean
+    holdsGoogleData?: boolean
   },
 ): void {
   if (send.requestedTools.some(isWebSearchTool)) {
@@ -1157,6 +1632,11 @@ export function presetApprovalTaint(
 
   if (send.holdsBesidkaToolHistory) {
     recordTaint(state, 'besidka')
+  }
+
+  if (send.holdsGoogleData) {
+    recordTaint(state, 'google')
+    recordToolRead(state, TOOL_APPROVAL_GOOGLE_READ_SOURCE)
   }
 }
 
@@ -1320,6 +1800,8 @@ export function createToolApprovalStreamCollector(
           summary: pending.summary,
           rememberOptions: [...pending.decision.rememberOptions],
           ...(pending.preview ? { preview: pending.preview } : {}),
+          ...(pending.link ? { link: pending.link } : {}),
+          ...(pending.driveNames ? { driveNames: pending.driveNames } : {}),
         }
 
         controller.enqueue({
@@ -1353,24 +1835,47 @@ export interface RecordToolApprovalPauseInput {
   ) => Promise<number | null>
   settleFailedAudit: (auditCallId: number) => Promise<void>
   logger: LoggerLike
+  resultStash?: ReadonlyArray<{
+    resultId: string
+    record: ToolApprovalResultRecord
+  }>
 }
 
 /**
  * Stores what the continuation needs once the paused reply is persisted:
  * one pending record per approval (exact input and signature, the policy
- * reason and remember options, the summary, a snapshot of the send) and
- * one turn record with the pending ids and the serialized approval state,
- * both listed in the per-chat index. A connector call also gets a `pending`
- * audit row first, and its id goes into the record so the answer can settle
- * that row; when the record cannot be stored, that row is settled as an
- * error right away. Writes are sequential (one KV connection at a time).
- * A record that fails is logged and skipped; the continuation then answers
- * that the approval expired.
+ * reason and remember options, the summary, a snapshot of the send), one
+ * turn record with the pending ids and the serialized approval state, and
+ * the stashed tool result bodies (`resultStash`, the Google results D1
+ * keeps as references). Every id goes into the per-chat index in ONE write
+ * before any record: KV takes about one write a second per key, so a
+ * second index write in the same request could be refused and lose a
+ * pending record. A connector call also gets a `pending` audit row first,
+ * and its id goes into the record so the answer can settle that row; when
+ * the record cannot be stored, that row is settled as an error right away.
+ * Writes are sequential (one KV connection at a time). A record that fails
+ * is logged and skipped; the continuation then answers that the approval
+ * expired. The stash is written only once a pending record exists, so a
+ * pause nobody can answer leaves no body behind, and a stash failure only
+ * costs the body, never the pause.
  */
 export async function recordToolApprovalPause(
   input: RecordToolApprovalPauseInput,
 ): Promise<{ written: number }> {
   const pendingApprovalIds: string[] = []
+  const resultStash = input.resultStash ?? []
+
+  if (input.collected.length === 0) {
+    return { written: 0 }
+  }
+
+  await indexToolApprovalChatRecords(input.kv, input.chatPublicId, {
+    approvalIds: input.collected
+      .map(collected => collected.approvalId)
+      .filter(isWellFormedToolApprovalId),
+    messageIds: [input.messagePublicId],
+    resultIds: resultStash.map(entry => entry.resultId),
+  })
 
   for (const collected of input.collected) {
     const { entry, decision } = collected.pending
@@ -1400,7 +1905,7 @@ export async function recordToolApprovalPause(
         summary: collected.pending.summary,
         auditCallId,
         snapshot: input.snapshot,
-      })
+      }, { alreadyIndexed: true })
       pendingApprovalIds.push(collected.approvalId)
     } catch (exception) {
       if (auditCallId !== null) {
@@ -1432,9 +1937,46 @@ export async function recordToolApprovalPause(
     messagePublicId: input.messagePublicId,
     pendingApprovalIds,
     state: serializeApprovalState(input.approval.state),
-  })
+  }, { alreadyIndexed: true })
+
+  await writeResultStash(input, resultStash)
 
   return { written: pendingApprovalIds.length }
+}
+
+async function writeResultStash(
+  input: RecordToolApprovalPauseInput,
+  resultStash: NonNullable<RecordToolApprovalPauseInput['resultStash']>,
+): Promise<void> {
+  if (resultStash.length === 0) {
+    return
+  }
+
+  try {
+    const outcomes = await putToolApprovalResults(input.kv, resultStash, {
+      alreadyIndexed: true,
+    })
+
+    input.logger.set({
+      attributes: {
+        toolApproval: {
+          resultsStashed: outcomes.length,
+          resultsTruncated: outcomes.filter((outcome) => {
+            return outcome.truncated
+          }).length,
+        },
+      },
+    })
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        toolApproval: {
+          resultStash: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 }
 
 /**

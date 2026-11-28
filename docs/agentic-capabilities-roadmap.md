@@ -6,7 +6,11 @@ file is the source of truth for the program. The Linear project
 the same name points here once the docs sync has mirrored this file. Every
 ticket that merges updates the status table in section 2. **Order amended on
 2026-11-13 (S-0):** 4c (skills and commands) moves ahead of Phase 3, because
-the owner deferred deep research on 2026-11-12.
+the owner deferred deep research on 2026-11-12. **Order amended again on
+2026-11-21:** Phase 4b (Google) now runs before Phase 3 (custom research), and
+nothing else starts until 4b is finished. The status table in section 2 was
+refreshed on 2026-11-22 against `main`; the 4b row was updated on 2026-11-23
+against the umbrella branch.
 
 ## 1. Goal
 
@@ -29,13 +33,13 @@ research run or anything else that spends a key does not
 
 | Phase | Scope | Linear | State |
 |---|---|---|---|
-| 0 Foundation | Per-user feature access, admin, rollout and A/B, Labs, shared side panel, chat context panel, larger file manager | BES-224 | In progress: pre-check (P0-14) and this design (P0-1) in review |
-| 1 Artifacts | Sandboxed HTML/React/SVG/Mermaid/Markdown artifacts, versions, per-viewer storage, LLM bridge on the viewer's key, public shares | BES-225 | In progress: A-2 runtime on `main`; native stack `artifacts` (#766) in review: A-1 store, A-3 chat tools, A-4 panel, A-14 code blocks, A-5 viewer storage, A-6 LLM bridge, A-7 public links and reports, A-8 MCP tools, A-11 library tab, A-10 evals and rollout plan (`docs/artifacts.md`); all `artifacts.*` flags at stage `internal`, percentage rollout planned from 2027-01-04 after the 2026-12-19 notices |
-| 2 Documents | PDF, DOCX, XLSX, PPTX from a validated JSON spec (hybrid renderer); provider-native code execution | BES-226 | Ticketed, after Phase 1 |
-| 3 Research | Custom deep research on any tool-calling model with Brave/Exa, 5 to 10 minutes, about 200 sources, Workflows orchestration | BES-227 | Ticketed, **later**: deferred by the owner on 2026-11-12, now after 4c |
-| 4a Connectors | User-brought remote MCP servers (OAuth client, approvals, registry search) | BES-229 | In progress: C-4 OAuth client in review (#896), flags `connectors` and `connectors.oauth` available at stage `internal` (grant-only); C-5 chat tools stacked on top; `connectors.registry` and `connectors.native` still unavailable; C-6 approvals (BES-244): policy (L3) merged, request side (L4) behind the new `tool-approvals` flag (available, `internal`, grant-only), continuation (L5) and UI (L6) next; C-9 connector management tools (BES-256) in review: five MCP tools under the new `connectors:read` and `connectors:write` scopes, MCP 4.0.0 |
-| 4b Google | Drive Picker with `drive.file`, built-in Drive tools, BYO Google OAuth client for Gmail and full Drive, Calendar | BES-230 | Ticketed, in parallel with Phase 1 |
-| 4c Skills and commands | Agent Skills for any model: write one in the app, start from a template, or add one by archive (zip, `.skill`), pasted text, GitHub link or MCP; versions (20 kept), slash commands, MCP tools to create, edit, rename and delete; scripts in provider containers (S-5, Anthropic only, behind `skills.scripts`) and sharing by link (S-13, later) | BES-231 | **Next.** Design amended 2026-11-13 (S-0, `docs/skills.md`). Stack "skills": S-1, S-2, S-2G, S-10, S-4, S-11, S-3, S-12, S-6 (BES-292 merged: six MCP tools under the new `skills:read` and `skills:write` scopes, MCP 5.0.0); S-15 (BES-381, project skills that always load, `docs/skills.md` section 5.8) in review; legal S-7 in parallel; then S-9. S-5 (BES-285, scripts in Anthropic containers) in review as its own PR on top of C-6 and D-7: upload and delete of the provider copy, the per-chat consent gate tool under the C-6 policy (rule 10), flag `skills.scripts` `available` and still `internal`; the live check with a real key is deferred (the owner's Anthropic key is capped until 2026-12-01); S-13 and S-2U are later |
+| 0 Foundation | Per-user feature access, admin, rollout and A/B, Labs, shared side panel, chat context panel, larger file manager | BES-224 | On `main`: feature access tables (#741), Labs page (#755), shared side panel (#748), chat context panel (#749), larger file manager (#733), scheduled rollouts and the notice-gated rollout switch (#762), the pre-check and records (#731, #754) and the owner approval for legal notices (#911). P0-10 (Flagship adapter) waits on Flagship GA. Not verified: P0-15 (launch content) |
+| 1 Artifacts | Sandboxed HTML/React/SVG/Mermaid/Markdown artifacts, versions, per-viewer storage, LLM bridge on the viewer's key, public shares | BES-225 | On `main` behind `internal` flags, all `available`: runtime (#751), store (#764), chat tools (#765), panel (#767), code blocks (#768), viewer storage (#769), LLM bridge (#770), public links and reports (#771), MCP tools (#772), History tab (#773), evals and rollout plan (#778, `docs/artifacts.md`), the Besidka look (#784), legal (#763). Percentage rollout is planned from 2027-01-04 after the 2026-12-19 notices and is not started. Not verified: A-13 (launch content) |
+| 2 Documents | PDF, DOCX, XLSX, PPTX from a validated JSON spec (hybrid renderer); provider-native code execution | BES-226 | On `main` behind `internal` flags: spec package (#833), renderer Worker (#836), `create_document` (#846), documents over MCP (#847), Office text extraction and attachments (#851, #852), provider-native code execution (#840), legal (#835). `documents.*`, `files.office` and `code-execution` and `.files` are `available`; `code-execution.skills` is not. Not verified: D-11 (launch content) |
+| 3 Research | Custom deep research on any tool-calling model with Brave/Exa, 5 to 10 minutes, about 200 sources, Workflows orchestration | BES-227 | Ticketed, **later**: deferred by the owner on 2026-11-12, now after 4b. Only the pre-check is on `main` (#734); the `research.*` flags are not `available` |
+| 4a Connectors | User-brought remote MCP servers (OAuth client, approvals, registry search) | BES-229 | On `main` behind `internal` flags: tables and catalog (#893), SSRF-safe fetch (#894), OAuth client (#896), chat tools (#897), approvals and grants (#904, #912), official registry mirror and search (#917), audit pruning (#918), MCP management tools (#920), Connectors page (#923), battle-test fixes (#987). `connectors`, `connectors.oauth` and `connectors.registry` are `available`; `connectors.native` is not. `tool-approvals` and `besidka-tools` (#915, #919) are `available`. Not verified: C-10, C-11, C-13, C-15 and any rollout date |
+| 4b Google | Drive Picker with `drive.file`, built-in Drive tools, BYO Google OAuth client for Gmail and full Drive, Calendar | BES-230 | **Built and checked on the PR preview of the umbrella `feat/google-connectors` (parent PR #1015), not on `main`.** Runs before Phase 3. The four `google.*` flags are `available` and `internal`, each behind the user's opt-in. Built: the Drive Picker with `drive.file` on Besidka's client; the owner-only own client with Gmail search, read and draft (a draft is never sent), Calendar list, free and busy and create event without guests, and Drive search, folder and file tools (list, create folder, create a file as text, a Doc from Markdown or a Sheet from CSV, rename, move); per-chat service switches, per-tool Blocked, Always allow for own-client tools only, the data guard by model provider and the picker reasons; created-file cards, a preview, an Outputs entry and Download as Word, Excel, CSV or text; the Worker startup budget in Preview Build (`docs/worker-startup.md`). Not done: the umbrella PR is not merged into `main` (the owner decides); Drive writes stay off in production until the key-management decision; the public Privacy Policy and Terms text (G-10) and #922; the consent screen to production and the dedicated Drive client; the official Docs, Sheets and Slides artwork; iOS Safari and PWA checks; the owner decision on a stricter injection mitigation for Always allow; a live Word and Excel export check. Phase 3 does not start until 4b is finished (owner decision of 2026-11-21). Design: `docs/google.md`. One parent PR into `main` with a preview, children `--base` the parent branch (`docs/stacked-prs.md`) |
+| 4c Skills and commands | Agent Skills for any model: write one in the app, start from a template, or add one by archive (zip, `.skill`), pasted text, GitHub link or MCP; versions (20 kept), slash commands, MCP tools to create, edit, rename and delete; scripts in provider containers (Anthropic only, behind `skills.scripts`) and sharing by link (S-13, later) | BES-231 | On `main` behind `internal` flags, all four `skills*` flags `available`: tables (#864), import and review (#865, #867, #869), editor and versions (#868, #870), runtime with Auto mode (#871), commands and the `/` picker (#888), MCP tools (#924), execution and intent (#925), review copy and corpus guard (#927), project skills (#929), TypeSafe AI screening and selector (#930, #934), scripts in Anthropic containers (#933); design in `docs/skills.md`. The live check of S-5 with a real key was deferred (the owner's Anthropic key is capped until 2026-12-01). Not verified: S-7 (legal), S-9 (launch content); S-13 and S-2U are later |
 | 5 Voice | Voice input and output | not ticketed | Roadmap only |
 | 6 Scheduled routines | Scheduled tasks that reuse artifacts, research, documents and connectors; background spend behind Labs opt-in | not ticketed | Roadmap only |
 | 7 Browser agent | An agent that drives a browser, shown in the side panel | not ticketed | Roadmap only |
@@ -71,8 +75,12 @@ in `docs/feature-flags.md` and the Phase 0 tickets.
    Phase 4a/4b (G-1 spike and G-2 owner tasks start at once).
 3. Phase 2 (D-1 spike and D-7 code execution in parallel), then **4c**
    (S-0 first, then the stack "skills"; nothing in the first release waits for
-   C-3 or C-6), then Phase 3 (R-1, R-2, R-3 and R-6 can start once Phase 0
-   lands; deferred by the owner on 2026-11-12).
+   C-3 or C-6), then **4b (Google)**, then Phase 3 (R-1, R-2, R-3 and R-6 can
+   start once Phase 0 lands; deferred by the owner on 2026-11-12). Phases 0
+   to 2, 4a and 4c are on `main`; 4b is built on the umbrella branch and not
+   yet merged (section 2).
+   **Owner decision of 2026-11-21: nothing else starts until 4b is
+   finished.**
 4. Cross-phase joins: R-7 needs A-3 and D-3; G-5 save-to-Drive needs D-4;
    S-5 needs D-7. Phase 6 later reuses `DOC_RENDERER`, the orchestrator
    Workflow, artifacts and connectors.
@@ -272,7 +280,9 @@ break. Account: the one `wrangler whoami` lists for this repo.
     (`server/utils/mcp/private-tool.ts`), and logic in
     `server/utils/mcp/private/*.ts`;
   - exactly one scope per tool, and a new scope for anything that deletes,
-    spends or publishes;
+    spends or publishes, unless an existing write scope already covers that
+    resource (precedents: `delete_connectors` and `disconnect_google` under
+    `connectors:write`, `delete_skills` under `skills:write`);
   - a scope lives in `shared/utils/mcp-oauth-scopes.ts`,
     `server/utils/mcp/tool-scopes.ts` and
     `app/components/OAuth/ScopeLabel.vue` (plus `ScopePicker.vue`, the
@@ -398,6 +408,14 @@ Per `docs/stacked-prs.md` ("Native stack"):
 - **Short-lived stacks.** Run `gh stack sync` after `main` moves. A D1
   migration lands in the lowest layer that needs it.
 - **Merges are done by the owner** (`gh stack merge --squash`).
+- **Amended 2026-11-22 for 4b (Google): an umbrella, not a native stack.**
+  The parent branch `feat/google-connectors` has one long-lived PR into
+  `main` with the preview `pr-<n>`. Children branch from the parent and are
+  opened with `--base feat/google-connectors`; they get no CI, and the parent
+  builds everything. The G-10 legal ticket is a plain PR to `main`, and the
+  G-12 launch content is a plain PR after the owner takes `google.drive`
+  beyond `internal`. Child one owns every D1 migration. See
+  `docs/stacked-prs.md` and `docs/google.md`.
 
 ## 10. Roadmap phases 5 to 7
 

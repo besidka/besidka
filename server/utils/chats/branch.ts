@@ -5,6 +5,7 @@ import { createError } from 'evlog'
 import { TOOL_BUDGET_PART_TYPE } from '#shared/utils/tool-rounds'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
+import { GOOGLE_TOOLS_WITHHELD_PART_TYPE } from '#shared/utils/google-tools-withheld'
 import {
   buildConnectorUsedMarkerPart,
   CONNECTORS_NOTICE_PART_TYPE,
@@ -18,6 +19,7 @@ import {
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { chatHoldsGoogleData } from '~~/server/utils/tool-approval/google'
 import {
   indexMessagesForSearch,
   type SearchIndexLogger,
@@ -122,6 +124,7 @@ function isNonToolMessagePart(
     && type !== TOOL_APPROVAL_DATA_PART_TYPE
     && type !== TOOL_GRANT_DATA_PART_TYPE
     && type !== TOOL_BUDGET_PART_TYPE
+    && type !== GOOGLE_TOOLS_WITHHELD_PART_TYPE
     && !type.startsWith('tool-')
 }
 
@@ -138,6 +141,23 @@ export function isApprovalOnlyMessage(parts: unknown): boolean {
   return stripToolPartsFromBranchedMessage(parts).every((part) => {
     return part.type === 'step-start'
   })
+}
+
+/**
+ * The `google_data_at` a branch starts with: the source chat's flag, or now
+ * when the copied messages still hold a Google result (a chat from before
+ * the flag). A branch strips tool parts, so without this the copy would
+ * lose the mark that keeps Google content behind its approvals.
+ */
+export function branchGoogleDataAt(source: {
+  googleDataAt: Date | null
+  messages: ReadonlyArray<{ parts: unknown }>
+}): Date | null {
+  if (source.googleDataAt) {
+    return source.googleDataAt
+  }
+
+  return chatHoldsGoogleData({ messages: source.messages }) ? new Date() : null
 }
 
 /**
@@ -163,6 +183,7 @@ export async function branchChat(
       title: true,
       projectId: true,
       memoryExcluded: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -211,6 +232,10 @@ export async function branchChat(
   }
 
   const title = buildBranchTitle(chat.title)
+  const googleDataAt = branchGoogleDataAt({
+    googleDataAt: chat.googleDataAt,
+    messages: messagesToCopy,
+  })
 
   const newChat = await db
     .insert(schema.chats)
@@ -219,6 +244,7 @@ export async function branchChat(
       title,
       ...(chat.projectId ? { projectId: chat.projectId } : {}),
       ...(chat.memoryExcluded ? { memoryExcluded: true } : {}),
+      ...(googleDataAt ? { googleDataAt } : {}),
     })
     .returning({
       id: schema.chats.id,

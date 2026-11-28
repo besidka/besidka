@@ -2,29 +2,37 @@ import type { UIMessage } from 'ai'
 import { useLogger } from 'evlog'
 import { normalizeMediaType } from '#shared/utils/files'
 import { resolveFileDelivery } from '#shared/utils/file-delivery'
+import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
 import type { FileDeliveryReason } from '#shared/utils/file-delivery'
 import {
   OFFICE_FORMAT_NOUNS,
   OFFICE_TEXT_INLINE_MAX_BYTES,
   OFFICE_TEXT_MESSAGE_MAX_BYTES,
+  WORKBOOK_MAP_TEXT_VERSION,
   getOfficeFormatByMediaType,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
 import type { OfficeFormat } from '#shared/utils/office-files'
 import {
+  CARRIED_TEXT_FILE_MAX_BYTES,
   extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
   getOwnedGeneratedImageFilesByStorageKeys,
 } from '~~/server/utils/files/file-governance'
+import type {
+  CarriedStructureOnlyFile,
+} from '~~/server/utils/files/assistant-files'
 import {
   resolveServerLogger,
 } from '~~/server/utils/files/logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
+  getOfficeTextUpgradeFailedKey,
   loadOfficeText,
   truncateUtf8,
 } from '~~/server/utils/files/office-text'
+import type { LoadedOfficeText } from '~~/server/utils/files/office-text'
 
 export interface MissingFile {
   storageKey: string
@@ -45,12 +53,79 @@ export interface ConversionResult {
 
 const CACHE_TTL_SECONDS = 5 * 60
 const FILE_CACHE_PREFIX = 'file-cache:'
+const EXTRACTED_TEXT_NOTE
+  = 'Extracted text. Images, charts and formatting are not included.'
+const WORKBOOK_MAP_NOTE = 'Workbook map. Included: values, formulas, '
+  + 'number formats, dropdown and validation rules, conditional formatting '
+  + 'rules, merged cells and notes. Not included: colors, charts and images. '
+  + 'Values are the results last calculated and saved in the file; they are '
+  + 'not recalculated.'
+
+const GOOGLE_SHEET_NOUN = 'Google Sheet'
+const GOOGLE_WORKBOOK_MAP_NOTE = 'Workbook map of a Google Sheet. Included: '
+  + 'the values as displayed, formulas as written in the Sheet, number '
+  + 'formats, dropdown and validation rules, conditional formatting rules, '
+  + 'merged cells and notes. Not included: colors, charts and images. Values '
+  + 'are the ones the Sheet displayed when it was picked; they are not '
+  + 'recalculated.'
+
+const SHORTENED_MAP_NOTE = 'Values were shortened in this earlier '
+  + 'attachment to fit: every formula and rule is included, and only the '
+  + 'value tables that fit are. Ask the user to attach the file again for '
+  + 'the full values.'
 
 export interface ConvertFilesOptions {
   container?: {
     providerId: string
     messageId: string
   }
+  structureOnlyFiles?: readonly CarriedStructureOnlyFile[]
+}
+
+function isStructureOnly(
+  options: ConvertFilesOptions,
+  messageId: string,
+  storageKey: string,
+): boolean {
+  return (options.structureOnlyFiles ?? []).some((file) => {
+    return file.messageId === messageId && file.storageKey === storageKey
+  })
+}
+
+/**
+ * The text an Office file is sent as, decided from the stored format and
+ * text version, never from the text itself. A workbook map carried from an
+ * earlier message is fitted to `CARRIED_TEXT_FILE_MAX_BYTES`.
+ */
+async function fitCarriedWorkbookMap(
+  text: string,
+  maxBytes: number,
+): Promise<string> {
+  const { fitWorkbookMap } = await import(
+    '@besidka/doc-renderer/workbook-map'
+  )
+
+  return fitWorkbookMap(text, maxBytes)
+}
+
+async function officeTextToSend(
+  officeText: LoadedOfficeText,
+  mediaType: string,
+  isCarriedStructureOnly: boolean,
+): Promise<{ text: string, isWorkbookMap: boolean, isShortened: boolean }> {
+  const isWorkbookMap = getOfficeFormatByMediaType(mediaType) === 'xlsx'
+    && officeText.textVersion >= WORKBOOK_MAP_TEXT_VERSION
+
+  if (!isWorkbookMap || !isCarriedStructureOnly) {
+    return { text: officeText.text, isWorkbookMap, isShortened: false }
+  }
+
+  const text = await fitCarriedWorkbookMap(
+    officeText.text,
+    CARRIED_TEXT_FILE_MAX_BYTES,
+  )
+
+  return { text, isWorkbookMap, isShortened: text !== officeText.text }
 }
 
 /**
@@ -195,10 +270,15 @@ export async function convertFilesForAI(
       }
 
       if (officeText) {
+        const sent = await officeTextToSend(
+          officeText,
+          mediaType,
+          isStructureOnly(options, message.id, storageKey),
+        )
         const formatted = formatOfficeFilePart({
           filename: part.filename,
           mediaType,
-          text: officeText.text,
+          ...sent,
           remainingBytes: officeBytesRemaining,
         })
 
@@ -223,6 +303,28 @@ export async function convertFilesForAI(
               storageKey,
               filename: part.filename,
             })
+            continue
+          }
+
+          if (isGoogleWorkbookMapFile({ ...ownedFile, type: mediaType })) {
+            const text = isStructureOnly(options, message.id, storageKey)
+              ? await fitCarriedWorkbookMap(
+                textContent,
+                CARRIED_TEXT_FILE_MAX_BYTES,
+              )
+              : textContent
+            const formatted = formatOfficeFilePart({
+              filename: part.filename,
+              mediaType,
+              text,
+              isWorkbookMap: true,
+              isShortened: text !== textContent,
+              isGoogleSheet: true,
+              remainingBytes: officeBytesRemaining,
+            })
+
+            officeBytesRemaining = formatted.remainingBytes
+            convertedParts.push({ type: 'text', text: formatted.text })
             continue
           }
 
@@ -517,12 +619,24 @@ function formatOfficeFilePart(input: {
   filename?: string
   mediaType: string
   text: string
+  isWorkbookMap: boolean
+  isShortened: boolean
+  isGoogleSheet?: boolean
   remainingBytes: number
 }): FormattedOfficeFilePart {
   const format = getOfficeFormatByMediaType(input.mediaType) as OfficeFormat
-  const noun = OFFICE_FORMAT_NOUNS[format]
+  const noun = input.isGoogleSheet
+    ? GOOGLE_SHEET_NOUN
+    : OFFICE_FORMAT_NOUNS[format]
   const name = input.filename ? `**${input.filename}** (${noun})` : noun
-  const header = `${name}\n\nExtracted text. Images, charts and formatting are not included.\n\n`
+  let note = input.isWorkbookMap ? WORKBOOK_MAP_NOTE : EXTRACTED_TEXT_NOTE
+
+  if (input.isGoogleSheet) {
+    note = GOOGLE_WORKBOOK_MAP_NOTE
+  }
+
+  const shortened = input.isShortened ? ` ${SHORTENED_MAP_NOTE}` : ''
+  const header = `${name}\n\n${note}${shortened}\n\n`
 
   if (input.remainingBytes <= 0) {
     return {
@@ -629,6 +743,7 @@ export async function invalidateFileCache(
     const cacheKey = getCacheKey(storageKey)
 
     await kv.delete(cacheKey)
+    await kv.delete(getOfficeTextUpgradeFailedKey(storageKey))
   } catch (exception) {
     activeLogger.set({
       fileCache: {

@@ -130,6 +130,7 @@ describe('create_document tool', () => {
 
   function createTool(
     enabledFormats: readonly DocumentFormat[] = DOCUMENT_FORMATS,
+    isGoogleDerived?: () => boolean,
   ) {
     const tools = createDocumentTool({
       userId,
@@ -140,6 +141,7 @@ describe('create_document tool', () => {
       modelId: 'claude-haiku-4-5',
       provider: 'anthropic',
       assistantMessageId: 'ASSISTANT-ULID',
+      isGoogleDerived,
     })
 
     return tools.create_document as unknown as {
@@ -366,6 +368,19 @@ describe('create_document tool', () => {
       expect(JSON.parse(storage.objects.get(expectedKey)!)).toEqual(PDF_SPEC)
     })
 
+    it('marks a document written in a send that holds Google data',
+      async () => {
+        const marked = await createTool(DOCUMENT_FORMATS, () => true)
+          .execute(PDF_SPEC, {}) as Record<string, unknown>
+        const plain = await createTool(DOCUMENT_FORMATS, () => false)
+          .execute(PDF_SPEC, {}) as Record<string, unknown>
+
+        expect(await readDocument(testDb.db, marked.documentId as string))
+          .toMatchObject({ googleDerivedAt: expect.any(Date) })
+        expect(await readDocument(testDb.db, plain.documentId as string))
+          .toMatchObject({ googleDerivedAt: null })
+      })
+
     it('reports the stats of a workbook', async () => {
       const output = await createTool().execute(XLSX_SPEC, {}) as {
         stats: Record<string, unknown>
@@ -558,6 +573,58 @@ describe('create_document tool', () => {
       }
 
       expect(await countDocuments()).toBe(0)
+    })
+
+    describe('images that hold Google content', () => {
+      async function seedMarkedImage(
+        values: Partial<typeof schema.files.$inferInsert>,
+      ): Promise<string> {
+        const [file] = await testDb.db.insert(schema.files).values({
+          userId,
+          storageKey: 'marked.png',
+          name: 'marked.png',
+          size: 100,
+          type: 'image/png',
+          ...values,
+        }).returning({ id: schema.files.id })
+
+        return file!.id
+      }
+
+      it('refuses a marked image or a Google copy in a send without Google '
+        + 'data, so no unmarked document is made from it', async () => {
+        const marked = await seedMarkedImage({
+          storageKey: 'marked.png',
+          googleDerivedAt: new Date(1_000),
+        })
+        const copy = await seedMarkedImage({
+          storageKey: 'copy.png',
+          externalSource: 'google',
+        })
+
+        for (const fileId of [marked, copy]) {
+          await expect(
+            createTool(DOCUMENT_FORMATS, () => false)
+              .execute(createImageSpec(fileId), {}),
+          ).rejects.toMatchObject({
+            code: DOCUMENT_TOOL_ERROR_CODES.unknownImage,
+          })
+        }
+
+        expect(await countDocuments()).toBe(0)
+      })
+
+      it('accepts it in a send that holds Google data, and the document '
+        + 'carries the mark', async () => {
+        const marked = await seedMarkedImage({
+          googleDerivedAt: new Date(1_000),
+        })
+        const output = await createTool(DOCUMENT_FORMATS, () => true)
+          .execute(createImageSpec(marked), {}) as Record<string, unknown>
+
+        expect(await readDocument(testDb.db, output.documentId as string))
+          .toMatchObject({ googleDerivedAt: expect.any(Date) })
+      })
     })
 
     it('returns a tool error and leaves no row when R2 fails', async () => {

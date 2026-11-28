@@ -85,7 +85,27 @@ function columnLetter(index) {
   return `${first}${String.fromCharCode(65 + (index % 26))}`
 }
 
-function buildWorkbook(sheetCount, rowsPerSheet, columns, stringColumns) {
+function structureTail(rowsPerSheet) {
+  const rules = Array.from({ length: 50 }, (_value, index) => {
+    return `<cfRule type="expression" priority="${index + 1}">`
+      + `<formula>$A1="Category ${index}"</formula></cfRule>`
+  }).join('')
+
+  return '<mergeCells count="1"><mergeCell ref="A1:C1"/></mergeCells>'
+    + `<conditionalFormatting sqref="A1:L${rowsPerSheet}">${rules}`
+    + '</conditionalFormatting><dataValidations count="1">'
+    + '<dataValidation type="list" showErrorMessage="1" '
+    + `sqref="B1:B${rowsPerSheet}"><formula1>Lists!$B$6:$B$45</formula1>`
+    + '</dataValidation></dataValidations>'
+}
+
+function buildWorkbook(
+  sheetCount,
+  rowsPerSheet,
+  columns,
+  stringColumns,
+  withStructure = false,
+) {
   const random = createRandom(20261112)
   const sharedStrings = []
   const files = {}
@@ -99,7 +119,13 @@ function buildWorkbook(sheetCount, rowsPerSheet, columns, stringColumns) {
       for (let column = 0; column < columns; column += 1) {
         const reference = `${columnLetter(column)}${rowIndex}`
 
-        if (column < stringColumns) {
+        if (withStructure && column === columns - 1) {
+          const formula = rowIndex === 1
+            ? `<f t="shared" ref="${reference}:${columnLetter(column)}${rowsPerSheet}" si="0">D1*$E$1+F1</f>`
+            : '<f t="shared" si="0"/>'
+
+          cells.push(`<c r="${reference}">${formula}<v>${rowIndex}</v></c>`)
+        } else if (column < stringColumns) {
           const word = `${random().toString(36).slice(2, 10)} Рядок `
             + `${Math.floor(random() * 1e9).toString(36)}`
 
@@ -120,7 +146,9 @@ function buildWorkbook(sheetCount, rowsPerSheet, columns, stringColumns) {
     files[`xl/worksheets/sheet${sheetIndex + 1}.xml`] = strToU8(
       `${XML_HEADER}<worksheet xmlns="${NS_SHEET}"><sheetData>${
         rows.join('')
-      }</sheetData></worksheet>`,
+      }</sheetData>${
+        withStructure ? structureTail(rowsPerSheet) : ''
+      }</worksheet>`,
     )
   }
 
@@ -214,6 +242,7 @@ async function runChild() {
     pathToFileURL(resolve(PACKAGE_ROOT, 'src/extract/index.ts')).href
   )
   const bytes = new Uint8Array(readFileSync(file))
+  const options = { workbookMap: process.argv.includes('--map') }
   const baselineRss = process.memoryUsage().rss
   const timings = []
   let last = null
@@ -221,7 +250,7 @@ async function runChild() {
   for (let run = 0; run < runs; run += 1) {
     const startedAt = performance.now()
 
-    last = extractOfficeText(bytes, format)
+    last = extractOfficeText(bytes, format, {}, options)
     timings.push(performance.now() - startedAt)
   }
 
@@ -236,7 +265,7 @@ async function runChild() {
   }))
 }
 
-function measureInChild(file, format, runs) {
+function measureInChild(file, format, runs, isMap) {
   const result = spawnSync(
     process.execPath,
     [
@@ -249,6 +278,7 @@ function measureInChild(file, format, runs) {
       format,
       '--runs',
       `${runs}`,
+      ...isMap ? ['--map'] : [],
     ],
     { encoding: 'utf8', maxBuffer: 64 * MEBIBYTE },
   )
@@ -322,11 +352,13 @@ async function main() {
   )
 
   try {
+    const isMap = process.argv.includes('--map')
     const workbook = buildWorkbook(
       Number(readOption('sheets', DEFAULT_SHEETS)),
       Number(readOption('rows', DEFAULT_ROWS_PER_SHEET)),
       COLUMNS_PER_ROW,
       STRING_COLUMNS,
+      process.argv.includes('--structure'),
     )
     const denseSheet = buildWorkbook(1, DENSE_ROWS, DENSE_COLUMNS, 0)
     const deck = await buildPresentation(
@@ -345,7 +377,7 @@ async function main() {
 
       const outcome = endpoint
         ? await measureEndpoint(endpoint, file, format, runs)
-        : measureInChild(file, format, runs)
+        : measureInChild(file, format, runs, isMap)
 
       report(
         endpoint ? `${name} via ${endpoint}` : name,

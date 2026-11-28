@@ -44,7 +44,8 @@ export const listArtifactsBesidkaTool = defineBesidkaTool({
     + 'documents made in chats or by connected apps), most recently changed '
     + 'first, with the current version, the chat slug they came from '
     + '(null when that chat is gone) and how many public links are active. '
-    + 'Use nextCursor to get the next page. Requires signing in '
+    + 'Artifacts made in chats that hold Google data are not listed. Use '
+    + 'nextCursor to get the next page. Requires signing in '
     + '(artifacts:read).',
   inputSchema,
   annotations: {
@@ -56,7 +57,9 @@ export const listArtifactsBesidkaTool = defineBesidkaTool({
   chat: { expose: true, tier: 'read' },
   chatDescription: 'List your artifacts (pages, apps, diagrams, documents), most '
     + 'recently changed first, with the current version, the chat '
-    + 'they came from and how many public links are active.',
+    + 'they came from and how many public links are active. Artifacts '
+    + 'with Google content are listed only in a chat that already holds '
+    + 'Google data.',
   handler: async (input: ListArtifactsInput, context) => {
     const result = await listMcpArtifacts(
       buildMcpArtifactContext(context),

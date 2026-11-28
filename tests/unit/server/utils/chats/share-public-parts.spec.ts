@@ -228,6 +228,19 @@ describe('connector parts in shares and branches', () => {
     expect(JSON.stringify(branched)).not.toContain('linear')
   })
 
+  it('drops the Google tools withheld part from a branched message', () => {
+    const branched = stripToolPartsFromBranchedMessage([
+      {
+        type: 'data-google-tools-withheld',
+        data: { reason: 'model_may_not_receive_google_data' },
+      },
+      { type: 'text', text: 'Plain answer' },
+    ] as unknown as UIMessage['parts'])
+
+    expect(branched).toEqual([{ type: 'text', text: 'Plain answer' }])
+    expect(JSON.stringify(branched)).not.toContain('google-tools-withheld')
+  })
+
   it('keeps one marker when a branch is branched again', () => {
     const once = stripToolPartsFromBranchedMessage(connectorParts)
 
@@ -403,6 +416,87 @@ describe('connector image parts in shares and branches', () => {
       return part.type === 'data-connector-image'
         || part.type === 'dynamic-tool'
     })).toBe(false)
+  })
+
+  it('shows a Google Drive file by its name only in a public share', () => {
+    const [message] = filterPublicParts([{
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'Summarize this' },
+        {
+          type: 'file',
+          mediaType: 'text/markdown',
+          filename: 'Plan.md',
+          url: '/files/abc.md',
+        },
+        {
+          type: 'data-drive-file',
+          data: {
+            driveFileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+            name: 'Plan',
+            mimeType: 'text/markdown',
+            link: 'https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz',
+          },
+        },
+      ],
+    }] as unknown as Array<{ role: string, parts: UIMessage['parts'] }>)
+    const reference = message!.parts.find((part) => {
+      return part.type === 'data-drive-file'
+    }) as unknown as { data: Record<string, string> }
+
+    expect(reference.data).toEqual({
+      driveFileId: '',
+      name: 'Plan',
+      mimeType: '',
+      link: '',
+    })
+    expect(JSON.stringify(message)).not.toContain('drive.google.com')
+    expect(JSON.stringify(message)).not.toContain('1AbCdEfGhIjKlMnOpQrStUvWxYz')
+  })
+
+  it('drops the Google tools withheld note from a share and a branch',
+    () => {
+      const message = {
+        id: 'assistant-withheld',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'data-google-tools-withheld',
+            data: { reason: 'model_may_not_receive_google_data' },
+          },
+          { type: 'text', text: 'I have no calendar access.' },
+        ],
+      } as unknown as UIMessage
+
+      expect(filterPublicParts([message])[0]!.parts).toEqual([
+        { type: 'text', text: 'I have no calendar access.' },
+      ])
+      expect(stripToolPartsFromBranchedMessage(message.parts)).toEqual([
+        { type: 'text', text: 'I have no calendar access.' },
+      ])
+    })
+
+  it('drops the tool part of a created Google file, body included', () => {
+    const createdFile = {
+      type: 'tool-google__drive_create_file',
+      toolCallId: 'call_1',
+      state: 'output-available',
+      input: { name: 'Plan', kind: 'document', content: '# Secret body' },
+      output: {
+        references: [{
+          id: 'abcdefghij1234567890',
+          kind: 'file',
+          title: 'Plan',
+        }],
+      },
+    }
+    const [message] = filterPublicParts([{
+      parts: [{ type: 'text', text: 'Made it.' }, createdFile],
+    }] as unknown as Array<{ parts: UIMessage['parts'] }>)
+
+    expect(message?.parts).toEqual([{ type: 'text', text: 'Made it.' }])
+    expect(JSON.stringify(message)).not.toContain('Secret body')
+    expect(JSON.stringify(message)).not.toContain('abcdefghij1234567890')
   })
 
   it('drops the stopped marker from a share and keeps it in a branch',

@@ -79,7 +79,8 @@ describe('ChatInput/SettingTile', () => {
 
     await body.trigger('click')
 
-    expect(wrapper.emitted('open')?.[0]).toEqual(['search', body.element])
+    expect(wrapper.emitted('open')?.[0])
+      .toEqual(['search', body.element, 'search'])
   })
 
   it('uses a neutral tone for Memory off', async () => {

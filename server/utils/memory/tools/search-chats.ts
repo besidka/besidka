@@ -105,6 +105,7 @@ async function queryCandidateRows(input: {
       and ms.owner = ${ownerTag}
       and c.user_id = ${input.userId}
       and c.memory_excluded is not 1
+      and c.google_data_at is null
       ${excludeCurrentChat}
       ${restrictToProject}
       ${excludeForeignShareBranches}

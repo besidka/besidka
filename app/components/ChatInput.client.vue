@@ -65,10 +65,13 @@
           :class="{
             'max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]':
               !isKeyboardOpen,
-            'pt-0.5 px-1.5': files.length || tiles.length
-              || pastedTexts.length
+            'pt-0.5 px-1.5': files.length || rowTiles.length
+              || pastedTexts.length || checkingLinkIds.length
           }"
         >
+          <ChatInputFilesAttachedGoogleLinkAnnouncement
+            :count="linkSuggestions.length"
+          />
           <!-- Attached Files Preview with Upload Progress -->
           <LazyChatInputFilesAttachedPreview
             :files="files"
@@ -77,9 +80,13 @@
             :uploading-files="uploadingFiles"
             :converted-from-xls-keys="convertedFromXlsKeys"
             :uploading-count="uploadingCount"
-            :tiles="tiles"
+            :drive-imports="driveImports"
+            :tiles="rowTiles"
             :pasted-texts="pastedTexts"
-            @open-tile="openToolsMenu"
+            :checking-link-count="checkingLinkIds.length"
+            @dismiss-drive-import="dismissDriveImport"
+            @pick-again-drive-import="pickAgain"
+            @open-tile="openTile"
             @open-text="openTextFile"
             @open-pasted="openPastedText"
             @remove-pasted="removePastedText"
@@ -92,17 +99,16 @@
           />
           <div class="relative">
             <LazyChatInputCommandMirror
-              v-if="commands.activeToken.value"
+              v-if="mirrorRanges.length > 0"
               :textarea="textarea"
               :text="input"
-              :start="commands.activeToken.value.start"
-              :end="commands.activeToken.value.end"
+              :ranges="mirrorRanges"
             />
             <textarea
               ref="textarea"
               v-model="input"
               data-testid="chat-input-textarea"
-              class="textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+              class="js-chat-input-textarea textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
               :placeholder="textareaPlaceholder"
               :disabled="displayStop"
               :role="commands.isEnabled.value ? 'combobox' : undefined"
@@ -127,7 +133,7 @@
               @compositionstart="commands.onCompositionStart"
               @compositionend="commands.onCompositionEnd"
               @beforeinput="onTextareaBeforeInput"
-              @paste="onMarkdownPaste"
+              @paste="onComposerPaste"
               @focus="onTextareaFocus"
               @blur="onTextareaBlur"
             />
@@ -149,10 +155,9 @@
                 @select-reasoning-level="selectReasoningLevel"
                 @save-default-reasoning-level="saveDefaultReasoningLevel"
                 @open-project-picker="emit('open-project-picker')"
-                @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
-                @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
+                @open-google-drive="attachFromDrive"
                 @open-skills-picker="openSkillPicker"
                 @open-connectors-picker="openConnectorPicker"
                 @update:use-memory="setMemoryUsage"
@@ -188,7 +193,8 @@
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage || isClarifying || researchJobActive"
+                :disabled="!hasMessage || isClarifying || researchJobActive
+                  || isDriveBusy"
                 :title="sendButtonTitle"
                 icon-name="lucide:arrow-up"
                 icon-only
@@ -221,6 +227,7 @@
       :resolve-delivery="resolveDelivery"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
+      @replace="onAttachedFileReplaced"
       @upload="uploadFiles"
     />
     <LazyChatInputArtifactPicker
@@ -238,12 +245,19 @@
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
+      :google-rows="composerGoogleTools.rows.value"
+      :google-saving-services="composerGoogleTools.savingServices.value"
+      :google-choice-state="composerGoogleTools.choiceState.value"
+      :google-announcement="composerGoogleTools.announcement.value"
       :is-loaded="composerConnectors.isLoaded.value"
       :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
       @enable="composerConnectors.enable"
       @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
+      @toggle-google="composerGoogleTools.toggle"
+      @retry-google="composerGoogleTools.retry"
+      @choose-model="chooseAnotherModel"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"
@@ -290,6 +304,7 @@ import type {
 } from '~/utils/file-delivery-hints'
 import type { TextSnapshot } from '~/composables/markdown-textarea'
 import type { PastedText } from '~/utils/pasted-text'
+import type { ComposerMirrorRange } from '~/utils/composer-mirror-ranges'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
@@ -341,7 +356,6 @@ const {
   webSearchProviderOptions,
   isImageGenerationSupported,
   isImageGenerationRequired,
-  isImageInputSupported,
   canAttachMediaType,
   fileDeliveryContext,
   isReasoningSupported,
@@ -481,6 +495,10 @@ const sendButtonTitle = computed<string>(() => {
 
   if (isSelectedModelKeyless.value) {
     return missingKeyWarning.value
+  }
+
+  if (isDriveBusy.value) {
+    return GOOGLE_DRIVE_BUSY_REASON
   }
 
   if (props.researchJobActive) {
@@ -659,6 +677,73 @@ const {
   removeAttachedFile,
   removeAllFiles,
 } = useChatFiles(files, canAttachMediaType, resolveDelivery)
+
+const googleDriveFeature = useFeature('google.drive')
+const { routeSlug: chatRouteSlug } = useChatRoute()
+const { rememberChatGoogleData } = useChatGoogleData()
+const {
+  driveImports,
+  importingCount: driveImportingCount,
+  isDriveBusy,
+  isCheckingGoogleConnection,
+  linkSuggestions,
+  checkingLinkIds,
+  attachFromDrive,
+  pickAgain,
+  detectLinks,
+  cancelChecksForRemovedLinks,
+  acceptAllLinkSuggestions,
+  dismissAllLinkSuggestions,
+  dismissDriveImport,
+} = useChatDriveFiles(files, onFilesAttached, {
+  isAvailable: () => !isDeepResearchModel.value,
+})
+
+const GOOGLE_LINK_DETECTION_DELAY_MS = 800
+const GOOGLE_PASTE_WINDOW_MS = 500
+
+let isPastedLinkPending = false
+let pastedLinkTimer: ReturnType<typeof setTimeout> | undefined
+
+function onComposerPaste(event: ClipboardEvent) {
+  const pastedText = event.clipboardData?.getData('text/plain') ?? ''
+
+  if (extractGoogleDriveLinks(pastedText).length > 0) {
+    isPastedLinkPending = true
+    clearTimeout(pastedLinkTimer)
+    pastedLinkTimer = setTimeout(() => {
+      isPastedLinkPending = false
+    }, GOOGLE_PASTE_WINDOW_MS)
+  }
+
+  onMarkdownPaste(event)
+}
+
+watch(message, (text, _previousText, onCleanup) => {
+  cancelChecksForRemovedLinks(text)
+
+  if (!text.trim()) {
+    return
+  }
+
+  if (isPastedLinkPending) {
+    isPastedLinkPending = false
+    clearTimeout(pastedLinkTimer)
+    detectLinks(text)
+
+    return
+  }
+
+  const timer = setTimeout(() => {
+    detectLinks(text)
+  }, GOOGLE_LINK_DETECTION_DELAY_MS)
+
+  onCleanup(() => clearTimeout(timer))
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(pastedLinkTimer)
+})
 
 watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {
@@ -973,6 +1058,12 @@ const composerConnectors = useComposerConnectors(() => {
 const composerBesidkaTools = useComposerBesidkaTools(() => {
   return route.name === 'chats-slug' ? String(route.params.slug) : null
 })
+const composerGoogleTools = useComposerGoogleTools(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+}, {
+  enabledTools: () => tools.value,
+  isToolCallingSupported: () => isToolCallingSupported.value,
+})
 const skillInvocation = useComposerSkillInvocation()
 const builtinCommand = useComposerBuiltinCommand()
 const skillPreview = useSkillPreview()
@@ -1076,6 +1167,25 @@ const commands = useComposerCommands({
   insertText: insertTextAtSelection,
 })
 
+const googleLinkRanges = computed<ComposerMirrorRange[]>(() => {
+  if (!googleDriveFeature.value.active || isDeepResearchModel.value) {
+    return []
+  }
+
+  return findGoogleDriveLinkRanges(input.value).map((range) => {
+    return { ...range, kind: 'google-link' as const }
+  })
+})
+
+const mirrorRanges = computed<ComposerMirrorRange[]>(() => {
+  const commandToken = commands.activeToken.value
+  const commandRanges: ComposerMirrorRange[] = commandToken
+    ? [{ start: commandToken.start, end: commandToken.end, kind: 'command' }]
+    : []
+
+  return [...commandRanges, ...googleLinkRanges.value]
+})
+
 const toolsState = computed<ChatInputToolsState>(() => {
   return {
     isNewChat: route.path === '/chats/new',
@@ -1112,11 +1222,15 @@ const toolsState = computed<ChatInputToolsState>(() => {
     files: {
       visible: !isDeepResearchModel.value,
       count: files.value.length,
-      isImageInputSupported: isImageInputSupported.value,
     },
     artifacts: {
       visible: isArtifactAttachEnabled.value,
       attached: isArtifactAttachEnabled.value ? attachedArtifacts.value : [],
+    },
+    googleDrive: {
+      visible: googleDriveFeature.value.active && !isDeepResearchModel.value,
+      importing: driveImportingCount.value,
+      checking: isCheckingGoogleConnection.value,
     },
     skills: {
       visible: isSkillAttachEnabled.value,
@@ -1148,12 +1262,37 @@ const tiles = computed<ChatInputTile[]>(() => {
   return buildChatInputTiles(toolsState.value)
 })
 
+const rowTiles = computed<ChatInputTile[]>(() => {
+  const googleTile = buildGoogleLinkTile(
+    linkSuggestions.value.length,
+    isDriveBusy.value,
+  )
+
+  return googleTile ? [googleTile, ...tiles.value] : tiles.value
+})
+
 const toolsMenu = useTemplateRef<{
   open: (
     section?: ToolsSection | null,
     origin?: HTMLElement | null,
   ) => Promise<void>
 }>('toolsMenu')
+
+async function openTile(
+  section: ToolsSection | null,
+  origin: HTMLElement,
+  id: ChatInputTileId,
+) {
+  if (id === GOOGLE_FILE_TILE_ID) {
+    if (!isDriveBusy.value) {
+      await acceptAllLinkSuggestions()
+    }
+
+    return
+  }
+
+  openToolsMenu(section, origin)
+}
 
 function openToolsMenu(
   section: ToolsSection | null,
@@ -1187,7 +1326,9 @@ async function focusAfterTileRemoval() {
 }
 
 function removeTile(id: ChatInputTileId) {
-  if (id.startsWith(ARTIFACT_TILE_ID_PREFIX)) {
+  if (id === GOOGLE_FILE_TILE_ID) {
+    dismissAllLinkSuggestions()
+  } else if (id.startsWith(ARTIFACT_TILE_ID_PREFIX)) {
     const artifactId = id.slice(ARTIFACT_TILE_ID_PREFIX.length)
 
     attachedArtifacts.value = attachedArtifacts.value.filter((artifact) => {
@@ -1509,7 +1650,7 @@ watch(input, (newValue) => {
   }
 })
 
-function onFilesAttached(attachedFiles: AttachedFile[]) {
+function onFilesAttached(attachedFiles: AttachedFile[]): number {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
   const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
@@ -1533,16 +1674,44 @@ function onFilesAttached(attachedFiles: AttachedFile[]) {
   }
 
   if (newFiles.length === 0) {
-    return
+    return 0
   }
 
   files.value = [...files.value, ...newFiles as FileMetadata[]]
+
+  const holdsGoogleCopy = newFiles.some((file) => {
+    return file.externalSource === 'google'
+  })
+
+  if (holdsGoogleCopy && chatRouteSlug.value) {
+    rememberChatGoogleData(chatRouteSlug.value, true)
+  }
+
+  return newFiles.length
 }
 
 function onFilesDetached(fileIds: string[]) {
   const idsToDetach = new Set(fileIds)
 
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
+}
+
+function onAttachedFileReplaced(previousId: string, file: AttachedFile) {
+  const isAttached = files.value.some(candidate => candidate.id === previousId)
+
+  if (!isAttached || getFileRejection(file, resolveDelivery.value)) {
+    return
+  }
+
+  const isAlreadyAttached = files.value.some((candidate) => {
+    return candidate.storageKey === file.storageKey
+  })
+
+  files.value = isAlreadyAttached
+    ? files.value.filter(candidate => candidate.id !== previousId)
+    : files.value.map((candidate) => {
+      return candidate.id === previousId ? file as FileMetadata : candidate
+    })
 }
 
 const pastedTexts = usePastedTexts()
@@ -1724,6 +1893,12 @@ async function sendMessage() {
     return warnAboutMissingKey()
   }
 
+  await detectLinks(message.value)
+
+  if (isDriveBusy.value) {
+    return useWarningMessage(GOOGLE_DRIVE_BUSY_REASON)
+  }
+
   const blockedFileMessages = getBlockedFileMessages(
     files.value,
     resolveDelivery.value,
@@ -1868,6 +2043,14 @@ function openConnectorPicker() {
   isConnectorPickerMounted.value = true
   isConnectorPickerOpen.value = true
   composerConnectors.refresh()
+  composerGoogleTools.refresh()
+}
+
+async function chooseAnotherModel() {
+  isConnectorPickerOpen.value = false
+
+  await nextTick()
+  await nuxtApp.callHook('chat-input:open-model-picker')
 }
 
 watch(isConnectorsEnabled, (isEnabled) => {

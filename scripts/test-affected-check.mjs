@@ -144,6 +144,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/ToggleRow.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ActionRowWithInfo.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InlineButton.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/CodeExecutionSection.spec.ts',
     'tests/unit/utils/code-execution-ui.spec.ts',
@@ -182,8 +183,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/doc-renderer/extract-pptx.spec.ts',
     'tests/unit/packages/doc-renderer/extract-hostile.spec.ts',
     'tests/unit/packages/doc-renderer/xml-truncation.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-formula.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-shift-oracle.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-collapse-bounds.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-tail.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-fit.spec.ts',
+    'tests/integration/server/assistant-files-office-carry.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/knowledge-zip.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
   ]
   const storageQuotaTests = [
     'tests/unit/server/utils/storage/usage.spec.ts',
@@ -441,6 +452,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/documents/renderer.spec.ts',
     'tests/unit/workflows/production-satellites.spec.ts',
     'tests/unit/config/wrangler-previews.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
   ]
   const artifactsAttachTests = [
     'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
@@ -555,6 +568,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/OAuth/ScopePicker.spec.ts',
     'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
+  const mcpGoogleConnectionTests = [
+    'tests/unit/server/mcp/tools/list-google-connections.spec.ts',
+    'tests/unit/server/mcp/tools/disconnect-google.spec.ts',
+    'tests/unit/server/utils/mcp/private/google.spec.ts',
+    'tests/unit/server/utils/besidka-tools/google-connections.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/scripts/mcp-version-guard.spec.ts',
   ]
   const mcpSkillTests = [
     'tests/unit/server/mcp/tools/list-skills.spec.ts',
@@ -732,6 +758,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/compliance.spec.ts',
     'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
+    'tests/unit/utils/memory/lazy-rule-compilation.spec.ts',
     'tests/unit/utils/chats/share-pii-check.spec.ts',
     ...memoryJevTests,
   ]
@@ -1012,6 +1039,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/utils/ai/current-date-instruction.spec.ts',
+    'tests/unit/utils/ai/chat-instructions.spec.ts',
     'tests/unit/utils/ai/native-search-instruction.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
     'tests/integration/api/chats-model-context-real-sanitizer.spec.ts',
@@ -1615,6 +1643,60 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
   ]
 
+  const googleContractsTests = [
+    'tests/unit/utils/google-scopes.spec.ts',
+    'tests/unit/utils/google-data-policy.spec.ts',
+  ]
+
+  const googleSchemaTests = [
+    'tests/unit/server/utils/db/google-schema.spec.ts',
+    'tests/unit/utils/account/purge-google-connections.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
+
+  const googleConnectionsTests = [
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/oauth.spec.ts',
+    'tests/unit/server/utils/google/oauth-state.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/integration/server/google-tokens.spec.ts',
+    'tests/integration/server/google-access-ended.spec.ts',
+    'tests/integration/server/google-access-sweep-plugin.spec.ts',
+    'tests/integration/api/google-connections.spec.ts',
+    'tests/unit/utils/account/purge-google-connections.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+    'tests/unit/server/routes/waf-blocked-paths.spec.ts',
+    'tests/unit/components/Profile/Google/Connection.spec.ts',
+    'tests/unit/config/client-icons.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
+    'tests/unit/composables/google-connection.spec.ts',
+    'tests/unit/utils/auth-oauth.spec.ts',
+  ]
+
+  const googleByoClientTests = [
+    'tests/unit/utils/google-byo.spec.ts',
+    'tests/unit/utils/google-byo-guide.spec.ts',
+    'tests/unit/server/utils/google/oauth.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-connections.spec.ts',
+    'tests/integration/server/google-tokens.spec.ts',
+    'tests/integration/server/google-access-ended.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/components/Profile/Google/Connection.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+    'tests/unit/server/routes/waf-blocked-paths.spec.ts',
+    'tests/unit/composables/user-keys.spec.ts',
+    'tests/integration/server/google-access-sweep-plugin.spec.ts',
+    'tests/integration/api/profiles-features.spec.ts',
+  ]
+
   const connectorsStorageTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
     'tests/unit/utils/connectors-slug.spec.ts',
@@ -1745,7 +1827,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Connectors/DirectoryDetailPanel.spec.ts',
     'tests/unit/composables/connector-directory.spec.ts',
     'tests/unit/components/Profile/Connectors/Avatar.spec.ts',
+    'tests/unit/components/Profile/Connectors/Row.spec.ts',
     'tests/unit/components/Profile/Connectors/BesidkaRow.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleRow.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleCards.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    'tests/unit/composables/google-entries.spec.ts',
+    'tests/unit/utils/google-entries.spec.ts',
     'tests/unit/composables/feature-opt-in.spec.ts',
     'tests/unit/components/Profile/Connectors/PresetCard.spec.ts',
     'tests/unit/utils/connector-brand-icons.spec.ts',
@@ -1754,6 +1842,61 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
+  ]
+
+  const googleEntriesTests = [
+    'tests/unit/utils/google-tool-catalog.spec.ts',
+    'tests/unit/utils/google-connectors.spec.ts',
+    'tests/unit/utils/google-entries.spec.ts',
+    'tests/unit/utils/google-keys-tab.spec.ts',
+    'tests/unit/utils/google-connect-results.spec.ts',
+    'tests/unit/utils/google-drive-tab.spec.ts',
+    'tests/unit/utils/google-brand-icons.spec.ts',
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/composables/google-entries.spec.ts',
+    'tests/unit/composables/chat-drive-files.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleRow.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleCards.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    'tests/unit/components/Profile/Connectors/Directory.client.spec.ts',
+    'tests/unit/components/Profile/Google/Connection.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Drive.client.spec.ts',
+    'tests/unit/pages/chats/connectors/index.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/config/client-icons.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-connections.spec.ts',
+  ]
+
+  const googleToolPermissionsTests = [
+    'tests/unit/server/utils/google/tool-permissions.spec.ts',
+    'tests/unit/server/utils/google/execution-id.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-always-allow.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-run-gate.spec.ts',
+    'tests/unit/components/Chat/Reasoning.google.spec.ts',
+    'tests/integration/server/google-drive-write-tools.spec.ts',
+    'tests/integration/api/google-tool-permissions.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/integration/api/google-drive-picker-token.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/server/google-calendar-tools.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-candidates.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/api/chats-google-tools-withheld.spec.ts',
+    'tests/unit/composables/google-tool-permissions.spec.ts',
+    'tests/unit/utils/spaced-keyed-queue.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    'tests/unit/components/ui/ToolPermissions.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/utils/google-tool-catalog.spec.ts',
+    'tests/unit/utils/google-connectors.spec.ts',
   ]
 
   const toolPermissionsUiTests = [
@@ -1791,6 +1934,8 @@ export function getAffectedTests(changedFiles) {
   const toolApprovalPolicyTests = [
     'tests/unit/utils/tool-approval-policy.spec.ts',
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-always-allow.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-run-gate.spec.ts',
     'tests/unit/server/utils/tool-approval/state.spec.ts',
     'tests/unit/server/utils/tool-approval/secret.spec.ts',
     'tests/unit/server/utils/tool-approval/kv.spec.ts',
@@ -1875,6 +2020,42 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/stop-retry.spec.ts',
   ]
 
+  const googleToolsWithheldTests = [
+    'tests/unit/utils/google-tools-withheld.spec.ts',
+    'tests/unit/components/Chat/GoogleToolsWithheld.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/files/assistant-files.spec.ts',
+    'tests/integration/api/chats-google-tools-withheld.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleChatSwitchesTests = [
+    'tests/unit/utils/google-tools-availability.spec.ts',
+    'tests/unit/utils/google-tools-withheld.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-tools.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-candidates.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/integration/api/chats-google-tools.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/api/chats-google-tools-withheld.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/unit/composables/composer-google-tools.spec.ts',
+    'tests/unit/utils/spaced-keyed-queue.spec.ts',
+    'tests/unit/composables/composer-besidka-tools.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPickerGoogleRow.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
   const connectorRuntimeTests = [
     'tests/unit/server/utils/ai/stream-stall.spec.ts',
     'tests/unit/server/utils/ai/tool-rounds.spec.ts',
@@ -1902,6 +2083,310 @@ export function getAffectedTests(changedFiles) {
 
   const toolApprovalSpikeTests = [
     'tests/integration/api/tool-approval-spike.spec.ts',
+  ]
+
+  const googleDataGuardTests = [
+    'tests/unit/utils/google-data-recipient.spec.ts',
+    'tests/unit/utils/google-data-policy.spec.ts',
+    'tests/unit/server/utils/google/data-guard.spec.ts',
+    'tests/unit/server/utils/google/send-flag.spec.ts',
+    'tests/unit/server/utils/google/marked-origin.spec.ts',
+    'tests/integration/api/chats-research-start.spec.ts',
+    'tests/unit/server/utils/files/file-share-access.spec.ts',
+    'tests/integration/api/chats-share-reshare-slug.spec.ts',
+    'tests/unit/utils/gateways/google-data-safeguards.spec.ts',
+    'tests/unit/utils/gateways/index.spec.ts',
+    'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/api/chats-share-google-data.spec.ts',
+    'tests/integration/api/google-data-guard-routes.spec.ts',
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/profile-keys-summary.spec.ts',
+    'tests/integration/server/chat-share.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-google-data.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/utils/mcp/private-files.spec.ts',
+    'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/unit/server/mcp/tools/rename-file.spec.ts',
+    'tests/unit/server/utils/documents/create-document-tool.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
+    'tests/integration/api/documents.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/read-chat.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats.spec.ts',
+    'tests/unit/composables/chat-google-data.spec.ts',
+    'tests/unit/components/Profile/Keys/GeminiPaidTier.spec.ts',
+    'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
+    'tests/unit/components/Chat/ShareModal.client.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+  ]
+
+  const googleDrivePickerTests = [
+    'tests/unit/utils/google-drive.spec.ts',
+    'tests/unit/utils/google-drive-links.spec.ts',
+    'tests/unit/utils/composer-mirror-ranges.spec.ts',
+    'tests/unit/components/ChatInput/CommandMirror.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/DriveImport.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/DriveImportNote.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/GoogleLinkAnnouncement.spec.ts',
+    'tests/unit/components/ChatInput/SettingTile.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/google-brand-icons.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/download.spec.ts',
+    'tests/unit/server/utils/google/drive.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/google/picker-frame.spec.ts',
+    'tests/integration/api/chats-new-google-data.spec.ts',
+    'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/integration/api/google-drive-picker-token.spec.ts',
+    'tests/integration/api/google-drive-import.spec.ts',
+    'tests/integration/server/google-drive-parts.spec.ts',
+    'tests/integration/api/chats-google-data-guard.spec.ts',
+    'tests/integration/server/artifacts-frame-src-plugin.spec.ts',
+    'tests/integration/api/storage.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
+    'tests/unit/composables/google-picker.spec.ts',
+    'tests/unit/composables/chat-drive-files.spec.ts',
+    'tests/unit/components/Chat/DriveFiles.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/integration/server/rewrite-share-file-urls.spec.ts',
+    'tests/unit/server/utils/chats/context/drive-files.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/utils/chats/request-schema-drive.spec.ts',
+    'tests/unit/utils/artifact-frame-policy.spec.ts',
+    'tests/unit/utils/storage-categories.spec.ts',
+    'tests/unit/server/utils/storage/usage.spec.ts',
+    'tests/unit/server/utils/mcp/private-settings-storage.spec.ts',
+    'tests/unit/pages/profile/storage.spec.ts',
+    'tests/unit/utils/knowledge/quota.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleSheetsMapTests = [
+    'tests/unit/server/utils/google/sheets-model.spec.ts',
+    'tests/unit/server/utils/google/sheets-parity.spec.ts',
+    'tests/unit/server/utils/google/sheets-api.spec.ts',
+    'tests/unit/server/utils/google/sheets-read.spec.ts',
+    'tests/unit/server/utils/google/sheets-weight.spec.ts',
+    'tests/unit/server/utils/google/sheets-rate-limit.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/utils/google-drive.spec.ts',
+    'tests/unit/utils/file-delivery-hints.spec.ts',
+    'tests/unit/composables/chat-drive-files.spec.ts',
+    'tests/unit/composables/google-drive-library.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/integration/api/google-drive-import.spec.ts',
+    'tests/integration/api/google-drive-refresh.spec.ts',
+    'tests/integration/server/google-sheet-map-send.spec.ts',
+    'tests/integration/server/google-drive-tools.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
+    'tests/integration/server/assistant-files-office-carry.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/workbook-map-fit.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-workbook-map.spec.ts',
+    'tests/unit/packages/doc-renderer/package-boundaries.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleDriveToolsTests = [
+    'tests/unit/utils/google-drive-tools.spec.ts',
+    'tests/unit/utils/google-step.spec.ts',
+    'tests/unit/server/utils/google/drive-upload.spec.ts',
+    'tests/unit/server/utils/google/tool-output.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/drive.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/integration/server/google-drive-tools.spec.ts',
+    'tests/integration/api/google-drive-saved-files.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/unit/composables/google-drive-save.spec.ts',
+    'tests/unit/components/Chat/SaveToGoogleDrive.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Files.spec.ts',
+    'tests/unit/components/Chat/Document.spec.ts',
+    'tests/unit/components/Chat/GeneratedImage.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.icons.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/components/Chat/Reasoning.google.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/server/utils/google/send-flag.spec.ts',
+    'tests/integration/server/google-access-ended.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleGmailToolsTests = [
+    'tests/unit/server/utils/google/execution-id.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-always-allow.spec.ts',
+    'tests/unit/server/utils/google/drive-found-read.spec.ts',
+    'tests/unit/server/utils/google/gmail-message.spec.ts',
+    'tests/unit/server/utils/google/gmail-text.spec.ts',
+    'tests/unit/server/utils/google/gmail-boundary.spec.ts',
+    'tests/unit/server/utils/google/gmail-search-unreadable-thread.spec.ts',
+    'tests/unit/server/utils/google/gmail-failure-status.spec.ts',
+    'tests/unit/server/utils/google/gmail-empty-result.spec.ts',
+    'tests/unit/server/utils/google/data-guard.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-gmail.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/utils/google-gmail-step.spec.ts',
+    'tests/unit/utils/google-step.spec.ts',
+    'tests/unit/utils/google-drive-tools.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/server/google-drive-tools.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GmailDraft.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleCalendarToolsTests = [
+    'tests/unit/server/utils/google/execution-id.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-always-allow.spec.ts',
+    'tests/unit/utils/google-calendar-event.spec.ts',
+    'tests/unit/utils/google-calendar-step.spec.ts',
+    'tests/unit/utils/google-connections.spec.ts',
+    'tests/unit/utils/google-scopes.spec.ts',
+    'tests/unit/utils/google-byo.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/server/utils/google/calendar-api.spec.ts',
+    'tests/unit/server/utils/google/calendar-boundary.spec.ts',
+    'tests/unit/server/utils/google/store-summary.spec.ts',
+    'tests/unit/server/utils/google/gmail-boundary.spec.ts',
+    'tests/unit/server/utils/google/data-guard.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-calendar.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-gmail.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/integration/server/google-calendar-tools.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-drive-picker-token.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalDetails.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GmailDraft.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/StepIcon.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleDriveWriteTests = [
+    'tests/unit/server/utils/google/execution-id.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-always-allow.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-run-gate.spec.ts',
+    'tests/unit/utils/google-drive-write.spec.ts',
+    'tests/unit/utils/google-drive-write-file.spec.ts',
+    'tests/unit/utils/google-scopes.spec.ts',
+    'tests/unit/utils/google-byo.spec.ts',
+    'tests/unit/utils/google-step.spec.ts',
+    'tests/unit/utils/google-tool-catalog.spec.ts',
+    'tests/unit/utils/google-tool-approvals.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/server/utils/google/drive-write-api.spec.ts',
+    'tests/unit/server/utils/google/drive-write-boundary.spec.ts',
+    'tests/unit/server/utils/google/chat-references.spec.ts',
+    'tests/unit/server/utils/google/http.spec.ts',
+    'tests/unit/server/utils/google/tool-output.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-drive-write.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-gmail.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-send-candidates.spec.ts',
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/integration/server/google-drive-write-tools.spec.ts',
+    'tests/integration/server/google-drive-create-file-tools.spec.ts',
+    'tests/integration/server/google-byo-tools.spec.ts',
+    'tests/integration/api/google-byo.spec.ts',
+    'tests/integration/api/google-tool-permissions.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/unit/components/Chat/Reasoning/DriveChange.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalDetails.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/GoogleStep.spec.ts',
+    'tests/unit/components/Profile/Google/OwnClient.spec.ts',
+    'tests/unit/components/Profile/Connectors/GoogleDetailPanel.spec.ts',
+    ...SPACER_SUITES,
+  ]
+
+  const googleDriveTabTests = [
+    'tests/integration/api/google-drive-refresh.spec.ts',
+    'tests/integration/api/google-drive-import.spec.ts',
+    'tests/integration/api/files-index-google-source.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
+    'tests/unit/server/utils/files/connector-images.spec.ts',
+    'tests/unit/utils/google-drive.spec.ts',
+    'tests/unit/utils/file-manager-sources.spec.ts',
+    'tests/unit/composables/google-drive-library.spec.ts',
+    'tests/unit/composables/file-touch-select.spec.ts',
+    'tests/unit/composables/google-picker.spec.ts',
+    'tests/unit/composables/file-manager.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Drive.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/ActionsToolbar.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/ActionsMenu.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
+  ]
+
+  const googleToolApprovalTests = [
+    'tests/unit/server/utils/tool-approval/google.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-always-allow.spec.ts',
+    'tests/unit/server/utils/tool-approval/google-run-gate.spec.ts',
+    'tests/unit/server/utils/tool-approval/round-state.spec.ts',
+    'tests/unit/utils/google-tool-approvals.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/state.spec.ts',
+    'tests/unit/server/utils/tool-approval/kv.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/tool-approval/cleanup.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
   ]
 
   const toolApprovalContinuationTests = [
@@ -2365,6 +2850,38 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat-context-pin.spec.ts',
   ]
 
+  const googleFileCardsTests = [
+    'tests/unit/utils/google-created-file.spec.ts',
+    'tests/unit/utils/artifact-parts.spec.ts',
+    'tests/unit/utils/message-part-spacing.spec.ts',
+    'tests/unit/utils/google-brand-icons.spec.ts',
+    'tests/unit/config/client-icons.spec.ts',
+    'tests/unit/composables/google-file-preview.spec.ts',
+    'tests/unit/components/Chat/GoogleFile.spec.ts',
+    'tests/unit/components/Chat/GoogleFilePreview.spec.ts',
+    'tests/unit/components/Chat/GoogleFileHeaderAction.spec.ts',
+    'tests/unit/components/Chat/GoogleFileDownload.spec.ts',
+    'tests/unit/utils/google-file-download.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/pages/chats/[slug].spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+  ]
+
+  const googleFileDownloadTests = [
+    'tests/integration/api/google-created-file-download.spec.ts',
+    'tests/unit/server/utils/google/created-file-download.spec.ts',
+    'tests/unit/utils/google-file-download.spec.ts',
+    'tests/unit/utils/google-created-file.spec.ts',
+    'tests/unit/components/Chat/GoogleFileDownload.spec.ts',
+    'tests/unit/components/Chat/GoogleFileHeaderAction.spec.ts',
+    'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+    'tests/unit/server/utils/google/log-boundary.spec.ts',
+    'tests/unit/server/utils/google/token-boundary.spec.ts',
+    'tests/unit/server/utils/google/drive-write-boundary.spec.ts',
+    'tests/unit/server/routes/waf-blocked-paths.spec.ts',
+  ]
+
   const messageSearchTests = [
     'tests/unit/utils/search/text.spec.ts',
     'tests/unit/utils/search/ukrainian-stemmer.spec.ts',
@@ -2458,7 +2975,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/utils\/ai\/image-provenance\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/utils\/ai\/image-provenance\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox))\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {
@@ -2580,6 +3097,16 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/ai\/native-search-instruction\.ts$/,
       tests: [
         'tests/unit/utils/ai/native-search-instruction.spec.ts',
+        'tests/unit/utils/ai/chat-instructions.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/chat-instructions\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/chat-instructions.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
       ],
     },
@@ -2588,6 +3115,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/ai/native-search-instruction.spec.ts',
         'tests/unit/utils/ai/current-date-instruction.spec.ts',
+        'tests/unit/utils/ai/chat-instructions.spec.ts',
         'tests/unit/utils/ai/search-answer-continuation.spec.ts',
         'tests/integration/api/chats-external-search.spec.ts',
       ],
@@ -2666,6 +3194,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-new.spec.ts',
         'tests/unit/utils/chats/request-schema.spec.ts',
         'tests/integration/api/chats-external-search-validation.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
       ],
     },
     {
@@ -2716,6 +3245,14 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^app\/utils\/client-time-zone\.ts$/,
+      tests: [
+        'tests/unit/utils/client-time-zone.spec.ts',
+        'tests/unit/composables/chat.spec.ts',
+        'tests/unit/composables/chat.tool-approvals.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/utils\/generated-images\.ts$/,
       tests: [
         'tests/unit/utils/generated-images.spec.ts',
@@ -2727,6 +3264,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/message-part-spacing.spec.ts',
         'tests/unit/utils/artifact-parts.spec.ts',
+        ...SPACER_SUITES,
       ],
     },
     {
@@ -3469,6 +4007,21 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/google-(created-file|file-download)\.ts|app\/components\/Chat\/GoogleFile(Preview|HeaderAction|Download)?\.vue|app\/composables\/google-file-preview\.ts)$/,
+      tests: googleFileCardsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-file-download|google-created-file|google-drive-write|google-drive)\.ts|server\/utils\/google\/(created-file-download|route|drive-write-api|drive|download|tokens|byo-access|http)\.ts|server\/api\/v1\/google\/drive\/created-files\/.*\.ts|server\/utils\/chats\/context\/load-chat-context\.ts|server\/plugins\/evlog-request-observability\.ts|app\/components\/Chat\/GoogleFileDownload\.vue|tests\/setup\/helpers\/(google-connections|connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+      tests: googleFileDownloadTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-created-file\.ts|app\/composables\/google-file-preview\.ts)$/,
+      tests: SPACER_SUITES,
+    },
+    {
+      pattern:
         /^(app\/composables\/(search-modal|files-modal-handoff)\.ts|app\/components\/Search\/.*\.vue)$/,
       tests: searchModalTests,
     },
@@ -3541,7 +4094,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
+        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|GoogleFile(Preview|HeaderAction|Download)\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
       tests: SPACER_SUITES,
     },
     {
@@ -3801,6 +4354,26 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^shared\/utils\/google-(scopes|data-policy)\.ts$/,
+      tests: googleContractsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-connections\.ts|server\/db\/schemas\/(google-connections|chats|files|keys)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|\.drizzle\/migrations\/[^/]+_wandering_genesis\/.*)$/,
+      tests: googleSchemaTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/google\/.*\.ts|server\/api\/v1\/google\/.*\.ts|server\/plugins\/(google-access-sweep|evlog-request-observability)\.ts|server\/utils\/account\/(purge-google-connections|purge-user-data)\.ts|shared\/utils\/(google-connections|google-scopes|google-data-policy|auth-redirect|features\/registry)\.ts|server\/utils\/connectors\/(oauth-client|oauth-state|callback-limit|route|body)\.ts|server\/utils\/(files\/(delete-files|convert-files-for-ai)|documents\/cleanup|knowledge\/(linked-files|text-store|version))\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|app\/composables\/google-connection\.ts|server\/utils\/auth\.ts|nuxt\.config\.ts|tests\/setup\/helpers\/(google-connections|connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+      tests: googleConnectionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-byo|google-byo-guide|google-connections|google-scopes|features\/registry)\.ts|server\/utils\/google\/(byo-access|byo-client|byo-sweep|callback|client|connection|oauth-state|route|tokens|access-ended)\.ts|server\/api\/v1\/google\/.*\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google-oauth-client\/.*)\.ts|server\/api\/v1\/profiles\/features\/index\.get\.ts|server\/db\/schemas\/keys\.ts|server\/utils\/features\/(evaluate|guards)\.ts|server\/plugins\/(evlog-request-observability|google-access-sweep)\.ts|app\/components\/Profile\/Google\/.*\.vue|app\/pages\/profile\/keys\.vue|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleByoClientTests,
+    },
+    {
+      pattern:
         /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-(catalog|directory)\.ts|shared\/utils\/connectors-directory\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(registry-(entry|sync|search|sync-now|icon|probe)|directory-index|add|icon|icon-response|svg-icon)\.ts|server\/api\/v1\/admin\/connectors\/.*\.ts|shared\/utils\/connectors-publisher\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
       tests: connectorsRegistryTests,
     },
@@ -3836,6 +4409,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/google-tools-withheld\.ts|server\/utils\/tool-approval\/google-send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/chats\/(share-public-parts|branch)\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/GoogleToolsWithheld\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: googleToolsWithheldTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tools-availability|google-tools-withheld|google-drive-tools)\.ts|server\/utils\/google\/(chat-tools-route|route)\.ts|server\/api\/v1\/chats\/\[slug\]\/(google-tools\/.*|index\.post)\.ts|server\/utils\/besidka-tools\/chat-settings\.ts|server\/utils\/tool-approval\/(google|google-send-candidates|google-send-tools|grants)\.ts|server\/db\/schemas\/tool-approvals\.ts|\.drizzle\/migrations\/[^/]+_hesitant_inhumans\/.*|app\/composables\/(composer-google-tools|chat)\.ts|app\/utils\/spaced-keyed-queue\.ts|app\/components\/ChatInput\/ConnectorPicker(GoogleRow)?(\.client)?\.vue|app\/components\/ChatInput\.client\.vue|app\/pages\/chats\/new\.vue)$/,
+      tests: googleChatSwitchesTests,
+    },
+    {
+      pattern:
         /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|connectors-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/utils\/knowledge\/context\.ts|app\/utils\/labs\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
       tests: toolApprovalRequestTests,
     },
@@ -3861,6 +4444,51 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/google-data-(policy|recipient)\.ts|server\/utils\/google\/(data-guard|send-flag)\.ts|server\/utils\/gateways\/(index|vercel|openrouter|cloudflare)\.ts|server\/utils\/tool-approval\/google(-send-tools|-send-candidates)?\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.(post|get)|title\.patch)\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/index\.post\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/(index\.(get|post)|check\.post)\.ts|server\/api\/v1\/artifacts\/\[id\]\/complete\.post\.ts|server\/api\/v1\/profiles\/keys\/(index\.get|google\/(index|paid-tier)\.post)\.ts|server\/utils\/chats\/(share|share-pii-check)\.ts|server\/utils\/files\/(file-governance|file-share-access)\.ts|server\/utils\/mcp\/private\/(chats|files|artifacts)\.ts|server\/utils\/besidka-tools\/(chat-adapter|tools\/rename-file)\.ts|server\/utils\/documents\/(images|create-document-tool)\.ts|server\/api\/v1\/documents\/\[id\]\/render\.post\.ts|server\/utils\/knowledge\/ingest\.ts|server\/utils\/memory\/(chat-memory-filters|backfill-queue|entries|extract|extract-apply|extract-sweep)\.ts|server\/utils\/memory\/tools\/(memory-tools|read-chat|search-chats)\.ts|server\/utils\/projects\/(memory-refresh|memory-sweep-settle)\.ts|app\/composables\/(chat-google-data|user-keys|chat-share)\.ts|app\/types\/chat-share\.d\.ts|shared\/types\/chats\.d\.ts|app\/components\/Profile\/Keys\/(GeminiPaidTier|ProviderKeyCard)\.vue|app\/components\/ChatInput\/ModelsTrigger\/(ModelItem|GatewayModelItem|GatewayModelList|Panel)\.vue|app\/components\/Chat\/(ShareModal\.client|ContextPanel)\.vue|app\/pages\/chats\/\[slug\]\.vue|tests\/setup\/helpers\/(chat-context-db|search-index-db|knowledge-db)\.ts)$/,
+      tests: googleDataGuardTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-drive|google-drive-links|google-brand-icons|artifact-frame-policy)\.ts|shared\/types\/(chat-context|files)\.d\.ts|server\/utils\/google\/(download|drive|drive-import|drive-parts|picker-token|picker-frame|http|route)\.ts|server\/api\/v1\/google\/drive\/.*\.ts|server\/utils\/files\/(persist-file|file-governance|rewrite-share-file-urls)\.ts|server\/utils\/storage\/categories\.ts|app\/pages\/profile\/storage\.vue|server\/utils\/chats\/(share-public-parts|request-schema)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/plugins\/artifacts-frame-src\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/api\/v1\/chats\/(\[slug\]\/index\.post|new\/index\.put)\.ts|app\/composables\/(google-picker|chat-drive-files|chat)\.ts|app\/utils\/(storage-categories|artifact-frame-policy|chat-input-tiles|composer-mirror-ranges)\.ts|app\/types\/(chat-input-tools|file-manager)\.d\.ts|app\/components\/Chat\/(DriveFiles|ContextPanelItem)\.vue|app\/components\/Chat\/Artifact\/Frame\.client\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ToolsMenu\.client|SettingTile|CommandMirror|Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox|DriveImport|DriveImportNote|GoogleLinkAnnouncement))\.vue|app\/components\/ChatInput\/ToolsMenu\/(Content|ActionRowWithInfo)\.vue|app\/pages\/(chats\/(\[slug\]|new)|shared\/\[slug\])\.vue|tests\/setup\/helpers\/(knowledge-db|knowledge-send-db)\.ts)$/,
+      tests: googleDrivePickerTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-drive-tools\.ts|server\/utils\/google\/(drive-tools|drive-picked|drive-save|drive-upload|drive-import|tool-output|drive|http|route|access-ended|send-flag)\.ts|shared\/utils\/google-tool-approvals\.ts|server\/api\/v1\/google\/drive\/saved-files\/.*\.ts|server\/utils\/tool-approval\/(google|google-send-candidates|google-send-tools|send|round-state)\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/composables\/auth\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/google-drive-save\.ts|app\/utils\/(google-step|reasoning|reasoning-step-icons)\.ts|app\/types\/(google-step|reasoning-step)\.d\.ts|app\/components\/Chat\/(SaveToGoogleDrive|Files|Document|GeneratedImage|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/(GoogleStep|Step)\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: googleDriveToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-sheets\.ts|server\/utils\/google\/(sheets-[a-z-]+|file-type|drive-import|drive-picked|drive-tools|http)\.ts|server\/api\/v1\/google\/drive\/files\/(index|link|refresh)\.post\.ts|server\/utils\/files\/(persist-file|convert-files-for-ai|assistant-files)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/file-delivery-hints\.ts|app\/composables\/(chat-drive-files|google-drive-library)\.ts|app\/components\/ChatInput\/Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox)\.vue|app\/types\/file-manager\.d\.ts|packages\/doc-renderer\/src\/workbook-map\/.*\.ts|packages\/doc-renderer\/src\/extract\/xlsx-map\.ts|tests\/fixtures\/google\/.*\.ts)$/,
+      tests: googleSheetsMapTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(mail-address|google-gmail-tools|google-gmail-draft-view|google-drive-tools|google-tool-approvals|google-byo|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(gmail-message|gmail-text|gmail-api|html-entities|chat-references|drive-found-read|drive-search|byo-tools|byo-access|tokens|send-guard|drive-tools|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-run-gate|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|GmailDraft|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleGmailToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-calendar-event|google-calendar-tools|google-connections|google-gmail-draft-view|google-scopes|google-byo|google-gmail-tools|google-tool-approvals|tool-approval-parts|features\/registry)\.ts|server\/utils\/google\/(calendar-api|calendar-tools|execution-id|store|gmail-text|byo-access|tokens|send-guard|tool-output|http|data-guard)\.ts|server\/utils\/tool-approval\/(policy|send|google-run-gate|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|ApprovalDetails|CalendarEvent|GmailDraft|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleCalendarToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-drive-write|google-drive-tools|google-drive|google-gmail-tools|google-gmail-draft-view|mail-address|google-tool-approvals|google-tool-catalog|google-scopes|google-byo|google-connections|tool-approval-parts)\.ts|server\/utils\/google\/(drive-write-api|drive-write-tools|execution-id|refusal-latch|chat-references|drive-search|gmail-text|byo-tools|byo-access|tokens|send-guard|tool-output|http)\.ts|server\/utils\/tool-approval\/(policy|send|google|google-run-gate|google-send-candidates|google-send-tools)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/google\/byo\/start\.post\.ts|app\/components\/Chat\/Reasoning\/(ApprovalStep|ApprovalDetails|DriveChange|GoogleStep)\.vue|app\/components\/Profile\/Google\/OwnClient\.vue|app\/components\/Profile\/Connectors\/GoogleDetailPanel\.vue|app\/utils\/(google-step|reasoning|reasoning-step-icons|tool-approval-step)\.ts|app\/types\/google-step\.d\.ts|tests\/setup\/helpers\/google-connections\.ts)$/,
+      tests: googleDriveWriteTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/google-drive\.ts|server\/utils\/files\/source-filter\.ts|server\/utils\/google\/drive-import\.ts|server\/api\/v1\/google\/drive\/files\/refresh\.post\.ts|server\/api\/v1\/files\/index\.get\.ts|tests\/setup\/helpers\/knowledge-db\.ts|app\/composables\/(google-drive-library|file-touch-select)\.ts|app\/utils\/(file-manager-dialog|google-drive-tab|file-manager-sources)\.ts|app\/types\/file-manager\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\.client)?(\/.*)?\.vue)$/,
+      tests: googleDriveTabTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tool-approvals|tool-approval-policy|tool-approval-parts)\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/connectors\/send-tools\.ts|server\/utils\/chats\/branch\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/utils\/tool-approval-step\.ts|app\/components\/Chat\/(ContextPanelApprovals|Reasoning\/ApprovalStep)\.vue)$/,
+      tests: googleToolApprovalTests,
+    },
+    {
+      pattern:
         /^(shared\/utils\/(connectors-policy|connectors-parts|connectors-errors|connector-image-parts)\.ts|app\/components\/Chat\/Reasoning\/ConnectorThumbnail\.vue|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles|connector-mention)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client|ConnectorSuggestion)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
     },
@@ -3883,6 +4511,16 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy|connectors-connected|connectors-auth)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body|header-auth)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory|feature-opt-in)\.ts|app\/utils\/(connector-brand-icons|besidka-tool-permissions)\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
       tests: connectorsPageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tool-catalog|google-connectors|google-brand-icons|google-connections|google-drive|google-drive-tools|auth-redirect)\.ts|app\/utils\/(google-entries|google-keys-tab|google-connect-results|google-drive-tab)\.ts|app\/composables\/(google-entries|chat-drive-files|google-connection)\.ts|app\/components\/Profile\/Connectors\/(GoogleRow|GoogleCards|GoogleDetailPanel|Directory\.client)\.vue|app\/components\/Profile\/Google\/.*\.vue|app\/components\/ChatInput\/Files\/Modal\/Select\/Drive\.client\.vue|app\/pages\/(chats\/connectors\/index|profile\/keys)\.vue|nuxt\.config\.ts)$/,
+      tests: googleEntriesTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(google-tool-catalog|google-connectors)\.ts|server\/utils\/google\/(tool-permissions|tool-permissions-route|execution-id|route|picker-token|tokens|drive-picked|drive-found-read|drive-search|gmail-api|byo-tools|calendar-tools|calendar-api)\.ts|server\/api\/v1\/google\/tool-permissions\/.*\.ts|server\/api\/v1\/google\/drive\/picker-token\.post\.ts|server\/utils\/tool-approval\/(google-run-gate|google-send-candidates|google-send-tools|send|policy|continuation)\.ts|app\/composables\/google-tool-permissions\.ts|app\/utils\/spaced-keyed-queue\.ts|app\/components\/Profile\/Connectors\/GoogleDetailPanel\.vue)$/,
+      tests: googleToolPermissionsTests,
     },
     {
       pattern:
@@ -4544,7 +5182,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard|tools-menu-focus-rescue)\.ts|app\/assets\/icons\/exa\.svg)$/,
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/(Preview\.client|ChipShell|ChipPreviewBox))\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard|tools-menu-focus-rescue)\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
         ...chatInputToolsTests,
         'tests/unit/components/ProviderIcon.spec.ts',
@@ -4677,7 +5315,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
+        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client|ChipShell|ChipPreviewBox)|Chat\/TextFileModal\.client)\.vue)$/,
       tests: markdownTextareaTests,
     },
     {
@@ -4848,6 +5486,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
       tests: mcpConnectorTests,
+    },
+    {
+      pattern: /^(config\/mcp-server\.ts|server\/(mcp\/tools\/(list-google-connections|disconnect-google)|utils\/(besidka-tools\/(registry|chat-adapter|tools\/(list-google-connections|disconnect-google))|mcp\/(private\/google|private-access|tool-scopes)|google\/(connection|store|byo-access))))\.ts$/,
+      tests: mcpGoogleConnectionTests,
     },
     {
       pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write|statements|route)))\.ts$/,
@@ -5090,6 +5732,18 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/plugins\/evlog-request-observability\.ts$/,
       tests: ['tests/unit/server/plugins/evlog-request-observability.spec.ts'],
+    },
+    {
+      pattern: /^server\/(plugins|middleware)\/[^/]+\.ts$/,
+      tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
+    },
+    {
+      pattern: /^server\/(utils\/google\/.+|plugins\/google-access-sweep|utils\/tool-approval\/google[^/]*|api\/v1\/google\/.+|utils\/account\/purge-google-connections|mcp\/tools\/[^/]*google[^/]*)\.ts$/,
+      tests: ['tests/unit/server/utils/google/log-boundary.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/(auth|files\/convert-files-for-ai)\.ts$/,
+      tests: ['tests/unit/server/plugins/startup-imports.spec.ts'],
     },
   ]
 

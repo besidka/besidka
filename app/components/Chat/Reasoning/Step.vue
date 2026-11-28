@@ -93,6 +93,13 @@
       :title="step.title"
       :pending="step.pending"
     />
+    <ChatReasoningGoogleStep
+      v-else-if="step.google"
+      :icon="step.icon"
+      :data="step.google"
+      :title="step.title"
+      :pending="step.pending"
+    />
     <ChatReasoningConnectorStep
       v-else-if="step.connector"
       :icon="step.icon"

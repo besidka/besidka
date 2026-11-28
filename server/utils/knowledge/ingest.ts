@@ -9,6 +9,7 @@ import type {
   KnowledgeMode,
 } from '#shared/types/project-knowledge.d'
 import { hasFormatCharacters } from '#shared/utils/invisible-characters'
+import { isGoogleContentFile } from '~~/server/utils/google/data-guard'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { countKnowledgeChars } from '#shared/utils/project-knowledge-budget'
 import {
@@ -122,6 +123,8 @@ interface LinkedFileRow {
   size: number
   type: string
   expiresAt: Date | null
+  externalSource: string | null
+  googleDerivedAt: Date | null
   isLinked: number
 }
 
@@ -514,6 +517,8 @@ async function loadLinkableFiles(
       size: schema.files.size,
       type: schema.files.type,
       expiresAt: schema.files.expiresAt,
+      externalSource: schema.files.externalSource,
+      googleDerivedAt: schema.files.googleDerivedAt,
       isLinked: sql<number>`exists (
         select 1 from project_knowledge_items as knowledge_link
         where knowledge_link.file_id = ${schema.files.id}
@@ -580,6 +585,14 @@ function assertFilesLinkable(
         why: 'The file does not exist in your library',
         fix: 'Pick a file from your library',
       })
+    }
+
+    if (isGoogleContentFile(file)) {
+      throw createInvalidInputError(
+        'A file with Google content cannot be added to project knowledge',
+        'It is a copy of a Google Drive file or was written in a chat that '
+        + 'holds Google data. Upload a file from your device instead',
+      )
     }
 
     if (!isPdfOrImage(file.type)) {

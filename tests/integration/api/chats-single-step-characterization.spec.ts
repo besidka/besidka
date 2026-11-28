@@ -746,7 +746,10 @@ describe('chat send pipeline: single-step characterization', () => {
       'Search the web before answering',
     )
     expect(mocks.streamTextOptions[0]?.instructions).toContain(
-      'Today\'s date is',
+      'do not search for the current date',
+    )
+    expect(mocks.streamTextOptions[0]?.instructions).toMatch(
+      /\n\nToday is [A-Z][a-z]+, \d{4}-\d{2}-\d{2} [^\n]*own knowledge\.$/,
     )
   })
 

@@ -7,7 +7,21 @@ import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 const mocks = vi.hoisted(() => ({
   listMcpProjects: vi.fn(),
   getDebugInfo: vi.fn(),
+  readMcpFile: vi.fn(),
+  createMcpFile: vi.fn(),
 }))
+
+vi.mock('~~/server/utils/mcp/private/files', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/mcp/private/files')
+  >()
+
+  return {
+    ...actual,
+    readMcpFile: mocks.readMcpFile,
+    createMcpFile: mocks.createMcpFile,
+  }
+})
 
 vi.mock('~~/server/utils/mcp/private/debug-info', async (importOriginal) => {
   const actual = await importOriginal<
@@ -89,6 +103,7 @@ async function build(input: {
   consumeClearedCall?: () => boolean
   limitCalls?: () => Promise<boolean>
   maxTools?: number
+  holdsGoogleData?: () => boolean
 } = {}) {
   const logger = { set: vi.fn() }
   const guard = { untrustedResultSeen: false }
@@ -103,6 +118,7 @@ async function build(input: {
     consumeClearedCall: input.consumeClearedCall ?? (() => true),
     limitCalls: input.limitCalls ?? (async () => true),
     guard,
+    holdsGoogleData: input.holdsGoogleData,
     logger,
   })
 
@@ -490,6 +506,164 @@ describe('buildBesidkaChatTools', () => {
 
     expect(failure.message).toBe(BESIDKA_TOOL_FAILURE_TEXT)
     expect(failure.message).not.toContain('D1_ERROR')
+  })
+})
+
+describe('Besidka tools in a send that holds Google data', () => {
+  const SPREADING_TOOLS = [
+    'add_project_text',
+    'add_project_note',
+    'create_project',
+    'rename_file',
+    'share_artifact',
+    'update_chat',
+    'update_project',
+    'update_project_instructions',
+    'update_project_knowledge_item',
+    'update_settings',
+  ]
+  const FREE_TEXT_INPUTS: Record<string, unknown> = {
+    create_project: { name: 'Budget from the mail' },
+    rename_file: { fileId: 'file-1', name: 'Budget from the mail.txt' },
+    update_chat: { slug: CURRENT_SLUG, title: 'Budget from the mail' },
+    update_project: { projectId: 'prj_1', name: 'Budget from the mail' },
+    update_settings: { favoriteModels: ['Budget from the mail'] },
+  }
+
+  beforeEach(() => {
+    mocks.readMcpFile.mockReset()
+    mocks.createMcpFile.mockReset()
+    mocks.createMcpFile.mockResolvedValue({
+      id: 'file-9',
+      name: 'notes.md',
+      type: 'text/plain',
+      size: 5,
+      source: 'upload',
+      createdAt: null,
+      expiresAt: null,
+    })
+  })
+
+  it('marks a file create_file writes once the send holds Google data',
+    async () => {
+      let holds = false
+      const { run } = await build({
+        modes: modesWith({ create_file: 'allow' }),
+        holdsGoogleData: () => holds,
+      })
+      const input = { name: 'notes.md', text: 'hello' }
+
+      await execute(run, 'besidka__create_file', input)
+
+      expect(mocks.createMcpFile).toHaveBeenLastCalledWith(
+        7,
+        input,
+        expect.anything(),
+        false,
+      )
+
+      holds = true
+
+      await execute(run, 'besidka__create_file', input)
+
+      expect(mocks.createMcpFile).toHaveBeenLastCalledWith(
+        7,
+        input,
+        expect.anything(),
+        true,
+      )
+    })
+
+  it('offers none of the spreading tools, even set to Always allow',
+    async () => {
+      const allowEntries = SPREADING_TOOLS.map((name) => {
+        return [name, 'allow' as ToolPermissionMode]
+      })
+      const allowAll = modesWith(Object.fromEntries(allowEntries))
+      const flagged = await build({
+        modes: allowAll,
+        holdsGoogleData: () => true,
+      })
+      const ordinary = await build({ modes: allowAll })
+
+      for (const name of SPREADING_TOOLS) {
+        const exposedName = toBesidkaChatToolName(name)
+
+        expect(flagged.run.tools[exposedName]).toBeUndefined()
+        expect(ordinary.run.tools[exposedName]).toBeDefined()
+      }
+    })
+
+  it('refuses a spreading tool once Google content arrived mid-send',
+    async () => {
+      let tainted = false
+      const { run } = await build({
+        modes: modesWith({ add_project_note: 'allow' }),
+        holdsGoogleData: () => tainted,
+      })
+
+      tainted = true
+
+      const failure = await failureOf(execute(run, 'besidka__add_project_note', {
+        projectId: 'prj_1',
+        title: 'Plan',
+        text: 'Copied',
+      }))
+
+      expect(failure.message).toContain('does not copy it into a project')
+    })
+
+  it.each(Object.keys(FREE_TEXT_INPUTS))(
+    'refuses %s once Google content arrived mid-send',
+    async (name) => {
+      let tainted = false
+      const { run } = await build({
+        modes: modesWith({ [name]: 'allow' }),
+        holdsGoogleData: () => tainted,
+      })
+
+      tainted = true
+
+      const failure = await failureOf(
+        execute(run, toBesidkaChatToolName(name), FREE_TEXT_INPUTS[name]),
+      )
+
+      expect(failure.message).toContain('does not copy it into a project')
+    },
+  )
+
+  it('withholds Google content from reads in a send without Google data, '
+    + 'and allows it in a flagged send', async () => {
+    mocks.readMcpFile.mockResolvedValue({
+      id: 'file-1',
+      name: 'a.txt',
+      type: 'text/plain',
+      text: 'x',
+      nextOffset: null,
+    })
+
+    const ordinary = await build({ modes: modesWith({ read_file: 'allow' }) })
+
+    await execute(ordinary.run, 'besidka__read_file', { fileId: 'file-1' })
+
+    expect(mocks.readMcpFile).toHaveBeenLastCalledWith(
+      expect.anything(),
+      7,
+      expect.objectContaining({ googleContent: 'withheld' }),
+    )
+
+    const flagged = await build({
+      modes: modesWith({ read_file: 'allow' }),
+      holdsGoogleData: () => true,
+    })
+
+    await execute(flagged.run, 'besidka__read_file', { fileId: 'file-1' })
+
+    expect(mocks.readMcpFile).toHaveBeenLastCalledWith(
+      expect.anything(),
+      7,
+      expect.objectContaining({ googleContent: 'allowed' }),
+    )
   })
 })
 

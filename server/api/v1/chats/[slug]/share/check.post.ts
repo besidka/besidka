@@ -65,6 +65,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       title: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -90,6 +91,7 @@ export default defineEventHandler(async (event) => {
     title: chat.title,
     messages: chat.messages,
     showFiles: body.data.showFiles,
+    holdsGoogleData: !!chat.googleDataAt,
     logger,
   })
 })

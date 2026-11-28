@@ -12,7 +12,7 @@
       aria-live="polite"
       aria-atomic="true"
     >
-      {{ uploadStatusAnnouncement }}
+      {{ statusAnnouncement }}
     </div>
 
     <div
@@ -25,50 +25,47 @@
         :key="tile.id"
         :tile="tile"
         :variant="hasAnyFiles ? 'square' : 'pill'"
-        @open="(section, origin) => emit('open-tile', section, origin)"
+        @open="(section, origin, id) => emit('open-tile', section, origin, id)"
         @remove="emit('remove-tile', $event)"
       />
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="pastedText in pastedTexts"
         :key="pastedText.id"
         role="group"
         :aria-label="PASTED_TEXT_NAME"
-        class="carousel-item flex items-center gap-1 relative"
         data-testid="pasted-text-item"
       >
-        <div
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
-        >
-          <ChatInputFilesAttachedTextCard
-            :file="{
-              name: PASTED_TEXT_NAME,
-              type: PASTED_TEXT_MEDIA_TYPE,
-              size: getPastedTextSize(pastedText.content),
-            }"
-            :content="pastedText.content"
-            @open="emit('open-pasted', pastedText.id)"
-          />
-        </div>
-        <button
-          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
-          :aria-label="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
-          :title="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
-          data-testid="pasted-text-remove"
-          @click="emit('remove-pasted', pastedText.id)"
-        >
-          <Icon
-            name="lucide:x"
-            size="10"
-          />
-        </button>
-      </div>
+        <ChatInputFilesAttachedTextCard
+          :file="{
+            name: PASTED_TEXT_NAME,
+            type: PASTED_TEXT_MEDIA_TYPE,
+            size: getPastedTextSize(pastedText.content),
+          }"
+          :content="pastedText.content"
+          @open="emit('open-pasted', pastedText.id)"
+        />
+        <template #outside>
+          <button
+            class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+            :aria-label="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
+            :title="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
+            data-testid="pasted-text-remove"
+            @click="emit('remove-pasted', pastedText.id)"
+          >
+            <Icon
+              name="lucide:x"
+              size="10"
+            />
+          </button>
+        </template>
+      </ChatInputFilesAttachedChipShell>
       <!-- Completed/attached files -->
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="file in files"
         :key="file.storageKey"
+        :is-bare="isImageFile(file.type)"
         :data-file-name="file.name"
         :aria-label="`File ${file.name}`"
-        class="carousel-item flex items-center gap-1 relative"
         data-testid="carousel-item"
       >
         <div
@@ -83,28 +80,19 @@
             loading="lazy"
           >
         </div>
-        <div
-          v-else-if="isTextFileType(file.type)"
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
-        >
-          <ChatInputFilesAttachedTextCard
-            :file="file"
-            @open="emit('open-text', file.storageKey)"
-          />
-        </div>
-        <div
-          v-else
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
-        >
-          <div
-            class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
-          >
+        <ChatInputFilesAttachedTextCard
+          v-else-if="isTextFileType(file.type) && !hasChipNote(file)"
+          :file="file"
+          @open="emit('open-text', file.storageKey)"
+        />
+        <template v-else>
+          <ChatInputFilesAttachedChipPreviewBox>
             <Icon
-              :name="getFileIcon(file.type)"
+              :name="getChipIcon(file)"
               size="20"
               class="text-base-content/40"
             />
-          </div>
+          </ChatInputFilesAttachedChipPreviewBox>
           <div class="flex flex-col items-start gap-1 min-w-0">
             <p
               class="pr-2 text-xs font-medium truncate"
@@ -112,17 +100,24 @@
             >
               {{ truncateFilename(file.name) }}
             </p>
-            <span
+            <button
               v-if="deliveryHints.get(file.storageKey)"
-              class="badge badge-soft badge-xs leading-none"
+              type="button"
+              class="badge badge-soft badge-xs leading-none cursor-pointer max-w-36 min-w-0"
               :class="{
                 'badge-warning': deliveryHints.get(file.storageKey)?.isBlocking
               }"
-              :title="deliveryHints.get(file.storageKey)?.description"
+              :title="hintTitle(file.storageKey)"
+              :aria-label="deliveryHints.get(file.storageKey)?.label"
+              :aria-expanded="openHintKey === file.storageKey"
+              :aria-controls="hintNoteId"
               data-testid="files-delivery-hint"
+              @click="toggleHint(file.storageKey)"
             >
-              {{ deliveryHints.get(file.storageKey)?.label }}
-            </span>
+              <span class="truncate">
+                {{ deliveryHints.get(file.storageKey)?.label }}
+              </span>
+            </button>
             <span
               v-if="convertedFromXlsKeys.has(file.storageKey)"
               class="text-[10px] leading-none text-base-content/60"
@@ -132,31 +127,87 @@
               {{ XLS_CONVERTED_NOTE }}
             </span>
           </div>
-        </div>
-        <button
-          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
-          :aria-label="`Remove ${file.name}`"
-          :title="`Remove ${file.name}`"
-          data-testid="files-preview-detach"
-          @click="removeAttachedFile(file.storageKey)"
-        >
-          <Icon
-            name="lucide:x"
-            size="10"
-          />
-        </button>
-      </div>
+        </template>
+        <template #outside>
+          <span
+            v-if="file.externalSource === 'google'"
+            class="absolute bottom-1 left-1 grid size-4 place-items-center rounded-full bg-base-100"
+            :title="GOOGLE_DRIVE_BRAND_NAME"
+            role="img"
+            :aria-label="driveCopyLabel(file.name)"
+            data-testid="files-preview-drive-mark"
+          >
+            <Icon
+              :name="GOOGLE_DRIVE_ICON"
+              size="10"
+            />
+          </span>
+          <button
+            class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+            :aria-label="`Remove ${file.name}`"
+            :title="`Remove ${file.name}`"
+            data-testid="files-preview-detach"
+            @click="removeAttachedFile(file.storageKey)"
+          >
+            <Icon
+              name="lucide:x"
+              size="10"
+            />
+          </button>
+        </template>
+      </ChatInputFilesAttachedChipShell>
 
+      <ChatInputFilesAttachedDriveImport
+        v-for="driveImport in driveImports"
+        :key="`drive-${driveImport.id}`"
+        :item="driveImport"
+        :note-id="driveImportNoteId(driveImport.id)"
+        :is-note-open="openDriveImport?.id === driveImport.id"
+        @toggle-note="toggleDriveImportNote(driveImport.id)"
+        @dismiss="dismissDriveImport(driveImport.id)"
+      />
+
+      <ChatInputFilesAttachedChipShell
+        v-for="placeholderIndex in checkingLinkCount"
+        :key="`checking-link-${placeholderIndex}`"
+        :is-bare="!hasAnyFiles"
+        role="status"
+        aria-label="Checking Google link"
+        data-testid="google-link-skeleton"
+      >
+        <div
+          v-if="!hasAnyFiles"
+          class="flex items-center gap-2.5 h-10 w-32 pl-2 pr-7 rounded-box border border-base-300 bg-base-100/70"
+          data-testid="google-link-skeleton-pill"
+        >
+          <div class="skeleton skeleton--default size-4 shrink-0 rounded-sm" />
+          <div class="flex flex-col flex-1 gap-1 min-w-0">
+            <div class="skeleton skeleton--default h-2 w-14 rounded-sm" />
+            <div class="skeleton skeleton--default h-2.5 w-full rounded-sm" />
+          </div>
+        </div>
+        <template v-else>
+          <ChatInputFilesAttachedChipPreviewBox
+            data-testid="google-link-skeleton-preview"
+          >
+            <div class="skeleton skeleton--default size-full" />
+          </ChatInputFilesAttachedChipPreviewBox>
+          <div class="flex flex-col items-start gap-1 min-w-0 pr-2">
+            <div class="skeleton skeleton--default h-3 w-28 rounded-sm" />
+            <div class="skeleton skeleton--default h-2.5 w-16 rounded-sm" />
+          </div>
+        </template>
+      </ChatInputFilesAttachedChipShell>
       <!-- Uploading files -->
-      <div
+      <ChatInputFilesAttachedChipShell
         v-for="uploadingFile in uploadingFilesArray"
         :key="uploadingFile.id"
+        :is-bare="isImageFile(uploadingFile.file.type)"
         :data-uploading-id="uploadingFile.id"
         :data-file-name="uploadingFile.file.name"
         :aria-label="
           `File ${uploadingFile.file.name}, ${uploadingFile.progress}% uploaded`
         "
-        class="carousel-item flex items-center gap-1 relative"
       >
         <!-- Image preview with progress overlay -->
         <div
@@ -225,12 +276,8 @@
         </div>
 
         <!-- Non-image file preview -->
-        <div
-          v-else
-          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1 relative"
-        >
-          <div
-            class="flex items-center justify-center size-14 rounded-sm aspect-square bg-base-300 relative overflow-hidden"
+        <template v-else>
+          <ChatInputFilesAttachedChipPreviewBox
             :class="{
               'opacity-50': uploadingFile.status !== 'completed',
             }"
@@ -240,7 +287,7 @@
               size="20"
               class="text-base-content/40"
             />
-          </div>
+          </ChatInputFilesAttachedChipPreviewBox>
           <div class="flex flex-col gap-1">
             <p
               class="pr-2 text-xs font-medium truncate"
@@ -286,30 +333,31 @@
             class="progress progress-info w-full h-1 absolute bottom-0 left-0 rounded-none rounded-b-box"
             :aria-label="`Upload progress for ${uploadingFile.file.name}`"
           />
-        </div>
+        </template>
 
-        <!-- Action buttons for uploading files -->
-        <div class="absolute top-1 right-1 flex gap-0.5">
-          <button
-            v-if="uploadingFile.status === 'failed'"
-            class="btn btn-circle btn-xs btn-warning btn-soft size-4"
-            :aria-label="`Retry upload for ${uploadingFile.file.name}`"
-            :title="`Retry upload`"
-            @click="emit('retry', uploadingFile.id)"
-          >
-            <Icon name="lucide:rotate-cw" size="10" />
-          </button>
-          <button
-            v-if="uploadingFile.status !== 'completed'"
-            class="btn btn-circle btn-xs btn-error btn-soft size-4"
-            :aria-label="`Cancel upload for ${uploadingFile.file.name}`"
-            title="Cancel upload"
-            @click="emit('cancel', uploadingFile.id)"
-          >
-            <Icon name="lucide:x" size="10" />
-          </button>
-        </div>
-      </div>
+        <template #outside>
+          <div class="absolute top-1 right-1 flex gap-0.5">
+            <button
+              v-if="uploadingFile.status === 'failed'"
+              class="btn btn-circle btn-xs btn-warning btn-soft size-4"
+              :aria-label="`Retry upload for ${uploadingFile.file.name}`"
+              :title="`Retry upload`"
+              @click="emit('retry', uploadingFile.id)"
+            >
+              <Icon name="lucide:rotate-cw" size="10" />
+            </button>
+            <button
+              v-if="uploadingFile.status !== 'completed'"
+              class="btn btn-circle btn-xs btn-error btn-soft size-4"
+              :aria-label="`Cancel upload for ${uploadingFile.file.name}`"
+              title="Cancel upload"
+              @click="emit('cancel', uploadingFile.id)"
+            >
+              <Icon name="lucide:x" size="10" />
+            </button>
+          </div>
+        </template>
+      </ChatInputFilesAttachedChipShell>
 
       <!-- Remove all button -->
       <div
@@ -337,11 +385,34 @@
         </button>
       </div>
     </div>
+    <ChatInputToolsMenuInfoNote
+      v-if="openHint"
+      :id="hintNoteId"
+      class="mt-1 break-words"
+      role="note"
+      data-testid="files-delivery-hint-note"
+    >
+      <span class="font-medium">{{ openHint.name }}:</span>
+      {{ openHint.description }}
+    </ChatInputToolsMenuInfoNote>
+    <ChatInputFilesAttachedDriveImportNote
+      v-if="openDriveImport"
+      :id="driveImportNoteId(openDriveImport.id)"
+      ref="driveImportNoteRef"
+      :item="openDriveImport"
+      @pick-again="pickDriveImportAgain(openDriveImport.id)"
+      @dismiss="dismissDriveImport(openDriveImport.id)"
+      @close="closeDriveImportNote(openDriveImport.id)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
+import { GOOGLE_DRIVE_BRAND_NAME } from '#shared/utils/google-drive'
+import { isGoogleWorkbookMapFile } from '#shared/utils/google-sheets'
+import type { DriveImportProgress } from '~/composables/chat-drive-files'
 import type { AttachedFile } from '~/types/file-manager'
 import type {
   FileDeliveryHint,
@@ -362,9 +433,13 @@ const props = withDefaults(defineProps<{
       AttachedFile,
       | 'textStatus'
       | 'textBytes'
+      | 'textVersion'
       | 'textTruncated'
       | 'textOmittedMedia'
       | 'textOmittedCharts'
+      | 'workbookSummary'
+      | 'externalSource'
+      | 'sheetsFallback'
     >>
   )[]
   resolveDelivery?: FileDeliveryResolver
@@ -372,19 +447,25 @@ const props = withDefaults(defineProps<{
   uploadingFiles?: Map<string, UploadingFile>
   convertedFromXlsKeys?: ReadonlySet<string>
   uploadingCount?: number
+  driveImports?: DriveImportProgress[]
   tiles?: ChatInputTile[]
   pastedTexts?: PastedText[]
+  checkingLinkCount?: number
 }>(), {
+  checkingLinkCount: 0,
   resolveDelivery: undefined,
   resolveDeliveryWithRunCode: undefined,
   uploadingFiles: undefined,
   convertedFromXlsKeys: () => new Set<string>(),
   uploadingCount: undefined,
+  driveImports: () => [],
   tiles: () => [],
   pastedTexts: () => [],
 })
 
 const emit = defineEmits<{
+  'dismiss-drive-import': [id: string]
+  'pick-again-drive-import': [id: string]
   'remove': [fileId: string]
   'removeAll': []
   'cancel': [fileId: string]
@@ -392,9 +473,123 @@ const emit = defineEmits<{
   'open-text': [storageKey: string]
   'open-pasted': [id: PastedText['id']]
   'remove-pasted': [id: PastedText['id']]
-  'open-tile': [section: ToolsSection | null, origin: HTMLElement]
+  'open-tile': [
+    section: ToolsSection | null,
+    origin: HTMLElement,
+    id: ChatInputTileId,
+  ]
   'remove-tile': [id: ChatInputTileId]
 }>()
+
+const GOOGLE_WORKBOOK_MAP_ICON = 'lucide:table-2'
+
+type ChipFile = Pick<
+  AttachedFile,
+  | 'type'
+  | 'textStatus'
+  | 'textVersion'
+  | 'externalSource'
+  | 'sheetsFallback'
+>
+
+function hasChipNote(file: ChipFile): boolean {
+  return isGoogleWorkbookMapFile(file) || !!file.sheetsFallback
+}
+
+function getChipIcon(file: ChipFile): string {
+  return isGoogleWorkbookMapFile(file)
+    ? GOOGLE_WORKBOOK_MAP_ICON
+    : getFileIcon(file.type)
+}
+
+function driveCopyLabel(name: string): string {
+  return `${name} is a copy of a ${GOOGLE_DRIVE_BRAND_NAME} file`
+}
+
+const openDriveImportId = shallowRef<string | null>(null)
+
+const openDriveImport = computed<DriveImportProgress | null>(() => {
+  return props.driveImports.find((item) => {
+    return item.id === openDriveImportId.value && item.status === 'failed'
+  }) ?? null
+})
+
+function driveImportNoteId(id: string): string {
+  return `drive-import-note-${id}`
+}
+
+function toggleDriveImportNote(id: string) {
+  openDriveImportId.value = openDriveImportId.value === id ? null : id
+}
+
+const driveImportNoteRef
+  = useTemplateRef<{ focus: () => void }>('driveImportNoteRef')
+
+const driveImportAnnouncement = computed<string>(() => {
+  const item = openDriveImport.value
+
+  if (!item) {
+    return ''
+  }
+
+  return [item.name, item.error, item.detail && `(${item.detail})`]
+    .filter(Boolean)
+    .join(': ')
+})
+
+function focusDriveImportElement(id: string, selector?: string) {
+  const chip = carouselRef.value?.querySelector<HTMLElement>(
+    `[data-drive-import-id="${id}"]`,
+  )
+
+  const target = selector ? chip?.querySelector<HTMLElement>(selector) : chip
+
+  target?.focus()
+}
+
+async function focusAfterDriveImportRemoved() {
+  await nextTick()
+
+  const nextChip = carouselRef.value?.querySelector<HTMLElement>(
+    '.js-drive-import-error',
+  )
+
+  if (nextChip) {
+    nextChip.focus()
+
+    return
+  }
+
+  document.querySelector<HTMLElement>('.js-chat-input-textarea')?.focus()
+}
+
+async function closeDriveImportNote(id: string) {
+  openDriveImportId.value = null
+  await nextTick()
+  focusDriveImportElement(id, '.js-drive-import-error')
+}
+
+async function pickDriveImportAgain(id: string) {
+  openDriveImportId.value = null
+  emit('pick-again-drive-import', id)
+  await nextTick()
+  focusDriveImportElement(id)
+}
+
+async function dismissDriveImport(id: string) {
+  openDriveImportId.value = null
+  emit('dismiss-drive-import', id)
+  await focusAfterDriveImportRemoved()
+}
+
+watch(() => openDriveImport.value?.id, async (id) => {
+  if (!id) {
+    return
+  }
+
+  await nextTick()
+  driveImportNoteRef.value?.focus()
+}, { flush: 'post' })
 
 const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
   const hints = new Map<string, FileDeliveryHint>()
@@ -409,6 +604,7 @@ const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
       file,
       resolve,
       props.resolveDeliveryWithRunCode,
+      { spreadsheetNote: true },
     )
 
     if (hint) {
@@ -418,6 +614,40 @@ const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
 
   return hints
 })
+
+const hintNoteId = useId()
+const openHintKey = shallowRef<string | null>(null)
+
+const openHint = computed<{ name: string, description: string } | null>(() => {
+  const key = openHintKey.value
+
+  if (key === null) {
+    return null
+  }
+
+  const file = props.files.find(item => item.storageKey === key)
+  const hint = deliveryHints.value.get(key)
+
+  if (!file || !hint) {
+    return null
+  }
+
+  return { name: file.name, description: hint.description }
+})
+
+function toggleHint(storageKey: string) {
+  openHintKey.value = openHintKey.value === storageKey ? null : storageKey
+}
+
+function hintTitle(storageKey: string): string | undefined {
+  const hint = deliveryHints.value.get(storageKey)
+
+  if (!hint) {
+    return undefined
+  }
+
+  return hint.description ? `${hint.label}: ${hint.description}` : hint.label
+}
 
 const carouselRef = useTemplateRef<HTMLDivElement>('carouselRef')
 const detachAllItemRef = useTemplateRef<HTMLDivElement>('detachAllItemRef')
@@ -435,11 +665,14 @@ const uploadingFilesArray = computed<UploadingFile[]>(() => {
 const hasAnyFiles = computed<boolean>(() => {
   return props.files.length > 0
     || uploadingFilesArray.value.length > 0
+    || props.driveImports.length > 0
     || props.pastedTexts.length > 0
 })
 
 const hasAnyItems = computed<boolean>(() => {
-  return hasAnyFiles.value || props.tiles.length > 0
+  return hasAnyFiles.value
+    || props.checkingLinkCount > 0
+    || props.tiles.length > 0
 })
 
 const attachmentsLabel = computed<string>(() => {
@@ -558,6 +791,10 @@ const uploadStatusAnnouncement = computed<string>(() => {
   }
 
   return ''
+})
+
+const statusAnnouncement = computed<string>(() => {
+  return driveImportAnnouncement.value || uploadStatusAnnouncement.value
 })
 
 const currentUploadingId = computed<string | undefined>(() => {

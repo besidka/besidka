@@ -127,6 +127,12 @@
         />
         Download
       </a>
+      <ChatSaveToGoogleDrive
+        v-if="driveSaveStorageKey"
+        variant="button"
+        :storage-key="driveSaveStorageKey"
+        :file-name="titleText"
+      />
       <slot name="extraActions" />
     </div>
   </article>
@@ -199,6 +205,14 @@ const isOwnerDocument = computed<boolean>(() => {
 
 const flowFile = computed(() => {
   return flow.document.value?.file ?? null
+})
+
+const driveSaveStorageKey = computed<string | null>(() => {
+  if (!isOwnerDocument.value || cardState.value !== 'ready') {
+    return null
+  }
+
+  return flowFile.value?.storageKey ?? null
 })
 
 const isFlowReady = computed<boolean>(() => {

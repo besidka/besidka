@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
@@ -481,12 +481,28 @@ async function getHandler() {
   return module.default
 }
 
-async function runSend(input: {
+const inFlightSends = new Set<Promise<unknown>>()
+
+function runSend(input: SendInput) {
+  const pending = executeSend(input)
+  const forget = () => {
+    inFlightSends.delete(pending)
+  }
+
+  inFlightSends.add(pending)
+  pending.then(forget, forget)
+
+  return pending
+}
+
+interface SendInput {
   steps: Array<Array<Record<string, unknown>>>
   scenario?: DbScenario
   tools?: string[]
   gateway?: { toolCall: boolean | undefined }
-}) {
+}
+
+async function executeSend(input: SendInput) {
   const { model, doStream } = createScriptedModel(input.steps)
 
   vi.stubGlobal('useOpenAI', vi.fn(async () => ({
@@ -547,6 +563,16 @@ function readSystemPrompt(callOptions: any): string {
   return String(systemMessage?.content ?? '')
 }
 
+const DATE_LINE_PATTERN = /(?:^|\n\n)Today is [A-Z][a-z]+, \d{4}-\d{2}-\d{2} [^\n]*Never take the current date from your own knowledge\.$/
+
+function readSystemPromptBeforeDateLine(callOptions: any): string {
+  const systemPrompt = readSystemPrompt(callOptions)
+
+  expect(systemPrompt).toMatch(DATE_LINE_PATTERN)
+
+  return systemPrompt.replace(DATE_LINE_PATTERN, '')
+}
+
 function readAttribute(name: string) {
   return mocks.aiLoggerSet.mock.calls
     .map(([fields]) => fields as Record<string, any>)
@@ -556,9 +582,16 @@ function readAttribute(name: string) {
 
 const MEMORY_ON: SettingsRow = { memoryEnabled: true }
 
-describe('memory send-path wiring', () => {
-  afterEach(() => {
+describe('memory send-path wiring', { timeout: 30_000 }, () => {
+  beforeAll(async () => {
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    await getHandler()
+    vi.unstubAllGlobals()
+  }, 60_000)
+
+  afterEach(async () => {
     vi.useRealTimers()
+    await Promise.allSettled([...inFlightSends])
   })
 
   beforeEach(() => {
@@ -671,7 +704,8 @@ describe('memory send-path wiring', () => {
         'read_chat',
         'search_chats',
       ])
-      expect(readSystemPrompt(callOptions)).toBe(CHAT_SEARCH_INSTRUCTION)
+      expect(readSystemPromptBeforeDateLine(callOptions))
+        .toBe(CHAT_SEARCH_INSTRUCTION)
       expect(readAttribute('memoryIndex')).toBeUndefined()
       expect(readAttribute('memoryTools')).toBeUndefined()
     })
@@ -689,7 +723,8 @@ describe('memory send-path wiring', () => {
 
       expect(systemPrompt).not.toContain(ABOUT_ME_TEXT)
       expect(systemPrompt).not.toContain('<memory>')
-      expect(systemPrompt).toBe(CHAT_SEARCH_INSTRUCTION)
+      expect(readSystemPromptBeforeDateLine(doStream.mock.calls[0]?.[0]))
+        .toBe(CHAT_SEARCH_INSTRUCTION)
       expect(created.memoryFindMany).not.toHaveBeenCalled()
       expect(mocks.memoryToolsInputs).toHaveLength(0)
     })
@@ -768,9 +803,8 @@ describe('memory send-path wiring', () => {
         scenario: { settings: MEMORY_ON, memoryRows: [] },
         steps: [createTextChunks('Plain answer.')],
       })
-      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
-
-      expect(systemPrompt).toBe(CHAT_SEARCH_INSTRUCTION)
+      expect(readSystemPromptBeforeDateLine(doStream.mock.calls[0]?.[0]))
+        .toBe(CHAT_SEARCH_INSTRUCTION)
       expect(readAttribute('memoryIndex')).toBeUndefined()
       expect(mocks.memoryToolsInputs).toHaveLength(1)
     })
@@ -893,7 +927,8 @@ describe('memory send-path wiring', () => {
         systemPrompt.indexOf('<memory>'),
         systemPrompt.indexOf(PROJECT_INSTRUCTIONS),
         systemPrompt.indexOf(CHAT_SEARCH_INSTRUCTION),
-        systemPrompt.indexOf('Today\'s date'),
+        systemPrompt.indexOf('do not search for the current date'),
+        systemPrompt.indexOf('Today is '),
       ]
 
       expect(systemPrompt).not.toContain(ABOUT_ME_TEXT)
@@ -940,9 +975,13 @@ describe('memory send-path wiring', () => {
           createTextChunks('Answer from the continuation.'),
         ],
       })
-      const mainPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+      const mainPrompt = readSystemPromptBeforeDateLine(
+        doStream.mock.calls[0]?.[0],
+      )
       const continuationOptions = doStream.mock.calls[4]?.[0] as any
-      const continuationPrompt = readSystemPrompt(continuationOptions)
+      const continuationPrompt = readSystemPromptBeforeDateLine(
+        continuationOptions,
+      )
 
       expect(doStream).toHaveBeenCalledTimes(5)
       expect(continuationOptions?.tools).toBeUndefined()
@@ -950,6 +989,8 @@ describe('memory send-path wiring', () => {
       expect(continuationPrompt).not.toContain(ABOUT_ME_TEXT)
       expect(continuationPrompt).not.toContain(CHAT_SEARCH_INSTRUCTION)
       expect(mainPrompt.startsWith(continuationPrompt)).toBe(true)
+      expect(readSystemPrompt(doStream.mock.calls[0]?.[0]).split('\n\n').at(-1))
+        .toBe(readSystemPrompt(continuationOptions).split('\n\n').at(-1))
     })
   })
 
@@ -968,7 +1009,7 @@ describe('memory send-path wiring', () => {
       expect(mocks.chatSearchToolsInputs).toHaveLength(0)
       expect(mocks.memoryToolsInputs).toHaveLength(0)
       expect(callOptions?.tools).toBeUndefined()
-      expect(readSystemPrompt(callOptions)).toBe('')
+      expect(readSystemPromptBeforeDateLine(callOptions)).toBe('')
       expect(created.memoryFindMany).not.toHaveBeenCalled()
       expect(readAttribute('memorySettings')).toEqual({
         error: 'd1 unavailable',

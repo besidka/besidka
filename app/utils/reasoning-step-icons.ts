@@ -6,6 +6,14 @@ import {
 import type { DocumentFormat } from '#shared/utils/documents'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { BESIDKA_TOOL_NAME_PREFIX } from '#shared/utils/besidka-tool-permissions'
+import {
+  GOOGLE_CALENDAR_ICON,
+  GOOGLE_DRIVE_ICON,
+  GOOGLE_GMAIL_ICON,
+} from '#shared/utils/google-brand-icons'
+import { isGoogleCalendarToolName } from '#shared/utils/google-calendar-tools'
+import { isGoogleGmailToolName } from '#shared/utils/google-gmail-tools'
+import { isGoogleToolName } from '#shared/utils/google-tool-approvals'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
 import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
 import type { SearchProvider } from '#shared/types/message-usage.d'
@@ -171,6 +179,16 @@ export function getDocumentStepLabel(
   return isPending ? `Creating ${formatLabel}` : `Created ${formatLabel}`
 }
 
+function resolveGoogleToolIcon(toolName: string): string {
+  if (isGoogleGmailToolName(toolName)) {
+    return GOOGLE_GMAIL_ICON
+  }
+
+  return isGoogleCalendarToolName(toolName)
+    ? GOOGLE_CALENDAR_ICON
+    : GOOGLE_DRIVE_ICON
+}
+
 /**
  * The icon and the label of one reasoning step. The label is the title the
  * step already has, except for a document step whose format is known
@@ -190,6 +208,18 @@ export function resolveReasoningStepSource(
 
   if (toolName.startsWith(BESIDKA_TOOL_NAME_PREFIX)) {
     return { icon: { kind: 'besidka' }, label: input.title }
+  }
+
+  const isGoogleTool: boolean = isGoogleToolName(toolName)
+
+  if (isGoogleTool) {
+    return {
+      icon: {
+        kind: 'iconify',
+        name: resolveGoogleToolIcon(toolName),
+      },
+      label: input.title,
+    }
   }
 
   if (

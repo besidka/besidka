@@ -171,10 +171,30 @@
       class="mt-4"
     />
   </div>
+  <div
+    v-if="isGoogleTabShown"
+    v-show="activeTab === googleTabId"
+    :id="`key-panel-${googleTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${googleTabId}`"
+    :data-testid="`key-panel-${googleTabId}`"
+  >
+    <UiBubble>
+      <ProfileGoogleConnection v-if="!isConnectorsActive" />
+      <template v-if="googleConnectionData?.byo">
+        <div
+          v-if="!isConnectorsActive"
+          class="divider my-0"
+        />
+        <ProfileGoogleOwnClient :reduced="isConnectorsActive" />
+      </template>
+    </UiBubble>
+  </div>
 </template>
 <script setup lang="ts">
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import type { Providers, Provider } from '#shared/types/providers.d'
+import { GOOGLE_G_ICON } from '#shared/utils/google-brand-icons'
 import {
   enabledGateways,
   enabledMemoryCheckProviders,
@@ -197,6 +217,7 @@ const providersTabId = 'providers'
 const searchTabId = 'search'
 const gatewaysTabId = 'gateways'
 const memoryChecksTabId = 'memory-checks'
+const googleTabId = 'google'
 const defaultProviderId = 'google'
 const providersAccordionGroup = 'profile-provider-keys'
 const searchAccordionGroup = 'profile-search-provider-keys'
@@ -220,15 +241,49 @@ useSeoMeta({
 
 const config = useRuntimeConfig().public
 const route = useRoute()
+const googleDriveFeature = useFeature('google.drive')
+const connectorsFeature = useFeature('connectors')
+const { data: googleConnectionData } = await useGoogleConnection()
+
+const isConnectorsActive = computed<boolean>(() => {
+  return connectorsFeature.value.active
+})
+
+const isGoogleTabShown = computed<boolean>(() => {
+  return isGoogleTabVisible({
+    isConnectorsActive: isConnectorsActive.value,
+    isDriveActive: googleDriveFeature.value.active,
+    hasConnection: !!googleConnectionData.value?.connection,
+    hasByoStatus: !!googleConnectionData.value?.byo,
+  })
+})
+
+const baseTabs: KeyTab[] = [
+  { id: providersTabId, label: 'Direct Providers', icon: 'lucide:key-round' },
+  { id: searchTabId, label: 'Search Providers', icon: 'lucide:globe' },
+  { id: gatewaysTabId, label: 'Gateways', icon: 'lucide:waypoints' },
+  {
+    id: memoryChecksTabId,
+    label: 'Smart checks',
+    icon: 'lucide:shield-check',
+  },
+]
+
+const googleTab: KeyTab = {
+  id: googleTabId,
+  label: 'Google',
+  icon: GOOGLE_G_ICON,
+}
+
+const tabs = computed<KeyTab[]>(() => {
+  return isGoogleTabShown.value ? [...baseTabs, googleTab] : baseTabs
+})
 
 resetKeyGuideTracking()
 
-const tabIds = [
-  providersTabId,
-  searchTabId,
-  gatewaysTabId,
-  memoryChecksTabId,
-]
+const tabIds = computed<string[]>(() => {
+  return tabs.value.map(tab => tab.id)
+})
 
 const providers = computed<Providers>(() => {
   return config?.providers as Providers ?? []
@@ -290,7 +345,7 @@ function resolveRequestedProviderTarget(): ProviderTarget | null {
 function resolveRequestedTab(): string | null {
   const tabParam = route.query.tab
 
-  if (typeof tabParam === 'string' && tabIds.includes(tabParam)) {
+  if (typeof tabParam === 'string' && tabIds.value.includes(tabParam)) {
     return tabParam
   }
 
@@ -424,15 +479,4 @@ watch([hasLoadedKeys, hasAnyKey, isHydrating], ([isLoaded, anyKey]) => {
   activeTab.value = providersTabId
   expandedProviderId.value = defaultProviderId
 }, { immediate: true })
-
-const tabs: KeyTab[] = [
-  { id: providersTabId, label: 'Direct Providers', icon: 'lucide:key-round' },
-  { id: searchTabId, label: 'Search Providers', icon: 'lucide:globe' },
-  { id: gatewaysTabId, label: 'Gateways', icon: 'lucide:waypoints' },
-  {
-    id: memoryChecksTabId,
-    label: 'Smart checks',
-    icon: 'lucide:shield-check',
-  },
-]
 </script>

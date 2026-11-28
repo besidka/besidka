@@ -9,6 +9,11 @@ import {
   ARTIFACT_TITLE_MAX,
 } from '#shared/utils/artifacts'
 import {
+  DRIVE_FILE_PART_TYPE,
+  GOOGLE_DRIVE_FILE_ID_PATTERN,
+  GOOGLE_DRIVE_NAME_MAX,
+} from '#shared/utils/google-drive'
+import {
   SKILL_INVOCATIONS_PER_MESSAGE,
   SKILL_NAME_MAX,
 } from '#shared/utils/skills-policy'
@@ -72,6 +77,15 @@ export const userMessagePartSchema = z.union([
       version: z.number().int().min(1),
       kind: z.enum(ARTIFACT_KINDS),
       title: z.string().max(ARTIFACT_TITLE_MAX),
+    }).strict(),
+  }).strict(),
+  z.object({
+    type: z.literal(DRIVE_FILE_PART_TYPE),
+    data: z.object({
+      driveFileId: z.string().regex(GOOGLE_DRIVE_FILE_ID_PATTERN),
+      name: z.string().max(GOOGLE_DRIVE_NAME_MAX),
+      mimeType: z.string().max(MAX_USER_MESSAGE_MEDIA_TYPE_LENGTH),
+      link: z.string().max(MAX_USER_MESSAGE_FILE_URL_LENGTH),
     }).strict(),
   }).strict(),
   z.object({
@@ -149,6 +163,20 @@ export const incomingUserMessageSchema = z.object({
   ).optional(),
 })
 
+export const MAX_REQUEST_TIME_ZONE_LENGTH = 64
+
+/**
+ * The browser's IANA time zone, sent with every request that can start a
+ * model call. It is read only to state today's date in the system text, never
+ * stored, and a value that is missing, too long or not a string is dropped
+ * instead of failing the request.
+ */
+export const requestTimeZoneSchema = z
+  .string()
+  .max(MAX_REQUEST_TIME_ZONE_LENGTH)
+  .optional()
+  .catch(undefined)
+
 export const toolApprovalResponseSchema = z.object({
   approvalId: z.string().regex(TOOL_APPROVAL_ID_PATTERN),
   approved: z.boolean(),
@@ -175,6 +203,7 @@ export const toolApprovalContinuationBodySchema = z.object({
         message: 'Each approval can be answered once.',
       }),
   }).strict(),
+  timeZone: requestTimeZoneSchema,
 })
 
 /**
@@ -188,6 +217,7 @@ export const toolRoundContinuationBodySchema = z.object({
     messageId: z.string().regex(TOOL_APPROVAL_SUBJECT_ID_PATTERN),
     round: z.number().int().min(2).max(TOOL_ROUNDS_PER_MESSAGE),
   }).strict(),
+  timeZone: requestTimeZoneSchema,
 })
 
 export type ToolRoundContinuationBody = z.infer<

@@ -6,10 +6,15 @@ import {
   normalizeMediaType,
 } from '#shared/utils/files'
 import { createError, useLogger } from 'evlog'
+import type { GoogleExternalSource } from '#shared/utils/google-data-policy'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { createStorageFullError } from '~~/server/utils/storage/errors'
-import { isOfficeMediaType } from '#shared/utils/office-files'
+import {
+  WORKBOOK_MAP_TEXT_VERSION,
+  isOfficeMediaType,
+} from '#shared/utils/office-files'
+import type { WorkbookTextSummary } from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { extractAndStoreOfficeText } from '~~/server/utils/files/office-text'
 import {
@@ -38,6 +43,16 @@ export interface PersistFileInput {
   originProvider?: string | null
   originModel?: string | null
   generationCost?: number | null
+  googleDerivedAt?: Date | null
+  externalSource?: GoogleExternalSource | null
+  externalId?: string | null
+  externalModifiedAt?: Date | null
+  /**
+   * Marks the stored bytes as the workbook map of a Google Sheet: the row is
+   * written with a ready text status, the text size and the workbook map
+   * text version, which is how every reader tells it from other Markdown.
+   */
+  workbookMap?: { summary: WorkbookTextSummary }
   logger?: LoggerLike
   policy?: FilePolicy
   totalFilesSize?: number
@@ -54,8 +69,14 @@ export type PersistedFile = Pick<
   | 'expiresAt'
 > & Partial<Pick<
   FileMetadata,
-  'textStatus' | 'textBytes' | 'textOmittedMedia' | 'textOmittedCharts'
->>
+  | 'textStatus'
+  | 'textBytes'
+  | 'textVersion'
+  | 'textOmittedMedia'
+  | 'textOmittedCharts'
+>> & {
+  workbookSummary?: WorkbookTextSummary | null
+}
 
 const MAX_LOGGED_EXTENSION_LENGTH = 16
 
@@ -193,6 +214,17 @@ export async function persistFile(
         originProvider: input.originProvider ?? null,
         originModel: input.originModel ?? null,
         generationCost: input.generationCost ?? null,
+        googleDerivedAt: input.googleDerivedAt ?? null,
+        externalSource: input.externalSource ?? null,
+        externalId: input.externalId ?? null,
+        externalModifiedAt: input.externalModifiedAt ?? null,
+        ...(input.workbookMap
+          ? {
+            textStatus: 'ready' as const,
+            textBytes: fileSize,
+            textVersion: WORKBOOK_MAP_TEXT_VERSION,
+          }
+          : {}),
       })
       .returning({
         id: schema.files.id,
@@ -288,6 +320,16 @@ export async function persistFile(
 
   await invalidateStorageCache(input.userId)
 
+  if (input.workbookMap) {
+    return {
+      ...storedFile,
+      textStatus: 'ready',
+      textBytes: fileSize,
+      textVersion: WORKBOOK_MAP_TEXT_VERSION,
+      workbookSummary: input.workbookMap.summary,
+    }
+  }
+
   if (!isOfficeMediaType(normalizedMediaType)) {
     return storedFile
   }
@@ -305,8 +347,10 @@ export async function persistFile(
     ...storedFile,
     textStatus: textState?.textStatus ?? null,
     textBytes: textState?.textBytes ?? null,
+    textVersion: textState?.textVersion ?? null,
     textOmittedMedia: textState?.textOmittedMedia ?? null,
     textOmittedCharts: textState?.textOmittedCharts ?? null,
+    workbookSummary: textState?.workbookSummary ?? null,
   }
 }
 

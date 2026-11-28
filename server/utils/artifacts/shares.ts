@@ -6,6 +6,7 @@ import type {
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
+  ARTIFACT_SHARE_GOOGLE_DATA_CODE,
   ARTIFACT_SHARE_LIMIT_CODE,
   ARTIFACT_SHARE_MAX_ACTIVE,
   ARTIFACT_SHARE_LINK_PREFIX,
@@ -373,6 +374,18 @@ export async function assertArtifactShareable(input: {
 
   assertNotTakenDown(artifact)
   assertPinnedVersion(input.pinnedVersion, artifact.currentVersion)
+
+  if (artifact.googleDerivedAt) {
+    throw createError({
+      message: 'An artifact with Google content cannot get a public link',
+      status: 409,
+      code: ARTIFACT_SHARE_GOOGLE_DATA_CODE,
+      why: 'It was written in a chat that holds content from Google Drive, '
+        + 'Calendar or Gmail.',
+      fix: 'Share the chat instead, which asks you to confirm sharing the '
+        + 'Google content.',
+    })
+  }
 
   const activeCount = await countActiveArtifactShares({
     db: input.db,
@@ -758,6 +771,10 @@ export async function resolveActiveArtifactShare(input: {
   const { share, artifact } = row
 
   if (share.revokedAt || (share.expiresAt && share.expiresAt <= now)) {
+    return null
+  }
+
+  if (artifact.googleDerivedAt) {
     return null
   }
 

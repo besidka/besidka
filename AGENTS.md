@@ -120,6 +120,8 @@ The skills tables (`skills`, `skill_versions`, `skill_files`, `skill_chat_settin
 
 The tool approval tables (`besidka_tool_permissions`, `besidka_chat_settings`, `tool_approval_claims`, `server/db/schemas/tool-approvals.ts`) have no FK and no cascade: `purgeUserToolApprovals` deletes their rows, `cleanupToolApprovalsForDeletedChats` removes the per-chat rows and claims, and the hourly `tool-approval-claim-sweep` plugin deletes claims older than 48 hours; the `tool-approval:` KV records expire after 24 hours, and the chat deletion and account purge hooks also delete the ones the per-chat index `tool-approval:chat:<chatPublicId>` lists (see `docs/d1-restore-reconciliation.md`, which also resets restored "allow" permissions and "always" grants to ask).
 
+`google_connections` (`server/db/schemas/google-connections.ts`) has no FK and no cascade: `purgeUserData` deletes its rows through `purgeUserGoogleConnections` (`server/utils/account/purge-google-connections.ts`), the user's Google file copies leave with their `files` rows (`files.external_source`, `external_id`, `external_modified_at`, `drive_copy_id`), and the restore runbook wipes every stored token and every `keys.paid_tier_confirmed_at` (see `docs/d1-restore-reconciliation.md`, "Google").
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:
@@ -201,9 +203,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
-- `docs/storage.md` - The one storage allowance (BES-393): the seven
-  categories (AI images, uploads, generated files, connector images,
-  artifacts, project knowledge, skills)
+- `docs/storage.md` - The one storage allowance (BES-393): the eight
+  categories (AI images, uploads, Google Drive copies, generated files,
+  connector images, artifacts, project knowledge, skills)
   and how
   each is told apart from existing `files` columns with no migration, what is
   not counted, the single usage number (`userStorageUsedBytesSql`, shared with
@@ -370,8 +372,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/nuxt-icon-collections.md` - Why `icon.collections`/
   `icon.serverBundle.collections` are pinned to four prefixes: `@nuxt/icon`'s
   per-`<Icon>` reactive-array sort over the default ~220-entry catalog, the
-  rule for adding a new prefix, why `thesvg` stays excluded, and revert
-  criteria
+  rule for adding a new prefix, why `thesvg` stays excluded, the local
+  `google-brand` custom collection (Google's official 2026 Drive, Docs, Sheets
+  and Slides SVGs: source URLs, SHA-256 list, the one added `viewBox`, why the
+  folder sits outside the `nuxt-svgo` path), and revert criteria
 - `docs/axiom-map-fields.md` - Why `besidka-prod` hit Axiom's 256-field
   schema limit, the `attributes` map-field convention that fixes it, the
   `scripts/axiom-declare-map-field.mjs` rollout step that MUST run before
@@ -634,6 +638,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   previews, shared preview resources, passkeys only on the long-lived
   host), the bootstrap-PR hazard, owner OAuth-callback steps, and revert
   criteria
+- `docs/worker-startup.md` - Worker startup time (BES-469): why a lazy
+  `import()` defers nothing while the module sits in `chunks/nitro/nitro.mjs`,
+  the rule for no heavy top-level work (regex rule tables, schemas, catalog
+  merges; cache the settled value, never a promise), the 1 s limit and error
+  10021 at deploy validation, how to measure (`wrangler check startup` is
+  local, `Worker Startup Time` on deploy is authoritative, about 1.4 to 1.9
+  times the local number), the measured numbers, and the chunking, service
+  binding and `find_additional_modules` options left to the owner
 - `docs/stacked-prs.md` - When to group PRs and how: the umbrella pattern
   (children `--base` the parent branch, no CI on children, parent builds
   everything) versus native `gh stack` layers (only the top layer builds,
@@ -780,7 +792,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  61 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  63 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -868,6 +880,86 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
+- `docs/google.md` - Google Drive, Calendar and Gmail (Phase 4b, 2026-11-23):
+  the umbrella `feat/google-connectors` is feature-complete for 4b and not
+  merged into `main` (the owner decides), with the status block listing what
+  is still open, and what exists on it (the four `google.*` flags with `optIn: 'required'`,
+  `google.gmail` and `google.calendar` under `google.byo`;
+  `shared/utils/google-scopes.ts` with
+  `hasScopes` and the per-client scope map; `shared/utils/google-data-policy.ts`
+  with the provider allow-list as data and `GOOGLE_EXTERNAL_SOURCES`), the
+  two client modes (Besidka's client with `drive.file` and the Picker, the
+  owner-only bring-your-own client), the G-1 Picker and token question table
+  with empty answers, the Google Cloud console configuration for project
+  `chernenko-chat` (redirect URI forms for localhost, the long-lived preview,
+  `pr-<n>` and production; Picker key referrers), the data rule (allow-list,
+  references-only persistence, deletion within 24 hours when access ends),
+  approvals in section 5.2 (the `google` tool family, the `google` taint and
+  the sticky `chats.google_data_at` flag, the Google egress grant for
+  connectors, rule 14 for Besidka writes after Google content,
+  references-only persistence, the 64 KiB output cap, the 24 h KV stash of
+  bodies for a paused reply, tolerant reads of records from another deploy),
+  the data guard in section 5.3 (`server/utils/google/data-guard.ts` over
+  `shared/utils/google-data-recipient.ts`: every enforcement point as a table
+  with what the user sees, the recipient check on every model call of a
+  flagged chat, the gateway safeguards sent, the Gemini paid-tier route,
+  skipped web search and TypeSafe AI, memory exclusion, the derived mark
+  `google_derived_at` on artifacts and files and how a marked item is read,
+  the stored share opt-in `chat_shares.google_opt_in_at`, MCP and Besidka
+  tool withholding, no Google copies or marked files as project knowledge,
+  and the exits still open), the BYO owner runbook outline, what is not in
+  the phase (legal notices stay the owner's decision), and section 9, the
+  connection flow as built
+  (routes under `/api/v1/google/`, state and PKCE, the redirect URI from the
+  request origin, the `drive.file` comparison, tokens decrypted only in
+  `server/utils/google/tokens.ts`, the `google:refresh:` lock, what
+  disconnect, `invalid_grant` and account deletion revoke and delete, the
+  hourly `google-access-sweep`, KV keys, logging, the Google tab on API Keys,
+  local testing and the open items), and section 10, the owner-only
+  bring-your-own client (one encrypted `keys` row of the
+  `google-oauth-client` kind, the admin gate, `/api/v1/google/byo/callback`,
+  copies owned by Besidka's mode, the owner runbook in section 6), and
+  section 11, the MCP tools `list_google_connections` and `disconnect_google`
+  (status without email or tokens, the owner's mode hidden from non-admins,
+  disconnect through the app's function, excluded from chats), and section
+  12, the Drive Picker (the G-1 answers marked documented, inferred or NOT
+  VERIFIED in section 3; the token route, why only Besidka's client and what
+  stays exposed, export choices and every limit, the one-hop download
+  redirect rule, reuse of an unchanged copy, the `data-drive-file` part
+  rebuilt on the server, names only in shares, the path-scoped `frame-src`
+  source and why, and the owner's real-account checklist), section 12.12,
+  the Drive tab in the file manager (states, the `google` list source, the
+  dialog suspended around the Picker, refresh as a new copy), and section 13,
+  the Drive tools (`google__drive_list_picked`, `_read_file`, `_save_file`:
+  when they are offered, the output cap, the multipart save and its atomic
+  claim, `POST /api/v1/google/drive/saved-files`, the Save to Google Drive
+  button, and what is stored and shown after a reload), and section 14, the
+  Gmail tools and Drive search on the owner's own client
+  (`google__gmail_search`, `_read_thread`, `_create_draft`,
+  `google__drive_search`, `google__drive_read_found_file`: mail and shared
+  files as hostile input, thread ids and dates as the only stored mail
+  fields, reads and replies only for ids a search of the chat returned,
+  once-only reads, the cap of 5 granted searches per message, the draft
+  builder's refuse-never-repair rules and that nothing can send, the
+  read-and-store-nothing path for a found Drive file, the request bounds,
+  the legacy charsets, the differences from BES-295 and the owner's
+  real-account checklist), and section 15, the Calendar tools on the owner's
+  own client (`google__calendar_list_events`, `_free_busy`, `_create_event`:
+  the two narrow scopes `calendar.events.owned` and `.freebusy` checked
+  against Google's reference and never on Besidka's client or the Picker
+  token, the `google.calendar` flag under `google.byo`, event text as hostile
+  input and guests reduced to a count by the `fields` mask, the create-event
+  write that can carry no attendee, video call, repeat, reminder or
+  attachment and sends `sendUpdates=none`, the refuse-never-repair time rules
+  (explicit offset that must match the IANA zone at that instant, the spring
+  gap, the exclusive all-day end), the card that shows the validated request
+  body, references of an id, a link and a day only, and the owner's
+  real-account checklist), and section 17, per-tool permissions with Always
+  allow for own-client tools only (17.7), and section 19, Drive writes on the
+  own client (scope `drive`, create folder and file, rename, move, the write
+  boundary with no delete, trash, copy or share), section 19.14, created-file
+  cards, the preview, Outputs and Download as a real file, and section 21,
+  quotas and cost (the Worker startup rule is in `docs/worker-startup.md`)
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
   (BES-394 L8, L9): the `besidka-tools` opt-in flag, the three tiers and the
   Blocked, Needs approval, Always allow modes (the ask-every-time tier takes

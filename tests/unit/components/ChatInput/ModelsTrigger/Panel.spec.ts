@@ -17,7 +17,12 @@ const mocks = vi.hoisted(() => ({
   getFavoriteGatewayModels: vi.fn(),
   refreshGatewayCatalog: vi.fn(),
   refreshUserKeys: vi.fn(),
+  googleDataReasonFor: vi.fn(),
 }))
+
+mockNuxtImport('useGoogleDataRecipientReason', () => {
+  return () => ({ googleDataReasonFor: mocks.googleDataReasonFor })
+})
 
 mockNuxtImport('getProviders', () => mocks.getProviders)
 mockNuxtImport('useDevice', () => mocks.useDevice)
@@ -105,6 +110,8 @@ function mountPanel(props: Partial<{
 
 describe('ChatInput/ModelsTrigger/Panel', () => {
   beforeEach(() => {
+    mocks.googleDataReasonFor.mockReset()
+    mocks.googleDataReasonFor.mockReturnValue('')
     keyedProviderIds.value = ['google', 'vercel']
 
     mocks.getProviders.mockReturnValue({
@@ -145,6 +152,59 @@ describe('ChatInput/ModelsTrigger/Panel', () => {
       pending: shallowRef(false),
       error: shallowRef(null),
       refresh: mocks.refreshGatewayCatalog,
+    })
+  })
+
+  describe('in a chat that holds Google data', () => {
+    const reason = 'Confirm that your Gemini key is on a paid Google Cloud '
+      + 'project to use it with Google data.'
+
+    beforeEach(() => {
+      mocks.googleDataReasonFor.mockImplementation((recipient: {
+        providerId?: string
+        gatewayId?: string
+      }) => {
+        return recipient.providerId === 'google' || recipient.gatewayId
+          ? reason
+          : ''
+      })
+    })
+
+    it('marks a refused provider model and never selects it', async () => {
+      keyedProviderIds.value = ['google', 'openai', 'vercel']
+
+      const wrapper = await mountPanel({ selectedModelId: 'openai-model' })
+      const blocked = wrapper.get('#model-option-image-model')
+
+      expect(blocked.attributes('aria-disabled')).toBe('true')
+      expect(blocked.text()).toContain(reason)
+      expect(mocks.googleDataReasonFor).toHaveBeenCalledWith({
+        providerId: 'google',
+        modelId: 'image-model',
+      })
+
+      await wrapper.get('button[aria-label="Choose OpenAI model"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('select')).toEqual([[{
+        modelId: 'openai-model',
+        gatewayId: null,
+      }]])
+      wrapper.unmount()
+    })
+
+    it('marks a refused gateway model and never selects it', async () => {
+      const wrapper = await mountPanel({
+        selectedModelId: 'anthropic/claude-opus-5',
+        selectedGatewayId: 'vercel',
+      })
+
+      expect(wrapper.find('button[aria-label="Choose Claude Opus 5"]')
+        .exists()).toBe(false)
+      expect(wrapper.get('[data-testid="gateway-model-google-data-blocked"]')
+        .attributes('data-tip')).toBe(reason)
+      expect(wrapper.emitted('select')).toBeUndefined()
+      wrapper.unmount()
     })
   })
 

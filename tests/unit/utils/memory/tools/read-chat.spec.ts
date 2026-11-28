@@ -170,6 +170,20 @@ describe('readChat', () => {
     expect(excluded.fix).toBe(missing.fix)
   })
 
+  it('rejects a chat that holds Google data with the same 404', async () => {
+    seedChat({ id: 1, userId: 1 })
+    testDb.sqlite
+      .prepare('update chats set google_data_at = ? where id = ?')
+      .run(1_700_000_000, 1)
+    seedMessage({ chatId: 1, text: 'the plan from Google Drive' })
+
+    const flagged = await read({ chatId: 'slug-1' })
+      .catch(exception => exception)
+
+    expect(flagged).toBeInstanceOf(Error)
+    expect(flagged.status).toBe(404)
+  })
+
   it('reads a chat whose exclusion flag is off', async () => {
     seedChat({ id: 1, userId: 1, memoryExcluded: false })
     seedMessage({ chatId: 1, text: 'back in memory' })

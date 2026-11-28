@@ -49,10 +49,12 @@ import {
   toArtifactAttachmentPart,
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import { withDriveFileParts } from '#shared/utils/google-drive'
 import {
   CONNECTORS_NOTICE_PART_TYPE,
   getConnectorToolCall,
 } from '#shared/utils/connectors-parts'
+import { GOOGLE_TOOLS_WITHHELD_PART_TYPE } from '#shared/utils/google-tools-withheld'
 import {
   DOCUMENT_DATA_PART_TYPE,
   isDocumentToolPartType,
@@ -65,6 +67,7 @@ import {
   parsePersistedChatFailureNotice,
 } from '#shared/utils/chat-failure-text'
 import { CHAT_STREAM_HEARTBEAT_PART_TYPE } from '#shared/utils/chat-stream-heartbeat'
+import { CHAT_GOOGLE_DATA_PART_TYPE } from '#shared/utils/google-data-recipient'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -663,6 +666,7 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
 
     return part.type !== 'data-omitted-context-files'
       && part.type !== CONNECTORS_NOTICE_PART_TYPE
+      && part.type !== GOOGLE_TOOLS_WITHHELD_PART_TYPE
       && !isPastChatPreRetrievalPart(part)
   })
 }
@@ -1038,6 +1042,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { selection: connectorSelection } = useChatConnectorSelection()
   const isBesidkaToolsAvailable = useBesidkaToolsAvailability()
   const { selection: besidkaToolsSelection } = useBesidkaToolsSelection()
+  const isGoogleToolsAvailable = useGoogleToolsAvailability()
+  const {
+    selection: googleToolsSelection,
+    settleFirstSend: settleGoogleFirstSend,
+  } = useGoogleToolsSelection()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -1068,6 +1077,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   chat = toValue(chat)
 
   const chatSlug = chat.slug
+  const { rememberChatGoogleData } = useChatGoogleData()
 
   const tools = shallowRef<Tools>(resolveInitialChatTools(chat.messages, {
     isAutoWebSearchPreferred: isAutoWebSearchPreferred.value,
@@ -1213,7 +1223,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         ) {
           activeToolRound.value = toolRound.round
 
-          return { body: { continue: toolRound } }
+          return {
+            body: { continue: toolRound, ...getClientTimeZoneField() },
+          }
         }
 
         activeToolRound.value = 0
@@ -1230,7 +1242,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           toolApprovalRemember.markInFlight(answeredIds)
           sendingApprovalIds.value = answeredIds
 
-          return { body: approvalBody }
+          return { body: { ...approvalBody, ...getClientTimeZoneField() } }
         }
 
         const lastMessage = messages[messages.length - 1]
@@ -1253,7 +1265,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             ),
             ...getConnectorIdsField(),
             ...getBesidkaToolsField(),
+            ...getGoogleServicesOffField(
+              googleToolsSelection.value,
+              isGoogleToolsAvailable.value,
+              chatSlug,
+            ),
             ...getStoppedRunField(lastMessage?.id),
+            ...getClientTimeZoneField(),
           },
         }
       },
@@ -1286,6 +1304,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       isError,
       messages,
     }) {
+      if (!isError && !isSdkDisconnect) {
+        settleGoogleFirstSend(chatSlug)
+      }
+
       const isStallAbort = isSdkAbort && isStreamStallAbort
       const isAbort = isSdkAbort && !isStallAbort
       const isDisconnect = isSdkDisconnect || isStallAbort
@@ -1451,6 +1473,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       if (dataPart.type === CHAT_STREAM_HEARTBEAT_PART_TYPE) {
         hasStreamHeartbeat = true
+
+        return
+      }
+
+      if (dataPart.type === CHAT_GOOGLE_DATA_PART_TYPE) {
+        rememberChatGoogleData(chatSlug, true)
 
         return
       }
@@ -1849,7 +1877,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     if (files.value.length > 0) {
       const fileParts = await convertFilesToUIParts(files.value)
 
-      parts.push(...fileParts)
+      parts.push(...withDriveFileParts(files.value, fileParts))
     }
 
     parts.push(...artifactParts)

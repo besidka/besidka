@@ -198,6 +198,27 @@ for headless tests without screenshot assertions (`tests/e2e` has no
 
 Gain: ~20–25 s on every run, and the 2–8 min outliers disappear.
 
+**Follow-up (2026-11-23): the `Artifacts runtime` job.** This job installed
+Chromium and WebKit with `--with-deps` on every run, without a cache, under a
+job `timeout-minutes: 20` equal to the install timeout. In run 45241550832 the
+Playwright CDN was slow, the install took 17.5 minutes, the sandbox tests then
+passed in 1m40, and the job was cancelled at exactly 20 minutes, which marked
+the whole Preview Build `cancelled` and skipped Preview Deploy. The job now
+restores `~/.cache/ms-playwright` (key
+`{os}-{arch}-playwright-{version}-chromium-headless-shell-webkit`) and, on a
+miss, installs with `--only-shell chromium webkit` (two attempts of 600 s
+each, step limit 25 minutes) and saves the cache right after a successful
+install. The apt packages are not cached, so `playwright install-deps` runs on
+every run (10-minute step limit). The job limit is 35 minutes, and a cold
+install writes its duration in seconds as a warning and to the step summary.
+In run 45245999157 the browser cache worked (install 7 s, cache saved), but
+`install-deps` timed out at 10 minutes: apt fetched about 140 packages from the
+runner's us-east-2 Ubuntu mirror at one package every few seconds with 5 to 15
+second stalls. The step now allows 1380 s inside a 25-minute step limit, the
+job limit is 45 minutes, and a step before it writes `Acquire::Retries "5"` and
+`Acquire::http::Timeout "30"` to `/etc/apt/apt.conf.d/99-ci-retries`; the step
+also reports its duration as a warning and in the step summary.
+
 ### F2. E2E is sequential (`workers: 1`)
 
 Playwright report (GitHub-hosted, 2026-10-23): 159 tests, 404 s in total,

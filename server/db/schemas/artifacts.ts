@@ -34,6 +34,7 @@ export const artifacts = snakeCase.table(
     takedownAt: integer({ mode: 'timestamp' }),
     takedownReason: text(),
     legalHoldUntil: integer({ mode: 'timestamp' }),
+    googleDerivedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     index('idx_artifacts_user_updated').on(table.userId, table.updatedAt),

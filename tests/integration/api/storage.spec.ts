@@ -137,6 +137,7 @@ describe('storage API', () => {
         categories: [
           { id: 'aiImages', bytes: 1_000, count: 1 },
           { id: 'uploads', bytes: 2_000, count: 1 },
+          { id: 'googleDrive', bytes: 0, count: 0 },
           { id: 'generatedFiles', bytes: 3_000, count: 1 },
           { id: 'connectorImages', bytes: 0, count: 0 },
           { id: 'artifacts', bytes: 4_000, count: 1 },
@@ -170,7 +171,7 @@ describe('storage API', () => {
     const handler = await importHandler()
     const stats = await handler({})
 
-    expect(stats.breakdown.categories).toHaveLength(7)
+    expect(stats.breakdown.categories).toHaveLength(8)
     expect(mocks.kvPut).toHaveBeenCalledTimes(1)
   })
 

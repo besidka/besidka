@@ -10,6 +10,7 @@ import { buildSearchOwnerTag } from '~~/server/utils/search/query'
 import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
 import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oauth-grants'
 import { purgeUserFeatureAccess } from '~~/server/utils/account/purge-feature-access'
+import { purgeUserGoogleConnections } from '~~/server/utils/account/purge-google-connections'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { purgeUserArtifacts } from '~~/server/utils/artifacts/store'
 import { purgeUserDocuments } from '~~/server/utils/documents/cleanup'
@@ -65,6 +66,7 @@ export interface PurgeUserDataResult {
   besidkaToolPermissionsDeleted: number
   besidkaChatSettingsDeleted: number
   toolApprovalClaimsDeleted: number
+  googleConnectionsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -108,6 +110,9 @@ export interface PurgeUserDataResult {
  *     records in KV that the per-chat indexes of the user's 200 most
  *     recently updated chats list; any other approval key expires within
  *     24 hours,
+ *   - Google connections: the `google_connections` rows (no FK to `users`),
+ *     after a best-effort revocation of every stored grant at Google under
+ *     a ten-second deadline,
  *   - KV cache entries holding file bytes, storage quota and the usage
  *     stats of every period (`usage-stats:<userId>:<period>`),
  *   - KV session records: `getSession` answers from `secondaryStorage` before
@@ -329,6 +334,30 @@ export async function purgeUserData(
     throw exception
   }
 
+  let googleConnectionPurge: Awaited<
+    ReturnType<typeof purgeUserGoogleConnections>
+  >
+
+  try {
+    googleConnectionPurge = await purgeUserGoogleConnections(userId, db, {
+      logger,
+    })
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'google-connections-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   for (const storageKey of storageKeys) {
     await invalidateFileCache(storageKey, logger)
   }
@@ -457,6 +486,7 @@ export async function purgeUserData(
     ...skillPurge,
     ...connectorPurge,
     ...toolApprovalPurge,
+    ...googleConnectionPurge,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
@@ -490,6 +520,7 @@ export async function purgeUserData(
     besidkaToolPermissionsDeleted,
     besidkaChatSettingsDeleted,
     toolApprovalClaimsDeleted,
+    googleConnectionsDeleted,
     featureGrantsDeleted,
     featureOptInsDeleted,
     userRolesDeleted,
@@ -530,6 +561,7 @@ export async function purgeUserData(
         besidkaToolPermissionsDeleted,
         besidkaChatSettingsDeleted,
         toolApprovalClaimsDeleted,
+        googleConnectionsDeleted,
         featureGrantsDeleted,
         featureOptInsDeleted,
         userRolesDeleted,

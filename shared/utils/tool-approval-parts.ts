@@ -30,6 +30,21 @@ const AWAITING_APPROVAL_STATES = new Set<string>([
   'approval-responded',
 ])
 
+export type DriveNameKind = 'file' | 'folder'
+
+export interface DriveName {
+  name: string
+  id: string
+  kind?: DriveNameKind
+}
+
+export interface DriveNames {
+  item?: DriveName
+  from?: DriveName
+  to?: DriveName
+  folder?: DriveName
+}
+
 export interface ToolApprovalPartData {
   approvalId: string
   toolCallId: string
@@ -38,6 +53,138 @@ export interface ToolApprovalPartData {
   summary: string
   rememberOptions: ToolApprovalRemember[]
   preview?: string
+  link?: string
+  driveNames?: DriveNames
+}
+
+export const DRIVE_NAME_MAX_LENGTH = 200
+const DRIVE_NAME_ID_PATTERN = /^[A-Za-z0-9_-]{10,128}$/
+const DRIVE_NAMES_KEYS: readonly (keyof DriveNames)[] = [
+  'item',
+  'from',
+  'to',
+  'folder',
+]
+
+function readDriveName(value: unknown): DriveName | null {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || Array.isArray(value)
+  ) {
+    return null
+  }
+
+  const { name, id, kind, ...rest } = value as Record<string, unknown>
+
+  if (
+    Object.keys(rest).length > 0
+    || typeof name !== 'string'
+    || !name
+    || name.length > DRIVE_NAME_MAX_LENGTH
+    || typeof id !== 'string'
+    || !DRIVE_NAME_ID_PATTERN.test(id)
+    || (kind !== undefined && kind !== 'file' && kind !== 'folder')
+  ) {
+    return null
+  }
+
+  return kind === undefined ? { name, id } : { name, id, kind }
+}
+
+/**
+ * The names a Drive approval card shows next to the ids of its input (the
+ * folder a call names, the item it renames or moves), as the server wrote
+ * them from the chat's own Drive results. Any shape other than an object of
+ * the four known keys, each a name of 1 to 200 characters with the id it
+ * stands for (and, optionally, whether it is a file or a folder), is null,
+ * on the server before it is stored and in the browser before it is shown,
+ * so a name is never shown beside an id it was not written for.
+ */
+export function readApprovalDriveNames(value: unknown): DriveNames | null {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || Array.isArray(value)
+  ) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const names: DriveNames = {}
+
+  for (const key of Object.keys(record)) {
+    if (!(DRIVE_NAMES_KEYS as readonly string[]).includes(key)) {
+      return null
+    }
+  }
+
+  for (const key of DRIVE_NAMES_KEYS) {
+    if (record[key] === undefined) {
+      continue
+    }
+
+    const driveName = readDriveName(record[key])
+
+    if (!driveName) {
+      return null
+    }
+
+    names[key] = driveName
+  }
+
+  return Object.keys(names).length > 0 ? names : null
+}
+
+const APPROVAL_LINK_MAX_LENGTH = 2048
+const GMAIL_LINK_HOST = 'mail.google.com'
+const GMAIL_LINK_PATH = '/mail/'
+const GMAIL_LINK_QUERY_PATTERN = /^(?:\?authuser=[A-Za-z0-9._%+@-]{1,300})?$/
+const GMAIL_LINK_HASH_PATTERN = /^#all\/[A-Za-z0-9_-]{1,64}$/
+const DRIVE_LINK_HOST = 'drive.google.com'
+const DRIVE_LINK_PATH = '/open'
+const DRIVE_LINK_QUERY_PATTERN = /^\?id=[A-Za-z0-9_-]{10,128}$/
+
+function isGmailThreadLink(url: URL): boolean {
+  return url.hostname === GMAIL_LINK_HOST
+    && url.pathname === GMAIL_LINK_PATH
+    && GMAIL_LINK_QUERY_PATTERN.test(url.search)
+    && GMAIL_LINK_HASH_PATTERN.test(url.hash)
+}
+
+function isDriveFileLink(url: URL): boolean {
+  return url.hostname === DRIVE_LINK_HOST
+    && url.pathname === DRIVE_LINK_PATH
+    && DRIVE_LINK_QUERY_PATTERN.test(url.search)
+    && url.hash === ''
+}
+
+/**
+ * The one link an approval card may show next to its summary: plain HTTPS
+ * with no credentials and no port, in exactly one of the two shapes the
+ * server builds, the Gmail thread (`/mail/`, an optional `authuser` and
+ * `#all/<thread id>`) or the Drive file (`/open?id=<file id>`). Any other
+ * host, path, parameter or fragment is null, on the server before it is
+ * stored and in the browser before it is shown.
+ */
+export function readApprovalLink(value: unknown): string | null {
+  if (
+    typeof value !== 'string'
+    || value.length > APPROVAL_LINK_MAX_LENGTH
+    || !URL.canParse(value)
+  ) {
+    return null
+  }
+
+  const url = new URL(value)
+  const isPlainHttps = url.protocol === 'https:'
+    && !url.username
+    && !url.password
+    && !url.port
+
+  return isPlainHttps && (isGmailThreadLink(url) || isDriveFileLink(url))
+    ? url.toString()
+    : null
 }
 
 export interface ToolApprovalDataPart {

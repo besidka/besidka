@@ -1309,4 +1309,16 @@ div:focus-visible:not([role="region"]) {
   &[data-caret='end'] {
     --composer-command-token-pad-end: 0em;
   }
+
+  &[data-reveal] {
+    background-color: transparent;
+    box-shadow: none;
+    color: transparent;
+  }
+}
+
+@media (forced-colors: active) {
+  .composer-command-mirror {
+    display: none;
+  }
 }

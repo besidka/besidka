@@ -17,7 +17,6 @@ import {
   isProjectKnowledgeToolName,
   PROJECT_KNOWLEDGE_TOOL_NAMES,
 } from '~~/server/utils/ai/knowledge-tools'
-import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import {
   CHAT_HISTORY_NOTICE,
   READ_CHAT_TOOL_NAME,
@@ -1166,12 +1165,10 @@ function withoutToolHistory(
 export function buildSearchAnswerContinuationMessages(
   messages: readonly ModelMessage[],
   searchResults: readonly CollectedSearchResult[],
-  now: Date = new Date(),
 ): ModelMessage[] {
   const contextText = [
     buildSearchResultsContext(searchResults),
     selectSearchAnswerInstructions(searchResults),
-    buildCurrentDateInstruction(now),
   ].join('\n\n')
   const toollessMessages = withoutToolHistory(messages)
   const lastMessage = toollessMessages.at(-1)

@@ -49,7 +49,11 @@ describe('memory tools with Always allow', () => {
 
   function createSend(
     modes: MemoryWritePermissionModes,
-    options: { requestedTools?: string[], userMessageText?: string } = {},
+    options: {
+      requestedTools?: string[]
+      userMessageText?: string
+      allowsWrite?: () => boolean
+    } = {},
   ) {
     const budget = createChatSearchBudget()
     const approval = createSendToolApproval({ state: createApprovalState() })
@@ -61,6 +65,7 @@ describe('memory tools with Always allow', () => {
       useAccountMemory: null,
       sourceMessageId: 'user-message-1',
       userMessageText: options.userMessageText ?? MESSAGE,
+      ...(options.allowsWrite ? { allowsWrite: options.allowsWrite } : {}),
       budget,
       isApprovedByUser: approval.isApprovedByUser,
       consumeUserSettingCall: approval.consumeUserSettingCall,
@@ -125,6 +130,105 @@ describe('memory tools with Always allow', () => {
     expect(result.action).toBe('created')
     expect(testDb.countEntries(OWNER)).toBe(1)
     expect(send.approval.getGrantScope('call-1')).toBe('always')
+  })
+
+  it('refuses an always-allowed save once the send holds Google data',
+    async () => {
+      let holdsGoogleData = false
+      const send = createSend(
+        { memory_write: 'allow' },
+        { allowsWrite: () => !holdsGoogleData },
+      )
+
+      holdsGoogleData = true
+
+      const status = send.approval.toolApproval({
+        toolCall: {
+          toolCallId: 'call-1',
+          toolName: 'memory_write',
+          input: writeInput(),
+        },
+      })
+
+      expect(status).toBe('not-applicable')
+      await expect(send.tools.memory_write!.execute(
+        writeInput(),
+        { toolCallId: 'call-1' },
+      )).rejects.toMatchObject({ status: 403 })
+      expect(testDb.countEntries(OWNER)).toBe(0)
+    })
+
+  it('denies an always-allowed save and a forget in the policy once the '
+    + 'send holds google taint, so neither tool runs', async () => {
+    testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
+
+    const send = createSend({ memory_write: 'allow', memory_forget: 'ask' })
+
+    send.approval.state.taint.add('google')
+
+    const write = await decideAndRun(send, 'memory_write', writeInput())
+    const forget = await decideAndRun(send, 'memory_forget', {
+      id: 'topics/cooking',
+      userRequestQuote: QUOTE,
+    }, 'call-2')
+
+    expect(write.status).toMatchObject({ type: 'denied' })
+    expect(write.result).toBeNull()
+    expect(forget.status).toMatchObject({ type: 'denied' })
+    expect(forget.result).toBeNull()
+    expect(send.approval.getGrantScope('call-1')).toBeNull()
+    expect(testDb.countEntries(OWNER)).toBe(1)
+  })
+
+  it('refuses a create, an append and a forget in a chat flagged with Google '
+    + 'data even when the send check was mis-wired to allow writes',
+  async () => {
+    testDb.insertChat({ id: 500, userId: OWNER, googleDataAt: 1_700_000_000 })
+    testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
+
+    const send = createSend(
+      { memory_write: 'allow', memory_forget: 'ask' },
+      { allowsWrite: () => true, requestedTools: [] },
+    )
+    const createInput = writeInput({ title: 'Baking', body: 'Bakes bread.' })
+    const appendInput = writeInput({ body: 'Also cooks rice.' })
+    const forgetInput = { id: 'topics/cooking', userRequestQuote: QUOTE }
+
+    for (const [toolCallId, toolName, toolInput] of [
+      ['call-1', 'memory_write', createInput],
+      ['call-2', 'memory_write', appendInput],
+      ['call-3', 'memory_forget', forgetInput],
+    ] as const) {
+      const status = send.approval.toolApproval({
+        toolCall: { toolCallId, toolName, input: toolInput },
+      })
+
+      expect(status, toolCallId).toBe('not-applicable')
+    }
+
+    for (const [toolCallId, toolName, toolInput] of [
+      ['call-1', 'memory_write', createInput],
+      ['call-2', 'memory_write', appendInput],
+      ['call-3', 'memory_forget', forgetInput],
+    ] as const) {
+      await expect(send.tools[toolName]!.execute(toolInput, { toolCallId }))
+        .rejects.toMatchObject({ status: 403 })
+    }
+
+    expect(testDb.countEntries(OWNER)).toBe(1)
+    expect(testDb.sqlite.prepare(
+      'select body from memory_entries where id = 1',
+    ).get()).toEqual({ body: 'Body of cooking' })
+  })
+
+  it('saves in a chat whose Google flag is clear', async () => {
+    testDb.insertChat({ id: 500, userId: OWNER })
+
+    const send = createSend({ memory_write: 'allow' })
+    const saved = await decideAndRun(send, 'memory_write', writeInput())
+
+    expect(saved.result.action).toBe('created')
+    expect(testDb.countEntries(OWNER)).toBe(1)
   })
 
   it('still asks, and the lock still refuses, on the default mode', async () => {

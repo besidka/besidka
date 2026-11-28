@@ -5,6 +5,7 @@ import {
   BUILTIN_COMMAND_PART_TYPE,
   isBuiltinCommandMessage,
 } from '#shared/utils/builtin-commands'
+import { DRIVE_FILE_PART_TYPE } from '#shared/utils/google-drive'
 import { CONNECTOR_IMAGE_PART_TYPE } from '#shared/utils/connector-image-parts'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
@@ -14,6 +15,7 @@ import {
 } from '#shared/utils/tool-approval-parts'
 import { TOOL_BUDGET_PART_TYPE } from '#shared/utils/tool-rounds'
 import { REPLY_STOPPED_PART_TYPE } from '#shared/utils/chat-reply-stopped'
+import { GOOGLE_TOOLS_WITHHELD_PART_TYPE } from '#shared/utils/google-tools-withheld'
 import {
   SKILL_ACTIVATION_PART_TYPE,
   SKILL_INVOCATION_PART_TYPE,
@@ -44,6 +46,33 @@ function isPublicPart(part: UIMessage['parts'][number]): boolean {
     && part.type !== TOOL_GRANT_DATA_PART_TYPE
     && part.type !== TOOL_BUDGET_PART_TYPE
     && part.type !== REPLY_STOPPED_PART_TYPE
+    && part.type !== GOOGLE_TOOLS_WITHHELD_PART_TYPE
+}
+
+/**
+ * A Google Drive reference in a public share carries only the file name:
+ * no Drive id, no link and no media type, so a visitor learns nothing that
+ * opens or identifies the file at Google. The copy itself is never granted
+ * to a share (`docs/google.md`, section 5.3).
+ */
+function toPublicPart(
+  part: UIMessage['parts'][number],
+): UIMessage['parts'][number] {
+  if (part.type !== DRIVE_FILE_PART_TYPE) {
+    return part
+  }
+
+  const name = (part as { data?: { name?: unknown } }).data?.name
+
+  return {
+    type: DRIVE_FILE_PART_TYPE,
+    data: {
+      driveFileId: '',
+      name: typeof name === 'string' ? name : '',
+      mimeType: '',
+      link: '',
+    },
+  } as unknown as UIMessage['parts'][number]
 }
 
 /**
@@ -57,7 +86,8 @@ function isPublicPart(part: UIMessage['parts'][number]): boolean {
  * share a file grant), the `data-tool-approval`
  * part of a call that waits for approval and the `data-tool-grant` part of
  * a call that ran under a remembered approval, and the
- * `data-reply-stopped` marker of a reply the owner stopped. Connector call
+ * `data-reply-stopped` marker of a reply the owner stopped, and the
+ * `data-google-tools-withheld` note (a hint for the owner only). Connector call
  * parts are `dynamic-tool` parts, which `isToolUIPart` covers. A message
  * that held only a pending approval has nothing left to show and is left
  * out. The messages of a built-in command (`/cost`, `/stats`, `/debug` and
@@ -75,7 +105,7 @@ export function filterPublicParts<
       return {
         message: {
           ...message,
-          parts: message.parts.filter(isPublicPart),
+          parts: message.parts.filter(isPublicPart).map(toPublicPart),
         },
         hadApprovalPart: message.parts.some(isToolApprovalPart),
       }

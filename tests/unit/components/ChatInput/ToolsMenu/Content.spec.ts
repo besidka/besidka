@@ -1,6 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { nextTick, shallowRef } from 'vue'
+import { GOOGLE_DRIVE_TOOLS_HINT } from '#shared/utils/google-drive-tools'
 import type { ChatInputToolsState } from '../../../../../app/types/chat-input-tools'
 import Content from '../../../../../app/components/ChatInput/ToolsMenu/Content.vue'
 
@@ -28,9 +29,13 @@ function createState(
     connectorItems?: boolean
     project?: boolean
     projectName?: string
+    drive?: boolean
+    driveImporting?: number
   } = {},
 ): ChatInputToolsState {
   const {
+    drive = false,
+    driveImporting = 0,
     files = true,
     search = true,
     reasoning = true,
@@ -73,8 +78,9 @@ function createState(
       defaultLevel: 'medium',
     },
     image: { supported: lower, enabled: false, required: false },
-    files: { visible: files, count: 0, isImageInputSupported: true },
+    files: { visible: files, count: 0 },
     artifacts: { visible: false, attached: [] },
+    googleDrive: { visible: drive, importing: driveImporting },
     skills: {
       visible: skills,
       selected: skillAttached
@@ -241,6 +247,189 @@ describe('ChatInput/ToolsMenu/Content connectors row', () => {
       .toBe(false)
     expect(wrapper.find('[data-testid="tools-action-connectors"]').exists())
       .toBe(true)
+  })
+
+  describe('Google Drive row', () => {
+    it('is not offered while google.drive is off', async () => {
+      const wrapper = await mountContent(createState({ drive: false }))
+
+      expect(wrapper.find('[data-testid="tools-action-google-drive"]')
+        .exists()).toBe(false)
+    })
+
+    it('is one row named in full, with the copy label, that opens the '
+      + 'Picker', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const row = wrapper.get('[data-testid="tools-action-google-drive"]')
+
+      expect(row.text()).toContain('Google Drive')
+      expect(row.text()).toContain(
+        'Saves a copy in your Besidka files',
+      )
+      expect(row.text()).not.toMatch(/\d/)
+      expect(row.html()).not.toContain('googledrive')
+      expect(wrapper.findAll('[data-testid="tools-action-google-drive"]'))
+        .toHaveLength(1)
+      expect(row.attributes('aria-label') ?? '').not.toContain('Drive file')
+
+      await wrapper.get('[data-testid="tools-action-google-drive-open"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('open-google-drive')).toHaveLength(1)
+    })
+
+    it('keeps the row as high as its neighbors and adds no always-visible '
+      + 'paragraph', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const driveRow = wrapper.get('[data-testid="tools-action-google-drive"]')
+      const neighbor = wrapper.get('[data-testid="tools-action-attach"]')
+      const driveLine = driveRow.get('.min-h-9')
+
+      expect(driveLine.classes()).toEqual(expect.arrayContaining([
+        'min-h-9',
+        'max-md:min-h-11',
+      ]))
+      expect(neighbor.classes()).toEqual(expect.arrayContaining([
+        'min-h-9',
+        'max-md:min-h-11',
+      ]))
+      expect(driveRow.findAll('p')).toHaveLength(1)
+      expect((driveRow.get('[data-testid="tools-action-google-drive-note"]')
+        .element as HTMLElement).style.display).toBe('none')
+      expect(wrapper.find('[data-testid="tools-google-drive-tools-hint"]')
+        .exists()).toBe(false)
+    })
+
+    it('puts the model-use sentence behind an info button, like Web search '
+      + 'and Use memory', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const info = wrapper.get('[data-testid="tools-action-google-drive-info"]')
+      const note = wrapper.get('[data-testid="tools-action-google-drive-note"]')
+
+      expect(info.attributes('aria-label')).toBe('About Google Drive in chats')
+      expect(info.attributes('aria-expanded')).toBe('false')
+      expect(info.attributes('aria-controls')).toBe(note.attributes('id'))
+      expect(note.text()).toBe(GOOGLE_DRIVE_TOOLS_HINT)
+      expect(note.text()).toContain('gateway chat')
+      expect(note.text()).toContain('web search')
+      expect(note.text()).toContain('Run code')
+
+      await info.trigger('click')
+
+      expect(info.attributes('aria-expanded')).toBe('true')
+      expect((note.element as HTMLElement).style.display).not.toBe('none')
+      expect(wrapper.get('[data-testid="tools-action-google-drive-open"]')
+        .attributes('aria-describedby')).toContain(note.attributes('id'))
+
+      await info.trigger('click')
+
+      expect(info.attributes('aria-expanded')).toBe('false')
+      expect((note.element as HTMLElement).style.display).toBe('none')
+    })
+
+    it('does not open the Picker or close the menu when the info button is '
+      + 'pressed', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+
+      await wrapper.get('[data-testid="tools-action-google-drive-info"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('open-google-drive')).toBeUndefined()
+    })
+
+    it('keeps the info button out of the row button', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const open = wrapper.get('[data-testid="tools-action-google-drive-open"]')
+
+      expect(open.find('button').exists()).toBe(false)
+      expect(open.element.contains(wrapper.get(
+        '[data-testid="tools-action-google-drive-info"]',
+      ).element)).toBe(false)
+    })
+
+    it('shows a spinner on the row only while the status check is slow',
+      async () => {
+        const idle = await mountContent(createState({ drive: true }))
+
+        expect(idle.find('[data-testid="tools-action-google-drive-pending"]')
+          .exists()).toBe(false)
+
+        const state = createState({ drive: true })
+
+        state.googleDrive = { visible: true, importing: 0, checking: true }
+
+        const checking = await mountContent(state)
+
+        expect(checking.find(
+          '[data-testid="tools-action-google-drive-pending"]',
+        ).exists()).toBe(true)
+      })
+
+    it('shows no note while google.drive is off', async () => {
+      const wrapper = await mountContent(createState({ drive: false }))
+
+      expect(wrapper.find('[data-testid="tools-action-google-drive-note"]')
+        .exists()).toBe(false)
+    })
+
+    it('sits in the Add section beside the other file sources', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+      const add = wrapper.get('[data-section="add"]')
+
+      expect(add.find('[data-testid="tools-action-google-drive"]').exists())
+        .toBe(true)
+      expect(add.find('[data-testid="tools-action-attach"]').exists())
+        .toBe(true)
+    })
+
+    it('sits right after Attach files and before Add artifact', async () => {
+      const wrapper = await mountContent({
+        ...createState({ drive: true }),
+        artifacts: { visible: true, attached: [] },
+      })
+      const rows = wrapper.findAll(
+        '[data-section="add"] [data-testid^="tools-action-"]',
+      ).map(row => row.attributes('data-testid'))
+      const attachIndex = rows.indexOf('tools-action-attach')
+      const driveIndex = rows.indexOf('tools-action-google-drive')
+      const artifactIndex = rows.indexOf('tools-action-artifacts')
+
+      expect(attachIndex).toBeGreaterThanOrEqual(0)
+      expect(driveIndex).toBe(attachIndex + 1)
+      expect(artifactIndex).toBeGreaterThan(driveIndex)
+    })
+
+    it('has no library or generated images rows any more', async () => {
+      const wrapper = await mountContent(createState({ drive: true }))
+
+      expect(wrapper.find('[data-testid="tools-action-library"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="tools-action-generated"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="tools-action-attach"]').text())
+        .toContain('Upload or pick from your files')
+    })
+
+    it('shows how many files are being copied as a badge', async () => {
+      const wrapper = await mountContent(createState({
+        drive: true,
+        driveImporting: 2,
+      }))
+
+      expect(wrapper.get('[data-testid="tools-action-google-drive"] .badge')
+        .text()).toBe('2')
+    })
+
+    it('is hidden with the other file rows when files are not allowed',
+      async () => {
+        const wrapper = await mountContent(createState({
+          files: false,
+          drive: true,
+        }))
+
+        expect(wrapper.find('[data-testid="tools-action-google-drive"]')
+          .exists()).toBe(false)
+      })
   })
 
   it('shows how many connectors are on as a badge and opens the picker', async () => {
@@ -591,7 +780,7 @@ describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
       expect(explicit.text()).not.toContain('Add artifact')
     })
 
-  it('shows Add artifact after Generated images with access', async () => {
+  it('shows Add artifact after Attach files with access', async () => {
     const wrapper = await mountContent(withArtifacts({
       visible: true,
       attached: [],
@@ -602,8 +791,6 @@ describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
 
     expect(rows).toEqual([
       'tools-action-attach',
-      'tools-action-library',
-      'tools-action-generated',
       'tools-action-artifacts',
     ])
     expect(wrapper.find(ARTIFACT_ROW).text()).toContain('Add artifact')

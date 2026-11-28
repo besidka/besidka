@@ -17,6 +17,7 @@ import { sweepBackfillJobs } from '~~/server/utils/memory/backfill'
 import type { SweepBackfillJobsResult } from '~~/server/utils/memory/backfill'
 import {
   chatHasUnextractedActivity,
+  chatHoldsNoGoogleData,
   chatIsMemoryIncluded,
 } from '~~/server/utils/memory/chat-memory-filters'
 import { projectChatSweepCondition } from '~~/server/utils/memory/project-auto-update'
@@ -148,6 +149,7 @@ function dueChatsOfExtractionOptedInUsers(
       lte(schema.chats.activityAt, idleCutoff),
       gt(schema.chats.activityAt, enabledAtOrZero),
       chatIsMemoryIncluded(),
+      chatHoldsNoGoogleData(),
       chatHasUnextractedActivity(),
       or(
         and(
@@ -189,6 +191,7 @@ function dueChatsOfProjectsOptedInOnTheirOwn(
       lte(schema.chats.activityAt, idleCutoff),
       gt(schema.chats.activityAt, schema.projects.memoryAutoUpdateEnabledAt),
       chatIsMemoryIncluded(),
+      chatHoldsNoGoogleData(),
       chatHasUnextractedActivity(),
       projectChatSweepCondition(),
       projectChatIsDirty(),

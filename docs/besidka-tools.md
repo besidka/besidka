@@ -26,7 +26,7 @@ permission and cannot be set.
 
 | Tier | Group in the UI | Tools |
 | --- | --- | --- |
-| `read` | Read-only | 14 |
+| `read` | Read-only | 15 |
 | `write` | Write | 8 |
 | `ask-every-time` | Delete and share ("Always asks" before 2026-11-20) | 13 |
 
@@ -52,6 +52,16 @@ chat name `besidka__list_files`) and `mode`, unique per user and tool. It has
 no foreign key. `purgeUserToolApprovals` deletes it with the account, and a
 whole-database restore resets every `allow` to `ask`
 (`docs/d1-restore-reconciliation.md`).
+
+The Google tools (`google__drive_*`, `google__gmail_*`, `google__calendar_*`)
+share the table: a row keyed by the exposed `google__` name, with `blocked`,
+`ask`, or `allow` only for a tool of the owner-only own client (BES-465,
+`docs/google.md`, section 17.7), read and written by
+`/api/v1/google/tool-permissions`, not by the routes below (see
+`docs/google.md`, section 17). Besidka rows use bare registry names, so the
+two never collide: this loader reads every row but looks a tool up by its
+registry name, so a `google__` row never applies to a Besidka tool, and the
+`PUT` below still answers 400 to a `google__` name.
 
 The same table also holds two rows that are not Besidka tools:
 `memory_write` and `memory_forget` (BES-470, BES-472), the user's mode for the
@@ -228,6 +238,19 @@ one definition the client and the server share), with the entry's
   raises the untrusted-content guard. A handler's client error (4xx) passes
   its own message on; anything else becomes "The Besidka tool call failed."
 
+Google connection status is the one Google-related Besidka tool in the read
+tier: `list_google_connections` returns whether Google is connected per client
+mode, its status, the granted capability names and when it was connected, and
+never the Google account, a token or Google content (the owner's own client is
+listed only for an admin who passes `isGoogleByoAllowed`). It is a plain
+Besidka read: family `besidka`, `besidka` taint, no `google` taint, no Google
+read source, and not in `GOOGLE_SPREADING_BESIDKA_TOOLS`, so it is offered and
+runs in a chat that holds Google data. Its sibling `disconnect_google` is
+excluded from chats (the strictest choice): there it would delete the copies
+the chat is using, so it stays in the app and on MCP
+(`tests/unit/server/utils/besidka-tools/google-connections.spec.ts`,
+`docs/mcp-server.md`, "Google connections (5.5.0)").
+
 The route adds a short system block that explains the `besidka__` tools and
 the frame, also when no connector is on, and gives the tool loop
 `TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN` (12) extra steps when a Besidka tool
@@ -344,6 +367,9 @@ shows the Connectors row then too, even with no connector. The row toggles
 /api/v1/chats/[slug]/besidka-tools` (`{ enabled }`, same guards as the
 permission routes plus chat ownership). A new chat keeps the choice in state
 and its first send carries `besidkaToolsEnabled`, which the send stores.
+The Google rows under it (`docs/google.md`, section 18) use the same
+`besidka_chat_settings` row through their own column, `google_services_off`,
+and never touch `enabled` or the grants.
 
 ### Approval step
 

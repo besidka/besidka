@@ -56,10 +56,18 @@ import type {
 } from '~~/server/utils/tool-approval/kv'
 import {
   clampRemember,
+  isGoogleRead,
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
+import {
+  googleChatGrantKey,
+  googleEgressGrantKey,
+  isGoogleToolName,
+  withoutReferenceNames,
+} from '#shared/utils/google-tool-approvals'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-texts'
+import { isGoogleOnceOnlyReadTool } from '#shared/utils/google-gmail-tools'
 import { SKILL_SCRIPTS_GRANT_KEY } from '#shared/utils/skills/scripts'
 import { addBesidkaChatGrant } from '~~/server/utils/besidka-tools/chat-settings'
 import { isMemoryPermissionToolName } from '#shared/utils/memory-tool-permissions'
@@ -473,19 +481,27 @@ export async function loadContinuation(input: {
  * Blocked. `memory_write` and `memory_forget` read `memoryModes` the same
  * way (the stored memory permissions), so a memory tool the user set to
  * Blocked after approving does not run on resume; without `memoryModes` they
- * keep `ask`. Connector tools keep `ask`: their Blocked state is the C-5 tool
- * settings, which hide the tool from the live tool set, so the replay reads
- * it as missing. The registry is not imported here on purpose: the chat
- * route loads it only when an answer is a Besidka call.
+ * keep `ask`. A Google tool reads the stored Google modes the send resolved
+ * (`googleModes`: Blocked, Needs approval or Always allow): a tool the
+ * user set to Blocked after approving is denied as blocked, and a tool with
+ * no stored mode means `ask`. Connector tools keep `ask`: their Blocked
+ * state is the C-5 tool settings, which hide the tool from the live tool
+ * set, so the replay reads it as missing. The registry is not imported here
+ * on purpose: the chat route loads it only when an answer is a Besidka call.
  */
 export function resolveReplayPermissionMode(
   family: ToolFamily | null = null,
   toolName = '',
   besidkaModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
   memoryModes?: Partial<Record<string, ToolPermissionMode>>,
+  googleModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
 ): ToolPermissionMode {
   if (family === 'besidka') {
     return besidkaModes.get(toolName) ?? 'blocked'
+  }
+
+  if (family === 'google') {
+    return googleModes.get(toolName) ?? 'ask'
   }
 
   if (
@@ -526,6 +542,7 @@ export function decideContinuation(input: {
   state: ApprovalState
   besidkaPermissionModes?: ReadonlyMap<string, ToolPermissionMode>
   memoryPermissionModes?: Partial<Record<string, ToolPermissionMode>>
+  googlePermissionModes?: ReadonlyMap<string, ToolPermissionMode>
 }): ContinuationDecision[] {
   const replayState = cloneState(input.state)
 
@@ -557,6 +574,7 @@ export function decideContinuation(input: {
         record.toolName,
         input.besidkaPermissionModes,
         input.memoryPermissionModes,
+        input.googlePermissionModes,
       ),
     })
 
@@ -574,7 +592,10 @@ export function decideContinuation(input: {
       incrementCounter(replayState, 'connectorCalls')
     }
 
-    if (entry?.descriptor.family === 'besidka') {
+    if (
+      entry?.descriptor.family === 'besidka'
+      || entry?.descriptor.family === 'google'
+    ) {
       incrementCounter(replayState, 'builtInCalls')
     }
 
@@ -651,6 +672,71 @@ function withReplayedConnectorImages(
 }
 
 /**
+ * A tool result body kept outside D1 for a paused turn (the Google tool
+ * results, `server/utils/tool-approval/google.ts`), keyed by tool call id.
+ */
+export interface StashedResult {
+  isError: boolean
+  output: unknown
+}
+
+/**
+ * A finished tool call with its stashed body put back, for the model only:
+ * the output of a result, the error text of an error. A part without a
+ * stashed body, or whose state does not match the stash, stays as stored.
+ */
+function withStashedResult(
+  part: unknown,
+  stashedResults: ReadonlyMap<string, StashedResult> | undefined,
+): unknown {
+  if (!stashedResults || !isToolPart(part)) {
+    return part
+  }
+
+  const stashed = typeof part.toolCallId === 'string'
+    ? stashedResults.get(part.toolCallId)
+    : undefined
+
+  if (!stashed) {
+    return part
+  }
+
+  if (!stashed.isError && part.state === 'output-available') {
+    return { ...part, output: stashed.output }
+  }
+
+  if (
+    stashed.isError
+    && part.state === 'output-error'
+    && typeof stashed.output === 'string'
+  ) {
+    return { ...part, errorText: stashed.output }
+  }
+
+  return part
+}
+
+/**
+ * A Google tool part as the model sees it when stored parts become model
+ * messages again: the output without any reference title or link
+ * (`withoutReferenceNames`). The one seam every resumed or continued reply
+ * passes through (an approval answer and a `{ continue }` round both call
+ * `buildResumedAssistantMessages`), so no path can forget it, whether the
+ * output is the stored references-only form or a stashed body.
+ */
+function withoutGoogleReferenceNames(part: unknown): unknown {
+  if (!isToolPart(part) || !('output' in part)) {
+    return part
+  }
+
+  const toolName = toolNameOf(part)
+
+  return isGoogleToolName(toolName)
+    ? { ...part, output: withoutReferenceNames(part.output) }
+    : part
+}
+
+/**
  * The paused assistant message twice, with every answered call in
  * `approval-responded`:
  *
@@ -665,7 +751,9 @@ function withReplayedConnectorImages(
  *   unfinished calls) are dropped. A connector image line that said "shown
  *   to the model" now says the image is no longer available, or, for a
  *   kept image in `shownAgain` (per tool call id, the indexes among the
- *   call's kept lines), that it is shown to the model again.
+ *   call's kept lines), that it is shown to the model again. A finished
+ *   call with a body in `stashedResults` (a Google tool result, which D1
+ *   keeps as references only) gets that body back.
  * - `storedMessage` keeps the stored parts as they are, with the answered
  *   calls moved to `approval-responded` and no input or signature added, so
  *   it can seed `readUIMessageStream` and be written back to D1.
@@ -675,6 +763,7 @@ export function buildResumedAssistantMessages(input: {
   parts: readonly unknown[]
   decisions: readonly ContinuationDecision[]
   shownAgain?: ReadonlyMap<string, ReadonlySet<number>>
+  stashedResults?: ReadonlyMap<string, StashedResult>
 }): { modelMessage: UIMessage, storedMessage: UIMessage } {
   const decisionsByApprovalId = new Map(input.decisions.map((decision) => {
     return [decision.approvalId, decision]
@@ -690,7 +779,12 @@ export function buildResumedAssistantMessages(input: {
       storedParts.push(part)
 
       if (isModelContextPart(part)) {
-        modelParts.push(withReplayedConnectorImages(part, input.shownAgain))
+        modelParts.push(withReplayedConnectorImages(
+          withoutGoogleReferenceNames(
+            withStashedResult(part, input.stashedResults),
+          ),
+          input.shownAgain,
+        ))
       }
 
       continue
@@ -967,6 +1061,36 @@ export async function applyRememberGrants(input: {
       continue
     }
 
+    if (entry.descriptor.family === 'google') {
+      if (
+        decision.remember !== 'chat'
+        || !isGoogleRead(entry.descriptor)
+        || isGoogleOnceOnlyReadTool(entry.descriptor.toolName)
+        || decision.record.access !== 'read'
+        || decision.record.definitionHash !== hash
+      ) {
+        continue
+      }
+
+      try {
+        await addBesidkaChatGrant(input.db, input.userId, input.chatPublicId, {
+          toolName: googleChatGrantKey(decision.toolName),
+          definitionHash: hash,
+        })
+      } catch (exception) {
+        input.logger.set({
+          attributes: {
+            toolApproval: {
+              grant: 'failed',
+              error: exceptionMessage(exception),
+            },
+          },
+        })
+      }
+
+      continue
+    }
+
     if (entry.descriptor.family === 'besidka') {
       try {
         await applyBesidkaRememberGrant({
@@ -994,6 +1118,12 @@ export async function applyRememberGrants(input: {
       continue
     }
 
+    const isGoogleEgress = decision.record?.reason === 'google-egress'
+
+    if (isGoogleEgress && decision.remember !== 'chat') {
+      continue
+    }
+
     try {
       if (decision.remember === 'chat') {
         const settings = await listConnectorChatSettings(
@@ -1004,6 +1134,9 @@ export async function applyRememberGrants(input: {
         const current = settings.find((setting) => {
           return setting.connectorId === connector.id
         })
+        const grantKey = isGoogleEgress
+          ? googleEgressGrantKey(decision.toolName)
+          : decision.toolName
 
         await upsertConnectorChatSettings(input.db, {
           userId: input.userId,
@@ -1012,7 +1145,7 @@ export async function applyRememberGrants(input: {
           enabled: current?.enabled ?? true,
           alwaysAllowTools: {
             ...current?.alwaysAllowTools,
-            [decision.toolName]: hash,
+            [grantKey]: hash,
           },
         })
 
@@ -1060,7 +1193,10 @@ export function connectorAuditApprovalOf(
 }
 
 function hasExecute(tool: unknown): tool is {
-  execute: (input: unknown, options?: { toolCallId?: string }) => unknown
+  execute: (
+    input: unknown,
+    options?: { toolCallId?: string, approvalId?: string },
+  ) => unknown
 } {
   return isRecord(tool) && typeof tool.execute === 'function'
 }
@@ -1135,7 +1271,9 @@ export function startClaimHeartbeats(input: {
  * when it threw), its heartbeat stops and the approval is used up
  * (`onSettled`), all before the SDK starts the next model turn. The output
  * itself is never stored. A failed claim write is logged and never changes
- * the call's result.
+ * the call's result. The approved call also gets the approval id as
+ * `approvalId` in its `execute` options, so a write can derive an idempotent
+ * request id from the approval and not from the provider's tool call id.
  */
 export function wrapApprovedExecutions(input: {
   tools: ToolSet | undefined
@@ -1244,7 +1382,10 @@ export function wrapApprovedExecutions(input: {
         let result: unknown
 
         try {
-          result = execute(toolInput, options)
+          result = execute(toolInput, {
+            ...options,
+            approvalId: decision.approvalId,
+          })
         } catch (exception) {
           return settle(decision, true).then(() => {
             throw exception

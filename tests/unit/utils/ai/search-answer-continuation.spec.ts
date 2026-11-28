@@ -1255,13 +1255,14 @@ describe('buildSearchAnswerContinuationMessages', () => {
       expect(content[1]).toBe(imagePart)
     })
 
-  it('tells the model today\'s date from the injected clock', () => {
+  it('leaves the date to the system text', () => {
     const messages = buildSearchAnswerContinuationMessages([
       { role: 'user', content: 'What happened today?' },
-    ], searchResults, new Date('2026-10-05T23:30:00.000Z'))
+    ], searchResults)
     const content = messages.at(-1)?.content as Array<{ text: string }>
 
-    expect(content.at(-1)?.text).toContain('Today\'s date is 2026-10-05 (UTC).')
+    expect(content.at(-1)?.text).not.toContain('Today')
+    expect(content.at(-1)?.text).not.toContain('date is')
   })
 
   it('tells the model the enclosed results are untrusted content', () => {
@@ -2844,4 +2845,45 @@ describe('withSearchAnswerGuarantee deliverable tools', () => {
     expect(startContinuation).not.toHaveBeenCalled()
     expect(guarantee.getOutcome().continuationRan).toBe(false)
   })
+})
+
+describe('buildSearchAnswerContinuationMessages with Google tool history', () => {
+  it('carries no Google tool call, result or file name into the model input',
+    () => {
+      const messages = buildSearchAnswerContinuationMessages([
+        { role: 'user', content: 'What is in my plan?' },
+        {
+          role: 'assistant',
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'call-google-1',
+            toolName: 'google__drive_list_picked',
+            input: {},
+          }],
+        },
+        {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call-google-1',
+            toolName: 'google__drive_list_picked',
+            output: {
+              type: 'json',
+              value: {
+                references: [{ id: 'file-1', title: 'Secret Plan.md' }],
+              },
+            },
+          }],
+        },
+        { role: 'user', content: 'Summarize it' },
+      ] as never, [{
+        toolName: SEARCH_TOOL_NAME,
+        input: { query: 'q' },
+        output: { results: [] },
+      }])
+      const serialized = JSON.stringify(messages)
+
+      expect(serialized).not.toContain('Secret Plan.md')
+      expect(serialized).not.toContain('google__drive_list_picked')
+    })
 })

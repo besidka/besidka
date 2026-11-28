@@ -3,6 +3,7 @@ import type { McpResourceScope } from '#shared/utils/mcp-oauth-scopes'
 import type { BesidkaToolPermissionTier } from '#shared/utils/besidka-tool-permissions'
 import type { ToolAccess } from '#shared/utils/tool-approval-policy'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import type { GoogleContentAccess } from '~~/server/utils/google/data-guard'
 import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
 
 export type BesidkaToolLogValue = string | number | boolean
@@ -30,6 +31,8 @@ export interface BesidkaToolContext {
   db: ReturnType<typeof useDb>
   logger: LoggerLike
   log: (fields: Record<string, BesidkaToolLogValue>) => void
+  googleContent?: GoogleContentAccess
+  isGoogleDerived?: () => boolean
 }
 
 export interface BesidkaToolDefinition {

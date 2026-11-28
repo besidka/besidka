@@ -300,6 +300,90 @@ jobs:
           echo "✅ Build successful"
           ls -lah .output/
 
+      - name: Check Worker startup
+        id: startup
+        env:
+          STARTUP_WARN_MS: 450
+          STARTUP_FAIL_MS: 700
+          STARTUP_BUDGET_ENFORCE: 'false'
+          WRANGLER_SEND_METRICS: false
+          CI: true
+        run: |
+          set -o pipefail
+          PROFILE="$RUNNER_TEMP/startup.cpuprofile"
+          SAMPLES=()
+
+          for RUN in 1 2 3; do
+            RUN_LOG="$RUNNER_TEMP/startup-run-${RUN}.log"
+
+            if ! pnpm exec wrangler check startup --outfile "$PROFILE" > "$RUN_LOG" 2>&1; then
+              echo "::warning::wrangler check startup failed on run ${RUN}; its output follows."
+              cat "$RUN_LOG"
+              continue
+            fi
+
+            ACTIVE=$(awk '{ gsub(/\033\[[0-9;]*[A-Za-z]/, "") } match($0, /Active: *[0-9]+([.][0-9]+)?/) { value = substr($0, RSTART, RLENGTH); sub(/Active: */, "", value); print value; exit }' "$RUN_LOG")
+
+            if ! [[ "$ACTIVE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+              echo "::warning::Could not read the active startup time from run ${RUN}; its output follows."
+              cat "$RUN_LOG"
+              continue
+            fi
+
+            echo "Run ${RUN}: ${ACTIVE} ms"
+            SAMPLES+=("$ACTIVE")
+          done
+
+          if [ "${#SAMPLES[@]}" -eq 0 ]; then
+            echo "::warning::The Worker startup budget was not checked: no run produced a readable number."
+            echo "exceeds-warn=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MEDIAN=$(printf '%s\n' "${SAMPLES[@]}" | sort -n | awk -v count="${#SAMPLES[@]}" 'NR == int(count / 2) + 1 { print }')
+          RUN_LIST=$(printf '%s ms, ' "${SAMPLES[@]}")
+          RUN_LIST="${RUN_LIST%, }"
+
+          echo "Worker startup (local, median of ${#SAMPLES[@]}): ${MEDIAN} ms"
+
+          {
+            echo "### Worker startup"
+            echo ""
+            echo "| Metric | Value |"
+            echo "| --- | --- |"
+            echo "| Median of ${#SAMPLES[@]} local runs | **${MEDIAN} ms** |"
+            echo "| Runs | ${RUN_LIST} |"
+            echo "| Warn threshold | ${STARTUP_WARN_MS} ms |"
+            echo "| Fail threshold (enforced: ${STARTUP_BUDGET_ENFORCE}) | ${STARTUP_FAIL_MS} ms |"
+            echo ""
+            echo "Local numbers are a regression signal only. The Cloudflare platform measures about 1.4 to 1.9 times higher, and its limit is 1000 ms. See docs/cloudflare-previews.md, \"Startup budget and the 10021 retry\"."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if awk -v value="$MEDIAN" -v limit="$STARTUP_WARN_MS" 'BEGIN { exit !(value > limit) }'; then
+            echo "exceeds-warn=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Worker startup is ${MEDIAN} ms locally, above the ${STARTUP_WARN_MS} ms warn threshold. The platform measures about 1.4 to 1.9 times higher and fails a deploy above 1000 ms (error 10021)."
+          else
+            echo "exceeds-warn=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if awk -v value="$MEDIAN" -v limit="$STARTUP_FAIL_MS" 'BEGIN { exit !(value > limit) }'; then
+            if [ "$STARTUP_BUDGET_ENFORCE" = "true" ]; then
+              echo "::error::Worker startup is ${MEDIAN} ms locally, above the ${STARTUP_FAIL_MS} ms fail threshold."
+              exit 1
+            fi
+
+            echo "::warning::Worker startup is ${MEDIAN} ms locally and would fail the ${STARTUP_FAIL_MS} ms threshold; the budget runs in warn-only mode (STARTUP_BUDGET_ENFORCE=false)."
+          fi
+
+      - name: Upload startup CPU profile
+        if: ${{ !cancelled() && steps.startup.outputs.exceeds-warn == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: worker-startup-cpuprofile
+          path: ${{ runner.temp }}/startup.cpuprofile
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -384,7 +468,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: read
     env:
@@ -427,9 +511,69 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Install Playwright browsers
+      - name: Resolve Playwright version
+        id: playwright-version
         if: steps.changes.outputs.changed == 'true'
-        run: timeout 300 pnpm exec playwright install --with-deps chromium webkit
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browsers
+        id: playwright-cache
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium-headless-shell-webkit
+
+      - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 25
+        run: |
+          START=$(date +%s)
+          INSTALLED=false
+
+          for ATTEMPT in 1 2; do
+            if timeout 600 pnpm exec playwright install --only-shell chromium webkit; then
+              INSTALLED=true
+              break
+            fi
+
+            echo "::warning::Playwright browser install attempt ${ATTEMPT} failed or timed out."
+          done
+
+          DURATION=$(($(date +%s) - START))
+          echo "::warning::Playwright browser download took ${DURATION}s (cache miss)."
+          echo "Playwright browser download took ${DURATION}s (cache miss, installed=${INSTALLED})." >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$INSTALLED" != "true" ]; then
+            exit 1
+          fi
+
+      - name: Save Playwright browsers
+        if: steps.changes.outputs.changed == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-cache.outputs.cache-primary-key }}
+
+      - name: Configure apt retries
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/99-ci-retries > /dev/null
+
+      - name: Install Playwright system dependencies
+        if: steps.changes.outputs.changed == 'true'
+        timeout-minutes: 25
+        run: |
+          START=$(date +%s)
+          STATUS=0
+
+          timeout 1380 pnpm exec playwright install-deps chromium webkit || STATUS=$?
+
+          DURATION=$(($(date +%s) - START))
+          echo "::warning::Playwright system dependencies took ${DURATION}s (exit ${STATUS})."
+          echo "Playwright system dependencies took ${DURATION}s (exit ${STATUS})." >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$STATUS"
 
       - name: Run the runtime sandbox tests (Chromium and WebKit)
         if: steps.changes.outputs.changed == 'true'

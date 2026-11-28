@@ -77,6 +77,7 @@ const toggleFullWidth = vi.fn(() => {
 const loggedIn = ref<boolean>(false)
 const storageFeature = ref({ enabled: true, active: false, variant: null })
 const bridgeFeature = ref({ enabled: true, active: false, variant: null })
+const driveFeature = ref({ enabled: true, active: false, variant: null })
 
 vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
   const actual = await importOriginal<
@@ -148,6 +149,10 @@ mockNuxtImport('useAuth', () => {
 
 mockNuxtImport('useFeature', () => {
   return (key: string) => {
+    if (key === 'google.drive') {
+      return driveFeature
+    }
+
     return key === 'artifacts.llm-bridge' ? bridgeFeature : storageFeature
   }
 })
@@ -268,6 +273,7 @@ beforeEach(() => {
   loggedIn.value = false
   storageFeature.value = { enabled: true, active: false, variant: null }
   bridgeFeature.value = { enabled: true, active: false, variant: null }
+  driveFeature.value = { enabled: true, active: false, variant: null }
   toggleFullWidth.mockClear()
   layout.value = 'docked'
   isFullWidth.value = false
@@ -308,6 +314,111 @@ describe('ChatArtifactFrame', () => {
     expect(metas[0]!.getAttribute('content')).toBe(
       `frame-src 'self' ${runtimeOrigin} https://challenges.cloudflare.com`,
     )
+  })
+
+  describe('the runtime origin and the Google Picker frame source', () => {
+    const PICKER_SOURCES
+      = 'https://docs.google.com/picker https://docs.google.com/picker/'
+    let previousPublicConfig: Record<string, unknown>
+
+    function resetFramePolicy() {
+      document.head
+        .querySelectorAll('meta.js-artifact-frame-policy')
+        .forEach(meta => meta.remove())
+    }
+
+    function readFramePolicy(): string {
+      return document.head
+        .querySelector('meta.js-artifact-frame-policy')!
+        .getAttribute('content')!
+    }
+
+    beforeEach(() => {
+      const config = useRuntimeConfig().public as Record<string, unknown>
+
+      previousPublicConfig = { ...config }
+      resetFramePolicy()
+      window.history.pushState({}, '', '/chats/01JCHAT')
+    })
+
+    afterEach(() => {
+      Object.assign(useRuntimeConfig().public, previousPublicConfig)
+      resetFramePolicy()
+      window.history.pushState({}, '', '/')
+    })
+
+    it('strips trailing slashes from the runtime origin', async () => {
+      Object.assign(useRuntimeConfig().public, {
+        artifactsOrigin: 'https://runtime.example.test//',
+        googlePickerApiKey: '',
+      })
+
+      const { connection } = await mountFrame()
+
+      expect(connection.element.getAttribute('src'))
+        .toBe('https://runtime.example.test/v1/index.html')
+      expect(readFramePolicy()).toBe(
+        'frame-src \'self\' https://runtime.example.test '
+        + 'https://challenges.cloudflare.com',
+      )
+    })
+
+    it('keeps the key out of the runtime origin', async () => {
+      Object.assign(useRuntimeConfig().public, {
+        artifactsOrigin: 'https://runtime.example.test',
+        googlePickerApiKey: 'public-picker-key',
+      })
+
+      const { connection } = await mountFrame()
+
+      expect(connection.element.getAttribute('src'))
+        .toBe('https://runtime.example.test/v1/index.html')
+      expect(connection.element.getAttribute('src'))
+        .not.toContain('public-picker-key')
+    })
+
+    it('adds only the Picker path to a chat for a user with Google Drive',
+      async () => {
+        Object.assign(useRuntimeConfig().public, {
+          artifactsOrigin: 'https://runtime.example.test',
+          googlePickerApiKey: 'public-picker-key',
+        })
+        driveFeature.value = { enabled: true, active: true, variant: null }
+
+        await mountFrame()
+
+        expect(readFramePolicy()).toBe(
+          'frame-src \'self\' https://runtime.example.test '
+          + `https://challenges.cloudflare.com ${PICKER_SOURCES}`,
+        )
+        expect(readFramePolicy()).not.toContain('drive.google.com')
+      })
+
+    it.each([
+      ['the user has no Google Drive', '/chats/01JCHAT', 'key', false],
+      ['the Picker key is not set', '/chats/01JCHAT', '', true],
+      ['the page is a shared chat', '/shared/01JSHARE', 'key', true],
+    ])('adds no Google source when %s', async (
+      _name,
+      path,
+      key,
+      isDriveActive,
+    ) => {
+      window.history.pushState({}, '', path)
+      Object.assign(useRuntimeConfig().public, {
+        artifactsOrigin: 'https://runtime.example.test',
+        googlePickerApiKey: key,
+      })
+      driveFeature.value = {
+        enabled: true,
+        active: isDriveActive,
+        variant: null,
+      }
+
+      await mountFrame()
+
+      expect(readFramePolicy()).not.toContain('google.com')
+    })
   })
 
   it('answers the handshake and shows the frame once initialized',

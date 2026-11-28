@@ -192,6 +192,40 @@ describe('profile storage page', () => {
       .text()).toContain('Generated files')
   })
 
+  it('hides the Google Drive row until a copy exists', async () => {
+    const empty = await mountPage({
+      data: createStats({
+        breakdown: {
+          totalBytes: 3 * MEGABYTE,
+          categories: [
+            { id: 'uploads', bytes: 3 * MEGABYTE, count: 1 },
+            { id: 'googleDrive', bytes: 0, count: 0 },
+          ],
+        },
+      }),
+    })
+
+    expect(empty.find('[data-testid="storage-category-googleDrive"]').exists())
+      .toBe(false)
+
+    const withCopy = await mountPage({
+      data: createStats({
+        breakdown: {
+          totalBytes: 3 * MEGABYTE,
+          categories: [
+            { id: 'uploads', bytes: MEGABYTE, count: 1 },
+            { id: 'googleDrive', bytes: 2 * MEGABYTE, count: 2 },
+          ],
+        },
+      }),
+    })
+
+    expect(withCopy.get('[data-testid="storage-category-googleDrive-summary"]')
+      .text()).toBe('2.0 MB · 2 copies')
+    expect(withCopy.get('[data-testid="storage-category-googleDrive"]')
+      .text()).toContain('Google Drive copies')
+  })
+
   it.each([
     ['aiImages', 'i-lucide:images'],
     ['uploads', 'i-lucide:paperclip'],

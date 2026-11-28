@@ -191,6 +191,7 @@
           :filter-model="filterGatewayModel"
           :recommended-direct-models="recommendedDirectModels"
           :recommended-only="isRecommendedOnly"
+          :google-data-reason-for="gatewayGoogleDataReasonFor"
           @select="selectGatewayModel"
           @toggle-favorite="toggleGatewayFavorite"
           @toggle-detail="toggleDetail"
@@ -249,6 +250,12 @@
                     :is-detail-open="detailModelId === entry.model.id"
                     :is-recommended="
                       recommendedModelIds.includes(entry.model.id)
+                    "
+                    :google-data-reason="
+                      googleDataReasonFor({
+                        providerId: entry.providerId,
+                        modelId: entry.model.id,
+                      })
                     "
                     @select="selectModel(entry.model.id)"
                     @toggle-favorite="
@@ -443,6 +450,7 @@ const {
   toggleFavoriteGatewayModel,
 } = useUserSetting()
 const { hasKeyForProvider, hasAnyKey } = useUserKeys()
+const { googleDataReasonFor } = useGoogleDataRecipientReason()
 const { isDesktop } = useDevice()
 
 const pickerMode = shallowRef<PickerMode>(getModeFromSelection())
@@ -1101,6 +1109,13 @@ function selectModel(modelId: string) {
     return
   }
 
+  if (entry && googleDataReasonFor({
+    providerId: entry.providerId,
+    modelId,
+  })) {
+    return
+  }
+
   emit('select', { modelId, gatewayId: null })
 }
 
@@ -1111,7 +1126,19 @@ function selectGatewayModel(modelId: string) {
     return
   }
 
+  if (googleDataReasonFor({ gatewayId: gateway.id, modelId })) {
+    return
+  }
+
   emit('select', { modelId, gatewayId: gateway.id })
+}
+
+function gatewayGoogleDataReasonFor(modelId: string): string {
+  const gateway = activeGateway.value
+
+  return gateway
+    ? googleDataReasonFor({ gatewayId: gateway.id, modelId })
+    : ''
 }
 
 function toggleGatewayFavorite(modelId: string) {

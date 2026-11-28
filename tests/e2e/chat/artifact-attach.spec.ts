@@ -408,7 +408,7 @@ test('a user without access sees the unchanged + Add menu and no picker '
   await page.getByTestId(MENU_TRIGGER).click()
 
   await expect(page.getByTestId('tools-action-attach')).toBeVisible()
-  await expect(page.getByTestId('tools-action-library')).toBeVisible()
+  await expect(page.getByTestId('tools-action-library')).toHaveCount(0)
   await expect(page.getByTestId('tools-action-artifacts')).toHaveCount(0)
   await expect(page.getByText('Add artifact')).toHaveCount(0)
   await expect(page.getByTestId(PICKER)).toHaveCount(0)

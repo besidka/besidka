@@ -66,7 +66,11 @@
           }"
           @select="onMessageSelect"
         >
-          <ChatFiles :message="m" />
+          <ChatFiles
+            :message="m"
+            can-save-to-drive
+          />
+          <ChatDriveFiles :message="m" />
           <ChatSkillInvocation
             v-if="m.role === 'user'"
             :message="m"
@@ -80,6 +84,10 @@
             :message="m"
           />
           <ChatConnectorsNotice
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
+          <ChatGoogleToolsWithheld
             v-if="m.role === 'assistant'"
             :message="m"
           />
@@ -115,6 +123,7 @@
               "
               :message-role="m.role"
               :part="part"
+              can-save-to-drive
             />
             <ChatArtifactCard
               v-else-if="isArtifactsActive && isArtifactMessagePart(part)"
@@ -140,6 +149,10 @@
                 && ['submitted', 'streaming'].includes(chatSdk.status)
               "
               :model-id="getMessageModelId(m)"
+            />
+            <ChatGoogleFile
+              v-else-if="isGoogleCreatedFilePart(part)"
+              :part="part"
             />
             <div
               v-else-if="isChatErrorTextPart(part)"
@@ -338,6 +351,7 @@ import { getPartGaps } from '~/utils/message-part-spacing'
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
+  isGoogleCreatedFilePart,
   orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
@@ -447,6 +461,10 @@ useSeoMeta({
 const { rememberChatMemoryExcluded } = useChatMemoryExclusion()
 
 rememberChatMemoryExcluded(chat.value.slug, chat.value.memoryExcluded)
+
+const { rememberChatGoogleData } = useChatGoogleData()
+
+rememberChatGoogleData(chat.value.slug, chat.value.holdsGoogleData)
 
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
 

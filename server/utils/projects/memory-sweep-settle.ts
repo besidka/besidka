@@ -14,7 +14,10 @@ import {
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 import * as schema from '~~/server/db/schema'
 import { resolveProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
-import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
+import {
+  chatHoldsNoGoogleData,
+  chatIsMemoryIncluded,
+} from '~~/server/utils/memory/chat-memory-filters'
 import {
   MEMORY_EXTRACTION_LIMITS,
   MEMORY_EXTRACTION_NOTHING_DURABLE_REASON,
@@ -86,6 +89,7 @@ function projectChatsLeftForSweep(
       eq(schema.chats.projectId, projectId),
       eq(schema.chats.userId, userId),
       chatIsMemoryIncluded(),
+      chatHoldsNoGoogleData(),
       projectChatSweepCondition(),
       or(
         isNull(schema.chats.projectMemorySummaryUpdatedAt),

@@ -34,6 +34,11 @@ export const TOOL_APPROVAL_DENIAL_TEXT: Record<
     + 'did not run. Stop calling tools now. Briefly say what is done and '
     + 'what is left, so the work can continue in the next message.',
   'invalid-input': 'Besidka could not check this action, so it did not run.',
+  'google-data': 'This message holds data from the user\'s Google account, '
+    + 'so memory writes are unavailable and this action did not run. Do not '
+    + 'call memory_write or memory_forget again in this chat. Tell the user '
+    + 'nothing was saved or removed, and that memory changes can be made in '
+    + 'a chat that holds no Google data.',
 }
 
 const STOP_AND_SUMMARIZE = 'Stop calling tools now. Briefly say what is '
@@ -44,6 +49,7 @@ export const SEND_TOOL_DENIAL_TEXT: Record<SendToolDenialKind, string> = {
   'missing-tool': TOOL_APPROVAL_DENIAL_TEXT['missing-tool'],
   'definition-drifted': TOOL_APPROVAL_DENIAL_TEXT['definition-drifted'],
   'invalid-input': TOOL_APPROVAL_DENIAL_TEXT['invalid-input'],
+  'google-data': TOOL_APPROVAL_DENIAL_TEXT['google-data'],
   'connector-calls': 'This message already made '
     + `${TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN} connector calls, the most `
     + `one message may make, so this call did not run. ${STOP_AND_SUMMARIZE}`,

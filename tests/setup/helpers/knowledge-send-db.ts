@@ -78,7 +78,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       name text NOT NULL,
       size integer NOT NULL,
       type text NOT NULL,
-      source text NOT NULL DEFAULT 'upload'
+      source text NOT NULL DEFAULT 'upload',
+      external_source text
     );
 
     CREATE TABLE project_knowledge_items (

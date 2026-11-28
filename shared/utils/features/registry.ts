@@ -25,6 +25,7 @@ export interface FeatureDefinition {
   variants?: string[]
   exposeToClient: boolean
   parent?: string
+  adminOnly?: boolean
 }
 
 export const FEATURE_ROLES: readonly FeatureRole[] = ['admin', 'tester']
@@ -232,24 +233,38 @@ const featureList = [
     key: 'google.drive',
     title: 'Google Drive',
     description: 'Attach files from Google Drive.',
-  }),
-  internalFeature({
-    key: 'google.calendar',
-    title: 'Google Calendar',
-    description: 'Read your Google Calendar in a chat.',
-    parent: 'google.drive',
+    optIn: 'required',
+    available: true,
   }),
   internalFeature({
     key: 'google.byo',
     title: 'Your own Google client',
     description: 'Connect Google with your own OAuth client.',
     parent: 'google.drive',
+    optIn: 'required',
+    available: true,
+    adminOnly: true,
+  }),
+  internalFeature({
+    key: 'google.calendar',
+    title: 'Google Calendar',
+    description: 'List events, check free and busy time and create an event '
+      + 'on your primary Google Calendar in a chat through your own Google '
+      + 'client.',
+    parent: 'google.byo',
+    optIn: 'required',
+    available: true,
+    adminOnly: true,
   }),
   internalFeature({
     key: 'google.gmail',
     title: 'Gmail',
-    description: 'Read Gmail in a chat through your own Google client.',
-    parent: 'google.drive',
+    description: 'Search and read Gmail and write drafts in a chat through '
+      + 'your own Google client.',
+    parent: 'google.byo',
+    optIn: 'required',
+    available: true,
+    adminOnly: true,
   }),
   internalFeature({
     key: 'skills',

@@ -76,6 +76,7 @@ import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { AttachedArtifact } from '~/types/chat-input-tools'
 import { toArtifactAttachmentPart } from '#shared/utils/artifacts'
+import { withDriveFileParts } from '#shared/utils/google-drive'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
@@ -123,6 +124,7 @@ const tools = shallowRef<Tools>(
 )
 const connectorSelection = useChatConnectorSelection()
 const besidkaToolsSelection = useBesidkaToolsSelection()
+const googleToolsSelection = useGoogleToolsSelection()
 const pending = shallowRef<boolean>(false)
 const isClarifying = shallowRef<boolean>(false)
 const isCreatingResearchChat = shallowRef<boolean>(false)
@@ -455,12 +457,15 @@ async function createResearchChat(
             text: draft,
           } as TextUIPart,
           ...(draftFiles.length
-            ? draftFiles.map((file): FileUIPart => ({
-              type: 'file',
-              mediaType: file.type,
-              filename: file.name,
-              url: getFileUrl(file.storageKey),
-            }))
+            ? withDriveFileParts(
+              draftFiles,
+              draftFiles.map((file): FileUIPart => ({
+                type: 'file',
+                mediaType: file.type,
+                filename: file.name,
+                url: getFileUrl(file.storageKey),
+              })),
+            )
             : []
           ),
         ] as (TextUIPart | FileUIPart)[],
@@ -633,12 +638,15 @@ async function onSubmit() {
             : []
           ),
           ...(draftFiles.length
-            ? draftFiles.map((file): FileUIPart => ({
-              type: 'file',
-              mediaType: file.type,
-              filename: file.name,
-              url: getFileUrl(file.storageKey),
-            }))
+            ? withDriveFileParts(
+              draftFiles,
+              draftFiles.map((file): FileUIPart => ({
+                type: 'file',
+                mediaType: file.type,
+                filename: file.name,
+                url: getFileUrl(file.storageKey),
+              })),
+            )
             : []
           ),
           ...draftArtifacts.map(toArtifactAttachmentPart),
@@ -664,6 +672,7 @@ async function onSubmit() {
     draftBackup.clear()
     connectorSelection.handOff(response.slug)
     besidkaToolsSelection.handOff(response.slug)
+    googleToolsSelection.handOff(response.slug)
     await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
     // Back up the draft only on a real failure (a successful send never leaves

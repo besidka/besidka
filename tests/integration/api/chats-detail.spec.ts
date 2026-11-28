@@ -7,6 +7,7 @@ function createChat(overrides: Partial<{
   projectId: string | null
   branchedFromShareSlug: string | null
   messages: unknown[]
+  googleDataAt: Date | null
 }> = {}) {
   return {
     id: 'chat-1',
@@ -14,6 +15,7 @@ function createChat(overrides: Partial<{
     title: 'Test chat',
     projectId: null,
     branchedFromShareSlug: null,
+    googleDataAt: null,
     messages: [],
     ...overrides,
   }
@@ -266,6 +268,44 @@ describe('chat detail API — activeResearchJob visibility', () => {
 
     expect(response.activeResearchJob).toBeNull()
   })
+
+  it('reports whether the chat holds Google data, by flag or by parts',
+    async () => {
+      const handler = await getChatHandler()
+      const event = {
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      } as any
+
+      vi.stubGlobal('useDb', () => createDb().db)
+
+      expect((await handler(event)).holdsGoogleData).toBe(false)
+
+      vi.stubGlobal('useDb', () => createDb({
+        chat: createChat({ googleDataAt: new Date(1_000) }),
+      }).db)
+
+      const flagged = await handler(event)
+
+      expect(flagged.holdsGoogleData).toBe(true)
+      expect(flagged).not.toHaveProperty('googleDataAt')
+
+      vi.stubGlobal('useDb', () => createDb({
+        chat: createChat({
+          messages: [createMessage({
+            role: 'assistant',
+            parts: [{
+              type: 'tool-google__drive_read',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: {},
+              output: { references: [], bodyRemoved: true },
+            }],
+          })],
+        }),
+      }).db)
+
+      expect((await handler(event)).holdsGoogleData).toBe(true)
+    })
 })
 
 describe('chat detail API — generated image reconstruction', () => {

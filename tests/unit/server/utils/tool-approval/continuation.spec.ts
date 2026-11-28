@@ -609,6 +609,47 @@ describe('resolveReplayPermissionMode', () => {
     expect(resolveReplayPermissionMode('besidka', 'besidka__list_files'))
       .toBe('blocked')
   })
+
+  it('reads the Google modes of a Google tool, with "ask" as the default',
+    () => {
+      const googleModes = new Map([['google__gmail_search', 'blocked' as const]])
+
+      expect(resolveReplayPermissionMode(
+        'google',
+        'google__gmail_search',
+        undefined,
+        undefined,
+        googleModes,
+      )).toBe('blocked')
+      expect(resolveReplayPermissionMode(
+        'google',
+        'google__gmail_read_thread',
+        undefined,
+        undefined,
+        googleModes,
+      )).toBe('ask')
+      expect(resolveReplayPermissionMode('google', 'google__gmail_search'))
+        .toBe('ask')
+    })
+
+  it('never lets a Google mode reach a Besidka or connector tool', () => {
+    const googleModes = new Map([['besidka__list_files', 'blocked' as const]])
+
+    expect(resolveReplayPermissionMode(
+      'connector',
+      'besidka__list_files',
+      undefined,
+      undefined,
+      googleModes,
+    )).toBe('ask')
+    expect(resolveReplayPermissionMode(
+      'besidka',
+      'besidka__list_files',
+      new Map([['besidka__list_files', 'allow' as const]]),
+      undefined,
+      googleModes,
+    )).toBe('allow')
+  })
 })
 
 describe('decideContinuation with Besidka tool permissions', () => {
@@ -735,6 +776,57 @@ describe('wrapApprovedExecutions', () => {
     expect(stop).toHaveBeenCalledWith('approval-1')
     expect(claimMocks.markClaimDone).toHaveBeenCalledTimes(1)
   })
+
+  it('hands the approval id to the approved call and to no other call',
+    async () => {
+      const [decision] = decideContinuation({
+        answers: [{
+          response: {
+            approvalId: 'approval-1',
+            approved: true,
+            remember: 'once',
+          },
+          record: pendingRecord(),
+        }],
+        entries: connectorEntries(),
+        state: createApprovalState(),
+      })
+      const owner = {
+        userId: 1,
+        chatPublicId: 'chat-1',
+        messagePublicId: 'a-1',
+      }
+      const heartbeats = startClaimHeartbeats({
+        db: {} as never,
+        owner,
+        approvalIds: ['approval-1'],
+        logger: { set: vi.fn() },
+      })
+      const execute = vi.fn(async () => 'done')
+      const tools = wrapApprovedExecutions({
+        tools: { [TOOL_NAME]: { execute } } as never,
+        decisions: [decision!],
+        db: {} as never,
+        owner,
+        heartbeats,
+        onSettled: vi.fn(),
+        logger: { set: vi.fn() },
+      })!
+      const run = (tools[TOOL_NAME] as any).execute
+
+      await run({}, { toolCallId: 'call-other' })
+      await run({}, { toolCallId: 'call-1' })
+
+      heartbeats.stopAll()
+
+      expect(execute).toHaveBeenNthCalledWith(1, {}, {
+        toolCallId: 'call-other',
+      })
+      expect(execute).toHaveBeenNthCalledWith(2, {}, {
+        toolCallId: 'call-1',
+        approvalId: 'approval-1',
+      })
+    })
 })
 
 describe('applyRememberGrants Always allow', () => {

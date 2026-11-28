@@ -43,6 +43,11 @@ const { default: worker, DocRenderer } = await import(
   '~~/workers/doc-renderer/src/index'
 )
 const { validate } = await import('@besidka/doc-renderer/validate')
+const { extractOfficeText } = await import('@besidka/doc-renderer/extract')
+const {
+  estimateShapedWorkbook,
+  estimateWorkbook,
+} = await import('~~/tests/fixtures/documents/extract/workbook-builders')
 
 const WORKER_ROOT = resolve(import.meta.dirname, '../../../../workers/doc-renderer')
 const fonts = loadFonts()
@@ -137,17 +142,93 @@ describe('DocRenderer entrypoint', () => {
     const capabilities = await createRenderer().capabilities()
 
     expect(capabilities).toEqual({
-      rendererVersion: '1.1.0+1.0.0',
+      rendererVersion: '1.2.0+1.0.0',
       specVersions: [1],
       formats: ['pdf', 'docx', 'pptx', 'xlsx'],
       maxOutputBytes: 20 * 1024 * 1024,
       extract: {
         version: 1,
+        versions: [1, 2],
         formats: ['docx', 'xlsx', 'pptx'],
         maxInputBytes: 30 * 1024 * 1024,
         maxTextBytes: 1024 * 1024,
       },
     })
+  })
+
+  it('answers a caller that does not ask for a version exactly as v1', async () => {
+    const bytes = estimateWorkbook()
+    const renderer = createRenderer()
+    const unversioned = await renderer.extract({ format: 'xlsx', bytes })
+    const versionOne = await renderer.extract({
+      format: 'xlsx',
+      bytes,
+      version: 1,
+      maxTextBytes: 20_000,
+    })
+
+    expect(unversioned).toEqual(extractOfficeText(bytes, 'xlsx'))
+    expect(versionOne).toEqual(unversioned)
+    expect(unversioned.workbookMap).toBeUndefined()
+    expect(unversioned.text).not.toContain('# Workbook map')
+  })
+
+  it('returns the workbook map when version 2 is asked for', async () => {
+    const result = await createRenderer().extract({
+      format: 'xlsx',
+      bytes: estimateWorkbook(),
+      version: 2,
+      maxTextBytes: 200 * 1024,
+    })
+
+    expect(result.status).toBe('ready')
+    expect(result.text.startsWith('# Workbook map')).toBe(true)
+    expect(result.workbookMap).toMatchObject({ sheets: 5, formulas: 44 })
+  })
+
+  it('clamps the map size and refuses unknown versions', async () => {
+    const bytes = estimateShapedWorkbook()
+    const renderer = createRenderer()
+    const small = await renderer.extract({
+      format: 'xlsx',
+      bytes,
+      version: 2,
+      maxTextBytes: 1,
+    })
+    const unknown = await renderer.extract({
+      format: 'xlsx',
+      bytes,
+      version: 9,
+    })
+
+    expect(new TextEncoder().encode(small.text).byteLength)
+      .toBeLessThanOrEqual(16 * 1024)
+    expect(small.workbookMap?.cut).toContain('values')
+    expect(unknown).toMatchObject({
+      status: 'failed',
+      errorCode: 'unsupported_version',
+    })
+  })
+
+  it('answers version 2 for documents as version 1', async () => {
+    const rendered = await createRenderer().render(createRequest(SPECS.docx))
+
+    expect(rendered.ok).toBe(true)
+
+    if (!rendered.ok) {
+      return
+    }
+
+    const renderer = createRenderer()
+    const mapRequest = await renderer.extract({
+      format: 'docx',
+      bytes: rendered.bytes,
+      version: 2,
+    })
+
+    expect(mapRequest).toEqual(
+      await renderer.extract({ format: 'docx', bytes: rendered.bytes }),
+    )
   })
 
   it.each(['docx', 'pptx', 'xlsx'] as const)(
@@ -225,7 +306,7 @@ describe('DocRenderer entrypoint', () => {
       )
 
       expect(result.extension).toBe(format)
-      expect(result.rendererVersion).toBe('1.1.0+1.0.0')
+      expect(result.rendererVersion).toBe('1.2.0+1.0.0')
       expect(validated.ok && validated.provenance).toBe('ai')
     },
   )

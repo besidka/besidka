@@ -109,6 +109,13 @@ Earlier user files are carried only when all of these hold
   text size (`files.text_bytes`) replaces the file size in the count, byte and
   64 KB checks. An Office file without ready text is omitted as
   `unsupported-by-model`; it never makes the send fail.
+- A spreadsheet whose workbook map is over 64 KB (up to the 200 KB per-file
+  cap), or a version 1 text the send may upgrade, is carried "structure
+  only" (BES-448): charged a fixed 64 KB, then fitted by `fitWorkbookMap()`
+  in `convertFilesForAI()` so every formula and rule and the small value
+  tabs survive into later turns, with a note that values were shortened and
+  the file can be attached again. The same file in the newest message is
+  sent whole. Details in `docs/files.md`, rule 4 of the carry-over.
 
 A file that fails any check becomes the text `Previously attached file
 omitted from model context: <name>.` (`omittedFilePrefix`,

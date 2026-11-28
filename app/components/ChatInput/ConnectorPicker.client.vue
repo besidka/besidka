@@ -151,6 +151,48 @@
               @change="emit('toggle-besidka')"
             >
           </label>
+          <div
+            v-if="googleRows.length"
+            role="group"
+            aria-label="Google"
+            data-testid="connector-picker-google"
+          >
+            <ChatInputToolsMenuInfoNote
+              v-if="googleChoiceState === 'error'"
+              class="mx-3 mb-1 flex items-center gap-2"
+              data-testid="connector-picker-google-error"
+            >
+              <span class="grow">
+                Could not load this chat's Google choice.
+              </span>
+              <button
+                type="button"
+                class="btn btn-xs shrink-0 max-sm:min-h-11"
+                data-testid="connector-picker-google-retry"
+                @click="emit('retry-google')"
+              >
+                Try again
+              </button>
+            </ChatInputToolsMenuInfoNote>
+            <ChatInputConnectorPickerGoogleRow
+              v-for="row in googleRows"
+              :key="row.entryId"
+              :row="row"
+              :is-saving="googleSavingServices.includes(row.service)"
+              :choice-state="googleChoiceState"
+              @toggle="emit('toggle-google', $event)"
+              @navigate="close"
+              @choose-model="emit('choose-model')"
+            />
+            <p
+              class="sr-only"
+              role="status"
+              aria-live="polite"
+              data-testid="connector-picker-google-status"
+            >
+              {{ googleAnnouncement }}
+            </p>
+          </div>
           <ul
             v-if="items.length"
             class="grid grid-cols-[minmax(0,1fr)] gap-0.5"
@@ -337,7 +379,12 @@ import {
   CONNECTOR_TOOL_MODE_LABELS,
   CONNECTORS_PER_SEND,
 } from '#shared/utils/connectors-policy'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import { planTurnAllOn } from '~/composables/composer-connectors'
+import type {
+  ComposerGoogleRow,
+  GoogleChoiceState,
+} from '~/composables/composer-google-tools'
 import type {
   ComposerConnectorItem,
   ComposerDisabledConnectorItem,
@@ -351,12 +398,20 @@ const props = withDefaults(defineProps<{
   isAtLimit: boolean
   isSaving: boolean
   besidka?: { enabled: boolean, isSaving: boolean } | null
+  googleRows?: ComposerGoogleRow[]
+  googleSavingServices?: GoogleService[]
+  googleChoiceState?: GoogleChoiceState
+  googleAnnouncement?: string
   isLoaded?: boolean
   isRegistryAvailable?: boolean
 }>(), {
   disabledItems: () => [],
   offIds: () => [],
   besidka: null,
+  googleRows: () => [],
+  googleSavingServices: () => [],
+  googleChoiceState: 'ready',
+  googleAnnouncement: '',
   isLoaded: true,
   isRegistryAvailable: false,
 })
@@ -366,6 +421,9 @@ const emit = defineEmits<{
   'enable': [connectorId: string]
   'set-all': [connectorIds: string[]]
   'toggle-besidka': []
+  'toggle-google': [service: GoogleService]
+  'retry-google': []
+  'choose-model': []
 }>()
 
 const isOpen = defineModel<boolean>('open', { default: false })

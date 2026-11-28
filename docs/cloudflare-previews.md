@@ -467,6 +467,76 @@ in `preview-build.yml` (unprivileged), upload it as an artifact, deploy it from
 default branch, and have that job generate the app Preview config with the
 override through `-c`. It needs the security review above first.
 
+## Worker startup CPU (error 10021)
+
+Error 10021 ("Script startup exceeded CPU time limit") refused a Preview
+deploy twice on the Google umbrella.
+The rules, the measured numbers and the measuring recipe are in
+`docs/worker-startup.md`.
+
+## Startup budget and the 10021 retry
+
+Two CI steps watch the startup limit. Neither changes the production deploy.
+
+**Check Worker startup** (`preview-build.yml`, job `build`, after "Verify build
+output exists"). It runs `pnpm exec wrangler check startup` three times on the
+fresh `.output`, reads the `Active: N ms` line of each run, and takes the
+median. The step needs no credentials: `check startup` bundles
+`.output/server/index.mjs` with `wrangler deploy --dry-run` and profiles it in a
+local workerd. The result goes to the log
+(`Worker startup (local, median of 3): N ms`) and to the step summary as a small
+table (median, the three runs, the thresholds). If a run fails or its output
+cannot be parsed, the step warns and carries on; it never fails because of the
+measurement itself.
+
+Thresholds are `env` values at the top of the step:
+
+| Value | Default | Effect |
+| --- | --- | --- |
+| `STARTUP_WARN_MS` | 450 | A `::warning::` and an upload of the `.cpuprofile` as the `worker-startup-cpuprofile` artifact (7 days) |
+| `STARTUP_FAIL_MS` | 700 | Warn-only today: a warning that says "would fail" |
+| `STARTUP_BUDGET_ENFORCE` | `'false'` | Set to `'true'` to make the fail threshold a real failure |
+
+Flip enforcement after a few weeks of summaries show the usual value. The
+numbers are local ones: the platform limit is 1000 ms and the platform measures
+about 1.4 to 1.9 times the local figure (about 250 to 280 ms locally for this
+repository was 360 to 467 ms on a production deploy), so 1000 ms on the
+platform is roughly 550 to 700 ms locally, and the same bundle varies by about
+30% from one platform run to the next. Treat the local median as a regression
+signal, not as the Cloudflare number.
+
+**Retry on error 10021** (`preview-deploy.yml`, step "Deploy PR preview to
+Cloudflare"). The step keeps the exact `wrangler preview` command and the JSON
+file, and also tees stderr to `$RUNNER_TEMP/preview.err` (stdout stays the JSON
+file). When the command fails and the captured text contains `code: 10021` or
+`Script startup exceeded CPU time limit`, it waits 20 seconds, runs the same
+command once more, and records `Preview deploy retried once after Cloudflare
+error 10021` as a warning and in the step summary. Any other failure fails at
+once with the same exit code, and a second 10021 fails the step.
+
+Why it is safe: error 10021 is raised by Cloudflare's validation of the upload,
+so a rejected deploy changes nothing on the Worker or the preview, and running
+the same upload again cannot leave half of a deploy behind. The retry is limited
+to the exact error because other failures (a bad token, a missing binding, a
+10025 "Preview not found") are not transient and a retry would only hide them.
+Both 10021 failures seen on Previews passed on a plain re-run, which is what
+the step now does itself.
+
+The step also prints any scalar field of the preview JSON whose key contains
+"startup", if wrangler returns one, so a platform number is recorded when it
+exists. No other field is printed (the JSON holds `author_email` and every
+`env` var).
+
+**Production is not changed** (owner decision): `.github/workflows/production.yml`
+neither retries nor measures. Production `wrangler deploy` already prints
+`Worker Startup Time: N ms` from the API response. To capture it, give the step
+"Deploy app to Cloudflare Workers via Wrangler" an id (it has `deploy`) and read
+the action's log, or run the command with `wrangler deploy --env production
+2>&1 | tee "$RUNNER_TEMP/deploy.log"` and then
+`grep -F 'Worker Startup Time' "$RUNNER_TEMP/deploy.log" >> "$GITHUB_STEP_SUMMARY"`
+(use `grep ... || true`, since `shell: bash` runs with `-eo pipefail`). The two
+data points so far are 360 and 467 ms for the same bundle.
+
 ## Gotchas
 
 - **`wrangler preview --json` stdout is not pure JSON.** Wrangler first prints

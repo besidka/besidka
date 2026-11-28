@@ -23,7 +23,8 @@ function createDb(sqlite: SqliteDatabase) {
       name text NOT NULL,
       size integer NOT NULL,
       type text NOT NULL DEFAULT 'text/plain',
-      source text NOT NULL DEFAULT 'upload'
+      source text NOT NULL DEFAULT 'upload',
+      external_source text
     );
 
     CREATE TABLE artifacts (

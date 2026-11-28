@@ -18,6 +18,7 @@ export interface ArtifactViewerAccess {
   viewerUserId: number
   storageAllowed: boolean
   bridgeAllowed: boolean
+  googleDerived: boolean
   shareId?: number
 }
 
@@ -66,6 +67,7 @@ export async function resolveArtifactViewerAccess(
       viewerUserId: input.viewerUserId,
       storageAllowed: true,
       bridgeAllowed: true,
+      googleDerived: !!artifact.googleDerivedAt,
     }
   }
 
@@ -87,6 +89,7 @@ export async function resolveArtifactViewerAccess(
     viewerUserId: input.viewerUserId,
     storageAllowed: resolved.share.storageAllowed,
     bridgeAllowed: resolved.share.bridgeAllowed,
+    googleDerived: !!resolved.artifact.googleDerivedAt,
     shareId: resolved.share.id,
   }
 }

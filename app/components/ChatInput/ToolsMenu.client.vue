@@ -194,10 +194,9 @@ const emit = defineEmits<{
   'select-reasoning-level': [level: ReasoningLevel]
   'save-default-reasoning-level': [level: ReasoningLevel]
   'open-project-picker': []
-  'open-files-select': []
   'open-files-upload': []
-  'open-files-generated': []
   'open-artifact-picker': []
+  'open-google-drive': []
   'open-skills-picker': []
   'open-connectors-picker': []
   'update:use-memory': [value: boolean]
@@ -321,17 +320,14 @@ const contentListeners = {
   'onOpenProjectPicker': closeAfter(() => {
     emit('open-project-picker')
   }),
-  'onOpenFilesSelect': closeAfter(() => {
-    emit('open-files-select')
-  }),
   'onOpenFilesUpload': closeAfter(() => {
     emit('open-files-upload')
   }),
-  'onOpenFilesGenerated': closeAfter(() => {
-    emit('open-files-generated')
-  }),
   'onOpenArtifactPicker': closeAfter(() => {
     emit('open-artifact-picker')
+  }),
+  'onOpenGoogleDrive': closeAfter(() => {
+    emit('open-google-drive')
   }),
   'onOpenSkillsPicker': closeAfter(() => {
     emit('open-skills-picker')

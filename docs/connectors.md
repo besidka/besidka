@@ -2119,8 +2119,13 @@ When the model calls a tool that needs approval:
    `HKDF-SHA-256(NUXT_ENCRYPTION_KEY, info='besidka/tool-approval/v1')`.
 
 The user's answer is a continuation send: the send route accepts
-`toolApprovalResponses: z.array(z.object({ approvalId: z.string().max(200), approved: z.boolean(), remember: z.enum(['once', 'chat', 'always']).default('once'), reason: z.string().max(500).optional() })).max(10)`
-with empty user text. The server checks that the session user owns the chat
+`{ approval: { messageId, responses: [{ approvalId, approved, remember, reason? }] } }`
+(`toolApprovalContinuationBodySchema` in
+`server/utils/chats/request-schema.ts`: 1 to 10 responses, each approval id
+once and matching `TOOL_APPROVAL_ID_PATTERN`, `remember` one of `once`,
+`chat`, `always` with `once` as the default, `reason` at most 500
+characters, no user message, model, gateway or tools; those come from the
+stored snapshot). The server checks that the session user owns the chat
 and the pending approval, loads the arguments from KV, re-runs the section 7.1
 decision against the current hash (a tool that drifted since the request is
 refused), executes or denies, and appends the result to the **same**
@@ -2136,9 +2141,12 @@ invocation (`docs/chats/stuck-generation-guard.md`), the generation lease is
 stuck "generating" chat. Cost: the continuation re-sends the context, one
 extra model turn per approval.
 
-`sanitizeMessagesForModelContext` gets one exception: the last assistant
-message keeps its parts when it holds an `approval-responded` part, so the
-continuation sees the call it answered. Earlier tool parts stay stripped.
+The history sanitizer has no exception for the paused reply. The chat route
+leaves the resumed assistant message out of the history it rebuilds
+(`allMessages` drops it by its public id), and
+`buildResumedAssistantMessages` appends it after the sanitized history,
+unsanitized, so the continuation sees the call it answered with its stored
+provider metadata. Earlier tool parts stay stripped.
 
 The C-6 spike (section 14.1) confirmed that AI SDK v7 continuation resumes
 this way, so the fallback of executing the approved call server-side with a
@@ -2430,7 +2438,9 @@ Where this differs from sections 7.2 and 7.6:
   nobody could answer. `TOOL_APPROVAL_ROUNDS_PER_TURN` is the single limit
   both checks read.
 - **Connector calls per turn.** The send's `toolApproval` now denies a
-  connector call once the turn spent 12 connector calls, and
+  connector call once the turn spent
+  `TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN` (50, raised from 12 in section
+  6.6) connector calls, and
   `getConnectorTools` starts its per-send counter from the turn's count
   (`callsUsedThisTurn`), so the limit holds across rounds.
 - **Remember.** The choice is clamped to the options the request offered.
@@ -2531,8 +2541,11 @@ Where this differs from sections 7.2 and 7.6:
   - Provider metadata is restored from D1 and KV but only checked against
     mock models; a real Anthropic-with-thinking or Gemini resume is not
     verified yet.
-  - The Besidka permission modes (Blocked, Allow) are not read yet, so
-    replay uses `ask` and Blocked is not reachable from the route.
+  - Resolved since: the replay reads the Besidka permission modes. The
+    chat route loads them with `resolveBesidkaPermissionModes` for the
+    answered Besidka calls, and `resolveReplayPermissionMode` denies a tool
+    the user set to Blocked after approving it (a Besidka call with no
+    resolved mode fails closed as Blocked).
 
 ### 7.8 As built: the approval UI (C-6 L6, 2026-11-15)
 
@@ -2833,7 +2846,10 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   ("Created DOCX"); while the input still streams there is no `format`, so the
   generic title stays. Skills use `lucide:sparkles`, memory the memory icon,
   chat and project knowledge their own icons, and the future `besidka__*` tools
-  the Besidka mark. Artifacts and code execution have icons in the registry,
+  the Besidka mark, and the `google__` Drive tools the Google Drive logo (`GOOGLE_DRIVE_ICON`, `google-brand:drive`) with
+  a
+  title that names "Google Drive" in full (`docs/google.md`, section 13).
+  Artifacts and code execution have icons in the registry,
   but those tools are excluded from the step list today, so only an approval
   step for them shows one.
 - **Connector icon, in this order.** (1) An icon the server declares in its
@@ -4642,3 +4658,23 @@ term forbids third-party MCP clients or the preset text.
 | 6 | Whether OpenAI native requests should send `store: false` | C-11 spike, then owner | Path stays off |
 | 7 | Whether CIMD on preview hosts is accepted by Notion and Linear | C-4 | DCR fallback on previews |
 | 8 | Whether the GitHub remote server accepts fine-grained PATs | C-4 | Suggest fine-grained, fall back to classic with the fewest scopes |
+
+### 10.4 Google entries (BES-454, child 1)
+
+The Google services are a fixed "Google" group under the Besidka row, not
+connector rows: they never count toward "N of 20", never appear in
+`GET /api/v1/connectors` and a connector titled "Gmail" never gets their "Built
+in" badge. The same entries lead Discover as "Built into Besidka" and open a
+panel with state, Connect and Disconnect and a read-only tool list. See
+`docs/google.md`, section 16.
+
+In the composer's connector picker they are up to three rows after the Besidka
+row (child 3, `docs/google.md`, section 18): outside the five-connector limit,
+not in "Turn all on" and "Turn all off", not in the "N connectors" tile. A
+connected service has a switch ("Use Gmail in this chat", on by default);
+one that is not connected, needs a reconnect, needs the user's own client or
+is off in Labs has a link to where that is fixed; and when the chat's model or
+tools mean no Google tool is offered ("Not available with this model"), the
+switch is disabled and an info button gives the reason. Rows appear only
+with tool approvals and `google.drive` active, and the picker's own rules
+(`connectors` flag, tool calling) still apply.

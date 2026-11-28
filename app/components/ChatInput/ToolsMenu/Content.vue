@@ -164,28 +164,25 @@
       <ChatInputToolsMenuActionRow
         v-if="state.files.visible"
         label="Attach files"
-        hint="Upload from your device"
+        hint="Upload or pick from your files"
         icon="lucide:paperclip"
+        :badge="state.files.count || undefined"
         data-testid="tools-action-attach"
         @click="emit('open-files-upload')"
       />
-      <ChatInputToolsMenuActionRow
-        v-if="state.files.visible"
-        label="Add from library"
-        hint="Files you've uploaded"
-        icon="lucide:folder-open"
-        :badge="state.files.count || undefined"
-        data-testid="tools-action-library"
-        @click="emit('open-files-select')"
-      />
-      <ChatInputToolsMenuActionRow
-        v-if="state.files.visible && state.files.isImageInputSupported"
-        label="Generated images"
-        hint="Images made in your chats"
-        icon="lucide:images"
-        data-testid="tools-action-generated"
-        @click="emit('open-files-generated')"
-      />
+      <ChatInputToolsMenuActionRowWithInfo
+        v-if="state.files.visible && state.googleDrive?.visible"
+        :label="GOOGLE_DRIVE_BRAND_NAME"
+        :hint="GOOGLE_DRIVE_COPY_LABEL"
+        :icon="GOOGLE_DRIVE_ICON"
+        :badge="state.googleDrive.importing || undefined"
+        :is-pending="state.googleDrive.checking"
+        :info-label="GOOGLE_DRIVE_TOOLS_INFO_LABEL"
+        test-id="tools-action-google-drive"
+        @click="emit('open-google-drive')"
+      >
+        {{ GOOGLE_DRIVE_TOOLS_HINT }}
+      </ChatInputToolsMenuActionRowWithInfo>
       <ChatInputToolsMenuActionRow
         v-if="state.files.visible && state.artifacts.visible"
         label="Add artifact"
@@ -229,6 +226,15 @@
 <script setup lang="ts">
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
+import {
+  GOOGLE_DRIVE_TOOLS_HINT,
+  GOOGLE_DRIVE_TOOLS_INFO_LABEL,
+} from '#shared/utils/google-drive-tools'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
+import {
+  GOOGLE_DRIVE_BRAND_NAME,
+  GOOGLE_DRIVE_COPY_LABEL,
+} from '#shared/utils/google-drive'
 import type {
   ChatInputToolsState,
   ToolsSection,
@@ -249,10 +255,9 @@ const emit = defineEmits<{
   'select-reasoning-level': [level: ReasoningLevel]
   'save-default-reasoning-level': [level: ReasoningLevel]
   'open-project-picker': []
-  'open-files-select': []
   'open-files-upload': []
-  'open-files-generated': []
   'open-artifact-picker': []
+  'open-google-drive': []
   'open-skills-picker': []
   'open-connectors-picker': []
   'update:use-memory': [value: boolean]
@@ -274,6 +279,7 @@ const connectorsBadge = computed<number | undefined>(() => {
 
 const isAddSectionVisible = computed<boolean>(() => {
   return props.state.files.visible
+    || props.state.googleDrive?.visible === true
     || props.state.skills?.visible === true
     || props.state.connectors?.visible === true
     || props.state.project.visible

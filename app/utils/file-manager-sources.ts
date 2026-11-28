@@ -1,3 +1,4 @@
+import { LazyChatInputFilesModalSelectDrive } from '#components'
 import type {
   BuiltInFileSourceTab,
   ExtraFileSourceTab,
@@ -51,10 +52,23 @@ export const fileManagerBuiltInSourceTabs: readonly BuiltInFileSourceTab[] = [
 /**
  * Registry of extra file manager sources (Google Drive, documents). Each
  * entry renders its own component in the file area and gates itself through
- * `isEnabled`, typically a feature flag check.
+ * `isEnabled`, typically a feature flag check. Called once while the Select
+ * tab sets up, so a feature composable is resolved here and read inside
+ * `isEnabled`, which runs later inside a `computed`.
  */
 export function getFileManagerExtraSourceTabs(): ExtraFileSourceTab[] {
-  return []
+  const googleDrive = useFeature('google.drive')
+
+  return [
+    {
+      kind: 'extra',
+      id: GOOGLE_DRIVE_TAB_ID,
+      label: GOOGLE_DRIVE_TAB_LABEL,
+      testId: GOOGLE_DRIVE_TAB_TEST_ID,
+      component: LazyChatInputFilesModalSelectDrive,
+      isEnabled: () => googleDrive.value.active,
+    },
+  ]
 }
 
 export function resolveFileManagerSourceTabs(options: {

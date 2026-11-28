@@ -2,6 +2,7 @@ import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
+  branchGoogleDataAt,
   buildBranchTitle,
   insertBranchedMessages,
 } from '~~/server/utils/chats/branch'
@@ -109,6 +110,7 @@ export default defineEventHandler(async (event) => {
     columns: {
       id: true,
       title: true,
+      googleDataAt: true,
     },
     with: {
       messages: {
@@ -162,6 +164,10 @@ export default defineEventHandler(async (event) => {
   ))
 
   const title = buildBranchTitle(sourceChat.title)
+  const googleDataAt = branchGoogleDataAt({
+    googleDataAt: sourceChat.googleDataAt,
+    messages: messagesToBranch,
+  })
 
   const newChat = await db
     .insert(schema.chats)
@@ -169,6 +175,7 @@ export default defineEventHandler(async (event) => {
       userId,
       title,
       branchedFromShareSlug: params.data.slug,
+      ...(googleDataAt ? { googleDataAt } : {}),
     })
     .returning({
       id: schema.chats.id,

@@ -153,6 +153,41 @@ describe('a document card in an answer', () => {
   })
 })
 
+describe('a created Google file card in an answer', () => {
+  const createdFile = {
+    type: 'tool-google__drive_create_file',
+    toolCallId: 'call_1',
+    state: 'output-available',
+    input: { name: 'Plan', kind: 'document', content: '# Plan' },
+    output: {
+      references: [{
+        id: 'abcdefghij1234567890',
+        kind: 'file',
+        title: 'Plan',
+      }],
+    },
+  }
+  const waitingFile = { ...createdFile, state: 'approval-requested' }
+
+  it('renders after the answer text and with a gap above it', () => {
+    const rendered = orderOutputCardPartsLast([createdFile, text])
+
+    expect(rendered).toEqual([text, createdFile])
+    expect(gapFor(rendered, 1)).toBe(true)
+  })
+
+  it('is a card only once the call is confirmed', () => {
+    expect(isCardMessagePart(messageOf([createdFile]), createdFile)).toBe(true)
+    expect(isCardMessagePart(messageOf([waitingFile]), waitingFile))
+      .toBe(false)
+
+    const rendered = orderOutputCardPartsLast([waitingFile, text])
+
+    expect(rendered).toEqual([waitingFile, text])
+    expect(gapFor(rendered, 1)).toBe(false)
+  })
+})
+
 describe('getPartGaps', () => {
   it('matches hasGapBeforePart for every part in one pass', () => {
     const reasoning = { type: 'reasoning', text: 'thinking' }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
 import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
+import { GOOGLE_TOOL_CHAT_GRANT_LABELS } from '#shared/utils/google-tool-approvals'
 import type { ApprovalStepContext } from '~/utils/tool-approval-step'
 import {
   formatApprovalOutcome,
@@ -76,6 +77,71 @@ describe('getApprovalStepModel', () => {
       partState: 'approval-requested',
       approved: null,
     })
+  })
+
+  it('keeps only a Google link from the server data', () => {
+    const link = 'https://mail.google.com/mail/#all/t1'
+
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ link })),
+    )?.link).toBe(link)
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ link: 'https://evil.example/' })),
+    )).not.toHaveProperty('link')
+  })
+
+  it('keeps the Drive names of the server data only when they are valid',
+    () => {
+      const names = {
+        folder: { name: 'Projects', id: 'folder-id-0123456789' },
+      }
+
+      expect(getApprovalStepModel(
+        connectorPart(),
+        dataMap(approvalData({ driveNames: names })),
+      )?.driveNames).toEqual(names)
+      expect(getApprovalStepModel(
+        connectorPart(),
+        dataMap(approvalData({
+          driveNames: { folder: { name: 'x', id: 'bad id' } },
+        })),
+      )).not.toHaveProperty('driveNames')
+      expect(getApprovalStepModel(
+        connectorPart(),
+        dataMap(approvalData({ driveNames: { other: names.folder } })),
+      )).not.toHaveProperty('driveNames')
+    })
+
+  it('keeps the item, source and target names with a kind and refuses any '
+    + 'other kind in the browser too', () => {
+    const names = {
+      item: { name: 'Plan', id: 'item-id-0123456789', kind: 'folder' },
+      from: { name: 'Projects', id: 'folder-id-0123456789' },
+      to: { name: 'Archive', id: 'target-id-0123456789' },
+    }
+
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({ driveNames: names })),
+    )?.driveNames).toEqual(names)
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({
+        driveNames: {
+          item: { name: 'Plan', id: 'item-id-0123456789', kind: 'shortcut' },
+        },
+      })),
+    )).not.toHaveProperty('driveNames')
+    expect(getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({
+        driveNames: {
+          item: { name: 'a'.repeat(201), id: 'item-id-0123456789' },
+        },
+      })),
+    )).not.toHaveProperty('driveNames')
   })
 
   it('falls back to the default reason and Allow once without data', () => {
@@ -384,6 +450,57 @@ describe('approval copy', () => {
   })
 })
 
+describe('Google approvals', () => {
+  function googleModel(overrides: Record<string, unknown> = {}) {
+    return getApprovalStepModel(
+      connectorPart({
+        toolName: 'google__drive_search',
+        ...overrides,
+      }),
+      dataMap(approvalData({
+        toolName: 'google__drive_search',
+        reason: 'default',
+        summary: 'Besidka wants to search Google Drive',
+        rememberOptions: ['once', 'chat'],
+      })),
+    )!
+  }
+
+  it('says that Google content may go to the connector', () => {
+    expect(getApprovalReasonText('google-egress', 'Notion',
+      'mcp__linear__create_issue'))
+      .toBe('Content from Google in this chat may be sent to this connector')
+  })
+
+  it('shows the egress prompt without Always allow', () => {
+    const model = getApprovalStepModel(
+      connectorPart(),
+      dataMap(approvalData({
+        reason: 'google-egress',
+        rememberOptions: ['once', 'chat'],
+      })),
+    )!
+
+    expect(model.reason).toBe('google-egress')
+    expect(getApprovalButtons(model.rememberOptions).map((button) => {
+      return button.remember
+    })).toEqual(['once', 'chat'])
+  })
+
+  it('titles a Google tool with its server-written summary', () => {
+    const model = googleModel()
+
+    expect(getApprovalStepTitle(model, undefined))
+      .toBe('Besidka wants to search Google Drive')
+    expect(getApprovalStepTitle({ ...model, summary: '' }, undefined))
+      .toBe('Besidka wants to drive search on Google')
+    expect(getApprovalStepSummaryLine(model)).toBe('')
+    expect(getApprovalButtons(model.rememberOptions).map((button) => {
+      return button.remember
+    })).toEqual(['once', 'chat'])
+  })
+})
+
 describe('getApprovalButtons', () => {
   it('offers only what the server allowed, in a fixed order', () => {
     expect(getApprovalButtons(['once'])).toEqual([
@@ -394,6 +511,50 @@ describe('getApprovalButtons', () => {
       { remember: 'chat', label: 'Allow in this chat' },
       { remember: 'always', label: 'Always allow' },
     ])
+  })
+})
+
+describe('getApprovalButtons for a Google Drive tool', () => {
+  it('keeps the short label and says what Allow in this chat covers for the '
+    + 'read and the list in the accessible name, with Allow once first', () => {
+    expect(getApprovalButtons(['once', 'chat'], 'google__drive_read_file'))
+      .toEqual([
+        { remember: 'once', label: 'Allow once' },
+        {
+          remember: 'chat',
+          label: 'Allow in this chat',
+          ariaLabel: 'Allow in this chat: reading any file you picked from '
+            + 'Google Drive',
+        },
+      ])
+    expect(getApprovalButtons(['once', 'chat'], 'google__drive_list_picked')[1])
+      .toMatchObject({
+        label: 'Allow in this chat',
+        ariaLabel: 'Allow in this chat: listing the files you picked from '
+          + 'Google Drive',
+      })
+  })
+
+  it('starts the accessible name with the visible label for every Google '
+    + 'chat grant', () => {
+    for (const toolName of Object.keys(GOOGLE_TOOL_CHAT_GRANT_LABELS)) {
+      const chatButton = getApprovalButtons(['once', 'chat'], toolName)[1]!
+
+      expect(chatButton.ariaLabel?.startsWith(`${chatButton.label}: `))
+        .toBe(true)
+      expect(chatButton.ariaLabel).not.toMatch(/ in this chat$/)
+    }
+  })
+
+  it('leaves every other tool, and the write, without an accessible name', () => {
+    expect(getApprovalButtons(['once', 'chat'], 'google__docs_lookup')[1])
+      .toEqual({ remember: 'chat', label: 'Allow in this chat' })
+    expect(getApprovalButtons(['once'], 'google__drive_save_file'))
+      .toEqual([{ remember: 'once', label: 'Allow once' }])
+    expect(getApprovalButtons(['once', 'chat'])[1])
+      .toMatchObject({ label: 'Allow in this chat' })
+    expect(getApprovalButtons(['once', 'chat'], 'constructor')[1])
+      .toMatchObject({ label: 'Allow in this chat' })
   })
 })
 

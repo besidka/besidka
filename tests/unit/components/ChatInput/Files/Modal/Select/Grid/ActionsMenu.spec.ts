@@ -24,6 +24,23 @@ describe('ChatInput/Files/Modal/Select/Grid/ActionsMenu', () => {
     expect(menu.attributes('popover')).toBe('auto')
   })
 
+  it('has a refresh item only when refreshable, and emits it', async () => {
+    const plain = await mountMenu()
+
+    expect(plain.find('[data-testid="files-menu-refresh"]').exists())
+      .toBe(false)
+
+    const refreshable = await mountSuspended(ActionsMenu, {
+      props: { fileName: 'Plan.docx', refreshable: true },
+    })
+
+    await refreshable.get('[data-testid="files-menu-refresh"]')
+      .trigger('click')
+
+    expect(refreshable.emitted('refresh')).toHaveLength(1)
+    expect(refreshable.emitted('rename')).toBeUndefined()
+  })
+
   it('emits rename and delete from its items', async () => {
     const wrapper = await mountMenu()
 

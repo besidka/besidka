@@ -6,10 +6,12 @@ import {
 } from '#shared/utils/tool-approval-parts'
 import {
   buildConnectorApprovalEntry,
+  buildGoogleApprovalEntry,
   buildMemoryApprovalEntries,
   buildMemoryApprovalEntry,
   chatHasAwaitingApproval,
   classifyNativeTool,
+  countChatGrantRuns,
   createSendToolApproval,
   createToolApprovalStreamCollector,
   hasGuardedProviderTool,
@@ -1714,6 +1716,85 @@ describe('grants audit follow-ups', () => {
   })
 })
 
+describe('the cap on searches under a chat grant', () => {
+  const SEARCH = 'google__gmail_search'
+
+  function grantedSearchApproval(priorRuns?: ReadonlyMap<string, number>) {
+    const approval = createSendToolApproval({
+      state: createApprovalState(),
+      ...(priorRuns ? { priorChatGrantRuns: priorRuns } : {}),
+    })
+
+    approval.registerTools({ [SEARCH]: {} } as never, new Map([[
+      SEARCH,
+      buildGoogleApprovalEntry({
+        toolName: SEARCH,
+        kind: 'read',
+        definitionHash: HASH,
+        summary: 'Search your Gmail',
+        chatGrantHash: HASH,
+        chatGrantRunsMax: 2,
+        toolApprovalsActive: true,
+      }),
+    ]]))
+
+    return approval
+  }
+
+  it('runs at most the capped number of granted calls, then asks again',
+    () => {
+      const approval = grantedSearchApproval()
+
+      expect(approval.toolApproval(call('c1', SEARCH))).toBe('not-applicable')
+      expect(approval.getGrantScope('c1')).toBe('chat')
+      expect(approval.toolApproval(call('c2', SEARCH))).toBe('not-applicable')
+      expect(approval.toolApproval(call('c3', SEARCH)))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+      expect(approval.getPendingDecision('c3')?.decision.rememberOptions)
+        .toEqual(['once', 'chat'])
+    })
+
+  it('keeps counting the granted runs a paused reply already holds', () => {
+    const approval = grantedSearchApproval(countChatGrantRuns([
+      { type: 'data-tool-grant', id: 'g1', data: {
+        toolCallId: 'a',
+        toolName: SEARCH,
+        scope: 'chat',
+      } },
+      { type: 'data-tool-grant', id: 'g2', data: {
+        toolCallId: 'b',
+        toolName: SEARCH,
+        scope: 'chat',
+      } },
+      { type: 'data-tool-grant', id: 'g3', data: {
+        toolCallId: 'c',
+        toolName: 'mcp__linear__list',
+        scope: 'always',
+      } },
+      { type: 'text', text: 'hi' },
+    ]))
+
+    expect(approval.toolApproval(call('c4', SEARCH)))
+      .toEqual({ type: 'user-approval', reason: 'default' })
+  })
+
+  it('counts only chat-scoped grant markers per tool', () => {
+    expect(countChatGrantRuns([
+      { type: 'data-tool-grant', id: 'g1', data: {
+        toolCallId: 'a',
+        toolName: SEARCH,
+        scope: 'chat',
+      } },
+      { type: 'data-tool-grant', id: 'g2', data: {
+        toolCallId: 'b',
+        toolName: SEARCH,
+        scope: 'always',
+      } },
+      { type: 'data-tool-grant', data: null },
+    ])).toEqual(new Map([[SEARCH, 1]]))
+  })
+})
+
 describe('memory tool Always allow in the send approval', () => {
   const input = { body: 'Likes tea', userRequestQuote: 'remember I like tea' }
 
@@ -1852,6 +1933,79 @@ describe('memory tool Always allow in the send approval', () => {
       expect(approval.consumeUserSettingCall(cleared)).toBe(false)
       expect(approval.isApprovedByUser(cleared)).toBe(true)
     })
+
+  it.each(['allow', 'ask'] as const)(
+    'denies both memory write tools once the send holds google taint on '
+    + 'mode %s, with no card, no marker and no cleared call',
+    (mode) => {
+      const approval = createMemoryApproval({
+        memory_write: mode,
+        memory_forget: mode,
+      })
+      const forgetInput = { id: 'x', userRequestQuote: 'forget it' }
+
+      approval.state.taint.add('google')
+
+      expect(approval.toolApproval(call('call-1', 'memory_write', input)))
+        .toEqual({
+          type: 'denied',
+          reason: SEND_TOOL_DENIAL_TEXT['google-data'],
+        })
+      expect(approval.toolApproval(call('call-2', 'memory_forget', forgetInput)))
+        .toEqual({
+          type: 'denied',
+          reason: SEND_TOOL_DENIAL_TEXT['google-data'],
+        })
+      expect(approval.getPendingDecision('call-1')).toBeUndefined()
+      expect(approval.getPendingDecision('call-2')).toBeUndefined()
+      expect(approval.getGrantScope('call-1')).toBeNull()
+      expect(approval.consumeUserSettingCall({
+        toolCallId: 'call-1',
+        toolName: 'memory_write',
+        input,
+      })).toBe(false)
+      expect(approval.consumeClearedCall({
+        toolCallId: 'call-1',
+        toolName: 'memory_write',
+        input,
+      })).toBe(false)
+      expect(approval.getDenials()).toEqual({ 'google-data': 2 })
+    },
+  )
+
+  it('tells the model nothing was saved and not to retry', () => {
+    const text = SEND_TOOL_DENIAL_TEXT['google-data']
+
+    expect(text).toMatch(/did not run/)
+    expect(text).toContain('Do not call memory_write or memory_forget again')
+    expect(text).toContain('nothing was saved or removed')
+  })
+
+  it('drops the Always allow marker of a memory write that throws, and '
+    + 'keeps it for one that runs', async () => {
+    const approval = createMemoryApproval({ memory_write: 'allow' })
+    const refusal = Object.assign(new Error('Refused.'), { status: 403 })
+    const execute = vi.fn()
+      .mockRejectedValueOnce(refusal)
+      .mockResolvedValueOnce({ action: 'created' })
+    const tools = approval.guardNativeWrites({
+      memory_write: { execute },
+    } as never) as unknown as Record<string, {
+      execute: (input: unknown, options: unknown) => Promise<unknown>
+    }>
+
+    approval.toolApproval(call('call-1', 'memory_write', input))
+    approval.toolApproval(call('call-2', 'memory_write', input))
+
+    expect(approval.getGrantScope('call-1')).toBe('always')
+    await expect(tools.memory_write!.execute(input, { toolCallId: 'call-1' }))
+      .rejects.toBe(refusal)
+    expect(approval.getGrantScope('call-1')).toBeNull()
+
+    await expect(tools.memory_write!.execute(input, { toolCallId: 'call-2' }))
+      .resolves.toEqual({ action: 'created' })
+    expect(approval.getGrantScope('call-2')).toBe('always')
+  })
 
   it('denies a Blocked memory tool, which the send does not offer', () => {
     const approval = createSendToolApproval({ state: createApprovalState() })

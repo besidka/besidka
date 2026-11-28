@@ -116,6 +116,21 @@ describe('admin path query stripping', () => {
     expect(toLoggedPath(undefined)).toBeUndefined()
   })
 
+  it('drops the code and state from both Google callbacks', () => {
+    expect(toLoggedPath('/api/v1/google/oauth/callback?code=a&state=b'))
+      .toBe('/api/v1/google/oauth/callback')
+    expect(toLoggedPath('/api/v1/google/byo/callback?code=a&state=b'))
+      .toBe('/api/v1/google/byo/callback')
+  })
+
+  it('drops the chat, file and format from the created file download', () => {
+    const query = 'chatSlug=01JABCDEFGHJKMNPQRSTVWXYZ0&fileId=abc&format=docx'
+
+    expect(toLoggedPath(
+      `/api/v1/google/drive/created-files/download?${query}`,
+    )).toBe('/api/v1/google/drive/created-files/download')
+  })
+
   it('keeps the search text out of the wide event path and message', () => {
     const context = {
       request: {
@@ -156,6 +171,25 @@ describe('connector OAuth callback query stripping', () => {
     expect(context.request.path).toBe('/api/v1/connectors/oauth/callback')
     expect(JSON.stringify(context)).not.toContain('auth-code-secret')
     expect(JSON.stringify(context)).not.toContain('state-secret')
+  })
+})
+
+describe('Google OAuth callback query stripping', () => {
+  const callbackPath = '/api/v1/google/oauth/callback'
+    + '?code=google-code-secret&state=google-state-secret'
+
+  it('keeps the code and the state out of every drained field', () => {
+    const context = {
+      request: { method: 'GET', path: callbackPath },
+      headers: {},
+      event: { path: callbackPath },
+    }
+
+    enrich(context)
+
+    expect(context.request.path).toBe('/api/v1/google/oauth/callback')
+    expect(JSON.stringify(context)).not.toContain('google-code-secret')
+    expect(JSON.stringify(context)).not.toContain('google-state-secret')
   })
 })
 

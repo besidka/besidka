@@ -292,6 +292,20 @@ describe('searchChats', () => {
       .toEqual(['slug-2', 'slug-3'])
   })
 
+  it('never returns a chat that holds Google data', async () => {
+    seedChat({ id: 1, userId: 1 })
+    seedChat({ id: 2, userId: 1 })
+    testDb.sqlite
+      .prepare('update chats set google_data_at = ? where id = ?')
+      .run(1_700_000_000, 1)
+    seedMessage({ chatId: 1, userId: 1, text: 'needle from a Drive file' })
+    seedMessage({ chatId: 2, userId: 1, text: 'needle in a plain chat' })
+
+    const { results } = await search({ query: 'needle' })
+
+    expect(results.map(hit => hit.chatId)).toEqual(['slug-2'])
+  })
+
   it('filters excluded chats before the candidate limit', async () => {
     seedChat({ id: 1, userId: 1, memoryExcluded: true })
     seedChat({ id: 2, userId: 1 })

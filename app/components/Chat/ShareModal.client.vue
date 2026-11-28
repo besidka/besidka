@@ -60,6 +60,7 @@
                   type="checkbox"
                   data-testid="share-toggle-indexable"
                   class="toggle toggle-sm shrink-0"
+                  :disabled="targetHoldsGoogleData"
                 >
               </label>
             </div>
@@ -168,6 +169,51 @@
                 Replies may repeat data from a connected service, such as
                 your issues or documents. Anyone with the link can read it.
               </span>
+            </div>
+
+            <div
+              v-if="targetHoldsGoogleData"
+              data-testid="share-google-data"
+              role="note"
+              class="alert alert-warning alert-soft text-sm"
+            >
+              <Icon name="lucide:shield-alert" size="16" />
+              <div class="grid gap-2">
+                <span>
+                  This chat holds content from Google Drive, Calendar or
+                  Gmail. Replies that repeat it would be visible to anyone
+                  with the link. Search engines never index it. Google files
+                  themselves are never shared.
+                </span>
+                <ul
+                  v-if="targetGoogleItems.length > 0"
+                  data-testid="share-google-data-items"
+                  class="list-disc ps-5 break-all"
+                >
+                  <li
+                    v-for="item in targetGoogleItems"
+                    :key="item"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+                <span
+                  v-if="share?.googleOptInNeeded"
+                  data-testid="share-google-data-paused"
+                >
+                  The link is paused because new Google content was added
+                  after you shared it. Share again to turn it back on.
+                </span>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input
+                    v-model="includeGoogleContent"
+                    type="checkbox"
+                    data-testid="share-google-data-opt-in"
+                    class="checkbox checkbox-sm"
+                  >
+                  <span>Share the Google content in this chat</span>
+                </label>
+              </div>
             </div>
 
             <div
@@ -300,7 +346,7 @@
             type="button"
             data-testid="share-generate-button"
             class="btn btn-primary btn-sm"
-            :disabled="isSaving || isLoading"
+            :disabled="isSaving || isLoading || isGoogleOptInMissing"
             @click="onGenerate"
           >
             {{ share ? 'Update' : 'Generate link' }}
@@ -330,6 +376,8 @@ const {
   targetChatSlug,
   targetHasFiles,
   targetUsedConnector,
+  targetHoldsGoogleData,
+  targetGoogleItems,
   share,
   shareCheck,
   isLoading,
@@ -348,7 +396,12 @@ const showFiles = shallowRef<boolean>(false)
 const showMetadata = shallowRef<boolean>(false)
 const showAuthorAvatar = shallowRef<boolean>(false)
 const allowBranch = shallowRef<boolean>(false)
+const includeGoogleContent = shallowRef<boolean>(false)
 const justCopied = shallowRef<boolean>(false)
+
+const isGoogleOptInMissing = computed<boolean>(() => {
+  return targetHoldsGoogleData.value && !includeGoogleContent.value
+})
 
 let copiedTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -433,6 +486,7 @@ function resetToDefaults() {
   showMetadata.value = false
   showAuthorAvatar.value = false
   allowBranch.value = false
+  includeGoogleContent.value = false
   resetCopiedState()
 }
 
@@ -551,11 +605,14 @@ async function onGenerate() {
 
   const url = await createOrUpdateShare(targetChatSlug.value, {
     duration: duration.value,
-    indexable: indexable.value,
+    indexable: indexable.value && !targetHoldsGoogleData.value,
     showFiles: showFiles.value,
     showMetadata: showMetadata.value,
     showAuthorAvatar: showAuthorAvatar.value,
     allowBranch: allowBranch.value,
+    ...(targetHoldsGoogleData.value
+      ? { includeGoogleContent: includeGoogleContent.value }
+      : {}),
   })
 
   if (!url) {

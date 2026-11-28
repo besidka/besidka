@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatInputToolsState } from '~/types/chat-input-tools'
+import { GOOGLE_DRIVE_ICON } from '#shared/utils/google-brand-icons'
 import {
   buildChatInputTiles,
   countSelectedConnectors,
+  buildGoogleLinkTile,
   getChatInputTileToneClass,
   getReasoningLevelLabel,
   getWebSearchValueLabel,
@@ -46,7 +48,6 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     files: {
       visible: true,
       count: 0,
-      isImageInputSupported: true,
     },
     artifacts: {
       visible: false,
@@ -777,5 +778,48 @@ describe('countSelectedConnectors', () => {
     expect(tile?.id).toBe('connectors')
     expect(tile?.ariaLabel).toContain('Notion')
     expect(countSelectedConnectors(state.connectors)).toBe(1)
+  })
+})
+
+describe('buildGoogleLinkTile', () => {
+  it('is nothing without a suggested file', () => {
+    expect(buildGoogleLinkTile(0, false)).toBeNull()
+  })
+
+  it('is one accent tile with the Google Drive caption and a name that '
+    + 'says what it does', () => {
+    const tile = buildGoogleLinkTile(1, false)
+
+    expect(tile).toMatchObject({
+      id: 'google-file',
+      section: null,
+      icon: { kind: 'icon', name: GOOGLE_DRIVE_ICON },
+      caption: 'Google Drive',
+      value: 'Attach file',
+      ariaLabel: 'Attach the Google file from the link',
+      removeLabel: 'Dismiss the Google file suggestion',
+      isNeutral: false,
+      isAuto: false,
+      isLocked: false,
+      isDisabled: false,
+    })
+    expect(getChatInputTileToneClass(tile!)).toContain('bg-accent/10')
+  })
+
+  it('counts the files in one tile for several links', () => {
+    expect(buildGoogleLinkTile(3, false)).toMatchObject({
+      value: 'Attach 3 files',
+      ariaLabel: 'Attach the Google files from the links',
+      removeLabel: 'Dismiss the Google file suggestions',
+    })
+  })
+
+  it('is disabled while a copy is in flight', () => {
+    expect(buildGoogleLinkTile(2, true)?.isDisabled).toBe(true)
+  })
+
+  it('is never one of the setting tiles', () => {
+    expect(buildChatInputTiles(createState()).map(tile => tile.id))
+      .not.toContain('google-file')
   })
 })

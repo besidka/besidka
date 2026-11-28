@@ -27,6 +27,7 @@ declare module '#app' {
     'chat-input:height': (height: number) => void
     'chat-input:prefill': (text: string) => void
     'chat-input:attach-artifact': (artifact: AttachedArtifact) => void
+    'chat-input:open-model-picker': () => void
     'chat-input:visibility-changed': (visible: boolean) => void
     'chat-spacer:changed': (height: number) => void
     'device-keyboard:state-changed': (isOpen: boolean) => void

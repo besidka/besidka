@@ -219,6 +219,23 @@
         </div>
       </header>
       <p
+        v-if="holdsGoogleData"
+        class="flex items-start gap-1.5 text-xs text-base-content/70"
+        data-testid="chat-context-google-data"
+      >
+        <Icon
+          name="lucide:shield-check"
+          size="14"
+          class="mt-px shrink-0"
+        />
+        <span>
+          This chat holds content from Google, so only models on the Google
+          data list can answer here. Memory and TypeSafe AI skip this chat,
+          web search is off for new messages, and a share link needs your
+          confirmation.
+        </span>
+      </p>
+      <p
         v-if="data.truncated"
         class="text-xs text-base-content/60"
         data-testid="chat-context-truncated"
@@ -283,7 +300,7 @@
               :key="item.id"
             >
               <a
-                v-if="item.href"
+                v-if="item.href && item.kind !== 'google-file'"
                 :href="item.href"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -380,6 +397,7 @@ import type {
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
 import { isArtifactKind } from '#shared/utils/artifacts'
 import { isDocumentFormat } from '#shared/utils/documents'
+import { readGoogleFileToolCallId } from '#shared/utils/google-created-file'
 import { formatMessageCost } from '#shared/utils/message-format'
 import {
   CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
@@ -401,6 +419,7 @@ const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
 const { close, push: pushSidePanelView } = useSidePanel()
+const { pushRegistered: pushGoogleFilePreview } = useGoogleFilePreview()
 const { open: openArtifact } = useArtifactPanel()
 const artifactsFeature = useFeature('artifacts')
 const connectorsFeature = useFeature('connectors')
@@ -419,6 +438,7 @@ const {
 } = useChatMemoryExclusion()
 
 const { savingSlug: pinSavingSlug, toggleChatPin } = useChatPin()
+const { isChatHoldingGoogleData } = useChatGoogleData()
 
 const { isStandalone } = useStandaloneDisplay()
 const { copied: urlCopied, copyUrl } = useCurrentUrlCopy()
@@ -474,6 +494,11 @@ const isMemoryExcluded = computed<boolean>(() => {
   }
 
   return isChatMemoryExcluded(routeSlug.value, data.value.chat.memoryExcluded)
+})
+
+const holdsGoogleData = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && isChatHoldingGoogleData(routeSlug.value)
 })
 
 const isPinned = computed<boolean>(() => {
@@ -688,8 +713,18 @@ function openDocumentItem(item: ChatContextItem): boolean {
   return true
 }
 
+function openGoogleFileItem(item: ChatContextItem): boolean {
+  const toolCallId = readGoogleFileToolCallId(item.id)
+
+  return toolCallId !== null && pushGoogleFilePreview(toolCallId)
+}
+
 async function onItemClick(item: ChatContextItem) {
   if (item.kind === 'document' && openDocumentItem(item)) {
+    return
+  }
+
+  if (item.kind === 'google-file' && openGoogleFileItem(item)) {
     return
   }
 

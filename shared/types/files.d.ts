@@ -40,6 +40,7 @@ export interface FilePolicyResponse {
 export type StorageCategoryId
   = | 'aiImages'
     | 'uploads'
+    | 'googleDrive'
     | 'generatedFiles'
     | 'connectorImages'
     | 'artifacts'

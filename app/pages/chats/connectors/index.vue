@@ -86,7 +86,12 @@
     </div>
 
     <ul
-      v-if="isBesidkaRowVisible || (hasLoaded && connectors.length)"
+      v-if="
+        isBesidkaRowVisible
+          || googleEntries.length
+          || isGoogleLoadFailed
+          || (hasLoaded && connectors.length)
+      "
       class="list"
       data-testid="connectors-list"
     >
@@ -98,6 +103,55 @@
         @open="openBesidkaPermissions"
         @toggle="toggleBesidka"
       />
+      <li
+        v-if="googleEntries.length || isGoogleLoadFailed"
+        data-testid="connectors-google-group"
+      >
+        <h3
+          id="connectors-google-heading"
+          class="sr-only"
+        >
+          Google
+        </h3>
+        <ul
+          aria-labelledby="connectors-google-heading"
+          data-testid="connectors-google-list"
+        >
+          <li
+            v-if="isGoogleLoadFailed"
+            class="list-row items-center gap-3 py-3"
+            data-testid="connectors-google-error"
+          >
+            <Icon
+              name="lucide:circle-alert"
+              size="18"
+              class="shrink-0 text-error"
+              aria-hidden="true"
+            />
+            <p class="list-col-grow min-w-0 text-sm">
+              {{ GOOGLE_LOAD_FAILED_MESSAGE }}
+            </p>
+            <button
+              type="button"
+              class="btn btn-sm min-h-11 shrink-0 sm:min-h-8"
+              :disabled="googleStatus === 'pending'"
+              data-testid="connectors-google-retry"
+              @click="refreshGoogle()"
+            >
+              Try again
+            </button>
+          </li>
+          <ProfileConnectorsGoogleRow
+            v-for="entry in googleEntries"
+            :key="entry.id"
+            :entry="entry"
+            :is-busy="isGoogleBusy"
+            :is-selected="selectedGoogleId === entry.id"
+            @open="googlePanel.open"
+            @action="runGoogleAction"
+          />
+        </ul>
+      </li>
       <template v-if="hasLoaded">
         <ProfileConnectorsRow
           v-for="connector in connectors"
@@ -217,6 +271,19 @@
 <script setup lang="ts">
 import type { ConnectorPageItem } from '#shared/types/connectors.d'
 import { CONNECTORS_PER_USER } from '#shared/utils/connectors-policy'
+import { GOOGLE_BYO_RESULT_QUERY_KEY } from '#shared/utils/google-byo'
+import {
+  GOOGLE_CONNECT_RESULT_QUERY_KEY,
+  isGoogleConnectResult,
+} from '#shared/utils/google-connections'
+import {
+  GOOGLE_ENTRY_PANEL_QUERY_KEY,
+  isGoogleEntryId,
+} from '#shared/utils/google-connectors'
+import type { GoogleEntryId } from '#shared/utils/google-connectors'
+import type { GoogleClientMode } from '#shared/utils/google-scopes'
+import type { GoogleConnectResult } from '#shared/utils/google-connections'
+import type { GoogleEntry } from '~/utils/google-entries'
 import BesidkaToolPermissions from '~/components/Profile/BesidkaTools/Permissions.vue'
 import {
   BESIDKA_TOOL_PERMISSIONS_PANEL_KEY,
@@ -247,7 +314,23 @@ const HANDLED_QUERY_KEYS = new Set([
   'add',
   'tab',
   'panel',
+  GOOGLE_CONNECT_RESULT_QUERY_KEY,
+  GOOGLE_BYO_RESULT_QUERY_KEY,
 ])
+
+const GOOGLE_RESULT_QUERY_KEYS = [
+  GOOGLE_CONNECT_RESULT_QUERY_KEY,
+  GOOGLE_BYO_RESULT_QUERY_KEY,
+]
+
+const GOOGLE_RESULT_FALLBACK_PANELS: Readonly<
+  Record<GoogleClientMode, GoogleEntryId>
+> = {
+  besidka: 'google-drive',
+  byo: 'google-gmail',
+}
+
+const GOOGLE_LOAD_FAILED_MESSAGE = 'Google services could not be loaded'
 
 const BESIDKA_TOOLS_FEATURE_KEY = 'besidka-tools'
 const BESIDKA_PERMISSIONS_TITLE = 'Tool permissions'
@@ -259,17 +342,37 @@ const connectorsFeature = useFeature('connectors')
 const registryFeature = useFeature('connectors.registry')
 const besidkaToolsFeature = useFeature(BESIDKA_TOOLS_FEATURE_KEY)
 
+const route = useRoute()
+
 if (!connectorsFeature.value.active) {
-  await navigateTo('/chats/history', { replace: true })
+  const googleResultQuery = Object.fromEntries(
+    GOOGLE_RESULT_QUERY_KEYS
+      .filter(key => route.query[key] !== undefined)
+      .map(key => [key, route.query[key]]),
+  )
+
+  await navigateTo(
+    Object.keys(googleResultQuery).length
+      ? { path: '/profile/keys', query: { tab: 'google', ...googleResultQuery } }
+      : '/chats/history',
+    { replace: true },
+  )
 }
 
-const route = useRoute()
 const router = useRouter()
 const sidePanel = useSidePanel()
 const connect = useConnectorConnect()
 const { setFeatureOptIn } = useFeatureOptIn()
 const detailPanel = useConnectorDetailPanel()
 const { connectors, hasLoaded, error, refresh } = useConnectorsPage()
+const {
+  entries: googleEntries,
+  status: googleStatus,
+  refresh: refreshGoogle,
+} = useGoogleEntries()
+const googlePanel = useGoogleEntryPanel()
+const googleActions = useGoogleEntryActions()
+const { isBusy: isGoogleBusy } = googleActions
 
 const addTab = shallowRef<AddTabId | null>(null)
 const view = shallowRef<ConnectorsView>('yours')
@@ -291,6 +394,18 @@ const selectedId = computed<string | null>(() => {
   return viewKey?.startsWith(CONNECTOR_VIEW_KEY_PREFIX)
     ? viewKey.slice(CONNECTOR_VIEW_KEY_PREFIX.length)
     : null
+})
+
+const selectedGoogleId = computed<string | null>(() => {
+  const viewKey = sidePanel.viewKey.value
+
+  return viewKey?.startsWith(GOOGLE_ENTRY_VIEW_KEY_PREFIX)
+    ? viewKey.slice(GOOGLE_ENTRY_VIEW_KEY_PREFIX.length)
+    : null
+})
+
+const isGoogleLoadFailed = computed<boolean>(() => {
+  return googleStatus.value === 'error' && !googleEntries.value.length
 })
 
 const isBesidkaRowVisible = computed<boolean>(() => {
@@ -340,6 +455,14 @@ function openBesidkaPermissions() {
     title: BESIDKA_PERMISSIONS_TITLE,
     component: BesidkaToolPermissions,
   })
+}
+
+async function runGoogleAction(entry: GoogleEntry) {
+  await googleActions.run(entry)
+
+  if (googleActions.announcement.value) {
+    liveMessage.value = googleActions.announcement.value
+  }
 }
 
 async function toggleBesidka(enabled: boolean) {
@@ -441,7 +564,56 @@ function onConnected(connectorId: string) {
   pendingOpenId.value = connectorId
 }
 
+function readGoogleResults(
+  query: Record<string, unknown>,
+): Array<{ clientMode: GoogleClientMode, result: GoogleConnectResult }> {
+  const found: Array<{
+    clientMode: GoogleClientMode
+    result: GoogleConnectResult
+  }> = []
+  const besidkaResult = query[GOOGLE_CONNECT_RESULT_QUERY_KEY]
+  const byoResult = query[GOOGLE_BYO_RESULT_QUERY_KEY]
+
+  if (isGoogleConnectResult(besidkaResult)) {
+    found.push({ clientMode: 'besidka', result: besidkaResult })
+  }
+
+  if (isGoogleConnectResult(byoResult)) {
+    found.push({ clientMode: 'byo', result: byoResult })
+  }
+
+  return found
+}
+
+async function handleGoogleRouteQuery(
+  results: ReturnType<typeof readGoogleResults>,
+  requestedEntryId: GoogleEntryId | null,
+) {
+  for (const { clientMode, result } of results) {
+    reportGoogleConnectResult(clientMode, result)
+    liveMessage.value = getGoogleConnectResultMessage(clientMode, result).title
+
+    if (result === 'connected' || result === 'partial') {
+      await refreshGoogle()
+    }
+  }
+
+  const firstResult = results[0]
+  const fallbackEntryId = firstResult
+    ? GOOGLE_RESULT_FALLBACK_PANELS[firstResult.clientMode]
+    : null
+  const entryId = requestedEntryId ?? fallbackEntryId
+
+  if (entryId) {
+    googlePanel.open(entryId)
+  }
+}
+
 async function handleRouteQuery() {
+  if (!connectorsFeature.value.active) {
+    return
+  }
+
   const query = route.query
   const callback = readConnectorCallback(query)
   const requestedId = typeof query.connector === 'string'
@@ -453,17 +625,33 @@ async function handleRouteQuery() {
   const requestedBesidkaPanel
     = query.panel === BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE
 
+  const requestedGoogleEntryId = isGoogleEntryId(
+    query[GOOGLE_ENTRY_PANEL_QUERY_KEY],
+  )
+    ? query[GOOGLE_ENTRY_PANEL_QUERY_KEY] as GoogleEntryId
+    : null
+  const googleResults = readGoogleResults(query)
+
   if (query.tab === 'discover' && registryFeature.value.active) {
     view.value = 'discover'
   }
 
-  if (!callback && !requestedId && !requestedAddTab && !requestedBesidkaPanel) {
+  if (
+    !callback
+    && !requestedId
+    && !requestedAddTab
+    && !requestedBesidkaPanel
+    && !requestedGoogleEntryId
+    && !googleResults.length
+  ) {
     return
   }
 
   if (requestedBesidkaPanel && isBesidkaActive.value) {
     openBesidkaPermissions()
   }
+
+  await handleGoogleRouteQuery(googleResults, requestedGoogleEntryId)
 
   if (requestedAddTab === 'url' || !registryFeature.value.active) {
     if (requestedAddTab) {
@@ -499,6 +687,12 @@ async function handleRouteQuery() {
   })
 }
 
+watch(isGoogleLoadFailed, (isFailed) => {
+  if (isFailed) {
+    liveMessage.value = GOOGLE_LOAD_FAILED_MESSAGE
+  }
+}, { immediate: true })
+
 watch(
   [hasLoaded, pendingOpenId, connectors],
   ([isLoaded, connectorId]) => {
@@ -527,7 +721,10 @@ watch(() => route.query.connector, async (connectorId) => {
 })
 
 watch(() => route.query.panel, async (panel) => {
-  if (panel === BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE) {
+  if (
+    panel === BESIDKA_TOOL_PERMISSIONS_QUERY_VALUE
+    || isGoogleEntryId(panel)
+  ) {
     await handleRouteQuery()
   }
 })
@@ -538,6 +735,7 @@ onBeforeUnmount(() => {
   if (
     viewKey.startsWith(CONNECTOR_VIEW_KEY_PREFIX)
     || viewKey.startsWith(CONNECTOR_DIRECTORY_VIEW_KEY_PREFIX)
+    || viewKey.startsWith(GOOGLE_ENTRY_VIEW_KEY_PREFIX)
     || viewKey === BESIDKA_TOOL_PERMISSIONS_PANEL_KEY
   ) {
     sidePanel.close()

@@ -61,8 +61,10 @@
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
+              @replace="onFileReplaced"
               @preview="onFilePreview"
               @deleted="storageUsage?.fetch()"
+              @changed="storageUsage?.fetch()"
             />
             <ChatInputFilesModalUpload
               v-else-if="activeTab === 'upload'"
@@ -115,6 +117,7 @@ withDefaults(defineProps<{
 const emit = defineEmits<{
   attach: [files: AttachedFile[]]
   detach: [fileIds: string[]]
+  replace: [previousId: string, file: AttachedFile]
   upload: [files: File[]]
 }>()
 
@@ -130,6 +133,7 @@ const activeTab = shallowRef<Tab | null>(null)
 const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
 const stopPreviewReturnWatch = shallowRef<(() => void) | null>(null)
+const isSuspended = shallowRef<boolean>(false)
 let refreshGeneration = 0
 let activeRefreshGeneration: number | null = null
 
@@ -174,6 +178,8 @@ async function refreshSelectTabIfNeeded() {
 }
 
 function open(tab: Tab, source?: FileSourceFilter): void {
+  isSuspended.value = false
+
   const isAbandoningPreviewReturn = stopPreviewReturnWatch.value !== null
 
   if (isAbandoningPreviewReturn) {
@@ -218,12 +224,34 @@ function resetModalState(): void {
 }
 
 function onModalClosed(): void {
-  if (modal.value?.open || stopPreviewReturnWatch.value) {
+  if (modal.value?.open || stopPreviewReturnWatch.value || isSuspended.value) {
     return
   }
 
   resetModalState()
 }
+
+function suspend(): void {
+  isSuspended.value = true
+  close()
+}
+
+function resume(): void {
+  if (!isSuspended.value) {
+    return
+  }
+
+  isSuspended.value = false
+
+  if (!modal.value || modal.value.open) {
+    return
+  }
+
+  modal.value.showModal()
+  storageUsage.value?.fetch()
+}
+
+provide(FILE_MANAGER_DIALOG_KEY, { close, suspend, resume })
 
 function cancelPreviewReturn(): void {
   stopPreviewReturnWatch.value?.()
@@ -319,9 +347,12 @@ function onFilesAttached(files: FileManagerFile[]) {
       type: file.type,
       textStatus: file.textStatus,
       textBytes: file.textBytes,
+      textVersion: file.textVersion,
       textTruncated: file.textTruncated,
       textOmittedMedia: file.textOmittedMedia,
       textOmittedCharts: file.textOmittedCharts,
+      externalSource: file.externalSource,
+      externalId: file.externalId,
     }
   })
 
@@ -347,6 +378,10 @@ function onFilePreview(file: FileManagerFile) {
 
 function onFilesDetached(fileIds: string[]) {
   emit('detach', fileIds)
+}
+
+function onFileReplaced(previousId: string, file: AttachedFile) {
+  emit('replace', previousId, file)
 }
 
 function onFilesUploaded(files: File[]) {

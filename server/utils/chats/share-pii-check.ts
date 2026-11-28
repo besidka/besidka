@@ -31,6 +31,7 @@ export interface SharePiiCheckInput {
   title: string | null
   messages: SharePiiMessage[]
   showFiles: boolean
+  holdsGoogleData?: boolean
   logger?: JevLogger
 }
 
@@ -353,6 +354,10 @@ export async function checkSharedChatForPii(
 
   if (redactedSegments.length === 0) {
     return { warnings, checked: true }
+  }
+
+  if (input.holdsGoogleData === true) {
+    return { warnings, checked: false }
   }
 
   const model = await resolveJevRoleModel({

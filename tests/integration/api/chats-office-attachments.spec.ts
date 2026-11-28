@@ -104,7 +104,9 @@ vi.mock('~~/server/utils/files/persist-file', () => ({
 }))
 
 vi.mock('~~/server/utils/documents/renderer', () => ({
+  WORKBOOK_MAP_EXTRACT_VERSION: 2,
   extractOfficeText: mocks.extractOfficeText,
+  rendererOffersWorkbookMap: vi.fn().mockResolvedValue(false),
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', async (importOriginal) => {

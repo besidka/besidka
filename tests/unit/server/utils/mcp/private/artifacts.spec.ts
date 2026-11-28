@@ -477,6 +477,154 @@ describe('MCP artifact logic', () => {
     })
   })
 
+  describe('artifacts with Google content', () => {
+    async function createMarked() {
+      const artifact = await createOwned({ title: 'From Drive' })
+
+      testDb.sqlite.prepare(
+        'update artifacts set google_derived_at = 1 where id = ?',
+      ).run(decodeArtifactId(artifact.artifactId))
+
+      return artifact
+    }
+
+    it('hides a marked artifact from MCP list and read', async () => {
+      await createOwned({ title: 'Plain' })
+
+      const marked = await createMarked()
+      const listed = await listMcpArtifacts(context(), {})
+
+      expect(listed.items.map(item => item.title)).toEqual(['Plain'])
+      await expect(getMcpArtifact(context(), { id: marked.artifactId }))
+        .rejects.toMatchObject({ status: 404 })
+    })
+
+    it('withholds it from the Besidka tools of a send without Google data '
+      + 'and lets a flagged send read it', async () => {
+      const marked = await createMarked()
+
+      await expect(getMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId },
+      )).rejects.toMatchObject({
+        status: 403,
+        message: expect.stringContaining('holds content from Google'),
+      })
+      await expect(getMcpArtifact(
+        { ...context(), googleContent: 'allowed' as const },
+        { id: marked.artifactId },
+      )).resolves.toMatchObject({ title: 'From Drive' })
+
+      const listed = await listMcpArtifacts(
+        { ...context(), googleContent: 'allowed' as const },
+        {},
+      )
+
+      expect(listed.items.map(item => item.title)).toEqual(['From Drive'])
+    })
+
+    it('answers a marked artifact like a missing one on update: no edit '
+      + 'probe, no write', async () => {
+      const marked = await createMarked()
+      const edits = [{ old_string: '<p>', new_string: '<b>' }]
+
+      await expect(updateMcpArtifact(context(), {
+        id: marked.artifactId,
+        edits,
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(updateMcpArtifact(context(), {
+        id: marked.artifactId,
+        edits: [{ old_string: 'no such text', new_string: 'x' }],
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(updateMcpArtifact(context(), {
+        id: marked.artifactId,
+        content: '<p>overwritten</p>',
+      })).rejects.toMatchObject({ status: 404 })
+
+      const versions = testDb.sqlite.prepare(
+        'select current_version from artifacts where id = ?',
+      ).get(decodeArtifactId(marked.artifactId)) as {
+        current_version: number
+      }
+
+      expect(versions.current_version).toBe(1)
+    })
+
+    it('withholds a marked artifact from an update in a send without Google '
+      + 'data, and lets a flagged send update it', async () => {
+      const marked = await createMarked()
+
+      await expect(updateMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId, content: '<p>y</p>' },
+      )).rejects.toMatchObject({ status: 403 })
+      await expect(updateMcpArtifact(
+        { ...context(), googleContent: 'allowed' as const },
+        { id: marked.artifactId, content: '<p>y</p>' },
+      )).resolves.toMatchObject({ version: 2 })
+    })
+
+    it('answers a share of a marked artifact like a missing one, so the '
+      + 'Google reason does not confirm that it exists', async () => {
+      const marked = await createMarked()
+
+      await expect(shareMcpArtifact(context(), {
+        id: marked.artifactId,
+        expiresInDays: 7,
+      })).rejects.toMatchObject({ status: 404 })
+      await expect(shareMcpArtifact(
+        { ...context(), googleContent: 'withheld' as const },
+        { id: marked.artifactId, expiresInDays: 7 },
+      )).rejects.toMatchObject({ status: 403 })
+      expect(await testDb.db.select().from(schema.artifactShares))
+        .toHaveLength(0)
+    })
+
+    it('still updates an unmarked artifact over MCP', async () => {
+      const plain = await createOwned()
+
+      await expect(updateMcpArtifact(context(), {
+        id: plain.artifactId,
+        content: '<p>y</p>',
+      })).resolves.toMatchObject({ version: 2 })
+    })
+
+    it('keeps delete and revoke open for a marked artifact', async () => {
+      const marked = await createMarked()
+
+      await expect(deleteMcpArtifacts(context(), {
+        ids: [marked.artifactId],
+        confirm: true,
+      })).resolves.toMatchObject({ deleted: [marked.artifactId] })
+    })
+
+    it('marks an artifact created or updated in a send with Google data',
+      async () => {
+        const created = await createMcpArtifact(
+          { ...context(), isGoogleDerived: () => true },
+          { title: 'Plan', kind: 'html', content: '<p>x</p>' },
+        )
+        const markOf = (id: string) => {
+          return (testDb.sqlite.prepare(
+            'select google_derived_at from artifacts where id = ?',
+          ).get(decodeArtifactId(id)) as {
+            google_derived_at: number | null
+          }).google_derived_at
+        }
+
+        expect(markOf(created.id)).toEqual(expect.any(Number))
+
+        const plain = await createOwned()
+
+        await updateMcpArtifact(
+          { ...context(), isGoogleDerived: () => true },
+          { id: plain.artifactId, content: '<p>y</p>' },
+        )
+
+        expect(markOf(plain.artifactId)).toEqual(expect.any(Number))
+      })
+  })
+
   describe('get_artifact', () => {
     it('returns the latest content and the version numbers', async () => {
       const artifact = await createOwned()

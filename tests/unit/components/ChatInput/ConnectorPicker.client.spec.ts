@@ -6,6 +6,9 @@ import type {
   ComposerConnectorItem,
   ComposerDisabledConnectorItem,
 } from '../../../../app/composables/composer-connectors'
+import type {
+  ComposerGoogleRow,
+} from '../../../../app/composables/composer-google-tools'
 
 enableAutoUnmount(afterEach)
 
@@ -101,6 +104,10 @@ async function mountPicker(
     isAtLimit: boolean
     isSaving: boolean
     besidka: { enabled: boolean, isSaving: boolean } | null
+    googleRows: ComposerGoogleRow[]
+    googleSavingServices: Array<'drive' | 'gmail' | 'calendar'>
+    googleChoiceState: 'ready' | 'loading' | 'error'
+    googleAnnouncement: string
     isLoaded: boolean
     isRegistryAvailable: boolean
   }> = {},
@@ -273,6 +280,227 @@ describe('ChatInput/ConnectorPicker', () => {
 
     expect(wrapper.emitted('toggle-besidka')).toHaveLength(1)
     expect(wrapper.emitted('toggle')).toBeUndefined()
+  })
+
+  describe('the Google rows', () => {
+    function googleRow(
+      overrides: Partial<ComposerGoogleRow> = {},
+    ): ComposerGoogleRow {
+      return {
+        entryId: 'google-gmail',
+        service: 'gmail',
+        title: 'Gmail',
+        icon: 'logos:google-gmail',
+        kind: 'switch',
+        isOn: true,
+        subLine: 'person@example.test',
+        reasonNote: null,
+        reasonActions: [],
+        link: null,
+        ...overrides,
+      }
+    }
+
+    it('shows no Google row unless rows are passed', async () => {
+      await mountPicker()
+
+      expect(find('connector-picker-google')).toBeNull()
+    })
+
+    it('shows the rows after the Besidka row and before the connectors',
+      async () => {
+        await mountPicker({
+          besidka: { enabled: true, isSaving: false },
+          googleRows: [googleRow()],
+        })
+
+        const besidka = get('connector-picker-besidka')
+        const google = get('connector-picker-google')
+        const list = get('connector-picker-list')
+
+        expect(besidka.compareDocumentPosition(google)
+          & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(google.compareDocumentPosition(list)
+          & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(google.getAttribute('role')).toBe('group')
+      })
+
+    it('emits the service and not a connector toggle', async () => {
+      const wrapper = await mountPicker({ googleRows: [googleRow()] })
+      const toggle = get('connector-picker-google-toggle-gmail')
+
+      expect(toggle.getAttribute('aria-label'))
+        .toBe('Use Gmail in this chat')
+      expect(toggle.getAttribute('role')).toBe('switch')
+
+      toggle.click()
+      await flushPromises()
+
+      expect(wrapper.emitted('toggle-google')).toEqual([['gmail']])
+      expect(wrapper.emitted('toggle')).toBeUndefined()
+      expect(wrapper.emitted('toggle-besidka')).toBeUndefined()
+    })
+
+    it('shows the announcement it is given in a polite live region, and '
+      + 'does not write one on a click', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow()],
+        googleAnnouncement: 'Gmail is back on in this chat. Saving failed.',
+      })
+      const status = get('connector-picker-google-status')
+
+      expect(status.getAttribute('role')).toBe('status')
+      expect(status.getAttribute('aria-live')).toBe('polite')
+      expect(status.textContent)
+        .toContain('Gmail is back on in this chat. Saving failed.')
+
+      await wrapper.setProps({ googleAnnouncement: '' })
+
+      get('connector-picker-google-toggle-gmail').click()
+      await flushPromises()
+
+      expect(status.textContent).toBe('')
+    })
+
+    it('marks only the rows that are saving as inert', async () => {
+      await mountPicker({
+        googleRows: [googleRow(), googleRow({
+          entryId: 'google-calendar',
+          service: 'calendar',
+          title: 'Google Calendar',
+        })],
+        googleSavingServices: ['gmail'],
+      })
+
+      expect(get('connector-picker-google-toggle-gmail')
+        .getAttribute('aria-disabled')).toBe('true')
+      expect(get('connector-picker-google-toggle-calendar')
+        .getAttribute('aria-disabled')).toBeNull()
+    })
+
+    it('shows loading rows without an error line while the choice is '
+      + 'unknown', async () => {
+      await mountPicker({
+        googleRows: [googleRow()],
+        googleChoiceState: 'loading',
+      })
+
+      expect(find('connector-picker-google-loading-gmail')).not.toBeNull()
+      expect(find('connector-picker-google-error')).toBeNull()
+      expect(get('connector-picker-google-toggle-gmail')
+        .getAttribute('aria-disabled')).toBe('true')
+    })
+
+    it('shows a one-line error with a Try again button inside the Google '
+      + 'group after a failed read, and emits a retry', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow()],
+        googleChoiceState: 'error',
+      })
+      const error = get('connector-picker-google-error')
+      const retry = get('connector-picker-google-retry')
+
+      expect(get('connector-picker-google').contains(error)).toBe(true)
+      expect(error.textContent).toContain('Could not load')
+      expect(retry.textContent?.trim()).toBe('Try again')
+      expect(retry.className).toContain('max-sm:min-h-11')
+      expect(get('connector-picker-google-toggle-gmail')
+        .getAttribute('aria-disabled')).toBe('true')
+
+      retry.click()
+      await flushPromises()
+
+      expect(wrapper.emitted('retry-google')).toHaveLength(1)
+    })
+
+    it('keeps the rows out of the connector limit', async () => {
+      await mountPicker({
+        isAtLimit: true,
+        selectedIds: ['c1'],
+        googleRows: [googleRow({ isOn: false })],
+      })
+
+      expect((get('connector-picker-google-toggle-gmail') as HTMLInputElement)
+        .disabled).toBe(false)
+    })
+
+    it('leaves the rows out of "Turn all on" and "Turn all off"', async () => {
+      const wrapper = await mountPicker({
+        selectedIds: ['c1'],
+        googleRows: [googleRow({ isOn: false })],
+      })
+
+      get('connector-picker-turn-all-on').click()
+      await flushPromises()
+      get('connector-picker-turn-all-off').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('toggle-google')).toBeUndefined()
+      expect((get('connector-picker-google-toggle-gmail') as HTMLInputElement)
+        .checked).toBe(false)
+      expect(wrapper.emitted('set-all')).toHaveLength(2)
+    })
+
+    it('re-emits choose-model from a row action', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow({
+          subLine: 'Not available with this model',
+          reasonNote: {
+            summary: 'Google tools were not offered to this model.',
+            detail: 'A reason.',
+            linkLabel: null,
+          },
+          reasonActions: [{
+            kind: 'choose-model',
+            label: 'Choose another model',
+          }],
+        })],
+      })
+
+      get('connector-picker-google-action-model-gmail').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('choose-model')).toHaveLength(1)
+    })
+
+    it('does not count the rows in the connector limit hint', async () => {
+      await mountPicker({
+        googleRows: [googleRow(), googleRow({
+          entryId: 'google-calendar',
+          service: 'calendar',
+          title: 'Google Calendar',
+        })],
+      })
+
+      expect(get('connector-picker-limit-hint').textContent)
+        .toContain('up to 5 connectors')
+    })
+
+    it('shows the rows above the empty state when there are no connectors',
+      async () => {
+        await mountPicker({ items: [], googleRows: [googleRow()] })
+
+        expect(find('connector-picker-google')).not.toBeNull()
+        expect(find('connector-picker-empty')).not.toBeNull()
+      })
+
+    it('closes the picker when a link row is followed', async () => {
+      const wrapper = await mountPicker({
+        googleRows: [googleRow({
+          kind: 'link',
+          subLine: 'Not connected',
+          link: {
+            label: 'Connect',
+            path: '/chats/connectors?panel=google-gmail',
+          },
+        })],
+      })
+
+      get('connector-picker-google-link-gmail').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
+    })
   })
 
   it('keeps the Besidka row out of the connector limit', async () => {

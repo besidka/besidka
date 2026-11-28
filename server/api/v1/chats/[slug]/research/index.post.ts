@@ -15,6 +15,16 @@ import {
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
+import {
+  assertGoogleDataRecipient,
+  flagChatGoogleData,
+  resolveSendGoogleContent,
+} from '~~/server/utils/google/data-guard'
+import {
+  chatHoldsGoogleData,
+  chatMarkedOriginExtras,
+} from '~~/server/utils/tool-approval/google'
+import { getModel } from '#shared/utils/model'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -84,7 +94,9 @@ export default defineEventHandler(async (event) => {
       id: true,
       slug: true,
       projectId: true,
+      googleDataAt: true,
     },
+    extras: chatMarkedOriginExtras(),
     with: {
       messages: {
         columns: {
@@ -126,6 +138,41 @@ export default defineEventHandler(async (event) => {
       tools: message.tools,
       reasoning: message.reasoning,
     }))
+
+  const chatHeldGoogleData = chatHoldsGoogleData({
+    googleDataAt: chat.googleDataAt,
+    messages: chat.messages,
+    holdsMarkedOrigin: chat.holdsMarkedOrigin,
+  })
+  const sendGoogleContent = await resolveSendGoogleContent({
+    db,
+    userId,
+    chatMessages: chat.messages,
+    newMessageParts: body.data.userMessage.parts,
+  })
+
+  if (
+    sendGoogleContent.holdsGoogleContent
+    && (!chat.googleDataAt || sendGoogleContent.newMessage)
+  ) {
+    await flagChatGoogleData(db, chat.id, sendGoogleContent.newMessage)
+  } else if (chat.holdsMarkedOrigin && !chat.googleDataAt) {
+    await flagChatGoogleData(db, chat.id, false)
+  }
+
+  await assertGoogleDataRecipient({
+    holdsGoogleData: chatHeldGoogleData
+      || sendGoogleContent.holdsGoogleContent,
+    db,
+    userId,
+    recipient: {
+      providerId: getModel(body.data.model).provider?.id,
+      modelId: body.data.model,
+    },
+    gatewaySafeguardsSent: false,
+    site: 'deep-research',
+    logger,
+  })
 
   await validateMessageFilePolicy(
     userId,

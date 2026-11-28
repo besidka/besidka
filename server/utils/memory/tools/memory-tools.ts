@@ -114,6 +114,14 @@ const UNTRUSTED_CONTENT_FIX = 'Tell the user nothing was saved or removed, '
   + 'and that they can repeat the request in a new message with web search '
   + 'turned off.'
 
+const GOOGLE_DATA_WRITE_MESSAGE = 'Memory writes are unavailable in this '
+  + 'chat because it now holds data from the user\'s Google account. Do not '
+  + `call ${MEMORY_WRITE_TOOL_NAME} or ${MEMORY_FORGET_TOOL_NAME} again in `
+  + 'this chat.'
+
+const GOOGLE_DATA_WRITE_FIX = 'Tell the user nothing was saved or removed '
+  + 'and that memory changes can be made in a chat that holds no Google data.'
+
 const PROJECT_MEMORY_OFF_MESSAGE = 'Project memory is turned off for this '
   + 'project.'
 
@@ -335,6 +343,45 @@ function assertNoUntrustedContentSeen(
     status: 403,
     fix: UNTRUSTED_CONTENT_FIX,
   })
+}
+
+function createGoogleDataWriteError() {
+  return createError({
+    message: GOOGLE_DATA_WRITE_MESSAGE,
+    status: 403,
+    fix: GOOGLE_DATA_WRITE_FIX,
+  })
+}
+
+function assertWriteAllowed(isWriteAllowed: () => boolean): void {
+  if (isWriteAllowed()) {
+    return
+  }
+
+  throw createGoogleDataWriteError()
+}
+
+/**
+ * The backstop behind `assertWriteAllowed`: reads the chat's sticky Google
+ * flag from D1, so a write is refused for a chat that holds Google data even
+ * when the send's own check was mis-wired. The send flags the chat before a
+ * tool runs once Google content is in play (`withGoogleDataFlag`).
+ */
+async function assertChatHoldsNoGoogleData(
+  context: MemoryToolContext,
+): Promise<void> {
+  const [chat] = await context.db
+    .select({ googleDataAt: schema.chats.googleDataAt })
+    .from(schema.chats)
+    .where(and(
+      eq(schema.chats.id, context.chatId),
+      eq(schema.chats.userId, context.userId),
+    ))
+    .limit(1)
+
+  if (chat?.googleDataAt) {
+    throw createGoogleDataWriteError()
+  }
 }
 
 function toToolError(exception: unknown): unknown {
@@ -801,6 +848,7 @@ export function getMemoryTools(input: {
   useAccountMemory: boolean | null
   sourceMessageId: string | null
   userMessageText: string | null
+  allowsWrite?: boolean | (() => boolean)
   budget: ChatSearchBudget
   isApprovedByUser?: (call: {
     toolCallId: string | undefined
@@ -828,6 +876,11 @@ export function getMemoryTools(input: {
     logger: input.logger,
   }
   const userMessageText = input.userMessageText
+  const isWriteAllowed = (): boolean => {
+    return typeof input.allowsWrite === 'function'
+      ? input.allowsWrite()
+      : input.allowsWrite !== false
+  }
 
   const blockedSentence = buildBlockedMemoryToolsSentence(
     input.permissionModes,
@@ -884,7 +937,11 @@ export function getMemoryTools(input: {
     })),
   }
 
-  if (userMessageText === null || userMessageText.trim() === '') {
+  if (
+    !isWriteAllowed()
+    || userMessageText === null
+    || userMessageText.trim() === ''
+  ) {
     return { tools: readTools }
   }
 
@@ -915,6 +972,8 @@ export function getMemoryTools(input: {
         consumeChatSearchCall(input.budget)
 
         try {
+          assertWriteAllowed(isWriteAllowed)
+          await assertChatHoldsNoGoogleData(context)
           assertNoUntrustedContentSeen(
             input.budget,
             liftLockFor(MEMORY_WRITE_TOOL_NAME, toolInput, options),
@@ -934,6 +993,8 @@ export function getMemoryTools(input: {
         consumeChatSearchCall(input.budget)
 
         try {
+          assertWriteAllowed(isWriteAllowed)
+          await assertChatHoldsNoGoogleData(context)
           assertNoUntrustedContentSeen(
             input.budget,
             liftLockFor(MEMORY_FORGET_TOOL_NAME, toolInput, options),

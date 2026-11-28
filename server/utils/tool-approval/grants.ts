@@ -9,7 +9,17 @@ import {
   SKILL_SCRIPTS_GATE_TOOL_NAME,
   SKILL_SCRIPTS_GRANT_KEY,
 } from '#shared/utils/skills/scripts'
+import {
+  GOOGLE_READ_GRANT_TITLE,
+  googleEgressGrantKey,
+  isGoogleToolName,
+} from '#shared/utils/google-tool-approvals'
+import {
+  GOOGLE_TOOL_CATALOG,
+} from '#shared/utils/google-tool-catalog'
+import type { GoogleService } from '#shared/utils/google-tool-catalog'
 import * as schema from '~~/server/db/schema'
+import { loadGoogleToolPermissionModes } from '~~/server/utils/google/tool-permissions'
 import { buildExposedToolName } from '~~/server/utils/connectors/tool-definitions'
 import {
   getConnector,
@@ -49,6 +59,20 @@ function grantItem(
   }
 }
 
+function grantHashMatches(
+  alwaysAllowTools: Record<string, string>,
+  key: string,
+  definitionHash: string,
+): boolean {
+  return Object.hasOwn(alwaysAllowTools, key)
+    && alwaysAllowTools[key] === definitionHash
+}
+
+/**
+ * The "Allow in this chat" grants of one connector, and its Google egress
+ * grants (Allow in this chat on a "content from Google may be sent" prompt,
+ * `source: 'google-egress'`), each only while its hash still matches.
+ */
 async function chatGrantItems(
   connector: ConnectorRecord,
   settings: readonly ToolSettingRow[],
@@ -62,15 +86,49 @@ async function chatGrantItems(
       setting.toolName,
     )
 
-    if (
-      Object.hasOwn(alwaysAllowTools, exposedName)
-      && alwaysAllowTools[exposedName] === setting.definitionHash
-    ) {
+    if (grantHashMatches(
+      alwaysAllowTools,
+      exposedName,
+      setting.definitionHash,
+    )) {
       items.push(grantItem('chat', connector, setting.toolName))
+    }
+
+    if (grantHashMatches(
+      alwaysAllowTools,
+      googleEgressGrantKey(exposedName),
+      setting.definitionHash,
+    )) {
+      items.push({
+        ...grantItem('chat', connector, setting.toolName),
+        source: 'google-egress',
+      })
     }
   }
 
   return items
+}
+
+/**
+ * The Google tools allowed in this chat (`google__` keys of the chat's
+ * Besidka settings). The hash is not checked here: the Google tools that
+ * would check it do not exist yet, and listing a grant that no longer
+ * matches only shows the user something Reset clears.
+ */
+function googleGrantItems(
+  alwaysAllowTools: Record<string, string>,
+): ToolApprovalGrantItem[] {
+  return Object.keys(alwaysAllowTools)
+    .filter(key => isGoogleToolName(key))
+    .map((toolName) => {
+      return {
+        scope: 'chat',
+        connectorId: '',
+        connectorTitle: GOOGLE_READ_GRANT_TITLE,
+        toolName,
+        source: 'google',
+      }
+    })
 }
 
 function alwaysGrantItems(
@@ -163,7 +221,40 @@ async function listBesidkaGrantItems(
     })
   }
 
-  return items
+  return [
+    ...items,
+    ...googleGrantItems(settings.alwaysAllowTools),
+    ...await googleAlwaysGrantItems(db, userId, settings.googleServicesOff),
+  ]
+}
+
+/**
+ * The Google tools the user set to Always allow (`google__` rows of
+ * `besidka_tool_permissions` that read as `allow`), except those of a service
+ * switched off in this chat, which never run here. The panel links each to
+ * its Google entry on Connectors, where the setting lives.
+ */
+async function googleAlwaysGrantItems(
+  db: DbClient,
+  userId: number,
+  servicesOff: readonly GoogleService[],
+): Promise<ToolApprovalGrantItem[]> {
+  const modes = await loadGoogleToolPermissionModes(userId, db)
+
+  return GOOGLE_TOOL_CATALOG
+    .filter((tool) => {
+      return modes.get(tool.name) === 'allow'
+        && !servicesOff.includes(tool.service)
+    })
+    .map((tool) => {
+      return {
+        scope: 'always',
+        connectorId: '',
+        connectorTitle: GOOGLE_READ_GRANT_TITLE,
+        toolName: tool.name,
+        source: 'google',
+      }
+    })
 }
 
 /**

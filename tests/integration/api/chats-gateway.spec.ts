@@ -519,6 +519,7 @@ describe('gateway chat completion routing', () => {
       ['image_generation'],
       'off',
       expect.anything(),
+      { googleDataSafeguards: false },
     )
   })
 
@@ -546,6 +547,7 @@ describe('gateway chat completion routing', () => {
       ['image_generation'],
       'off',
       expect.anything(),
+      { googleDataSafeguards: false },
     )
   })
 
@@ -619,6 +621,7 @@ describe('gateway chat completion routing', () => {
       ['web_search'],
       'off',
       expect.anything(),
+      { googleDataSafeguards: false },
     )
   })
 
@@ -646,6 +649,7 @@ describe('gateway chat completion routing', () => {
       ['web_search'],
       'off',
       expect.anything(),
+      { googleDataSafeguards: false },
     )
   })
 
@@ -1106,6 +1110,7 @@ describe('gateway chat completion routing', () => {
       ['web_search_brave'],
       'off',
       expect.anything(),
+      { googleDataSafeguards: false },
     )
     expect(mocks.streamTextOptions[0]?.tools?.web_search_brave).toBeDefined()
   })

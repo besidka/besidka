@@ -23,6 +23,8 @@ export interface KnowledgeTestDb {
     source?: 'upload' | 'assistant'
     expiresAt?: number | null
     createdAt?: number
+    externalSource?: 'google' | null
+    externalId?: string | null
   }) => void
   insertStorage: (input: {
     userId: number
@@ -158,7 +160,11 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       text_bytes integer,
       text_version integer,
       text_omitted_media integer,
-      text_omitted_charts integer
+      text_omitted_charts integer,
+      external_source text,
+      external_id text,
+      external_modified_at integer,
+      google_derived_at integer
     );
 
     CREATE UNIQUE INDEX uq_file_storageKey ON files (storage_key);
@@ -204,7 +210,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       created_via text NOT NULL,
       origin_provider text,
       origin_model text,
-      ai_generated integer
+      ai_generated integer,
+      google_derived_at integer
     );
 
     CREATE INDEX idx_documents_file ON documents (file_id);
@@ -223,7 +230,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       created_via text NOT NULL,
       takedown_at integer,
       takedown_reason text,
-      legal_hold_until integer
+      legal_hold_until integer,
+      google_derived_at integer
     );
 
     CREATE TABLE skills (
@@ -296,13 +304,15 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
     source?: 'upload' | 'assistant'
     expiresAt?: number | null
     createdAt?: number
+    externalSource?: 'google' | null
+    externalId?: string | null
   }): void {
     const createdAt = input.createdAt ?? nowSeconds()
 
     sqlite.prepare(
       'insert into files (id, created_at, updated_at, user_id, storage_key,'
-      + ' name, size, type, source, expires_at)'
-      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      + ' name, size, type, source, expires_at, external_source,'
+      + ' external_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       createdAt,
@@ -314,6 +324,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       input.type ?? 'application/pdf',
       input.source ?? 'upload',
       input.expiresAt ?? null,
+      input.externalSource ?? null,
+      input.externalId ?? null,
     )
   }
 

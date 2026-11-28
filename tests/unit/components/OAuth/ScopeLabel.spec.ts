@@ -31,9 +31,14 @@ describe('OAuth scope label', () => {
     )
     expect(read.text()).toContain('Never their keys or sign-in tokens')
     expect(write.text()).toContain(
-      'Add, change and delete connectors. New ones start switched off; '
-      + 'you switch them on in Besidka',
+      'Add, change and delete connectors, and disconnect Google. New ones '
+      + 'start switched off; you switch them on in Besidka',
     )
+    expect(write.text()).toContain(
+      'It can also disconnect your Google account, which revokes the grant '
+      + 'and deletes the copies of Google Drive files that Besidka made.',
+    )
+    expect(write.text()).toContain('connect Google')
     expect(write.text()).toContain('It cannot switch a connector on')
     expect(write.text()).toContain('You do that in Besidka')
   })

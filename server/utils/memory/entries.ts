@@ -505,7 +505,7 @@ async function runGuardedInsert(
   const chatGuard = values.requiredChatId === undefined
     || values.requiredChatId === null
     ? sql`1 = 1`
-    : sql`exists (select 1 from chats where id = ${values.requiredChatId} and user_id = ${values.userId} and memory_excluded is not 1)`
+    : sql`exists (select 1 from chats where id = ${values.requiredChatId} and user_id = ${values.userId} and memory_excluded is not 1 and google_data_at is null)`
 
   const rows = await db.all<{ id: number, updated_at: number }>(sql`
     insert into memory_entries (

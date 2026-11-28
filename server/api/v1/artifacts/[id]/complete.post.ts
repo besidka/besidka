@@ -34,6 +34,7 @@ import {
 import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storage-request'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { requireFeature } from '~~/server/utils/features/guards'
+import { assertGoogleDataRecipient } from '~~/server/utils/google/data-guard'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import {
   assertLegalConsent,
@@ -182,6 +183,19 @@ export default defineEventHandler(async (
   if (!bridgeModel || bridgeModel.providerId !== provider.id) {
     throw createNoKeyError()
   }
+
+  await assertGoogleDataRecipient({
+    holdsGoogleData: access.googleDerived,
+    db,
+    userId: viewerUserId,
+    recipient: {
+      providerId: bridgeModel.providerId,
+      modelId: bridgeModel.id,
+    },
+    gatewaySafeguardsSent: false,
+    site: 'artifact-bridge',
+    logger,
+  })
 
   const limitScope = {
     viewerUserId,

@@ -236,6 +236,23 @@ describe('sweepMemoryExtraction', () => {
       expect(await wasProcessed(unset.id)).toBe(true)
     })
 
+    it('never selects a chat that holds Google data', async () => {
+      const flagged = await dueChat({ googleDataAt: minutesBefore(90) })
+      const projectId = await seedProject(testDb.db, userId)
+      const flaggedProjectChat = await dueChat({
+        projectId,
+        googleDataAt: minutesBefore(90),
+      })
+      const plain = await dueChat()
+
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect(await wasProcessed(flagged.id)).toBe(false)
+      expect(await wasProcessed(flaggedProjectChat.id)).toBe(false)
+      expect(await wasProcessed(plain.id)).toBe(true)
+    })
+
     it('waits for the chat to be idle', async () => {
       const recent = await dueChat({ activityAt: minutesBefore(5) })
       const idle = await dueChat({ activityAt: minutesBefore(11) })

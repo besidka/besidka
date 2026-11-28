@@ -1,5 +1,5 @@
 import { defineComponent } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtraFileSourceTab } from '../../../app/types/file-manager'
 import {
   GENERATED_FILES_TAB_LABEL,
@@ -11,7 +11,29 @@ import {
   resolveFileManagerSourceTabs,
 } from '../../../app/utils/file-manager-sources'
 
+const mocks = vi.hoisted(() => ({
+  isDriveActive: { value: true },
+  useFeature: vi.fn(),
+}))
+
+vi.mock('../../../app/composables/features', () => ({
+  useFeature: (key: string) => {
+    mocks.useFeature(key)
+
+    return {
+      get value() {
+        return { enabled: true, active: mocks.isDriveActive.value }
+      },
+    }
+  },
+}))
+
 const FakeSource = defineComponent({ name: 'FakeSource', render: () => null })
+
+beforeEach(() => {
+  mocks.useFeature.mockClear()
+  mocks.isDriveActive.value = true
+})
 
 function createExtraTab(
   overrides: Partial<ExtraFileSourceTab> = {},
@@ -37,8 +59,36 @@ describe('utils/file-manager-sources', () => {
     ])
   })
 
-  it('registers no extra sources yet', () => {
-    expect(getFileManagerExtraSourceTabs()).toEqual([])
+  it('registers the Google Drive tab for the google.drive feature', () => {
+    const tabs = getFileManagerExtraSourceTabs()
+
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      kind: 'extra',
+      id: 'google-drive',
+      label: 'Google Drive',
+      testId: 'files-source-google-drive',
+    })
+    expect(mocks.useFeature).toHaveBeenCalledWith('google.drive')
+  })
+
+  it('shows the Google Drive tab only while the feature is active', () => {
+    const tabs = getFileManagerExtraSourceTabs()
+
+    mocks.isDriveActive.value = false
+
+    expect(resolveFileManagerSourceTabs({ extraTabs: tabs })
+      .map(tab => tab.id)).toEqual(['upload', 'assistant', 'project'])
+
+    mocks.isDriveActive.value = true
+
+    expect(resolveFileManagerSourceTabs({ extraTabs: tabs })
+      .map(tab => tab.id)).toEqual([
+      'upload',
+      'assistant',
+      'project',
+      'google-drive',
+    ])
   })
 
   it('keeps the generated tab for every model', () => {

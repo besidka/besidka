@@ -19,10 +19,13 @@ const {
   getDocumentRenderer,
   getRendererCapabilities,
   getRenderFailureStatus,
+  offersWorkbookMap,
   renderDocument,
   RENDERER_CAPABILITIES_TTL_MS,
+  rendererOffersWorkbookMap,
   resetRendererCapabilitiesCache,
   validateDocumentBytes,
+  WORKBOOK_MAP_EXTRACT_VERSION,
 } = await import('~~/server/utils/documents/renderer')
 
 const CAPABILITIES: RendererCapabilities = {
@@ -510,6 +513,87 @@ describe('document renderer binding', () => {
 
       expect(result.errorCode).toBe('ooxml_encrypted')
       expect(loggedText(logger)).toContain('ooxml_encrypted')
+    })
+  })
+
+  describe('workbook map negotiation', () => {
+    const mapRequest = {
+      format: 'xlsx' as const,
+      bytes: new Uint8Array(2048),
+      version: WORKBOOK_MAP_EXTRACT_VERSION,
+      maxTextBytes: 200 * 1024,
+    }
+    const NEW_CAPABILITIES: RendererCapabilities = {
+      ...CAPABILITIES,
+      rendererVersion: '1.2.0+1.0.0',
+      extract: { ...CAPABILITIES.extract!, versions: [1, 2] },
+    }
+
+    it('sends version 1 to a renderer deployed before the map', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(mapRequest, logger as never)
+
+      expect(binding.extract).toHaveBeenCalledWith({
+        format: 'xlsx',
+        bytes: mapRequest.bytes,
+      })
+      expect(result).toEqual(EXTRACTED)
+      expect(result.workbookMap).toBeUndefined()
+      expect(loggedText(logger)).toContain('"extractVersion":1')
+      expect(await rendererOffersWorkbookMap()).toBe(false)
+    })
+
+    it('passes version 2 to a renderer that offers it', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+
+      binding.capabilities.mockResolvedValue(NEW_CAPABILITIES)
+      binding.extract.mockResolvedValueOnce({
+        ...EXTRACTED,
+        workbookMap: { sheets: 1 } as never,
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(mapRequest, logger as never)
+
+      expect(binding.extract).toHaveBeenCalledWith(mapRequest)
+      expect(result.workbookMap).toBeDefined()
+      expect(loggedText(logger)).toContain('"extractVersion":2')
+      expect(loggedText(logger)).toContain('"workbookMap":true')
+      expect(await rendererOffersWorkbookMap()).toBe(true)
+    })
+
+    it('keeps documents on version 1 requests unchanged', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue(NEW_CAPABILITIES)
+      mocks.env.DOC_RENDERER = binding
+
+      await extractOfficeText({
+        format: 'docx',
+        bytes: new Uint8Array(10),
+      })
+
+      expect(binding.extract).toHaveBeenCalledWith({
+        format: 'docx',
+        bytes: new Uint8Array(10),
+      })
+    })
+
+    it('offers nothing when the renderer cannot be reached', async () => {
+      expect(await rendererOffersWorkbookMap()).toBe(false)
+      expect(offersWorkbookMap({
+        ...NEW_CAPABILITIES,
+        extract: { ...NEW_CAPABILITIES.extract!, formats: ['docx'] },
+      })).toBe(false)
+      expect(offersWorkbookMap({
+        ...NEW_CAPABILITIES,
+        extract: { ...NEW_CAPABILITIES.extract!, version: 99 },
+      })).toBe(false)
     })
   })
 

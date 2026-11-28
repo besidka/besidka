@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatContextItem } from '../../../../shared/types/chat-context.d'
 import ChatContextPanel from '../../../../app/components/Chat/ContextPanel.vue'
 import { useSidePanel } from '../../../../app/composables/side-panel'
+import { useGoogleFilePreview } from '../../../../app/composables/google-file-preview'
 import { useArtifactPanel } from '../../../../app/composables/artifacts'
 
 enableAutoUnmount(afterEach)
@@ -282,6 +283,27 @@ describe('Chat/ContextPanel', () => {
 
       expect(wrapper.find(testId('chat-context-error')).exists()).toBe(false)
       expect(wrapper.find(testId('chat-context-header')).exists()).toBe(true)
+    })
+
+    it('says what a chat that holds Google data restricts', async () => {
+      useState('chat-google-data:holds-by-slug').value = { [CHAT_SLUG]: true }
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get(testId('chat-context-google-data')).text())
+        .toContain('This chat holds content from Google')
+      useState('chat-google-data:holds-by-slug').value = {}
+    })
+
+    it('shows no Google note for an ordinary chat', async () => {
+      useState('chat-google-data:holds-by-slug').value = {}
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find(testId('chat-context-google-data')).exists())
+        .toBe(false)
     })
 
     it('says so when the chat has nothing yet', async () => {
@@ -1473,6 +1495,112 @@ describe('Chat/ContextPanel', () => {
         const wrapper = await mountPanel()
 
         await wrapper.get(testId('chat-context-item-document'))
+          .trigger('click')
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+  })
+
+  describe('google files', () => {
+    const OPEN_LINK
+      = 'https://docs.google.com/document/d/abcdefghij1234567890/edit'
+
+    function googleFileItem(meta: ChatContextItem['meta'] = {}) {
+      return item({
+        id: 'google-file:call_1',
+        sectionId: 'google-files',
+        kind: 'google-file',
+        title: 'Quarterly plan',
+        href: OPEN_LINK,
+        meta: { fileKind: 'document', ...meta },
+      })
+    }
+
+    function registerFile() {
+      useGoogleFilePreview().register({
+        toolCallId: 'call_1',
+        title: 'Quarterly plan',
+        kind: 'document',
+        content: '# Plan',
+        openLink: OPEN_LINK,
+      })
+    }
+
+    it('lists a created file under Outputs with the product name',
+      async () => {
+        data.value = ownedData({ outputs: [googleFileItem()] })
+
+        const wrapper = await mountPanel()
+        const row = wrapper.get(testId('chat-context-item-google-file'))
+
+        expect(row.text()).toContain('Quarterly plan')
+        expect(row.text()).toContain('Google Docs')
+        expect(row.element.tagName).toBe('BUTTON')
+        expect(row.find('[class*="i-google-brand"]').exists()).toBe(true)
+      })
+
+    it('names Google Sheets and Google Drive for the other kinds',
+      async () => {
+        data.value = ownedData({
+          outputs: [
+            googleFileItem({ fileKind: 'spreadsheet' }),
+            { ...googleFileItem({ fileKind: 'text' }), id: 'google-file:2' },
+          ],
+        })
+
+        const wrapper = await mountPanel()
+        const rows = wrapper.findAll(testId('chat-context-item-google-file'))
+
+        expect(rows[0]?.text()).toContain('Google Sheets')
+        expect(rows[1]?.text()).toContain('Google Drive')
+      })
+
+    it('pushes the preview on top so Back returns to the context',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        registerFile()
+        data.value = ownedData({ outputs: [googleFileItem()] })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-google-file'))
+          .trigger('click')
+
+        const view = useSidePanel().currentView.value
+
+        expect(useSidePanel().stack.value.map(entry => entry.viewKey))
+          .toEqual(['chat-context', 'google-file:call_1'])
+        expect(view?.title).toBe('Quarterly plan')
+        expect(view?.props).toEqual({
+          toolCallId: 'call_1',
+          title: 'Quarterly plan',
+          kind: 'document',
+          content: '# Plan',
+          openLink: OPEN_LINK,
+        })
+
+        useSidePanel().back()
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+
+    it('leaves the panel on Context when the file is not registered',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        useGoogleFilePreview().unregister('call_1')
+        data.value = ownedData({ outputs: [googleFileItem()] })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-google-file'))
           .trigger('click')
 
         expect(useSidePanel().viewKey.value).toBe('chat-context')

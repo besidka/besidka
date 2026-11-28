@@ -104,7 +104,7 @@ describe('rename_file tool', () => {
     expect(mocks.renameMcpFile).toHaveBeenCalledWith(
       { marker: 'db' },
       42,
-      { fileId: 'file1', name: 'new.md' },
+      { fileId: 'file1', name: 'new.md', googleContent: 'hidden' },
     )
     expect(payload).toEqual({ id: 'file1', name: 'new.md' })
     expect(mocks.logger.set).toHaveBeenCalledWith({

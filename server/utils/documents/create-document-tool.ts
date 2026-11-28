@@ -55,6 +55,7 @@ export interface CreateDocumentToolInput {
   modelId?: string | null
   provider?: string | null
   assistantMessageId: string
+  isGoogleDerived?: () => boolean
 }
 
 export type DocumentSpecCheck
@@ -96,9 +97,10 @@ export const FORMAT_RULES: Record<DocumentFormat, string> = {
   xlsx: 'xlsx needs sheets {name, columns:[{header, type}], rows}. Column '
     + 'types: string, number, integer, currency, percent, date, boolean. A '
     + 'cell is a string, number, boolean, null, {"date":"2026-11-08"} or '
-    + '{"formula":"SUM(B2:B9)"}: A1 references to the sheet itself (row 1 '
-    + 'is the header), plain functions such as SUM, AVERAGE, MIN, MAX, '
-    + 'COUNT, ROUND, IF, VLOOKUP, no external references. A row may be '
+    + '{"formula":"SUM(B2:B9)"}: A1 references (row 1 is the header), also '
+    + 'to another sheet of the same workbook (Rates!B2, \'My sheet\'!A1:B9), '
+    + 'plain functions such as SUM, AVERAGE, MIN, MAX, COUNT, ROUND, IF, '
+    + 'VLOOKUP, no other workbooks and no 3D ranges. A row may be '
     + 'shorter than the columns. Sheet names: at most 31 characters, '
     + 'unique, none of [ ] : * ? / \\, not "History".',
 }
@@ -484,6 +486,7 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
             input.db,
             input.userId,
             imageIds,
+            { allowGoogleContent: input.isGoogleDerived?.() === true },
           )
 
           if (resolved.missingIds.length > 0) {
@@ -519,6 +522,7 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
             specVersion: validSpec.specVersion,
             stats,
             specJson: JSON.stringify(validSpec),
+            googleDerivedAt: input.isGoogleDerived?.() ? new Date() : null,
           })
 
           created += 1

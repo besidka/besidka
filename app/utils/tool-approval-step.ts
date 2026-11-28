@@ -3,11 +3,16 @@ import type {
   ToolApprovalReason,
   ToolApprovalRemember,
 } from '#shared/utils/tool-approval-policy'
-import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
+import type {
+  DriveNames,
+  ToolApprovalPartData,
+} from '#shared/utils/tool-approval-parts'
 import type { ToolApprovalFailure } from '~/composables/tool-approvals'
 import {
   isToolApprovalDataPart,
   isToolGrantDataPart,
+  readApprovalDriveNames,
+  readApprovalLink,
 } from '#shared/utils/tool-approval-parts'
 import {
   getConnectorToolCall,
@@ -18,6 +23,12 @@ import {
   BESIDKA_TOOL_NAME_PREFIX,
   isBesidkaChatToolName,
 } from '#shared/utils/besidka-tool-permissions'
+import {
+  GOOGLE_EGRESS_REASON_TEXT,
+  GOOGLE_TOOL_CHAT_GRANT_LABELS,
+  GOOGLE_TOOL_NAME_PREFIX,
+  isGoogleToolName,
+} from '#shared/utils/google-tool-approvals'
 import { MEMORY_ALWAYS_ALLOW_TOOL_NAME } from '#shared/utils/memory-tool-permissions'
 import { formatConnectorArguments } from '~/utils/connector-step'
 
@@ -41,6 +52,8 @@ export interface ApprovalStepModel {
   summary: string
   rememberOptions: ToolApprovalRemember[]
   preview: string
+  link?: string
+  driveNames?: DriveNames
   input: unknown
   partState: string
   approved: boolean | null
@@ -57,6 +70,7 @@ export interface ApprovalStepContext {
 export interface ApprovalButton {
   remember: ToolApprovalRemember
   label: string
+  ariaLabel?: string
 }
 
 const AWAITING_STATES = new Set<string>([
@@ -199,6 +213,8 @@ export function getApprovalStepModel(
 
   const connector = parseConnectorToolName(toolName)
   const isBesidka = isBesidkaChatToolName(toolName)
+  const link = readApprovalLink(data?.link)
+  const driveNames = readApprovalDriveNames(data?.driveNames)
 
   return {
     approvalId,
@@ -213,6 +229,8 @@ export function getApprovalStepModel(
     summary: typeof data?.summary === 'string' ? data.summary : '',
     rememberOptions: readRememberOptions(data?.rememberOptions),
     preview: typeof data?.preview === 'string' ? data.preview : '',
+    ...(link ? { link } : {}),
+    ...(driveNames ? { driveNames } : {}),
     input: part.input,
     partState: part.state,
     approved: typeof approval?.approved === 'boolean'
@@ -272,6 +290,12 @@ export function getApprovalStepTitle(
     return model.summary.trim() || `Besidka wants to ${
       humanizeBesidkaToolName(model.tool)
     }`
+  }
+
+  if (isGoogleToolName(model.toolName)) {
+    return model.summary.trim() || `Besidka wants to ${
+      humanizeBesidkaToolName(model.tool.slice(GOOGLE_TOOL_NAME_PREFIX.length))
+    } on Google`
   }
 
   return NATIVE_APPROVAL_TITLES[model.tool] ?? `Run ${model.tool}`
@@ -337,7 +361,11 @@ export function getAlwaysAllowHint(
  * its server-written summary already is the title.
  */
 export function getApprovalStepSummaryLine(model: ApprovalStepModel): string {
-  return model.isBesidka ? '' : getApprovalSummaryLine(model.summary)
+  if (model.isBesidka || isGoogleToolName(model.toolName)) {
+    return ''
+  }
+
+  return getApprovalSummaryLine(model.summary)
 }
 
 /**
@@ -421,6 +449,10 @@ export function getApprovalReasonText(
     return 'Uploads the skill to your Anthropic workspace'
   }
 
+  if (reason === 'google-egress') {
+    return GOOGLE_EGRESS_REASON_TEXT
+  }
+
   if (isBesidkaChatToolName(toolName)) {
     return 'Asks before each use. Change it in Tool permissions in Labs.'
   }
@@ -432,13 +464,40 @@ export function getApprovalReasonText(
   return 'Runs only after you allow it'
 }
 
+/**
+ * The accessible name and hover text of a Google tool's chat grant button.
+ * The visible label stays a prefix of it (WCAG 2.5.3), and the sentence from
+ * `GOOGLE_TOOL_CHAT_GRANT_LABELS` is cut to what it allows when it has the
+ * usual "Allow ... in this chat" shape.
+ */
+function getChatGrantAccessibleName(sentence: string): string {
+  const label = REMEMBER_LABELS.chat
+  const scope = /^Allow\s+(.+?)\s+in this chat$/.exec(sentence)?.[1]
+
+  return `${label}: ${scope ?? sentence}`
+}
+
 export function getApprovalButtons(
   rememberOptions: readonly ToolApprovalRemember[],
+  toolName?: string,
 ): ApprovalButton[] {
+  const chatGrantDescription = toolName && Object.hasOwn(
+    GOOGLE_TOOL_CHAT_GRANT_LABELS,
+    toolName,
+  )
+    ? getChatGrantAccessibleName(GOOGLE_TOOL_CHAT_GRANT_LABELS[toolName]!)
+    : undefined
+
   return REMEMBER_ORDER
     .filter(option => rememberOptions.includes(option))
     .map((remember) => {
-      return { remember, label: REMEMBER_LABELS[remember] }
+      return {
+        remember,
+        label: REMEMBER_LABELS[remember],
+        ...(remember === 'chat' && chatGrantDescription
+          ? { ariaLabel: chatGrantDescription }
+          : {}),
+      }
     })
 }
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
+import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
   seedChat,
@@ -197,6 +198,111 @@ describe('chat tool approval grant routes', () => {
       ],
     })
     expect(JSON.stringify(result)).not.toContain('a'.repeat(64))
+  })
+
+  it('lists Google read and egress grants with plain labels, and Reset '
+    + 'clears them', async () => {
+    const store = await import('~~/server/utils/connectors/store')
+    const { buildExposedToolName } = await import(
+      '~~/server/utils/connectors/tool-definitions'
+    )
+    const { addBesidkaChatGrant } = await import(
+      '~~/server/utils/besidka-tools/chat-settings'
+    )
+    const [connector] = await store.listConnectors(testDb.db, userId)
+    const exposedName = await buildExposedToolName(
+      connector!.slug,
+      'update_issue',
+    )
+
+    await store.upsertConnectorChatSettings(testDb.db, {
+      userId,
+      chatPublicId: chat.id,
+      connectorId,
+      enabled: true,
+      alwaysAllowTools: {
+        [`google-egress:${exposedName}`]: 'b'.repeat(64),
+      },
+    })
+    await addBesidkaChatGrant(testDb.db, userId, chat.id, {
+      toolName: 'google__drive_search',
+      definitionHash: 'c'.repeat(64),
+    })
+
+    const result = await call(listPath)
+
+    expect(result.grants).toEqual(expect.arrayContaining([
+      {
+        scope: 'chat',
+        connectorId,
+        connectorTitle: 'Linear',
+        toolName: 'update_issue',
+        source: 'google-egress',
+      },
+      {
+        scope: 'chat',
+        connectorId: '',
+        connectorTitle: 'Google',
+        toolName: 'google__drive_search',
+        source: 'google',
+      },
+    ]))
+    expect(JSON.stringify(result)).not.toContain('c'.repeat(64))
+
+    await call(resetPath)
+
+    const sources = (await call(listPath)).grants.map((grant: {
+      source?: string
+    }) => grant.source)
+
+    expect(sources).not.toContain('google')
+    expect(sources).not.toContain('google-egress')
+  })
+
+  it('lists a Google tool set to Always allow in the chat, keeps it after '
+    + 'Reset, and hides a tool of a service that is off in this chat',
+  async () => {
+    const { setGoogleServicesOff } = await import(
+      '~~/server/utils/besidka-tools/chat-settings'
+    )
+
+    await testDb.db.insert(schema.besidkaToolPermissions).values([
+      { userId, toolName: 'google__gmail_search', mode: 'allow' },
+      { userId, toolName: 'google__calendar_create_event', mode: 'allow' },
+      { userId, toolName: 'google__drive_read_file', mode: 'allow' },
+      { userId, toolName: 'google__drive_search', mode: 'blocked' },
+    ])
+
+    const always = (result: { grants: Array<Record<string, unknown>> }) => {
+      return result.grants
+        .filter(grant => grant.source === 'google' && grant.scope === 'always')
+        .map(grant => grant.toolName)
+        .sort()
+    }
+
+    expect(always(await call(listPath))).toEqual([
+      'google__calendar_create_event',
+      'google__gmail_search',
+    ])
+    expect((await call(listPath)).grants).toContainEqual({
+      scope: 'always',
+      connectorId: '',
+      connectorTitle: 'Google',
+      toolName: 'google__gmail_search',
+      source: 'google',
+    })
+
+    await call(resetPath)
+
+    expect(always(await call(listPath))).toEqual([
+      'google__calendar_create_event',
+      'google__gmail_search',
+    ])
+
+    await setGoogleServicesOff(testDb.db, userId, chat.id, ['gmail'])
+
+    expect(always(await call(listPath)))
+      .toEqual(['google__calendar_create_event'])
   })
 
   it('resets only the chat grants and keeps the connector on', async () => {

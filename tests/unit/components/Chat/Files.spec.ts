@@ -306,6 +306,61 @@ describe('Chat/Files', () => {
     expect(wrapper.find('.carousel-item').exists()).toBe(false)
   })
 
+  describe('Save to Google Drive', () => {
+    function messageWith(role: 'user' | 'assistant') {
+      return {
+        id: 'message-1',
+        role,
+        parts: [{
+          type: 'file' as const,
+          mediaType: 'text/markdown',
+          filename: 'report.md',
+          url: '/files/report-key.md',
+        }],
+      }
+    }
+
+    it('offers the action on a generated file of the owner\'s chat',
+      async () => {
+        const wrapper = await mountSuspended(Files, {
+          props: {
+            message: messageWith('assistant'),
+            canSaveToDrive: true,
+          },
+        })
+        const action = wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' })
+
+        expect(action.exists()).toBe(true)
+        expect(action.props()).toMatchObject({
+          storageKey: 'report-key.md',
+          fileName: 'report.md',
+        })
+      })
+
+    it('offers nothing on a shared chat, where the prop is not set',
+      async () => {
+        const wrapper = await mountSuspended(Files, {
+          props: { message: messageWith('assistant') },
+        })
+
+        expect(wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' })
+          .exists()).toBe(false)
+      })
+
+    it('offers nothing on a file the user attached to their own message',
+      async () => {
+        const wrapper = await mountSuspended(Files, {
+          props: {
+            message: messageWith('user'),
+            canSaveToDrive: true,
+          },
+        })
+
+        expect(wrapper.findComponent({ name: 'ChatSaveToGoogleDrive' })
+          .exists()).toBe(false)
+      })
+  })
+
   it('still renders a genuine user-uploaded image attachment', async () => {
     const wrapper = await mountSuspended(Files, {
       props: {

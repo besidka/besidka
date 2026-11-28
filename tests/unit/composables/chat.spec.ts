@@ -2001,6 +2001,13 @@ describe('useChat request body webSearchMode', () => {
     expect(body.tools).toEqual([])
     expect(body.webSearchMode).toBe('always')
   })
+
+  it('sends the browser time zone with a new message', async () => {
+    const body = await buildRequestBody()
+
+    expect(body.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
+    expect(typeof body.timeZone).toBe('string')
+  })
 })
 
 describe('hasMeaningfulAssistantParts past-chat pre-retrieval chip', () => {
@@ -2446,6 +2453,24 @@ describe('connector tool parts in assistant messages', () => {
         },
         { type: 'text', text: 'Answer' },
       ],
+    } as unknown as UIMessage)).toBe(true)
+  })
+
+  it('does not count the Google tools withheld note as an answer', () => {
+    const withheldPart = {
+      type: 'data-google-tools-withheld',
+      data: { reason: 'model_may_not_receive_google_data' },
+    }
+
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [withheldPart],
+    } as unknown as UIMessage)).toBe(false)
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [withheldPart, { type: 'text', text: 'Answer' }],
     } as unknown as UIMessage)).toBe(true)
   })
 })

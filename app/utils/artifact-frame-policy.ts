@@ -10,8 +10,11 @@ const FRAME_POLICY_CLASS = 'js-artifact-frame-policy'
  * would otherwise host artifact frames without it. Returns false when the
  * origin is unusable and nothing was added.
  */
-export function ensureArtifactFramePolicy(artifactsOrigin: unknown): boolean {
-  const policy = buildArtifactFrameSrc(artifactsOrigin)
+export function ensureArtifactFramePolicy(
+  artifactsOrigin: unknown,
+  extraSources: readonly string[] = [],
+): boolean {
+  const policy = buildArtifactFrameSrc(artifactsOrigin, extraSources)
 
   if (!policy || typeof document === 'undefined') {
     return false

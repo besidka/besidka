@@ -7,7 +7,7 @@ import {
   findGatewayCatalogModel,
   getCachedGatewayCatalog,
 } from './catalog'
-import type { GatewayChatResult } from './index'
+import type { GatewayCallOptions, GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
 const ANTHROPIC_MODEL_ID_PREFIX = 'anthropic/'
@@ -18,6 +18,7 @@ export async function useOpenRouterGateway(
   requestedTools: ModelTool[],
   requestedReasoning: ReasoningLevel,
   logger?: { set: (fields: Record<string, unknown>) => void },
+  options: GatewayCallOptions = {},
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -121,9 +122,14 @@ export async function useOpenRouterGateway(
    * rendering path this app already uses for attachments and direct-provider
    * generated images.
    */
+  const zeroDataRetentionSettings = options.googleDataSafeguards
+    ? { provider: { zdr: true } }
+    : {}
+
   function getInstance() {
     return openrouter.chat(model, {
       usage: { include: true },
+      ...zeroDataRetentionSettings,
       ...(isWebSearchRequested ? { plugins: [{ id: 'web' }] } : {}),
       ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       ...(isImageGenerationRequested
@@ -141,7 +147,10 @@ export async function useOpenRouterGateway(
    * never needs any of them.
    */
   function getTitleInstance() {
-    return openrouter.chat(model, { usage: { include: true } })
+    return openrouter.chat(model, {
+      usage: { include: true },
+      ...zeroDataRetentionSettings,
+    })
   }
 
   async function generateChatTitle(message: string) {

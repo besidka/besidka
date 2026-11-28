@@ -91,8 +91,11 @@ export default defineEventHandler(async (event) => {
         generationCost: schema.files.generationCost,
         textStatus: schema.files.textStatus,
         textBytes: schema.files.textBytes,
+        textVersion: schema.files.textVersion,
         textOmittedMedia: schema.files.textOmittedMedia,
         textOmittedCharts: schema.files.textOmittedCharts,
+        externalSource: schema.files.externalSource,
+        externalId: schema.files.externalId,
         documentId: sql<number | null>`(
           select ${schema.documents.id} from ${schema.documents}
           where ${schema.documents.fileId} = ${schema.files.id}

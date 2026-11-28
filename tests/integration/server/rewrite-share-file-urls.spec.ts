@@ -441,3 +441,34 @@ describe('stripFileParts', () => {
     expect(result[0]?.parts).toEqual([])
   })
 })
+
+describe('Google Drive references in a share that hides files', () => {
+  const messages = [{
+    id: 'm1',
+    role: 'user',
+    parts: [
+      { type: 'text', text: 'Summarize' },
+      { type: 'file', url: '/files/a.md', mediaType: 'text/markdown' },
+      {
+        type: 'data-drive-file',
+        data: { driveFileId: '', name: 'Plan', mimeType: '', link: '' },
+      },
+    ],
+  }] as unknown as UIMessage[]
+
+  it('drops the reference with the hidden file, so no name remains', () => {
+    const [message] = hideFileParts(messages)
+
+    expect(message?.parts.map(part => part.type)).toEqual(['text', 'file'])
+    expect(message?.parts[1]).toMatchObject({
+      mediaType: HIDDEN_FILE_MEDIA_TYPE,
+    })
+    expect(JSON.stringify(message)).not.toContain('Plan')
+  })
+
+  it('drops the reference from a visitor branch that strips files', () => {
+    const [message] = stripFileParts(messages)
+
+    expect(message?.parts).toEqual([{ type: 'text', text: 'Summarize' }])
+  })
+})

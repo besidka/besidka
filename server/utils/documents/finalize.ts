@@ -232,6 +232,7 @@ export async function finalizeRenderedDocument(
       originMessageId,
       originProvider: row.originProvider,
       originModel: row.originModel,
+      googleDerivedAt: row.googleDerivedAt,
       logger,
     })
   } catch (exception) {

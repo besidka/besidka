@@ -252,6 +252,45 @@ function rankOf(candidate: BesidkaChatToolCandidate): number {
  * that do not fit are `leftOut`: they go to the tool index and are loaded on
  * demand (`server/utils/ai/tool-index.ts`), never dropped.
  */
+/**
+ * Besidka tools that would spread a chat's content beyond the chat: into
+ * every chat of a project and its TypeSafe AI knowledge screening, to a
+ * public link, or as model-chosen free text that other chats and tools read
+ * back (a project name goes into the project's system prompt, a chat title
+ * is listed by `search_chats`, a file name by the file tools). A send that
+ * holds Google data never offers them, and a call that comes after Google
+ * content arrived mid-send is refused.
+ */
+export const GOOGLE_SPREADING_BESIDKA_TOOLS: ReadonlySet<string> = new Set([
+  'add_project_text',
+  'add_project_note',
+  'create_project',
+  'rename_file',
+  'share_artifact',
+  'update_chat',
+  'update_project',
+  'update_project_instructions',
+  'update_project_knowledge_item',
+  'update_settings',
+])
+
+export const GOOGLE_SPREAD_REFUSED_MESSAGE = 'This chat holds content from '
+  + 'Google, so Besidka does not copy it into a project, a name, a title or '
+  + 'a public link. Tell the user to do this from a chat without Google '
+  + 'content.'
+
+export function withoutGoogleSpreadingTools(
+  modes: ReadonlyMap<string, ToolPermissionMode>,
+): ReadonlyMap<string, ToolPermissionMode> {
+  const filtered = new Map(modes)
+
+  for (const toolName of GOOGLE_SPREADING_BESIDKA_TOOLS) {
+    filtered.set(toolName, 'blocked')
+  }
+
+  return filtered
+}
+
 export function selectBesidkaChatTools(input: {
   modes: ReadonlyMap<string, ToolPermissionMode>
   maxTools: number
@@ -578,11 +617,15 @@ export async function buildBesidkaChatTools(input: {
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   limitCalls: BesidkaCallLimiter
   guard?: UntrustedContentGuard
+  holdsGoogleData?: () => boolean
   logger: LoggerLike
 }): Promise<BesidkaChatToolsRun> {
   const { db, userId, logger } = input
+  const holdsGoogleData = input.holdsGoogleData ?? (() => false)
   const selection = selectBesidkaChatTools({
-    modes: input.modes,
+    modes: holdsGoogleData()
+      ? withoutGoogleSpreadingTools(input.modes)
+      : input.modes,
     maxTools: input.maxTools,
     maxBytes: input.maxBytes,
   })
@@ -626,6 +669,7 @@ export async function buildBesidkaChatTools(input: {
         attributes: { besidkaTools: { tool: besidkaTool.name, ...fields } },
       })
     }
+    const sendHoldsGoogleData = holdsGoogleData()
     const context: BesidkaToolContext = {
       userId,
       clientId: BESIDKA_CHAT_CLIENT_ID,
@@ -634,9 +678,21 @@ export async function buildBesidkaChatTools(input: {
       db,
       logger,
       log,
+      googleContent: sendHoldsGoogleData ? 'allowed' : 'withheld',
+      isGoogleDerived: holdsGoogleData,
     }
 
     try {
+      if (
+        sendHoldsGoogleData
+        && GOOGLE_SPREADING_BESIDKA_TOOLS.has(besidkaTool.name)
+      ) {
+        throw createError({
+          message: GOOGLE_SPREAD_REFUSED_MESSAGE,
+          status: 403,
+        })
+      }
+
       const result = await besidkaTool.handler(callInput as never, context)
 
       return frameUntrustedResult({

@@ -37,6 +37,12 @@
           {{ keyMissingLabel }}
         </span>
         <span
+          v-else-if="googleDataReason"
+          class="sr-only"
+        >
+          {{ googleDataReason }}
+        </span>
+        <span
           class="w-full xs:w-auto min-w-0 flex items-center gap-1.5"
         >
           <ProviderIcon
@@ -60,6 +66,19 @@
             size="10"
           />
           Key required
+        </span>
+        <span
+          v-else-if="googleDataReason"
+          data-testid="model-google-data-blocked"
+          class="badge badge-xs badge-soft badge-warning shrink-0 gap-1 font-semibold max-xs:ml-5 tooltip tooltip-soft tooltip-bottom"
+          :data-tip="googleDataReason"
+          aria-hidden="true"
+        >
+          <Icon
+            name="lucide:shield-alert"
+            size="10"
+          />
+          Not for Google data
         </span>
         <span
           v-if="model.priceTier"
@@ -239,6 +258,7 @@ const props = defineProps<{
   isKeyMissing?: boolean
   providerName?: string
   isRecommended?: boolean
+  googleDataReason?: string
 }>()
 
 const emit = defineEmits<{
@@ -254,7 +274,7 @@ const priceTip = computed<string | undefined>(() => {
 })
 
 const isDisabled = computed<boolean>(() => {
-  return !!props.isLegacy || !!props.isKeyMissing
+  return !!props.isLegacy || !!props.isKeyMissing || !!props.googleDataReason
 })
 
 const keyMissingLabel = computed<string>(() => {

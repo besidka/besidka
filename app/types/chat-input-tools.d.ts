@@ -28,7 +28,8 @@ export type ToolsSection
 export type ChatInputArtifactTileId = `artifact-${string}`
 
 export type ChatInputTileId
-  = | 'project'
+  = | 'google-file'
+    | 'project'
     | 'memory'
     | 'deep-research'
     | 'image'
@@ -111,11 +112,15 @@ export interface ChatInputToolsState {
   files: {
     visible: boolean
     count: number
-    isImageInputSupported: boolean
   }
   artifacts: {
     visible: boolean
     attached: AttachedArtifact[]
+  }
+  googleDrive?: {
+    visible: boolean
+    importing: number
+    checking?: boolean
   }
   skills?: {
     visible: boolean

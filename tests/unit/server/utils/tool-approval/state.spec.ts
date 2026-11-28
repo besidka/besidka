@@ -121,8 +121,8 @@ describe('approval state', () => {
   it.each([
     ['null', null],
     ['a string', 'taint'],
-    ['an unknown taint kind', {
-      taint: ['made-up'],
+    ['a taint kind that is not a string', {
+      taint: [7],
       readSources: [],
       counters: { rounds: 0, steps: 0, connectorCalls: 0, builtInCalls: 0 },
     }],
@@ -150,8 +150,23 @@ describe('approval state', () => {
     expect(deserializeApprovalState(value)).toEqual({ ok: false })
   })
 
+  it('reads an unknown taint kind as the strictest known kind', () => {
+    const result = deserializeApprovalState({
+      taint: ['made-up', 'web', 'another-new-kind'],
+      readSources: [],
+      counters: { rounds: 1, steps: 0, connectorCalls: 0, builtInCalls: 0 },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.ok && [...result.state.taint]).toEqual(['google', 'web'])
+  })
+
   it('never returns a fresh state for a value that fails', () => {
-    const result = deserializeApprovalState({ taint: ['made-up'] })
+    const result = deserializeApprovalState({
+      taint: ['web'],
+      readSources: [''],
+      counters: { rounds: 0, steps: 0, connectorCalls: 0, builtInCalls: 0 },
+    })
 
     expect(result.ok).toBe(false)
     expect(result).not.toHaveProperty('state')

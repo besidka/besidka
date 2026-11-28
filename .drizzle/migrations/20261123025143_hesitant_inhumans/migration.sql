@@ -1,0 +1,1 @@
+ALTER TABLE `besidka_chat_settings` ADD `google_services_off` text;

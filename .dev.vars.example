@@ -33,6 +33,16 @@ NUXT_BETTER_AUTH_SECRET=secret
 # https://console.cloud.google.com/apis/dashboard
 NUXT_GOOGLE_CLIENT_ID=
 NUXT_GOOGLE_CLIENT_SECRET=
+NUXT_GOOGLE_DRIVE_CLIENT_ID=
+NUXT_GOOGLE_DRIVE_CLIENT_SECRET=
+
+# Google Picker (public values, docs/google.md section 12): the API key
+# restricted to the Google Picker API and the number (not the id) of the
+# project that owns the Drive OAuth client. While the key is set, chat pages
+# also allow the Picker frame (https://docs.google.com/picker) in frame-src
+# for users who have google.drive active (section 12.8).
+NUXT_PUBLIC_GOOGLE_PICKER_API_KEY=
+NUXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER=
 
 # GitHub OAuth API
 # https://github.com/settings/applications

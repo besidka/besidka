@@ -22,7 +22,26 @@
           Deselect
         </button>
       </div>
-      <div class="grid grid-cols-2 max-sm:w-full sm:flex gap-3">
+      <div
+        class="grid max-sm:w-full sm:flex gap-3"
+        :class="refreshable ? 'grid-cols-3' : 'grid-cols-2'"
+      >
+        <button
+          v-if="refreshable"
+          type="button"
+          class="btn btn-sm btn-outline max-sm:btn-block"
+          :disabled="isRefreshing"
+          data-testid="files-refresh-selected"
+          :title="isRefreshing ? 'Refreshing' : 'Refresh from Google Drive'"
+          @click="onRefresh"
+        >
+          <span
+            v-if="isRefreshing"
+            class="loading loading-spinner loading-xs"
+          />
+          <Icon v-else name="lucide:refresh-cw" size="14" />
+          {{ isRefreshing ? 'Refreshing' : 'Refresh' }}
+        </button>
         <button
           type="button"
           class="btn btn-sm btn-error btn-outline max-sm:btn-block"
@@ -62,18 +81,28 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+withDefaults(defineProps<{
   selectedCount: number
   maxFiles: number
   visible: boolean
   isDeleting: boolean
-}>()
+  refreshable?: boolean
+  isRefreshing?: boolean
+}>(), {
+  refreshable: false,
+  isRefreshing: false,
+})
 
 const emit = defineEmits<{
   deselect: []
   delete: []
   attach: []
+  refresh: []
 }>()
+
+function onRefresh() {
+  emit('refresh')
+}
 
 function onDeselect() {
   emit('deselect')

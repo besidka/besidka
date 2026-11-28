@@ -79,8 +79,14 @@ export function normalizeSensitiveTextCase(text: string): string {
   ).replace(NONSPACING_MARKS_PATTERN, '')
 }
 
-const compiledRules: readonly FoldedSensitiveTextRule[] = sensitiveTextRules
-  .map((rule) => {
+let compiledRules: readonly FoldedSensitiveTextRule[] | null = null
+
+function getCompiledRules(): readonly FoldedSensitiveTextRule[] {
+  if (compiledRules) {
+    return compiledRules
+  }
+
+  compiledRules = sensitiveTextRules.map((rule) => {
     const sources = rule.patterns.map((pattern) => {
       return pattern.source
     })
@@ -93,6 +99,9 @@ const compiledRules: readonly FoldedSensitiveTextRule[] = sensitiveTextRules
       ),
     }
   })
+
+  return compiledRules
+}
 
 /**
  * A rule matches when its sources match the normalized text, or when the
@@ -121,7 +130,7 @@ export function classifySensitiveCategories(
   const normalizedText = normalizeSensitiveText(text)
   const foldedText = foldPolishDiacritics(normalizedText)
 
-  return compiledRules
+  return getCompiledRules()
     .filter((rule) => {
       return matchesRule(rule, normalizedText, foldedText)
     })
@@ -139,7 +148,7 @@ export function classifySensitiveText(
 
   const normalizedText = normalizeSensitiveText(text)
   const foldedText = foldPolishDiacritics(normalizedText)
-  const matchedRule = compiledRules.find((rule) => {
+  const matchedRule = getCompiledRules().find((rule) => {
     return matchesRule(rule, normalizedText, foldedText)
   })
 

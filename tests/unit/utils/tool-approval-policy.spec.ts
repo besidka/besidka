@@ -47,6 +47,10 @@ describe('tool approval policy constants', () => {
     expect(TOOL_APPROVAL_DENIAL_REASONS).toContain('invalid-input')
   })
 
+  it('records a memory write after Google content as a denial reason', () => {
+    expect(TOOL_APPROVAL_DENIAL_REASONS).toContain('google-data')
+  })
+
   it('keeps the overflow sentinel a valid, distinct read source', () => {
     expect(TOOL_APPROVAL_READ_SOURCE_OVERFLOW.length).toBeGreaterThan(0)
     expect(TOOL_APPROVAL_READ_SOURCE_OVERFLOW.length)

@@ -1,8 +1,11 @@
+import { isGoogleOnceOnlyReadTool } from '#shared/utils/google-gmail-tools'
+import { isGoogleToolAlwaysAllowable } from '#shared/utils/google-tool-catalog'
 import {
   TOOL_ACCESS_LEVELS,
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
   TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
   TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
+  TOOL_APPROVAL_GOOGLE_READ_SOURCE,
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_ROUNDS_PER_TURN,
   TOOL_FAMILIES,
@@ -134,7 +137,7 @@ export interface ToolApprovalGrant {
 }
 
 export type ToolApprovalRule
-  = | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 12
+  = | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -154,6 +157,7 @@ export interface ResolveToolApprovalInput {
   chatGrant?: ToolApprovalGrant | null
   alwaysGrant?: ToolApprovalGrant | null
   isAlwaysGrantDefault?: boolean
+  googleEgressGrant?: ToolApprovalGrant | null
 }
 
 export interface ToolApprovalDecision {
@@ -161,10 +165,11 @@ export interface ToolApprovalDecision {
   reason: ToolApprovalReason | null
   rememberOptions: ToolApprovalRemember[]
   rule: ToolApprovalRule
+  grant?: 'always'
 }
 
 export interface ReplayPendingTool {
-  family: ToolFamily
+  family: ToolFamily | null
   access: ToolAccess
   toolName: string
   connectorId?: string | null
@@ -189,6 +194,7 @@ export interface ToolReplayDecision {
 const UNTRUSTED_NATIVE_WRITE_TAINT: readonly ToolApprovalTaintKind[] = [
   'connector',
   'skill',
+  'google',
 ]
 
 const ALL_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'chat', 'always']
@@ -202,11 +208,16 @@ const REMEMBER_OPTIONS_BY_REASON: Record<
   'always-ask': ALL_REMEMBER_OPTIONS,
   'consent': ['once', 'chat'],
   'default': ALL_REMEMBER_OPTIONS,
+  'google-egress': ['once', 'chat'],
 }
 
 const NATIVE_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once']
 
 const MEMORY_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'always']
+
+const GOOGLE_READ_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'chat']
+
+const GOOGLE_WRITE_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once']
 
 function allowed(rule: ToolApprovalRule): ToolApprovalDecision {
   return {
@@ -311,6 +322,10 @@ function ownReadSourceOf(descriptor: ToolApprovalDescriptor): string | null {
     return TOOL_APPROVAL_BESIDKA_READ_SOURCE
   }
 
+  if (descriptor.family === 'google') {
+    return TOOL_APPROVAL_GOOGLE_READ_SOURCE
+  }
+
   return descriptor.family === 'connector' && descriptor.connectorId
     ? connectorReadSource(descriptor.connectorId)
     : null
@@ -319,8 +334,8 @@ function ownReadSourceOf(descriptor: ToolApprovalDescriptor): string | null {
 function ownTaintKindOf(
   descriptor: ToolApprovalDescriptor,
 ): ToolApprovalTaintKind | null {
-  if (descriptor.family === 'besidka') {
-    return 'besidka'
+  if (descriptor.family === 'besidka' || descriptor.family === 'google') {
+    return descriptor.family
   }
 
   return descriptor.family === 'connector' ? 'connector' : null
@@ -405,6 +420,90 @@ export function isAlwaysAskTier(descriptor: ToolApprovalDescriptor): boolean {
     || descriptor.destructiveHint
 }
 
+/**
+ * A Google tool is a read only when it is registered as a read and not
+ * marked destructive; anything else is a write.
+ */
+export function isGoogleRead(descriptor: ToolApprovalDescriptor): boolean {
+  return descriptor.family === 'google'
+    && descriptor.access === 'read'
+    && !descriptor.destructiveHint
+}
+
+/**
+ * Rule 11, the whole decision for a built-in Google tool (Drive, Calendar,
+ * Gmail). A tool the user set to Always allow runs without asking when it
+ * exists only on the owner-only own client (`isGoogleToolAlwaysAllowable`,
+ * checked here again by name, so a mode on any other tool never counts): the
+ * user's grant wins over once-only reads, taint and the always-ask tier, and
+ * the decision carries `grant: 'always'` for the "Ran without asking"
+ * marker. Otherwise a read runs under an "Allow in this chat" grant whose
+ * tool name and definition hash match; else it asks with Allow once and
+ * Allow in this chat, except a once-only read
+ * (`GOOGLE_ONCE_ONLY_READ_TOOL_NAMES`, the Gmail thread read), which asks
+ * every time with Allow once only, whatever chat grant exists. A write asks
+ * with Allow once only, whatever chat grant or taint the send holds. A
+ * prompt never offers Always allow: the user sets it on the Connectors
+ * page (docs/legal/prechecks/google.md).
+ */
+function resolveGoogleApproval(
+  descriptor: ToolApprovalDescriptor,
+  chatGrant: ToolApprovalGrant | null | undefined,
+  permissionMode: ToolPermissionMode,
+): ToolApprovalDecision {
+  if (
+    permissionMode === 'allow'
+    && isGoogleToolAlwaysAllowable(descriptor.toolName)
+  ) {
+    return { ...allowed(11), grant: 'always' }
+  }
+
+  if (!isGoogleRead(descriptor)) {
+    return ask(11, 'always-ask', GOOGLE_WRITE_REMEMBER_OPTIONS)
+  }
+
+  if (isGoogleOnceOnlyReadTool(descriptor.toolName)) {
+    return ask(11, 'default', GOOGLE_WRITE_REMEMBER_OPTIONS)
+  }
+
+  return grantMatches(chatGrant, descriptor)
+    ? allowed(11)
+    : ask(11, 'default', GOOGLE_READ_REMEMBER_OPTIONS)
+}
+
+/**
+ * Rule 13: a connector call in a send that holds content from Google asks,
+ * whatever Always allow, read default or ordinary chat grant the tool has,
+ * until the user gave this tool the Google egress grant in this chat. The
+ * egress grant only lifts this rule; the call then goes through the
+ * ordinary rules like any other connector call.
+ */
+function needsGoogleEgressApproval(input: ResolveToolApprovalInput): boolean {
+  return input.descriptor.family === 'connector'
+    && input.state.taint.has('google')
+    && !grantMatches(input.googleEgressGrant, input.descriptor)
+}
+
+/**
+ * Rule 14: a Besidka tool that is not a plain read, while the send holds
+ * `google` taint, asks with Allow once only, whatever its Allow mode,
+ * Always allow or chat grant. A Besidka write can store or publish what it
+ * is given (a file, a project note, project instructions, a branch, an
+ * artifact share), so Google content never leaves through one unasked, and
+ * the answer never turns into a grant for later calls.
+ */
+function needsGoogleBesidkaWriteApproval(
+  descriptor: ToolApprovalDescriptor,
+  state: ApprovalState,
+): boolean {
+  const isPlainRead = descriptor.access === 'read'
+    && !isAlwaysAskTier(descriptor)
+
+  return descriptor.family === 'besidka'
+    && !isPlainRead
+    && state.taint.has('google')
+}
+
 function resolveNativeApproval(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
@@ -412,6 +511,10 @@ function resolveNativeApproval(
 ): ToolApprovalDecision {
   if (descriptor.access === 'read') {
     return allowed(1)
+  }
+
+  if (isMemoryWrite(descriptor) && state.taint.has('google')) {
+    return denied(15, 'google-data')
   }
 
   if (isAlwaysAllowMemoryTool(descriptor) && permissionMode === 'allow') {
@@ -454,6 +557,11 @@ function resolveNativeApproval(
  *    `once` and `always`. `memory_forget` has no Always allow: it is an
  *    irreversible delete, so it keeps rule 2 and offers `once` only. The
  *    quote and sensitive-topic gates of the tools still run on every call.
+ * 15. A memory write (`memory_write`, `memory_forget`) in a send that holds
+ *    `google` taint is denied `google-data`, in every mode, before rule 12
+ *    and rule 2: no card, no Allow once, no Always allow, because the write
+ *    could never run. The memory tools' own write guard and a Google check
+ *    in their write path stay behind it (docs/google.md, section 5.3).
  *
  * Connector and Besidka tools (owner decision of 2026-11-20, which replaces
  * the order of 2026-11-15; modeled on Claude's connector settings):
@@ -483,10 +591,25 @@ function resolveNativeApproval(
  * this chat and Always allow; native prompts offer Allow once only, except
  * `memory_write`, which also offers Always allow.
  *
- * 10. A consent gate (`consentGate`) is decided right after rule 0, before
- *    every other rule: a chat grant that matches its definition hash lets it
- *    run, anything else asks `consent` (`once` or `chat`), whatever the
- *    taint.
+ * 10. A consent gate (`consentGate`) is decided right after rule 11,
+ *    before every other rule: a chat grant that matches its definition hash
+ *    lets it run, anything else asks `consent` (`once` or `chat`), whatever
+ *    the taint.
+ *
+ * Google tools and content from Google (docs/google.md, "Google tools"):
+ *
+ * 11. A Google tool is decided right after rule 0 (`resolveGoogleApproval`):
+ *    a tool on the own client the user set to Always allow runs (the user's
+ *    grant wins over once-only reads), a read with a matching chat grant
+ *    runs, any other read asks `default` (`once` or `chat`), a write asks
+ *    `always-ask` (`once` only), ignoring taint.
+ * 13. A connector call while the send holds `google` taint asks
+ *    `google-egress` (`once` or `chat`) before rules 6 and 7, unless the
+ *    tool has a Google egress grant in this chat; with that grant the call
+ *    falls through to the rules below.
+ * 14. A Besidka tool that is not a plain read, while the send holds
+ *    `google` taint, asks `untrusted-output` with `once` only, before rules
+ *    6 and 7: its Allow mode, Always allow and chat grants do not apply.
  *
  * A missing hash on either side never matches a grant.
  */
@@ -506,6 +629,14 @@ export function resolveToolApproval(
     return denied(0, 'blocked')
   }
 
+  if (descriptor.family === 'google') {
+    return resolveGoogleApproval(
+      descriptor,
+      input.chatGrant,
+      input.permissionMode,
+    )
+  }
+
   if (descriptor.consentGate === true) {
     return grantMatches(input.chatGrant, descriptor)
       ? allowed(10)
@@ -514,6 +645,14 @@ export function resolveToolApproval(
 
   if (descriptor.family === 'native') {
     return resolveNativeApproval(descriptor, state, input.permissionMode)
+  }
+
+  if (needsGoogleEgressApproval(input)) {
+    return ask(13, 'google-egress')
+  }
+
+  if (needsGoogleBesidkaWriteApproval(descriptor, state)) {
+    return ask(14, 'untrusted-output', GOOGLE_WRITE_REMEMBER_OPTIONS)
   }
 
   const isAlwaysAsk = isAlwaysAskTier(descriptor)
@@ -592,6 +731,12 @@ function pendingMatchesDescriptor(
       === (descriptor.definitionHash ?? null)
   }
 
+  if (descriptor.family === 'google') {
+    return !pending.connectorId
+      && (pending.definitionHash ?? null)
+      === (descriptor.definitionHash ?? null)
+  }
+
   return Boolean(pending.connectorId)
     && pending.connectorId === descriptor.connectorId
     && Boolean(pending.definitionHash)
@@ -612,7 +757,7 @@ function exceedsTurnCaps(
     return counters.connectorCalls >= TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
   }
 
-  if (descriptor.family === 'besidka') {
+  if (descriptor.family === 'besidka' || descriptor.family === 'google') {
     return counters.builtInCalls >= TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN
   }
 

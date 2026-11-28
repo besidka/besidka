@@ -1,6 +1,6 @@
 import type { ModelTool } from '#shared/types/providers.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
-import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
+import { CURRENT_DATE_SEARCH_HINT } from '~~/server/utils/ai/current-date-instruction'
 
 const NATIVE_SEARCH_TOOL_KEY = 'web_search_preview'
 
@@ -20,12 +20,12 @@ export function shouldNudgeNativeWebSearch(
     && !parsedTools.exclusiveNativeWebSearch
 }
 
-export function buildNativeSearchInstruction(now: Date): string {
+export function buildNativeSearchInstruction(): string {
   return [
     'Web search is available via the web search tool.',
     'Search the web before answering when the question depends on current',
     'or recent information, specific facts, or anything you are not certain',
     'about.',
-    buildCurrentDateInstruction(now),
+    CURRENT_DATE_SEARCH_HINT,
   ].join(' ')
 }

@@ -1,7 +1,12 @@
 const MINUTE_SECONDS = 60
 const HOUR_SECONDS = 60 * MINUTE_SECONDS
 
-export const TOOL_FAMILIES = ['native', 'besidka', 'connector'] as const
+export const TOOL_FAMILIES = [
+  'native',
+  'besidka',
+  'connector',
+  'google',
+] as const
 
 export const TOOL_ACCESS_LEVELS = [
   'read',
@@ -20,7 +25,10 @@ export const TOOL_APPROVAL_TAINT_KINDS = [
   'file',
   'besidka',
   'shared-branch',
+  'google',
 ] as const
+
+export const TOOL_APPROVAL_STRICTEST_TAINT_KIND = 'google'
 
 export const TOOL_APPROVAL_REASONS = [
   'untrusted-output',
@@ -28,6 +36,7 @@ export const TOOL_APPROVAL_REASONS = [
   'always-ask',
   'consent',
   'default',
+  'google-egress',
 ] as const
 
 export const TOOL_APPROVAL_REMEMBER_OPTIONS = [
@@ -48,6 +57,7 @@ export const TOOL_APPROVAL_DENIAL_REASONS = [
   'definition-drifted',
   'over-cap',
   'invalid-input',
+  'google-data',
 ] as const
 
 export type ToolFamily = typeof TOOL_FAMILIES[number]
@@ -68,6 +78,7 @@ export const TOOL_APPROVAL_SECRET_HKDF_INFO = 'besidka/tool-approval/v1'
 export const TOOL_APPROVAL_PAYLOAD_MAX_BYTES = 64 * 1024
 export const TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS = 200
 export const TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES = 100
+export const TOOL_APPROVAL_CHAT_INDEX_MAX_RESULTS = 200
 export const TOOL_APPROVAL_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
 export const TOOL_APPROVAL_SUBJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 export const TOOL_APPROVAL_KV_PREFIX = 'tool-approval:'
@@ -85,6 +96,9 @@ export const TOOL_APPROVAL_CLAIM_RETENTION_HOURS = 48
 export const TOOL_APPROVAL_CLAIM_SWEEP_BATCH = 500
 export const TOOL_APPROVAL_CLAIM_SWEEP_MAX_BATCHES = 10
 export const TOOL_APPROVAL_BESIDKA_READ_SOURCE = 'besidka'
+export const TOOL_APPROVAL_GOOGLE_READ_SOURCE = 'google'
+export const TOOL_APPROVAL_TAINT_KIND_MAX_LENGTH = 64
+export const TOOL_APPROVAL_SERIALIZED_TAINT_MAX = 32
 export const TOOL_APPROVAL_READ_SOURCE_OVERFLOW = 'overflow'
 export const TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES = [
   'memory_write',

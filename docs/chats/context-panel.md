@@ -214,8 +214,39 @@ Rules for a new section:
 6. Add fixtures to `tests/unit/server/utils/chats/context/build-chat-context.spec.ts`.
 
 Planned: documents (Outputs, D-4), research reports from the new research
-flow (R-6), Drive files (Inputs, G-4), connectors and skills (Used, C-5,
-S-3).
+flow (R-6), connectors and skills (Used, C-5, S-3).
+
+### Created Google files (Outputs, BES-468)
+
+The `google-files` section (Outputs, `private`) lists each finished
+`tool-google__drive_create_file` part as kind `google-file`, with
+`id: google-file:<toolCallId>`, `meta.fileKind` (`document`, `spreadsheet` or
+`text`), the file name as the title and the Docs, Sheets or Drive link as
+`href` (derived from the validated id and kind by `buildGoogleFileOpenLink`,
+never from the stored link). A waiting, failed or unconfirmed call lists
+nothing, and the item carries no file content. The row shows the Docs, Sheets
+or Drive logo with the product name in full as the detail line. The row is a
+button, not a link, even though the item has an `href`: a click pushes the
+preview through `useGoogleFilePreview().pushRegistered(...)`, so Back returns
+to Context. The panel does not hold the message parts; the chat card registers
+its file on mount, and a file whose card is not mounted falls back to scrolling
+to the message. The preview header has two actions, "Open in" the Google
+product and a Download menu (Word or text for a Doc, Excel or the first sheet
+as CSV for a Sheet, text for a text file). Shared chats drop tool parts, so the
+section never runs for them. See `docs/google.md`, section 19.14.
+
+### Google Drive files (Inputs, G-4)
+
+The `drive-files` section (Inputs, `public`) lists each `data-drive-file`
+reference of a user message as kind `drive-file` (the Drive icon, "Google
+Drive" as the detail). For the owner the row links to the file in Google Drive
+(`href`, a fixed `drive.google.com` link built on the server). The plain
+`uploaded-files` row of the same copy is skipped when its file part is
+followed by the reference, so a copy is listed once. In a shared chat the part
+has already been reduced to its name by `filterPublicParts` (no id, no link),
+so the row is the name only. A reference is paired with the file part before
+it only while it carries its Drive id, so a name-only reference in a share
+never borrows or hides another file. See `docs/google.md`, section 12.7.
 
 ### Artifacts (A-4)
 

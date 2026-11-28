@@ -31,7 +31,7 @@ class DocRenderer extends WorkerEntrypoint {
   capabilities(): Promise<{ rendererVersion, specVersions, formats, maxOutputBytes, extract? }>
   render(request: { specVersion, spec, assets, provenance }): Promise<RenderResult>
   validate(request: { format, bytes, spec? }): Promise<ValidationResult>
-  extract(request: { format, bytes }): Promise<ExtractResult>
+  extract(request: { format, bytes, version?, maxTextBytes? }): Promise<ExtractResult>
 }
 ```
 
@@ -92,8 +92,11 @@ under the ceiling. If the bounds ever grow past it, return a `ReadableStream`.
   to every import of the package name, the shim's own included. That is why
   `fflate` is a direct dependency of the Worker.
 
-`wrangler deploy --dry-run` reports 4,622 KiB uploaded (1,199 KiB gzip) and "No
-bindings found". Run `wrangler deploy` for this directory with
+`wrangler deploy --dry-run` reports 4,784 KiB uploaded (1,237 KiB gzip) and "No
+bindings found" with the workbook map (Worker 1.2.0). The map added about
+76 KB of first-party code (19 KB gzip; 39 KB and 13 KB minified), measured by
+bundling `src/renderer.ts` of the base commit and of the branch with the
+libraries external. Run `wrangler deploy` for this directory with
 `--env preview` for the preview Worker; a bare `wrangler deploy` prints a
 warning about the missing `--env`, which is expected for the production Worker.
 
@@ -143,6 +146,33 @@ client render still works), 422 for the other channels, 422 for `spec_invalid`,
 `bounds_exceeded` and `asset_invalid`, 500 otherwise. Specs stay additive
 (`specVersion: 2` next to 1), so a preview that binds an older renderer keeps
 working for version 1.
+
+### Extract version negotiation (workbook map)
+
+PR previews and the long-lived preview bind one shared preview renderer that
+is deployed from `main`, so app and renderer versions differ for days. The
+rules:
+
+- `capabilities().extract.version` stays 1. An app built before the map
+  treats any other value as `renderer_unavailable`, which would stop
+  `.docx` and `.pptx` extraction too, so the new version is announced in an
+  additive field, `extract.versions: [1, 2]`.
+- A request without `version`, or with 1, gets the version 1 answer exactly
+  as before (the Worker spec compares it to `extractOfficeText(bytes, format)`
+  with `toEqual`, `maxTextBytes` ignored). An old app therefore keeps working
+  against a renderer redeployed from this branch. Version 2 asks for the
+  workbook map for `.xlsx` and is answered as version 1 for `.docx` and
+  `.pptx`; `maxTextBytes` is clamped to 16 KiB..1 MiB. An unknown version is
+  `unsupported_version`.
+- The app (`extractOfficeText` in `server/utils/documents/renderer.ts`)
+  sends version 2 only when `offersWorkbookMap(capabilities)` is true, and the
+  plain version 1 request otherwise, so a new app against an old renderer
+  gets version 1 text. The caller trusts the marker in the result
+  (`workbookMap` present), not what it asked for: a stale capabilities cache
+  across a renderer deploy can only make it store version 1 and read the file
+  again later. The log block gains `extractVersion` and `workbookMap`.
+  `docs/files.md` ("Spreadsheets as a workbook map") says what is stored and
+  what is read again.
 
 ## App helper
 
@@ -198,6 +228,35 @@ library. Nothing is thrown: every problem is a status and a stable
 | DOCX | Headings as `#` to `######`, resolved through the style names in `styles.xml` (`heading 1`, `Title`), so localized style ids work, through `basedOn` chains (at most 8 deep) and through `outlineLvl` on the style or the paragraph. Paragraphs, bulleted and numbered lists with nesting (counters per abstract numbering; a `num` with `lvlOverride/startOverride` gets its own counter that starts at the override), tables as Markdown tables (merged cells become empty cells, nested tables are flattened into their cell), hyperlink text. |
 | XLSX | One `## Sheet: <name>` section per worksheet, in workbook order, holding CSV. Shared strings (an empty `<si/>` counts as an empty string, and a prefixed `<x:sst>` from Open XML SDK or ClosedXML writers is read), inline strings and the cached `<v>` of formulas are resolved. Numbers with a date number format (built-in ids 14-22, 27-36, 45-47, 50-58, or a custom code with date or time tokens) become ISO dates or times, with `date1904` honored; a time-only format is a time, and an elapsed format (`[h]:mm:ss`, `[mm]:ss`, `[s]`, built-in 46) is a duration such as `36:00:00`, not a date. The gaps between `<row r=...>` numbers are kept as empty lines (at most 20 in a row). Booleans are `TRUE` or `FALSE`. Merged cells show their value once, in the top-left cell. CSV, not a Markdown table, because it costs fewer tokens, keeps empty cells as consecutive commas and needs no header row. |
 | PPTX | `## Slide N` per slide in `sldIdLst` order, then the title as `###`, body text (bullets for body placeholders and explicit bullets), tables as Markdown tables, and `Speaker notes: ...` from the notes body placeholder. |
+| XLSX, version 2 | The workbook map (section "Workbook map" below): named ranges, then per sheet the heading facts, formulas as fill patterns, dropdowns and validation, conditional formatting, number formats, merged cells, notes, then the values as CSV with a row-number column and a column-letter header. The result carries `workbookMap`, the summary. |
+
+The version 2 adapter (`extract/xlsx-map.ts`, `extract/xlsx-structure.ts`)
+reads, for each sheet:
+
+| XLSX source | Model field |
+| --- | --- |
+| `<sheet state>` in `workbook.xml` | `visibility` (`visible`, `hidden`, `very-hidden`) |
+| `<definedName>` (not `hidden`, not `_xlnm.*`, at most 500) | `names` with `sheet` from `localSheetId` |
+| `<dimension ref>` | `usedRange` |
+| first `<sheetView>`, `<pane state="frozen|frozenSplit" xSplit ySplit>` | `frozenColumns`, `frozenRows` |
+| `<f>` plain | `formula` |
+| `<f t="shared" ref si>` master, followers `<f t="shared" si/>` | master text; each follower is `formulaKind: 'shared'` with `sharedFrom` (the master's address) and no text of its own, so a group of any size costs one formula and no derivation. The group is built from the followers actually read, never from the master's `ref`. A master is registered only once its text fits the formula budget, and a redefined `si` starts a new group. A master with structured or external references, or text the tokenizer cannot read whole, leaves followers as `formulaKind: 'shared-copy'` |
+| `<f t="array" ref>` | `formulaKind: 'array'`, `arrayRange` |
+| `<f t="dataTable" ref r1 r2 dt2D dtr>` | `formulaKind: 'data-table'`, `arrayRange`, `dataTable: { rowInput?, columnInput? }` (two-variable: `r1` row and `r2` column input; one-variable: `r1` is the row input when `dtr` is set, otherwise the column input) |
+| `s` style index through `cellXfs` `numFmtId` | `numberFormat`: the custom `numFmt` code or the built-in code for ids 1-4, 9-22, 37-40, 45-49, `built-in format N` for the locale-dependent ids, nothing for General |
+| `<mergeCell ref>` | `mergedRanges` |
+| `<dataValidation>` and `x14:dataValidation` (`x14:formula1/xm:f`, `xm:sqref`) | `validations`: `list` with a quoted list as `list-of-values`, any other source as `list-from-range`; `whole`, `decimal`, `date`, `time`, `textLength` with the operator; `custom`; `strict` is `showErrorMessage` with `errorStyle` stop; `promptTitle`, `prompt`, `error` as messages |
+| `<conditionalFormatting>` and `x14:conditionalFormatting` | `conditionalRules`: `expression`, `cellIs`, the text rules, blanks, errors, duplicates, unique, `top10`, `aboveAverage`, `timePeriod`; no colors and no `dxf`. Sorted by the `priority` attribute (lowest first, stable; rules without one last) |
+| `colorScale`, `dataBar`, `iconSet` rules (main section only) | counted in `notRead` |
+| `<hyperlink>` | counted |
+| sheet rels: legacy `comments` part | `notes` (a threaded-comment placeholder loses the explanation for old Excel versions and its `Comment:` and `Reply:` labels: `(threaded) text (reply: text)`) |
+| sheet rels: `drawing` then its `chart` and `image` rels, `pivotTable` | counted |
+
+Not read at all: cell styles other than the number format, colors, fonts,
+column widths, row heights, hidden rows and columns, outline levels, tables
+(`tableParts`), sparklines, slicers, threaded comment parts, the print
+setup, macros (refused before reading), external links and the calculation
+chain.
 
 Limits (`EXTRACT_LIMITS`, overridable per call): 30 MiB input, 1 MiB of text,
 5,000 ZIP entries, 150 MiB of declared total and 50 MiB per entry, a 1000:1
@@ -235,6 +294,41 @@ because the macro check depends on all of it.
 
 The ZIP limits come from `readZipDirectory(bytes, limits)`; its default
 argument is the validator's own limits, so `validate()` is unchanged.
+
+Version 2 keeps every limit above for the cells (same pass, same budgets;
+formula-only cells count as cells) and adds an optional budget for what the
+plain text never needed: the structure after `</sheetData>`, the comments
+parts and the drawing relationships. Those reads run inside `readOptional()`
+and charge `extraInflatedBytesMax` (160 MiB) and `extraEventsMax` (3,000,000)
+instead of the main budgets; any failure in them, a spent budget, a corrupt
+or malformed part, or any other exception a reader did not expect, gives
+"not read" and never fails the file, so every workbook version 1 reads is
+still `ready` in version 2 (a spec bisects the main event budget to prove
+it, and a seeded random-tail spec checks the statuses agree). The tail of a
+sheet is found by `readPartTail()`: one forward inflate of the part whose
+`ClosingTagFinder` searches the bytes as they arrive for the end tag of
+`sheetData` (any prefix), skipping comments, CDATA sections and processing
+instructions the way the XML parser does, with its state and at most one
+tag's worth of bytes carried across chunks, so an end tag written inside a
+comment or a CDATA value cannot forge where the cells stop. It drops
+everything before the tag and keeps at most `tailBytesMax` (4 MiB) after
+it. A row-capped 40 MB sheet therefore reaches its rules without being
+held in memory. A part the optional budget cannot cover, or a tail cut at
+4 MiB, is reported in the map as "Rules, merged cells and links stored after
+the cell data were not read". The adapter's own stored caps (50 ranges per
+rule, 2,000 merges, 500 validations, 2,000 conditional rules, 500 notes), a
+range list it cannot read (whole columns and rows such as `F:F` are read as
+full-height ranges) and a comments part it cannot read never narrow a rule
+silently: the sheet gets the cut `limits` and the line "Some rules, ranges,
+merged cells or notes are left out because there are too many." Defined names
+past 500 are counted into "(N more names not shown)". Formula text is capped at 8,192 characters per
+cell and 8 MiB per workbook (then `formulas_limit`). The map renderer adds its
+own caps (`WORKBOOK_MAP_DEFAULTS`): 300 formula lines, 20 exception ranges per
+line, 100 validation lines, 100 conditional lines, 12 literal variants listed
+per grouped rule, 40 number formats with 20 ranges each, 200 merged ranges,
+100 notes of 500 characters, 200 names, 1,000 characters per printed formula,
+300 per message, 100 per sheet name. The app asks for at most 200 KB of map
+(`maxTextBytes`, the inline cap) so the model always sees all of it.
 
 ### Rejected before reading
 
@@ -287,14 +381,55 @@ workerd, so the figure is the caller's clock, not the Worker's CPU. Production
 CPU and the 128 MiB memory limit are not measured: read `cpuTime` with
 `wrangler tail besidka-doc-renderer --format json` on the first real upload.
 
+Workbook map, measured on 2026-11-22 with the same script (new flags `--map`
+for version 2 and `--structure` for a shared-formula column plus 50
+conditional rules, a list validation and a merge after every sheet's cells),
+Node 24.18, Apple Silicon, heap capped at 64 MiB, cold run then median of
+three warm runs. Peak RSS is the whole child process (this machine's Node
+baseline is about 135 MiB, so compare the columns, not the absolute values
+with the table above):
+
+| Case | Mode | Output | Cold / warm | Peak RSS |
+| --- | --- | --- | --- | --- |
+| XLSX, 3 sheets of 57,000 rows, 20.0 MiB | v1 | 460 KiB | 557 / 533 ms | 317 MiB |
+| same | v2 map | 472 KiB | 1,405 / 1,399 ms | 307 MiB |
+| same with structure, 19.6 MiB | v1 | 440 KiB | 547 / 536 ms | 333 MiB |
+| same with structure | v2 map | 453 KiB | 1,375 / 1,208 ms | 295 MiB |
+| XLSX, one sheet of 3,000 x 200, 5.5 MiB | v1 | 1,023 KiB | 520 / 472 ms | 274 MiB |
+| same | v2 map | 1,022 KiB | 946 / 902 ms | 287 MiB |
+
+The extra time is mostly the forward inflate that reaches each sheet's tail
+(the dense sheet: 399 ms v1, 471 ms v2 with tails skipped, 732 ms v2 with
+tails), the rest is building and rendering the model. The worst case is about
+9 percent of the 15 s CPU limit, and memory does not grow because the tail
+reader drops the bytes before `</sheetData>`. Production CPU is not measured.
+
 ### What is lost
 
 Images, charts, drawings, text boxes and shapes in DOCX, SmartArt, comments,
-tracked deletions, headers, footers, footnotes, hidden-sheet flags, number
-formats other than dates (a currency cell is its raw number), formulas
-(only the cached value), cell colors and all formatting. PPTX text follows the
-shape order in the file, which is the z-order, not always the reading order.
-Paragraph breaks inside a table cell become spaces.
+tracked deletions, headers, footers, footnotes, cell colors and all
+formatting. In XLSX version 1 also hidden-sheet flags, number formats other
+than dates (a currency cell is its raw number) and formulas (only the cached
+value); version 2 (the workbook map) carries those, and still loses colors,
+fonts, charts, images, pivot tables (counted only), tables, sparklines,
+hidden rows and columns, formulas and values after row 1,000 of a sheet, and
+the structure of a sheet whose tail the optional budget could not reach.
+Values are the cached results in the file: a formula cell without a cached
+`<v>` (for example one written by Besidka's own XLSX writer, see below) has a
+formula and no value. Newlines and control characters inside a value, a
+formula or a note become spaces in the map, and backticks become `ˋ`, so a
+formula with a backtick in a string literal is printed slightly changed. PPTX
+text follows the shape order in the file, which is the z-order, not always
+the reading order. Paragraph breaks inside a table cell become spaces.
+
+Besidka-generated workbooks have formula cells without a cached value
+because `write-excel-file` 4.1.1 writes a `"Formula"` cell as `<c><f>…</f></c>`
+with no `<v>` and has no option to add one (its `cell.js` builds the element
+from the formula alone); the spec's `cached` field is validated but has
+nowhere to go. Writing it would mean post-processing the generated sheet XML
+and zipping the package again, which is not a small change, so it is left as
+is. Excel and Google Sheets recalculate on open; a model reading the file
+back sees the formula in the map and no value for that cell.
 
 ### App helper
 
@@ -315,10 +450,261 @@ never throws, and tells retryable failures from terminal ones:
 Layer 2 stores these states instead of failing the request that stored the
 file. The log block
 `attributes.documents.renderer.extract` holds `format`, `ok`, `status`, `code`,
-`durationMs`, `bytes`, `textBytes`, `truncated` and `rendererVersion`, never
-the text. `capabilities().extract` carries `version` (`EXTRACT_VERSION`, bump it
-when output changes so layer 2 can re-extract), `formats`, `maxInputBytes` and
-`maxTextBytes`.
+`durationMs`, `bytes`, `textBytes`, `truncated`, `rendererVersion`,
+`extractVersion` and `workbookMap`, never the text. `capabilities().extract`
+carries `version` (`EXTRACT_VERSION`, kept at 1 so older apps keep
+extracting), `versions` (`EXTRACT_VERSIONS`, `[1, 2]` since Worker 1.2.0; add a
+version here when output changes, so the app can ask for it and re-extract),
+`formats`, `maxInputBytes` and `maxTextBytes`. See "Extract version
+negotiation" for how the app picks a version.
+
+## Workbook map
+
+BES-448. One text format for spreadsheets that every source fills: the XLSX
+extractor (version 2 above) today, a Google Sheets adapter later. The code is
+`packages/doc-renderer/src/workbook-map/`, exported as
+`@besidka/doc-renderer/workbook-map`, which has no dependencies at all (a
+boundary spec asserts it), so the app server can import it without the
+extractor or the renderer libraries (`renderWorkbookMap` costs about 24 KB
+minified, 9 KB gzip; the app imports only `fitWorkbookMap` today).
+
+### The model
+
+```ts
+interface WorkbookModel {
+  names: Array<{ name: string, refersTo: string, sheet?: string }>
+  sheets: WorkbookSheet[]          // in tab order, at most what was read
+  sheetsTotal: number              // all sheets in the file
+  hiddenNamesSkipped?: number
+  namesNotRead?: number            // names past the cap of 500
+}
+
+interface WorkbookSheet {
+  name: string
+  visibility: 'visible' | 'hidden' | 'very-hidden'
+  usedRange?: string               // A1 range, for example 'A1:AN165'
+  frozenRows: number               // 0 when nothing is frozen
+  frozenColumns: number
+  mergedRanges: string[]           // A1 ranges
+  cells: WorkbookCell[]            // sparse; any order
+  validations: WorkbookValidationRule[]
+  conditionalRules: WorkbookConditionalRule[]   // in priority order
+  notes: Array<{ address: string, text: string }>
+  notRead: { charts, images, pivotTables, colorScales, dataBars, iconSets,
+             hyperlinks: number }
+  cuts: Array<'rows' | 'columns' | 'cells' | 'formulas' | 'structure'
+    | 'limits' | 'part'>
+  rowsRead?: number                // the row cap, printed with the 'rows' cut
+}
+
+interface WorkbookCell {
+  row: number                      // 1-based
+  column: number                   // 1-based, A is 1
+  value?: string                   // the displayed or cached value as text
+  formula?: string                 // without the leading '=' (one is stripped)
+  formulaKind?: 'normal' | 'array' | 'data-table' | 'shared' | 'shared-copy'
+  arrayRange?: string              // for 'array' and 'data-table'
+  sharedFrom?: string              // for 'shared' and 'shared-copy': the
+                                   // master's address
+  dataTable?: { rowInput?: string, columnInput?: string }
+  numberFormat?: string            // an Excel format code; 'General' is skipped
+}
+```
+
+A `shared` cell carries no text: its formula is the master's shifted by the
+distance between them. Readers of the model get the cells back with
+`collapseSheetFormulas` plus `expandPattern`.
+
+Validation rules (`WorkbookValidationRule`): `ranges` (A1 strings), `kind`
+(`list-from-range` with `source`, a formula such as `Lists!$B$6:$B$45`;
+`list-of-values` with `values`; `whole-number`, `decimal`, `date`, `time`,
+`text-length` with `operator` and one or two `formulas`; `custom` with one
+formula; `any`), `strict` (an invalid entry is refused, not only warned),
+optional `inputTitle`, `inputMessage`, `errorMessage`. Conditional rules
+(`WorkbookConditionalRule`): `ranges`, `kind` (`formula`, `cell-value` with
+`operator`, `text-contains`, `text-not-contains`, `text-begins-with`,
+`text-ends-with` with `text`, `blanks`, `no-blanks`, `errors`, `no-errors`,
+`duplicates`, `unique`, `top` or `bottom` with `rank` and `percent`,
+`above-average`, `below-average`, `date-period` with `period`, `other`),
+`formulas`, `stopIfTrue`; never colors. Operators are `between`,
+`not-between`, `equal`, `not-equal`, `greater-than`, `less-than`,
+`greater-than-or-equal`, `less-than-or-equal`. Formulas in rules are written
+for the first cell of their range, as Excel and Sheets store them.
+
+For a Google Sheets adapter: `spreadsheets.get` with `includeGridData` gives
+`sheets[].properties` (title, `hidden` as `hidden`, `gridProperties`
+`frozenRowCount` and `frozenColumnCount`), `merges`, `conditionalFormats`
+(`booleanRule.condition` types map to the kinds above; a gradient rule counts
+as a color scale), `data[].rowData[].values[]` with `formattedValue` as
+`value`, `userEnteredValue.formulaValue` as `formula` (strip the `=`),
+`userEnteredFormat.numberFormat.pattern` as `numberFormat`, `note` as notes
+and `dataValidation` per cell (group equal rules over neighboring cells into
+ranges, or pass one rule per cell: the renderer merges identical rules and
+joins touching ranges), plus `namedRanges`. Sheets has no shared formulas, so
+`formulaKind` stays unset. Convert 0-based grid indexes to 1-based rows and
+columns. The renderer does the collapsing, grouping, sanitizing and budgets,
+so an adapter only fills the model.
+
+The Google Sheets adapter exists (BES-448): `server/utils/google/sheets-model.ts`
+and its readers, described in `docs/google.md` section 12.16. It sends a
+`fields` mask (Google ignores `includeGridData` when a mask is set, so it is
+not sent), reads one request per tab, groups the validation rule that Sheets
+repeats on every cell into rectangles itself, and keeps the spreadsheet's
+own formulas as `userEnteredValue.formulaValue` gives them. Two additions to
+this module came with it: the sheet cut `not_read` (a tab whose cells were
+not read keeps its structure and the map says so; the summary's `cut` can
+hold `not_read`) and the optional `notRead.protectedRanges` count ("Not read:
+1 protected range (count only)"; the XLSX reader leaves it unset). A
+comparison spec feeds the same invented workbook to both readers.
+
+### `renderWorkbookMap(model, options?)`
+
+Returns `{ text, summary }`. `options` overrides `WORKBOOK_MAP_DEFAULTS`
+(`maxBytes`, default 1 MiB, and the caps listed under "Office text
+extraction"). The summary has `sheets`, `sheetsTotal`, `hiddenSheets`,
+`cells` (with a value), `formulas`, `patterns` (formula lines printed),
+`validations`, `conditionalRules`, `names`, `bytes`, `cut` (what was left
+out: `sheets`, `values`, `formula_patterns`, `validations`,
+`conditional_rules`, `number_formats`, `merged_cells`, `notes`, `names`,
+`structure` for the final hard cut, and the sheet cuts including `limits`),
+`notRead` (summed)
+and `sheetSummaries` (name cut to 64 characters, visibility,
+`valuesCutAfterRow`, `rowsNotShown`).
+
+### The text
+
+```
+# Workbook map
+
+How to read this map: … (the legend, WORKBOOK_MAP_LEGEND)
+
+[Only the first 50 of 63 sheets are included.]   (only when cut)
+
+## Named ranges
+- TaxRate = Parameters!$C$3
+- Rates (only in sheet Lines) = Lines!$B$2:$B$9
+
+## Sheet: Lines
+Used range A1:H25. Frozen: rows 1-6 and columns A-B. Hidden.
+Not read: 1 chart, 2 color scales, 1 link (count only).
+Only the first 1000 rows were read; later formulas and values are not included.
+
+3 formula cells have no saved value.
+
+### Formulas
+- F7:F24 ↓ =INDEX(Parameters!$D$7:$D$11, MATCH(E7, Parameters!$B$7:$B$11, 0)) · except F19
+- H19 =SUM(OFFSET(H19,-12,0,12,1))
+- Q20:AN20 → =SUM(OFFSET(Q20,-19,0,19,1))
+- Q22:AN171 ↘ =P22*$C$2
+- D3:D4 {array} =Parameters!B7:B8
+- K2:L5 data table: row input A1, column input A2
+- C1:C3, B2:B3: copies of the shared formula in B1 (not written out: …)
+(12 more formula lines not shown; cells they cover may look typed in)
+
+### Dropdowns and validation
+- E7:E24: dropdown of the values in Lists!$B$6:$B$45 (strict); input message "…"
+- G7:G24: whole number between 0 and 1000 (not enforced, warning only)
+
+### Conditional formatting
+- A7:H24: formula =$E7="Lead" (stop if true)
+- A7:AN171: 50 rules, formula =$C7=… with … = "Category 1", … and 38 more
+
+### Number formats
+- #,##0.00: H7:H25, B3:B7
+
+### Merged cells
+A1:H1, A2:C2
+
+### Notes
+- E6: "Pick a role from the list on the Lists tab."
+
+### Values
+#,A,B,C,…
+1,Website estimate
+7,Item 1,,,,Lead,8,2,16
+(values cut after row 400: 120 more rows not shown)
+```
+
+Rules of the format:
+
+- Sections appear in this order and only when they have lines. Everything
+  above "Values" is the structure; all sheets' structure is sized first and
+  the values of every sheet share what is left of `maxBytes` (a sheet that
+  needs little gets all of it, the rest is split evenly), so a size cut
+  removes value rows and never the structure of a later sheet. Only if the
+  structure alone is larger than `maxBytes` is the text cut at the end with
+  `WORKBOOK_MAP_TRUNCATION_MARKER` (cut `structure`).
+- Formula lines: `ADDRESS =formula` for a single cell; `START:END ↓ =formula`
+  for a fill down a column and `→` for a fill along a row, where the printed
+  formula is the first cell's and every other cell of the range holds it
+  shifted by its distance (relative parts of cell, whole-column and whole-row
+  references move, `$` parts, sheet prefixes, names, strings and errors do
+  not); `· except A, B:C` lists cells in the range that are not copies (they
+  have their own line, or no formula). A run is formed only from cells whose
+  formula text equals the first one shifted exactly (`shiftTokens`), first
+  down the columns and then along the rows for what is left; a gap of more
+  than two non-copies ends a run, and a run never has more exception cells
+  than copies. The round trip is exact by construction and tested
+  (`expandPattern`, and a reader of the printed lines checked against
+  formulas written out by hand, on generated sheets with quoted sheet names,
+  string literals that look like references, lowercase references, inner
+  spaces, `LOG10(`, `#REF!`, whole rows and columns and structured
+  references). Lines are sorted by their first cell, row first.
+- Collapse is bounded (`collapseSheetFormulas`): formula cells sit in typed
+  columns, never one token array per cell; only a run's current master is
+  tokenized, and every tokenize and comparison is charged to a budget of
+  24 Mi characters, after which the rest stay single lines. At most
+  `formulaCellsMax` (200,000, the extractor's cell cap) formula cells enter
+  per sheet, with the line "(N formula cells not shown: …)" past it. A
+  shared group is already a pattern: its members form runs without any text
+  being derived, down runs over the same rows join into a block printed
+  with `↘` (filled down and right), groups Excel split at a subtotal row are
+  joined when their masters are fill copies, and plain cells that continue
+  the fill join the run after one exact check against the group's master.
+  Only the first cell of a pattern that does not start at the master gets
+  derived text, charged to a budget of 512 KiB; both corners are checked
+  against the master's `shiftBounds`, so every cell between them shifts.
+  What does not fit becomes a "copies of the shared formula" line.
+- `shiftFormula` returns null whenever a reference cannot be classified with
+  certainty: a name is a sheet prefix only when it cannot also be a cell,
+  column or row reference (`Q1!A1`, `A1:B2!C3`, `Jan:Mar!D4` are refused),
+  and a cell before `:` followed by `Sheet!` is a cell, so
+  `Sheet1!A1:Sheet1!B2` shifts both corners. An independent reference
+  shifter in the specs fuzzes sheet-qualified corners on both sides.
+- A data table is labeled with its input cells, and the heading says how
+  many formula cells have no saved value; an empty sheet prints `Empty.`.
+- Rules print one line per distinct rule; identical rules on several ranges
+  share a line, touching rectangles are joined (`C7:C171, D7:D171` becomes
+  `C7:D171`), and conditional rules on the same ranges that differ only in
+  string or number literals collapse into "N rules, … with … = …" listing
+  the literals.
+- Values are CSV: the first field is the row number, then columns from A; the
+  header names the columns up to the widest one. Rows without a value are
+  left out.
+- Every workbook string (sheet and defined names, formulas, values, notes,
+  messages, number formats, ranges) goes through `cleanLine`: control,
+  zero-width and bidirectional characters become one space, invisible format
+  characters that sit inside words are removed (soft hyphen, U+034F,
+  U+061C, U+180E, U+2060 to U+2064, variation selectors, U+FFF9 to U+FFFB,
+  tag characters U+E0000 to U+E007F and the selectors U+E0100 to U+E01EF),
+  a backtick becomes `ˋ` (U+02CB), and the length is capped with `…`. So no
+  workbook text can start a line, add a heading or end the Markdown fence
+  the app wraps it in; the app's fence is also one backtick longer than any
+  run in the text. A quoted note or message escapes inner `"` and `\`.
+
+### `fitWorkbookMap(text, maxBytes)`
+
+Shortens a map to `maxBytes` of UTF-8 using the text alone (the app keeps no
+model): the title, legend, named ranges and every sheet's structure stay,
+then whole Values blocks are added smallest first while they fit, so small
+lists and parameter tabs that dropdowns and lookups point at survive; each
+dropped block becomes "(values of this sheet were left out of this earlier
+turn: N rows)". If even the structure is too big, sheets are left out from
+the end with a note naming them. It parses only the headings the renderer
+writes (`## Sheet: `, `### Values`); since every field is flattened to one
+line, no cell value can forge one (a spec keeps this invariant). It accepts
+a map that was already cut, keeping its truncation marker. The app uses it
+for spreadsheets carried into later turns (see `docs/files.md`).
 
 ## Local development
 

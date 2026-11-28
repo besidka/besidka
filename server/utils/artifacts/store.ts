@@ -55,6 +55,7 @@ export interface CreateArtifactInput extends ArtifactStoreDeps {
   createdVia: ArtifactCreatedVia
   createdBy: ArtifactVersionCreatedBy
   modelId?: string | null
+  googleDerived?: boolean
 }
 
 export interface AppendArtifactVersionInput extends ArtifactStoreDeps {
@@ -65,6 +66,7 @@ export interface AppendArtifactVersionInput extends ArtifactStoreDeps {
   createdBy: ArtifactVersionCreatedBy
   modelId?: string | null
   expectedVersion?: number
+  googleDerived?: boolean
 }
 
 export interface ArtifactWriteResult {
@@ -320,6 +322,7 @@ export async function createArtifact(
       currentVersion: 0,
       totalBytes: 0,
       createdVia: input.createdVia,
+      googleDerivedAt: input.googleDerived ? new Date() : null,
     })
     .returning({ id: schema.artifacts.id })
 
@@ -524,6 +527,11 @@ export async function appendArtifactVersion(
           totalBytes: sql`${schema.artifacts.totalBytes} + ${bytes.byteLength}`,
           title,
           updatedAt: new Date(),
+          ...(input.googleDerived
+            ? {
+              googleDerivedAt: sql`coalesce(${schema.artifacts.googleDerivedAt}, ${Math.floor(Date.now() / 1000)})`,
+            }
+            : {}),
         })
         .where(and(
           eq(schema.artifacts.id, internalId),

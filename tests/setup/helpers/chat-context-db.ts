@@ -88,7 +88,8 @@ export function createChatContextTestDb(): ChatContextTestDb {
       memory_excluded integer,
       branched_from_share_slug text,
       pinned_at integer,
-      activity_at integer NOT NULL
+      activity_at integer NOT NULL,
+      google_data_at integer
     );
 
     CREATE TABLE messages (
@@ -116,7 +117,8 @@ export function createChatContextTestDb(): ChatContextTestDb {
       show_files integer NOT NULL DEFAULT 1,
       show_metadata integer NOT NULL DEFAULT 1,
       show_author_avatar integer NOT NULL DEFAULT 1,
-      allow_branch integer NOT NULL DEFAULT 1
+      allow_branch integer NOT NULL DEFAULT 1,
+      google_opt_in_at integer
     );
 
     CREATE TABLE artifacts (
@@ -133,7 +135,8 @@ export function createChatContextTestDb(): ChatContextTestDb {
       created_via text NOT NULL,
       takedown_at integer,
       takedown_reason text,
-      legal_hold_until integer
+      legal_hold_until integer,
+      google_derived_at integer
     );
   `)
 

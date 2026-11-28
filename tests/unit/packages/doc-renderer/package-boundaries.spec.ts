@@ -189,6 +189,16 @@ describe('package boundaries', () => {
     expect([...transitiveExternals('src/spec/index.ts')].sort()).toEqual(['zod'])
   })
 
+  it('keeps ./workbook-map free of every library and exports it', () => {
+    const manifest = JSON.parse(
+      readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'),
+    ) as { exports: Record<string, string> }
+
+    expect(manifest.exports['./workbook-map'])
+      .toBe('./src/workbook-map/index.ts')
+    expect([...transitiveExternals('src/workbook-map/index.ts')]).toEqual([])
+  })
+
   it('keeps ./extract free of the renderer libraries and exports it', () => {
     const manifest = JSON.parse(
       readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'),

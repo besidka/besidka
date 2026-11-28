@@ -132,6 +132,10 @@ test('an allowed call resumes the same reply with the answer', async ({ browser 
   await expect(page.getByTestId('reasoning-approval-outcome'))
     .toContainText('Allowed')
   await expect(page.getByTestId('tool-approval-chip')).toHaveCount(0)
+  const browserTimeZone = await page.evaluate(() => {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  })
+
   expect(bodies).toEqual([{
     approval: {
       messageId: 'test-chat-tool-approval-message-2',
@@ -141,6 +145,7 @@ test('an allowed call resumes the same reply with the answer', async ({ browser 
         remember: 'once',
       }],
     },
+    timeZone: browserTimeZone,
   }])
 })
 
@@ -192,6 +197,11 @@ test('two calls send one request once both are answered', async ({ browser }) =>
   await expect(page.getByTestId(STEP)).toHaveCount(1)
   await expect(page.getByTestId(STEP)).toHaveAttribute('data-state', 'denied')
   expect(bodies).toHaveLength(1)
+
+  const browserTimeZone = await page.evaluate(() => {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  })
+
   expect(bodies[0]).toEqual({
     approval: {
       messageId: 'test-chat-tool-approvals-message-2',
@@ -200,6 +210,7 @@ test('two calls send one request once both are answered', async ({ browser }) =>
         { approvalId: 'test-approval-0002', approved: true, remember: 'once' },
       ],
     },
+    timeZone: browserTimeZone,
   })
 })
 
