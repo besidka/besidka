@@ -570,7 +570,7 @@ const SHORT_SCENARIOS: ShortScenario[] = [
     secondCard: true,
     scrollBy: 0,
     instantPinFrames: 0,
-    matchesPlainSend: true,
+    matchesPlainSend: false,
   },
   {
     label: 'a short message with the view scrolled away from the pin',
