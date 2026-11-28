@@ -36,6 +36,18 @@ almost nothing for now: the unit-test job (7 to 9 min) is the next bound on
 the critical path. The analysis below is the original 3-shard analysis, kept
 as written.
 
+**2026-11-28: longer E2E limits, not more shards.** Shard 1 of 6 holds all 19
+`approval-scroll.spec.ts` tests (`--list`: shard 1/6 is 19 of 48 tests, shard
+1/8 is 19 of 45), because Playwright 1.65.1 `filterForShard` cuts contiguous
+blocks by test count and the spec is one block. Each of its tests takes about
+13 to 18 s locally, so the shard needs about 8 minutes in steady state. A
+green run took 9.3 min with 3 retries and a red one hit the 10-minute step
+limit. More shards do not split the block, so in `preview-build.yml` and
+`production.yml` the `Run all E2E tests` step limit goes from 10 to 15 minutes
+and the E2E job limit from 15 to 20. The shard count and the shard command are
+unchanged. The next lever is to shrink what #1112 added (5 scenarios times 3
+viewports, each with two members), not more shards.
+
 **Observed on PR #499 (GitHub-hosted, 2026-10-25):**
 
 | Run | Wall time | Longest legs |

@@ -532,6 +532,21 @@ the final layout equals a plain send, except for the long user message
 described above. The spec reuses
 `tests/e2e/helpers/composer-metrics.ts` with `composer-overlays-spacer.spec.ts`.
 
+### Why a long message is not compared with a plain send
+
+The frame-by-frame e2e cases in `tests/e2e/chat/approval-scroll.spec.ts` end
+with a comparison against a plain send of the same stream, except for a long
+user message. The user text renders through the async `MDCCached` component,
+and the user message is measured once, a fixed 150 ms after it rendered. On a
+slow runner a long message is still one short row at that moment, so the
+plain page's own final placement differs from the continuation's, which
+measures the message live at the click: in CI the difference was 12 to 212 px
+and the test failed on its first attempt in several runs (retries hid it until
+one run failed all three). A continuation keeps what the reader already sees,
+so for a long message the plain-send comparison is not an oracle and the
+scenario keeps only the per-frame checks. The fixed measurement delay is a
+known race, tracked separately.
+
 ## Runtime hook contract (event bus)
 
 Defined in `app/types/runtime-hooks.d.ts`.

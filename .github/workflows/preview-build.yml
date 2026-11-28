@@ -408,7 +408,7 @@ jobs:
       - gate
       - build
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -439,7 +439,7 @@ jobs:
         uses: ./.github/actions/prepare-e2e
 
       - name: Run all E2E tests
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       - name: Upload Playwright report
