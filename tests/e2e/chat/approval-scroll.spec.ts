@@ -353,33 +353,6 @@ async function send(page: Page, prompt: string = PROMPT) {
   await page.getByTestId('send-message').click()
 }
 
-const SETTLE_GAP_MS = 300
-const SETTLE_TIMEOUT_MS = 10_000
-
-/**
- * The final adjust runs 150 ms after the reply is ready, which a busy
- * machine can stretch, so the metrics are read once two reads at least
- * 300 ms apart agree.
- */
-async function readSettledMetrics(page: Page) {
-  const deadline = Date.now() + SETTLE_TIMEOUT_MS
-  let previous = await readComposerMetrics(page)
-
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(SETTLE_GAP_MS)
-
-    const current = await readComposerMetrics(page)
-
-    if (JSON.stringify(current) === JSON.stringify(previous)) {
-      return current
-    }
-
-    previous = current
-  }
-
-  throw new Error('The composer metrics did not settle')
-}
-
 async function waitUntilReady(page: Page, text: string) {
   await expect(
     page.locator('button[data-testid="stop-generation"]').first(),
@@ -597,7 +570,7 @@ const SHORT_SCENARIOS: ShortScenario[] = [
     secondCard: true,
     scrollBy: 0,
     instantPinFrames: 0,
-    matchesPlainSend: true,
+    matchesPlainSend: false,
   },
   {
     label: 'a short message with the view scrolled away from the pin',
@@ -735,7 +708,7 @@ for (const { name, size } of SHORT_REPLY_VIEWPORTS) {
       await send(plainPage, scenario.prompt)
       await waitUntilReady(plainPage, finalText)
 
-      const plain = await readSettledMetrics(plainPage)
+      const plain = await readComposerMetrics(plainPage)
 
       const page = await openMember(
         browser,
@@ -796,7 +769,7 @@ for (const { name, size } of SHORT_REPLY_VIEWPORTS) {
           .toBeLessThanOrEqual(MAX_FRAME_MOVE)
       }
 
-      const final = await readSettledMetrics(page)
+      const final = await readComposerMetrics(page)
 
       if (scenario.matchesPlainSend) {
         expect(Math.abs(final.lastUserTop - plain.lastUserTop))

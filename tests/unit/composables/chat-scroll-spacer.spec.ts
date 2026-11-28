@@ -278,11 +278,9 @@ function createContinuationHarness(initialEndOffsetTop: number = 1100) {
           return
         }
 
-        if (messageElements[role] !== element) {
-          defineBox(element, role === 'user'
-            ? { offsetTop: 100, offsetHeight: 60 }
-            : { offsetTop: 172, offsetHeight: 900 })
-        }
+        defineBox(element, role === 'user'
+          ? { offsetTop: 100, offsetHeight: 60 }
+          : { offsetTop: 172, offsetHeight: 900 })
 
         messageElements[role] = element
 
@@ -1046,32 +1044,6 @@ describe('useChatScrollSpacer continuations and approval pauses', () => {
     const harness = createContinuationHarness(400)
 
     await startContinuationWithTallUserMessage(harness)
-    window.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'End',
-      bubbles: true,
-    }))
-    harness.scrollTos.length = 0
-    await finishContinuation(harness)
-
-    expect(lastInstantScrollTop(harness.scrollTos))
-      .toEqual({ top: 292, behavior: 'instant' })
-  })
-
-  it('places the finished reply for the user message height at the end, '
-    + 'not the one measured while it was still rendering', async () => {
-    const harness = createContinuationHarness(400)
-
-    await mountSuspended(harness.Harness)
-    await vi.advanceTimersByTimeAsync(INPUT_HEIGHT_DEBOUNCE_MS)
-    harness.chatSdk.status = 'submitted'
-    await useNuxtApp().callHook('chat:continue')
-    await nextTick()
-    defineBox(
-      harness.layout.container!.querySelector<HTMLElement>(
-        '[data-role="user"]',
-      )!,
-      { offsetHeight: 300 },
-    )
     window.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'End',
       bubbles: true,

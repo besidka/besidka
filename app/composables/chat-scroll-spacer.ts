@@ -203,29 +203,6 @@ export function useChatScrollSpacer(
     })
   }
 
-  /**
-   * The user message is measured once, a fixed delay after it rendered, and
-   * a long one may still be laid out as a single short row by then on a slow
-   * device. The final adjust runs after the whole reply, so it reads the
-   * message again and the reply is placed for the real height.
-   */
-  function measureUserMessageAgain(): MessageData | null {
-    const measured = userMessageData.value
-    const userElement = getLastUserMessageElement()
-
-    if (!measured || userElement?.dataset.messageId !== measured.id) {
-      return measured
-    }
-
-    userMessageData.value = {
-      id: measured.id,
-      height: userElement.offsetHeight,
-      offsetTop: userElement.offsetTop,
-    }
-
-    return userMessageData.value
-  }
-
   async function adjustSpacerAfterResponse() {
     const pinnedScrollTarget = hasUserTakenOverContinuationScroll
       ? null
@@ -240,7 +217,7 @@ export function useChatScrollSpacer(
 
     const container = scrollContainerRef.value
     const messagesEnd = messagesEndRef.value
-    const userMessage = measureUserMessageAgain()
+    const userMessage = userMessageData.value
     const assistantMessage = assistantMessageData.value
 
     if (
