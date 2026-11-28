@@ -11,6 +11,7 @@ import { isSkillToolName } from '#shared/utils/skills/runtime'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
+import { isExternalSearchToolName } from '~~/server/utils/ai/external-search-cost'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -42,6 +43,7 @@ export interface UntrustedContentGuard {
 
 export interface ToolLoopBudget {
   chatSearchSteps?: number
+  externalSearchSteps?: number
   knowledgeSteps?: number
   skillSteps?: number
   connectorSteps?: number
@@ -241,7 +243,11 @@ function createToolLoopPrepareStep(
  * an answer — see `createToolLoopPrepareStep()` above for how.
  * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are granted when at least one
  * registered follow-up tool is neither a chat-search, a memory nor a
- * project-knowledge tool (web search), `chatSearchSteps` more when a
+ * project-knowledge tool (web search). When that web tool is Brave or Exa
+ * (`web_search_brave`, `web_search_exa`) and `externalSearchSteps` is set,
+ * the web family gets `externalSearchSteps` rounds instead, so the model can
+ * search, think and search again; every other web follow-up tool keeps
+ * `TOOL_LOOP_MAX_TOOL_STEPS`. `chatSearchSteps` more when a
  * chat-search or memory tool is registered, `knowledgeSteps` more when a
  * project-knowledge tool is registered, `skillSteps` more when a skill
  * tool is registered, and `connectorSteps` more when a connector tool
@@ -278,6 +284,9 @@ export function resolveToolLoop(
   }
 
   const hasWebFollowUpTool = followUpToolNames.some(isWebFollowUpToolName)
+  const hasExternalSearchTool = followUpToolNames.some(
+    isExternalSearchToolName,
+  )
   const hasChatSearchTool = followUpToolNames.some(isBudgetedLookupToolName)
   const hasKnowledgeTool = followUpToolNames.some(isProjectKnowledgeToolName)
   const hasSkillTool = followUpToolNames.some(isSkillToolName)
@@ -285,12 +294,16 @@ export function resolveToolLoop(
   const hasBesidkaTool = followUpToolNames.some(isBesidkaChatToolName)
   const hasToolIndexTool = followUpToolNames.some(isToolIndexLoadToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
+  const externalSearchSteps = Math.max(0, budget?.externalSearchSteps ?? 0)
   const knowledgeSteps = Math.max(0, budget?.knowledgeSteps ?? 0)
   const skillSteps = Math.max(0, budget?.skillSteps ?? 0)
   const connectorSteps = Math.max(0, budget?.connectorSteps ?? 0)
   const besidkaSteps = Math.max(0, budget?.besidkaSteps ?? 0)
   const toolIndexSteps = Math.max(0, budget?.toolIndexSteps ?? 0)
-  const toolSteps = (hasWebFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
+  const webSteps = hasExternalSearchTool && externalSearchSteps > 0
+    ? externalSearchSteps
+    : TOOL_LOOP_MAX_TOOL_STEPS
+  const toolSteps = (hasWebFollowUpTool ? webSteps : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)
     + (hasKnowledgeTool ? knowledgeSteps : 0)
     + (hasSkillTool ? skillSteps : 0)

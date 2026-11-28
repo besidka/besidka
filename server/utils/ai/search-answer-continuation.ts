@@ -120,6 +120,8 @@ const KNOWLEDGE_UPLOADED_DOCUMENTS_LABEL = 'documents the user uploaded to '
 const SEARCH_ANSWER_CONTEXT_SEPARATOR = '\n\n'
 
 const SEARCH_ANSWER_OMITTED_NOTICE = '(Further search results omitted.)'
+const SEARCH_ANSWER_EARLIER_OMITTED_NOTICE
+  = '(Earlier search results omitted.)'
 
 export interface CollectedSearchResult {
   toolName: string
@@ -836,7 +838,10 @@ function selectSearchAnswerInstructions(
  * search hits as a numbered list and read parts in full, bounded by the
  * shared character budget. Total size is bounded by result count and
  * characters so a long search
- * turn cannot blow up the continuation's input cost. Every `<` and `>` in
+ * turn cannot blow up the continuation's input cost; when the limits cut a
+ * run, the newest searches are kept and older ones are dropped whole behind
+ * an "Earlier search results omitted" line, in chronological order with
+ * their original numbers. Every `<` and `>` in
  * the flattened text is replaced with `‹`/`›`, so no closing tag can be
  * forged from titles, URLs, snippets, chat excerpts or error text however it
  * is cased or nested.
@@ -844,17 +849,71 @@ function selectSearchAnswerInstructions(
 export function buildSearchResultsContext(
   searchResults: readonly CollectedSearchResult[],
 ): string {
+  const { sections, firstRenderedIndex } = selectNewestSearchSections(
+    searchResults,
+  )
+
+  if (firstRenderedIndex > 0) {
+    sections.unshift(SEARCH_ANSWER_EARLIER_OMITTED_NOTICE)
+  }
+
+  const results = neutralizeAngleBrackets(sections.join('\n\n'))
+  const intro = hasChatSearchResults(searchResults)
+    || hasMemoryResults(searchResults)
+    || hasKnowledgeResults(searchResults)
+    ? 'Tool results gathered for this conversation:'
+    : 'Web search results gathered for this conversation:'
+
+  return [
+    intro,
+    `<${SEARCH_ANSWER_RESULTS_TAG}>\n${results}\n</${SEARCH_ANSWER_RESULTS_TAG}>`,
+  ].join('\n\n')
+}
+
+/**
+ * Keeps the newest results when the result or character limit would cut the
+ * run: the oldest searches are dropped whole, one at a time, until the rest
+ * renders without truncation, so a long Brave or Exa run answers from its
+ * latest rounds. Results keep their original positions and chronological
+ * order. When even the newest search alone exceeds the limits, only it is
+ * rendered and cut after its first results.
+ */
+function selectNewestSearchSections(
+  searchResults: readonly CollectedSearchResult[],
+): { sections: string[], firstRenderedIndex: number } {
+  const lastIndex = Math.max(searchResults.length - 1, 0)
+
+  for (let firstIndex = 0; firstIndex < lastIndex; firstIndex++) {
+    const rendering = renderSearchSections(searchResults, firstIndex)
+
+    if (!rendering.isTruncated) {
+      return { sections: rendering.sections, firstRenderedIndex: firstIndex }
+    }
+  }
+
+  return {
+    sections: renderSearchSections(searchResults, lastIndex).sections,
+    firstRenderedIndex: lastIndex,
+  }
+}
+
+function renderSearchSections(
+  searchResults: readonly CollectedSearchResult[],
+  firstIndex: number,
+): { sections: string[], isTruncated: boolean } {
   const sections: string[] = []
   let renderedResults = 0
   let renderedChars = 0
   let isTruncated = false
 
-  for (const [searchIndex, searchResult] of searchResults.entries()) {
+  for (const [offset, searchResult] of searchResults
+    .slice(firstIndex)
+    .entries()) {
     if (isTruncated) {
       break
     }
 
-    const position = searchIndex + 1
+    const position = firstIndex + offset + 1
 
     if (isMemoryToolName(searchResult.toolName)) {
       const memoryRendering = readMemoryToolRendering(searchResult, position)
@@ -1059,17 +1118,7 @@ export function buildSearchResultsContext(
     sections.push(SEARCH_ANSWER_OMITTED_NOTICE)
   }
 
-  const results = neutralizeAngleBrackets(sections.join('\n\n'))
-  const intro = hasChatSearchResults(searchResults)
-    || hasMemoryResults(searchResults)
-    || hasKnowledgeResults(searchResults)
-    ? 'Tool results gathered for this conversation:'
-    : 'Web search results gathered for this conversation:'
-
-  return [
-    intro,
-    `<${SEARCH_ANSWER_RESULTS_TAG}>\n${results}\n</${SEARCH_ANSWER_RESULTS_TAG}>`,
-  ].join('\n\n')
+  return { sections, isTruncated }
 }
 
 function withoutToolHistory(

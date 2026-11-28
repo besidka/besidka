@@ -467,6 +467,127 @@ describe('richer search content caps', () => {
   })
 })
 
+describe('newest search rounds kept past the limits', () => {
+  const EARLIER_NOTICE = '(Earlier search results omitted.)'
+
+  function createRound(roundIndex: number, resultCount: number, snippet = 'S') {
+    return {
+      toolName: SEARCH_TOOL_NAME,
+      input: { query: `round ${roundIndex}` },
+      output: {
+        results: Array.from({ length: resultCount }, (_unused, index) => ({
+          title: `Round ${roundIndex} result ${index}`,
+          url: `https://example.com/${roundIndex}/${index}`,
+          snippet,
+        })),
+      },
+    }
+  }
+
+  it('keeps every round in order when the limits are not reached', () => {
+    const context = buildSearchResultsContext([
+      createRound(1, 2),
+      createRound(2, 2),
+    ])
+
+    expect(context).not.toContain(EARLIER_NOTICE)
+    expect(context).not.toContain('(Further search results omitted.)')
+    expect(context.indexOf('Search 1: round 1'))
+      .toBeLessThan(context.indexOf('Search 2: round 2'))
+  })
+
+  it('drops the oldest rounds first past the result count limit', () => {
+    const roundCount = 6
+    const resultsPerRound = 8
+    const context = buildSearchResultsContext(
+      Array.from({ length: roundCount }, (_unused, index) => {
+        return createRound(index + 1, resultsPerRound)
+      }),
+    )
+    const keptRounds = SEARCH_ANSWER_CONTEXT_MAX_RESULTS / resultsPerRound
+
+    expect(roundCount * resultsPerRound)
+      .toBeGreaterThan(SEARCH_ANSWER_CONTEXT_MAX_RESULTS)
+    expect(context).toContain(EARLIER_NOTICE)
+    expect(context).not.toContain('(Further search results omitted.)')
+
+    for (let round = 1; round <= roundCount; round++) {
+      const isKept = round > roundCount - keptRounds
+
+      expect(context.includes(`Search ${round}: round ${round}`))
+        .toBe(isKept)
+    }
+
+    expect(context).toContain(`Search ${roundCount}: round ${roundCount}`)
+    expect(context).not.toContain('Search 1: round 1')
+  })
+
+  it('drops the oldest rounds first past the character limit', () => {
+    const roundCount = 6
+    const resultsPerRound = 4
+    const snippet = 'y'.repeat(SEARCH_ANSWER_RESULT_SNIPPET_MAX_CHARS)
+    const context = buildSearchResultsContext(
+      Array.from({ length: roundCount }, (_unused, index) => {
+        return createRound(index + 1, resultsPerRound, snippet)
+      }),
+    )
+
+    expect(roundCount * resultsPerRound)
+      .toBeLessThanOrEqual(SEARCH_ANSWER_CONTEXT_MAX_RESULTS)
+    expect(context).toContain(EARLIER_NOTICE)
+    expect(context).not.toContain('(Further search results omitted.)')
+    expect(context.length).toBeLessThan(SEARCH_ANSWER_CONTEXT_MAX_CHARS + 500)
+    expect(context).toContain(`Search ${roundCount}: round ${roundCount}`)
+    expect(context).toContain(`Round ${roundCount} result 3`)
+    expect(context).not.toContain('Search 1: round 1')
+  })
+
+  it('renders the kept rounds chronologically with their original numbers',
+    () => {
+      const context = buildSearchResultsContext(
+        Array.from({ length: 6 }, (_unused, index) => {
+          return createRound(index + 1, 8)
+        }),
+      )
+      const positions = [4, 5, 6].map((round) => {
+        return context.indexOf(`Search ${round}: round ${round}`)
+      })
+
+      expect(positions.every(position => position >= 0)).toBe(true)
+      expect(positions).toEqual([...positions].sort((a, b) => a - b))
+      expect(context.indexOf(EARLIER_NOTICE))
+        .toBeLessThan(positions[0] as number)
+    })
+
+  it('keeps the start of a single newest round that alone exceeds the limit',
+    () => {
+      const context = buildSearchResultsContext([
+        createRound(1, 3),
+        createRound(2, 40),
+      ])
+
+      expect(context).toContain(EARLIER_NOTICE)
+      expect(context).not.toContain('Search 1: round 1')
+      expect(context).toContain('Search 2: round 2')
+      expect(context).toContain('Round 2 result 0')
+      expect(context).toContain('(Further search results omitted.)')
+      expect(context).not.toContain(
+        `Round 2 result ${SEARCH_ANSWER_CONTEXT_MAX_RESULTS}\n`,
+      )
+    })
+
+  it('keeps the untrusted delimiters around the kept rounds', () => {
+    const context = buildSearchResultsContext(
+      Array.from({ length: 6 }, (_unused, index) => {
+        return createRound(index + 1, 8)
+      }),
+    )
+
+    expect(countTagOccurrences(context)).toBe(2)
+    expect(context).toContain(`<${SEARCH_ANSWER_RESULTS_TAG}>`)
+  })
+})
+
 describe('chat tool results in the continuation context', () => {
   const NEUTRAL_OPEN = '‹'
   const NEUTRAL_CLOSE = '›'

@@ -29,6 +29,7 @@ import {
   GOOGLE_TOOL_NAME_PREFIX,
   isGoogleToolName,
 } from '#shared/utils/google-tool-approvals'
+import { MEMORY_ALWAYS_ALLOW_TOOL_NAME } from '#shared/utils/memory-tool-permissions'
 import { formatConnectorArguments } from '~/utils/connector-step'
 
 export type ApprovalStepState
@@ -327,10 +328,28 @@ export function humanizeBesidkaToolName(tool: string): string {
 }
 
 /**
+ * Whether a full tool name is the native `memory_write`, the one memory tool
+ * with Always allow. A connector tool named `memory_write` arrives as
+ * `mcp__<slug>__memory_write` and a Besidka tool as `besidka__<name>`, so
+ * neither matches.
+ */
+export function isMemoryAlwaysAllowToolName(toolName: string): boolean {
+  return toolName === MEMORY_ALWAYS_ALLOW_TOOL_NAME
+}
+
+/**
  * The tooltip of the "Always allow" button. One click answers; there is no
  * second confirmation (owner decision of 2026-11-20).
  */
-export function getAlwaysAllowHint(isBesidka: boolean): string {
+export function getAlwaysAllowHint(
+  isBesidka: boolean,
+  toolName = '',
+): string {
+  if (!isBesidka && isMemoryAlwaysAllowToolName(toolName)) {
+    return 'Runs without asking in every chat, also after web search or '
+      + 'files. Change it in Memory settings.'
+  }
+
   return isBesidka
     ? 'Runs without asking in every chat. Change it in Tool permissions.'
     : 'Runs without asking in every chat until the tool changes. '

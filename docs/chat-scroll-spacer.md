@@ -1,6 +1,6 @@
 # Chat scroll and spacer behavior
 
-Last updated: November 23, 2026
+Last updated: November 25, 2026
 Scope: `app/composables/chat-scroll-spacer.ts`,
 `app/composables/chat-image-ui.ts`, and `app/components/ChatInput.client.vue`
 
@@ -139,8 +139,8 @@ open items are listed after the table.
 
 | Element | Where | Covered by |
 | --- | --- | --- |
-| Approval bubble (`Chat/ToolApprovalBubble.vue`) with its Gmail draft (`Reasoning/GmailDraft.vue`) and Calendar event (`Reasoning/CalendarEvent.vue`) cards | Sibling after the last message; leaves when the tool settles | The pause: `revealApprovalBubble()` in the final adjust. The leave during a continuation: `keepContinuationPinned()` |
-| Drive change card (`Reasoning/DriveChange.vue`, four variants: the folder to create, a file to create, a rename, a move; text only, no `details`; the folder, rename and move variants have no scrolling region; the file variant has one content region of fixed maximum height, `max-h-60` with `overflow-auto`, that holds the whole text or a text table; the variants differ in height and every height is fixed at pause time) | Inside the approval bubble (sibling after the last message) and in `ApprovalStep.vue`, at pause time with its final height (the names and the content come from the stored part, nothing loads later); leaves when the tool settles | The same as the Gmail draft and Calendar event cards: `revealApprovalBubble()` at the pause (a bubble taller than the viewport reveals down to its top, a case in `chat-scroll-spacer.spec.ts`), `keepContinuationPinned()` at the leave. `getAffectedTests` maps the file to the four spacer suites |
+| Approval bubble (`Chat/ToolApprovalBubble.vue`) with its Gmail draft (`Reasoning/GmailDraft.vue`) and Calendar event (`Reasoning/CalendarEvent.vue`) cards | Sibling after the last message; leaves when the tool settles | The pause: `revealApprovalBubble()` in the final adjust. The leave during a continuation: the pin spacer is sized as if the bubble had left already (`getLeavingApprovalBubbleHeight()`), so nothing is clamped; `keepContinuationPinned()` covers the rest |
+| Drive change card (`Reasoning/DriveChange.vue`, four variants: the folder to create, a file to create, a rename, a move; text only, no `details`; the folder, rename and move variants have no scrolling region; the file variant has one content region of fixed maximum height, `max-h-60` with `overflow-auto`, that holds the whole text or a text table; the variants differ in height and every height is fixed at pause time) | Inside the approval bubble (sibling after the last message) and in `ApprovalStep.vue`, at pause time with its final height (the names and the content come from the stored part, nothing loads later); leaves when the tool settles | The same as the Gmail draft and Calendar event cards: `revealApprovalBubble()` at the pause (a bubble taller than the viewport reveals down to its top, a case in `chat-scroll-spacer.spec.ts`); at the leave, the pin spacer pre-sized for the leaving bubble and `keepContinuationPinned()`. `getAffectedTests` maps the file to the four spacer suites |
 | Approval step inside the reasoning box (`Reasoning/ApprovalStep.vue`, same cards) | In the message | The final adjust at `ready`. Its user-opened `details` (Arguments, Text to save): NOT covered |
 | Reasoning box auto-collapse when the text starts (`Reasoning.vue`, `isMainExpanded`) | Top of the last assistant message, mid-stream | NOT covered by a trigger. The pin was sized from the user message, so it only clamps if the reply falls below that; the final adjust corrects the rest |
 | Reasoning box opened or closed by the user after `ready` | Same | NOT covered |
@@ -425,7 +425,54 @@ viewport with a short reply, measured with a per-frame sampler) until
 the spacer in between: it ran only on submit, continue, regenerate, input
 height changes and once per reply at `ready`.
 
-`keepContinuationPinned()` closes that gap. `pinUserMessageForContinuation()`
+Sizing the spacer for a layout that is about to change beats correcting it
+after the fact. `getLeavingApprovalBubbleHeight()` measures the approval
+bubble message that is still on the page (`.js-tool-approval-message`, the
+root of `Chat/ToolApprovalBubble.vue`, not the per-message wrapper in
+`[slug].vue` that also holds the reply above it: its distance to
+`messagesEnd` plus its top margin) and `getSpacerHeightForScrollTarget()`
+sizes the pin spacer as if it had left already. When the tool settles, the
+page keeps its height, `scrollTop` is never clamped and the pinned user
+message does not move, not even for the one layout that sits between the
+removal and the first resize notification (a per-frame sampler that reads
+before the next layout saw that layout, 350px away on a 390x844 viewport,
+even with `keepContinuationPinned()` in place). The extra blank space under
+the reply, whatever the reply grows by while the tool settles, is the same
+kind of slack a plain send has and is replaced when the reply finishes.
+
+A reader who had scrolled away from the pin before the click (the card in
+view with the user message partly above the container's top, or scrolled
+up) is moved to the pin in one instant frame while a leaving bubble is
+present and the view is more than 2px from the target
+(`CONTINUATION_PIN_MOVE_THRESHOLD`); otherwise the pin scroll is smooth. A
+smooth scroll would be cut short by the next layout when the bubble leaves,
+which is a visible jump of its own.
+
+The pin leaves a view that is already at the pin alone. The formula the pause
+scrolls to is not what the reader sees (the default spacer clamps it 12px
+lower), and the pin's own formula (`userTop + tallOffset - 12`) sits about 12px
+away from the real position for a tall user message. So when `scrollTop` is
+within `CONTINUATION_PIN_SETTLED_DISTANCE` (24px) of the formula, the pin keeps
+the current `scrollTop` as its target and the click moves the view by 0px.
+Farther away (the reader scrolled, or the pause revealed the bubble), the pin
+moves to the formula.
+
+The reply is placed where the pin put it. `adjustSpacerAfterResponse()` takes
+the pin's scroll target (`finalContinuationScrollTarget`, kept after the
+status watcher clears the live one) when the user did not take over the
+scroll, recomputes only the spacer height so the target stays reachable, and
+scrolls to that target instead of the one a plain send would compute for the
+finished reply. The two can differ when the finished reply is taller than the
+paused one: a plain send then ends 12px lower, and for a user message about
+as tall as the viewport (22 sentences at 430x932) the plain send's own final
+adjust jumps the pinned message from -536 to +12, because its spacer lacks the
+room for the tall-message offset. A continuation keeps what the reader already
+sees. This is the one documented difference from a plain send, and it only
+shows for a long user message. The pin is dropped by a takeover,
+`pushUserMessageToTop()`, `reservePinnedSpace()`, `chat:submit`,
+`chat:scroll-to-bottom`, an `error` status and a slug change.
+
+`keepContinuationPinned()` closes the rest. `pinUserMessageForContinuation()`
 stores its scroll target; a `ResizeObserver` on the messages container
 (`messagesEnd`'s parent) then recomputes the spacer the pin needs after every
 content resize. When it needs more than the current spacer, it grows the
@@ -456,15 +503,17 @@ so the pin must not pull the view back), the chat status becoming `ready` or
 `error` (through the status watcher, so a continuation that ends without a
 measured reply, such as a stopped one, cannot leave a stale target behind) and
 a change of the `slug` route param (the composable instance can outlive the
-chat it pinned), so a settled layout is never touched. One frame at the
-displaced position can still occur: the resize notification arrives after the
-layout that clamped. Do not replace this with a falling-edge
+chat it pinned), so a settled layout is never touched. Anything that
+shrinks the page for another reason (a reasoning box that collapses) still
+shows one frame at the displaced position, because the resize notification
+arrives after the layout that clamped. Do not replace this with a falling-edge
 `scrollIntoView()` (see the image-generation section for why). This is the
 first case of a general rule, written down in
 [Elements that appear, disappear or resize: the rule](#elements-that-appear-disappear-or-resize-the-rule)
 near the top: an element that leaves after a
 measurement needs a trigger of its own, and `keepContinuationPinned()` is
-the one that exists for continuations.
+the one that exists for continuations, together with the pre-sized spacer
+for the leaving bubble.
 
 Covered by `tests/unit/composables/chat-scroll-spacer.spec.ts`
 ("continuations and approval pauses") and
@@ -472,8 +521,16 @@ Covered by `tests/unit/composables/chat-scroll-spacer.spec.ts`
 1280x800: the bubble is fully visible and the pill hidden after the pause,
 the pill appears when scrolled away and leads back, the continuation pins
 the user message, and the final layout matches a plain send of the same
-reply within 2px). The spec reuses `tests/e2e/helpers/composer-metrics.ts`
-with `composer-overlays-spacer.spec.ts`.
+reply within 2px). A short reply, with only a reasoning row and the bubble
+above the composer, is checked with a per-frame sampler that reads before
+each layout, at 390x844, 430x932 and 1280x800, for a short user message, a
+long one (22 sentences) with and without a second approval, and with the view
+scrolled 60px away from the pin first. From just before the click until 2 s
+after the reply finished, no frame moves the user message top or `scrollTop`
+by more than 2px, except one instant frame where the view is moved to the pin;
+the final layout equals a plain send, except for the long user message
+described above. The spec reuses
+`tests/e2e/helpers/composer-metrics.ts` with `composer-overlays-spacer.spec.ts`.
 
 ## Runtime hook contract (event bus)
 

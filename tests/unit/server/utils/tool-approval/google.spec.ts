@@ -342,7 +342,7 @@ describe('Google approval family (rule 11)', () => {
   })
 })
 
-describe('Google egress (rule 12)', () => {
+describe('Google egress (rule 13)', () => {
   it('asks a connector read with an Always allow default after Google '
     + 'content', () => {
     const decision = resolveToolApproval({
@@ -353,7 +353,7 @@ describe('Google egress (rule 12)', () => {
       isAlwaysGrantDefault: true,
     })
 
-    expect(decision.rule).toBe(12)
+    expect(decision.rule).toBe(13)
     expect(decision.reason).toBe('google-egress')
     expect(decision.rememberOptions).toEqual(['once', 'chat'])
   })
@@ -368,7 +368,7 @@ describe('Google egress (rule 12)', () => {
       chatGrant: connectorGrant(),
     })
 
-    expect(decision.rule).toBe(12)
+    expect(decision.rule).toBe(13)
   })
 
   it('falls through to the ordinary rules with a Google egress grant', () => {
@@ -422,7 +422,7 @@ describe('Google egress (rule 12)', () => {
       googleEgressGrant: connectorGrant({ connectorId: 'other' }),
     })
 
-    expect(decision.rule).toBe(12)
+    expect(decision.rule).toBe(13)
   })
 
   it('leaves connector calls without Google content as they were', () => {
@@ -470,7 +470,7 @@ describe('Google egress (rule 12)', () => {
   })
 })
 
-describe('Besidka writes after Google content (rule 13)', () => {
+describe('Besidka writes after Google content (rule 14)', () => {
   function besidkaWrite(
     overrides: Partial<ToolApprovalDescriptor> = {},
   ): ToolApprovalDescriptor {
@@ -495,7 +495,7 @@ describe('Besidka writes after Google content (rule 13)', () => {
       permissionMode: 'allow',
     })
 
-    expect(decision.rule).toBe(13)
+    expect(decision.rule).toBe(14)
     expect(decision.status.type).toBe('user-approval')
     expect(decision.rememberOptions).toEqual(['once'])
   })
@@ -508,7 +508,7 @@ describe('Besidka writes after Google content (rule 13)', () => {
       chatGrant: besidkaGrant('besidka__create_file'),
     })
 
-    expect(decision.rule).toBe(13)
+    expect(decision.rule).toBe(14)
     expect(decision.rememberOptions).toEqual(['once'])
   })
 
@@ -532,7 +532,7 @@ describe('Besidka writes after Google content (rule 13)', () => {
           chatGrant: besidkaGrant('besidka__share_artifact'),
         })
 
-        expect(decision.rule, permissionMode).toBe(13)
+        expect(decision.rule, permissionMode).toBe(14)
         expect(decision.rememberOptions, permissionMode).toEqual(['once'])
       }
     })
@@ -2415,15 +2415,35 @@ describe('a Google tool the user set to Blocked', () => {
       [GOOGLE_READ, 'blocked'],
     ])
 
-    expect(resolveReplayPermissionMode('google', GOOGLE_READ, undefined, modes))
-      .toBe('blocked')
-    expect(resolveReplayPermissionMode('google', GOOGLE_WRITE, undefined, modes))
-      .toBe('ask')
+    expect(resolveReplayPermissionMode(
+      'google',
+      GOOGLE_READ,
+      undefined,
+      undefined,
+      modes,
+    )).toBe('blocked')
+    expect(resolveReplayPermissionMode(
+      'google',
+      GOOGLE_WRITE,
+      undefined,
+      undefined,
+      modes,
+    )).toBe('ask')
     expect(resolveReplayPermissionMode('google', GOOGLE_READ)).toBe('ask')
-    expect(resolveReplayPermissionMode('besidka', GOOGLE_READ, undefined, modes))
-      .toBe('blocked')
-    expect(resolveReplayPermissionMode('connector', GOOGLE_READ, undefined, modes))
-      .toBe('ask')
+    expect(resolveReplayPermissionMode(
+      'besidka',
+      GOOGLE_READ,
+      undefined,
+      undefined,
+      modes,
+    )).toBe('blocked')
+    expect(resolveReplayPermissionMode(
+      'connector',
+      GOOGLE_READ,
+      undefined,
+      undefined,
+      modes,
+    )).toBe('ask')
   })
 
   describe('after an approval, when the approved call is replayed', () => {

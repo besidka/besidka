@@ -15,7 +15,10 @@ import {
   wrapApprovedExecutions,
 } from '~~/server/utils/tool-approval/continuation'
 import type { ToolApprovalPendingRecord } from '~~/server/utils/tool-approval/kv'
-import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
+import {
+  buildConnectorApprovalEntry,
+  buildMemoryApprovalEntry,
+} from '~~/server/utils/tool-approval/send'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { createApprovalState } from '~~/server/utils/tool-approval/state'
 import { TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
@@ -46,6 +49,14 @@ vi.mock('~~/server/utils/connectors/store', () => ({
   recordConnectorToolCall: vi.fn(),
   settleConnectorToolCall: vi.fn(),
 }))
+
+const memoryPermissionMocks = vi.hoisted(() => ({
+  setMemoryToolPermission: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/utils/memory/tools/permissions', () => {
+  return { ...memoryPermissionMocks }
+})
 
 const HASH = 'b'.repeat(64)
 const TOOL_NAME = 'mcp__linear__create_issue'
@@ -607,11 +618,13 @@ describe('resolveReplayPermissionMode', () => {
         'google',
         'google__gmail_search',
         undefined,
+        undefined,
         googleModes,
       )).toBe('blocked')
       expect(resolveReplayPermissionMode(
         'google',
         'google__gmail_read_thread',
+        undefined,
         undefined,
         googleModes,
       )).toBe('ask')
@@ -626,12 +639,14 @@ describe('resolveReplayPermissionMode', () => {
       'connector',
       'besidka__list_files',
       undefined,
+      undefined,
       googleModes,
     )).toBe('ask')
     expect(resolveReplayPermissionMode(
       'besidka',
       'besidka__list_files',
       new Map([['besidka__list_files', 'allow' as const]]),
+      undefined,
       googleModes,
     )).toBe('allow')
   })
@@ -955,5 +970,209 @@ describe('applyRememberGrants Always allow', () => {
 
     expect(storeMocks.upsertConnectorToolSettings).not.toHaveBeenCalled()
     storeMocks.listConnectorToolSettings.mockReset()
+  })
+})
+
+describe('memory tool permissions on replay and Always allow', () => {
+  function memoryEntries() {
+    return new Map<string, SendToolEntry>([
+      ['memory_write', buildMemoryApprovalEntry('memory_write', 'ask')],
+      ['memory_forget', buildMemoryApprovalEntry('memory_forget', 'ask')],
+    ])
+  }
+
+  function memoryAnswer(toolName: string, remember: 'once' | 'always' = 'once') {
+    return {
+      response: { approvalId: 'approval-1', approved: true, remember },
+      record: pendingRecord({
+        family: 'native',
+        toolName,
+        connectorId: null,
+        definitionHash: null,
+        rememberOptions: toolName === 'memory_write'
+          ? ['once', 'always']
+          : ['once'],
+      }),
+    }
+  }
+
+  describe('resolveReplayPermissionMode', () => {
+    it('reads the stored mode of a memory tool and fails closed when a map '
+      + 'lacks it', () => {
+      const modes = { memory_write: 'blocked' as const }
+
+      expect(resolveReplayPermissionMode(
+        'native',
+        'memory_write',
+        undefined,
+        modes,
+      )).toBe('blocked')
+      expect(resolveReplayPermissionMode(
+        'native',
+        'memory_forget',
+        undefined,
+        modes,
+      )).toBe('blocked')
+      expect(resolveReplayPermissionMode(
+        'native',
+        'memory_write',
+        undefined,
+        { memory_write: 'allow' },
+      )).toBe('allow')
+    })
+
+    it('keeps ask for a memory tool without a map and for other native tools',
+      () => {
+        expect(resolveReplayPermissionMode('native', 'memory_write'))
+          .toBe('ask')
+        expect(resolveReplayPermissionMode(
+          'native',
+          'create_artifact',
+          undefined,
+          { memory_write: 'blocked' },
+        )).toBe('ask')
+      })
+  })
+
+  describe('decideContinuation', () => {
+    it('clamps Always allow on memory_forget to once', () => {
+      const [decision] = decideContinuation({
+        answers: [memoryAnswer('memory_forget', 'always')],
+        entries: memoryEntries(),
+        state: createApprovalState(),
+      })
+
+      expect(decision).toMatchObject({ approved: true, remember: 'once' })
+    })
+
+    it('denies an approved memory call the user has since blocked', () => {
+      const [decision] = decideContinuation({
+        answers: [memoryAnswer('memory_write')],
+        entries: memoryEntries(),
+        state: createApprovalState(),
+        memoryPermissionModes: {
+          memory_write: 'blocked',
+          memory_forget: 'ask',
+        },
+      })
+
+      expect(decision).toMatchObject({
+        approved: false,
+        denialReason: 'blocked',
+        reason: TOOL_APPROVAL_DENIAL_TEXT.blocked,
+      })
+    })
+
+    it('keeps an approved memory call that is still ask or allow and keeps '
+      + 'Always allow', () => {
+      for (const mode of ['ask', 'allow'] as const) {
+        const [decision] = decideContinuation({
+          answers: [memoryAnswer('memory_write', 'always')],
+          entries: memoryEntries(),
+          state: createApprovalState(),
+          memoryPermissionModes: { memory_write: mode, memory_forget: mode },
+        })
+
+        expect(decision).toMatchObject({
+          approved: true,
+          denialReason: null,
+          remember: 'always',
+        })
+      }
+    })
+
+    it('clamps Always allow for a memory prompt that did not offer it', () => {
+      const answer = memoryAnswer('memory_write', 'always')
+
+      answer.record.rememberOptions = ['once']
+
+      const [decision] = decideContinuation({
+        answers: [answer],
+        entries: memoryEntries(),
+        state: createApprovalState(),
+      })
+
+      expect(decision).toMatchObject({ approved: true, remember: 'once' })
+    })
+  })
+
+  describe('applyRememberGrants', () => {
+    async function apply(
+      toolName: string,
+      remember: 'once' | 'chat' | 'always',
+      approved = true,
+    ) {
+      await applyRememberGrants({
+        db: {} as never,
+        userId: 7,
+        chatPublicId: 'chat-1',
+        decisions: [{
+          approvalId: 'approval-1',
+          toolCallId: 'call-1',
+          toolName,
+          approved,
+          remember,
+        } as never],
+        entries: memoryEntries(),
+        logger: { set: vi.fn() } as never,
+      })
+    }
+
+    it('sets memory_write to Always allow when the user answers Always allow, '
+      + 'and logs it', async () => {
+      memoryPermissionMocks.setMemoryToolPermission.mockClear()
+
+      const logger = { set: vi.fn() }
+
+      await applyRememberGrants({
+        db: {} as never,
+        userId: 7,
+        chatPublicId: 'chat-1',
+        decisions: [{
+          approvalId: 'approval-1',
+          toolCallId: 'call-1',
+          toolName: 'memory_write',
+          approved: true,
+          remember: 'always',
+        } as never],
+        entries: memoryEntries(),
+        logger: logger as never,
+      })
+
+      expect(memoryPermissionMocks.setMemoryToolPermission)
+        .toHaveBeenCalledWith(7, 'memory_write', 'allow', {})
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          memoryToolPermissions: {
+            action: 'permission-set',
+            tool: 'memory_write',
+            mode: 'allow',
+            source: 'card',
+          },
+        },
+      })
+    })
+
+    it('never sets memory_forget to Always allow, whatever the answer says',
+      async () => {
+        memoryPermissionMocks.setMemoryToolPermission.mockClear()
+
+        await apply('memory_forget', 'always')
+
+        expect(memoryPermissionMocks.setMemoryToolPermission)
+          .not.toHaveBeenCalled()
+      })
+
+    it('writes nothing for a once answer, a denial or another native tool',
+      async () => {
+        memoryPermissionMocks.setMemoryToolPermission.mockClear()
+
+        await apply('memory_write', 'once')
+        await apply('memory_write', 'always', false)
+        await apply('create_artifact', 'always')
+
+        expect(memoryPermissionMocks.setMemoryToolPermission)
+          .not.toHaveBeenCalled()
+      })
   })
 })

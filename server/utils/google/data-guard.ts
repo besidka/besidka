@@ -334,7 +334,7 @@ export function withGoogleTaintRerankStop(
 
 /**
  * Connectors in a chat that holds Google data run only under tool
- * approvals: the Google egress ask (rule 12) is the only thing that keeps
+ * approvals: the Google egress ask (rule 13) is the only thing that keeps
  * Google content from reaching a user-added MCP server unasked, and it needs
  * approvals to run.
  */

@@ -70,6 +70,8 @@ import { TOOL_APPROVAL_DENIAL_TEXT } from '~~/server/utils/tool-approval/denial-
 import { isGoogleOnceOnlyReadTool } from '#shared/utils/google-gmail-tools'
 import { SKILL_SCRIPTS_GRANT_KEY } from '#shared/utils/skills/scripts'
 import { addBesidkaChatGrant } from '~~/server/utils/besidka-tools/chat-settings'
+import { isMemoryPermissionToolName } from '#shared/utils/memory-tool-permissions'
+import { setMemoryToolPermission } from '~~/server/utils/memory/tools/permissions'
 import {
   createApprovalState,
   deserializeApprovalState,
@@ -476,7 +478,10 @@ export async function loadContinuation(input: {
  * tool permissions (`resolveBesidkaPermissionModes`, keyed by the tool name
  * of the call), so a tool the user set to Blocked after approving does not
  * run on resume; a Besidka call with no resolved mode fails closed as
- * Blocked. A Google tool reads the stored Google modes the send resolved
+ * Blocked. `memory_write` and `memory_forget` read `memoryModes` the same
+ * way (the stored memory permissions), so a memory tool the user set to
+ * Blocked after approving does not run on resume; without `memoryModes` they
+ * keep `ask`. A Google tool reads the stored Google modes the send resolved
  * (`googleModes`: Blocked, Needs approval or Always allow): a tool the
  * user set to Blocked after approving is denied as blocked, and a tool with
  * no stored mode means `ask`. Connector tools keep `ask`: their Blocked
@@ -488,6 +493,7 @@ export function resolveReplayPermissionMode(
   family: ToolFamily | null = null,
   toolName = '',
   besidkaModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
+  memoryModes?: Partial<Record<string, ToolPermissionMode>>,
   googleModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
 ): ToolPermissionMode {
   if (family === 'besidka') {
@@ -496,6 +502,14 @@ export function resolveReplayPermissionMode(
 
   if (family === 'google') {
     return googleModes.get(toolName) ?? 'ask'
+  }
+
+  if (
+    family === 'native'
+    && memoryModes
+    && isMemoryPermissionToolName(toolName)
+  ) {
+    return memoryModes[toolName] ?? 'blocked'
   }
 
   return 'ask'
@@ -527,6 +541,7 @@ export function decideContinuation(input: {
   entries: ReadonlyMap<string, SendToolEntry>
   state: ApprovalState
   besidkaPermissionModes?: ReadonlyMap<string, ToolPermissionMode>
+  memoryPermissionModes?: Partial<Record<string, ToolPermissionMode>>
   googlePermissionModes?: ReadonlyMap<string, ToolPermissionMode>
 }): ContinuationDecision[] {
   const replayState = cloneState(input.state)
@@ -558,6 +573,7 @@ export function decideContinuation(input: {
         entry?.descriptor.family ?? record.family,
         record.toolName,
         input.besidkaPermissionModes,
+        input.memoryPermissionModes,
         input.googlePermissionModes,
       ),
     })
@@ -924,6 +940,42 @@ async function applyBesidkaRememberGrant(input: {
   )
 }
 
+async function applyMemoryRememberGrant(input: {
+  db: DbClient
+  userId: number
+  decision: ContinuationDecision
+  logger: LoggerLike
+}): Promise<void> {
+  const { toolName } = input.decision
+
+  if (!isMemoryPermissionToolName(toolName)) {
+    return
+  }
+
+  try {
+    await setMemoryToolPermission(input.userId, toolName, 'allow', input.db)
+    input.logger.set({
+      attributes: {
+        memoryToolPermissions: {
+          action: 'permission-set',
+          tool: toolName,
+          mode: 'allow',
+          source: 'card',
+        },
+      },
+    })
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        toolApproval: {
+          grant: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+}
+
 /**
  * Writes the grant a remember choice asks for, when the request offered it:
  * "in this chat" maps the exposed tool name to its definition hash in the
@@ -932,7 +984,9 @@ async function applyBesidkaRememberGrant(input: {
  * choice was already clamped to what the request offered: every connector
  * and Besidka prompt offers all three (the always-ask tier included since
  * the owner decision of 2026-11-20), a native tool never gets a grant even
- * if a choice slipped through. The send and the replay
+ * if a choice slipped through, except `memory_write`, whose "always" sets the
+ * stored memory permission to Always allow (`memory_forget` has none). The
+ * send and the replay
  * read back exactly these two values (`getConnectorTools`). For a Besidka
  * tool, "in this chat" stores the registry hash in the chat's
  * `besidka_chat_settings.alwaysAllowTools`, and "always" sets the tool's
@@ -950,6 +1004,22 @@ export async function applyRememberGrants(input: {
     const entry = input.entries.get(decision.toolName)
     const hash = entry?.descriptor.definitionHash
     const connector = entry?.connector
+
+    if (
+      decision.approved
+      && decision.remember === 'always'
+      && entry?.descriptor.family === 'native'
+      && decision.toolName === 'memory_write'
+    ) {
+      await applyMemoryRememberGrant({
+        db: input.db,
+        userId: input.userId,
+        decision,
+        logger: input.logger,
+      })
+
+      continue
+    }
 
     if (
       !decision.approved

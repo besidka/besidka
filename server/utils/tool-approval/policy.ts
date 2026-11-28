@@ -137,7 +137,7 @@ export interface ToolApprovalGrant {
 }
 
 export type ToolApprovalRule
-  = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
+  = | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -213,6 +213,8 @@ const REMEMBER_OPTIONS_BY_REASON: Record<
 
 const NATIVE_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once']
 
+const MEMORY_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'always']
+
 const GOOGLE_READ_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'chat']
 
 const GOOGLE_WRITE_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once']
@@ -282,6 +284,21 @@ function isValidPendingTool(pending: ReplayPendingTool): boolean {
 function isMemoryWrite(descriptor: ToolApprovalDescriptor): boolean {
   return descriptor.writesMemory === true
     || isOneOf(TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES, descriptor.toolName)
+}
+
+const MEMORY_ALWAYS_ALLOW_TOOL_NAME = 'memory_write'
+
+function isAlwaysAllowMemoryTool(descriptor: ToolApprovalDescriptor): boolean {
+  return descriptor.family === 'native'
+    && descriptor.toolName === MEMORY_ALWAYS_ALLOW_TOOL_NAME
+}
+
+function nativeRememberOptionsOf(
+  descriptor: ToolApprovalDescriptor,
+): ToolApprovalRemember[] {
+  return isAlwaysAllowMemoryTool(descriptor)
+    ? MEMORY_REMEMBER_OPTIONS
+    : NATIVE_REMEMBER_OPTIONS
 }
 
 function isTaintedFor(
@@ -455,7 +472,7 @@ function resolveGoogleApproval(
 }
 
 /**
- * Rule 12: a connector call in a send that holds content from Google asks,
+ * Rule 13: a connector call in a send that holds content from Google asks,
  * whatever Always allow, read default or ordinary chat grant the tool has,
  * until the user gave this tool the Google egress grant in this chat. The
  * egress grant only lifts this rule; the call then goes through the
@@ -468,7 +485,7 @@ function needsGoogleEgressApproval(input: ResolveToolApprovalInput): boolean {
 }
 
 /**
- * Rule 13: a Besidka tool that is not a plain read, while the send holds
+ * Rule 14: a Besidka tool that is not a plain read, while the send holds
  * `google` taint, asks with Allow once only, whatever its Allow mode,
  * Always allow or chat grant. A Besidka write can store or publish what it
  * is given (a file, a project note, project instructions, a branch, an
@@ -490,17 +507,22 @@ function needsGoogleBesidkaWriteApproval(
 function resolveNativeApproval(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
+  permissionMode: ToolPermissionMode,
 ): ToolApprovalDecision {
   if (descriptor.access === 'read') {
     return allowed(1)
   }
 
+  if (isAlwaysAllowMemoryTool(descriptor) && permissionMode === 'allow') {
+    return allowed(12)
+  }
+
   if (isTaintedFor(descriptor, state)) {
-    return ask(2, 'untrusted-output', NATIVE_REMEMBER_OPTIONS)
+    return ask(2, 'untrusted-output', nativeRememberOptionsOf(descriptor))
   }
 
   if (isAlwaysAskTier(descriptor)) {
-    return ask(5, 'always-ask', NATIVE_REMEMBER_OPTIONS)
+    return ask(5, 'always-ask', nativeRememberOptionsOf(descriptor))
   }
 
   return allowed(8)
@@ -524,6 +546,15 @@ function resolveNativeApproval(
  *    and skill taint; every other native write, memory writes and
  *    unclassified tools included, counts every taint kind.
  * 8. Otherwise a native write runs.
+ * 12. Always allow for memory: `memory_write` that the user set to Allow
+ *    runs before the taint check of rule 2, also after web search, files or
+ *    other chats (the owner rule of 2026-11-20: the user's grant wins over
+ *    taint). Without that setting it still asks, and its prompt offers
+ *    `once` and `always`. `memory_forget` has no Always allow: it is an
+ *    irreversible delete, so it keeps rule 2 and offers `once` only. The
+ *    quote and sensitive-topic gates of the tools still run on every call,
+ *    and in a send that carries content from Google the memory tools' own
+ *    write guard still refuses the call (docs/google.md, section 5.3).
  *
  * Connector and Besidka tools (owner decision of 2026-11-20, which replaces
  * the order of 2026-11-15; modeled on Claude's connector settings):
@@ -550,7 +581,8 @@ function resolveNativeApproval(
  * 9. Otherwise ask `default`.
  *
  * Every prompt of a connector or Besidka tool offers Allow once, Allow in
- * this chat and Always allow; native prompts offer Allow once only.
+ * this chat and Always allow; native prompts offer Allow once only, except
+ * `memory_write`, which also offers Always allow.
  *
  * 10. A consent gate (`consentGate`) is decided right after rule 11,
  *    before every other rule: a chat grant that matches its definition hash
@@ -564,11 +596,11 @@ function resolveNativeApproval(
  *    grant wins over once-only reads), a read with a matching chat grant
  *    runs, any other read asks `default` (`once` or `chat`), a write asks
  *    `always-ask` (`once` only), ignoring taint.
- * 12. A connector call while the send holds `google` taint asks
+ * 13. A connector call while the send holds `google` taint asks
  *    `google-egress` (`once` or `chat`) before rules 6 and 7, unless the
  *    tool has a Google egress grant in this chat; with that grant the call
  *    falls through to the rules below.
- * 13. A Besidka tool that is not a plain read, while the send holds
+ * 14. A Besidka tool that is not a plain read, while the send holds
  *    `google` taint, asks `untrusted-output` with `once` only, before rules
  *    6 and 7: its Allow mode, Always allow and chat grants do not apply.
  *
@@ -605,15 +637,15 @@ export function resolveToolApproval(
   }
 
   if (descriptor.family === 'native') {
-    return resolveNativeApproval(descriptor, state)
+    return resolveNativeApproval(descriptor, state, input.permissionMode)
   }
 
   if (needsGoogleEgressApproval(input)) {
-    return ask(12, 'google-egress')
+    return ask(13, 'google-egress')
   }
 
   if (needsGoogleBesidkaWriteApproval(descriptor, state)) {
-    return ask(13, 'untrusted-output', GOOGLE_WRITE_REMEMBER_OPTIONS)
+    return ask(14, 'untrusted-output', GOOGLE_WRITE_REMEMBER_OPTIONS)
   }
 
   const isAlwaysAsk = isAlwaysAskTier(descriptor)

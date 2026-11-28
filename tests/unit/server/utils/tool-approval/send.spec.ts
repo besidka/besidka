@@ -7,6 +7,8 @@ import {
 import {
   buildConnectorApprovalEntry,
   buildGoogleApprovalEntry,
+  buildMemoryApprovalEntries,
+  buildMemoryApprovalEntry,
   chatHasAwaitingApproval,
   classifyNativeTool,
   countChatGrantRuns,
@@ -166,7 +168,7 @@ describe('createSendToolApproval', () => {
       input: {},
     })).toBe(false)
     expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
-      .toEqual(['once'])
+      .toEqual(['once', 'always'])
   })
 
   it('runs an untainted native write and clears it, whatever its size',
@@ -997,7 +999,7 @@ describe('createToolApprovalStreamCollector', () => {
           toolName: 'memory_write',
           reason: 'untrusted-output',
           summary: 'Besidka wants to save a memory',
-          rememberOptions: ['once'],
+          rememberOptions: ['once', 'always'],
         },
       })
       expect(collector.isPaused()).toBe(true)
@@ -1790,5 +1792,165 @@ describe('the cap on searches under a chat grant', () => {
       } },
       { type: 'data-tool-grant', data: null },
     ])).toEqual(new Map([[SEARCH, 1]]))
+  })
+})
+
+describe('memory tool Always allow in the send approval', () => {
+  const input = { body: 'Likes tea', userRequestQuote: 'remember I like tea' }
+
+  function createMemoryApproval(
+    modes: Partial<Record<string, 'blocked' | 'ask' | 'allow'>>,
+  ) {
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools(
+      { memory_write: {}, memory_forget: {} } as never,
+      new Map(buildMemoryApprovalEntries(modes)),
+    )
+
+    return approval
+  }
+
+  it('builds an entry per offered tool with its mode and none for Blocked',
+    () => {
+      const entries = buildMemoryApprovalEntries({
+        memory_write: 'allow',
+        memory_forget: 'blocked',
+      })
+
+      expect(entries.map(([toolName]) => toolName)).toEqual(['memory_write'])
+      expect(entries[0]![1]).toMatchObject({
+        permissionMode: 'allow',
+        descriptor: {
+          family: 'native',
+          toolName: 'memory_write',
+          writesMemory: true,
+        },
+      })
+      expect(buildMemoryApprovalEntries(undefined)).toEqual([])
+      expect(buildMemoryApprovalEntry('memory_forget', 'ask').permissionMode)
+        .toBe('ask')
+      expect(buildMemoryApprovalEntry('memory_forget', 'allow').permissionMode)
+        .toBe('ask')
+    })
+
+  it('clears a memory call after every taint kind and marks it as an Always '
+    + 'allow grant', () => {
+    const approval = createMemoryApproval({ memory_write: 'allow' })
+
+    for (const kind of ['web', 'file', 'knowledge', 'shared-branch'] as const) {
+      approval.state.taint.add(kind)
+    }
+
+    expect(approval.toolApproval(call('call-1', 'memory_write', input)))
+      .toBe('not-applicable')
+    expect(approval.getPendingDecision('call-1')).toBeUndefined()
+    expect(approval.getGrantScope('call-1')).toBe('always')
+  })
+
+  it('still asks after web taint when the tool is on the default mode', () => {
+    const approval = createMemoryApproval({})
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'memory_write', input)))
+      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once', 'always'])
+  })
+
+  it('never clears memory_forget, even with a stored Always allow', () => {
+    const approval = createMemoryApproval({
+      memory_write: 'allow',
+      memory_forget: 'allow',
+    })
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'memory_forget', {
+      id: 'x',
+      userRequestQuote: 'forget it',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once'])
+  })
+
+  it('keeps the other tool asking when only one is set to Always allow', () => {
+    const approval = createMemoryApproval({ memory_write: 'allow' })
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'memory_forget', {
+      id: 'x',
+      userRequestQuote: 'forget it',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+  })
+
+  it('lifts the lock for the cleared call only, once', () => {
+    const approval = createMemoryApproval({ memory_write: 'allow' })
+    const cleared = {
+      toolCallId: 'call-1',
+      toolName: 'memory_write',
+      input,
+    }
+
+    approval.state.taint.add('web')
+    approval.toolApproval(call('call-1', 'memory_write', input))
+
+    expect(approval.consumeUserSettingCall({
+      ...cleared,
+      toolCallId: 'call-2',
+    })).toBe(false)
+    expect(approval.consumeUserSettingCall({
+      ...cleared,
+      toolName: 'memory_forget',
+    })).toBe(false)
+    expect(approval.consumeUserSettingCall({
+      ...cleared,
+      input: { ...input, body: 'Likes coffee' },
+    })).toBe(false)
+    expect(approval.consumeUserSettingCall({
+      ...cleared,
+      toolCallId: undefined,
+    })).toBe(false)
+    expect(approval.consumeUserSettingCall(cleared)).toBe(true)
+    expect(approval.consumeUserSettingCall(cleared)).toBe(false)
+  })
+
+  it('never lifts the lock for a call that was asked or approved by hand',
+    () => {
+      const approval = createMemoryApproval({})
+      const cleared = {
+        toolCallId: 'call-1',
+        toolName: 'memory_write',
+        input,
+      }
+
+      approval.state.taint.add('web')
+      approval.toolApproval(call('call-1', 'memory_write', input))
+      approval.markApprovedByUser(cleared)
+
+      expect(approval.consumeUserSettingCall(cleared)).toBe(false)
+      expect(approval.isApprovedByUser(cleared)).toBe(true)
+    })
+
+  it('denies a Blocked memory tool, which the send does not offer', () => {
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools(
+      { memory_forget: {} } as never,
+      new Map(buildMemoryApprovalEntries({
+        memory_write: 'blocked',
+        memory_forget: 'ask',
+      })),
+    )
+
+    expect(approval.toolApproval(call('call-1', 'memory_write', input)))
+      .toMatchObject({ type: 'denied' })
+    expect(approval.consumeUserSettingCall({
+      toolCallId: 'call-1',
+      toolName: 'memory_write',
+      input,
+    })).toBe(false)
   })
 })

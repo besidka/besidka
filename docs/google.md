@@ -284,16 +284,19 @@ the one place the chat route assembles Google tools, with entries built by
 | Google tool of the own client set to Always allow | Run, no prompt (rule 11, `grant: 'always'`, the step shows "Ran without asking (Always allowed)") | None | The user's per-tool setting, wins over once-only reads and taint; capped (section 17.7) |
 | Google read | Ask (`default`, rule 11) | Allow once, Allow in this chat | A Google chat grant with the same name and definition hash |
 | Google write | Ask (`always-ask`, rule 11) | Allow once | Nothing: a chat grant and taint are ignored (only Always allow on an own-client tool lifts it) |
-| Connector call while the send holds `google` taint | Ask (`google-egress`, rule 12) | Allow once, Allow in this chat | The tool's Google egress grant in this chat; the call then goes through the ordinary connector rules |
-| Besidka tool that is not a plain read, while the send holds `google` taint | Ask (`untrusted-output`, rule 13) | Allow once | Nothing: its Allow mode, Always allow and chat grants are ignored (`create_file`, `add_project_text`, `add_project_note`, `update_project_instructions`, `branch_chat`, `share_artifact` and every other Besidka write) |
+| Connector call while the send holds `google` taint | Ask (`google-egress`, rule 13) | Allow once, Allow in this chat | The tool's Google egress grant in this chat; the call then goes through the ordinary connector rules |
+| Besidka tool that is not a plain read, while the send holds `google` taint | Ask (`untrusted-output`, rule 14) | Allow once | Nothing: its Allow mode, Always allow and chat grants are ignored (`create_file`, `add_project_text`, `add_project_note`, `update_project_instructions`, `branch_chat`, `share_artifact` and every other Besidka write) |
 | Besidka read after `google` taint | Its existing rules | As before | As before |
 | Native write after `google` taint | Ask (`untrusted-output`, rule 2) | Allow once | Nothing (artifact and document writes now count `google` taint too) |
 | Run code (provider code execution) | Not offered in a chat that holds Google data; withheld from the steps after `google` taint appears in the same send | None | Nothing |
 
 The final order inside `resolveToolApproval`: rule 0 (invalid, Blocked),
-rule 11 (Google tools), rule 10 (consent gate), the native rules (1, 2, 5,
-8), rule 12 (Google egress), rule 13 (Besidka writes after Google content),
-then rules 6, 7, 2, 3, 5 and 9.
+rule 11 (Google tools), rule 10 (consent gate), the native rules (1, 12,
+2, 5, 8; rule 12 is Always allow for `memory_write`, from `main`, see
+`docs/memory-architecture.md`, section 3.21), rule 13 (Google egress),
+rule 14 (Besidka writes after Google content), then rules 6, 7, 2, 3, 5
+and 9. A `memory_write` that rule 12 lets run in a send that holds Google
+content is still refused by the memory tools' own write guard (section 5.3).
 
 No Google prompt ever offers Always allow: it is set on the Connectors page,
 and only for the own-client tools (section 17.7). Blocked still denies. The
@@ -328,7 +331,7 @@ found by `resolveSendGoogleContent` at send start, which flags the chat
 before the guard runs. It is the one function every send, branch and later
 data guard asks. A send in a flagged
 chat starts with `google` taint and the Google tool read
-(`presetApprovalTaint`), so the egress ask, rule 13 and the web search
+(`presetApprovalTaint`), so the egress ask, rule 14 and the web search
 hold-back survive deleting the message that held the Google part. A branch
 copies the flag (`branchGoogleDataAt` in `server/utils/chats/branch.ts`,
 used by the branch route, the MCP and Besidka `branch_chat` tool through
@@ -467,7 +470,7 @@ unknown and refused. Unknown, unverifiable or refused means no.
 | Artifact public links | A marked artifact cannot get a public link (409, `ARTIFACT_SHARE_GOOGLE_DATA_CODE`), and an existing link to an artifact marked later resolves as not found. `artifact_shares` has no opt-in column, so refusing replaced the chat-share-style opt-in | The share action fails with the reason |
 | Web search, Brave, Exa | Every web search tool is removed from the send in a flagged chat (`withoutWebSearchForGoogleData`), whatever the tool approvals setting; the Brave and Exa keys are never read | The search tools are not offered; the reply has no search |
 | TypeSafe AI roles on the send path | Auto web search, skill selection, past-chat pre-retrieval and the rerank resolver are skipped in a flagged chat; in the send that first brings Google data, the rerank resolver stops once `google` taint appears (`withGoogleTaintRerankStop`); the share personal-data check skips its TypeSafe AI call | Auto web search keeps the chosen tools (minus search); the share check shows the generic reminder |
-| Connectors with tool approvals off | A flagged chat offers no connector unless tool approvals are active (`mayOfferConnectorsWithGoogleData`), because only the Google egress ask (rule 12) keeps Google content from a user-added MCP server, and it needs approvals | Connectors are not offered in that chat |
+| Connectors with tool approvals off | A flagged chat offers no connector unless tool approvals are active (`mayOfferConnectorsWithGoogleData`), because only the Google egress ask (rule 13) keeps Google content from a user-added MCP server, and it needs approvals | Connectors are not offered in that chat |
 | Flag write with the reply | The assistant message that brings the first Google result and the flag (with the share opt-in cleared) are one `db.batch` (`buildGoogleContentPersistStatements`); if the batch fails the reply is not persisted | The usual save error |
 | Flag repair | A send that finds a Google result in the stored parts while `google_data_at` is null sets the flag | Nothing |
 | What sets the sticky flag | A Google tool result that returned data (a static `tool-google__*` part with an output, for a tool that returns Google content), a marked write, or a marked file or code run at the persist step (`holdsStickyGoogleFlagTrigger`). A Google call that only failed (an approved read of a bogus id, a Drive error) or an empty Drive list (`emptyListHoldsNoContent`, 13.2) keeps the transient taint for the rest of the send, so the send stays guarded, but never sets the flag by itself; a later tool of the same send that flags after it ran (an artifact or document write) still does, because the send is tainted. A Google tool that returns no Google content (`GOOGLE_TOOL_PROPERTIES`, today the Drive save) taints nothing and flags nothing unless the file it saves carries the derived mark (`google_derived_at`; a Drive copy is refused by the save) | Nothing |
@@ -4320,9 +4323,9 @@ purpose, with the reason:
   Besidka.
 - Reads are capped at 5 a tool in a message; a Besidka Allow has no cap.
 - It runs after taint of any kind, as a Besidka Allow does, but it never
-  touches the data guard, the recipient check, rule 12 or rule 13: those
+  touches the data guard, the recipient check, rule 13 or rule 14: those
   protect where Google content may go, and Besidka's own Allow mode is
-  bypassed by rule 13 in the same way.
+  bypassed by rule 14 in the same way.
 - A restored row reads as `ask`, not `blocked`, for an unlisted tool.
 - The warning lines say what each group lets the model do; the own-client Drive
   write group names the broader Google permission ("also allows deleting and
@@ -4332,7 +4335,7 @@ purpose, with the reason:
 **Legal records** (engineer-drafted): `docs/legal/prechecks/google.md` rows
 14 and 19 (the research finding, the verdict "go with changes", and what to
 re-check if the owner verifies the own client or opens it to other users),
-`docs/legal/dpia.md` risks 75 and 76, `docs/legal/art30-record.md` row 33.
+`docs/legal/dpia.md` risks 76 and 77, `docs/legal/art30-record.md` row 33.
 No notice, no consent version and no public legal text changed: whether the
 Privacy Policy needs a word about it is the owner's decision.
 
@@ -4927,7 +4930,7 @@ Engineer-drafted, not lawyer-reviewed (plan question Q3):
   with `drive.readonly`) and 18 (data flows of a write), plus the Drive-write
   measures added to rows 13 (untrusted frames, ids only from the chat, no
   delete or share, the boundary spec) and 14 (per-call approval).
-- `docs/legal/dpia.md`: risk 75 (over-broad scope, mistaken or injected
+- `docs/legal/dpia.md`: risk 76 (over-broad scope, mistaken or injected
   creation, data left in the user's Drive) with its residual risk.
 - `docs/legal/art30-record.md`: row 33 and a review-log entry.
 

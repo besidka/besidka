@@ -3,7 +3,7 @@
     v-if="bubbleViews.length > 0"
     role="assistant"
     :any-selected="anySelected"
-    class="mt-3"
+    class="js-tool-approval-message mt-3"
   >
     <section
       ref="bubbleRoot"

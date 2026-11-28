@@ -355,6 +355,43 @@ describe('getDeepSeekWebSearchTools', () => {
     })
 })
 
+describe('getDeepSeekWebSearchTools default call cap', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('refuses the 9th call without a budget argument and without a request',
+    async () => {
+      const fetchMock = vi.fn(async () => {
+        return jsonResponse({ results: [API_RESULT] })
+      })
+
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { getDeepSeekWebSearchTools } = await importModule()
+      const { tools } = getDeepSeekWebSearchTools('deepseek-key')
+      const webSearch = tools?.web_search as {
+        execute: (input: unknown, options: unknown) => Promise<unknown>
+      }
+
+      for (let call = 1; call <= 8; call++) {
+        await webSearch.execute(
+          { query: `query ${call}` },
+          createExecutionOptions(),
+        )
+      }
+
+      expect(fetchMock).toHaveBeenCalledTimes(8)
+
+      await expect(webSearch.execute(
+        { query: 'query 9' },
+        createExecutionOptions(),
+      )).rejects.toMatchObject({ status: 429 })
+      expect(fetchMock).toHaveBeenCalledTimes(8)
+    })
+})
+
 describe('getDeepSeekWebSearchTools result sanitizing', () => {
   beforeEach(() => {
     vi.resetModules()

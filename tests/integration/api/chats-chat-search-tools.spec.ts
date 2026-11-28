@@ -508,15 +508,20 @@ describe('chat search tools send-path wiring', () => {
       steps: [
         braveCall('call-1'),
         searchChatsCall('call-2'),
-        searchChatsCall('call-3'),
-        readChatCall('call-4'),
-        searchChatsCall('call-5'),
-        braveCall('call-6'),
+        braveCall('call-3'),
+        searchChatsCall('call-4'),
+        braveCall('call-5'),
+        readChatCall('call-6'),
+        braveCall('call-7'),
+        braveCall('call-8'),
+        braveCall('call-9'),
+        braveCall('call-10'),
+        braveCall('call-11'),
         createTextChunks('Here is the combined answer.'),
       ],
     })
     const firstCallOptions = doStream.mock.calls[0]?.[0] as any
-    const finalCallOptions = doStream.mock.calls[6]?.[0] as any
+    const finalCallOptions = doStream.mock.calls[11]?.[0] as any
     const parts = assistantInsert?.parts ?? []
 
     expect(readToolNames(firstCallOptions).sort()).toEqual([
@@ -524,8 +529,8 @@ describe('chat search tools send-path wiring', () => {
       'search_chats',
       'web_search_brave',
     ])
-    expect(doStream).toHaveBeenCalledTimes(7)
-    expect(readToolNames(doStream.mock.calls[3]?.[0])).not.toEqual([])
+    expect(doStream).toHaveBeenCalledTimes(12)
+    expect(readToolNames(doStream.mock.calls[10]?.[0])).not.toEqual([])
     expect(finalCallOptions?.toolChoice).toEqual({ type: 'none' })
     expect(finalCallOptions?.tools).toBeUndefined()
     expect(parts).toContainEqual(expect.objectContaining({

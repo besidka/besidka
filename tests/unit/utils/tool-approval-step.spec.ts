@@ -15,6 +15,7 @@ import {
   getApprovalStepTitle,
   getApprovalSummaryLine,
   getAlwaysAllowHint,
+  isMemoryAlwaysAllowToolName,
   getGrantMarkersByToolCallId,
   getGrantMarkerText,
   isApprovalInputShortened,
@@ -375,6 +376,36 @@ describe('approval copy', () => {
       'Runs without asking in every chat. Change it in Tool permissions.',
     )
     expect(getAlwaysAllowHint(false)).toContain('until the tool changes')
+    expect(getAlwaysAllowHint(false, 'create_artifact'))
+      .toContain('until the tool changes')
+  })
+
+  it('points the Always allow tooltip of the native memory_write at Memory '
+    + 'settings', () => {
+    expect(getAlwaysAllowHint(false, 'memory_write')).toBe(
+      'Runs without asking in every chat, also after web search or '
+      + 'files. Change it in Memory settings.',
+    )
+    expect(isMemoryAlwaysAllowToolName('memory_write')).toBe(true)
+  })
+
+  it('gives every other tool the generic hint, a connector tool named '
+    + 'memory_write and memory_forget included', () => {
+    for (const toolName of [
+      'mcp__notes__memory_write',
+      'mcp__memory_write__memory_write',
+      'memory_forget',
+      'besidka__memory_write',
+      'create_artifact',
+    ]) {
+      expect(isMemoryAlwaysAllowToolName(toolName), toolName).toBe(false)
+      expect(getAlwaysAllowHint(false, toolName), toolName)
+        .toContain('until the tool changes')
+    }
+
+    expect(getAlwaysAllowHint(true, 'memory_write')).toBe(
+      'Runs without asking in every chat. Change it in Tool permissions.',
+    )
   })
 
   it('names the user\'s Besidka data as the source after a Besidka read',

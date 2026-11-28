@@ -96,4 +96,24 @@ describe('Chat/Reasoning/Step', () => {
       expect(withoutController.find('[data-testid="reasoning-grant-manage"]')
         .exists()).toBe(false)
     })
+
+  it('sends the Manage link of a memory save to the Memory page', async () => {
+    const memoryStep = step({
+      body: '',
+      kind: 'tool',
+      grantMarker: 'Ran without asking (Always allowed)',
+      memory: {
+        toolName: 'memory_write',
+        state: 'output-available',
+        entries: [],
+        errorReason: '',
+      } as never,
+    })
+    const wrapper = await mountStep({ step: memoryStep, canManageGrants: true })
+    const link = wrapper.get('[data-testid="reasoning-grant-manage-memory"]')
+
+    expect(link.attributes('to')).toBe('/profile/memory')
+    expect(wrapper.find('[data-testid="reasoning-grant-manage"]').exists())
+      .toBe(false)
+  })
 })

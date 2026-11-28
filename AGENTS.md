@@ -896,7 +896,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   references-only persistence, deletion within 24 hours when access ends),
   approvals in section 5.2 (the `google` tool family, the `google` taint and
   the sticky `chats.google_data_at` flag, the Google egress grant for
-  connectors, rule 13 for Besidka writes after Google content,
+  connectors, rule 14 for Besidka writes after Google content,
   references-only persistence, the 64 KiB output cap, the 24 h KV stash of
   bodies for a paused reply, tolerant reads of records from another deploy),
   the data guard in section 5.3 (`server/utils/google/data-guard.ts` over
