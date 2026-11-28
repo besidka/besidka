@@ -114,6 +114,7 @@ const props = withDefaults(defineProps<{
   markers?: VideoMarker[]
   thumbnails?: boolean
   guideProvider?: string
+  explainer?: string
   startAt?: number
 }>(), {
   src: '/videos/demo.mp4',
@@ -124,6 +125,7 @@ const props = withDefaults(defineProps<{
   markers: () => [],
   thumbnails: true,
   guideProvider: undefined,
+  explainer: undefined,
   startAt: undefined,
 })
 
@@ -209,7 +211,7 @@ const {
 })
 
 function analyticsTarget(): string {
-  return props.guideProvider ?? DEMO_TARGET
+  return props.guideProvider ?? props.explainer ?? DEMO_TARGET
 }
 
 function trackFirstPlay() {
@@ -222,6 +224,16 @@ function trackFirstPlay() {
   if (props.guideProvider) {
     track('key_guide_video_play', {
       target: props.guideProvider,
+      value: 1,
+      trigger: 'user',
+    })
+
+    return
+  }
+
+  if (props.explainer) {
+    track('guide_video_play', {
+      target: props.explainer,
       value: 1,
       trigger: 'user',
     })

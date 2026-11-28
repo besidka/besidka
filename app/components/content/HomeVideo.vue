@@ -12,6 +12,7 @@
       :captions="video.captions ?? []"
       :markers="video.markers ?? []"
       :thumbnails="video.thumbnails ?? true"
+      :explainer="explainer"
     />
 
     <div
@@ -47,17 +48,30 @@
 import type { MaybeRefOrGetter } from 'vue'
 import type { VideoData } from '#shared/types/video.d'
 
+type HomeVideoField = 'video' | 'artifactsVideo'
+
 const props = withDefaults(defineProps<{
   src?: string
   poster?: string
   caption?: string
+  field?: HomeVideoField
 }>(), {
   src: undefined,
   poster: undefined,
   caption: undefined,
+  field: 'video',
 })
 
 const VIEWPORT_ROOT_MARGIN = '300px'
+
+const EXPLAINER_BY_FIELD: Record<HomeVideoField, string | undefined> = {
+  video: undefined,
+  artifactsVideo: 'artifacts',
+}
+
+const explainer = computed<string | undefined>(() => {
+  return EXPLAINER_BY_FIELD[props.field]
+})
 
 const rootRef = shallowRef<HTMLElement | null>(null)
 const isNearViewport = shallowRef<boolean>(false)
@@ -80,13 +94,15 @@ const { stop: stopObserving } = useIntersectionObserver(
   },
 )
 
-const data = inject<MaybeRefOrGetter<{ video?: VideoData }>>(
+const data = inject<
+  MaybeRefOrGetter<Partial<Record<HomeVideoField, VideoData | null>>>
+>(
   'home:data',
   {},
 )
 
 const video = computed<VideoData>(() => {
-  return toValue(data)?.video ?? {}
+  return toValue(data)?.[props.field] ?? {}
 })
 
 const resolvedSrc = computed<string>(() => {

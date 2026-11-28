@@ -172,7 +172,9 @@ so `index1` and `blob1` hold the same value.
 ### Explainer video events
 
 `guide_video_play` is the play event for the videos on explainer pages in the
-`guides` collection (`/memory`, see `docs/seo.md`). It uses the landing column
+`guides` collection (`/memory`, see `docs/seo.md`), and for the artifacts
+video on the home page (target `artifacts`, path `/`, surface `home`; the
+landing player sends it when `HomeVideo` reads `artifactsVideo`). It uses the landing column
 layout, with `blob2` the page path (`/memory`), `blob3` the explainer id
 (`memory`) and `double1` `1` when the user started playback and `0` for muted
 autoplay. The endpoint requires `target` to be in `EXPLAINER_VIDEO_TARGETS`

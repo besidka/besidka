@@ -46,7 +46,7 @@ const siteOrigin = (baseUrl as string) || useRequestURL().origin
 // can inject their data. All structured data lives in frontmatter (page
 // settings in Studio) and is forwarded here to inject('home:data').
 // Keys: carousel, steps, features, useCases, faqs, benefits, comparison,
-// video.
+// video, artifactsVideo.
 const homeData = shallowRef<HomeData>({})
 
 provide('home:data', homeData)
@@ -70,6 +70,7 @@ homeData.value = {
   benefits: page.value?.benefits ?? [],
   comparison: page.value?.comparison ?? null,
   video: page.value?.video ?? null,
+  artifactsVideo: page.value?.artifactsVideo ?? null,
 }
 
 const faqs = computed<FaqItem[]>(() => {

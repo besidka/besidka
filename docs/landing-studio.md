@@ -259,6 +259,7 @@ more colons, indented two spaces:
 | `:home-testimonials`                 | `useCases` (optional)                  | **unused by the landing**: the "Who is it for?" bubble is plain markdown now; component and key kept for reuse |
 | `:home-comparison`                   | `comparison`                           | competitor comparison table with cost footnote   |
 | `:home-video`                        | `video`                                | custom Video.js v10 player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from CMS_BUCKET with Range |
+| `:home-video{field="artifactsVideo"}` | `artifactsVideo`                      | the same player for the artifacts video after the feature grid; plays are tracked as the `artifacts` explainer (`guide_video_play`), not as the home demo |
 | `:home-faq`                          | `faqs`                                 | also emitted as FAQPage structured data          |
 | `:home-stars`                        | — (live from `/api/v1/github/stars`)   | live GitHub star count                           |
 | `:::home-cta`                        | inline `primary`/`secondary`/`align`   | small CTA block, edited in place; each CTA accepts optional `icon` |
@@ -277,6 +278,7 @@ more colons, indented two spaces:
 | `useCases`   | array of objects     | optional and currently unused (see `:home-testimonials`); `icon`, `persona`, `scenario`, `payoff` |
 | `comparison` | object               | `caption`, `columns[]`, `rows[]{label, values[]}`          |
 | `video`      | object               | `src`, `poster?`, `caption?`, `qualities[]{src,size,label?}`, `captions[]{src,label,srclang,default?}`, `markers[]{time:"m:ss",label}`, `thumbnails?` — see Demo video player note below |
+| `artifactsVideo` | object           | same shape as `video`; the artifacts video (see "Artifacts video" below) |
 | `faqs`       | array of objects     | `question`, `answer` — also powers FAQPage JSON-LD         |
 
 So to change the carousel images you edit the **`carousel`** list in Page
@@ -464,6 +466,31 @@ binaries); they live in the `CMS_BUCKET` R2 bucket.
   and exits non-zero. `--force` and `--yes` are rejected for `download`, which
   pulls the objects back into `.files/` and skips files already there.
 
+#### Artifacts video
+
+A second, 35-second silent video shows artifacts (a quiz built, used, changed
+and shared). It sits in its own bubble after the feature grid
+(`:home-video{field="artifactsVideo"}`) and reads the `artifactsVideo:`
+frontmatter. It was captured on 2026-11-09 from the stack #766 preview
+(`pr-773`) with the preview test user and demo content, built in HyperFrames
+(source in the owner's design folder, `artifacts launch 2026-11/`) and encoded
+like the promo, with the composed title spliced in as frame 0 (see "First
+frame" in `docs/key-guides.md`).
+
+| Key | Rendition |
+| --- | --- |
+| `artifacts-1080.mp4` | 1920×1080, CRF 21 |
+| `artifacts.mp4` | 1280×720, CRF 23, the starting quality and the hover-thumbnail source |
+| `artifacts-360.mp4` | 640×360, CRF 26 |
+
+The poster is the committed `public/artifacts/poster.webp` (the composed title
+frame). There are no captions: the video is silent and its headlines are
+burned in. The pixels carry no date; the "in testing, rolling out from 19
+December 2026" wording lives in the frontmatter caption, the bubble text and
+the carousel captions, so the rollout only needs a text edit, not a re-render.
+Upload it like the promo (`pnpm run cms:files:upload`, then `--remote` for
+the preview bucket and `--remote -e production` for production).
+
 #### Replacing the promo (cache-safe URLs)
 
 `/videos/*` answers with `Cache-Control: public, max-age=86400`, so a
@@ -486,7 +513,7 @@ its checks are described under "First frame" in `docs/key-guides.md`.
 `server/routes/videos/[name].ts` serves a fixed allow-list (`demo.mp4`,
 `demo-360.mp4`, `demo-1080.mp4`, `demo.en.vtt`, plus the key guide and memory
 explainer videos and the two MCP reviewer demos, see
-`docs/mcp-marketplaces.md`; anything else is 404). Only
+`docs/mcp-marketplaces.md`, and the artifacts video; anything else is 404). Only
 `GET` and `HEAD` are accepted; every other method is `405` with
 `Allow: GET, HEAD`. Successful responses carry `Accept-Ranges: bytes` and
 `Cache-Control: public, max-age=86400`; **all** responses carry
