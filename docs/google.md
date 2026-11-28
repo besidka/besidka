@@ -288,15 +288,30 @@ the one place the chat route assembles Google tools, with entries built by
 | Besidka tool that is not a plain read, while the send holds `google` taint | Ask (`untrusted-output`, rule 14) | Allow once | Nothing: its Allow mode, Always allow and chat grants are ignored (`create_file`, `add_project_text`, `add_project_note`, `update_project_instructions`, `branch_chat`, `share_artifact` and every other Besidka write) |
 | Besidka read after `google` taint | Its existing rules | As before | As before |
 | Native write after `google` taint | Ask (`untrusted-output`, rule 2) | Allow once | Nothing (artifact and document writes now count `google` taint too) |
+| Memory write (`memory_write`, `memory_forget`) after `google` taint | Denied (`google-data`, rule 15), in every mode: no card, no Allow once, no Always allow, no "Ran without asking" marker; the model gets one short instruction that names the cause, says nothing was saved or removed, and says not to call `memory_write` or `memory_forget` again in this chat | None | Nothing: rule 12 (Always allow for `memory_write`) does not apply while the send holds `google` taint, and the denial comes before rule 2 |
 | Run code (provider code execution) | Not offered in a chat that holds Google data; withheld from the steps after `google` taint appears in the same send | None | Nothing |
 
 The final order inside `resolveToolApproval`: rule 0 (invalid, Blocked),
-rule 11 (Google tools), rule 10 (consent gate), the native rules (1, 12,
+rule 11 (Google tools), rule 10 (consent gate), the native rules (1, 15, 12,
 2, 5, 8; rule 12 is Always allow for `memory_write`, from `main`, see
-`docs/memory-architecture.md`, section 3.21), rule 13 (Google egress),
-rule 14 (Besidka writes after Google content), then rules 6, 7, 2, 3, 5
-and 9. A `memory_write` that rule 12 lets run in a send that holds Google
-content is still refused by the memory tools' own write guard (section 5.3).
+`docs/memory-architecture.md`, section 3.21; rule 15 denies a memory write
+while the send holds `google` taint and is checked before rule 12), rule 13
+(Google egress), rule 14 (Besidka writes after Google content), then rules
+6, 7, 2, 3, 5 and 9. Rule 15 was added after rule 14 so no number moved. A
+memory write after `google` taint is refused by the policy itself, before
+`execute`, so an Always allow never reaches a card or a marker. Two lines
+stay behind it: the memory tools' own write guard (section 5.3), which
+covers a send whose taint the policy cannot see, and a read of
+`chats.google_data_at` in the write path of both tools, which refuses a
+create, an append and a forget in a chat that already holds Google data. In
+a chat that holds Google data at the start of the send the memory write
+tools are not offered at all, and the Axiom attribute
+`memoryTools.writesEnabled` is false whenever the Google guard blocks them.
+One rare race stays: a memory card shown while the step's taint was still
+clean, with a sibling Google read recorded in the same step, is not checked
+again by rule 15 on the replay path. `execute` still refuses with a 403
+through the two guards, so nothing is written, but the user sees a failed
+memory step instead of a clean denial.
 
 No Google prompt ever offers Always allow: it is set on the Connectors page,
 and only for the own-client tools (section 17.7). Blocked still denies. The

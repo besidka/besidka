@@ -345,16 +345,43 @@ function assertNoUntrustedContentSeen(
   })
 }
 
+function createGoogleDataWriteError() {
+  return createError({
+    message: GOOGLE_DATA_WRITE_MESSAGE,
+    status: 403,
+    fix: GOOGLE_DATA_WRITE_FIX,
+  })
+}
+
 function assertWriteAllowed(isWriteAllowed: () => boolean): void {
   if (isWriteAllowed()) {
     return
   }
 
-  throw createError({
-    message: GOOGLE_DATA_WRITE_MESSAGE,
-    status: 403,
-    fix: GOOGLE_DATA_WRITE_FIX,
-  })
+  throw createGoogleDataWriteError()
+}
+
+/**
+ * The backstop behind `assertWriteAllowed`: reads the chat's sticky Google
+ * flag from D1, so a write is refused for a chat that holds Google data even
+ * when the send's own check was mis-wired. The send flags the chat before a
+ * tool runs once Google content is in play (`withGoogleDataFlag`).
+ */
+async function assertChatHoldsNoGoogleData(
+  context: MemoryToolContext,
+): Promise<void> {
+  const [chat] = await context.db
+    .select({ googleDataAt: schema.chats.googleDataAt })
+    .from(schema.chats)
+    .where(and(
+      eq(schema.chats.id, context.chatId),
+      eq(schema.chats.userId, context.userId),
+    ))
+    .limit(1)
+
+  if (chat?.googleDataAt) {
+    throw createGoogleDataWriteError()
+  }
 }
 
 function toToolError(exception: unknown): unknown {
@@ -946,6 +973,7 @@ export function getMemoryTools(input: {
 
         try {
           assertWriteAllowed(isWriteAllowed)
+          await assertChatHoldsNoGoogleData(context)
           assertNoUntrustedContentSeen(
             input.budget,
             liftLockFor(MEMORY_WRITE_TOOL_NAME, toolInput, options),
@@ -966,6 +994,7 @@ export function getMemoryTools(input: {
 
         try {
           assertWriteAllowed(isWriteAllowed)
+          await assertChatHoldsNoGoogleData(context)
           assertNoUntrustedContentSeen(
             input.budget,
             liftLockFor(MEMORY_FORGET_TOOL_NAME, toolInput, options),

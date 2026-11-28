@@ -20,6 +20,11 @@ export interface MemoryTestDb {
     memory?: string | null
     useAccountMemory?: boolean | null
   }) => void
+  insertChat: (input: {
+    id: number
+    userId: number
+    googleDataAt?: number | null
+  }) => void
   insertEntry: (input: {
     id?: number
     userId: number
@@ -41,11 +46,12 @@ export interface MemoryTestDb {
 }
 
 /**
- * Creates an in-memory SQLite DB with the `memory_entries`, `user_settings`
- * and `projects` tables as the migrations define them, minus the foreign
- * keys, so a spec can seed a user or a project without a `users` row. The
- * `memory_entries` DDL and its two partial unique indexes are the exact
- * `20261025130157_memory_contract` migration statements.
+ * Creates an in-memory SQLite DB with the `memory_entries`, `user_settings`,
+ * `projects` and a minimal `chats` table (the columns the memory tools read),
+ * minus the foreign keys, so a spec can seed a user, a project or a chat
+ * without a `users` row. The `memory_entries` DDL and its two partial unique
+ * indexes are the exact `20261025130157_memory_contract` migration
+ * statements.
  */
 export function createMemoryTestDb(): MemoryTestDb {
   const sqlite = new Database(':memory:')
@@ -139,6 +145,16 @@ export function createMemoryTestDb(): MemoryTestDb {
       archived_at integer,
       activity_at integer NOT NULL
     );
+
+    CREATE TABLE chats (
+      id integer PRIMARY KEY,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      slug text NOT NULL,
+      user_id integer NOT NULL,
+      title text DEFAULT '',
+      google_data_at integer
+    );
   `)
 
   const db = drizzle({ client: sqlite, relations }) as unknown as ReturnType<
@@ -209,6 +225,24 @@ export function createMemoryTestDb(): MemoryTestDb {
     )
   }
 
+  function insertChat(input: {
+    id: number
+    userId: number
+    googleDataAt?: number | null
+  }): void {
+    sqlite.prepare(
+      'insert into chats (id, created_at, updated_at, slug, user_id,'
+      + ' google_data_at) values (?, ?, ?, ?, ?, ?)',
+    ).run(
+      input.id,
+      nowSeconds(),
+      nowSeconds(),
+      `chat-${input.id}`,
+      input.userId,
+      input.googleDataAt ?? null,
+    )
+  }
+
   function insertEntry(input: {
     id?: number
     userId: number
@@ -267,6 +301,7 @@ export function createMemoryTestDb(): MemoryTestDb {
     db,
     insertUserSettings,
     insertProject,
+    insertChat,
     insertEntry,
     countEntries,
     close: () => sqlite.close(),

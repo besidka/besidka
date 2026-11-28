@@ -57,6 +57,7 @@ export const TOOL_APPROVAL_DENIAL_REASONS = [
   'definition-drifted',
   'over-cap',
   'invalid-input',
+  'google-data',
 ] as const
 
 export type ToolFamily = typeof TOOL_FAMILIES[number]

@@ -137,7 +137,7 @@ export interface ToolApprovalGrant {
 }
 
 export type ToolApprovalRule
-  = | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14
+  = | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -513,6 +513,10 @@ function resolveNativeApproval(
     return allowed(1)
   }
 
+  if (isMemoryWrite(descriptor) && state.taint.has('google')) {
+    return denied(15, 'google-data')
+  }
+
   if (isAlwaysAllowMemoryTool(descriptor) && permissionMode === 'allow') {
     return allowed(12)
   }
@@ -552,9 +556,12 @@ function resolveNativeApproval(
  *    taint). Without that setting it still asks, and its prompt offers
  *    `once` and `always`. `memory_forget` has no Always allow: it is an
  *    irreversible delete, so it keeps rule 2 and offers `once` only. The
- *    quote and sensitive-topic gates of the tools still run on every call,
- *    and in a send that carries content from Google the memory tools' own
- *    write guard still refuses the call (docs/google.md, section 5.3).
+ *    quote and sensitive-topic gates of the tools still run on every call.
+ * 15. A memory write (`memory_write`, `memory_forget`) in a send that holds
+ *    `google` taint is denied `google-data`, in every mode, before rule 12
+ *    and rule 2: no card, no Allow once, no Always allow, because the write
+ *    could never run. The memory tools' own write guard and a Google check
+ *    in their write path stay behind it (docs/google.md, section 5.3).
  *
  * Connector and Besidka tools (owner decision of 2026-11-20, which replaces
  * the order of 2026-11-15; modeled on Claude's connector settings):

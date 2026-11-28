@@ -94,17 +94,6 @@ describe('GET /api/v1/memory/entries/[id]/sources', () => {
     testDb = createMemoryTestDb()
     sessionUserId = String(OWNER)
 
-    testDb.sqlite.exec(`
-      CREATE TABLE chats (
-        id integer PRIMARY KEY,
-        created_at integer NOT NULL,
-        updated_at integer NOT NULL,
-        slug text NOT NULL,
-        user_id integer NOT NULL,
-        title text DEFAULT ''
-      );
-    `)
-
     vi.stubGlobal('defineEventHandler', (handler: any) => handler)
     vi.stubGlobal('useUnauthorizedError', () => {
       throw Object.assign(new Error('Unauthorized'), { status: 401 })

@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => ({
   chatGoogleDataAt: null as Date | null,
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
+  memoryForgets: [] as Array<Record<string, any>>,
   memoryModes: { memory_write: 'ask', memory_forget: 'ask' } as Record<
     string,
     string
@@ -494,6 +495,20 @@ vi.mock('~~/server/utils/memory/tools/memory-tools', async () => {
                   })
 
                   return { action: 'created' }
+                },
+              })),
+            }),
+          ...(input.permissionModes?.memory_forget === 'blocked'
+            || (typeof input.allowsWrite === 'function' && !input.allowsWrite())
+            ? {}
+            : {
+              memory_forget: withFollowUpTurn(tool({
+                description: 'Stub memory_forget.',
+                inputSchema: z.object({ id: z.string() }),
+                async execute(forgetInput: { id: string }) {
+                  mocks.memoryForgets.push({ ...forgetInput })
+
+                  return { removed: forgetInput.id }
                 },
               })),
             }),
@@ -1017,6 +1032,7 @@ describe('tool approval continuation', () => {
     mocks.failRateLimitRead = false
     mocks.chatGoogleDataAt = null
     mocks.memoryWrites = []
+    mocks.memoryForgets = []
     mocks.memoryModes = { memory_write: 'ask', memory_forget: 'ask' }
     mocks.memoryPermissionWrites = []
     mocks.claims = new Map()
@@ -2709,6 +2725,98 @@ describe('tool approval continuation', () => {
         expect(prompt).not.toContain('SECRET GOOGLE BODY')
         expect(prompt).toContain('could not be kept')
       })
+
+    describe('a memory write after Google content', () => {
+      function memoryCalls() {
+        return [
+          toolCallChunks('call-m', 'memory_write', {
+            body: 'Likes green tea',
+          })[0]!,
+          toolCallChunks('call-f', 'memory_forget', { id: 'topics/tea' })[0]!,
+          toolCallChunks('unused', 'memory_write', {}).at(-1)!,
+        ]
+      }
+
+      it.each(['allow', 'ask'])(
+        'denies a memory write and a forget in a step after a Google read, '
+        + 'with no card, no marker and nothing stored, on mode %s',
+        async (mode) => {
+          mocks.memoryToolsEnabled = true
+          mocks.memoryModes = { memory_write: mode, memory_forget: mode }
+          mocks.googleAllowedNames = ['google__drive_search']
+
+          const paused = await pauseTurn({
+            servers: [linear],
+            connectorIds: [],
+            steps: [
+              toolCallChunks('call-g', 'google__drive_search', {
+                query: 'budget',
+              }),
+              memoryCalls(),
+              textChunks('Nothing was saved.'),
+            ],
+          })
+          const grantedIds = paused.assistantParts
+            .filter(part => part.type === 'data-tool-grant')
+            .map(part => part.data.toolCallId)
+
+          expect(readExecute).toHaveBeenCalledTimes(1)
+          expect(paused.approvalIds).toEqual([])
+          expect(mocks.memoryWrites).toEqual([])
+          expect(mocks.memoryForgets).toEqual([])
+          expect(findPart(paused.assistantParts, 'tool-memory_write'))
+            .toMatchObject({ state: 'output-denied' })
+          expect(findPart(paused.assistantParts, 'tool-memory_forget'))
+            .toMatchObject({ state: 'output-denied' })
+          expect(paused.assistantParts.some((part: any) => {
+            return part.type === 'data-tool-approval'
+          })).toBe(false)
+          expect(grantedIds).toEqual(['call-g'])
+        },
+      )
+
+      it('refuses the approved write of a resumed send whose stored turn '
+        + 'state holds google taint while the chat flag is still null',
+      async () => {
+        mocks.memoryToolsEnabled = true
+        mocks.googleAllowedNames = ['google__drive_search']
+
+        const paused = await pauseTurn({
+          servers: [linear],
+          connectorIds: [],
+          tools: ['web_search'],
+          steps: [[
+            toolCallChunks('call-g', 'google__drive_search', {
+              query: 'budget',
+            })[0]!,
+            toolCallChunks('call-m', 'memory_write', {
+              body: 'Likes green tea',
+            })[0]!,
+            toolCallChunks('unused', 'memory_write', {}).at(-1)!,
+          ]],
+        })
+
+        expect(paused.approvalIds).toHaveLength(1)
+        expect(mocks.chatGoogleDataAt).toBeNull()
+
+        const { doStream } = await request({
+          servers: [linear],
+          steps: [textChunks('Not saved.')],
+          body: answerBody(paused.messagePublicId, [{
+            approvalId: paused.approvalIds[0],
+            approved: true,
+          }]),
+        })
+
+        expect(mocks.memoryWrites).toEqual([])
+        expect(lastToolMessage(doStream).content.find((result: any) => {
+          return result.toolCallId === 'call-m'
+        }).output).toEqual({
+          type: 'execution-denied',
+          reason: TOOL_APPROVAL_DENIAL_TEXT['missing-tool'],
+        })
+      })
+    })
 
     describe('a tool the user set to Blocked after approving it', () => {
       const BLOCKED_TEXT = 'This tool is blocked in the user\'s settings, so '
