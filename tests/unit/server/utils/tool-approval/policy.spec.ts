@@ -41,6 +41,9 @@ const OTHER_HASH = 'b'.repeat(64)
 const CONNECTOR_ID = 'conn1'
 const OTHER_CONNECTOR_ID = 'conn2'
 const TOOL_NAME = 'create_page'
+const NON_GOOGLE_TAINT_KINDS = TOOL_APPROVAL_TAINT_KINDS.filter((kind) => {
+  return kind !== 'google'
+})
 
 function grant(
   overrides: Partial<ToolApprovalGrant> = {},
@@ -296,7 +299,7 @@ describe('resolveToolApproval rules', () => {
       expect(decision.reason).toBe('untrusted-output')
     })
 
-    it.each(TOOL_APPROVAL_TAINT_KINDS)(
+    it.each(NON_GOOGLE_TAINT_KINDS)(
       'asks for a native memory write after %s taint',
       (kind) => {
         for (const toolName of [
@@ -877,7 +880,7 @@ describe('resolveToolApproval rules', () => {
       return nativeTool({ toolName: MEMORY_FORGET_TOOL_NAME })
     }
 
-    it.each(TOOL_APPROVAL_TAINT_KINDS)(
+    it.each(NON_GOOGLE_TAINT_KINDS)(
       'runs memory_write set to Always allow after %s taint',
       (kind) => {
         const decision = decide(memoryWriteTool(), {
@@ -900,7 +903,7 @@ describe('resolveToolApproval rules', () => {
       expect(decision.rule).toBe(12)
     })
 
-    it.each(TOOL_APPROVAL_TAINT_KINDS)(
+    it.each(NON_GOOGLE_TAINT_KINDS)(
       'keeps asking for memory_forget after %s taint, even if a stored '
       + 'Always allow reached the policy',
       (kind) => {
@@ -995,6 +998,113 @@ describe('resolveToolApproval rules', () => {
       expect(clampRemember(write, 'chat')).toBe('once')
       expect(isRememberAllowed(forget, 'always')).toBe(false)
       expect(clampRemember(forget, 'always')).toBe('once')
+    })
+  })
+
+  describe('rule 15, a memory write after Google content', () => {
+    const memoryTools = () => {
+      const toolNames = [MEMORY_WRITE_TOOL_NAME, MEMORY_FORGET_TOOL_NAME]
+
+      return toolNames.map((toolName) => {
+        return nativeTool({ toolName })
+      })
+    }
+
+    it.each(TOOL_PERMISSION_MODES.filter(mode => mode !== 'blocked'))(
+      'denies both memory write tools after google taint on mode %s',
+      (permissionMode) => {
+        for (const descriptor of memoryTools()) {
+          const decision = decide(descriptor, {
+            state: stateWith(['google']),
+            permissionMode,
+          })
+
+          expect(decision.rule, descriptor.toolName).toBe(15)
+          expect(decision.status, descriptor.toolName)
+            .toEqual({ type: 'denied', reason: 'google-data' })
+          expect(decision.reason, descriptor.toolName).toBeNull()
+          expect(decision.rememberOptions, descriptor.toolName).toEqual([])
+        }
+      },
+    )
+
+    it.each(TOOL_APPROVAL_TAINT_KINDS)(
+      'denies memory_write set to Always allow when %s taint comes with '
+      + 'google taint',
+      (kind) => {
+        const decision = decide(
+          nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
+          {
+            state: stateWith([kind, 'google']),
+            permissionMode: 'allow',
+          },
+        )
+
+        expect(decision.rule).toBe(15)
+        expect(decision.status)
+          .toEqual({ type: 'denied', reason: 'google-data' })
+        expect(decision.grant).toBeUndefined()
+      },
+    )
+
+    it('offers no remember option, so no answer can turn into a grant', () => {
+      const decision = decide(
+        nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
+        { state: stateWith(['google']), permissionMode: 'allow' },
+      )
+
+      expect(isRememberAllowed(decision, 'always')).toBe(false)
+      expect(isRememberAllowed(decision, 'chat')).toBe(false)
+      expect(clampRemember(decision, 'always')).toBe('once')
+    })
+
+    it('denies a native tool the policy knows as a memory writer', () => {
+      const decision = decide(
+        nativeTool({ toolName: 'save_note', writesMemory: true }),
+        { state: stateWith(['google']) },
+      )
+
+      expect(decision.rule).toBe(15)
+    })
+
+    it('keeps Blocked ahead of the Google denial', () => {
+      const decision = decide(
+        nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
+        { state: stateWith(['google']), permissionMode: 'blocked' },
+      )
+
+      expect(decision.rule).toBe(0)
+      expect(decision.status).toEqual({ type: 'denied', reason: 'blocked' })
+    })
+
+    it('leaves a native memory read, other native writes and other families '
+      + 'to their own rules', () => {
+      expect(decide(
+        nativeTool({ toolName: 'memory_list', access: 'read' }),
+        { state: stateWith(['google']) },
+      ).rule).toBe(1)
+      expect(decide(
+        nativeTool({
+          toolName: 'create_artifact',
+          onlyConnectorOrSkillTaint: true,
+        }),
+        { state: stateWith(['google']) },
+      ).rule).toBe(2)
+      expect(decide(
+        besidkaTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
+        { state: stateWith(['google']), permissionMode: 'allow' },
+      ).rule).toBe(14)
+    })
+
+    it('still lets memory_write through Always allow while the send holds '
+      + 'no Google taint', () => {
+      const decision = decide(
+        nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME }),
+        { state: stateWith(['web']), permissionMode: 'allow' },
+      )
+
+      expect(decision.rule).toBe(12)
+      expect(decision.grant).toBeUndefined()
     })
   })
 

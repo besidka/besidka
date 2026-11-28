@@ -4198,6 +4198,7 @@ export default defineEventHandler(async (event) => {
               memoryTools: {
                 registered: true,
                 writesEnabled: userMessageText !== null
+                  && !isGoogleDerivedSend()
                   && !(
                     memoryPermissionModes?.memory_write === 'blocked'
                     && memoryPermissionModes.memory_forget === 'blocked'

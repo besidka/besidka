@@ -1934,6 +1934,79 @@ describe('memory tool Always allow in the send approval', () => {
       expect(approval.isApprovedByUser(cleared)).toBe(true)
     })
 
+  it.each(['allow', 'ask'] as const)(
+    'denies both memory write tools once the send holds google taint on '
+    + 'mode %s, with no card, no marker and no cleared call',
+    (mode) => {
+      const approval = createMemoryApproval({
+        memory_write: mode,
+        memory_forget: mode,
+      })
+      const forgetInput = { id: 'x', userRequestQuote: 'forget it' }
+
+      approval.state.taint.add('google')
+
+      expect(approval.toolApproval(call('call-1', 'memory_write', input)))
+        .toEqual({
+          type: 'denied',
+          reason: SEND_TOOL_DENIAL_TEXT['google-data'],
+        })
+      expect(approval.toolApproval(call('call-2', 'memory_forget', forgetInput)))
+        .toEqual({
+          type: 'denied',
+          reason: SEND_TOOL_DENIAL_TEXT['google-data'],
+        })
+      expect(approval.getPendingDecision('call-1')).toBeUndefined()
+      expect(approval.getPendingDecision('call-2')).toBeUndefined()
+      expect(approval.getGrantScope('call-1')).toBeNull()
+      expect(approval.consumeUserSettingCall({
+        toolCallId: 'call-1',
+        toolName: 'memory_write',
+        input,
+      })).toBe(false)
+      expect(approval.consumeClearedCall({
+        toolCallId: 'call-1',
+        toolName: 'memory_write',
+        input,
+      })).toBe(false)
+      expect(approval.getDenials()).toEqual({ 'google-data': 2 })
+    },
+  )
+
+  it('tells the model nothing was saved and not to retry', () => {
+    const text = SEND_TOOL_DENIAL_TEXT['google-data']
+
+    expect(text).toMatch(/did not run/)
+    expect(text).toContain('Do not call memory_write or memory_forget again')
+    expect(text).toContain('nothing was saved or removed')
+  })
+
+  it('drops the Always allow marker of a memory write that throws, and '
+    + 'keeps it for one that runs', async () => {
+    const approval = createMemoryApproval({ memory_write: 'allow' })
+    const refusal = Object.assign(new Error('Refused.'), { status: 403 })
+    const execute = vi.fn()
+      .mockRejectedValueOnce(refusal)
+      .mockResolvedValueOnce({ action: 'created' })
+    const tools = approval.guardNativeWrites({
+      memory_write: { execute },
+    } as never) as unknown as Record<string, {
+      execute: (input: unknown, options: unknown) => Promise<unknown>
+    }>
+
+    approval.toolApproval(call('call-1', 'memory_write', input))
+    approval.toolApproval(call('call-2', 'memory_write', input))
+
+    expect(approval.getGrantScope('call-1')).toBe('always')
+    await expect(tools.memory_write!.execute(input, { toolCallId: 'call-1' }))
+      .rejects.toBe(refusal)
+    expect(approval.getGrantScope('call-1')).toBeNull()
+
+    await expect(tools.memory_write!.execute(input, { toolCallId: 'call-2' }))
+      .resolves.toEqual({ action: 'created' })
+    expect(approval.getGrantScope('call-2')).toBe('always')
+  })
+
   it('denies a Blocked memory tool, which the send does not offer', () => {
     const approval = createSendToolApproval({ state: createApprovalState() })
 

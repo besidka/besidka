@@ -1274,7 +1274,8 @@ export function createSendToolApproval(input: {
 
   /**
    * Wraps the `execute` of every native write except the memory tools
-   * (which keep their own lock), and of every Google tool, reads included,
+   * (which keep their own lock and only lose the marker of a call that
+   * throws), and of every Google tool, reads included,
    * so it only runs a call the policy cleared, with the same name and
    * input, once. A second line behind the SDK, which never calls `execute`
    * for a call that waits for approval.
@@ -1292,6 +1293,14 @@ export function createSendToolApproval(input: {
 
       if (entry && isOwnWebSearch(entry, tool) && hasExecute(tool)) {
         return [toolName, guardWebSearch(tool)]
+      }
+
+      if (
+        entry?.descriptor.writesMemory === true
+        && !isProviderTool(tool)
+        && hasExecute(tool)
+      ) {
+        return [toolName, dropGrantWhenRefused(tool)]
       }
 
       if (
@@ -1358,6 +1367,35 @@ export function createSendToolApproval(input: {
         },
       } as ToolSet[string]]
     }))
+  }
+
+  /**
+   * Keeps the memory tools' own locks and gates, and drops the "Ran without
+   * asking" marker of a call whose `execute` throws, because a refused
+   * write did not run (the same rule as `beginAlwaysAllowedRun`).
+   */
+  function dropGrantWhenRefused(tool: {
+    execute: (input: unknown, options?: { toolCallId?: string }) => unknown
+  }): ToolSet[string] {
+    const execute = tool.execute.bind(tool)
+
+    return {
+      ...tool,
+      execute: async (
+        input: unknown,
+        options?: { toolCallId?: string },
+      ) => {
+        try {
+          return await execute(input, options)
+        } catch (exception) {
+          if (options?.toolCallId) {
+            grantedCalls.delete(options.toolCallId)
+          }
+
+          throw exception
+        }
+      },
+    } as unknown as ToolSet[string]
   }
 
   /**
