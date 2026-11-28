@@ -295,7 +295,10 @@ import {
   EXA_SEARCH_LEVELS,
 } from '#shared/utils/exa-search-level'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
-import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
+import {
+  createExternalSearchBudget,
+  EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+} from '~~/server/utils/search/search-budget'
 import {
   resolveExternalSearchScreener,
 } from '~~/server/utils/search/injection-screening'
@@ -2659,6 +2662,9 @@ export default defineEventHandler(async (event) => {
       : {}),
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
+      : 0,
+    externalSearchSteps: externalSearchProvider
+      ? EXTERNAL_SEARCH_MAX_TOOL_STEPS
       : 0,
     knowledgeSteps: knowledgeToolsRegistered
       ? KNOWLEDGE_LIMITS.toolCallsPerSend

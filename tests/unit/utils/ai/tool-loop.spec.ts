@@ -21,6 +21,7 @@ import {
   isProjectKnowledgeToolName,
   PROJECT_KNOWLEDGE_TOOL_NAMES,
 } from '../../../../server/utils/ai/knowledge-tools'
+import { EXTERNAL_SEARCH_MAX_TOOL_STEPS } from '../../../../server/utils/search/search-budget'
 import { createImageGenerationTool } from '../../../../server/utils/ai/image-generation'
 import { createFixtureFollowUpTool } from '../../../fixtures/follow-up-turn-tool'
 
@@ -920,6 +921,212 @@ describe('untrusted tool results', () => {
           }],
         }],
         model: { provider: 'anthropic', modelId: 'claude' },
+        instructions: undefined,
+      } as any)
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+  })
+
+  describe('separate Brave and Exa step budget', () => {
+    const CHAT_SEARCH_STEPS = 3
+    const CONNECTOR_STEPS = 4
+    const EXTERNAL_ONLY_CAP = EXTERNAL_SEARCH_MAX_TOOL_STEPS + 1
+
+    function createBraveTools() {
+      return { web_search_brave: createFixtureFollowUpTool() }
+    }
+
+    function createExaTools() {
+      return { web_search_exa: createFixtureFollowUpTool() }
+    }
+
+    function createOtherWebTools() {
+      return { web_search: createFixtureFollowUpTool() }
+    }
+
+    async function getForcedStepNumbers(
+      tools: Parameters<typeof resolveToolLoop>[0],
+      stepCount: number,
+    ) {
+      const resolved = resolveToolLoop(tools, {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })
+      const forcedStepNumbers: number[] = []
+
+      for (let stepNumber = 0; stepNumber < stepCount; stepNumber++) {
+        const result = await resolved?.options.prepareStep({
+          stepNumber,
+          model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+          instructions: undefined,
+        } as any)
+
+        if (result) {
+          forcedStepNumbers.push(stepNumber)
+        }
+      }
+
+      return forcedStepNumbers
+    }
+
+    it('keeps the default web step budget separate from the Brave and '
+      + 'Exa one', () => {
+      expect(TOOL_LOOP_MAX_TOOL_STEPS).toBe(3)
+      expect(EXTERNAL_SEARCH_MAX_TOOL_STEPS).toBe(8)
+    })
+
+    it.each([
+      ['Brave', createBraveTools],
+      ['Exa', createExaTools],
+    ])('grants %s eight tool steps and one forced final step', (
+      _label,
+      createTools,
+    ) => {
+      expect(getToolLoopMaxSteps(createTools(), {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })).toBe(EXTERNAL_ONLY_CAP)
+    })
+
+    it('keeps three tool steps for Brave and Exa without the allowance',
+      () => {
+        expect(getToolLoopMaxSteps(createBraveTools()))
+          .toBe(TOOL_LOOP_MAX_STEPS)
+        expect(getToolLoopMaxSteps(createExaTools(), {
+          externalSearchSteps: 0,
+        })).toBe(TOOL_LOOP_MAX_STEPS)
+      })
+
+    it('keeps three tool steps for every other web follow-up tool', () => {
+      expect(getToolLoopMaxSteps(createOtherWebTools(), {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('adds the chat-search steps on top of the Brave and Exa steps', () => {
+      expect(getToolLoopMaxSteps({
+        ...createBraveTools(),
+        search_chats: createFixtureFollowUpTool(),
+      }, {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+        chatSearchSteps: CHAT_SEARCH_STEPS,
+      })).toBe(EXTERNAL_SEARCH_MAX_TOOL_STEPS + CHAT_SEARCH_STEPS + 1)
+    })
+
+    it('adds the connector steps on top of the Exa steps', () => {
+      expect(getToolLoopMaxSteps({
+        ...createExaTools(),
+        mcp__linear__list_issues: createFixtureFollowUpTool(),
+      }, {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+        connectorSteps: CONNECTOR_STEPS,
+      })).toBe(EXTERNAL_SEARCH_MAX_TOOL_STEPS + CONNECTOR_STEPS + 1)
+    })
+
+    it('does not grant the Brave and Exa steps to a connector-only send',
+      () => {
+        expect(getToolLoopMaxSteps({
+          mcp__linear__list_issues: createFixtureFollowUpTool(),
+        }, {
+          externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+          connectorSteps: CONNECTOR_STEPS,
+        })).toBe(CONNECTOR_STEPS + 1)
+      })
+
+    it('counts one Brave tool the same as Brave and Exa together', () => {
+      expect(getToolLoopMaxSteps({
+        ...createBraveTools(),
+        ...createExaTools(),
+      }, {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })).toBe(EXTERNAL_ONLY_CAP)
+    })
+
+    it('stops the loop at the raised cap and not at the old one', async () => {
+      const options = resolveToolLoopOptions(createBraveTools(), {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })
+      const steps = Array.from({ length: EXTERNAL_ONLY_CAP }, () => ({}))
+
+      expect(await options?.stopWhen({
+        steps: steps.slice(0, TOOL_LOOP_MAX_STEPS),
+      } as any)).toBe(false)
+      expect(await options?.stopWhen({ steps } as any)).toBe(true)
+    })
+
+    it('forces the answer only on the last step of the nine-step cap',
+      async () => {
+        const forcedStepNumbers = await getForcedStepNumbers(
+          createBraveTools(),
+          EXTERNAL_ONLY_CAP + 1,
+        )
+
+        expect(forcedStepNumbers).toEqual([EXTERNAL_ONLY_CAP - 1])
+        expect(forcedStepNumbers).not.toContain(TOOL_LOOP_MAX_STEPS - 1)
+      })
+
+    it('appends the answer-now instructions on that final step', async () => {
+      const resolved = resolveToolLoop(createExaTools(), {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })
+      const result = await resolved?.options.prepareStep({
+        stepNumber: resolved.maxSteps - 1,
+        model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+        instructions: 'Base instructions.',
+      } as any)
+
+      expect(result).toMatchObject({
+        toolChoice: 'none',
+        activeTools: [],
+        instructions: expect.stringContaining('Your search budget is used up.'),
+      })
+    })
+
+    it('does not leak the allowance into the options spread into '
+      + 'streamText', () => {
+      const options = resolveToolLoopOptions(createBraveTools(), {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+      })
+
+      expect(Object.keys(options ?? {}).sort()).toEqual([
+        'prepareStep',
+        'stopWhen',
+        'timeout',
+      ])
+    })
+
+    it('flags the memory write guard from the first Brave result and '
+      + 'never resets it over the longer loop', async () => {
+      const guard = { untrustedResultSeen: false }
+      const options = resolveToolLoopOptions(createBraveTools(), {
+        externalSearchSteps: EXTERNAL_SEARCH_MAX_TOOL_STEPS,
+        guard,
+      })
+      const model = { provider: 'openai.chat', modelId: 'gpt-5.5' }
+
+      await options?.prepareStep({
+        stepNumber: 0,
+        steps: [],
+        model,
+        instructions: undefined,
+      } as any)
+
+      expect(guard.untrustedResultSeen).toBe(false)
+
+      await options?.prepareStep({
+        stepNumber: 1,
+        steps: [{
+          content: [{ type: 'tool-result', toolName: 'web_search_brave' }],
+        }],
+        model,
+        instructions: undefined,
+      } as any)
+
+      expect(guard.untrustedResultSeen).toBe(true)
+
+      await options?.prepareStep({
+        stepNumber: 5,
+        steps: [],
+        model,
         instructions: undefined,
       } as any)
 

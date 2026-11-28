@@ -992,6 +992,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/deepseek.spec.ts',
     'tests/unit/providers/deepseek.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/search/search-budget.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -2365,6 +2366,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/search-usage.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
+    'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
   ]
 
   const pastChatRetrievalTests = [
@@ -2537,6 +2539,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
         'tests/unit/utils/providers/deepseek-web-search.spec.ts',
         'tests/integration/api/chats-project-knowledge.spec.ts',
+        ...externalSearchTests,
       ],
     },
     {
@@ -3348,7 +3351,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(server\/utils\/search\/(brave|exa|freshness|iso-date|search-budget|search-error|types\.d)\.ts|shared\/utils\/exa-search-level\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
-      tests: externalSearchTests,
+      tests: [
+        ...externalSearchTests,
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/search\/search-error\.ts$/,
@@ -3420,7 +3426,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$/,
-      tests: ['tests/integration/api/chats-code-execution.spec.ts'],
+      tests: [
+        'tests/integration/api/chats-code-execution.spec.ts',
+        ...externalSearchTests,
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+      ],
     },
     {
       pattern:
