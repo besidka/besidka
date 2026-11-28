@@ -15,6 +15,7 @@
       :settings="values"
       :save="saveSettings"
     />
+    <ProfileMemoryToolPermissions v-if="toolApprovalsFeature.active" />
     <ProfileMemoryNeverKept />
     <ProfileMemoryModels
       :settings="values"
@@ -47,6 +48,8 @@ useSeoMeta({
   title: 'Memory',
   robots: 'noindex, nofollow',
 })
+
+const toolApprovalsFeature = useFeature('tool-approvals')
 
 const { data: settings, refresh: refreshSettings } = await useFetch('/api/v1/profiles/settings', {
   key: 'profile-memory-settings',

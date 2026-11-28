@@ -178,4 +178,18 @@ describe('MCP surface snapshot', () => {
       expect(schema, tool.name).not.toMatch(/toolMode|tool_mode|always-on/)
     }
   })
+
+  it('exposes no way to read or set the memory write permissions',
+    async () => {
+      const surface = (await import(SURFACE_FILE)).default as {
+        tools: Array<{ name: string }>
+      }
+      const text = JSON.stringify(surface)
+
+      expect(text).not.toMatch(/tool-permissions|tool_permissions/)
+      expect(text).not.toMatch(/memory_write|memory_forget/)
+      expect(surface.tools.map(tool => tool.name)).not.toContain(
+        'set_memory_permissions',
+      )
+    })
 })

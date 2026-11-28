@@ -20,6 +20,13 @@ import { fileURLToPath } from 'node:url'
 
 export const COOKIE_CONSENT_MODULE_TEST_DIR = 'modules/cookie-consent/test/'
 
+export const SPACER_SUITES = [
+  'tests/unit/composables/chat-scroll-spacer.spec.ts',
+  'tests/e2e/chat/scroll-spacer.spec.ts',
+  'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+  'tests/e2e/chat/approval-scroll.spec.ts',
+]
+
 export function getChangedFiles(base = 'HEAD') {
   try {
     let gitCommand
@@ -967,7 +974,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     ...modelsTriggerTests,
-    'tests/e2e/chat/scroll-spacer.spec.ts',
+    ...SPACER_SUITES,
   ]
   const providerReasoningWiringTests = [
     'tests/unit/utils/providers/deepseek.spec.ts',
@@ -992,6 +999,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/deepseek.spec.ts',
     'tests/unit/providers/deepseek.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/search/search-budget.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -1649,6 +1657,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/scopes.spec.ts',
     'tests/unit/server/utils/connectors/store-tokens.spec.ts',
     'tests/unit/server/routes/connectors/client-metadata.spec.ts',
+    'tests/unit/server/utils/request-public-origin.spec.ts',
     'tests/unit/server/plugins/evlog-request-observability.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/integration/api/connectors-oauth-flow.spec.ts',
@@ -1754,6 +1763,29 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/besidka-tool-permissions.spec.ts',
     'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
     'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
+  ]
+
+  const memoryToolPermissionsTests = [
+    'tests/integration/api/memory-tool-permissions.spec.ts',
+    'tests/unit/components/Profile/Memory/ToolPermissions.spec.ts',
+    'tests/unit/composables/memory-tool-permissions.spec.ts',
+    'tests/unit/utils/memory/tools/memory-always-allow.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/integration/api/chats-memory.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/besidka-tools/permissions.spec.ts',
+    'tests/unit/pages/profile/memory.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/Step.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
   ]
 
   const toolApprovalPolicyTests = [
@@ -1901,11 +1933,8 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const approvalScrollTests = [
-    'tests/unit/composables/chat-scroll-spacer.spec.ts',
-    'tests/e2e/chat/scroll-spacer.spec.ts',
-    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+    ...SPACER_SUITES,
     'tests/e2e/chat/tool-approval.spec.ts',
-    'tests/e2e/chat/approval-scroll.spec.ts',
     'tests/unit/components/Chat/ToolApprovalBubble.spec.ts',
     'tests/unit/composables/message-approvals.spec.ts',
     'tests/unit/components/ChatInput/ToolApprovalChip.spec.ts',
@@ -2201,8 +2230,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/model-turns.spec.ts',
     'tests/e2e/chat/builtin-commands.spec.ts',
     'tests/e2e/chat/skills.spec.ts',
-    'tests/e2e/chat/composer-overlays-spacer.spec.ts',
-    'tests/e2e/chat/scroll-spacer.spec.ts',
+    ...SPACER_SUITES,
   ]
 
   const usageReportsTests = [
@@ -2364,6 +2392,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/search-usage.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
+    'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
   ]
 
   const pastChatRetrievalTests = [
@@ -2536,6 +2565,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
         'tests/unit/utils/providers/deepseek-web-search.spec.ts',
         'tests/integration/api/chats-project-knowledge.spec.ts',
+        ...externalSearchTests,
       ],
     },
     {
@@ -2945,6 +2975,10 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^(scripts\/test-affected-check\.mjs|tests\/unit\/scripts\/test-affected-check\.spec\.ts)$/,
+      tests: ['tests/unit/scripts/test-affected-check.spec.ts'],
+    },
+    {
       pattern: /^(scripts\/mcp-version-guard\.mjs|config\/mcp-surface\.json|server\.json|config\/mcp-server\.ts)$/,
       tests: ['tests/unit/scripts/mcp-version-guard.spec.ts'],
     },
@@ -3347,7 +3381,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(server\/utils\/search\/(brave|exa|freshness|iso-date|search-budget|search-error|types\.d)\.ts|shared\/utils\/exa-search-level\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
-      tests: externalSearchTests,
+      tests: [
+        ...externalSearchTests,
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/search\/search-error\.ts$/,
@@ -3419,7 +3456,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$/,
-      tests: ['tests/integration/api/chats-code-execution.spec.ts'],
+      tests: [
+        'tests/integration/api/chats-code-execution.spec.ts',
+        ...externalSearchTests,
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+      ],
     },
     {
       pattern:
@@ -3483,23 +3524,37 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/ThemeSwitcher.spec.ts',
         'tests/e2e/settings/theme.spec.ts',
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
       ],
     },
     {
       pattern: /^app\/composables\/chat-scroll-spacer\.ts$/,
       tests: [
-        'tests/unit/composables/chat-scroll-spacer.spec.ts',
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/e2e/chat/chat-input-collapse-on-attach.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(app\/components\/ChatInput\.client\.vue|app\/composables\/(chat|chat-scroll-spacer|visual-viewport-inset)\.ts|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: SPACER_SUITES,
+    },
+    {
+      pattern:
+        /^app\/components\/Chat\/(?!(Artifact\/(BridgeConfirm|CodeView|Detail|Frame|ReportButton|ShareModal)\.client\.vue|CodeExecution\/Detail\.vue|ContextMenu\.client\.vue|ContextPanel|Document\/|DocumentPreview\.vue|ImagePreview\.client\.vue|ShareModal\.client\.vue|SkillPreview\.client\.vue|TextFileModal\.client\.vue)).+\.vue$/,
+      tests: SPACER_SUITES,
+    },
+    {
+      pattern:
+        /^app\/components\/ChatInput\/(?!(Files\/Modal|Files\/DropZone\.client\.vue|ModelsTrigger\/|ToolsMenu\/|(Artifact|Connector|Project|Skill)Picker\.client\.vue)).+\.vue$/,
+      tests: SPACER_SUITES,
     },
     {
       pattern:
         /^(app\/composables\/visual-viewport-inset\.ts|app\/composables\/keyboard-inset-root\.ts)$/,
       tests: [
         'tests/unit/composables/visual-viewport-inset.spec.ts',
-        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/unit/composables/keyboard-inset-root.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/components/Chat/TextFileModal.client.spec.ts',
@@ -3511,14 +3566,7 @@ export function getAffectedTests(changedFiles) {
         /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
       tests: [
         'tests/e2e/search/keyboard-inset.spec.ts',
-        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
-      ],
-    },
-    {
-      pattern:
-        /^app\/components\/ChatInput\/(CommandPicker|ConnectorSuggestion|ToolApprovalChip)\.vue$/,
-      tests: [
-        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+        ...SPACER_SUITES,
       ],
     },
     {
@@ -3531,7 +3579,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
       tests: [
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/e2e/chat/gateway-image-generation.spec.ts',
         'tests/e2e/chat/image-generation-single-message.spec.ts',
       ],
@@ -3540,7 +3588,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/composables\/chat-image-ui\.ts$/,
       tests: [
         'tests/unit/composables/chat-image-ui.spec.ts',
-        'tests/e2e/chat/scroll-spacer.spec.ts',
+        ...SPACER_SUITES,
         'tests/e2e/chat/gateway-image-generation.spec.ts',
         'tests/e2e/chat/image-generation-single-message.spec.ts',
       ],
@@ -3820,6 +3868,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
       tests: toolPermissionsUiTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(memory-tool-permissions|tool-approval-policy)\.ts|server\/utils\/memory\/tools\/(permissions|permissions-route|memory-tools)\.ts|server\/utils\/tool-approval\/(policy|send|continuation)\.ts|server\/utils\/besidka-tools\/permissions\.ts|server\/api\/v1\/memory\/tool-permissions\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|app\/composables\/memory-tool-permissions\.ts|app\/components\/Profile\/Memory\/ToolPermissions\.vue|app\/components\/Chat\/Reasoning\/(ApprovalStep|Step)\.vue|app\/components\/Ui\/ToolPermissions\/ModeControl\.vue|app\/utils\/tool-approval-step\.ts|app\/pages\/profile\/memory\.vue)$/,
+      tests: memoryToolPermissionsTests,
     },
     {
       pattern:

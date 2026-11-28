@@ -575,6 +575,50 @@ the same day and replaced by the owner decision (option (c)).
   other way: `CONSENT_DB` stays pseudonymous and isolated, and the per-user
   receipt is on `user_settings` (`docs/legal.md`, "Consent records").
 
+## Always allow for memory writes, 2026-11-24
+
+Engineer-drafted, not lawyer-reviewed. This note records an engineering
+decision. It changes no consent text, no policy text and no consent version.
+
+**Decision.** The assistant's `memory_write` tool gets a user setting (Blocked,
+Needs approval, Always allow; default Needs approval, BES-470 and BES-472).
+`memory_forget` gets Blocked and Needs approval only: it is an irreversible
+hard delete with no undo, so it has no Always allow and still asks after web
+or file content. With Always allow on `memory_write` the call runs without the
+approval prompt that otherwise follows web search, files, project knowledge or
+other chats in the same message. Blocked holds without the `tool-approvals`
+flag. Design: `docs/memory-architecture.md`, section 3.21.
+
+**What this changes for special-category data.** Nothing about what can be
+stored: the deterministic sensitive-topic classifier and the never-store
+detectors run on every save, with or without the setting, so option (c) of
+section 6 is unchanged. The change is how a save is started: text from a web
+result or a file can shape what the model saves, and with Always allow the user
+does not see the entry before it is stored. The quote check requires the model
+to quote a substring of the user's current message. It does not prove that the
+user asked to save anything and it does not bind what is written. Every entry
+can be edited or deleted on the Memory page.
+
+**Residual risk.** (1) Content the user did not write can influence an entry
+that passes the classifier, which can miss. A hijacked model can copy a real
+substring of the user's message as the quote, and the write then runs; a write
+in a singleton category (`profile`, `preferences`) appends into the
+always-injected entry, and a write with an `id` overwrites an entry. (2) A
+saved entry is sent to the model provider with later messages, so a wrong or
+steered entry travels to the provider and, for DeepSeek, Moonshot AI and Qwen,
+only after the user's transfer consent as before. (3) The call budget is per
+request, so a message continued in more requests or long-task rounds can write
+more entries. (4) The Undo chip exists for writes only, not for forgets.
+Measures that stay: the per-tool opt-in that is off by default, the warning in
+the settings card (a warning alert shown while Always allow is on) and under
+the Always allow button on the approval card, the single-call lifting of the write lock,
+the call budget, and no exposure over MCP. Recorded as `docs/legal/dpia.md`
+risk row 100 and in `docs/legal/art30-record.md` (row 7 and the review log).
+
+**Owner decides whether a Privacy Policy notice is needed; none was drafted or
+scheduled.** Nothing was added to `LEGAL_NOTICES` and `CURRENT_CONSENT_VERSION`
+is unchanged.
+
 ## Open owner/counsel decisions
 
 Ordered by urgency.
@@ -618,6 +662,9 @@ Ordered by urgency.
    "not for consumer use" clause, 2.2). Counsel can still review it.
 8. **Counsel (only if (b) is revisited): consent receipt retention period**
    and re-consent triggers.
+9. **Owner, 2026-11-24: Always allow for memory writes.** Decide whether the
+   Privacy Policy needs a notice about it (section above). None was drafted
+   or scheduled.
 
 ## Sources
 

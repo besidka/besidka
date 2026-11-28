@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getExternalSearchCost,
+  isExternalSearchToolName,
   getExternalSearchUsage,
   resolveExternalSearchRates,
 } from '../../../../server/utils/ai/external-search-cost'
@@ -20,6 +21,16 @@ function toolErrorStep(toolName: string) {
     ],
   }
 }
+
+describe('isExternalSearchToolName', () => {
+  it('matches the Brave and Exa tool names only', () => {
+    expect(isExternalSearchToolName('web_search_brave')).toBe(true)
+    expect(isExternalSearchToolName('web_search_exa')).toBe(true)
+    expect(isExternalSearchToolName('web_search')).toBe(false)
+    expect(isExternalSearchToolName('web_search_preview')).toBe(false)
+    expect(isExternalSearchToolName('mcp__web_search_brave__x')).toBe(false)
+  })
+})
 
 describe('getExternalSearchUsage', () => {
   it('counts tool-result parts matching the provider\'s tool name', () => {
@@ -53,7 +64,7 @@ describe('getExternalSearchUsage', () => {
 
   it('counts only the executed searches when a turn hits the per-turn '
     + 'search limit', () => {
-    const executedSearches = Array.from({ length: 8 }, () => {
+    const executedSearches = Array.from({ length: 12 }, () => {
       return toolResultStep('web_search_brave', { results: [] })
     })
     const usage = getExternalSearchUsage(
@@ -61,7 +72,65 @@ describe('getExternalSearchUsage', () => {
       'brave',
     )
 
-    expect(usage?.searches).toBe(8)
+    expect(usage?.searches).toBe(12)
+  })
+
+  it('records every call of a ten-call, eight-step run with the summed '
+    + 'vendor cost', () => {
+    const callsPerStep = [1, 2, 1, 1, 2, 1, 1, 1]
+    const steps = callsPerStep.map((count) => {
+      return {
+        content: Array.from({ length: count }, () => {
+          return {
+            type: 'tool-result',
+            toolName: 'web_search_exa',
+            output: { results: [], costDollars: 0.007 },
+          }
+        }),
+      }
+    })
+    const usage = getExternalSearchUsage(steps, 'exa')
+
+    expect(usage?.searches).toBe(10)
+    expect(usage?.reportedCostDollars).toBeCloseTo(0.07, 10)
+  })
+
+  it('records exactly ten searches for ten Brave calls spread over eight '
+    + 'steps, and none for the refused calls', () => {
+    const resultsPerStep = [2, 1, 1, 2, 1, 1, 1, 1]
+    const steps = resultsPerStep.map((count) => {
+      return {
+        content: Array.from({ length: count }, () => {
+          return {
+            type: 'tool-result',
+            toolName: 'web_search_brave',
+            output: { results: [] },
+          }
+        }),
+      }
+    })
+    const refused = [
+      toolErrorStep('web_search_brave'),
+      toolErrorStep('web_search_brave'),
+    ]
+    const usage = getExternalSearchUsage([...steps, ...refused], 'brave')
+
+    expect(usage).toEqual({
+      searches: 10,
+      billingUnit: 'search',
+      reportedCostDollars: undefined,
+    })
+  })
+
+  it('does not count a tool-error step in the middle of a long run', () => {
+    const usage = getExternalSearchUsage([
+      toolResultStep('web_search_exa', { results: [], costDollars: 0.007 }),
+      toolErrorStep('web_search_exa'),
+      toolResultStep('web_search_exa', { results: [], costDollars: 0.007 }),
+    ], 'exa')
+
+    expect(usage?.searches).toBe(2)
+    expect(usage?.reportedCostDollars).toBeCloseTo(0.014, 10)
   })
 
   it('ignores tool-result parts for a different tool name', () => {

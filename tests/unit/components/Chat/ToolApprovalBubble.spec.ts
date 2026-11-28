@@ -86,6 +86,17 @@ const BUBBLE = '[data-testid="tool-approval-bubble"]'
 const STEP = '[data-testid="reasoning-approval-step"]'
 
 describe('Chat/ToolApprovalBubble', () => {
+  it('marks its message root and nests the bubble section in it for the '
+    + 'scroll spacer', async () => {
+    const wrapper = await mountBubble([approvalCall('1'), approvalData('1')])
+    const messageRoot = wrapper.element.closest('.js-tool-approval-message')
+      ?? wrapper.element
+
+    expect(messageRoot.classList.contains('js-tool-approval-message'))
+      .toBe(true)
+    expect(messageRoot.querySelector('.js-tool-approval-bubble')).not.toBeNull()
+  })
+
   it('shows the waiting call with its title, reason and answer buttons',
     async () => {
       const wrapper = await mountBubble([approvalCall('1'), approvalData('1')])

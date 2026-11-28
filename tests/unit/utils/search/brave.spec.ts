@@ -128,6 +128,7 @@ describe('getBraveWebSearchTools tool shape', () => {
     expect(description).toContain('Search the web using Brave Search.')
     expect(description).toContain('Start with one broad query')
     expect(description).toContain('Set freshness for news and recent events.')
+    expect(description).toContain('up to 12 searches')
     expect(description).not.toContain('one focused')
   })
 })
@@ -581,7 +582,7 @@ describe('web_search_brave per-request search budget', () => {
     vi.unstubAllGlobals()
   })
 
-  it('rejects the 9th call without calling Brave', async () => {
+  it('rejects the 13th call without calling Brave', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => {
       return jsonResponse(BRAVE_SEARCH_RESPONSE)
     })
@@ -595,7 +596,7 @@ describe('web_search_brave per-request search budget', () => {
     const result = await getBraveWebSearchTools('brave-key')
     const searchTool = result.tools?.web_search_brave
     const outcomes = await Promise.allSettled(
-      Array.from({ length: 9 }, () => {
+      Array.from({ length: 13 }, () => {
         return searchTool.execute(
           { query: 'many' },
           createExecutionOptions(),
@@ -604,7 +605,7 @@ describe('web_search_brave per-request search budget', () => {
     )
     const rejected = outcomes.filter(outcome => outcome.status === 'rejected')
 
-    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(fetchMock).toHaveBeenCalledTimes(12)
     expect(rejected).toHaveLength(1)
     expect(rejected[0]).toMatchObject({
       reason: { message: EXTERNAL_SEARCH_LIMIT_MESSAGE },

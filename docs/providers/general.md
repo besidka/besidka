@@ -380,12 +380,15 @@ budget alone does not bound provider requests. `index.post.ts` creates one
 never module-global) and passes it to `getBraveWebSearchTools` /
 `getExaWebSearchTools`; DeepSeek's tool builds its own per-request budget
 inside `useDeepSeek`. Each `execute` spends one call before any provider
-request; past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8` it throws a 429
+request; past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 12` it throws a 429
 `createError` whose message tells the model to answer from the results
 already gathered. A throw inside a tool `execute()` becomes a `tool-error`
 part, not a stream failure, and `getExternalSearchUsage` only counts
-`tool-result` parts, so a rejected call is neither fetched nor billed. A
-legitimate DeepSeek turn used 7 calls, hence 8.
+`tool-result` parts, so a rejected call is neither fetched nor billed.
+DeepSeek keeps its own cap of 8 (`DEEPSEEK_SEARCH_MAX_CALLS_PER_TURN`): a
+legitimate DeepSeek turn used 7 calls, hence 8. Brave and Exa moved from 8 to
+12 calls and from 3 to 8 tool steps in BES-473; see
+[Searching over several rounds](../web-search-cost-accounting.md#searching-over-several-rounds-bes-473).
 
 **Earlier turns' search output is not replayed.** `sanitizeMessagesForModelContext`
 keeps only `text` and (converted) `file` parts of previous messages, so
@@ -438,7 +441,9 @@ from that point (one cache miss, then stable).
 click on any other scheme, both through `isHttpUrl` in
 `shared/utils/http-url.ts`.
 
-**Bounds.** `TOOL_LOOP_MAX_TOOL_STEPS` is 3 search rounds, plus one
+**Bounds.** `TOOL_LOOP_MAX_TOOL_STEPS` is 3 search rounds (Brave and Exa get
+`EXTERNAL_SEARCH_MAX_TOOL_STEPS = 8` through `ToolLoopBudget.externalSearchSteps`,
+the other web tools keep 3), plus one
 guaranteed final step (`TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1`)
 that forces an answer instead of another tool call.
 `stepCountIs(TOOL_LOOP_MAX_STEPS)` stops the loop the instant a step

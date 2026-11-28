@@ -133,7 +133,8 @@ export interface ToolApprovalGrant {
   toolName: string
 }
 
-export type ToolApprovalRule = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+export type ToolApprovalRule
+  = | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 12
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -205,6 +206,8 @@ const REMEMBER_OPTIONS_BY_REASON: Record<
 
 const NATIVE_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once']
 
+const MEMORY_REMEMBER_OPTIONS: ToolApprovalRemember[] = ['once', 'always']
+
 function allowed(rule: ToolApprovalRule): ToolApprovalDecision {
   return {
     status: { type: 'not-applicable' },
@@ -270,6 +273,21 @@ function isValidPendingTool(pending: ReplayPendingTool): boolean {
 function isMemoryWrite(descriptor: ToolApprovalDescriptor): boolean {
   return descriptor.writesMemory === true
     || isOneOf(TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES, descriptor.toolName)
+}
+
+const MEMORY_ALWAYS_ALLOW_TOOL_NAME = 'memory_write'
+
+function isAlwaysAllowMemoryTool(descriptor: ToolApprovalDescriptor): boolean {
+  return descriptor.family === 'native'
+    && descriptor.toolName === MEMORY_ALWAYS_ALLOW_TOOL_NAME
+}
+
+function nativeRememberOptionsOf(
+  descriptor: ToolApprovalDescriptor,
+): ToolApprovalRemember[] {
+  return isAlwaysAllowMemoryTool(descriptor)
+    ? MEMORY_REMEMBER_OPTIONS
+    : NATIVE_REMEMBER_OPTIONS
 }
 
 function isTaintedFor(
@@ -390,17 +408,22 @@ export function isAlwaysAskTier(descriptor: ToolApprovalDescriptor): boolean {
 function resolveNativeApproval(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
+  permissionMode: ToolPermissionMode,
 ): ToolApprovalDecision {
   if (descriptor.access === 'read') {
     return allowed(1)
   }
 
+  if (isAlwaysAllowMemoryTool(descriptor) && permissionMode === 'allow') {
+    return allowed(12)
+  }
+
   if (isTaintedFor(descriptor, state)) {
-    return ask(2, 'untrusted-output', NATIVE_REMEMBER_OPTIONS)
+    return ask(2, 'untrusted-output', nativeRememberOptionsOf(descriptor))
   }
 
   if (isAlwaysAskTier(descriptor)) {
-    return ask(5, 'always-ask', NATIVE_REMEMBER_OPTIONS)
+    return ask(5, 'always-ask', nativeRememberOptionsOf(descriptor))
   }
 
   return allowed(8)
@@ -424,6 +447,13 @@ function resolveNativeApproval(
  *    and skill taint; every other native write, memory writes and
  *    unclassified tools included, counts every taint kind.
  * 8. Otherwise a native write runs.
+ * 12. Always allow for memory: `memory_write` that the user set to Allow
+ *    runs before the taint check of rule 2, also after web search, files or
+ *    other chats (the owner rule of 2026-11-20: the user's grant wins over
+ *    taint). Without that setting it still asks, and its prompt offers
+ *    `once` and `always`. `memory_forget` has no Always allow: it is an
+ *    irreversible delete, so it keeps rule 2 and offers `once` only. The
+ *    quote and sensitive-topic gates of the tools still run on every call.
  *
  * Connector and Besidka tools (owner decision of 2026-11-20, which replaces
  * the order of 2026-11-15; modeled on Claude's connector settings):
@@ -450,7 +480,8 @@ function resolveNativeApproval(
  * 9. Otherwise ask `default`.
  *
  * Every prompt of a connector or Besidka tool offers Allow once, Allow in
- * this chat and Always allow; native prompts offer Allow once only.
+ * this chat and Always allow; native prompts offer Allow once only, except
+ * `memory_write`, which also offers Always allow.
  *
  * 10. A consent gate (`consentGate`) is decided right after rule 0, before
  *    every other rule: a chat grant that matches its definition hash lets it
@@ -482,7 +513,7 @@ export function resolveToolApproval(
   }
 
   if (descriptor.family === 'native') {
-    return resolveNativeApproval(descriptor, state)
+    return resolveNativeApproval(descriptor, state, input.permissionMode)
   }
 
   const isAlwaysAsk = isAlwaysAskTier(descriptor)
